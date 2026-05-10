@@ -1,18 +1,28 @@
+'use client'
+import { useState } from 'react'
+
 export default function Home() {
+  const [formData, setFormData] = useState({ brandName: '', contactName: '', email: '', phone: '', message: '' })
+  const [sent, setSent] = useState(false)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    await fetch('/api/contact', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formData) })
+    setSent(true)
+  }
+
   return (
     <main style={{minHeight:'100vh', background:'#0a1628', color:'white', fontFamily:'system-ui'}}>
-      {/* NAV */}
       <nav style={{background:'#142238', padding:'16px 40px', display:'flex', justifyContent:'space-between', alignItems:'center', position:'sticky', top:0, zIndex:100}}>
         <div style={{fontSize:'22px', fontWeight:'900', letterSpacing:'2px', color:'#4fd1b0'}}>GOOD LIQUID BEV CO</div>
-        <div style={{display:'flex', gap:'24px', alignItems:'center'}}>
-          {['Services','Pricing','Process','Team','Contact'].map(l => (
-            <a key={l} href={`#${l.toLowerCase()}`} style={{color:'#9FE1CB', textDecoration:'none', fontWeight:500}}>{l}</a>
+        <div style={{display:'flex', gap:'24px', alignItems:'center', flexWrap:'wrap'}}>
+          {['services','pricing','team','contact'].map(l => (
+            <a key={l} href={`#${l}`} style={{color:'#9FE1CB', textDecoration:'none', fontWeight:500, textTransform:'capitalize'}}>{l}</a>
           ))}
           <a href="/admin/login" style={{background:'#0F6E56', color:'white', padding:'8px 18px', borderRadius:'8px', fontWeight:700, textDecoration:'none'}}>Admin Login</a>
         </div>
       </nav>
 
-      {/* HERO */}
       <section style={{padding:'100px 40px', textAlign:'center', background:'linear-gradient(135deg, #0a1628 0%, #1c2e48 100%)'}}>
         <div style={{fontSize:'14px', letterSpacing:'4px', color:'#4fd1b0', marginBottom:'16px'}}>PALMETTO, FLORIDA • EST. 2017</div>
         <h1 style={{fontSize:'clamp(48px,8vw,96px)', fontWeight:'900', lineHeight:1.1, marginBottom:'24px'}}>
@@ -37,7 +47,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* SERVICES */}
       <section id="services" style={{padding:'80px 40px', maxWidth:'1200px', margin:'0 auto'}}>
         <h2 style={{fontSize:'48px', fontWeight:'900', textAlign:'center', marginBottom:'48px'}}>OUR SERVICES</h2>
         <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))', gap:'24px'}}>
@@ -48,7 +57,7 @@ export default function Home() {
             {title:'Consulting', price:'Custom', desc:'Brand strategy, compliance, distribution planning, and market entry support.'},
           ].map(s => (
             <div key={s.title} style={{background:'#1c2e48', borderRadius:'16px', padding:'32px', border:'1px solid #2a4060'}}>
-              <div style={{color:'#4fd1b0', fontSize:'24px', fontWeight:'900', marginBottom:'8px'}}>{s.title}</div>
+              <div style={{color:'#4fd1b0', fontSize:'22px', fontWeight:'900', marginBottom:'8px'}}>{s.title}</div>
               <div style={{color:'#38bdf8', fontWeight:'700', marginBottom:'16px'}}>{s.price}</div>
               <div style={{color:'#9FE1CB', lineHeight:1.6}}>{s.desc}</div>
             </div>
@@ -56,20 +65,21 @@ export default function Home() {
         </div>
       </section>
 
-      {/* CERTIFICATIONS */}
       <section style={{padding:'60px 40px', background:'#142238', textAlign:'center'}}>
         <h2 style={{fontSize:'36px', fontWeight:'900', marginBottom:'40px'}}>CERTIFICATIONS</h2>
         <div style={{display:'flex', gap:'40px', justifyContent:'center', flexWrap:'wrap'}}>
-          {['GMP','PCQI','HACCP'].map(c => (
-            <div key={c} style={{background:'#0a1628', border:'2px solid #4fd1b0', borderRadius:'50%', width:'140px', height:'140px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'}}>
-              <div style={{fontSize:'32px', fontWeight:'900', color:'#4fd1b0'}}>{c}</div>
-              <div style={{fontSize:'12px', color:'#9FE1CB', marginTop:'4px'}}>Certified</div>
+          {[['GMP','Good Manufacturing Practice'],['PCQI','Preventive Controls Qualified Individual'],['HACCP','Hazard Analysis Critical Control Points']].map(([c,full]) => (
+            <div key={c} style={{textAlign:'center'}}>
+              <div style={{background:'#0a1628', border:'3px solid #4fd1b0', borderRadius:'50%', width:'140px', height:'140px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', margin:'0 auto 12px'}}>
+                <div style={{fontSize:'28px', fontWeight:'900', color:'#4fd1b0'}}>{c}</div>
+                <div style={{fontSize:'11px', color:'#9FE1CB', marginTop:'4px'}}>Certified</div>
+              </div>
+              <div style={{color:'#9FE1CB', fontSize:'13px', maxWidth:'140px'}}>{full}</div>
             </div>
           ))}
         </div>
       </section>
 
-      {/* PRICING */}
       <section id="pricing" style={{padding:'80px 40px', maxWidth:'900px', margin:'0 auto'}}>
         <h2 style={{fontSize:'48px', fontWeight:'900', textAlign:'center', marginBottom:'48px'}}>PRICING</h2>
         <div style={{background:'#1c2e48', borderRadius:'16px', overflow:'hidden'}}>
@@ -96,7 +106,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* TEAM */}
       <section id="team" style={{padding:'80px 40px', background:'#142238', textAlign:'center'}}>
         <h2 style={{fontSize:'48px', fontWeight:'900', marginBottom:'48px'}}>OUR TEAM</h2>
         <div style={{display:'flex', gap:'40px', justifyContent:'center', flexWrap:'wrap'}}>
@@ -104,7 +113,7 @@ export default function Home() {
             {name:'Sandra Krail', role:'Co-Founder & Client Relations', email:'sandra@goodliquid.com'}].map(p => (
             <div key={p.name} style={{background:'#1c2e48', borderRadius:'16px', padding:'40px', width:'280px'}}>
               <div style={{width:'80px', height:'80px', borderRadius:'50%', background:'#0F6E56', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'28px', fontWeight:'900', margin:'0 auto 20px'}}>
-                {p.name.split(' ').map(n=>n[0]).join('')}
+                {p.name.split(' ').map((n:string)=>n[0]).join('')}
               </div>
               <div style={{fontSize:'20px', fontWeight:'700'}}>{p.name}</div>
               <div style={{color:'#4fd1b0', margin:'8px 0'}}>{p.role}</div>
@@ -114,29 +123,46 @@ export default function Home() {
         </div>
       </section>
 
-      {/* CONTACT */}
       <section id="contact" style={{padding:'80px 40px', maxWidth:'700px', margin:'0 auto'}}>
         <h2 style={{fontSize:'48px', fontWeight:'900', textAlign:'center', marginBottom:'16px'}}>GET A QUOTE</h2>
         <p style={{textAlign:'center', color:'#9FE1CB', marginBottom:'40px'}}>(803) 493-5065 • mike@goodliquid.com</p>
-        <form onSubmit={async(e)=>{e.preventDefault()}} style={{display:'flex', flexDirection:'column', gap:'16px'}}>
-          {[['Brand Name','text','brandName'],['Contact Name','text','contactName'],['Email','email','email'],['Phone','tel','phone']].map(([label,type,name]) => (
-            <div key={name}>
-              <label style={{color:'#9FE1CB', fontSize:'14px', display:'block', marginBottom:'6px'}}>{label}</label>
-              <input name={name} type={type} style={{width:'100%', padding:'12px', borderRadius:'8px', background:'#1c2e48', border:'1px solid #2a4060', color:'white', fontSize:'16px', boxSizing:'border-box'}} />
-            </div>
-          ))}
-          <div>
-            <label style={{color:'#9FE1CB', fontSize:'14px', display:'block', marginBottom:'6px'}}>Message</label>
-            <textarea name="message" rows={4} style={{width:'100%', padding:'12px', borderRadius:'8px', background:'#1c2e48', border:'1px solid #2a4060', color:'white', fontSize:'16px', boxSizing:'border-box'}} />
+        {sent ? (
+          <div style={{background:'#0F6E56', borderRadius:'16px', padding:'40px', textAlign:'center', fontSize:'20px', fontWeight:'700'}}>
+            ✅ Message sent! We'll be in touch shortly.
           </div>
-          <button type="submit" style={{background:'#0F6E56', color:'white', padding:'16px', borderRadius:'12px', border:'none', fontSize:'18px', fontWeight:'700', cursor:'pointer'}}>Send Message</button>
-        </form>
+        ) : (
+          <form onSubmit={handleSubmit} style={{display:'flex', flexDirection:'column', gap:'16px'}}>
+            {[['Brand Name','text','brandName'],['Contact Name','text','contactName'],['Email','email','email'],['Phone','tel','phone']].map(([label,type,key]) => (
+              <div key={key}>
+                <label style={{color:'#9FE1CB', fontSize:'14px', display:'block', marginBottom:'6px'}}>{label}</label>
+                <input
+                  type={type}
+                  value={(formData as any)[key]}
+                  onChange={e => setFormData({...formData, [key]: e.target.value})}
+                  style={{width:'100%', padding:'12px', borderRadius:'8px', background:'#1c2e48', border:'1px solid #2a4060', color:'white', fontSize:'16px', boxSizing:'border-box'}}
+                />
+              </div>
+            ))}
+            <div>
+              <label style={{color:'#9FE1CB', fontSize:'14px', display:'block', marginBottom:'6px'}}>Message</label>
+              <textarea
+                value={formData.message}
+                onChange={e => setFormData({...formData, message: e.target.value})}
+                rows={4}
+                style={{width:'100%', padding:'12px', borderRadius:'8px', background:'#1c2e48', border:'1px solid #2a4060', color:'white', fontSize:'16px', boxSizing:'border-box'}}
+              />
+            </div>
+            <button type="submit" style={{background:'#0F6E56', color:'white', padding:'16px', borderRadius:'12px', border:'none', fontSize:'18px', fontWeight:'700', cursor:'pointer'}}>
+              Send Message
+            </button>
+          </form>
+        )}
       </section>
 
-      {/* FOOTER */}
       <footer style={{background:'#0a1628', padding:'40px', textAlign:'center', color:'#9FE1CB', borderTop:'1px solid #1c2e48'}}>
         <div style={{fontSize:'20px', fontWeight:'900', marginBottom:'8px', color:'#4fd1b0'}}>GOOD LIQUID BEV CO</div>
         <div>Palmetto, FL • (803) 493-5065 • mike@goodliquid.com</div>
+        <div style={{marginTop:'8px', fontSize:'14px'}}>goodliquidbevco.com</div>
         <div style={{marginTop:'16px', fontSize:'14px', color:'#4a6a8a'}}>© 2026 Good Liquid Bev Co. All rights reserved.</div>
       </footer>
     </main>
