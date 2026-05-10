@@ -9,27 +9,17 @@ const supabase = createClient(
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { brandName, contactName, email, phone, service, volume, message } = body
-
-    const { error } = await supabase
-      .from('contact_submissions')
-      .insert([{
-        brand_name: brandName,
-        contact_name: contactName,
-        email,
-        phone,
-        service,
-        volume,
-        message,
-        status: 'new'
-      }])
-
-    if (error) {
-      return NextResponse.json({ error: 'Failed to save submission' }, { status: 500 })
-    }
-
+    await supabase.from('contact_submissions').insert([{
+      brand_name: body.brandName,
+      contact_name: body.contactName,
+      email: body.email,
+      phone: body.phone,
+      service: body.service,
+      message: body.message,
+      status: 'new'
+    }])
     return NextResponse.json({ success: true })
-  } catch (error) {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  } catch {
+    return NextResponse.json({ error: 'Server error' }, { status: 500 })
   }
 }

@@ -1,121 +1,94 @@
 'use client'
-
 import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { createBrowserClient } from '@/lib/supabase'
-import Link from 'next/link'
+import { supabase } from '@/lib/supabase'
 
 const NAV = [
-  { href: '/admin/dashboard', label: 'Dashboard', icon: '📊', roles: ['admin','sales','viewer'] },
-  { href: '/admin/clients', label: 'Clients', icon: '👥', roles: ['admin','sales','viewer'] },
-  { href: '/admin/pipeline', label: 'Pipeline', icon: '📋', roles: ['admin','sales'] },
-  { href: '/admin/invoices', label: 'Invoices', icon: '🧾', roles: ['admin','sales'] },
-  { href: '/admin/invoices/new', label: 'New Invoice', icon: '➕', roles: ['admin','sales'] },
-  { href: '/admin/referrals', label: 'Referrals', icon: '🤝', roles: ['admin','sales'] },
-  { href: '/admin/users', label: 'Users & Permissions', icon: '🔑', roles: ['admin'] },
-  { href: '/admin/activity', label: 'Activity', icon: '📡', roles: ['admin','sales'] },
+  { href: '/admin/dashboard', label: '📊 Dashboard' },
+  { href: '/admin/clients', label: '👥 Clients' },
+  { href: '/admin/pipeline', label: '🔁 Pipeline' },
+  { href: '/admin/invoices', label: '🧾 Invoices' },
+  { href: '/admin/referrals', label: '🤝 Referrals' },
+  { href: '/admin/activity', label: '📋 Activity' },
+  { href: '/admin/users', label: '⚙️ Users' },
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
-  const supabase = createBrowserClient()
   const [user, setUser] = useState<any>(null)
-  const [profile, setProfile] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
+  const [open, setOpen] = useState(false)
 
   useEffect(() => {
-    const getUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/admin/login'); return }
-      setUser(session.user)
-      const { data: prof } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', session.user.id)
-        .single()
-      setProfile(prof)
-      // Update last login
-      await supabase.from('profiles').update({ last_login: new Date().toISOString() }).eq('id', session.user.id)
-      setLoading(false)
-    }
-    getUser()
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT') router.push('/admin/login')
+    supabase.auth.getSession().then(({ data }) => {
+      if (!data.session && pathname !== '/admin/login') {
+        router.push('/admin/login')
+      } else {
+        setUser(data.session?.user)
+      }
     })
-    return () => subscription.unsubscribe()
-  }, [])
+  }, [pathname])
 
-  const signOut = async () => {
+  if (pathname === '/admin/login') return <>{children}</>
+
+  async function signOut() {
     await supabase.auth.signOut()
     router.push('/admin/login')
   }
 
-  if (loading) return (
-    <div className="fixed inset-0 bg-ink flex items-center justify-center">
-      <div className="text-teal font-mono text-sm tracking-widest animate-pulse">LOADING...</div>
-    </div>
-  )
-
-  const allowedNav = NAV.filter(n => profile && n.roles.includes(profile.role))
-  const roleBadge = { admin: { bg: 'bg-teal/20 text-teal', label: 'Admin' }, sales: { bg: 'bg-blue-brand/20 text-blue-400', label: 'Sales' }, viewer: { bg: 'bg-white/10 text-muted', label: 'Viewer' } }
-  const rb = roleBadge[profile?.role as keyof typeof roleBadge] || roleBadge.viewer
-
   return (
-    <div className="fixed inset-0 flex flex-col bg-ink-4">
-      {/* Top bar */}
-      <div className="h-14 bg-ink-3 border-b border-white/8 flex items-center justify-between px-5 flex-shrink-0">
-        <Link href="/" className="text-muted hover:text-teal text-sm flex items-center gap-2 transition-colors">
-          ← Back to website
-        </Link>
-        <div className="flex items-center gap-2">
-          <span className="font-display text-sm tracking-widest text-white">GOOD LIQUID</span>
-          <span className="text-teal text-xs tracking-widest font-mono">CRM · Admin</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="text-right">
-            <div className="text-sm text-white font-semibold">{profile?.name}</div>
-            <span className={`text-xs px-2 py-0.5 rounded-full ${rb.bg}`}>{rb.label}</span>
-          </div>
-          <div
-            className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
-            style={{ background: profile?.color || '#1a3a6e', color: profile?.tc || '#9FE1CB' }}
-          >
-            {profile?.initials || '??'}
-          </div>
-          <button onClick={signOut} className="text-xs text-muted hover:text-white px-3 py-1.5 border border-white/10 rounded-lg transition-colors">
-            Sign out
-          </button>
-        </div>
-      </div>
+    <div style={{display:'flex', minHeight:'100vh', background:'#f0f4f8'}}>
+      {/* Mobile overlay */}
+      {open && <div onClick={()=>setOpen(false)} style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:40}} />}
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <div className="w-48 bg-ink-3 border-r border-white/7 flex flex-col overflow-y-auto flex-shrink-0">
-          <nav className="p-2 flex-1">
-            {allowedNav.map(item => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium mb-0.5 transition-all ${
-                  pathname === item.href
-                    ? 'bg-teal/10 text-teal border border-teal/20'
-                    : 'text-muted hover:text-white hover:bg-white/5'
-                }`}
-              >
-                <span className="text-sm">{item.icon}</span>
-                {item.label}
-              </Link>
-            ))}
-          </nav>
+      {/* Sidebar */}
+      <aside style={{
+        width:'220px', background:'#142238', color:'white', display:'flex', flexDirection:'column',
+        position:'fixed', top:0, bottom:0, left: open ? 0 : '-220px', zIndex:50,
+        transition:'left 0.3s'
+      }} className="md-sidebar">
+        <div style={{padding:'24px 20px', borderBottom:'1px solid #1c2e48'}}>
+          <div style={{fontSize:'16px', fontWeight:'900', color:'#4fd1b0', letterSpacing:'1px'}}>GOOD LIQUID</div>
+          <div style={{fontSize:'12px', color:'#9FE1CB', marginTop:'2px'}}>Admin Portal</div>
         </div>
+        <nav style={{flex:1, padding:'16px 0'}}>
+          {NAV.map(n => (
+            <a key={n.href} href={n.href} style={{
+              display:'block', padding:'12px 20px', color: pathname === n.href ? '#4fd1b0' : '#9FE1CB',
+              background: pathname === n.href ? '#1c2e48' : 'transparent',
+              textDecoration:'none', fontSize:'14px', fontWeight: pathname === n.href ? 700 : 400,
+              borderLeft: pathname === n.href ? '3px solid #4fd1b0' : '3px solid transparent',
+              transition:'all 0.2s'
+            }}>{n.label}</a>
+          ))}
+        </nav>
+        <div style={{padding:'16px 20px', borderTop:'1px solid #1c2e48'}}>
+          <div style={{fontSize:'12px', color:'#9FE1CB', marginBottom:'8px'}}>{user?.email}</div>
+          <button onClick={signOut} style={{background:'#1c2e48', color:'#9FE1CB', border:'none', padding:'8px 16px', borderRadius:'8px', cursor:'pointer', width:'100%', fontSize:'13px'}}>Sign Out</button>
+        </div>
+      </aside>
 
-        {/* Main */}
-        <main className="flex-1 overflow-y-auto bg-ink-4">
+      {/* Main */}
+      <div style={{flex:1, marginLeft:0, display:'flex', flexDirection:'column'}}>
+        {/* Topbar */}
+        <header style={{background:'#1c2e48', padding:'16px 24px', display:'flex', alignItems:'center', gap:'16px', position:'sticky', top:0, zIndex:30}}>
+          <button onClick={()=>setOpen(!open)} style={{background:'none', border:'none', color:'#4fd1b0', fontSize:'24px', cursor:'pointer'}}>☰</button>
+          <span style={{color:'white', fontWeight:'700', fontSize:'16px'}}>Good Liquid CRM</span>
+          <div style={{marginLeft:'auto', display:'flex', gap:'12px', alignItems:'center'}}>
+            <a href="/admin/invoices/new" style={{background:'#0F6E56', color:'white', padding:'8px 16px', borderRadius:'8px', textDecoration:'none', fontSize:'14px', fontWeight:'600'}}>+ New Invoice</a>
+          </div>
+        </header>
+        <main style={{flex:1, padding:'24px', overflowY:'auto'}}>
           {children}
         </main>
       </div>
+
+      <style>{`
+        @media (min-width: 768px) {
+          .md-sidebar { left: 0 !important; position: sticky !important; }
+          main { margin-left: 0; }
+        }
+      `}</style>
     </div>
   )
 }

@@ -1,25 +1,22 @@
 'use client'
-
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createBrowserClient } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 
 export default function LoginPage() {
-  const router = useRouter()
-  const supabase = createBrowserClient()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const router = useRouter()
 
-  const signIn = async (e: React.FormEvent) => {
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError('')
-
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) {
-      setError('Incorrect email or password.')
+      setError('Invalid email or password')
       setLoading(false)
     } else {
       router.push('/admin/dashboard')
@@ -27,72 +24,44 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-ink flex items-center justify-center p-4">
-      <div className="w-full max-w-sm">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="font-display text-3xl tracking-widest text-white mb-1">GOOD LIQUID</div>
-          <div className="font-mono text-xs tracking-widest text-teal">BEV CO · CRM</div>
+    <div style={{minHeight:'100vh', background:'#0a1628', display:'flex', alignItems:'center', justifyContent:'center', padding:'20px'}}>
+      <div style={{background:'#1c2e48', borderRadius:'20px', padding:'48px', width:'100%', maxWidth:'420px', boxShadow:'0 20px 60px rgba(0,0,0,0.5)'}}>
+        <div style={{textAlign:'center', marginBottom:'40px'}}>
+          <div style={{fontSize:'28px', fontWeight:'900', color:'#4fd1b0', letterSpacing:'2px'}}>GOOD LIQUID</div>
+          <div style={{color:'#9FE1CB', fontSize:'14px', marginTop:'4px'}}>Admin Portal</div>
         </div>
-
-        <div className="bg-ink-2 border border-white/10 rounded-2xl p-8">
-          <div className="font-display text-2xl tracking-widest text-white mb-1">SIGN IN</div>
-          <div className="text-muted text-sm mb-6">Good Liquid Bev Co · Admin</div>
-
-          {error && (
-            <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm px-4 py-3 rounded-lg mb-4">
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={signIn} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold tracking-widest text-muted uppercase mb-2">
-                Email
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="your@email.com"
-                required
-                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white text-sm placeholder-muted/50 focus:outline-none focus:border-teal focus:bg-teal/5 transition-all"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold tracking-widest text-muted uppercase mb-2">
-                Password
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white text-sm placeholder-muted/50 focus:outline-none focus:border-teal focus:bg-teal/5 transition-all"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 bg-teal text-ink font-bold rounded-lg text-sm tracking-wide hover:bg-teal-2 transition-colors disabled:opacity-50"
-            >
-              {loading ? 'Signing in...' : 'Sign in →'}
-            </button>
-          </form>
-
-          <div className="mt-6 pt-5 border-t border-white/8">
-            <div className="text-xs text-muted/60 font-mono mb-2 tracking-widest">FORGOT PASSWORD?</div>
-            <p className="text-xs text-muted leading-relaxed">
-              Contact Mike at <span className="text-teal">mike@goodliquid.com</span> to reset your password.
-            </p>
+        <form onSubmit={handleLogin} style={{display:'flex', flexDirection:'column', gap:'20px'}}>
+          <div>
+            <label style={{color:'#9FE1CB', fontSize:'14px', display:'block', marginBottom:'8px'}}>Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              required
+              style={{width:'100%', padding:'14px', borderRadius:'10px', background:'#142238', border:'1px solid #2a4060', color:'white', fontSize:'16px', boxSizing:'border-box'}}
+            />
           </div>
-        </div>
-
-        <div className="text-center mt-6">
-          <a href="/" className="text-xs text-muted hover:text-white transition-colors">
-            ← Back to website
-          </a>
+          <div>
+            <label style={{color:'#9FE1CB', fontSize:'14px', display:'block', marginBottom:'8px'}}>Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              required
+              style={{width:'100%', padding:'14px', borderRadius:'10px', background:'#142238', border:'1px solid #2a4060', color:'white', fontSize:'16px', boxSizing:'border-box'}}
+            />
+          </div>
+          {error && <div style={{color:'#f87171', textAlign:'center', fontSize:'14px'}}>{error}</div>}
+          <button
+            type="submit"
+            disabled={loading}
+            style={{background:'#0F6E56', color:'white', padding:'16px', borderRadius:'12px', border:'none', fontSize:'18px', fontWeight:'700', cursor:'pointer', marginTop:'8px'}}
+          >
+            {loading ? 'Signing in...' : 'Sign In'}
+          </button>
+        </form>
+        <div style={{textAlign:'center', marginTop:'24px'}}>
+          <a href="/" style={{color:'#4a6a8a', fontSize:'14px', textDecoration:'none'}}>← Back to website</a>
         </div>
       </div>
     </div>
