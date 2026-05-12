@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<!-- saved from url=(0042)file:///C:/Users/mike/Downloads/index.html -->
+<!-- saved from url=(0044)file:///C:/Users/mike/Downloads/index_4.html -->
 <html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Good Liquid Bev Co</title>
-<script src="./index_files/supabase.js.download"></script>
+<script src="./index_files/supabase.min.js.download"></script>
 <link href="./index_files/css2" rel="stylesheet">
 <style>
 :root{
@@ -430,27 +430,235 @@ footer{background:var(--ink);border-top:1px solid rgba(255,255,255,.06);padding:
 /* Commission owed tag */
 .owed-tag{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.22);color:var(--teal)}
 .paid-tag{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;background:rgba(29,158,117,.12);border:1px solid rgba(29,158,117,.22);color:#1D9E75}
+
+/* ═══════════════════════════════════════════════════
+   DROPDOWN CONSISTENCY — dark theme throughout
+════════════════════════════════════════════════════ */
+select, .fsel {
+  background: rgba(255,255,255,.04) !important;
+  border: 1px solid rgba(255,255,255,.12) !important;
+  color: var(--white) !important;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-family: var(--ff-body);
+  font-size: 13px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2712%27 height=%2212%27 fill=%2700e5c0%27 viewBox=%270 0 16 16%27%3E%3Cpath d=%27M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z%27/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 10px center !important;
+  padding-right: 30px !important;
+  transition: all .25s;
+}
+select:focus, .fsel:focus {
+  outline: none;
+  border-color: var(--teal) !important;
+  background: rgba(0,229,192,.04) !important;
+  box-shadow: 0 0 0 3px rgba(0,229,192,.1) !important;
+}
+select option, .fsel option {
+  background: #0a1628 !important;
+  color: var(--white) !important;
+  padding: 8px;
+}
+.field select { color: var(--white) !important; }
+
+/* ═══════════════════════════════════════════════════
+   UNIFIED NOTIFICATION CENTER
+════════════════════════════════════════════════════ */
+#notif-bell { position:relative; cursor:pointer; }
+#notif-badge { position:absolute;top:-4px;right:-4px;background:#e74c3c;color:#fff;border-radius:50%;width:16px;height:16px;font-size:9px;display:flex;align-items:center;justify-content:center;font-weight:700; }
+#notif-panel { position:fixed;top:52px;right:12px;width:360px;max-height:480px;overflow-y:auto;background:#142238;border:1px solid rgba(0,229,192,.18);border-radius:14px;z-index:700;display:none;box-shadow:0 20px 60px rgba(0,0,0,.5); }
+#notif-panel.show { display:block; }
+.notif-item { padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;gap:10px;align-items:flex-start;transition:background .2s;cursor:pointer; }
+.notif-item:hover { background:rgba(255,255,255,.04); }
+.notif-item.unread { border-left:2px solid var(--teal); }
+.notif-ico { width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0; }
+.notif-title { font-size:12px;font-weight:600;color:var(--white);margin-bottom:2px; }
+.notif-sub { font-size:11px;color:var(--muted);line-height:1.5; }
+.notif-time { font-size:10px;color:rgba(107,135,173,.5);margin-top:2px; }
+
+/* ═══════════════════════════════════════════════════
+   CALENDAR STYLES
+════════════════════════════════════════════════════ */
+.cal-grid { display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:12px; }
+.cal-header { display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px; }
+.cal-day-label { font-size:10px;letter-spacing:1px;color:var(--muted);text-align:center;padding:4px;font-weight:600; }
+.cal-day { min-height:80px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:6px;cursor:pointer;transition:all .2s; }
+.cal-day:hover { background:rgba(0,229,192,.04);border-color:rgba(0,229,192,.2); }
+.cal-day.today { border-color:rgba(0,229,192,.4);background:rgba(0,229,192,.06); }
+.cal-day.other-month { opacity:.35; }
+.cal-day-num { font-size:11px;font-weight:600;color:var(--white);margin-bottom:4px; }
+.cal-event { font-size:9px;padding:2px 5px;border-radius:4px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600; }
+.cal-event.general { background:rgba(26,111,255,.25);color:#6b9fff; }
+.cal-event.production { background:rgba(0,229,192,.2);color:var(--teal); }
+.cal-event.task { background:rgba(245,200,66,.2);color:#f5c842; }
+.cal-nav { display:flex;align-items:center;justify-content:space-between;margin-bottom:10px; }
+.cal-nav-btn { background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:6px 14px;color:var(--white);cursor:pointer;font-size:13px;transition:all .2s; }
+.cal-nav-btn:hover { background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal); }
+.cal-title { font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--white); }
+.cal-tabs { display:flex;gap:8px;margin-bottom:14px; }
+.cal-tab { padding:6px 16px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);color:var(--muted);transition:all .2s; }
+.cal-tab.act { background:var(--teal);color:var(--ink);border-color:transparent; }
+.event-dot { width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:4px; }
+
+/* ═══════════════════════════════════════════════════
+   TASK MANAGEMENT
+════════════════════════════════════════════════════ */
+.task-item { display:flex;align-items:flex-start;gap:10px;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.05); }
+.task-check { width:18px;height:18px;border-radius:5px;border:2px solid rgba(255,255,255,.2);cursor:pointer;flex-shrink:0;margin-top:1px;transition:all .2s;display:flex;align-items:center;justify-content:center; }
+.task-check.done { background:var(--teal);border-color:var(--teal); }
+.task-title { font-size:13px;font-weight:600;color:var(--white); }
+.task-title.done { text-decoration:line-through;color:var(--muted); }
+.task-meta { font-size:11px;color:var(--muted);margin-top:3px; }
+.priority-badge { display:inline-flex;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:700; }
+.priority-badge.high { background:rgba(231,76,60,.15);color:#e74c3c;border:1px solid rgba(231,76,60,.25); }
+.priority-badge.medium { background:rgba(245,200,66,.12);color:#f5c842;border:1px solid rgba(245,200,66,.2); }
+.priority-badge.low { background:rgba(26,111,255,.12);color:#6b9fff;border:1px solid rgba(26,111,255,.2); }
+
+/* ═══════════════════════════════════════════════════
+   PRODUCTION SCHEDULE
+════════════════════════════════════════════════════ */
+.prod-run { background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:11px;padding:14px;margin-bottom:10px;transition:all .3s; }
+.prod-run:hover { border-color:rgba(0,229,192,.2);background:rgba(0,229,192,.03); }
+.prod-status-bar { height:4px;border-radius:2px;margin-top:10px; }
+.prod-status-bar.scheduled { background:rgba(26,111,255,.6); }
+.prod-status-bar.in-production { background:rgba(245,200,66,.7); }
+.prod-status-bar.completed { background:rgba(29,158,117,.7); }
+
+/* ═══════════════════════════════════════════════════
+   TAGS
+════════════════════════════════════════════════════ */
+.tag-chip { display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:10px;font-weight:600;background:rgba(0,229,192,.1);border:1px solid rgba(0,229,192,.22);color:var(--teal);margin:2px;cursor:default; }
+.tag-chip .tag-rm { cursor:pointer;opacity:.6;transition:opacity .2s;font-size:11px; }
+.tag-chip .tag-rm:hover { opacity:1; }
+.tag-input-wrap { display:flex;flex-wrap:wrap;gap:4px;padding:8px;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(255,255,255,.04);min-height:42px;cursor:text;transition:border-color .25s; }
+.tag-input-wrap:focus-within { border-color:var(--teal); }
+.tag-input-wrap input { border:none;background:none;color:var(--white);font-size:12px;font-family:var(--ff-body);outline:none;min-width:100px;flex:1; }
+
+/* ═══════════════════════════════════════════════════
+   CLIENT HEALTH SCORE
+════════════════════════════════════════════════════ */
+.health-dot { width:10px;height:10px;border-radius:50%;flex-shrink:0; }
+.health-dot.green { background:#1D9E75; }
+.health-dot.yellow { background:#f5c842; }
+.health-dot.red { background:#e74c3c; }
+
+/* ═══════════════════════════════════════════════════
+   DOCUMENT STORAGE
+════════════════════════════════════════════════════ */
+.doc-item { display:flex;align-items:center;gap:10px;padding:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:8px;margin-bottom:8px;transition:all .2s; }
+.doc-item:hover { border-color:rgba(0,229,192,.2);background:rgba(0,229,192,.04); }
+.doc-icon { font-size:20px;flex-shrink:0; }
+.doc-name { font-size:12px;font-weight:600;color:var(--white); }
+.doc-meta { font-size:10px;color:var(--muted);margin-top:2px; }
+
+/* ═══════════════════════════════════════════════════
+   AI CHAT WIDGET (public + customer portal)
+════════════════════════════════════════════════════ */
+#gl-chat-bubble { position:fixed;bottom:28px;left:28px;z-index:500;width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--teal),#1a6fff);border:none;cursor:pointer;box-shadow:0 4px 20px rgba(0,229,192,.4);display:flex;align-items:center;justify-content:center;font-size:22px;transition:all .3s; }
+#gl-chat-bubble:hover { transform:scale(1.08);box-shadow:0 6px 30px rgba(0,229,192,.5); }
+#gl-chat-window { position:fixed;bottom:92px;left:28px;width:340px;height:480px;background:#0a1628;border:1px solid rgba(0,229,192,.18);border-radius:18px;z-index:500;display:none;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6); }
+#gl-chat-window.show { display:flex; }
+#gl-chat-header { background:#142238;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.07); }
+#gl-chat-messages { flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px; }
+#gl-chat-input-row { padding:12px;border-top:1px solid rgba(255,255,255,.07);display:flex;gap:8px; }
+#gl-chat-input { flex:1;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:9px 12px;color:var(--white);font-size:13px;font-family:var(--ff-body);resize:none;outline:none;transition:border-color .2s; }
+#gl-chat-input:focus { border-color:var(--teal); }
+.chat-msg { max-width:85%;padding:9px 12px;border-radius:12px;font-size:13px;line-height:1.55; }
+.chat-msg.bot { background:rgba(255,255,255,.07);color:var(--white);align-self:flex-start;border-radius:4px 12px 12px 12px; }
+.chat-msg.user { background:linear-gradient(135deg,rgba(0,229,192,.25),rgba(26,111,255,.25));color:var(--white);align-self:flex-end;border-radius:12px 12px 4px 12px; }
+
+/* ═══════════════════════════════════════════════════
+   BOOKING CALENDAR (public site)
+════════════════════════════════════════════════════ */
+#booking-overlay { position:fixed;inset:0;z-index:800;background:rgba(6,13,26,.95);backdrop-filter:blur(16px);display:none;align-items:center;justify-content:center; }
+#booking-overlay.show { display:flex; }
+.booking-box { background:#0a1628;border:1px solid rgba(0,229,192,.18);border-radius:22px;padding:36px;width:100%;max-width:620px;max-height:90vh;overflow-y:auto; }
+.booking-mini-cal { display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-top:10px; }
+.bk-day { padding:8px 4px;text-align:center;border-radius:7px;cursor:pointer;font-size:13px;transition:all .2s;border:1px solid transparent; }
+.bk-day:hover:not(.bk-past) { background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal); }
+.bk-day.bk-selected { background:var(--teal);color:var(--ink);font-weight:700; }
+.bk-day.bk-past { opacity:.3;cursor:not-allowed; }
+.bk-day.bk-today { border-color:rgba(0,229,192,.4);color:var(--teal); }
+.time-slots { display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px; }
+.time-slot { padding:9px;text-align:center;border:1px solid rgba(255,255,255,.1);border-radius:8px;cursor:pointer;font-size:12px;color:var(--white);transition:all .2s; }
+.time-slot:hover { border-color:var(--teal);color:var(--teal);background:rgba(0,229,192,.06); }
+.time-slot.selected { background:var(--teal);color:var(--ink);border-color:transparent;font-weight:700; }
+
+/* ═══════════════════════════════════════════════════
+   CUSTOMER PORTAL
+════════════════════════════════════════════════════ */
+#customer-portal { position:fixed;inset:0;z-index:400;display:none;flex-direction:column;background:#0a1628; }
+#customer-portal.show { display:flex; }
+.portal-top { background:#142238;border-bottom:1px solid rgba(255,255,255,.07);padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0; }
+.portal-body { flex:1;overflow-y:auto;padding:24px;max-width:900px;margin:0 auto;width:100%; }
+.portal-card { background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:20px;margin-bottom:16px; }
+
+/* ═══════════════════════════════════════════════════
+   PASSWORD RESET / CHANGE
+════════════════════════════════════════════════════ */
+#reset-overlay { position:fixed;inset:0;z-index:900;background:rgba(6,13,26,.95);backdrop-filter:blur(16px);display:none;align-items:center;justify-content:center; }
+#reset-overlay.show { display:flex; }
+
+/* ═══════════════════════════════════════════════════
+   ANNOUNCEMENTS BOARD
+════════════════════════════════════════════════════ */
+.ann-item { background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:13px;margin-bottom:10px; }
+.ann-author { font-size:10px;letter-spacing:1px;color:var(--teal);font-weight:600;text-transform:uppercase;margin-bottom:5px; }
+.ann-text { font-size:13px;color:var(--white);line-height:1.65; }
+.ann-time { font-size:10px;color:var(--muted);margin-top:5px; }
+
+/* ═══════════════════════════════════════════════════
+   MULTI-PIPELINE TABS
+════════════════════════════════════════════════════ */
+.pipeline-switch { display:flex;gap:6px;margin-bottom:16px; }
+.pipe-tab { padding:7px 18px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);color:var(--muted);transition:all .2s; }
+.pipe-tab.act { background:var(--teal);color:var(--ink);border-color:transparent; }
+
+/* ═══════════════════════════════════════════════════
+   INVOICE FOLLOW-UP LOG
+════════════════════════════════════════════════════ */
+.fu-log-item { display:flex;align-items:flex-start;gap:9px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:11px; }
+.fu-log-icon { font-size:14px;flex-shrink:0; }
+.fu-log-text { color:var(--white);font-weight:500; }
+.fu-log-time { color:var(--muted); }
+
+/* ═══════════════════════════════════════════════════
+   INVENTORY TRACKER
+════════════════════════════════════════════════════ */
+.inv-item-row { display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.05); }
+.inv-stock-bar { flex:1;height:6px;background:rgba(255,255,255,.07);border-radius:3px;overflow:hidden; }
+.inv-stock-fill { height:100%;border-radius:3px;transition:width .4s; }
+
+/* ═══════════════════════════════════════════════════
+   REVENUE FORECAST
+════════════════════════════════════════════════════ */
+.forecast-card { background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:11px;padding:16px;text-align:center; }
+.forecast-amount { font-family:var(--ff-disp);font-size:28px;letter-spacing:1px;background:linear-gradient(135deg,var(--teal),#1a6fff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text; }
+.forecast-label { font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-top:4px; }
 </style>
 </head>
 <body>
-<div id="cursor" class="" style="opacity: 1; left: 1137px; top: 417px;"></div>
+<div id="cursor" class="" style="opacity: 1; left: 925px; top: 343px;"></div>
 
 <!-- ═══════════════════════════
          PUBLIC WEBSITE
 ════════════════════════════ -->
 <nav id="main-nav">
-  <a href="file:///C:/Users/mike/Downloads/index.html#hero" class="logo-wrap">
+  <a href="file:///C:/Users/mike/Downloads/index_4.html#hero" class="logo-wrap">
     <div class="logo-mark"><img src="data:image/png;base64,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" alt="Good Liquid logo"></div>
     <div><div class="l1">GOOD LIQUID</div><div class="l2">Bev Co</div></div>
   </a>
   <div class="nav-links">
-    <a href="file:///C:/Users/mike/Downloads/index.html#about" onclick="event.preventDefault();navTo(&#39;about&#39;)">About</a>
-    <a href="file:///C:/Users/mike/Downloads/index.html#services" onclick="event.preventDefault();navTo(&#39;services&#39;)">Services</a>
-    <a href="file:///C:/Users/mike/Downloads/index.html#pricing" onclick="event.preventDefault();navTo(&#39;pricing&#39;)">Pricing</a>
-    <a href="file:///C:/Users/mike/Downloads/index.html#certifications" onclick="event.preventDefault();navTo(&#39;certifications&#39;)">Certifications</a>
-    <a href="file:///C:/Users/mike/Downloads/index.html#team" onclick="event.preventDefault();navTo(&#39;team&#39;)">Team</a>
-    <a href="file:///C:/Users/mike/Downloads/index.html#contact" class="nav-cta" onclick="event.preventDefault();navTo(&#39;contact&#39;)">Get a Quote</a>
-    <a href="file:///C:/Users/mike/Downloads/index.html#" onclick="event.preventDefault();openAdmin()" style="padding:9px 22px;border:1.5px solid #f5c842;color:#f5c842;border-radius:6px;font-size:13px;font-weight:600;transition:all .25s;margin-left:8px;">🔒 Admin</a>
+    <a href="file:///C:/Users/mike/Downloads/index_4.html#about" onclick="event.preventDefault();navTo(&#39;about&#39;)">About</a>
+    <a href="file:///C:/Users/mike/Downloads/index_4.html#services" onclick="event.preventDefault();navTo(&#39;services&#39;)">Services</a>
+    <a href="file:///C:/Users/mike/Downloads/index_4.html#pricing" onclick="event.preventDefault();navTo(&#39;pricing&#39;)">Pricing</a>
+    <a href="file:///C:/Users/mike/Downloads/index_4.html#certifications" onclick="event.preventDefault();navTo(&#39;certifications&#39;)">Certifications</a>
+    <a href="file:///C:/Users/mike/Downloads/index_4.html#team" onclick="event.preventDefault();navTo(&#39;team&#39;)">Team</a>
+    <a href="file:///C:/Users/mike/Downloads/index_4.html#contact" class="nav-cta" onclick="event.preventDefault();navTo(&#39;contact&#39;)">Get a Quote</a>
+    <a href="file:///C:/Users/mike/Downloads/index_4.html#" onclick="event.preventDefault();openAdmin()" style="padding:9px 22px;border:1.5px solid #f5c842;color:#f5c842;border-radius:6px;font-size:13px;font-weight:600;transition:all .25s;margin-left:8px;">🔒 Admin</a>
   </div>
 </nav>
 
@@ -467,8 +675,8 @@ footer{background:var(--ink);border-top:1px solid rgba(255,255,255,.06);padding:
     <div class="hero-row">
       <p class="hero-sub">Good Liquid Bev Co turns your beverage concept into a finished, palletized product — from formulation to first shipment. Small-batch specialists, big results.</p>
       <div class="hero-acts">
-        <a href="file:///C:/Users/mike/Downloads/index.html#contact" class="bh pri" onclick="event.preventDefault();navTo(&#39;contact&#39;)">Get a quote →</a>
-        <a href="file:///C:/Users/mike/Downloads/index.html#services" class="bh sec" onclick="event.preventDefault();navTo(&#39;services&#39;)">See capabilities</a>
+        <a href="file:///C:/Users/mike/Downloads/index_4.html#contact" class="bh pri" onclick="event.preventDefault();navTo(&#39;contact&#39;)">Get a quote →</a>
+        <a href="file:///C:/Users/mike/Downloads/index_4.html#services" class="bh sec" onclick="event.preventDefault();navTo(&#39;services&#39;)">See capabilities</a>
       </div>
     </div>
     <div class="hero-stats">
@@ -481,7 +689,7 @@ footer{background:var(--ink);border-top:1px solid rgba(255,255,255,.06);padding:
 </section>
 
 <div class="ticker"><div class="ticker-inner">
-  <span>SMALL BATCH CANNING</span><span class="sep">✦</span><span>BEVERAGE FORMULATION</span><span class="sep">✦</span><span>BOTTLE FILLING</span><span class="sep">✦</span><span>THC / CBD COMPLIANT</span><span class="sep">✦</span><span>MATERIALS SOURCING</span><span class="sep">✦</span><span>FLASH PASTEURIZATION</span><span class="sep">✦</span><span>NITROGEN DOSING</span><span class="sep">✦</span><span>BRAND CONSULTING</span><span class="sep">✦</span><span>SMALL BATCH CANNING</span><span class="sep">✦</span><span>BEVERAGE FORMULATION</span><span class="sep">✦</span><span>BOTTLE FILLING</span><span class="sep">✦</span><span>THC / CBD COMPLIANT</span><span class="sep">✦</span><span>MATERIALS SOURCING</span><span class="sep">✦</span><span>FLASH PASTEURIZATION</span><span class="sep">✦</span><span>NITROGEN DOSING</span><span class="sep">✦</span><span>BRAND CONSULTING</span><span class="sep">✦</span>
+  <span>SMALL BATCH CANNING</span><span class="sep">✦</span><span>BEVERAGE FORMULATION</span><span class="sep">✦</span><span>BOTTLE FILLING</span><span class="sep">✦</span><span>MATERIALS SOURCING</span><span class="sep">✦</span><span>FLASH PASTEURIZATION</span><span class="sep">✦</span><span>NITROGEN DOSING</span><span class="sep">✦</span><span>BRAND CONSULTING</span><span class="sep">✦</span><span>SMALL BATCH CANNING</span><span class="sep">✦</span><span>BEVERAGE FORMULATION</span><span class="sep">✦</span><span>BOTTLE FILLING</span><span class="sep">✦</span><span>MATERIALS SOURCING</span><span class="sep">✦</span><span>FLASH PASTEURIZATION</span><span class="sep">✦</span><span>NITROGEN DOSING</span><span class="sep">✦</span><span>BRAND CONSULTING</span><span class="sep">✦</span>
 </div></div>
 
 <section id="about" style="background:var(--ink2)">
@@ -498,7 +706,7 @@ footer{background:var(--ink);border-top:1px solid rgba(255,255,255,.06);padding:
       <p>Good Liquid Bev Co is a <strong>family-run beverage copacker</strong> dedicated to helping beverage brands grow. We specialize in small-batch production — the ideal partner for brands needing flexibility and quality.</p>
       <p>Based in Palmetto, Florida, our high-efficiency cold-fill canning line and expert R&amp;D facility support everything from <strong>early pilot runs</strong> to scaling emerging brands for retail.</p>
       <div class="br">
-        <span class="bi t">✓ Pilot Runs</span><span class="bi t">✓ Test Markets</span><span class="bi t">✓ THC/CBD Compliant</span>
+        <span class="bi t">✓ Pilot Runs</span><span class="bi t">✓ Test Markets</span>
         <span class="bi d">Cold-fill facility</span><span class="bi d">FDA compliant</span><span class="bi d">Palmetto, FL</span>
       </div>
     </div>
@@ -510,7 +718,7 @@ footer{background:var(--ink);border-top:1px solid rgba(255,255,255,.06);padding:
   <div style="text-align:center;margin-bottom:52px" class="rv"><div class="sec-tag">What we do</div><h2 class="sec-h">FULL-SERVICE <em>CO-PACKING.</em></h2></div>
   <div class="sb rv">
     <div class="sv tall"><div class="sg sg-t">🧪</div><h3>BEVERAGE FORMULATION</h3><p>Full lifecycle R&amp;D from early-stage recipe to full-scale formula. Expert guidance on ingredients, shelf stability, nutritional planning, and labeling.</p>
-      <ul class="svbuls"><li>Functional beverages, seltzers, wellness drinks</li><li>Alcohol-free, infused &amp; THC/CBD compliant</li><li>Shelf stability &amp; nutritional planning</li><li>Full IP ownership options available</li></ul>
+      <ul class="svbuls"><li>Functional beverages, seltzers, wellness drinks</li><li>Shelf stability &amp; nutritional planning</li><li>Full IP ownership options available</li></ul>
       <div class="spt"><span class="sn">$1,000</span><span class="ss">starting / 3 iterations</span></div><div class="sbgn">01</div></div>
     <div class="sv"><div class="sg sg-b">🥫</div><h3>SMALL BATCH CANNING</h3><p>High-efficiency cold-fill canning. Three formats, PakTech handles, custom lid colors, optional add-ons.</p>
       <div class="spt"><span class="sn">$0.28</span><span class="ss">/ can at volume</span></div><div class="sbgn">02</div></div>
@@ -684,7 +892,7 @@ footer{background:var(--ink);border-top:1px solid rgba(255,255,255,.06);padding:
         <div style="font-family:var(--ff-disp);font-size:24px;letter-spacing:1px;color:var(--white);margin-bottom:5px">PALMETTO, FL</div>
         <div style="font-family:var(--ff-mono);font-size:12px;color:var(--white);line-height:1.7;margin-bottom:16px">2011 51st Ave E, Unit 100<br>Palmetto, FL 34221</div>
         <p style="font-size:13px;color:var(--muted);line-height:1.7">Schedule a tour and see the production line in action.</p>
-        <a href="file:///C:/Users/mike/Downloads/index.html#contact" class="fac-btn">Schedule a tour →</a>
+        <a href="file:///C:/Users/mike/Downloads/index_4.html#" onclick="event.preventDefault();openBooking()" class="fac-btn">Schedule a tour →</a>
       </div>
     </div>
   </div>
@@ -727,8 +935,8 @@ footer{background:var(--ink);border-top:1px solid rgba(255,255,255,.06);padding:
     <div><div style="font-size:13px;font-weight:700;color:var(--white)">Good Liquid Bev Co</div><div style="font-size:10px;color:var(--muted)">Est. 2017 · Palmetto, FL 34221</div></div>
   </div>
   <div class="flinks">
-    <a href="file:///C:/Users/mike/Downloads/index.html#about">About</a><a href="file:///C:/Users/mike/Downloads/index.html#services">Services</a><a href="file:///C:/Users/mike/Downloads/index.html#pricing">Pricing</a>
-    <a href="file:///C:/Users/mike/Downloads/index.html#certifications">Certifications</a><a href="file:///C:/Users/mike/Downloads/index.html#team">Team</a><a href="mailto:Mike@GoodLiquid.com">Contact</a>
+    <a href="file:///C:/Users/mike/Downloads/index_4.html#about">About</a><a href="file:///C:/Users/mike/Downloads/index_4.html#services">Services</a><a href="file:///C:/Users/mike/Downloads/index_4.html#pricing">Pricing</a>
+    <a href="file:///C:/Users/mike/Downloads/index_4.html#certifications">Certifications</a><a href="file:///C:/Users/mike/Downloads/index_4.html#team">Team</a><a href="mailto:Mike@GoodLiquid.com">Contact</a>
   </div>
   <div class="fright">© 2026 Good Liquid Bev Co.</div>
 </footer>
@@ -747,6 +955,7 @@ footer{background:var(--ink);border-top:1px solid rgba(255,255,255,.06);padding:
     <input type="password" class="pw-input" id="pw-input" placeholder="Password" style="text-align:left;padding:13px 16px" onkeydown="if(event.key===&#39;Enter&#39;)checkPw()">
     <button class="pw-btn" onclick="checkPw()">Sign in →</button>
     <button class="pw-cancel" onclick="closePw()">Cancel</button>
+    <button style="font-size:11px;color:var(--muted);cursor:pointer;border:none;background:none;font-family:var(--ff-body);margin-top:8px" onclick="document.getElementById(&#39;pw-ov&#39;).classList.remove(&#39;show&#39;);document.getElementById(&#39;reset-overlay&#39;).classList.add(&#39;show&#39;)">Forgot password?</button>
 
   </div>
 </div>
@@ -761,6 +970,11 @@ footer{background:var(--ink);border-top:1px solid rgba(255,255,255,.06);padding:
       <div class="crm-brand-logo"><img src="data:image/png;base64,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" alt="Good Liquid logo"></div>
       <div><div class="crm-brand-name">GOOD LIQUID</div><div class="crm-brand-sub">CRM · Admin</div></div>
     </div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div id="notif-bell" onclick="toggleNotifPanel()" style="position:relative;width:34px;height:34px;border-radius:8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s" title="Notifications">
+        🔔<div id="notif-badge" style="display:none">0</div>
+      </div>
+    </div>
     <div class="crm-usr">
       <div id="crm-user-info" style="display:flex;align-items:center;gap:8px">
         <div class="crm-av" id="crm-av-init">MK</div>
@@ -769,8 +983,19 @@ footer{background:var(--ink);border-top:1px solid rgba(255,255,255,.06);padding:
           <div id="crm-role-badge" style="font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:1px 6px;border-radius:20px;display:inline-block;margin-top:1px">Admin</div>
         </div>
       </div>
-      <button class="cbtn" style="font-size:10px;padding:4px 10px;margin-left:8px" onclick="logoutCRM()">Sign out</button>
+      <button class="cbtn" style="font-size:10px;padding:4px 10px" onclick="openChangePwModal()">🔑 Password</button>
+      <button class="cbtn" style="font-size:10px;padding:4px 10px;margin-left:4px" onclick="logoutCRM()">Sign out</button>
     </div>
+  </div>
+  <div id="notif-panel">
+    <div style="padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;justify-content:space-between">
+      <div style="font-family:var(--ff-disp);font-size:14px;letter-spacing:2px;color:var(--white)">NOTIFICATIONS</div>
+      <div style="display:flex;gap:8px">
+        <button onclick="markAllNotifRead()" style="font-size:10px;background:rgba(0,229,192,.08);border:1px solid rgba(0,229,192,.2);border-radius:6px;color:var(--teal);padding:4px 9px;cursor:pointer">Mark all read</button>
+        <button onclick="toggleNotifPanel()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px">✕</button>
+      </div>
+    </div>
+    <div id="notif-list" style="max-height:400px;overflow-y:auto"></div>
   </div>
   <div id="crm-body">
     <div id="crm-sidebar">
@@ -900,7 +1125,12 @@ footer{background:var(--ink);border-top:1px solid rgba(255,255,255,.06);padding:
           <div><div class="cpt">PIPELINE</div><div class="cps" id="pipe-sub">Active brand engagements</div></div>
           <button class="cbtn" onclick="openAddDealModal()" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)">+ Add Deal</button>
         </div>
-        <div class="kboard" id="kanban"></div>
+        <div class="pipeline-switch">
+          <div class="pipe-tab act" onclick="switchPipeline(&#39;sales&#39;,this)">💼 Sales Pipeline</div>
+          <div class="pipe-tab" onclick="switchPipeline(&#39;production&#39;,this)">🏭 Production Pipeline</div>
+        </div>
+        <div id="pipeline-sales"><div class="kboard" id="kanban"></div></div>
+        <div id="pipeline-production" style="display:none"><div class="kboard" id="kanban-prod"></div></div>
       </div>
 
       <!-- DEAL DETAIL PANEL -->
@@ -1051,6 +1281,111 @@ footer{background:var(--ink);border-top:1px solid rgba(255,255,255,.06);padding:
         <div class="ccard" id="full-activity"></div>
       </div>
 
+
+      <!-- ═══ GENERAL CALENDAR ═══ -->
+      <div id="cpg-calendar" class="cpg">
+        <div class="cph">
+          <div><div class="cpt">GENERAL CALENDAR</div><div class="cps">Meetings, tours, client visits</div></div>
+          <button class="cbtn pri" onclick="openCalEventModal(&#39;general&#39;)">+ Add Event</button>
+        </div>
+        <div class="cal-tabs">
+          <div class="cal-tab act" onclick="setCalView(&#39;month&#39;,this)">Month</div>
+          <div class="cal-tab" onclick="setCalView(&#39;list&#39;,this)">List</div>
+        </div>
+        <div class="cal-nav">
+          <button class="cal-nav-btn" onclick="calPrev(&#39;general&#39;)">‹ Prev</button>
+          <div class="cal-title" id="cal-month-label-general">May 2026</div>
+          <button class="cal-nav-btn" onclick="calNext(&#39;general&#39;)">Next ›</button>
+        </div>
+        <div class="cal-header" id="cal-dow-general"></div>
+        <div class="cal-grid" id="cal-grid-general"></div>
+        <div id="cal-list-general" style="display:none"></div>
+      </div>
+
+      <!-- ═══ PRODUCTION SCHEDULE / CALENDAR ═══ -->
+      <div id="cpg-production-cal" class="cpg">
+        <div class="cph">
+          <div><div class="cpt">PRODUCTION SCHEDULE</div><div class="cps">Canning runs, bottling, due dates</div></div>
+          <div style="display:flex;gap:8px">
+            <button class="cbtn" onclick="openAIProductionOptimizer()" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)">🤖 AI Optimize</button>
+            <button class="cbtn pri" onclick="openCalEventModal(&#39;production&#39;)">+ Add Production Run</button>
+          </div>
+        </div>
+        <div class="cal-nav">
+          <button class="cal-nav-btn" onclick="calPrev(&#39;production&#39;)">‹ Prev</button>
+          <div class="cal-title" id="cal-month-label-production">May 2026</div>
+          <button class="cal-nav-btn" onclick="calNext(&#39;production&#39;)">Next ›</button>
+        </div>
+        <div class="cal-header" id="cal-dow-production"></div>
+        <div class="cal-grid" id="cal-grid-production"></div>
+        <div style="margin-top:22px">
+          <div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:12px">SCHEDULED RUNS</div>
+          <div id="prod-runs-list"></div>
+        </div>
+      </div>
+
+      <!-- ═══ TASK MANAGEMENT ═══ -->
+      <div id="cpg-tasks" class="cpg">
+        <div class="cph">
+          <div><div class="cpt">TASKS</div><div class="cps" id="task-sub">Team to-do list</div></div>
+          <button class="cbtn pri" onclick="openTaskModal()">+ Add Task</button>
+        </div>
+        <div class="cpills">
+          <span class="cpill act" onclick="setTaskFilter(this,&#39;all&#39;)">All</span>
+          <span class="cpill" onclick="setTaskFilter(this,&#39;open&#39;)">Open</span>
+          <span class="cpill" onclick="setTaskFilter(this,&#39;done&#39;)">Completed</span>
+          <span class="cpill" onclick="setTaskFilter(this,&#39;high&#39;)">🔴 High</span>
+          <span class="cpill" onclick="setTaskFilter(this,&#39;medium&#39;)">🟡 Medium</span>
+        </div>
+        <div id="task-list"></div>
+      </div>
+
+      <!-- ═══ DOCUMENTS ═══ -->
+      <div id="cpg-documents" class="cpg">
+        <div class="cph">
+          <div><div class="cpt">DOCUMENTS</div><div class="cps">NDAs, formulas, artwork per client</div></div>
+          <button class="cbtn pri" onclick="openDocUploadModal()">+ Upload Document</button>
+        </div>
+        <div class="csrow"><span>🔍</span><input type="text" placeholder="Search documents…" oninput="filterDocs(this.value)"></div>
+        <div class="frow" style="margin-bottom:14px"><div class="flbl">Filter by client</div>
+          <select class="fsel" id="doc-client-filter" onchange="renderDocs()" style="max-width:220px">
+            <option value="">All clients</option>
+          </select>
+        </div>
+        <div id="doc-list"></div>
+      </div>
+
+      <!-- ═══ INVENTORY ═══ -->
+      <div id="cpg-inventory" class="cpg">
+        <div class="cph">
+          <div><div class="cpt">INVENTORY</div><div class="cps">Materials &amp; supplies on hand</div></div>
+          <button class="cbtn pri" onclick="openInventoryModal()">+ Add Item</button>
+        </div>
+        <div id="inventory-list"></div>
+        <div style="margin-top:16px;padding:14px;background:rgba(245,200,66,.06);border:1px solid rgba(245,200,66,.18);border-radius:10px;font-size:12px;color:#f5c842" id="inv-low-alert"></div>
+      </div>
+
+      <!-- ═══ ANNOUNCEMENTS ═══ -->
+      <div id="cpg-announcements" class="cpg">
+        <div class="cph">
+          <div><div class="cpt">ANNOUNCEMENTS</div><div class="cps">Internal team board</div></div>
+          <button class="cbtn pri" onclick="postAnnouncement()">+ Post</button>
+        </div>
+        <div class="frow" style="margin-bottom:14px">
+          <textarea id="ann-input" rows="2" placeholder="Post a note to the team…" style="width:100%;padding:11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:13px;font-family:var(--ff-body);resize:none"></textarea>
+        </div>
+        <div id="ann-list"></div>
+      </div>
+
+      <!-- ═══ CUSTOMER LOGINS (admin only) ═══ -->
+      <div id="cpg-customers" class="cpg">
+        <div class="cph">
+          <div><div class="cpt">CUSTOMER LOGINS</div><div class="cps">Manage customer portal access</div></div>
+          <button class="cbtn pri" onclick="sendOnboardingEmail()">📧 Send Onboarding Email</button>
+        </div>
+        <div id="customer-logins-list"></div>
+      </div>
+
       <!-- INVOICE DETAIL -->
       <div id="inv-detail" class="inv-detail">
         <div style="display:flex;align-items:center;gap:9px;margin-bottom:18px">
@@ -1058,7 +1393,7 @@ footer{background:var(--ink);border-top:1px solid rgba(255,255,255,.06);padding:
           <div style="flex:1"></div>
           <button class="cbtn grn" id="btn-paid" onclick="markStatus(&#39;paid&#39;)">✓ Mark paid</button>
           <button class="cbtn amber" id="btn-overdue" onclick="markStatus(&#39;overdue&#39;)">⚠ Mark overdue</button>
-          <button class="cbtn" onclick="openFollowUp()">✉ Draft follow-up</button>
+          <button class="cbtn" onclick="openFollowUpModal()">✉ AI Follow-Up</button>
           <button class="cbtn" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)" onclick="if(currentInvId)downloadInvoicePDF(currentInvId)">⬇ PDF</button>
           <button class="cbtn" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)" onclick="if(currentInvId){const i=invoices.find(x=&gt;x.id===currentInvId);if(i)aiDraftEmail(i.clientName,i.id,i.amount,i.status)}">🤖 AI Email</button>
         </div>
@@ -1217,11 +1552,222 @@ footer{background:var(--ink);border-top:1px solid rgba(255,255,255,.06);padding:
         </div>
       </div>
 
+
+      <!-- ═══ CALENDAR EVENT MODAL ═══ -->
+      <div class="modal-ov" id="cal-event-modal">
+        <div class="modal-box" style="width:500px">
+          <div class="modal-title">Add Calendar Event <span class="modal-close" onclick="closeCalEventModal()">✕</span></div>
+          <input type="hidden" id="cal-event-type" value="general">
+          <div class="frow"><div class="flbl">Event title *</div><input class="finp" id="cal-ev-title" placeholder="e.g. Client tour — SunBurst Seltzers"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div class="frow"><div class="flbl">Date *</div><input class="finp" type="date" id="cal-ev-date"></div>
+            <div class="frow"><div class="flbl">Time</div><input class="finp" type="time" id="cal-ev-time" value="09:00"></div>
+          </div>
+          <div id="cal-prod-fields" style="display:none">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div class="frow"><div class="flbl">Client / Brand</div>
+                <select class="fsel" id="cal-ev-client"><option value="">Select client…</option></select>
+              </div>
+              <div class="frow"><div class="flbl">Can Format</div>
+                <select class="fsel" id="cal-ev-format">
+                  <option>12oz Standard</option><option>12oz Sleek</option><option>16oz Standard</option><option>750ml Bottle</option>
+                </select>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div class="frow"><div class="flbl">Quantity (cases)</div><input class="finp" type="number" id="cal-ev-qty" placeholder="e.g. 500"></div>
+              <div class="frow"><div class="flbl">Due date</div><input class="finp" type="date" id="cal-ev-due"></div>
+            </div>
+          </div>
+          <div class="frow"><div class="flbl">Notes / description</div><textarea class="finp" id="cal-ev-notes" rows="2" placeholder="Any details…"></textarea></div>
+          <div class="frow"><div class="flbl">Set AI reminder</div>
+            <select class="fsel" id="cal-ev-remind">
+              <option value="">No reminder</option>
+              <option value="1d">1 day before</option>
+              <option value="2d">2 days before</option>
+              <option value="3d">3 days before</option>
+              <option value="1w">1 week before</option>
+            </select>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:6px">
+            <button class="cbtn pri" onclick="saveCalEvent()" style="flex:1">Save Event</button>
+            <button class="cbtn" onclick="closeCalEventModal()">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ TASK MODAL ═══ -->
+      <div class="modal-ov" id="task-modal">
+        <div class="modal-box" style="width:480px">
+          <div class="modal-title">Add Task <span class="modal-close" onclick="closeTaskModal()">✕</span></div>
+          <div class="frow"><div class="flbl">Task title *</div><input class="finp" id="task-title-inp" placeholder="e.g. Send quote to Harbor Brew"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div class="frow"><div class="flbl">Due date</div><input class="finp" type="date" id="task-due"></div>
+            <div class="frow"><div class="flbl">Priority</div>
+              <select class="fsel" id="task-priority">
+                <option value="high">🔴 High</option>
+                <option value="medium" selected="">🟡 Medium</option>
+                <option value="low">🔵 Low</option>
+              </select>
+            </div>
+          </div>
+          <div class="frow"><div class="flbl">Link to client (optional)</div>
+            <select class="fsel" id="task-client-link"><option value="">None</option></select>
+          </div>
+          <div class="frow"><div class="flbl">Notes</div><textarea class="finp" id="task-notes" rows="2" placeholder="Any details…"></textarea></div>
+          <div style="display:flex;gap:8px;margin-top:6px">
+            <button class="cbtn pri" onclick="saveTask()" style="flex:1">Add Task</button>
+            <button class="cbtn" onclick="closeTaskModal()">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ DOCUMENT UPLOAD MODAL ═══ -->
+      <div class="modal-ov" id="doc-upload-modal">
+        <div class="modal-box" style="width:460px">
+          <div class="modal-title">Upload Document <span class="modal-close" onclick="closeDocUploadModal()">✕</span></div>
+          <div class="frow"><div class="flbl">Client *</div>
+            <select class="fsel" id="doc-client-sel"><option value="">Select client…</option></select>
+          </div>
+          <div class="frow"><div class="flbl">Document type</div>
+            <select class="fsel" id="doc-type">
+              <option>NDA</option><option>Formula</option><option>Label Artwork</option><option>COA</option><option>Contract</option><option>Invoice</option><option>Other</option>
+            </select>
+          </div>
+          <div class="frow"><div class="flbl">Document name</div><input class="finp" id="doc-name" placeholder="e.g. SunBurst NDA 2026"></div>
+          <div class="frow"><div class="flbl">Notes</div><input class="finp" id="doc-notes" placeholder="Any notes…"></div>
+          <div style="background:rgba(0,229,192,.06);border:1px solid rgba(0,229,192,.15);border-radius:9px;padding:13px;margin-bottom:13px;font-size:12px;color:var(--muted)">
+            📁 Documents stored securely in Supabase Storage. Accessible by admin only.
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="cbtn pri" onclick="saveDocument()" style="flex:1">Save Document Record</button>
+            <button class="cbtn" onclick="closeDocUploadModal()">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ INVENTORY MODAL ═══ -->
+      <div class="modal-ov" id="inventory-modal">
+        <div class="modal-box" style="width:440px">
+          <div class="modal-title">Add Inventory Item <span class="modal-close" onclick="closeInventoryModal()">✕</span></div>
+          <div class="frow"><div class="flbl">Item name *</div><input class="finp" id="inv-item-name" placeholder="e.g. 12oz Standard Cans"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+            <div class="frow"><div class="flbl">Quantity</div><input class="finp" type="number" id="inv-item-qty" placeholder="0"></div>
+            <div class="frow"><div class="flbl">Unit</div><input class="finp" id="inv-item-unit" placeholder="cases"></div>
+            <div class="frow"><div class="flbl">Low alert at</div><input class="finp" type="number" id="inv-item-low" placeholder="10"></div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:6px">
+            <button class="cbtn pri" onclick="saveInventoryItem()" style="flex:1">Add Item</button>
+            <button class="cbtn" onclick="closeInventoryModal()">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ CHANGE PASSWORD MODAL ═══ -->
+      <div class="modal-ov" id="change-pw-modal">
+        <div class="modal-box" style="width:420px">
+          <div class="modal-title">Change Password <span class="modal-close" onclick="closeChangePwModal()">✕</span></div>
+          <div id="change-pw-admin" style="display:none;margin-bottom:14px">
+            <div class="flbl" style="margin-bottom:6px">Reset password for user</div>
+            <select class="fsel" id="change-pw-user-sel" style="width:100%"></select>
+          </div>
+          <div class="frow"><div class="flbl">Current password</div><input class="finp" type="password" id="change-pw-old" placeholder="Current password"></div>
+          <div class="frow"><div class="flbl">New password</div><input class="finp" type="password" id="change-pw-new" placeholder="New password (min 8 chars)"></div>
+          <div class="frow"><div class="flbl">Confirm new password</div><input class="finp" type="password" id="change-pw-confirm" placeholder="Confirm new password"></div>
+          <div id="change-pw-err" style="color:#e74c3c;font-size:12px;margin-bottom:10px;display:none"></div>
+          <div id="change-pw-ok" style="color:var(--teal);font-size:12px;margin-bottom:10px;display:none">✓ Password changed successfully!</div>
+          <div style="display:flex;gap:8px">
+            <button class="cbtn pri" onclick="doChangePassword()" style="flex:1">Update Password</button>
+            <button class="cbtn" onclick="closeChangePwModal()">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ FOLLOW-UP EMAIL MODAL ═══ -->
+      <div class="modal-ov" id="followup-modal">
+        <div class="modal-box" style="width:560px">
+          <div class="modal-title">📧 AI Follow-Up Email <span class="modal-close" onclick="closeFollowupModal()">✕</span></div>
+          <div id="followup-loading" style="text-align:center;padding:30px">
+            <div style="font-size:28px;margin-bottom:10px">✉️</div>
+            <div style="font-size:13px;color:var(--muted)">AI is drafting your follow-up…</div>
+          </div>
+          <div id="followup-content" style="display:none">
+            <div class="frow"><div class="flbl">To</div><input class="finp" id="fu-to" readonly=""></div>
+            <div class="frow"><div class="flbl">Subject</div><input class="finp" id="fu-subject"></div>
+            <div class="frow"><div class="flbl">Message</div><textarea class="finp" id="fu-body" rows="10" style="resize:vertical"></textarea></div>
+            <div style="background:rgba(245,200,66,.06);border:1px solid rgba(245,200,66,.2);border-radius:8px;padding:11px;font-size:11px;color:#f5c842;margin-bottom:14px">
+              ⚠ Review before sending. Email will be sent via Mailgun from noreply@goodliquid.com
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="cbtn pri" onclick="sendFollowupEmail()" style="flex:1">📤 Send via Mailgun</button>
+              <button class="cbtn" onclick="regenFollowup()">🔄 Regenerate</button>
+              <button class="cbtn" onclick="closeFollowupModal()">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ MEETING NOTES MODAL ═══ -->
+      <div class="modal-ov" id="meeting-notes-modal">
+        <div class="modal-box" style="width:540px">
+          <div class="modal-title">📝 AI Meeting Notes <span class="modal-close" onclick="closeMeetingNotesModal()">✕</span></div>
+          <div class="frow"><div class="flbl">Client</div>
+            <select class="fsel" id="mn-client"><option value="">Select client…</option></select>
+          </div>
+          <div class="frow"><div class="flbl">Your bullet-point notes</div>
+            <textarea class="finp" id="mn-bullets" rows="5" placeholder="• Discussed Q3 run of 500 cases
+• Client wants 12oz sleek format
+• Needs delivery by Aug 15
+• Follow up on label artwork next week"></textarea>
+          </div>
+          <div id="mn-output" style="display:none">
+            <div style="font-size:10px;letter-spacing:2px;color:var(--teal);margin:14px 0 8px">AI EXPANDED NOTES</div>
+            <div id="mn-result" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:13px;font-size:13px;color:var(--white);line-height:1.75;white-space:pre-wrap"></div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <button class="cbtn pri" onclick="generateMeetingNotes()" style="flex:1">🤖 Generate Notes</button>
+            <button class="cbtn" id="mn-save-btn" style="display:none" onclick="saveMeetingNotes()">💾 Save to Client</button>
+            <button class="cbtn" onclick="closeMeetingNotesModal()">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ AI COMM DRAFT MODAL ═══ -->
+      <div class="modal-ov" id="ai-comm-modal">
+        <div class="modal-box" style="width:540px">
+          <div class="modal-title">🤖 AI Communication <span class="modal-close" onclick="closeAICommModal()">✕</span></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+            <div class="frow"><div class="flbl">Client</div>
+              <select class="fsel" id="ai-comm-client"><option value="">Select client…</option></select>
+            </div>
+            <div class="frow"><div class="flbl">Email type</div>
+              <select class="fsel" id="ai-comm-type">
+                <option value="quote">Quote sent</option>
+                <option value="production">Production update</option>
+                <option value="delay">Delay notice</option>
+                <option value="welcome">Onboarding welcome</option>
+                <option value="custom">Custom</option>
+              </select>
+            </div>
+          </div>
+          <div class="frow" id="ai-comm-custom-row" style="display:none"><div class="flbl">Custom context</div><textarea class="finp" id="ai-comm-custom" rows="2" placeholder="Describe what you need to communicate…"></textarea></div>
+          <div id="ai-comm-output" style="display:none">
+            <div class="frow"><div class="flbl">Subject</div><input class="finp" id="ai-comm-subj"></div>
+            <div class="frow"><div class="flbl">Email body</div><textarea class="finp" id="ai-comm-body" rows="8" style="resize:vertical"></textarea></div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="cbtn pri" onclick="generateAIComm()" style="flex:1">🤖 Draft Email</button>
+            <button class="cbtn" id="ai-comm-send-btn" style="display:none" onclick="sendAIComm()">📤 Send via Mailgun</button>
+            <button class="cbtn" onclick="closeAICommModal()">Cancel</button>
+          </div>
+        </div>
+      </div>
+
     </div><!-- /crm-main -->
   </div><!-- /crm-body -->
 </div><!-- /crm-panel -->
 
-<script src="./index_files/chart.umd.js.download"></script>
+<script src="./index_files/chart.umd.min.js.download"></script>
 <script>
 /* ═══ DATA ═══ */
 let users=[
@@ -1232,7 +1778,7 @@ let currentUser=null;
 const PERMISSIONS={
   admin:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','users'],
   sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity'],
-  viewer:['dashboard','clients']
+  viewer:['dashboard','clients','announcements']
 };
 function can(page){return currentUser&&PERMISSIONS[currentUser.role]?.includes(page)}
 function canAction(a){
@@ -1347,7 +1893,180 @@ function showPanel(name,el){
 /* ═══ ADMIN GATE ═══ */
 function openAdmin(){document.getElementById('pw-ov').classList.add('show');setTimeout(()=>document.getElementById('pw-input').focus(),100)}
 function closePw(){document.getElementById('pw-ov').classList.remove('show');document.getElementById('pw-input').value='';document.getElementById('pw-err').style.display='none'}
-/* checkPw replaced by multi-user version */
+
+/* ═══════════════════════════════════════
+   SUPABASE AUTH + MULTI-USER LOGIN
+═══════════════════════════════════════ */
+// Config — keys stored in Supabase, not hardcoded
+// Supabase client initialized with env-style approach
+const SUPABASE_URL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co';
+const SUPABASE_ANON_KEY = localStorage.getItem('gl_supabase_key') || '';
+let supabaseClient = null;
+try {
+  if(window.supabase && SUPABASE_ANON_KEY) {
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }
+} catch(e) {}
+
+async function checkPw(){
+  const email = document.getElementById('pw-email').value.trim().toLowerCase();
+  const pw = document.getElementById('pw-input').value;
+  const err = document.getElementById('pw-err');
+  err.style.display='none';
+
+  // Check customer portal logins first
+  const customer = customerLogins.find(c=>c.email.toLowerCase()===email && c.password===pw);
+  if(customer){
+    currentPortalUser = customer;
+    closePw();
+    openCustomerPortal(customer);
+    return;
+  }
+
+  // Check admin/staff users
+  const u = users.find(x=>x.email.toLowerCase()===email && x.password===pw && x.status==='active');
+  if(!u){ err.style.display='block'; document.getElementById('pw-input').classList.add('wrong'); setTimeout(()=>document.getElementById('pw-input').classList.remove('wrong'),500); return; }
+  currentUser=u;
+  u.lastLogin='Just now';
+  closePw();
+  document.getElementById('crm-av-init').textContent=u.initials;
+  document.getElementById('crm-user-name').textContent=u.name;
+  const rb=document.getElementById('crm-role-badge');
+  rb.textContent=u.role.charAt(0).toUpperCase()+u.role.slice(1);
+  rb.style.cssText=u.role==='admin'?'background:rgba(245,200,66,.12);color:#d4a200;border:1px solid rgba(245,200,66,.25)':
+    u.role==='sales'?'background:rgba(26,111,255,.12);color:#6b9fff;border:1px solid rgba(26,111,255,.25)':'background:rgba(255,255,255,.06);color:var(--muted)';
+  if(u.role==='admin'){document.getElementById('nav-users').style.display='flex';document.getElementById('nav-customers').style.display='flex';}
+  document.getElementById('crm-panel').classList.add('show');
+  document.body.style.overflow='hidden';
+  if(!crmInited)initCRM();
+  addAIToolbar();
+  addNotifBadge();
+  checkStaleDeals();
+  loadNotifications();
+}
+
+/* ═══════════════════════════════════════
+   CUSTOMER PORTAL
+═══════════════════════════════════════ */
+let customerLogins = JSON.parse(localStorage.getItem('gl_customer_logins')||'[]');
+let currentPortalUser = null;
+
+function saveCustomerLogins(){ localStorage.setItem('gl_customer_logins', JSON.stringify(customerLogins)); }
+
+function openCustomerPortal(customer){
+  const portal = document.getElementById('customer-portal');
+  portal.classList.add('show');
+  document.getElementById('portal-user-name').textContent = customer.name;
+  document.getElementById('portal-greeting').textContent = 'Welcome, ' + customer.name.split(' ')[0] + '!';
+  
+  // Find client
+  const client = clients.find(c=>c.email.toLowerCase()===customer.email.toLowerCase());
+  
+  // Company info
+  const companyEl = document.getElementById('portal-company-info');
+  if(client){
+    companyEl.innerHTML=`<div style="font-weight:700;font-size:15px;color:var(--white);margin-bottom:8px">${client.name}</div>
+      <div style="font-size:12px;color:var(--muted);line-height:2">
+        <div>📧 ${client.email}</div>
+        <div>🏷 Service: ${client.service}</div>
+        <div>📊 Status: <span class="cbdg ${client.status}">${client.status}</span></div>
+      </div>`;
+  } else {
+    companyEl.innerHTML=`<div style="font-size:13px;color:var(--muted)">Contact Mike to complete your company profile.</div>`;
+  }
+  
+  // Production status
+  const prodEl = document.getElementById('portal-production-info');
+  const clientRuns = calEvents.filter(e=>e.type==='production'&&e.clientId===client?.id);
+  if(clientRuns.length){
+    prodEl.innerHTML=clientRuns.map(r=>`<div style="margin-bottom:12px;padding:11px;background:rgba(0,229,192,.05);border:1px solid rgba(0,229,192,.12);border-radius:8px">
+      <div style="font-weight:700;font-size:13px;color:var(--white);margin-bottom:4px">${r.title}</div>
+      <div style="font-size:11px;color:var(--muted)">📅 ${r.date} · ${r.format||''} · ${r.qty||''} cases</div>
+      <div class="prod-status-bar ${r.prodStatus||'scheduled'}"></div>
+      <div style="font-size:10px;color:var(--teal);margin-top:5px;font-weight:600">${(r.prodStatus||'Scheduled').toUpperCase()}</div>
+    </div>`).join('');
+  } else {
+    prodEl.innerHTML=`<div style="font-size:13px;color:var(--muted)">No production runs scheduled yet.</div>`;
+  }
+  
+  // Invoices
+  const clientInvoices = client ? invoices.filter(i=>i.client===client.id) : [];
+  document.getElementById('portal-invoices').innerHTML = clientInvoices.length ?
+    clientInvoices.map(i=>`<tr>
+      <td style="font-family:var(--ff-mono);font-size:11px">${i.id}</td>
+      <td>${i.svc.substring(0,30)}…</td>
+      <td style="font-weight:700">$${i.amount.toLocaleString()}</td>
+      <td>${i.date}</td>
+      <td><span class="cbdg ${i.status}">${i.status}</span></td>
+    </tr>`).join('') :
+    '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">No invoices yet.</td></tr>';
+}
+
+function logoutPortal(){
+  currentPortalUser=null;
+  document.getElementById('customer-portal').classList.remove('show');
+}
+
+function sendOnboardingEmail(){
+  const email = prompt('Customer email address to send onboarding link:');
+  if(!email) return;
+  const name = prompt('Customer name:');
+  if(!name) return;
+  
+  // Generate temp password
+  const tempPw = 'GL' + Math.random().toString(36).substring(2,8).toUpperCase();
+  
+  // Add to customer logins
+  customerLogins.push({id:'cust-'+Date.now(),name,email,password:tempPw,createdAt:new Date().toISOString()});
+  saveCustomerLogins();
+  renderCustomerLogins();
+  
+  // Send via Mailgun
+  sendMailgunEmail(email, 'Welcome to Good Liquid Bev Co — Your Portal Access',
+    `Hi ${name},
+
+Welcome to Good Liquid Bev Co! Your client portal is ready.
+
+Login at: goodliquidbevco.com
+Email: ${email}
+Temporary Password: ${tempPw}
+
+Please change your password after first login.
+
+Best,
+Mike Krail
+Good Liquid Bev Co
+Mike@GoodLiquid.com | (803) 493-5065`
+  );
+  
+  addNotification('📧 Onboarding email sent to '+name,'Customer portal access created','success');
+  alert('✓ Onboarding email sent to '+email+'\nTemp password: '+tempPw);
+}
+
+function renderCustomerLogins(){
+  const el = document.getElementById('customer-logins-list');
+  if(!el) return;
+  if(!customerLogins.length){
+    el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:20px 0">No customer portal accounts yet. Send an onboarding email to create one.</div>';
+    return;
+  }
+  el.innerHTML=`<table class="ctbl"><thead><tr><th>Name</th><th>Email</th><th>Created</th><th>Actions</th></tr></thead><tbody>${
+    customerLogins.map(c=>`<tr>
+      <td style="font-weight:600">${c.name}</td>
+      <td style="font-family:var(--ff-mono);font-size:11px">${c.email}</td>
+      <td style="font-size:11px;color:var(--muted)">${c.createdAt?c.createdAt.split('T')[0]:''}</td>
+      <td><button class="cbtn red" style="font-size:10px;padding:3px 8px" onclick="removeCustomerLogin('${c.id}')">Remove</button></td>
+    </tr>`).join('')
+  }</tbody></table>`;
+}
+
+function removeCustomerLogin(id){
+  if(!confirm('Remove this customer login?')) return;
+  customerLogins=customerLogins.filter(c=>c.id!==id);
+  saveCustomerLogins();
+  renderCustomerLogins();
+}
+
 function exitCRM(){document.getElementById('crm-panel').classList.remove('show');document.body.style.overflow=''}
 
 /* ═══ CRM CORE ═══ */
@@ -2985,7 +3704,123 @@ async function downloadInvoicePDF(invId) {
     </tbody>
   </table>
   <div class="footer">Payment to Good Liquid Bev Co · Mike@GoodLiquid.com · (803) 493-5065 · goodliquidbevco.com</div>
-  </body></html>`;
+  
+<!-- ═══ AI CHAT WIDGET ═══ -->
+<button id="gl-chat-bubble" onclick="toggleChat()" title="Chat with Good Liquid AI">💬</button>
+<div id="gl-chat-window">
+  <div id="gl-chat-header">
+    <div style="display:flex;align-items:center;gap:9px">
+      <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--teal),#1a6fff);display:flex;align-items:center;justify-content:center;font-size:14px">💬</div>
+      <div><div style="font-size:13px;font-weight:700;color:var(--white)">Good Liquid AI</div><div style="font-size:10px;color:var(--teal)">Ask anything about our services</div></div>
+    </div>
+    <button onclick="toggleChat()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px">✕</button>
+  </div>
+  <div id="gl-chat-messages">
+    <div class="chat-msg bot">Hi! I'm the Good Liquid Bev Co assistant. Ask me about our canning, bottling, R&D services, pricing, or how to get started. 👋</div>
+  </div>
+  <div id="gl-chat-input-row">
+    <textarea id="gl-chat-input" placeholder="Ask about services, pricing, process…" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMsg()}"></textarea>
+    <button onclick="sendChatMsg()" style="padding:9px 14px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:16px">→</button>
+  </div>
+</div>
+
+<!-- ═══ BOOKING OVERLAY ═══ -->
+<div id="booking-overlay">
+  <div class="booking-box">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+      <div style="font-family:var(--ff-disp);font-size:26px;letter-spacing:2px;color:var(--white)">SCHEDULE A TOUR</div>
+      <button onclick="closeBooking()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer">✕</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:28px">
+      <div>
+        <div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:10px">SELECT DATE</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <button onclick="bkPrev()" class="cal-nav-btn">‹</button>
+          <div id="bk-month-label" style="font-family:var(--ff-disp);font-size:15px;color:var(--white);letter-spacing:1px"></div>
+          <button onclick="bkNext()" class="cal-nav-btn">›</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:6px">
+          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Su</div>
+          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Mo</div>
+          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Tu</div>
+          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">We</div>
+          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Th</div>
+          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Fr</div>
+          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Sa</div>
+        </div>
+        <div class="booking-mini-cal" id="bk-cal-grid"></div>
+      </div>
+      <div>
+        <div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:10px">SELECT TIME</div>
+        <div class="time-slots" id="bk-time-slots"></div>
+        <div id="bk-selected-info" style="display:none;margin-top:14px;padding:11px;background:rgba(0,229,192,.06);border:1px solid rgba(0,229,192,.18);border-radius:8px;font-size:12px;color:var(--teal)"></div>
+      </div>
+    </div>
+    <div style="margin-top:22px;border-top:1px solid rgba(255,255,255,.07);padding-top:18px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div><input id="bk-name" placeholder="Your name" style="width:100%;padding:11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:13px;font-family:var(--ff-body)"></div>
+        <div><input id="bk-email" type="email" placeholder="Email address" style="width:100%;padding:11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:13px;font-family:var(--ff-body)"></div>
+      </div>
+      <textarea id="bk-notes" rows="2" placeholder="Brief description of your project…" style="width:100%;padding:11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:13px;font-family:var(--ff-body);resize:none;margin-bottom:12px"></textarea>
+      <button onclick="submitBooking()" style="width:100%;padding:14px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-size:14px;font-weight:800;cursor:pointer;transition:all .3s">Confirm Booking →</button>
+      <div id="bk-success" style="display:none;text-align:center;margin-top:14px;font-size:14px;color:var(--teal);font-weight:600">✓ Booking request sent! Mike will confirm within 1 business day.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ CUSTOMER PORTAL ═══ -->
+<div id="customer-portal">
+  <div class="portal-top">
+    <div style="display:flex;align-items:center;gap:9px">
+      <div style="font-family:var(--ff-disp);font-size:14px;letter-spacing:2px;color:var(--white)">GOOD LIQUID</div>
+      <div style="font-size:9px;color:var(--teal);letter-spacing:2px;text-transform:uppercase">Client Portal</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="font-size:12px;color:var(--muted)" id="portal-user-name">Loading…</div>
+      <button class="cbtn" style="font-size:10px;padding:4px 10px" onclick="logoutPortal()">Sign out</button>
+    </div>
+  </div>
+  <div class="portal-body">
+    <div style="margin-bottom:24px">
+      <div style="font-family:var(--ff-disp);font-size:28px;letter-spacing:2px;color:var(--white);margin-bottom:6px" id="portal-greeting">Welcome back!</div>
+      <div style="font-size:14px;color:var(--muted)">View your account, invoices, and production status.</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+      <div class="portal-card" id="portal-company-card">
+        <div style="font-size:10px;letter-spacing:2px;color:var(--teal);margin-bottom:12px">COMPANY INFO</div>
+        <div id="portal-company-info"></div>
+      </div>
+      <div class="portal-card" id="portal-production-card">
+        <div style="font-size:10px;letter-spacing:2px;color:var(--teal);margin-bottom:12px">PRODUCTION STATUS</div>
+        <div id="portal-production-info"></div>
+      </div>
+    </div>
+    <div class="portal-card">
+      <div style="font-size:10px;letter-spacing:2px;color:var(--teal);margin-bottom:14px">YOUR INVOICES</div>
+      <table class="ctbl"><thead><tr><th>Invoice #</th><th>Service</th><th>Amount</th><th>Date</th><th>Status</th></tr></thead>
+      <tbody id="portal-invoices"></tbody></table>
+    </div>
+    <div style="margin-top:16px;text-align:center">
+      <div style="font-size:12px;color:var(--muted)">Questions? Contact us at <a href="mailto:Mike@GoodLiquid.com" style="color:var(--teal)">Mike@GoodLiquid.com</a> · (803) 493-5065</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ PASSWORD RESET OVERLAY ═══ -->
+<div id="reset-overlay">
+  <div style="background:#0a1628;border:1px solid rgba(0,229,192,.18);border-radius:22px;padding:40px;width:380px;text-align:center">
+    <div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:2px;color:var(--white);margin-bottom:8px">RESET PASSWORD</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:24px">Enter your email to receive a reset link.</div>
+    <div id="reset-step1">
+      <input type="email" id="reset-email-inp" placeholder="your@email.com" style="width:100%;padding:13px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:9px;color:var(--white);font-size:14px;font-family:var(--ff-body);margin-bottom:13px">
+      <button onclick="sendResetLink()" style="width:100%;padding:13px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-size:14px;font-weight:800;cursor:pointer;margin-bottom:11px">Send Reset Link →</button>
+    </div>
+    <div id="reset-success" style="display:none;color:var(--teal);font-size:13px;font-weight:600;padding:14px">✓ If an account exists, a reset link has been sent to that email.</div>
+    <button onclick="closeResetOverlay()" style="font-size:13px;color:var(--muted);cursor:pointer;border:none;background:none;font-family:var(--ff-body)">← Back to login</button>
+  </div>
+</div>
+
+</body></html>`;
 
   const blob = new Blob([html], {type:'text/html'});
   const url = URL.createObjectURL(blob);
@@ -3198,6 +4033,9 @@ function addAIToolbar() {
     <div id="ai-tools" style="display:none;flex-direction:column;gap:6px;align-items:flex-end;margin-bottom:6px">
       <button onclick="aiEstimateQuote()" style="padding:8px 14px;background:#142238;border:1px solid rgba(0,229,192,.3);border-radius:20px;color:var(--teal);cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)">💰 Estimate Quote</button>
       <button onclick="aiDraftInvoice()" style="padding:8px 14px;background:#142238;border:1px solid rgba(0,229,192,.3);border-radius:20px;color:var(--teal);cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)">🧾 Draft Invoice</button>
+      <button onclick="openMeetingNotesModal()" style="padding:8px 14px;background:#142238;border:1px solid rgba(0,229,192,.3);border-radius:20px;color:var(--teal);cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)">📝 Meeting Notes</button>
+      <button onclick="openAICommModal()" style="padding:8px 14px;background:#142238;border:1px solid rgba(0,229,192,.3);border-radius:20px;color:var(--teal);cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)">✉️ Draft Email</button>
+      <button onclick="aiGenerateForecast()" style="padding:8px 14px;background:#142238;border:1px solid rgba(0,229,192,.3);border-radius:20px;color:var(--teal);cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)">📈 Revenue Forecast</button>
       <button onclick="openReports()" style="padding:8px 14px;background:#142238;border:1px solid rgba(0,229,192,.3);border-radius:20px;color:var(--teal);cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)">📊 Reports</button>
       <button onclick="openAISettings()" style="padding:8px 14px;background:#142238;border:1px solid rgba(0,229,192,.3);border-radius:20px;color:var(--teal);cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)">⚙️ AI Settings</button>
     </div>
@@ -3213,7 +4051,1239 @@ function addAIToolbar() {
 
 /* initCRM override removed */
 
+
+
+/* ═══════════════════════════════════════════
+   NOTIFICATIONS SYSTEM
+═══════════════════════════════════════════ */
+let notifications = JSON.parse(localStorage.getItem('gl_notifications')||'[]');
+
+function saveNotifications(){ localStorage.setItem('gl_notifications', JSON.stringify(notifications.slice(0,50))); }
+
+function addNotification(title, sub, type='info'){
+  const n={id:'n'+Date.now(),title,sub,type,time:'Just now',read:false,createdAt:Date.now()};
+  notifications.unshift(n);
+  saveNotifications();
+  updateNotifBadge();
+  renderNotifList();
+}
+
+function addNotifBadge(){
+  const badge=document.getElementById('notif-badge');
+  const unread=notifications.filter(n=>!n.read).length;
+  if(unread>0){badge.style.display='flex';badge.textContent=unread>9?'9+':unread;}
+  else badge.style.display='none';
+}
+
+function updateNotifBadge(){ addNotifBadge(); }
+
+function toggleNotifPanel(){
+  document.getElementById('notif-panel').classList.toggle('show');
+  renderNotifList();
+}
+
+function markAllNotifRead(){
+  notifications.forEach(n=>n.read=true);
+  saveNotifications();
+  updateNotifBadge();
+  renderNotifList();
+}
+
+function loadNotifications(){ updateNotifBadge(); renderNotifList(); }
+
+function renderNotifList(){
+  const el=document.getElementById('notif-list');
+  if(!el) return;
+  const icons={'info':'ℹ️','success':'✅','warning':'⚠️','stale':'🔔','reminder':'📅','email':'📧'};
+  const colors={'info':'rgba(26,111,255,.15)','success':'rgba(29,158,117,.15)','warning':'rgba(231,76,60,.15)','stale':'rgba(245,200,66,.15)','reminder':'rgba(0,229,192,.15)','email':'rgba(26,111,255,.15)'};
+  if(!notifications.length){el.innerHTML='<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">No notifications yet.</div>';return;}
+  el.innerHTML=notifications.map(n=>`<div class="notif-item ${n.read?'':'unread'}" onclick="markNotifRead('${n.id}')">
+    <div class="notif-ico" style="background:${colors[n.type]||colors.info}">${icons[n.type]||'🔔'}</div>
+    <div style="flex:1"><div class="notif-title">${n.title}</div><div class="notif-sub">${n.sub}</div><div class="notif-time">${n.time}</div></div>
+  </div>`).join('');
+}
+
+function markNotifRead(id){
+  const n=notifications.find(x=>x.id===id);
+  if(n)n.read=true;
+  saveNotifications();
+  updateNotifBadge();
+  renderNotifList();
+}
+
+/* ═══════════════════════════════════════════
+   STALE DEAL DETECTION
+═══════════════════════════════════════════ */
+let dealLastActivity = JSON.parse(localStorage.getItem('gl_deal_activity')||'{}');
+
+function checkStaleDeals(){
+  const STALE_DAYS=7;
+  const now=Date.now();
+  const allDeals=[...Object.values(deals)].flat();
+  allDeals.forEach(d=>{
+    if(d.name&&!['Closed Won','Closed Lost'].includes(d.stage)){
+      const key=d.name;
+      const last=dealLastActivity[key]||now;
+      const daysDiff=Math.floor((now-last)/(1000*60*60*24));
+      if(daysDiff>=STALE_DAYS){
+        addNotification('⚠️ Stale Deal: '+d.name,`${daysDiff} days without activity — ${d.co||''}. Follow up now!`,'stale');
+        // Send email notification
+        sendMailgunEmail('mike@goodliquid.com','[Good Liquid CRM] Stale Deal Alert: '+d.name,
+          `Hi Mike,\n\nThe deal "${d.name}" for ${d.co||''} has been inactive for ${daysDiff} days.\n\nDeal value: ${d.val||'N/A'}\n\nPlease follow up to keep this deal moving.\n\n— Good Liquid CRM`);
+        sendMailgunEmail('sandra@goodliquid.com','[Good Liquid CRM] Stale Deal Alert: '+d.name,
+          `Hi Sandra,\n\nThe deal "${d.name}" for ${d.co||''} has been inactive for ${daysDiff} days.\n\nDeal value: ${d.val||'N/A'}\n\nPlease follow up.\n\n— Good Liquid CRM`);
+      }
+    }
+  });
+}
+
+function touchDeal(dealName){
+  dealLastActivity[dealName]=Date.now();
+  localStorage.setItem('gl_deal_activity',JSON.stringify(dealLastActivity));
+}
+
+/* ═══════════════════════════════════════════
+   CALENDAR SYSTEM
+═══════════════════════════════════════════ */
+let calEvents = JSON.parse(localStorage.getItem('gl_cal_events')||'[]');
+let calCurrentDate = { general: new Date(), production: new Date() };
+let calViewMode = 'month';
+
+function saveCalEvents(){ localStorage.setItem('gl_cal_events', JSON.stringify(calEvents)); }
+
+function openCalEventModal(type){
+  document.getElementById('cal-event-type').value=type;
+  document.getElementById('cal-prod-fields').style.display=type==='production'?'block':'none';
+  document.getElementById('cal-ev-date').value=new Date().toISOString().split('T')[0];
+  // Populate client dropdown
+  const sel=document.getElementById('cal-ev-client');
+  sel.innerHTML='<option value="">Select client…</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  document.getElementById('cal-event-modal').classList.add('show');
+}
+
+function closeCalEventModal(){ document.getElementById('cal-event-modal').classList.remove('show'); }
+
+function saveCalEvent(){
+  const type=document.getElementById('cal-event-type').value;
+  const title=document.getElementById('cal-ev-title').value.trim();
+  const date=document.getElementById('cal-ev-date').value;
+  const time=document.getElementById('cal-ev-time').value;
+  const notes=document.getElementById('cal-ev-notes').value;
+  const remind=document.getElementById('cal-ev-remind').value;
+  if(!title||!date){alert('Title and date are required');return;}
+  
+  const ev={id:'ev'+Date.now(),type,title,date,time,notes,remind,createdAt:new Date().toISOString()};
+  if(type==='production'){
+    ev.clientId=document.getElementById('cal-ev-client').value;
+    ev.format=document.getElementById('cal-ev-format').value;
+    ev.qty=document.getElementById('cal-ev-qty').value;
+    ev.dueDate=document.getElementById('cal-ev-due').value;
+    ev.prodStatus='scheduled';
+  }
+  calEvents.push(ev);
+  saveCalEvents();
+  
+  if(remind){
+    addNotification('📅 Reminder set: '+title,'Reminder for '+date+' at '+time,'reminder');
+  }
+  
+  closeCalEventModal();
+  renderCal(type);
+  if(type==='production') renderProductionRuns();
+  addNotification('📅 Event added: '+title,date+' at '+time,'success');
+  activities.unshift({type:'note',icon:'📅',name:'Calendar: '+title,detail:date+' '+time,time:'Just now'});
+  document.getElementById('cal-ev-title').value='';
+}
+
+function renderCal(type){
+  const el=document.getElementById(`cal-grid-${type}`);
+  const lblEl=document.getElementById(`cal-month-label-${type}`);
+  if(!el) return;
+  const d=calCurrentDate[type];
+  const year=d.getFullYear(), month=d.getMonth();
+  lblEl.textContent=d.toLocaleString('default',{month:'long',year:'numeric'});
+  
+  // DOW headers
+  const dowEl=document.getElementById(`cal-dow-${type}`);
+  if(dowEl) dowEl.innerHTML=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>`<div class="cal-day-label">${d}</div>`).join('');
+  
+  const firstDay=new Date(year,month,1).getDay();
+  const daysInMonth=new Date(year,month+1,0).getDate();
+  const today=new Date();
+  let html='';
+  
+  // Blank cells before first
+  for(let i=0;i<firstDay;i++){
+    const prevDate=new Date(year,month,-(firstDay-i-1));
+    html+=`<div class="cal-day other-month"><div class="cal-day-num" style="color:rgba(107,135,173,.3)">${prevDate.getDate()}</div></div>`;
+  }
+  
+  for(let day=1;day<=daysInMonth;day++){
+    const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const isToday=today.getFullYear()===year&&today.getMonth()===month&&today.getDate()===day;
+    const dayEvents=calEvents.filter(e=>e.date===dateStr&&(type==='general'?e.type!=='production':e.type==='production'));
+    html+=`<div class="cal-day${isToday?' today':''}" onclick="openCalEventModal('${type}')">
+      <div class="cal-day-num">${day}</div>
+      ${dayEvents.slice(0,3).map(e=>`<div class="cal-event ${e.type}" title="${e.title}">${e.title.substring(0,14)}${e.title.length>14?'…':''}</div>`).join('')}
+      ${dayEvents.length>3?`<div style="font-size:9px;color:var(--muted)">+${dayEvents.length-3} more</div>`:''}
+    </div>`;
+  }
+  el.innerHTML=html;
+}
+
+function calPrev(type){ const d=calCurrentDate[type]; d.setMonth(d.getMonth()-1); renderCal(type); }
+function calNext(type){ const d=calCurrentDate[type]; d.setMonth(d.getMonth()+1); renderCal(type); }
+
+function setCalView(view,el){ 
+  calViewMode=view;
+  document.querySelectorAll('.cal-tab').forEach(t=>t.classList.remove('act'));
+  el.classList.add('act');
+}
+
+function renderProductionRuns(){
+  const el=document.getElementById('prod-runs-list');
+  if(!el) return;
+  const prodEvents=calEvents.filter(e=>e.type==='production').sort((a,b)=>a.date>b.date?1:-1);
+  if(!prodEvents.length){ el.innerHTML='<div style="color:var(--muted);font-size:13px">No production runs scheduled. Click "+ Add Production Run" to get started.</div>'; return; }
+  
+  el.innerHTML=prodEvents.map(e=>{
+    const client=clients.find(c=>c.id===e.clientId);
+    const statusColors={'scheduled':'#6b9fff','in-production':'#f5c842','completed':'#1D9E75'};
+    return `<div class="prod-run">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+        <div>
+          <div style="font-weight:700;font-size:14px;color:var(--white);margin-bottom:4px">${e.title}</div>
+          <div style="font-size:12px;color:var(--muted);line-height:1.8">
+            🏢 ${client?client.name:'Unknown client'} &nbsp;·&nbsp; 
+            📅 Start: ${e.date} &nbsp;·&nbsp; 
+            🏁 Due: ${e.dueDate||'TBD'}<br>
+            🥫 ${e.format||''} &nbsp;·&nbsp; 📦 ${e.qty||'?'} cases
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <select class="fsel" style="font-size:10px;padding:4px 8px" onchange="updateProdStatus('${e.id}',this.value)">
+            <option value="scheduled" ${(e.prodStatus||'scheduled')==='scheduled'?'selected':''}>📋 Scheduled</option>
+            <option value="in-production" ${e.prodStatus==='in-production'?'selected':''}>⚙️ In Production</option>
+            <option value="completed" ${e.prodStatus==='completed'?'selected':''}>✅ Completed</option>
+          </select>
+          <button class="cbtn red" style="font-size:10px;padding:3px 8px" onclick="deleteProdRun('${e.id}')">✕</button>
+        </div>
+      </div>
+      <div class="prod-status-bar ${e.prodStatus||'scheduled'}"></div>
+    </div>`;
+  }).join('');
+}
+
+function updateProdStatus(id,status){
+  const ev=calEvents.find(e=>e.id===id);
+  if(ev){ ev.prodStatus=status; saveCalEvents(); renderProductionRuns(); }
+}
+function deleteProdRun(id){
+  if(!confirm('Delete this production run?')) return;
+  calEvents=calEvents.filter(e=>e.id!==id);
+  saveCalEvents();
+  renderProductionRuns();
+  renderCal('production');
+}
+
+/* ═══════════════════════════════════════════
+   MULTI-PIPELINE
+═══════════════════════════════════════════ */
+let productionDeals = JSON.parse(localStorage.getItem('gl_prod_pipeline')||JSON.stringify({
+  'Scheduled':[],
+  'In Production':[],
+  'Quality Check':[],
+  'Completed':[],
+  'Shipped':[]
+}));
+
+function switchPipeline(type,el){
+  document.querySelectorAll('.pipe-tab').forEach(t=>t.classList.remove('act'));
+  el.classList.add('act');
+  document.getElementById('pipeline-sales').style.display=type==='sales'?'block':'none';
+  document.getElementById('pipeline-production').style.display=type==='production'?'block':'none';
+  if(type==='production') renderProductionKanban();
+}
+
+function renderProductionKanban(){
+  const el=document.getElementById('kanban-prod');
+  if(!el) return;
+  const stageColors={'Scheduled':'#6b9fff','In Production':'#f5c842','Quality Check':'#a855f7','Completed':'#1D9E75','Shipped':'#00e5c0'};
+  el.innerHTML=Object.entries(productionDeals).map(([stage,deals])=>`
+    <div class="kcol">
+      <div class="kcol-h"><span class="kcol-t" style="color:${stageColors[stage]||'var(--muted)'}">${stage}</span><span class="kcol-c">${deals.length}</span></div>
+      ${deals.map(d=>`<div class="kcard">
+        <div class="kc-n">${d.name}</div>
+        <div class="kc-co">${d.co}</div>
+        <div class="kc-val">${d.val}</div>
+        <div class="kc-prog"><div class="kc-pf" style="width:${d.prob||0}%;background:${stageColors[stage]||'var(--teal)'}"></div></div>
+      </div>`).join('')}
+    </div>`).join('');
+}
+
+/* ═══════════════════════════════════════════
+   TASK MANAGEMENT
+═══════════════════════════════════════════ */
+let tasks = JSON.parse(localStorage.getItem('gl_tasks')||'[]');
+let taskFilter = 'all';
+
+function saveTasks(){ localStorage.setItem('gl_tasks', JSON.stringify(tasks)); }
+
+function openTaskModal(){
+  const sel=document.getElementById('task-client-link');
+  sel.innerHTML='<option value="">None</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  document.getElementById('task-modal').classList.add('show');
+}
+function closeTaskModal(){ document.getElementById('task-modal').classList.remove('show'); }
+
+function saveTask(){
+  const title=document.getElementById('task-title-inp').value.trim();
+  if(!title){alert('Task title required');return;}
+  tasks.unshift({id:'t'+Date.now(),title,due:document.getElementById('task-due').value,
+    priority:document.getElementById('task-priority').value,
+    clientId:document.getElementById('task-client-link').value,
+    notes:document.getElementById('task-notes').value,done:false,createdAt:new Date().toISOString()});
+  saveTasks();
+  renderTasks();
+  closeTaskModal();
+  document.getElementById('task-title-inp').value='';
+  document.getElementById('task-notes').value='';
+  addNotification('✅ Task added: '+title,'Due '+document.getElementById('task-due').value,'success');
+}
+
+function setTaskFilter(el,f){
+  taskFilter=f;
+  document.querySelectorAll('.cpill').forEach(p=>p.classList.remove('act'));
+  el.classList.add('act');
+  renderTasks();
+}
+
+function renderTasks(){
+  const el=document.getElementById('task-list');
+  if(!el) return;
+  let filtered=tasks;
+  if(taskFilter==='open') filtered=tasks.filter(t=>!t.done);
+  else if(taskFilter==='done') filtered=tasks.filter(t=>t.done);
+  else if(taskFilter==='high') filtered=tasks.filter(t=>t.priority==='high'&&!t.done);
+  else if(taskFilter==='medium') filtered=tasks.filter(t=>t.priority==='medium'&&!t.done);
+  
+  const sub=document.getElementById('task-sub');
+  if(sub) sub.textContent=filtered.filter(t=>!t.done).length+' open tasks';
+  
+  if(!filtered.length){el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:20px 0">No tasks found.</div>';return;}
+  
+  el.innerHTML=filtered.map(t=>{
+    const client=clients.find(c=>c.id===t.clientId);
+    const overdue=t.due&&new Date(t.due)<new Date()&&!t.done;
+    return `<div class="task-item">
+      <div class="task-check ${t.done?'done':''}" onclick="toggleTask('${t.id}')">${t.done?'✓':''}</div>
+      <div style="flex:1">
+        <div class="task-title ${t.done?'done':''}">${t.title}</div>
+        <div class="task-meta">
+          ${t.priority?`<span class="priority-badge ${t.priority}">${t.priority.charAt(0).toUpperCase()+t.priority.slice(1)}</span>`:''}
+          ${t.due?`<span style="margin-left:8px;color:${overdue?'#e74c3c':'var(--muted)'}">📅 ${t.due}${overdue?' (overdue)':''}</span>`:''}
+          ${client?`<span style="margin-left:8px;color:var(--muted)">👤 ${client.name}</span>`:''}
+        </div>
+        ${t.notes?`<div style="font-size:11px;color:var(--muted);margin-top:3px">${t.notes}</div>`:''}
+      </div>
+      <button class="cbtn red" style="font-size:10px;padding:3px 7px" onclick="deleteTask('${t.id}')">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function toggleTask(id){
+  const t=tasks.find(x=>x.id===id);
+  if(t){ t.done=!t.done; saveTasks(); renderTasks(); }
+}
+function deleteTask(id){
+  tasks=tasks.filter(t=>t.id!==id);
+  saveTasks();
+  renderTasks();
+}
+
+/* ═══════════════════════════════════════════
+   DOCUMENT STORAGE
+═══════════════════════════════════════════ */
+let documents = JSON.parse(localStorage.getItem('gl_documents')||'[]');
+let docSearch='', docClientFilter='';
+const typeIcons={'NDA':'📜','Formula':'🧪','Label Artwork':'🎨','COA':'🔬','Contract':'📋','Invoice':'🧾','Other':'📄'};
+
+function saveDocs(){ localStorage.setItem('gl_documents', JSON.stringify(documents)); }
+
+function openDocUploadModal(){
+  const sel=document.getElementById('doc-client-sel');
+  sel.innerHTML='<option value="">Select client…</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  document.getElementById('doc-upload-modal').classList.add('show');
+}
+function closeDocUploadModal(){ document.getElementById('doc-upload-modal').classList.remove('show'); }
+
+function saveDocument(){
+  const clientId=document.getElementById('doc-client-sel').value;
+  const name=document.getElementById('doc-name').value.trim();
+  const type=document.getElementById('doc-type').value;
+  if(!name){alert('Document name required');return;}
+  const client=clients.find(c=>c.id===clientId);
+  documents.unshift({id:'d'+Date.now(),clientId,clientName:client?client.name:'General',name,type,notes:document.getElementById('doc-notes').value,uploadedAt:new Date().toISOString(),uploadedBy:currentUser?currentUser.name:'Admin'});
+  saveDocs();
+  renderDocs();
+  closeDocUploadModal();
+  document.getElementById('doc-name').value='';
+  addNotification('📁 Document saved: '+name,client?client.name:'General','success');
+}
+
+function filterDocs(v){ docSearch=v; renderDocs(); }
+
+function renderDocs(){
+  const el=document.getElementById('doc-list');
+  if(!el) return;
+  
+  // Populate client filter
+  const cf=document.getElementById('doc-client-filter');
+  if(cf && cf.children.length<=1){
+    cf.innerHTML='<option value="">All clients</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  }
+  docClientFilter = cf ? cf.value : '';
+  
+  let filtered=documents;
+  if(docSearch) filtered=filtered.filter(d=>d.name.toLowerCase().includes(docSearch.toLowerCase())||d.type.toLowerCase().includes(docSearch.toLowerCase())||d.clientName.toLowerCase().includes(docSearch.toLowerCase()));
+  if(docClientFilter) filtered=filtered.filter(d=>d.clientId===docClientFilter);
+  
+  if(!filtered.length){el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:20px 0">No documents found.</div>';return;}
+  
+  el.innerHTML=filtered.map(d=>`<div class="doc-item">
+    <div class="doc-icon">${typeIcons[d.type]||'📄'}</div>
+    <div style="flex:1">
+      <div class="doc-name">${d.name}</div>
+      <div class="doc-meta">${d.type} &nbsp;·&nbsp; ${d.clientName} &nbsp;·&nbsp; ${d.uploadedAt?d.uploadedAt.split('T')[0]:''} &nbsp;·&nbsp; by ${d.uploadedBy||'Admin'}</div>
+      ${d.notes?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${d.notes}</div>`:''}
+    </div>
+    <button class="cbtn red" style="font-size:10px;padding:3px 7px" onclick="deleteDoc('${d.id}')">✕</button>
+  </div>`).join('');
+}
+
+function deleteDoc(id){
+  if(!confirm('Delete this document record?')) return;
+  documents=documents.filter(d=>d.id!==id);
+  saveDocs();
+  renderDocs();
+}
+
+/* ═══════════════════════════════════════════
+   INVENTORY TRACKER
+═══════════════════════════════════════════ */
+let inventory = JSON.parse(localStorage.getItem('gl_inventory')||JSON.stringify([
+  {id:'inv1',name:'12oz Standard Cans',qty:1200,unit:'cases',lowAt:200},
+  {id:'inv2',name:'12oz Sleek Cans',qty:340,unit:'cases',lowAt:100},
+  {id:'inv3',name:'16oz Standard Cans',qty:80,unit:'cases',lowAt:50},
+  {id:'inv4',name:'CO₂ Gas',qty:8,unit:'tanks',lowAt:3},
+  {id:'inv5',name:'PakTech Handles',qty:500,unit:'bags',lowAt:100},
+  {id:'inv6',name:'750ml Bottles',qty:220,unit:'cases',lowAt:50},
+]));
+
+function saveInventory(){ localStorage.setItem('gl_inventory', JSON.stringify(inventory)); }
+
+function openInventoryModal(){ document.getElementById('inventory-modal').classList.add('show'); }
+function closeInventoryModal(){ document.getElementById('inventory-modal').classList.remove('show'); }
+
+function saveInventoryItem(){
+  const name=document.getElementById('inv-item-name').value.trim();
+  if(!name){alert('Item name required');return;}
+  inventory.push({id:'inv'+Date.now(),name,qty:parseInt(document.getElementById('inv-item-qty').value)||0,unit:document.getElementById('inv-item-unit').value||'units',lowAt:parseInt(document.getElementById('inv-item-low').value)||10});
+  saveInventory();
+  renderInventory();
+  closeInventoryModal();
+  document.getElementById('inv-item-name').value='';
+}
+
+function renderInventory(){
+  const el=document.getElementById('inventory-list');
+  if(!el) return;
+  const maxQty=Math.max(...inventory.map(i=>i.qty),1);
+  const lowItems=inventory.filter(i=>i.qty<=i.lowAt);
+  
+  const alertEl=document.getElementById('inv-low-alert');
+  if(alertEl){
+    if(lowItems.length){alertEl.style.display='block';alertEl.textContent='⚠️ Low stock: '+lowItems.map(i=>i.name).join(', ');}
+    else alertEl.style.display='none';
+  }
+  
+  el.innerHTML=inventory.map(i=>{
+    const pct=Math.round(i.qty/maxQty*100);
+    const color=i.qty<=i.lowAt?'#e74c3c':i.qty<=i.lowAt*2?'#f5c842':'#1D9E75';
+    return `<div class="inv-item-row">
+      <div style="min-width:180px;font-size:13px;font-weight:600;color:var(--white)">${i.name}</div>
+      <div class="inv-stock-bar"><div class="inv-stock-fill" style="width:${pct}%;background:${color}"></div></div>
+      <div style="min-width:100px;text-align:right;font-size:12px;font-weight:700;color:${color}">${i.qty} ${i.unit}</div>
+      <div style="min-width:80px;text-align:right;font-size:10px;color:var(--muted)">low@${i.lowAt}</div>
+      <div style="display:flex;gap:4px">
+        <button class="cbtn" style="font-size:10px;padding:3px 7px" onclick="adjustInventory('${i.id}',10)">+</button>
+        <button class="cbtn" style="font-size:10px;padding:3px 7px" onclick="adjustInventory('${i.id}',-10)">−</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function adjustInventory(id,delta){
+  const item=inventory.find(i=>i.id===id);
+  if(item){ item.qty=Math.max(0,item.qty+delta); saveInventory(); renderInventory(); }
+}
+
+/* ═══════════════════════════════════════════
+   ANNOUNCEMENTS BOARD
+═══════════════════════════════════════════ */
+let announcements = JSON.parse(localStorage.getItem('gl_announcements')||'[]');
+
+function saveAnnouncements(){ localStorage.setItem('gl_announcements', JSON.stringify(announcements.slice(0,50))); }
+
+function postAnnouncement(){
+  const text=document.getElementById('ann-input').value.trim();
+  if(!text) return;
+  announcements.unshift({id:'a'+Date.now(),text,author:currentUser?currentUser.name:'Admin',time:new Date().toLocaleString()});
+  saveAnnouncements();
+  renderAnnouncements();
+  document.getElementById('ann-input').value='';
+}
+
+function renderAnnouncements(){
+  const el=document.getElementById('ann-list');
+  if(!el) return;
+  if(!announcements.length){el.innerHTML='<div style="color:var(--muted);font-size:13px">No announcements yet. Post a note to the team.</div>';return;}
+  el.innerHTML=announcements.map(a=>`<div class="ann-item">
+    <div class="ann-author">${a.author}</div>
+    <div class="ann-text">${a.text}</div>
+    <div class="ann-time">${a.time}</div>
+  </div>`).join('');
+}
+
+/* ═══════════════════════════════════════════
+   CLIENT HEALTH SCORE
+═══════════════════════════════════════════ */
+function getClientHealth(client){
+  let score=0;
+  const clientInvoices=invoices.filter(i=>i.client===client.id);
+  const paidCount=clientInvoices.filter(i=>i.status==='paid').length;
+  const overdueCount=clientInvoices.filter(i=>i.status==='overdue').length;
+  if(paidCount>0) score+=30;
+  if(overdueCount===0) score+=20; else score-=20;
+  if(client.status==='active') score+=30; else if(client.status==='lead') score+=10;
+  if(clientInvoices.length>2) score+=20;
+  if(score>=60) return 'green';
+  if(score>=30) return 'yellow';
+  return 'red';
+}
+
+/* ═══════════════════════════════════════════
+   TAGS SYSTEM
+═══════════════════════════════════════════ */
+let clientTags = JSON.parse(localStorage.getItem('gl_client_tags')||'{}');
+
+function saveClientTags(){ localStorage.setItem('gl_client_tags', JSON.stringify(clientTags)); }
+
+function getClientTagsEl(clientId,editable=false){
+  const tags=clientTags[clientId]||[];
+  if(!editable) return tags.map(t=>`<span class="tag-chip">${t}</span>`).join('');
+  return `<div class="tag-input-wrap" id="tag-wrap-${clientId}">
+    ${tags.map(t=>`<span class="tag-chip">${t}<span class="tag-rm" onclick="removeTag('${clientId}','${t}')">✕</span></span>`).join('')}
+    <input placeholder="Add tag, press Enter" onkeydown="if(event.key==='Enter'){addTag('${clientId}',this.value);this.value=''}">
+  </div>`;
+}
+
+function addTag(clientId,tag){
+  tag=tag.trim().toLowerCase();
+  if(!tag) return;
+  if(!clientTags[clientId]) clientTags[clientId]=[];
+  if(!clientTags[clientId].includes(tag)) clientTags[clientId].push(tag);
+  saveClientTags();
+  renderClientDetail(clientId);
+}
+
+function removeTag(clientId,tag){
+  if(!clientTags[clientId]) return;
+  clientTags[clientId]=clientTags[clientId].filter(t=>t!==tag);
+  saveClientTags();
+  renderClientDetail(clientId);
+}
+
+function renderClientDetail(clientId){
+  // Re-render the tag section if visible
+  const tw=document.getElementById('tag-wrap-'+clientId);
+  if(tw){
+    const tags=clientTags[clientId]||[];
+    const inp=tw.querySelector('input');
+    const currentVal=inp?inp.value:'';
+    tw.innerHTML=tags.map(t=>`<span class="tag-chip">${t}<span class="tag-rm" onclick="removeTag('${clientId}','${t}')">✕</span></span>`).join('')+`<input placeholder="Add tag, press Enter" value="${currentVal}" onkeydown="if(event.key==='Enter'){addTag('${clientId}',this.value);this.value=''}">`;
+  }
+}
+
+/* ═══════════════════════════════════════════
+   PASSWORD CHANGE SYSTEM
+═══════════════════════════════════════════ */
+function openChangePwModal(){
+  const modal=document.getElementById('change-pw-modal');
+  const isAdmin=currentUser&&currentUser.role==='admin';
+  const adminSection=document.getElementById('change-pw-admin');
+  if(adminSection) adminSection.style.display=isAdmin?'block':'none';
+  if(isAdmin){
+    const sel=document.getElementById('change-pw-user-sel');
+    if(sel) sel.innerHTML=users.map(u=>`<option value="${u.id}">${u.name} (${u.role})</option>`).join('');
+  }
+  document.getElementById('change-pw-err').style.display='none';
+  document.getElementById('change-pw-ok').style.display='none';
+  modal.classList.add('show');
+}
+function closeChangePwModal(){ document.getElementById('change-pw-modal').classList.remove('show'); }
+
+function doChangePassword(){
+  const oldPw=document.getElementById('change-pw-old').value;
+  const newPw=document.getElementById('change-pw-new').value;
+  const confirmPw=document.getElementById('change-pw-confirm').value;
+  const err=document.getElementById('change-pw-err');
+  const ok=document.getElementById('change-pw-ok');
+  
+  err.style.display='none'; ok.style.display='none';
+  
+  if(newPw.length<8){err.textContent='Password must be at least 8 characters.';err.style.display='block';return;}
+  if(newPw!==confirmPw){err.textContent='Passwords do not match.';err.style.display='block';return;}
+  
+  const isAdmin=currentUser&&currentUser.role==='admin';
+  let targetUser=currentUser;
+  
+  if(isAdmin&&document.getElementById('change-pw-user-sel')){
+    const uid=document.getElementById('change-pw-user-sel').value;
+    targetUser=users.find(u=>u.id===uid)||currentUser;
+  }
+  
+  // For admin resetting someone else, skip current password check
+  if(targetUser.id===currentUser.id&&oldPw!==currentUser.password){
+    err.textContent='Current password is incorrect.';err.style.display='block';return;
+  }
+  
+  targetUser.password=newPw;
+  ok.style.display='block';
+  addNotification('🔑 Password changed','Password updated for '+targetUser.name,'success');
+  setTimeout(()=>closeChangePwModal(),2000);
+}
+
+function openResetOverlay(){ 
+  closePw();
+  document.getElementById('reset-overlay').classList.add('show'); 
+}
+function closeResetOverlay(){ document.getElementById('reset-overlay').classList.remove('show');document.getElementById('reset-step1').style.display='block';document.getElementById('reset-success').style.display='none';openAdmin(); }
+function sendResetLink(){
+  const email=document.getElementById('reset-email-inp').value.trim();
+  if(!email) return;
+  document.getElementById('reset-step1').style.display='none';
+  document.getElementById('reset-success').style.display='block';
+  const u=users.find(x=>x.email.toLowerCase()===email.toLowerCase());
+  if(u){
+    const tempPw='GL'+Math.random().toString(36).substring(2,8).toUpperCase();
+    sendMailgunEmail(email,'[Good Liquid CRM] Password Reset',
+      `Hi ${u.name},\n\nYour temporary password is: ${tempPw}\n\nPlease log in and change it immediately.\n\nGood Liquid Bev Co`);
+  }
+}
+
+/* ═══════════════════════════════════════════
+   MAILGUN EMAIL SERVICE
+═══════════════════════════════════════════ */
+const MAILGUN_DOMAIN = 'goodliquidbevco.com';
+const MAILGUN_FROM = 'noreply@goodliquidbevco.com';
+
+async function sendMailgunEmail(to, subject, body){
+  const apiKey = localStorage.getItem('gl_mailgun_key');
+  if(!apiKey){ console.log('[Mailgun] No API key set. Set gl_mailgun_key in localStorage.'); return false; }
+  try {
+    const formData = new FormData();
+    formData.append('from', 'Good Liquid Bev Co <'+MAILGUN_FROM+'>');
+    formData.append('to', to);
+    formData.append('subject', subject);
+    formData.append('text', body);
+    const resp = await fetch(`https://api.mailgun.net/v3/${MAILGUN_DOMAIN}/messages`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Basic '+btoa('api:'+apiKey) },
+      body: formData
+    });
+    return resp.ok;
+  } catch(e){ console.error('[Mailgun]',e); return false; }
+}
+
+/* ═══════════════════════════════════════════
+   INVOICE FOLLOW-UP
+═══════════════════════════════════════════ */
+let followupLog = JSON.parse(localStorage.getItem('gl_followup_log')||'{}');
+let currentFollowupInvId = null;
+
+function openFollowUpModal(){
+  if(!currentInvId) return;
+  const inv=invoices.find(i=>i.id===currentInvId);
+  if(!inv) return;
+  currentFollowupInvId=currentInvId;
+  
+  const modal=document.getElementById('followup-modal');
+  modal.classList.add('show');
+  document.getElementById('followup-loading').style.display='block';
+  document.getElementById('followup-content').style.display='none';
+  
+  const daysDue=inv.date?Math.floor((Date.now()-new Date(inv.date).getTime())/(1000*60*60*24)):0;
+  let tone='gentle';
+  if(daysDue>30) tone='firm'; 
+  else if(daysDue>14) tone='professional';
+  
+  callAI('You are a professional business communication specialist for Good Liquid Bev Co, a beverage co-packer.',
+    `Draft a follow-up email for an unpaid invoice. 
+    Client: ${inv.clientName}
+    Invoice #: ${inv.id}
+    Amount: $${inv.amount.toLocaleString()}
+    Invoice Date: ${inv.date}
+    Days since invoice: ${daysDue}
+    Tone: ${tone} (${daysDue>30?'firm but professional, mention possible late fees':daysDue>14?'politely firm':'friendly reminder'})
+    
+    Format: Start with Subject: on first line, then blank line, then email body. Sign off as Mike Krail, Good Liquid Bev Co.`)
+    .then(text=>{
+      const lines=text.split('\n');
+      const subjLine=lines.find(l=>l.startsWith('Subject:'));
+      const subject=subjLine?subjLine.replace('Subject:','').trim():`Follow-up: Invoice ${inv.id} — ${inv.clientName}`;
+      const body=lines.filter(l=>!l.startsWith('Subject:')).join('\n').trim();
+      
+      document.getElementById('fu-to').value=inv.clientEmail||inv.clientName;
+      document.getElementById('fu-subject').value=subject;
+      document.getElementById('fu-body').value=body;
+      document.getElementById('followup-loading').style.display='none';
+      document.getElementById('followup-content').style.display='block';
+    }).catch(()=>{
+      document.getElementById('fu-body').value=`Dear ${inv.clientName},\n\nThis is a friendly reminder that Invoice ${inv.id} for $${inv.amount.toLocaleString()} remains unpaid.\n\nPlease remit payment at your earliest convenience.\n\nBest regards,\nMike Krail\nGood Liquid Bev Co\nMike@GoodLiquid.com | (803) 493-5065`;
+      document.getElementById('followup-loading').style.display='none';
+      document.getElementById('followup-content').style.display='block';
+    });
+}
+
+function closeFollowupModal(){ document.getElementById('followup-modal').classList.remove('show'); }
+
+async function sendFollowupEmail(){
+  const to=document.getElementById('fu-to').value;
+  const subject=document.getElementById('fu-subject').value;
+  const body=document.getElementById('fu-body').value;
+  
+  const sent=await sendMailgunEmail(to,subject,body);
+  
+  // Log the follow-up
+  if(!followupLog[currentFollowupInvId]) followupLog[currentFollowupInvId]=[];
+  followupLog[currentFollowupInvId].push({date:new Date().toLocaleDateString(),subject,sent});
+  localStorage.setItem('gl_followup_log',JSON.stringify(followupLog));
+  
+  addNotification('📧 Follow-up sent','Invoice '+currentFollowupInvId+' — '+to,'email');
+  closeFollowupModal();
+  
+  if(sent) alert('✓ Follow-up email sent via Mailgun!');
+  else alert('✓ Follow-up logged. (Configure Mailgun API key in AI Settings to send.)');
+}
+
+function regenFollowup(){
+  document.getElementById('followup-loading').style.display='block';
+  document.getElementById('followup-content').style.display='none';
+  openFollowUpModal();
+}
+
+function getFollowupLog(invId){
+  const log=followupLog[invId]||[];
+  if(!log.length) return '';
+  return `<div style="margin-top:16px"><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">FOLLOW-UP HISTORY</div>
+    ${log.map(l=>`<div class="fu-log-item">
+      <div class="fu-log-icon">📧</div>
+      <div style="flex:1"><div class="fu-log-text">${l.subject}</div><div class="fu-log-time">${l.date} · ${l.sent?'Sent via Mailgun':'Logged only'}</div></div>
+    </div>`).join('')}
+  </div>`;
+}
+
+/* ═══════════════════════════════════════════
+   AI MEETING NOTES
+═══════════════════════════════════════════ */
+function openMeetingNotesModal(){
+  const sel=document.getElementById('mn-client');
+  sel.innerHTML='<option value="">Select client…</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  document.getElementById('mn-output').style.display='none';
+  document.getElementById('mn-save-btn').style.display='none';
+  document.getElementById('meeting-notes-modal').classList.add('show');
+}
+function closeMeetingNotesModal(){ document.getElementById('meeting-notes-modal').classList.remove('show'); }
+
+async function generateMeetingNotes(){
+  const bullets=document.getElementById('mn-bullets').value.trim();
+  if(!bullets){alert('Enter your meeting notes first');return;}
+  const clientId=document.getElementById('mn-client').value;
+  const client=clients.find(c=>c.id===clientId);
+  
+  showAIModal('Generating Meeting Notes...','',true);
+  const text=await callAI('You are a professional business note-taker for Good Liquid Bev Co, a beverage co-packer.',
+    `Expand these meeting bullet points into professional meeting notes:
+    Client: ${client?client.name:'Unknown'}
+    Date: ${new Date().toLocaleDateString()}
+    
+    Bullet points:
+    ${bullets}
+    
+    Format as: Meeting Summary, Key Discussion Points, Action Items, Next Steps. Be concise but professional.`);
+  
+  closeAIModal();
+  document.getElementById('mn-result').textContent=text;
+  document.getElementById('mn-output').style.display='block';
+  document.getElementById('mn-save-btn').style.display='inline-flex';
+}
+
+function saveMeetingNotes(){
+  const clientId=document.getElementById('mn-client').value;
+  const notes=document.getElementById('mn-result').textContent;
+  const client=clients.find(c=>c.id===clientId);
+  activities.unshift({type:'note',icon:'📝',name:'Meeting notes: '+(client?client.name:'General'),detail:notes.substring(0,80)+'…',time:'Just now'});
+  addNotification('📝 Meeting notes saved','Notes saved for '+(client?client.name:'General'),'success');
+  closeMeetingNotesModal();
+}
+
+/* ═══════════════════════════════════════════
+   AI COMMUNICATION DRAFTS
+═══════════════════════════════════════════ */
+function openAICommModal(){
+  const sel=document.getElementById('ai-comm-client');
+  sel.innerHTML='<option value="">Select client…</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  document.getElementById('ai-comm-output').style.display='none';
+  document.getElementById('ai-comm-send-btn').style.display='none';
+  document.getElementById('ai-comm-custom-row').style.display='none';
+  document.getElementById('ai-comm-modal').classList.add('show');
+}
+function closeAICommModal(){ document.getElementById('ai-comm-modal').classList.remove('show'); }
+
+document.addEventListener('change',e=>{
+  if(e.target.id==='ai-comm-type'){
+    document.getElementById('ai-comm-custom-row').style.display=e.target.value==='custom'?'block':'none';
+  }
+});
+
+async function generateAIComm(){
+  const clientId=document.getElementById('ai-comm-client').value;
+  const type=document.getElementById('ai-comm-type').value;
+  const client=clients.find(c=>c.id===clientId);
+  const custom=document.getElementById('ai-comm-custom')?.value;
+  
+  const prompts={
+    quote:`Draft a professional email to ${client?client.name:'the client'} confirming a quote has been sent. Include next steps.`,
+    production:`Draft a production status update email to ${client?client.name:'the client'}. Mention timeline, format, and what to expect next.`,
+    delay:`Draft a professional delay notice email to ${client?client.name:'the client'}. Apologize, explain briefly, give new timeline.`,
+    welcome:`Draft a warm onboarding welcome email for ${client?client.name:'a new client'} starting their beverage journey with Good Liquid Bev Co.`,
+    custom:custom||'Draft a professional email.'
+  };
+  
+  showAIModal('Drafting email...','',true);
+  const text=await callAI('You are writing professional emails for Mike Krail at Good Liquid Bev Co, a beverage co-packer in Palmetto, FL.',
+    `${prompts[type]}
+
+Format: Subject: on first line, then blank line, then email body. Sign off as Mike Krail, Good Liquid Bev Co.`);
+  closeAIModal();
+  
+  const lines=text.split('\n');
+  const subjLine=lines.find(l=>l.startsWith('Subject:'));
+  document.getElementById('ai-comm-subj').value=subjLine?subjLine.replace('Subject:','').trim():'Good Liquid Bev Co Update';
+  document.getElementById('ai-comm-body').value=lines.filter(l=>!l.startsWith('Subject:')).join('\n').trim();
+  document.getElementById('ai-comm-output').style.display='block';
+  document.getElementById('ai-comm-send-btn').style.display='inline-flex';
+}
+
+async function sendAIComm(){
+  const to=document.getElementById('ai-comm-client').value;
+  const clientId=to;
+  const client=clients.find(c=>c.id===clientId);
+  const subject=document.getElementById('ai-comm-subj').value;
+  const body=document.getElementById('ai-comm-body').value;
+  const sent=await sendMailgunEmail(client?client.email:to,subject,body);
+  addNotification('📧 Email sent','To: '+(client?client.name:to),'email');
+  closeAICommModal();
+  alert(sent?'✓ Email sent via Mailgun!':'✓ Logged. Configure Mailgun key in AI Settings to send.');
+}
+
+/* ═══════════════════════════════════════════
+   AI REVENUE FORECASTING
+═══════════════════════════════════════════ */
+async function aiGenerateForecast(){
+  showAIModal('Revenue Forecast','',true);
+  const paid=invoices.filter(i=>i.status==='paid').reduce((a,i)=>a+i.amount,0);
+  const pend=invoices.filter(i=>i.status==='pending').reduce((a,i)=>a+i.amount,0);
+  const pipeVal=Object.values(deals).flat().reduce((s,d)=>s+parseInt((d.val||'$0').replace(/[$,]/g,'')),0);
+  
+  const text=await callAI('You are a revenue analyst for Good Liquid Bev Co.',
+    `Based on this data, provide a 30/60/90-day revenue forecast:
+    YTD Collected: $${paid.toLocaleString()}
+    Pending Invoices: $${pend.toLocaleString()}
+    Pipeline Value: $${pipeVal.toLocaleString()}
+    Active Clients: ${clients.filter(c=>c.status==='active').length}
+    
+    Provide: 30-day forecast, 60-day forecast, 90-day forecast, key assumptions, and 2-3 action items to grow revenue. Be specific with dollar amounts.`);
+  document.getElementById('ai-modal-body').textContent=text;
+}
+
+/* ═══════════════════════════════════════════
+   AI PRODUCTION OPTIMIZER
+═══════════════════════════════════════════ */
+async function openAIProductionOptimizer(){
+  showAIModal('Production Schedule Optimizer','',true);
+  const runs=calEvents.filter(e=>e.type==='production');
+  if(!runs.length){document.getElementById('ai-modal-body').textContent='No production runs scheduled yet. Add some runs first.';return;}
+  
+  const runList=runs.map(r=>{
+    const client=clients.find(c=>c.id===r.clientId);
+    return `- ${r.title}: ${client?client.name:'Unknown'}, ${r.qty||'?'} cases ${r.format||''}, start ${r.date}, due ${r.dueDate||'TBD'}`;
+  }).join('\n');
+  
+  const text=await callAI('You are a production scheduling expert for Good Liquid Bev Co, a beverage co-packer.',
+    `Optimize this production schedule. Consider: format changes require cleaning time, larger runs should be prioritized, group similar formats together.
+    
+    Current schedule:
+    ${runList}
+    
+    Provide: Optimal run order, estimated total production days, any scheduling conflicts or concerns, and specific recommendations.`);
+  document.getElementById('ai-modal-body').textContent=text;
+}
+
+/* ═══════════════════════════════════════════
+   AI CHAT WIDGET
+═══════════════════════════════════════════ */
+let chatOpen=false;
+
+function toggleChat(){
+  chatOpen=!chatOpen;
+  document.getElementById('gl-chat-window').classList.toggle('show',chatOpen);
+}
+
+async function sendChatMsg(){
+  const input=document.getElementById('gl-chat-input');
+  const msg=input.value.trim();
+  if(!msg) return;
+  input.value='';
+  
+  const msgs=document.getElementById('gl-chat-messages');
+  msgs.innerHTML+=`<div class="chat-msg user">${msg}</div>`;
+  msgs.innerHTML+=`<div class="chat-msg bot" id="chat-thinking">Thinking…</div>`;
+  msgs.scrollTop=msgs.scrollHeight;
+  
+  const reply=await callAI(
+    `You are the Good Liquid Bev Co assistant. You help website visitors learn about our beverage co-packing services.
+    
+    Key facts:
+    - We are a family-run beverage co-packer in Palmetto, FL (Est. 2017)
+    - Services: Small-batch canning (12oz & 16oz), Bottle filling (750ml), Beverage R&D/formulation, Consulting
+    - Minimum order: 150 cases (3,600 units)
+    - R&D starting at $1,000/SKU (3 iterations)
+    - Canning from $0.28/can at volume
+    - Typical timeline: 8 weeks concept to pallet
+    - GMP, PCQI, HACCP certified
+    - Contact: Mike@GoodLiquid.com | (803) 493-5065
+    - Address: 2011 51st Ave E, Unit 100, Palmetto, FL 34221
+    
+    Be friendly, helpful, and concise. If they want to get started, encourage them to fill out the contact form or schedule a tour.`,
+    msg);
+  
+  document.getElementById('chat-thinking').outerHTML=`<div class="chat-msg bot">${reply}</div>`;
+  msgs.scrollTop=msgs.scrollHeight;
+}
+
+/* ═══════════════════════════════════════════
+   TOUR BOOKING WIDGET
+═══════════════════════════════════════════ */
+let bkCurrentDate=new Date();
+let bkSelectedDate=null, bkSelectedTime=null;
+const BK_TIMES=['9:00 AM','10:00 AM','11:00 AM','1:00 PM','2:00 PM','3:00 PM'];
+
+function openBooking(){
+  document.getElementById('booking-overlay').classList.add('show');
+  document.getElementById('bk-success').style.display='none';
+  renderBkCal();
+  renderBkTimes();
+}
+function closeBooking(){ document.getElementById('booking-overlay').classList.remove('show'); }
+
+function renderBkCal(){
+  const d=bkCurrentDate;
+  document.getElementById('bk-month-label').textContent=d.toLocaleString('default',{month:'long',year:'numeric'});
+  const firstDay=new Date(d.getFullYear(),d.getMonth(),1).getDay();
+  const daysInMonth=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
+  const today=new Date(); today.setHours(0,0,0,0);
+  let html='';
+  for(let i=0;i<firstDay;i++) html+='<div></div>';
+  for(let day=1;day<=daysInMonth;day++){
+    const thisDate=new Date(d.getFullYear(),d.getMonth(),day);
+    const isPast=thisDate<today;
+    const isWeekend=thisDate.getDay()===0||thisDate.getDay()===6;
+    const isToday=thisDate.getTime()===today.getTime();
+    const dateStr=thisDate.toISOString().split('T')[0];
+    const isSelected=bkSelectedDate===dateStr;
+    html+=`<div class="bk-day${isPast||isWeekend?' bk-past':''}${isToday?' bk-today':''}${isSelected?' bk-selected':''}" 
+      onclick="${!isPast&&!isWeekend?`selectBkDate('${dateStr}')`:''}">${day}</div>`;
+  }
+  document.getElementById('bk-cal-grid').innerHTML=html;
+}
+
+function bkPrev(){ bkCurrentDate.setMonth(bkCurrentDate.getMonth()-1); renderBkCal(); }
+function bkNext(){ bkCurrentDate.setMonth(bkCurrentDate.getMonth()+1); renderBkCal(); }
+
+function selectBkDate(date){
+  bkSelectedDate=date;
+  renderBkCal();
+  renderBkTimes();
+  updateBkInfo();
+}
+
+function renderBkTimes(){
+  document.getElementById('bk-time-slots').innerHTML=BK_TIMES.map(t=>`
+    <div class="time-slot ${bkSelectedTime===t?'selected':''}" onclick="selectBkTime('${t}')">${t}</div>`).join('');
+}
+
+function selectBkTime(time){ bkSelectedTime=time; renderBkTimes(); updateBkInfo(); }
+
+function updateBkInfo(){
+  const el=document.getElementById('bk-selected-info');
+  if(bkSelectedDate&&bkSelectedTime){
+    el.style.display='block';
+    el.textContent='📅 '+new Date(bkSelectedDate+'T12:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})+' at '+bkSelectedTime;
+  }
+}
+
+async function submitBooking(){
+  if(!bkSelectedDate||!bkSelectedTime){alert('Please select a date and time');return;}
+  const name=document.getElementById('bk-name').value.trim();
+  const email=document.getElementById('bk-email').value.trim();
+  if(!name||!email){alert('Please enter your name and email');return;}
+  const notes=document.getElementById('bk-notes').value;
+  
+  // Add to calendar
+  calEvents.push({id:'bk'+Date.now(),type:'general',title:'Tour: '+name,date:bkSelectedDate,time:bkSelectedTime,notes:`Visitor: ${name} (${email})
+${notes}`,remind:'1d'});
+  saveCalEvents();
+  
+  // Send confirmation emails
+  await sendMailgunEmail('mike@goodliquid.com','[Booking] Tour Request: '+name,
+    `New tour request!
+
+Name: ${name}
+Email: ${email}
+Date: ${bkSelectedDate} at ${bkSelectedTime}
+Notes: ${notes||'None'}
+
+Added to your calendar.`);
+  await sendMailgunEmail(email,'Your Good Liquid Bev Co Tour Confirmation',
+    `Hi ${name},
+
+Your tour request has been submitted!
+
+Date: ${bkSelectedDate} at ${bkSelectedTime}
+Location: 2011 51st Ave E, Unit 100, Palmetto, FL 34221
+
+Mike will confirm within 1 business day.
+
+Best,
+Good Liquid Bev Co
+Mike@GoodLiquid.com | (803) 493-5065`);
+  
+  addNotification('📅 Tour booked: '+name,bkSelectedDate+' at '+bkSelectedTime,'success');
+  document.getElementById('bk-success').style.display='block';
+  setTimeout(()=>closeBooking(),3000);
+}
+
+/* ═══════════════════════════════════════════
+   ENHANCED initCRM
+═══════════════════════════════════════════ */
+const origInitCRM=initCRM;
+initCRM=function(){
+  origInitCRM();
+  // Init new features
+  renderCal('general');
+  renderCal('production');
+  renderProductionRuns();
+  renderTasks();
+  renderInventory();
+  renderAnnouncements();
+  renderDocs();
+  renderCustomerLogins();
+  
+  // Populate client selects in task/doc modals
+  const taskCl=document.getElementById('task-client-link');
+  if(taskCl) taskCl.innerHTML='<option value="">None</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  
+  // Update PERMISSIONS to include new pages
+  PERMISSIONS.admin.push('calendar','production-cal','tasks','documents','inventory','announcements','customers');
+  PERMISSIONS.sales.push('calendar','production-cal','tasks','announcements');
+  
+  bkCurrentDate=new Date();
+  renderBkCal();
+};
+
+/* ═══════════════════════════════════════════
+   ENHANCED renderClients — add tags + health
+═══════════════════════════════════════════ */
+const origRenderClients=renderClients;
+renderClients=function(){
+  origRenderClients();
+  // Add health dots and tags to client rows after render
+  setTimeout(()=>{
+    const rows=document.querySelectorAll('#client-body tr');
+    rows.forEach(row=>{
+      const nameCell=row.querySelector('td:first-child');
+      if(nameCell){
+        const cName=nameCell.textContent.trim();
+        const client=clients.find(c=>c.name===cName);
+        if(client){
+          const health=getClientHealth(client);
+          const existingDot=nameCell.querySelector('.health-dot');
+          if(!existingDot){
+            const dot=document.createElement('span');
+            dot.className='health-dot '+health;
+            dot.style.cssText='display:inline-block;margin-left:7px;vertical-align:middle';
+            dot.title='Client health: '+health;
+            nameCell.appendChild(dot);
+          }
+          // Add tags row if tags exist
+          const tags=clientTags[client.id]||[];
+          if(tags.length&&!row.querySelector('.tag-chip')){
+            const tagCell=row.querySelector('td:last-child');
+            if(tagCell){
+              const tagWrap=document.createElement('div');
+              tagWrap.style.cssText='margin-top:4px';
+              tagWrap.innerHTML=tags.map(t=>`<span class="tag-chip" style="font-size:9px;padding:1px 6px">${t}</span>`).join('');
+              nameCell.appendChild(tagWrap);
+            }
+          }
+        }
+      }
+    });
+  },100);
+};
+
+// Also enhance cNav to init new pages
+const origCNav=cNav;
+cNav=function(page,el){
+  origCNav(page,el);
+  if(page==='calendar') renderCal('general');
+  if(page==='production-cal'){ renderCal('production'); renderProductionRuns(); }
+  if(page==='tasks') renderTasks();
+  if(page==='documents') renderDocs();
+  if(page==='inventory') renderInventory();
+  if(page==='announcements') renderAnnouncements();
+  if(page==='customers') renderCustomerLogins();
+};
+
 </script>
 
+
+
+<!-- ═══ AI CHAT WIDGET ═══ -->
+<button id="gl-chat-bubble" onclick="toggleChat()" title="Chat with Good Liquid AI">💬</button>
+<div id="gl-chat-window">
+  <div id="gl-chat-header">
+    <div style="display:flex;align-items:center;gap:9px">
+      <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--teal),#1a6fff);display:flex;align-items:center;justify-content:center;font-size:14px">💬</div>
+      <div><div style="font-size:13px;font-weight:700;color:var(--white)">Good Liquid AI</div><div style="font-size:10px;color:var(--teal)">Ask anything about our services</div></div>
+    </div>
+    <button onclick="toggleChat()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px">✕</button>
+  </div>
+  <div id="gl-chat-messages">
+    <div class="chat-msg bot">Hi! I'm the Good Liquid Bev Co assistant. Ask me about our canning, bottling, R&amp;D services, pricing, or how to get started. 👋</div>
+  </div>
+  <div id="gl-chat-input-row">
+    <textarea id="gl-chat-input" placeholder="Ask about services, pricing, process…" rows="1" onkeydown="if(event.key===&#39;Enter&#39;&amp;&amp;!event.shiftKey){event.preventDefault();sendChatMsg()}"></textarea>
+    <button onclick="sendChatMsg()" style="padding:9px 14px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:16px">→</button>
+  </div>
+</div>
+
+<!-- ═══ BOOKING OVERLAY ═══ -->
+<div id="booking-overlay">
+  <div class="booking-box">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+      <div style="font-family:var(--ff-disp);font-size:26px;letter-spacing:2px;color:var(--white)">SCHEDULE A TOUR</div>
+      <button onclick="closeBooking()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer">✕</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:28px">
+      <div>
+        <div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:10px">SELECT DATE</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <button onclick="bkPrev()" class="cal-nav-btn">‹</button>
+          <div id="bk-month-label" style="font-family:var(--ff-disp);font-size:15px;color:var(--white);letter-spacing:1px"></div>
+          <button onclick="bkNext()" class="cal-nav-btn">›</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:6px">
+          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Su</div>
+          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Mo</div>
+          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Tu</div>
+          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">We</div>
+          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Th</div>
+          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Fr</div>
+          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Sa</div>
+        </div>
+        <div class="booking-mini-cal" id="bk-cal-grid"></div>
+      </div>
+      <div>
+        <div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:10px">SELECT TIME</div>
+        <div class="time-slots" id="bk-time-slots"></div>
+        <div id="bk-selected-info" style="display:none;margin-top:14px;padding:11px;background:rgba(0,229,192,.06);border:1px solid rgba(0,229,192,.18);border-radius:8px;font-size:12px;color:var(--teal)"></div>
+      </div>
+    </div>
+    <div style="margin-top:22px;border-top:1px solid rgba(255,255,255,.07);padding-top:18px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div><input id="bk-name" placeholder="Your name" style="width:100%;padding:11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:13px;font-family:var(--ff-body)"></div>
+        <div><input id="bk-email" type="email" placeholder="Email address" style="width:100%;padding:11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:13px;font-family:var(--ff-body)"></div>
+      </div>
+      <textarea id="bk-notes" rows="2" placeholder="Brief description of your project…" style="width:100%;padding:11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:13px;font-family:var(--ff-body);resize:none;margin-bottom:12px"></textarea>
+      <button onclick="submitBooking()" style="width:100%;padding:14px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-size:14px;font-weight:800;cursor:pointer;transition:all .3s">Confirm Booking →</button>
+      <div id="bk-success" style="display:none;text-align:center;margin-top:14px;font-size:14px;color:var(--teal);font-weight:600">✓ Booking request sent! Mike will confirm within 1 business day.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ CUSTOMER PORTAL ═══ -->
+<div id="customer-portal">
+  <div class="portal-top">
+    <div style="display:flex;align-items:center;gap:9px">
+      <div style="font-family:var(--ff-disp);font-size:14px;letter-spacing:2px;color:var(--white)">GOOD LIQUID</div>
+      <div style="font-size:9px;color:var(--teal);letter-spacing:2px;text-transform:uppercase">Client Portal</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="font-size:12px;color:var(--muted)" id="portal-user-name">Loading…</div>
+      <button class="cbtn" style="font-size:10px;padding:4px 10px" onclick="logoutPortal()">Sign out</button>
+    </div>
+  </div>
+  <div class="portal-body">
+    <div style="margin-bottom:24px">
+      <div style="font-family:var(--ff-disp);font-size:28px;letter-spacing:2px;color:var(--white);margin-bottom:6px" id="portal-greeting">Welcome back!</div>
+      <div style="font-size:14px;color:var(--muted)">View your account, invoices, and production status.</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+      <div class="portal-card" id="portal-company-card">
+        <div style="font-size:10px;letter-spacing:2px;color:var(--teal);margin-bottom:12px">COMPANY INFO</div>
+        <div id="portal-company-info"></div>
+      </div>
+      <div class="portal-card" id="portal-production-card">
+        <div style="font-size:10px;letter-spacing:2px;color:var(--teal);margin-bottom:12px">PRODUCTION STATUS</div>
+        <div id="portal-production-info"></div>
+      </div>
+    </div>
+    <div class="portal-card">
+      <div style="font-size:10px;letter-spacing:2px;color:var(--teal);margin-bottom:14px">YOUR INVOICES</div>
+      <table class="ctbl"><thead><tr><th>Invoice #</th><th>Service</th><th>Amount</th><th>Date</th><th>Status</th></tr></thead>
+      <tbody id="portal-invoices"></tbody></table>
+    </div>
+    <div style="margin-top:16px;text-align:center">
+      <div style="font-size:12px;color:var(--muted)">Questions? Contact us at <a href="mailto:Mike@GoodLiquid.com" style="color:var(--teal)">Mike@GoodLiquid.com</a> · (803) 493-5065</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ PASSWORD RESET OVERLAY ═══ -->
+<div id="reset-overlay">
+  <div style="background:#0a1628;border:1px solid rgba(0,229,192,.18);border-radius:22px;padding:40px;width:380px;text-align:center">
+    <div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:2px;color:var(--white);margin-bottom:8px">RESET PASSWORD</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:24px">Enter your email to receive a reset link.</div>
+    <div id="reset-step1">
+      <input type="email" id="reset-email-inp" placeholder="your@email.com" style="width:100%;padding:13px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:9px;color:var(--white);font-size:14px;font-family:var(--ff-body);margin-bottom:13px">
+      <button onclick="sendResetLink()" style="width:100%;padding:13px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-size:14px;font-weight:800;cursor:pointer;margin-bottom:11px">Send Reset Link →</button>
+    </div>
+    <div id="reset-success" style="display:none;color:var(--teal);font-size:13px;font-weight:600;padding:14px">✓ If an account exists, a reset link has been sent to that email.</div>
+    <button onclick="closeResetOverlay()" style="font-size:13px;color:var(--muted);cursor:pointer;border:none;background:none;font-family:var(--ff-body)">← Back to login</button>
+  </div>
+</div>
 
 </body></html>
