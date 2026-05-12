@@ -1,0 +1,33 @@
+{
+  "name": "Good Liquid Bev Co CRM",
+  "short_name": "Good Liquid",
+  "description": "Good Liquid Bev Co CRM & Website",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a1628",
+  "theme_color": "#0a1628",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='80' fill='%230a1628'/><text y='380' x='60' font-size='380'>💧</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity"],
+  "shortcuts": [
+    {
+      "name": "Admin CRM",
+      "short_name": "CRM",
+      "description": "Open the admin CRM",
+      "url": "/?admin=1"
+    },
+    {
+      "name": "Get a Quote",
+      "short_name": "Quote",
+      "description": "Request a quote",
+      "url": "/#contact"
+    }
+  ]
+}
