@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- saved from url=(0044)file:///C:/Users/mike/Downloads/index_9.html -->
+<!-- saved from url=(0045)file:///C:/Users/mike/Downloads/index_10.html -->
 <html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -639,9 +639,9 @@ select option, .fsel option {
 .forecast-amount { font-family:var(--ff-disp);font-size:28px;letter-spacing:1px;background:linear-gradient(135deg,var(--teal),#1a6fff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text; }
 .forecast-label { font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-top:4px; }
 </style>
-</head>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; viewBox=&#39;0 0 100 100&#39;&gt;&lt;rect width=&#39;100&#39; height=&#39;100&#39; rx=&#39;20&#39; fill=&#39;%230a1628&#39;/&gt;&lt;text y=&#39;.9em&#39; font-size=&#39;80&#39; x=&#39;10&#39;&gt;%F0%9F%92%A7&lt;/text&gt;&lt;/svg&gt;"></head>
 <body>
-<div id="cursor" class="" style="opacity: 1; left: 1919px; top: 421px;"></div>
+<div id="cursor" class="" style="opacity: 1; left: 1003px; top: 278px;"></div>
 
 <!-- ═══════════════════════════
          PUBLIC WEBSITE
@@ -658,7 +658,7 @@ select option, .fsel option {
     <a href="javascript:void(0)" onclick="event.preventDefault();navTo(&#39;certifications&#39;)">Certifications</a>
     <a href="javascript:void(0)" onclick="event.preventDefault();navTo(&#39;team&#39;)">Team</a>
     <a href="javascript:void(0)" class="nav-cta" onclick="navTo(\&#39;contact\&#39;)">Get a Quote</a>
-    <a href="file:///C:/Users/mike/Downloads/index_9.html#" onclick="event.preventDefault();openAdmin()" style="padding:9px 22px;border:1.5px solid #f5c842;color:#f5c842;border-radius:6px;font-size:13px;font-weight:600;transition:all .25s;margin-left:8px;">🔒 Admin</a>
+    <a href="file:///C:/Users/mike/Downloads/index_10.html#" onclick="event.preventDefault();openAdmin()" style="padding:9px 22px;border:1.5px solid #f5c842;color:#f5c842;border-radius:6px;font-size:13px;font-weight:600;transition:all .25s;margin-left:8px;">🔒 Admin</a>
   </div>
 </nav>
 
@@ -892,7 +892,7 @@ select option, .fsel option {
         <div style="font-family:var(--ff-disp);font-size:24px;letter-spacing:1px;color:var(--white);margin-bottom:5px">PALMETTO, FL</div>
         <div style="font-family:var(--ff-mono);font-size:12px;color:var(--white);line-height:1.7;margin-bottom:16px">2011 51st Ave E, Unit 100<br>Palmetto, FL 34221</div>
         <p style="font-size:13px;color:var(--muted);line-height:1.7">Schedule a tour and see the production line in action.</p>
-        <a href="file:///C:/Users/mike/Downloads/index_9.html#" onclick="event.preventDefault();openBooking()" class="fac-btn">Schedule a tour →</a>
+        <a href="file:///C:/Users/mike/Downloads/index_10.html#" onclick="event.preventDefault();openBooking()" class="fac-btn">Schedule a tour →</a>
       </div>
     </div>
   </div>
@@ -5839,6 +5839,387 @@ cNav = function(page, el) {
   _origCNav2(page, el);
   if(page === 'users') setTimeout(renderUsersPanel, 100);
 };
+
+/* ═══════════════════════════════════════════
+   FAVICON FIX
+═══════════════════════════════════════════ */
+(function addFavicon(){
+  if(document.querySelector('link[rel="icon"]')) return;
+  const link = document.createElement('link');
+  link.rel = 'icon';
+  link.type = 'image/svg+xml';
+  link.href = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230a1628'/><text y='.9em' font-size='80' x='10'>💧</text></svg>";
+  document.head.appendChild(link);
+})();
+
+/* ═══════════════════════════════════════════
+   CLIENT NOTES
+   Sticky notes per client, saved to localStorage
+═══════════════════════════════════════════ */
+let clientNotes = JSON.parse(localStorage.getItem('gl_client_notes') || '{}');
+function saveClientNotes(){ localStorage.setItem('gl_client_notes', JSON.stringify(clientNotes)); }
+
+function openClientNote(clientId){
+  const client = clients.find(c => c.id === clientId);
+  if(!client) return;
+  const existing = document.getElementById('client-note-modal');
+  if(existing) existing.remove();
+
+  const notes = clientNotes[clientId] || [];
+  const modal = document.createElement('div');
+  modal.id = 'client-note-modal';
+  modal.className = 'modal-ov show';
+  modal.innerHTML = `
+    <div class="modal-box" style="width:500px">
+      <div class="modal-title">📝 Notes — ${client.name} <span class="modal-close" onclick="this.closest('.modal-ov').remove()">✕</span></div>
+      <div style="max-height:280px;overflow-y:auto;margin-bottom:12px" id="cn-list">
+        ${notes.length ? notes.map((n,i) => `
+          <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:11px;margin-bottom:8px">
+            <div style="font-size:12px;color:var(--white);line-height:1.6">${n.text}</div>
+            <div style="display:flex;justify-content:space-between;margin-top:6px">
+              <div style="font-size:10px;color:var(--muted)">${n.date} · ${n.author}</div>
+              <button class="cbtn red" style="font-size:9px;padding:2px 7px" onclick="deleteClientNote('${clientId}',${i})">✕</button>
+            </div>
+          </div>`).join('') : '<div style="color:var(--muted);font-size:13px">No notes yet.</div>'}
+      </div>
+      <textarea class="finp" id="cn-input" rows="3" placeholder="Add a note…" style="resize:none;margin-bottom:10px"></textarea>
+      <div style="display:flex;gap:8px">
+        <button class="cbtn pri" onclick="saveClientNote('${clientId}')" style="flex:1">Add Note</button>
+        <button class="cbtn" onclick="this.closest('.modal-ov').remove()">Close</button>
+      </div>
+    </div>`;
+  modal.addEventListener('click', e => { if(e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+
+function saveClientNote(clientId){
+  const text = document.getElementById('cn-input')?.value.trim();
+  if(!text) return;
+  if(!clientNotes[clientId]) clientNotes[clientId] = [];
+  clientNotes[clientId].unshift({
+    text, date: new Date().toLocaleDateString(),
+    author: currentUser?.name || 'Admin'
+  });
+  saveClientNotes();
+  openClientNote(clientId);
+}
+
+function deleteClientNote(clientId, index){
+  if(!clientNotes[clientId]) return;
+  clientNotes[clientId].splice(index, 1);
+  saveClientNotes();
+  openClientNote(clientId);
+}
+
+/* ═══════════════════════════════════════════
+   EMAIL TEMPLATES
+   Save & reuse email templates via Mailgun
+═══════════════════════════════════════════ */
+let emailTemplates = JSON.parse(localStorage.getItem('gl_email_templates') || JSON.stringify([
+  {id:'t1', name:'Quote Follow-Up', subject:'Following up on your quote — Good Liquid Bev Co', body:'Hi [Name],\n\nI wanted to follow up on the quote we sent over. Do you have any questions?\n\nBest,\nMike Krail\nGood Liquid Bev Co'},
+  {id:'t2', name:'Production Update', subject:'Your production run is scheduled — Good Liquid Bev Co', body:'Hi [Name],\n\nGreat news! Your production run is now scheduled. We will keep you updated on progress.\n\nBest,\nMike Krail'},
+  {id:'t3', name:'Welcome New Client', subject:'Welcome to Good Liquid Bev Co!', body:'Hi [Name],\n\nWelcome! We are excited to work with you. Here is what to expect next...\n\nBest,\nMike Krail\nGood Liquid Bev Co'},
+]));
+
+function saveEmailTemplates(){ localStorage.setItem('gl_email_templates', JSON.stringify(emailTemplates)); }
+
+function openEmailTemplates(){
+  const existing = document.getElementById('email-templates-modal');
+  if(existing){ existing.classList.add('show'); renderEmailTemplates(); return; }
+
+  const modal = document.createElement('div');
+  modal.id = 'email-templates-modal';
+  modal.className = 'modal-ov show';
+  modal.innerHTML = `
+    <div class="modal-box" style="width:600px;max-height:85vh;overflow-y:auto">
+      <div class="modal-title">📧 Email Templates <span class="modal-close" onclick="document.getElementById('email-templates-modal').classList.remove('show')">✕</span></div>
+      <div id="et-list"></div>
+      <div style="margin-top:16px;border-top:1px solid rgba(255,255,255,.07);padding-top:16px">
+        <div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:10px">CREATE NEW TEMPLATE</div>
+        <div class="frow"><div class="flbl">Template name</div><input class="finp" id="et-name" placeholder="e.g. Payment Reminder"></div>
+        <div class="frow"><div class="flbl">Subject</div><input class="finp" id="et-subject" placeholder="Email subject line"></div>
+        <div class="frow"><div class="flbl">Body</div><textarea class="finp" id="et-body" rows="5" placeholder="Use [Name] for client name, [Amount] for invoice amount…" style="resize:vertical"></textarea></div>
+        <button class="cbtn pri" onclick="saveNewTemplate()" style="width:100%">Save Template</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  renderEmailTemplates();
+}
+
+function renderEmailTemplates(){
+  const el = document.getElementById('et-list');
+  if(!el) return;
+  el.innerHTML = emailTemplates.map(t => `
+    <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:13px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div style="font-weight:700;font-size:13px;color:var(--white)">${t.name}</div>
+        <div style="display:flex;gap:6px">
+          <button class="cbtn" style="font-size:10px;padding:3px 8px" onclick="useTemplate('${t.id}')">Use</button>
+          <button class="cbtn red" style="font-size:10px;padding:3px 8px" onclick="deleteTemplate('${t.id}')">✕</button>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--teal);margin-bottom:3px">${t.subject}</div>
+      <div style="font-size:11px;color:var(--muted);white-space:pre-wrap">${t.body.substring(0,100)}${t.body.length>100?'…':''}</div>
+    </div>`).join('');
+}
+
+function saveNewTemplate(){
+  const name = document.getElementById('et-name')?.value.trim();
+  const subject = document.getElementById('et-subject')?.value.trim();
+  const body = document.getElementById('et-body')?.value.trim();
+  if(!name || !subject || !body){ alert('All fields required'); return; }
+  emailTemplates.unshift({id:'t'+Date.now(), name, subject, body});
+  saveEmailTemplates();
+  renderEmailTemplates();
+  document.getElementById('et-name').value='';
+  document.getElementById('et-subject').value='';
+  document.getElementById('et-body').value='';
+}
+
+function deleteTemplate(id){
+  if(!confirm('Delete this template?')) return;
+  emailTemplates = emailTemplates.filter(t => t.id !== id);
+  saveEmailTemplates();
+  renderEmailTemplates();
+}
+
+function useTemplate(id){
+  const t = emailTemplates.find(x => x.id === id);
+  if(!t) return;
+  document.getElementById('email-templates-modal')?.classList.remove('show');
+  openAICommModal();
+  setTimeout(() => {
+    document.getElementById('ai-comm-type').value = 'custom';
+    document.getElementById('ai-comm-custom-row').style.display = 'block';
+    document.getElementById('ai-comm-custom').value = t.body;
+    document.getElementById('ai-comm-subj').value = t.subject;
+    document.getElementById('ai-comm-output').style.display = 'block';
+    document.getElementById('ai-comm-body').value = t.body;
+    document.getElementById('ai-comm-send-btn').style.display = 'inline-flex';
+  }, 200);
+}
+
+/* ═══════════════════════════════════════════
+   TIME TRACKING REPORT
+   Full breakdown by client and activity
+═══════════════════════════════════════════ */
+async function openTimeTrackingReport(){
+  showAIModal('Time Tracking Report', '', true);
+
+  const totalHours = timeEntries.reduce((s,e) => s + parseFloat(e.hours), 0);
+
+  // Group by client
+  const byClient = {};
+  timeEntries.forEach(e => {
+    if(!byClient[e.clientName]) byClient[e.clientName] = {hours:0, entries:[]};
+    byClient[e.clientName].hours += parseFloat(e.hours);
+    byClient[e.clientName].entries.push(e);
+  });
+
+  // Group by activity
+  const byActivity = {};
+  timeEntries.forEach(e => {
+    byActivity[e.activity] = (byActivity[e.activity] || 0) + parseFloat(e.hours);
+  });
+
+  const reportData = {
+    totalHours: totalHours.toFixed(2),
+    byClient: Object.entries(byClient).sort((a,b)=>b[1].hours-a[1].hours).map(([name,d])=>({name, hours:d.hours.toFixed(2)})),
+    byActivity: Object.entries(byActivity).sort((a,b)=>b[1]-a[1]).map(([act,hrs])=>({act, hours:hrs.toFixed(2)})),
+    entryCount: timeEntries.length,
+  };
+
+  const text = await callAI(
+    'You are a business analyst for Good Liquid Bev Co.',
+    `Analyze this time tracking data and provide insights:
+    Total hours logged: ${reportData.totalHours}
+    Total entries: ${reportData.entryCount}
+    Hours by client: ${JSON.stringify(reportData.byClient)}
+    Hours by activity: ${JSON.stringify(reportData.byActivity)}
+
+    Provide: Summary, which clients take most time, which activities, billable vs non-billable estimate, 3 efficiency recommendations.`
+  );
+
+  const modalBody = document.getElementById('ai-modal-body');
+  if(modalBody){
+    modalBody.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:18px">
+        <div style="background:rgba(0,229,192,.08);border:1px solid rgba(0,229,192,.15);border-radius:8px;padding:13px;text-align:center">
+          <div style="font-size:10px;color:var(--muted);letter-spacing:1px">TOTAL HOURS</div>
+          <div style="font-family:var(--ff-disp);font-size:28px;color:var(--teal)">${reportData.totalHours}</div>
+        </div>
+        <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:13px;text-align:center">
+          <div style="font-size:10px;color:var(--muted);letter-spacing:1px">LOG ENTRIES</div>
+          <div style="font-family:var(--ff-disp);font-size:28px;color:var(--white)">${reportData.entryCount}</div>
+        </div>
+        <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:13px;text-align:center">
+          <div style="font-size:10px;color:var(--muted);letter-spacing:1px">CLIENTS TRACKED</div>
+          <div style="font-family:var(--ff-disp);font-size:28px;color:var(--white)">${reportData.byClient.length}</div>
+        </div>
+      </div>
+      <div style="margin-bottom:14px">
+        <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">HOURS BY CLIENT</div>
+        ${reportData.byClient.map(c=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+          <div style="font-size:13px;color:var(--white)">${c.name}</div>
+          <div style="font-family:var(--ff-disp);font-size:16px;color:var(--teal)">${c.hours}h</div>
+        </div>`).join('')}
+      </div>
+      <div style="white-space:pre-wrap;font-size:13px;line-height:1.7;margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.07)">${text}</div>`;
+  }
+}
+
+/* ═══════════════════════════════════════════
+   INVOICE PAY LINK GENERATOR
+   Generates a simple payment link for invoices
+═══════════════════════════════════════════ */
+function generatePayLink(invId){
+  const inv = invoices.find(i => i.id === invId);
+  if(!inv){ alert('Invoice not found'); return; }
+
+  const payData = {
+    inv: inv.id,
+    amount: inv.amount,
+    client: inv.clientName,
+    due: inv.date
+  };
+  const encoded = btoa(JSON.stringify(payData));
+  const payUrl = `${window.location.origin}?pay=${encoded}`;
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-ov show';
+  modal.innerHTML = `
+    <div class="modal-box" style="width:480px">
+      <div class="modal-title">💳 Payment Link — ${inv.id} <span class="modal-close" onclick="this.closest('.modal-ov').remove()">✕</span></div>
+      <div style="background:rgba(0,229,192,.06);border:1px solid rgba(0,229,192,.15);border-radius:10px;padding:16px;margin-bottom:16px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Share this link with ${inv.clientName} to request payment:</div>
+        <div style="font-family:var(--ff-mono);font-size:11px;color:var(--teal);word-break:break-all;line-height:1.6">${payUrl}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
+        <div style="text-align:center;padding:10px;background:rgba(255,255,255,.03);border-radius:8px">
+          <div style="font-size:10px;color:var(--muted)">INVOICE</div>
+          <div style="font-weight:700;color:var(--white)">${inv.id}</div>
+        </div>
+        <div style="text-align:center;padding:10px;background:rgba(255,255,255,.03);border-radius:8px">
+          <div style="font-size:10px;color:var(--muted)">AMOUNT</div>
+          <div style="font-weight:700;color:var(--teal)">$${inv.amount.toLocaleString()}</div>
+        </div>
+        <div style="text-align:center;padding:10px;background:rgba(255,255,255,.03);border-radius:8px">
+          <div style="font-size:10px;color:var(--muted)">CLIENT</div>
+          <div style="font-weight:700;color:var(--white);font-size:11px">${inv.clientName}</div>
+        </div>
+      </div>
+      <div style="background:rgba(245,200,66,.06);border:1px solid rgba(245,200,66,.18);border-radius:8px;padding:11px;font-size:11px;color:#f5c842;margin-bottom:14px">
+        ⚠ This is an informational link. To accept online payments, connect Stripe in a future update.
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="cbtn pri" onclick="navigator.clipboard.writeText('${payUrl}').then(()=>alert('Link copied!'))" style="flex:1">📋 Copy Link</button>
+        <button class="cbtn" onclick="this.closest('.modal-ov').remove()">Close</button>
+      </div>
+    </div>`;
+  modal.addEventListener('click', e => { if(e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+
+/* ═══════════════════════════════════════════
+   WIRE NEW FEATURES INTO AI TOOLBAR
+═══════════════════════════════════════════ */
+const _origAddAIToolbar2 = addAIToolbar;
+addAIToolbar = function(){
+  _origAddAIToolbar2();
+  const tools = document.getElementById('ai-tools');
+  if(!tools) return;
+
+  // Add Email Templates button
+  if(!document.getElementById('et-toolbar-btn')){
+    const btn = document.createElement('button');
+    btn.id = 'et-toolbar-btn';
+    btn.onclick = openEmailTemplates;
+    btn.style.cssText = 'padding:8px 14px;background:#142238;border:1px solid rgba(0,229,192,.3);border-radius:20px;color:var(--teal);cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)';
+    btn.textContent = '📧 Templates';
+    tools.appendChild(btn);
+  }
+
+  // Add Time Report button
+  if(!document.getElementById('tr-toolbar-btn')){
+    const btn2 = document.createElement('button');
+    btn2.id = 'tr-toolbar-btn';
+    btn2.onclick = openTimeTrackingReport;
+    btn2.style.cssText = 'padding:8px 14px;background:#142238;border:1px solid rgba(0,229,192,.3);border-radius:20px;color:var(--teal);cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)';
+    btn2.textContent = '⏱️ Time Report';
+    tools.appendChild(btn2);
+  }
+};
+
+/* ═══════════════════════════════════════════
+   ADD PAY LINK + NOTES BUTTONS TO INVOICE DETAIL
+   AND CLIENT DETAIL
+═══════════════════════════════════════════ */
+// Hook into invoice viewing to add pay link button
+const _origViewInvoice = typeof viewInvoice !== 'undefined' ? viewInvoice : null;
+if(_origViewInvoice){
+  viewInvoice = function(id){
+    _origViewInvoice(id);
+    setTimeout(() => {
+      const detailPanel = document.getElementById('cpg-invoice-detail') || document.querySelector('.inv-detail');
+      if(detailPanel && !detailPanel.querySelector('.pay-link-btn')){
+        const btn = document.createElement('button');
+        btn.className = 'cbtn pay-link-btn';
+        btn.style.cssText = 'background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)';
+        btn.textContent = '💳 Generate Pay Link';
+        btn.onclick = () => generatePayLink(id);
+        const btnRow = detailPanel.querySelector('.btn-row') || detailPanel.querySelector('.cph');
+        if(btnRow) btnRow.appendChild(btn);
+      }
+    }, 100);
+  };
+}
+
+/* ═══════════════════════════════════════════
+   ADD NOTES BUTTON TO CLIENT DETAIL PANEL
+═══════════════════════════════════════════ */
+const _origViewClientEnhanced = viewClientEnhanced;
+viewClientEnhanced = function(clientId){
+  _origViewClientEnhanced(clientId);
+  setTimeout(() => {
+    const overlay = document.getElementById('client-detail-overlay');
+    if(!overlay) return;
+    const btnRow = overlay.querySelector('[onclick*="aiScoreClientHealth"]')?.parentElement;
+    if(btnRow && !btnRow.querySelector('.notes-btn')){
+      const notesBtn = document.createElement('button');
+      notesBtn.className = 'cbtn notes-btn';
+      notesBtn.textContent = '📝 Notes';
+      notesBtn.onclick = () => { overlay.remove(); openClientNote(clientId); };
+      btnRow.appendChild(notesBtn);
+
+      const templatesBtn = document.createElement('button');
+      templatesBtn.className = 'cbtn';
+      templatesBtn.textContent = '📧 Templates';
+      templatesBtn.onclick = () => { overlay.remove(); openEmailTemplates(); };
+      btnRow.appendChild(templatesBtn);
+    }
+  }, 150);
+};
+
+/* ═══════════════════════════════════════════
+   CHECK FOR PAYMENT LINK ON PAGE LOAD
+   If URL has ?pay= param show invoice details
+═══════════════════════════════════════════ */
+(function checkPaymentLink(){
+  const params = new URLSearchParams(window.location.search);
+  const payParam = params.get('pay');
+  if(!payParam) return;
+  try {
+    const data = JSON.parse(atob(payParam));
+    const banner = document.createElement('div');
+    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#142238;border-bottom:2px solid var(--teal);padding:20px;text-align:center';
+    banner.innerHTML = `
+      <div style="font-family:var(--ff-disp);font-size:20px;color:var(--white);margin-bottom:6px">Payment Request — Good Liquid Bev Co</div>
+      <div style="font-size:14px;color:var(--muted);margin-bottom:12px">Invoice ${data.inv} · ${data.client} · <span style="color:var(--teal);font-weight:700">$${Number(data.amount).toLocaleString()}</span></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px">To pay this invoice please contact Mike at Mike@GoodLiquid.com or (803) 493-5065</div>
+      <button onclick="this.parentElement.remove()" style="padding:8px 20px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:700;cursor:pointer">Dismiss</button>`;
+    document.body.prepend(banner);
+  } catch(e){}
+})();
 </script>
 
 
