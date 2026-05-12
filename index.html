@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- saved from url=(0044)file:///C:/Users/mike/Downloads/index_8.html -->
+<!-- saved from url=(0044)file:///C:/Users/mike/Downloads/index_9.html -->
 <html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -641,7 +641,7 @@ select option, .fsel option {
 </style>
 </head>
 <body>
-<div id="cursor" class="" style="opacity: 1; left: 1298px; top: 209px;"></div>
+<div id="cursor" class="" style="opacity: 1; left: 1919px; top: 421px;"></div>
 
 <!-- ═══════════════════════════
          PUBLIC WEBSITE
@@ -658,7 +658,7 @@ select option, .fsel option {
     <a href="javascript:void(0)" onclick="event.preventDefault();navTo(&#39;certifications&#39;)">Certifications</a>
     <a href="javascript:void(0)" onclick="event.preventDefault();navTo(&#39;team&#39;)">Team</a>
     <a href="javascript:void(0)" class="nav-cta" onclick="navTo(\&#39;contact\&#39;)">Get a Quote</a>
-    <a href="file:///C:/Users/mike/Downloads/index_8.html#" onclick="event.preventDefault();openAdmin()" style="padding:9px 22px;border:1.5px solid #f5c842;color:#f5c842;border-radius:6px;font-size:13px;font-weight:600;transition:all .25s;margin-left:8px;">🔒 Admin</a>
+    <a href="file:///C:/Users/mike/Downloads/index_9.html#" onclick="event.preventDefault();openAdmin()" style="padding:9px 22px;border:1.5px solid #f5c842;color:#f5c842;border-radius:6px;font-size:13px;font-weight:600;transition:all .25s;margin-left:8px;">🔒 Admin</a>
   </div>
 </nav>
 
@@ -892,7 +892,7 @@ select option, .fsel option {
         <div style="font-family:var(--ff-disp);font-size:24px;letter-spacing:1px;color:var(--white);margin-bottom:5px">PALMETTO, FL</div>
         <div style="font-family:var(--ff-mono);font-size:12px;color:var(--white);line-height:1.7;margin-bottom:16px">2011 51st Ave E, Unit 100<br>Palmetto, FL 34221</div>
         <p style="font-size:13px;color:var(--muted);line-height:1.7">Schedule a tour and see the production line in action.</p>
-        <a href="file:///C:/Users/mike/Downloads/index_8.html#" onclick="event.preventDefault();openBooking()" class="fac-btn">Schedule a tour →</a>
+        <a href="file:///C:/Users/mike/Downloads/index_9.html#" onclick="event.preventDefault();openBooking()" class="fac-btn">Schedule a tour →</a>
       </div>
     </div>
   </div>
@@ -1926,16 +1926,35 @@ async function checkPw(){
 
   // Check customer portal logins first
   const customer = customerLogins.find(c=>c.email.toLowerCase()===email && c.password===pw);
-  if(customer){
-    currentPortalUser = customer;
-    closePw();
-    openCustomerPortal(customer);
-    return;
+  if(customer){ currentPortalUser=customer; closePw(); openCustomerPortal(customer); return; }
+
+  // Try Supabase first for admin/staff
+  const sb = getSupabase();
+  if(sb){
+    try {
+      const { data } = await sb.from('crm_users').select('password_hash').eq('email', email).single();
+      if(data && data.password_hash){
+        const storedPw = atob(data.password_hash);
+        if(storedPw !== pw){
+          err.style.display='block';
+          document.getElementById('pw-input').classList.add('wrong');
+          setTimeout(()=>document.getElementById('pw-input').classList.remove('wrong'),500);
+          return;
+        }
+        // Password matches Supabase — find user and log in
+        const u = users.find(x=>x.email.toLowerCase()===email);
+        if(u){ u.password=pw; loginUser(u); return; }
+      }
+    } catch(e){ console.log('Supabase login check failed, falling back to local:', e.message); }
   }
 
-  // Check admin/staff users
+  // Fall back to local users array
   const u = users.find(x=>x.email.toLowerCase()===email && x.password===pw && x.status==='active');
   if(!u){ err.style.display='block'; document.getElementById('pw-input').classList.add('wrong'); setTimeout(()=>document.getElementById('pw-input').classList.remove('wrong'),500); return; }
+  loginUser(u);
+}
+
+function loginUser(u){
   currentUser=u;
   u.lastLogin='Just now';
   closePw();
@@ -5690,6 +5709,136 @@ function updateTimerBadge() {
 }
 
 setInterval(updateTimerBadge, 3000);
+
+/* ═══════════════════════════════════════════
+   INVITE USER — saves to Supabase
+═══════════════════════════════════════════ */
+function openInviteModal(){
+  const existing = document.getElementById('invite-user-modal');
+  if(existing){ existing.classList.add('show'); return; }
+
+  const modal = document.createElement('div');
+  modal.id = 'invite-user-modal';
+  modal.className = 'modal-ov show';
+  modal.innerHTML = `
+    <div class="modal-box" style="width:460px">
+      <div class="modal-title">+ Invite User <span class="modal-close" onclick="closeInviteModal()">✕</span></div>
+      <div class="frow"><div class="flbl">Full name *</div><input class="finp" id="inv-name" placeholder="e.g. John Smith"></div>
+      <div class="frow"><div class="flbl">Email address *</div><input class="finp" type="email" id="inv-email" placeholder="john@goodliquid.com"></div>
+      <div class="frow"><div class="flbl">Password *</div><input class="finp" type="password" id="inv-password" placeholder="Min 8 characters"></div>
+      <div class="frow"><div class="flbl">Role</div>
+        <select class="fsel" id="inv-role">
+          <option value="sales">Sales</option>
+          <option value="admin">Admin</option>
+          <option value="viewer">Viewer</option>
+        </select>
+      </div>
+      <div id="inv-err" style="color:#e74c3c;font-size:12px;margin-bottom:8px;display:none"></div>
+      <div id="inv-ok" style="color:var(--teal);font-size:12px;margin-bottom:8px;display:none">✓ User created successfully!</div>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <button class="cbtn pri" onclick="createInvitedUser()" style="flex:1">Create User</button>
+        <button class="cbtn" onclick="closeInviteModal()">Cancel</button>
+      </div>
+    </div>`;
+  modal.addEventListener('click', e => { if(e.target === modal) closeInviteModal(); });
+  document.body.appendChild(modal);
+}
+
+function closeInviteModal(){
+  const m = document.getElementById('invite-user-modal');
+  if(m) m.classList.remove('show');
+}
+
+async function createInvitedUser(){
+  const name = document.getElementById('inv-name').value.trim();
+  const email = document.getElementById('inv-email').value.trim().toLowerCase();
+  const password = document.getElementById('inv-password').value;
+  const role = document.getElementById('inv-role').value;
+  const err = document.getElementById('inv-err');
+  const ok = document.getElementById('inv-ok');
+  err.style.display='none'; ok.style.display='none';
+
+  if(!name){ err.textContent='Name is required'; err.style.display='block'; return; }
+  if(!email || !email.includes('@')){ err.textContent='Valid email is required'; err.style.display='block'; return; }
+  if(password.length < 8){ err.textContent='Password must be at least 8 characters'; err.style.display='block'; return; }
+  if(users.find(u => u.email.toLowerCase() === email)){ err.textContent='A user with that email already exists'; err.style.display='block'; return; }
+
+  // Generate initials and color
+  const parts = name.split(' ');
+  const initials = parts.map(p => p[0]).join('').toUpperCase().substring(0,2);
+  const colors = ['#1a6fff','#00e5c0','#f5c842','#e74c3c','#a855f7','#1D9E75'];
+  const color = colors[Math.floor(Math.random() * colors.length)];
+
+  // Add to local users array
+  const newUser = {
+    id: 'u' + Date.now(),
+    name, email, password, role,
+    initials, color, tc: '#fff',
+    status: 'active', lastLogin: 'Never'
+  };
+  users.push(newUser);
+
+  // Save to Supabase
+  await syncPasswordToSupabase(email, password);
+
+  // Send welcome email via Mailgun
+  await sendMailgunEmail(
+    email,
+    'Welcome to Good Liquid Bev Co CRM',
+    'Hi ' + name + ',\n\nYour CRM account has been created.\n\nLogin at: goodliquidbevco.com\nEmail: ' + email + '\nPassword: ' + password + '\n\nPlease change your password after first login.\n\nBest,\nMike Krail\nGood Liquid Bev Co'
+  );
+
+  ok.style.display='block';
+  addNotification('👤 New user created: ' + name, email + ' — ' + role, 'success');
+
+  // Refresh users panel
+  setTimeout(() => {
+    closeInviteModal();
+    renderUsersPanel();
+  }, 1500);
+}
+
+function renderUsersPanel(){
+  const el = document.getElementById('users-list');
+  if(!el) return;
+  el.innerHTML = `<table class="ctbl"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Last Login</th><th>Actions</th></tr></thead><tbody>
+    ${users.map(u => `<tr>
+      <td style="font-weight:600;display:flex;align-items:center;gap:8px">
+        <div style="width:28px;height:28px;border-radius:50%;background:${u.color};color:${u.tc};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">${u.initials}</div>
+        ${u.name}
+      </td>
+      <td style="font-family:var(--ff-mono);font-size:11px">${u.email}</td>
+      <td><span class="cbdg ${u.role}">${u.role}</span></td>
+      <td style="font-size:11px;color:var(--muted)">${u.lastLogin||'Never'}</td>
+      <td style="display:flex;gap:6px">
+        ${u.email !== 'mike@goodliquid.com' ? `<button class="cbtn red" style="font-size:10px;padding:3px 8px" onclick="removeUser('${u.id}')">Remove</button>` : '<span style="font-size:10px;color:var(--muted)">Owner</span>'}
+      </td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+
+async function removeUser(id){
+  if(!confirm('Remove this user? They will lose access immediately.')) return;
+  const u = users.find(x => x.id === id);
+  if(!u) return;
+  users = users.filter(x => x.id !== id);
+
+  // Remove from Supabase
+  const sb = getSupabase();
+  if(sb) {
+    try { await sb.from('crm_users').delete().eq('email', u.email); } catch(e) {}
+  }
+
+  renderUsersPanel();
+  addNotification('👤 User removed: ' + u.name, u.email, 'warning');
+}
+
+// Hook renderUsersPanel into cNav
+const _origCNav2 = cNav;
+cNav = function(page, el) {
+  _origCNav2(page, el);
+  if(page === 'users') setTimeout(renderUsersPanel, 100);
+};
 </script>
 
 
