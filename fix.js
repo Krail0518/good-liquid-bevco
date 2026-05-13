@@ -748,6 +748,463 @@
     setTimeout(checkRecurringInvoices, 500);
   };
 
+
+  /* ══════════════════════════════════════════════════
+     21. INVOICE BUILDER v2.0
+  ══════════════════════════════════════════════════ */
+  /* ═══════════════════════════════════════════════════════
+     GOOD LIQUID — INVOICE BUILDER v2.0
+     Replaces the old single-dropdown invoice creator with:
+     - Unlimited line items
+     - Volume-based auto-pricing from rate card
+     - Manual line items (custom services)
+     - Production hours (AI calculates)
+     - Up to 4 manual add-ons
+     - Discount field (% rebases total)
+     - PDF export
+     - Save to CRM
+  ═══════════════════════════════════════════════════════ */
+
+  /* ── RATE CARD ─────────────────────────────────────── */
+  var GL_RATE_CARD = {
+    canning: {
+      tiers: [
+        {min:150,  max:339,  '12oz-standard':0.48, '12oz-sleek':0.48, '16oz-standard':0.58},
+        {min:340,  max:500,  '12oz-standard':0.43, '12oz-sleek':0.43, '16oz-standard':0.53},
+        {min:501,  max:999,  '12oz-standard':0.38, '12oz-sleek':0.38, '16oz-standard':0.48},
+        {min:1000, max:2499, '12oz-standard':0.35, '12oz-sleek':0.35, '16oz-standard':0.45},
+        {min:2500, max:4999, '12oz-standard':0.31, '12oz-sleek':0.31, '16oz-standard':0.41},
+        {min:5000, max:Infinity,'12oz-standard':0.28,'12oz-sleek':0.28,'16oz-standard':0.38}
+      ],
+      cansPerCase: 24,
+      getRate: function(format, cases){
+        var tier = this.tiers.find(function(t){ return cases>=t.min&&cases<=t.max; });
+        return tier ? tier[format] : this.tiers[0][format];
+      }
+    },
+    bottling: {
+      tiers: [
+        {min:220,  max:659,  perBottle:2.16},
+        {min:660,  max:1319, perBottle:1.91},
+        {min:1320, max:2639, perBottle:1.58},
+        {min:2640, max:5279, perBottle:1.41},
+        {min:5280, max:Infinity, perBottle:1.12}
+      ],
+      bottlesPerCase: 6,
+      getRate: function(cases){
+        var tier = this.tiers.find(function(t){ return cases>=t.min&&cases<=t.max; });
+        return tier ? tier.perBottle : this.tiers[0].perBottle;
+      }
+    },
+    rd: [
+      {id:'formulation',    label:'R&D Formulation',       price:1000, unit:'/SKU', note:'3 iterations included'},
+      {id:'benchtop',       label:'Benchtop Verification',  price:500,  unit:'/SKU', note:'Required for co-packing'},
+      {id:'ip-license',     label:'IP License',             price:6000, unit:'/yr',  note:'Annual licensing'},
+      {id:'ip-purchase',    label:'IP Purchase',            price:15000,unit:'',     note:'Full ownership'},
+      {id:'materials',      label:'Materials Sourcing',     price:null, unit:'cost+10%', note:'Transparent fee'},
+    ],
+    production: {hourlyRate: 125, fullDay: 8}
+  };
+
+  /* ── HELPERS ────────────────────────────────────────── */
+  function glFmt(n){ return '$'+Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function glNextInvId(){
+    var existing = (window.invoices||[]).map(function(i){ return parseInt(i.id.replace(/\D/g,''))||0; });
+    var max = existing.length ? Math.max.apply(null,existing) : 1000;
+    return 'GL-'+(max+1);
+  }
+
+  /* ── INVOICE STATE ─────────────────────────────────── */
+  var glInvState = {
+    clientId: '',
+    lines: [],    // {id, type, description, qty, unit, unitPrice, total}
+    addons: [{desc:'',price:''},{desc:'',price:''},{desc:'',price:''},{desc:'',price:''}],
+    discount: 0,  // percentage
+    notes: '',
+    date: new Date().toISOString().split('T')[0],
+    dueDate: new Date().toISOString().split('T')[0]
+  };
+
+  function glInvSubtotal(){
+    var lines = glInvState.lines.reduce(function(s,l){ return s+(l.total||0); },0);
+    var addons = glInvState.addons.reduce(function(s,a){ return s+(parseFloat(a.price)||0); },0);
+    return lines + addons;
+  }
+  function glInvDiscount(sub){ return sub * (glInvState.discount/100); }
+  function glInvTotal(){ var s=glInvSubtotal(); return s - glInvDiscount(s); }
+
+  /* ── OPEN INVOICE BUILDER ──────────────────────────── */
+  window.openNewInvoiceBuilder = function(){
+    var existing = document.getElementById('gl-inv-builder');
+    if(existing){ existing.classList.add('show'); glRenderInvBuilder(); return; }
+
+    glInvState = {clientId:'',lines:[],addons:[{desc:'',price:''},{desc:'',price:''},{desc:'',price:''},{desc:'',price:''}],discount:0,notes:'',date:new Date().toISOString().split('T')[0],dueDate:new Date().toISOString().split('T')[0]};
+
+    var ov = document.createElement('div');
+    ov.id = 'gl-inv-builder';
+    ov.className = 'modal-ov show';
+    ov.style.cssText = 'align-items:flex-start;padding:20px;overflow-y:auto';
+    ov.innerHTML = '<div style="background:#0a1628;border:1px solid rgba(0,229,192,.18);border-radius:18px;width:100%;max-width:820px;margin:0 auto;overflow:hidden">' +
+      '<div style="background:#142238;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.07)">' +
+        '<div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:var(--white)">NEW INVOICE</div>' +
+        '<button onclick="document.getElementById(\'gl-inv-builder\').classList.remove(\'show\')" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer">✕</button>' +
+      '</div>' +
+      '<div style="padding:24px" id="gl-inv-body"></div>' +
+    '</div>';
+    document.body.appendChild(ov);
+    glRenderInvBuilder();
+  };
+
+  /* ── RENDER BUILDER ────────────────────────────────── */
+  function glRenderInvBuilder(){
+    var body = document.getElementById('gl-inv-body');
+    if(!body) return;
+    var clients = window.clients||[];
+
+    body.innerHTML =
+
+    /* Header fields */
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px">' +
+      '<div><div class="flbl">Client *</div>' +
+        '<select class="fsel" id="ginv-client" onchange="glInvState.clientId=this.value;glRenderInvBuilder()" style="width:100%">' +
+          '<option value="">Select client…</option>' +
+          clients.map(function(c){ return '<option value="'+c.id+'"'+(glInvState.clientId===c.id?' selected':'')+'>'+c.name+'</option>'; }).join('') +
+        '</select></div>' +
+      '<div><div class="flbl">Invoice date</div><input class="finp" type="date" id="ginv-date" value="'+glInvState.date+'" onchange="glInvState.date=this.value"></div>' +
+      '<div><div class="flbl">Invoice #</div><input class="finp" id="ginv-id" value="'+glNextInvId()+'" readonly style="opacity:.6"></div>' +
+    '</div>' +
+
+    /* Line items */
+    '<div style="font-size:11px;letter-spacing:2px;color:var(--teal);margin-bottom:10px">LINE ITEMS</div>' +
+    '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:10px;overflow:hidden;margin-bottom:12px">' +
+      '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 36px;gap:0;background:rgba(255,255,255,.04);padding:8px 12px">' +
+        '<div style="font-size:10px;letter-spacing:1px;color:var(--muted)">DESCRIPTION</div>' +
+        '<div style="font-size:10px;letter-spacing:1px;color:var(--muted);text-align:center">QTY</div>' +
+        '<div style="font-size:10px;letter-spacing:1px;color:var(--muted);text-align:center">UNIT PRICE</div>' +
+        '<div style="font-size:10px;letter-spacing:1px;color:var(--muted);text-align:right">TOTAL</div>' +
+        '<div></div>' +
+      '</div>' +
+      glInvState.lines.map(function(l,i){ return glRenderLine(l,i); }).join('') +
+      (glInvState.lines.length===0?'<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">No line items yet. Add one below.</div>':'') +
+    '</div>' +
+
+    /* Add line buttons */
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px">' +
+      '<button onclick="glAddLine(\'canning\')" class="cbtn" style="font-size:11px">+ 🥫 Canning</button>' +
+      '<button onclick="glAddLine(\'bottling\')" class="cbtn" style="font-size:11px">+ 🍾 Bottling</button>' +
+      '<button onclick="glAddLine(\'rd\')" class="cbtn" style="font-size:11px">+ 🧪 R&D / IP</button>' +
+      '<button onclick="glAddLine(\'hours\')" class="cbtn" style="font-size:11px">+ ⏱ Production Hours</button>' +
+      '<button onclick="glAddLine(\'custom\')" class="cbtn" style="font-size:11px;background:rgba(0,229,192,.08);border-color:rgba(0,229,192,.3);color:var(--teal)">+ ✏️ Custom Line</button>' +
+    '</div>' +
+
+    /* Add-ons */
+    '<div style="font-size:11px;letter-spacing:2px;color:var(--teal);margin-bottom:10px">ADD-ONS (manual)</div>' +
+    '<div style="margin-bottom:20px">' +
+      glInvState.addons.map(function(a,i){
+        return '<div style="display:grid;grid-template-columns:1fr auto;gap:8px;margin-bottom:8px">' +
+          '<input class="finp" placeholder="Add-on description (e.g. Kratom filter, Label application)" value="'+a.desc+'" oninput="glInvState.addons['+i+'].desc=this.value;glUpdateTotals()" style="font-size:13px">' +
+          '<input class="finp" type="number" placeholder="$0.00" value="'+(a.price||'')+'" oninput="glInvState.addons['+i+'].price=this.value;glUpdateTotals()" style="width:120px;font-size:13px">' +
+        '</div>';
+      }).join('') +
+    '</div>' +
+
+    /* Notes */
+    '<div style="margin-bottom:20px"><div class="flbl">Notes / payment instructions</div>' +
+      '<textarea class="finp" rows="2" placeholder="e.g. 50% deposit required before production begins." oninput="glInvState.notes=this.value" style="resize:none;font-size:13px">'+glInvState.notes+'</textarea></div>' +
+
+    /* Totals */
+    '<div style="display:grid;grid-template-columns:1fr 260px;gap:20px;align-items:end;margin-bottom:20px">' +
+      '<div>' +
+        '<div class="flbl">Discount (%)</div>' +
+        '<div style="display:flex;align-items:center;gap:8px">' +
+          '<input class="finp" type="number" min="0" max="100" placeholder="0" value="'+(glInvState.discount||'')+'" oninput="glInvState.discount=parseFloat(this.value)||0;glUpdateTotals()" style="width:100px;font-size:14px">' +
+          '<span style="font-size:13px;color:var(--muted)">% off subtotal</span>' +
+        '</div>' +
+      '</div>' +
+      '<div id="ginv-totals-box" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:16px">' +
+        glRenderTotalsBox() +
+      '</div>' +
+    '</div>' +
+
+    /* Actions */
+    '<div style="display:flex;gap:10px;padding-top:16px;border-top:1px solid rgba(255,255,255,.07)">' +
+      '<button onclick="glSaveInvoice()" class="cbtn pri" style="flex:1;font-size:14px">💾 Save Invoice</button>' +
+      '<button onclick="glExportPDF()" class="cbtn" style="flex:1;font-size:14px;background:rgba(0,229,192,.08);border-color:rgba(0,229,192,.3);color:var(--teal)">📄 Save & Export PDF</button>' +
+      '<button onclick="document.getElementById(\'gl-inv-builder\').classList.remove(\'show\')" class="cbtn" style="font-size:14px">Cancel</button>' +
+    '</div>';
+  }
+
+  function glRenderTotalsBox(){
+    var sub = glInvSubtotal();
+    var disc = glInvDiscount(sub);
+    var total = glInvTotal();
+    return '<div style="font-size:12px;color:var(--muted);display:flex;justify-content:space-between;margin-bottom:8px"><span>Subtotal</span><span style="color:var(--white)">'+glFmt(sub)+'</span></div>' +
+      (disc>0?'<div style="font-size:12px;color:#e74c3c;display:flex;justify-content:space-between;margin-bottom:8px"><span>Discount ('+glInvState.discount+'%)</span><span>−'+glFmt(disc)+'</span></div>':'') +
+      '<div style="display:flex;justify-content:space-between;padding-top:8px;border-top:1px solid rgba(255,255,255,.07)">' +
+        '<span style="font-size:14px;font-weight:700;color:var(--white)">TOTAL</span>' +
+        '<span style="font-family:var(--ff-disp);font-size:22px;background:linear-gradient(135deg,var(--teal),#1a6fff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">'+glFmt(total)+'</span>' +
+      '</div>' +
+      '<div style="font-size:10px;color:var(--muted);margin-top:6px;text-align:right">Due upon receipt</div>';
+  }
+
+  function glUpdateTotals(){
+    var box = document.getElementById('ginv-totals-box');
+    if(box) box.innerHTML = glRenderTotalsBox();
+    // Update line totals
+    glInvState.lines.forEach(function(l,i){
+      var tot = document.getElementById('ginv-line-total-'+i);
+      if(tot) tot.textContent = glFmt(l.total||0);
+    });
+  }
+
+  function glRenderLine(l,i){
+    return '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 36px;gap:0;padding:10px 12px;border-top:1px solid rgba(255,255,255,.05);align-items:center">' +
+      '<div>' +
+        '<div style="font-size:13px;font-weight:600;color:var(--white);margin-bottom:2px">'+l.description+'</div>' +
+        (l.note?'<div style="font-size:10px;color:var(--muted)">'+l.note+'</div>':'') +
+        (l.editable?'<input class="finp" placeholder="Description" value="'+l.description+'" oninput="glInvState.lines['+i+'].description=this.value" style="margin-top:4px;font-size:12px;padding:4px 8px">':'') +
+      '</div>' +
+      '<div style="text-align:center">' +
+        '<input class="finp" type="number" min="0" value="'+(l.qty||'')+'" placeholder="0" oninput="glUpdateLine('+i+',\'qty\',this.value)" style="width:80px;text-align:center;font-size:13px;padding:4px">' +
+        (l.unit?'<div style="font-size:10px;color:var(--muted);margin-top:2px">'+l.unit+'</div>':'') +
+      '</div>' +
+      '<div style="text-align:center">' +
+        '<input class="finp" type="number" min="0" step="0.01" value="'+(l.unitPrice||'')+'" placeholder="0.00" oninput="glUpdateLine('+i+',\'unitPrice\',this.value)" style="width:90px;text-align:center;font-size:13px;padding:4px">' +
+      '</div>' +
+      '<div id="ginv-line-total-'+i+'" style="text-align:right;font-weight:700;color:var(--teal);font-size:13px">'+glFmt(l.total||0)+'</div>' +
+      '<div style="text-align:center"><button onclick="glRemoveLine('+i+')" style="background:none;border:none;color:rgba(231,76,60,.6);cursor:pointer;font-size:16px;padding:4px">✕</button></div>' +
+    '</div>';
+  }
+
+  /* ── LINE MANAGEMENT ─────────────────────────────── */
+  window.glAddLine = function(type){
+    var line = {id:'l'+Date.now(),type:type,description:'',qty:0,unit:'',unitPrice:0,total:0,editable:false,note:''};
+
+    if(type==='canning'){
+      line.description='Canning — 12oz Standard';
+      line.unit='cases';
+      line.note='Auto-priced from rate card';
+      line.canType='12oz-standard';
+      line.editable=false;
+    } else if(type==='bottling'){
+      line.description='Bottle Filling — 750ml';
+      line.unit='cases';
+      line.note='Auto-priced from rate card';
+    } else if(type==='rd'){
+      line.description='R&D Formulation';
+      line.unitPrice=1000;
+      line.qty=1;
+      line.unit='SKU';
+      line.total=1000;
+      line.note='3 iterations included';
+    } else if(type==='hours'){
+      line.description='Production Hours';
+      line.unitPrice=125;
+      line.unit='hrs';
+      line.note='$125/hr · Full day (8hr) = $1,000';
+    } else {
+      line.description='';
+      line.editable=true;
+      line.unit='';
+    }
+
+    glInvState.lines.push(line);
+    glRenderInvBuilder();
+  };
+
+  window.glRemoveLine = function(i){
+    glInvState.lines.splice(i,1);
+    glRenderInvBuilder();
+  };
+
+  window.glUpdateLine = function(i,field,val){
+    var line = glInvState.lines[i];
+    if(!line) return;
+    line[field] = parseFloat(val)||0;
+
+    // Auto-price canning
+    if(line.type==='canning' && line.qty>0){
+      var cases = line.qty;
+      var format = line.canType||'12oz-standard';
+      line.unitPrice = GL_RATE_CARD.canning.getRate(format,cases);
+      line.note = 'Rate: '+glFmt(line.unitPrice)+'/can ('+cases+' cases)';
+      // Update unit price display
+      var upEl = document.querySelector('[oninput*="glUpdateLine('+i+',\'unitPrice\'"]');
+      if(upEl) upEl.value = line.unitPrice.toFixed(4);
+    }
+
+    // Auto-price bottling
+    if(line.type==='bottling' && line.qty>0){
+      var bcases = line.qty;
+      line.unitPrice = GL_RATE_CARD.bottling.getRate(bcases) * GL_RATE_CARD.bottling.bottlesPerCase;
+      line.note = 'Rate: '+glFmt(GL_RATE_CARD.bottling.getRate(bcases))+'/bottle';
+      var bEl = document.querySelector('[oninput*="glUpdateLine('+i+',\'unitPrice\'"]');
+      if(bEl) bEl.value = line.unitPrice.toFixed(2);
+    }
+
+    line.total = (line.qty||0) * (line.unitPrice||0);
+    glUpdateTotals();
+  };
+
+  /* ── SAVE INVOICE ────────────────────────────────── */
+  window.glSaveInvoice = function(){
+    if(!glInvState.clientId){ alert('Please select a client'); return; }
+    if(!glInvState.lines.length && !glInvState.addons.some(function(a){ return a.desc&&a.price; })){ alert('Add at least one line item'); return; }
+
+    var client = (window.clients||[]).find(function(c){ return c.id===glInvState.clientId; });
+    var invId = document.getElementById('ginv-id')?.value || glNextInvId();
+    var total = glInvTotal();
+
+    var allLines = glInvState.lines.map(function(l){
+      return {desc:l.description,qty:l.qty,unitPrice:l.unitPrice,total:l.total,unit:l.unit};
+    }).concat(
+      glInvState.addons.filter(function(a){ return a.desc&&a.price; }).map(function(a){
+        return {desc:a.desc,qty:1,unitPrice:parseFloat(a.price),total:parseFloat(a.price),unit:''};
+      })
+    );
+
+    var inv = {
+      id: invId,
+      client: glInvState.clientId,
+      clientName: client?.name||'',
+      clientEmail: client?.email||'',
+      svc: allLines.map(function(l){ return l.desc; }).join(', '),
+      lines: allLines,
+      addons: glInvState.addons.filter(function(a){ return a.desc&&a.price; }),
+      discount: glInvState.discount,
+      subtotal: glInvSubtotal(),
+      discountAmt: glInvDiscount(glInvSubtotal()),
+      amount: total,
+      notes: glInvState.notes,
+      date: glInvState.date,
+      status: 'pending',
+      paymentTerms: 'Due upon receipt'
+    };
+
+    window.invoices = window.invoices||[];
+    window.invoices.unshift(inv);
+    if(typeof renderInvoices==='function') renderInvoices();
+    if(typeof addNotification==='function') addNotification('🧾 Invoice saved: '+invId,client?.name+' · '+glFmt(total),'success');
+    document.getElementById('gl-inv-builder')?.classList.remove('show');
+    return inv;
+  };
+
+  /* ── EXPORT PDF ──────────────────────────────────── */
+  window.glExportPDF = async function(){
+    var inv = window.glSaveInvoice();
+    if(!inv) return;
+
+    var client = (window.clients||[]).find(function(c){ return c.id===inv.client; });
+    var sub = inv.subtotal;
+    var disc = inv.discountAmt;
+    var total = inv.amount;
+
+    // Build HTML for PDF
+    var html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'+
+      '<style>'+
+        'body{font-family:Arial,sans-serif;margin:0;padding:40px;color:#1a1a2e;font-size:13px}'+
+        '.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:40px}'+
+        '.brand{font-size:28px;font-weight:900;letter-spacing:2px;color:#0a1628}'+
+        '.brand span{color:#00e5c0}'+
+        '.inv-meta{text-align:right;font-size:12px;color:#666}'+
+        '.inv-meta h2{font-size:22px;color:#0a1628;margin:0 0 4px}'+
+        '.section{margin-bottom:24px}'+
+        '.label{font-size:10px;letter-spacing:2px;color:#999;text-transform:uppercase;margin-bottom:4px}'+
+        '.value{font-size:13px;color:#1a1a2e;font-weight:600}'+
+        'table{width:100%;border-collapse:collapse;margin-bottom:20px}'+
+        'th{background:#0a1628;color:#fff;padding:10px 12px;text-align:left;font-size:11px;letter-spacing:1px}'+
+        'td{padding:10px 12px;border-bottom:1px solid #eee;font-size:12px}'+
+        'tr:nth-child(even) td{background:#f9f9f9}'+
+        '.tot-row td{border-bottom:none;font-weight:600}'+
+        '.grand-total{font-size:18px;color:#00e5c0;font-weight:900}'+
+        '.footer{margin-top:40px;padding-top:20px;border-top:2px solid #eee;font-size:11px;color:#999;display:flex;justify-content:space-between}'+
+        '.badge{display:inline-block;background:#e8fff9;border:1px solid #00e5c0;color:#00695c;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:1px}'+
+      '</style></head><body>'+
+
+      '<div class="header">'+
+        '<div>'+
+          '<div class="brand">GOOD <span>LIQUID</span> BEV CO</div>'+
+          '<div style="font-size:11px;color:#666;margin-top:6px;line-height:1.8">'+
+            '2011 51st Ave E, Unit 100<br>Palmetto, FL 34221<br>'+
+            'Mike@GoodLiquid.com · (803) 493-5065<br>'+
+            'goodliquidbevco.com'+
+          '</div>'+
+          '<div style="margin-top:10px">'+
+            '<span class="badge">GMP CERTIFIED</span>&nbsp;'+
+            '<span class="badge">PCQI CERTIFIED</span>&nbsp;'+
+            '<span class="badge">HACCP CERTIFIED</span>'+
+          '</div>'+
+        '</div>'+
+        '<div class="inv-meta">'+
+          '<h2>INVOICE</h2>'+
+          '<div><b>Invoice #:</b> '+inv.id+'</div>'+
+          '<div><b>Date:</b> '+inv.date+'</div>'+
+          '<div><b>Terms:</b> Due upon receipt</div>'+
+        '</div>'+
+      '</div>'+
+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:32px">'+
+        '<div class="section">'+
+          '<div class="label">Bill To</div>'+
+          '<div class="value">'+(client?.name||inv.clientName||'')+'</div>'+
+          '<div style="color:#666;font-size:12px">'+(client?.email||inv.clientEmail||'')+'</div>'+
+        '</div>'+
+        '<div class="section">'+
+          '<div class="label">Payment Terms</div>'+
+          '<div class="value">Due upon receipt</div>'+
+        '</div>'+
+      '</div>'+
+
+      '<table>'+
+        '<thead><tr><th>Description</th><th style="text-align:center">Qty</th><th style="text-align:center">Unit</th><th style="text-align:right">Unit Price</th><th style="text-align:right">Total</th></tr></thead>'+
+        '<tbody>'+
+          inv.lines.map(function(l){
+            return '<tr><td>'+l.desc+'</td>'+
+              '<td style="text-align:center">'+Number(l.qty||0).toLocaleString()+'</td>'+
+              '<td style="text-align:center">'+(l.unit||'')+'</td>'+
+              '<td style="text-align:right">'+glFmt(l.unitPrice||0)+'</td>'+
+              '<td style="text-align:right;font-weight:600">'+glFmt(l.total||0)+'</td></tr>';
+          }).join('')+
+          '<tr class="tot-row" style="background:#f5f5f5"><td colspan="4" style="text-align:right;font-weight:600">Subtotal</td><td style="text-align:right;font-weight:700">'+glFmt(sub)+'</td></tr>'+
+          (disc>0?'<tr class="tot-row"><td colspan="4" style="text-align:right;color:#c0392b">Discount ('+inv.discount+'%)</td><td style="text-align:right;color:#c0392b;font-weight:700">−'+glFmt(disc)+'</td></tr>':'') +
+          '<tr class="tot-row" style="background:#e8fff9"><td colspan="4" style="text-align:right;font-size:15px;font-weight:700">TOTAL DUE</td><td style="text-align:right"><span class="grand-total">'+glFmt(total)+'</span></td></tr>'+
+        '</tbody>'+
+      '</table>'+
+
+      (inv.notes?'<div style="background:#f9f9f9;border:1px solid #eee;border-radius:8px;padding:14px;margin-bottom:20px"><div class="label">Notes</div><div style="font-size:12px;color:#444;line-height:1.6">'+inv.notes+'</div></div>':'')+
+
+      '<div class="footer">'+
+        '<div><b>Good Liquid Bev Co</b><br>Thank you for your business.</div>'+
+        '<div style="text-align:right">Questions? Contact Mike at Mike@GoodLiquid.com<br>(803) 493-5065</div>'+
+      '</div>'+
+
+      '</body></html>';
+
+    // Open in new window and print to PDF
+    var win = window.open('','_blank','width=900,height=700');
+    win.document.write(html);
+    win.document.close();
+    win.onload = function(){ win.focus(); win.print(); };
+    if(typeof addNotification==='function') addNotification('📄 PDF generated','Invoice '+inv.id+' ready to save','success');
+  };
+
+  /* ── WIRE INTO CRM ───────────────────────────────── */
+  // Replace the old new-invoice page trigger
+  window.openNewInvoice = window.openNewInvoiceBuilder;
+
+  // Also intercept the "+ New Invoice" sidebar click
+  document.addEventListener('click',function(e){
+    var el = e.target.closest('.cni');
+    if(el && el.textContent.includes('New Invoice')){
+      e.preventDefault();
+      e.stopPropagation();
+      window.openNewInvoiceBuilder();
+    }
+  },{capture:true});
+
+  console.log('[GL] Invoice Builder v2.0 loaded');
+
+
   console.log('[GL] fix.js v2.0 loaded — all features active');
 
 })();
