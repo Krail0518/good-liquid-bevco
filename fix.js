@@ -896,3 +896,117 @@
   console.log('[GL] Can format patch v2 loaded');
 
 })();
+
+/* ==============================================
+   CAN FORMAT PATCH v3 — appended to fix.js
+   ============================================== */
+(function patchCanFormat() {
+  var CAN_FORMATS = [
+    { value: '12oz-standard',   label: '12oz Standard',   canCost: 0.32 },
+    { value: '12oz-sleek',      label: '12oz Sleek',      canCost: 0.34 },
+    { value: '16oz-standard',   label: '16oz Standard',   canCost: 0.36 },
+    { value: '19.2oz-standard', label: '19.2oz Standard', canCost: 0.38 }
+  ];
+  var CANS_PER_CASE = 24;
+  var MFG_TIERS = [[1000,16],[500,20],[300,24],[150,28]];
+
+  function getMfgRate(cases) {
+    for (var i = 0; i < MFG_TIERS.length; i++) {
+      if (cases >= MFG_TIERS[i][0]) return MFG_TIERS[i][1];
+    }
+    return 28;
+  }
+
+  function calcBreakdown(cases, format) {
+    var fmt  = CAN_FORMATS.find(function(f) { return f.value === format; }) || CAN_FORMATS[0];
+    var cans = cases * CANS_PER_CASE;
+    var tot  = getMfgRate(cases) * cases + fmt.canCost * cans + 0.055 * cans;
+    return { total: tot, perCase: tot / cases, perCan: tot / cans, cans: cans };
+  }
+
+  function usd(n, dec) {
+    return '$' + n.toLocaleString('en-US', {
+      minimumFractionDigits:  dec === undefined ? 2 : dec,
+      maximumFractionDigits:  dec === undefined ? 2 : dec
+    });
+  }
+
+  function getLineTable() {
+    var body = document.getElementById('gl-inv-body');
+    if (!body) return null;
+    for (var i = 0; i < body.children.length; i++) {
+      var c = body.children[i];
+      if (c.textContent.indexOf('DESCRIPTION') !== -1 &&
+          c.textContent.indexOf('UNIT PRICE')  !== -1) return c;
+    }
+    return null;
+  }
+
+  window.glCanFormatChange = function(uid) {
+    var ce = document.getElementById(uid + '-cases');
+    var fe = document.getElementById(uid + '-format');
+    if (!ce || !fe) return;
+    var b = calcBreakdown(Math.max(1, parseInt(ce.value) || 150), fe.value);
+    function set(id, v) { var el = document.getElementById(id); if (el) el.textContent = v; }
+    set(uid + '-total', usd(b.total));
+    set(uid + '-pcase', usd(b.perCase) + '/case');
+    set(uid + '-pcan',  usd(b.perCan, 4) + '/can');
+    set(uid + '-cans',  b.cans.toLocaleString() + ' cans');
+    if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
+  };
+
+  window.glRemoveCanLine = function(uid) {
+    var el = document.getElementById(uid);
+    if (el) el.remove();
+    if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
+  };
+
+  var _orig = window.glAddLine;
+  window.glAddLine = function(type) {
+    if (type !== 'canning') { if (typeof _orig === 'function') _orig(type); return; }
+    var table = getLineTable();
+    if (!table) { if (typeof _orig === 'function') _orig(type); return; }
+
+    var uid  = 'gl-can-' + Date.now();
+    var def  = '12oz-standard';
+    var b    = calcBreakdown(150, def);
+    var opts = CAN_FORMATS.map(function(f) {
+      return '<option value="' + f.value + '"' + (f.value === def ? ' selected' : '') + '>' + f.label + '</option>';
+    }).join('');
+
+    var ROW_STYLE = 'display:grid;grid-template-columns:2fr 1fr 1fr 1fr 36px;gap:0;' +
+      'padding:10px 12px;border-top:1px solid rgba(255,255,255,.05);align-items:center';
+
+    var SEL_STYLE = 'background:#1a2a3a;color:#fff;border:1px solid rgba(0,229,192,.4);' +
+      'border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;width:100%;max-width:160px';
+
+    var INP_STYLE = 'width:60px;background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.18);' +
+      'border-radius:6px;padding:3px 6px;font-size:12px;font-weight:600;text-align:center';
+
+    var row = document.createElement('div');
+    row.id = uid;
+    row.setAttribute('style', ROW_STYLE);
+    row.innerHTML =
+      '<div>' +
+        '<div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Canning</div>' +
+        '<select id="' + uid + '-format" onchange="window.glCanFormatChange(\'' + uid + '\')" style="' + SEL_STYLE + '">' + opts + '</select>' +
+      '</div>' +
+      '<div style="text-align:center">' +
+        '<input id="' + uid + '-cases" type="number" min="1" value="150" onchange="window.glCanFormatChange(\'' + uid + '\')" style="' + INP_STYLE + '"/>' +
+        '<div id="' + uid + '-cans" style="font-size:10px;color:var(--muted);margin-top:3px">' + b.cans.toLocaleString() + ' cans</div>' +
+      '</div>' +
+      '<div style="text-align:right;padding-right:4px">' +
+        '<div id="' + uid + '-pcase" style="font-size:12px;color:#fff;font-weight:600">' + usd(b.perCase) + '/case</div>' +
+        '<div id="' + uid + '-pcan"  style="font-size:10px;color:var(--muted);margin-top:2px">' + usd(b.perCan, 4) + '/can</div>' +
+      '</div>' +
+      '<div id="' + uid + '-total" style="text-align:right;font-size:14px;font-weight:700;color:#fff">' + usd(b.total) + '</div>' +
+      '<div style="text-align:center">' +
+        '<button onclick="window.glRemoveCanLine(\'' + uid + '\')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;opacity:.6;padding:0">x</button>' +
+      '</div>';
+
+    table.appendChild(row);
+    if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
+  };
+
+  console.log('[GL] Can format patch v3 loaded');
+}());
