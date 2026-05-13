@@ -28,6 +28,53 @@
     });
   }
 
+
+  /* ── PERMISSIONS FIX ────────────────────────────────
+     Override the PERMISSIONS object and can() function
+     so admin always has access to everything.
+  ────────────────────────────────────────────────── */
+  var ALL_PAGES = ['dashboard','clients','pipeline','invoices','invoice-detail',
+    'new-invoice','referrals','referrers','activity','users','customers',
+    'calendar','production-cal','tasks','documents','inventory',
+    'announcements','time-tracker','reports','ai-settings'];
+
+  // Override PERMISSIONS
+  if(window.PERMISSIONS){
+    window.PERMISSIONS.admin = ALL_PAGES;
+    window.PERMISSIONS.sales = ['dashboard','clients','pipeline','invoices',
+      'new-invoice','referrals','referrers','activity','calendar',
+      'production-cal','tasks','announcements','reports'];
+    window.PERMISSIONS.viewer = ['dashboard','clients','invoices','activity'];
+  } else {
+    window.PERMISSIONS = {
+      admin: ALL_PAGES,
+      sales: ['dashboard','clients','pipeline','invoices','new-invoice',
+        'referrals','referrers','activity','calendar','production-cal',
+        'tasks','announcements','reports'],
+      viewer: ['dashboard','clients','invoices','activity']
+    };
+  }
+
+  // Override can() function to use updated PERMISSIONS
+  window.can = function(page){
+    var u = window.currentUser;
+    if(!u) return false;
+    if(u.role === 'admin') return true; // admin always has access
+    var allowed = (window.PERMISSIONS[u.role] || []);
+    return allowed.includes(page);
+  };
+
+  // Override cNav to use fixed can()
+  var _origCNav = window.cNav;
+  window.cNav = function(page, el){
+    if(!window.can(page)){
+      if(typeof addNotification === 'function')
+        addNotification('🔒 Access denied', 'You do not have permission to view ' + page, 'warning');
+      return;
+    }
+    if(typeof _origCNav === 'function') _origCNav(page, el);
+  };
+
   /* ══════════════════════════════════════════════════
      1. FIX DOM STRUCTURE
      crm-body was trapped inside crm-top
