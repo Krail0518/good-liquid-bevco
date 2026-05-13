@@ -4,6 +4,30 @@
 (function() {
   'use strict';
 
+
+  /* ── 0. ENSURE USERS ARRAY IS POPULATED ─────────── */
+  if (!window.users || window.users.length === 0) {
+    window.users = [
+      {
+        id: 'u1', name: 'Mike Krail', email: 'mike@goodliquid.com',
+        password: 'GL2026admin', role: 'admin', status: 'active',
+        initials: 'MK', color: '#f5c842', tc: '#0a1628', lastLogin: 'Never'
+      },
+      {
+        id: 'u2', name: 'Sandra Krail', email: 'sandra@goodliquid.com',
+        password: 'GL2026ops', role: 'sales', status: 'active',
+        initials: 'SK', color: '#1a6fff', tc: '#fff', lastLogin: 'Never'
+      }
+    ];
+    console.log('[GL] Users array initialized from fix.js');
+  }
+
+  /* Always ensure Mike is admin even if array exists */
+  if (window.users) {
+    var mike = window.users.find(function(u){ return u.email === 'mike@goodliquid.com'; });
+    if (mike) mike.role = 'admin';
+  }
+
   /* ── 1. FIX BROKEN HTML STRUCTURE ─────────────────
      crm-body, notif-panel, cnav-overlay were trapped
      inside crm-top due to a missing </div> tag.
