@@ -7,6 +7,20 @@
 (function () {
   'use strict';
 
+
+  /* ── CSS FIX — ensure dynamic modals always show above CRM panel ── */
+  (function(){
+    var style = document.createElement('style');
+    style.textContent = [
+      '#gl-inv-builder { position: fixed !important; inset: 0 !important; z-index: 650 !important; background: rgba(6,13,26,.95) !important; backdrop-filter: blur(16px); display: none; align-items: flex-start; justify-content: center; padding: 20px; overflow-y: auto; }',
+      '#gl-inv-builder.show { display: flex !important; }',
+      '#client-timeline-modal { z-index: 660 !important; }',
+      '#recurring-modal { z-index: 660 !important; }',
+      '#invite-user-modal { z-index: 660 !important; }'
+    ].join('\n');
+    document.head.appendChild(style);
+  })();
+
   /* ══════════════════════════════════════════════════
      0. CORE USERS — always defined
   ══════════════════════════════════════════════════ */
