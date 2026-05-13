@@ -1010,3 +1010,31 @@
 
   console.log('[GL] Can format patch v3 loaded');
 }());
+
+
+/* === CAN FORMAT PATCH FINAL === */
+(function patchCanFormat(){
+  var CAN_FORMATS=[{value:'12oz-standard',label:'12oz Standard',canCost:0.32},{value:'12oz-sleek',label:'12oz Sleek',canCost:0.34},{value:'16oz-standard',label:'16oz Standard',canCost:0.36},{value:'19.2oz-standard',label:'19.2oz Standard',canCost:0.38}];
+  var CANS=24,TIERS=[[1000,16],[500,20],[300,24],[150,28]];
+  function mfg(c){for(var i=0;i<TIERS.length;i++)if(c>=TIERS[i][0])return TIERS[i][1];return 28;}
+  function calc(cases,fmt){var f=CAN_FORMATS.find(function(x){return x.value===fmt;})||CAN_FORMATS[0];var cans=cases*CANS,tot=mfg(cases)*cases+f.canCost*cans+0.055*cans;return{total:tot,perCase:tot/cases,perCan:tot/cans,cans:cans};}
+  function usd(n,d){return'$'+n.toLocaleString('en-US',{minimumFractionDigits:d===undefined?2:d,maximumFractionDigits:d===undefined?2:d});}
+  function getTable(){var b=document.getElementById('gl-inv-body');return b?b.children[2]:null;}
+  window.glCanFormatChange=function(uid){var ce=document.getElementById(uid+'-cases'),fe=document.getElementById(uid+'-format');if(!ce||!fe)return;var b=calc(Math.max(1,parseInt(ce.value)||150),fe.value);function s(id,v){var e=document.getElementById(id);if(e)e.textContent=v;}s(uid+'-total',usd(b.total));s(uid+'-pcase',usd(b.perCase)+'/case');s(uid+'-pcan',usd(b.perCan,4)+'/can');s(uid+'-cans',b.cans.toLocaleString()+' cans');if(typeof window.glCalcInvTotal==='function')window.glCalcInvTotal();};
+  window.glRemoveCanLine=function(uid){var e=document.getElementById(uid);if(e)e.remove();if(typeof window.glCalcInvTotal==='function')window.glCalcInvTotal();};
+  var _prev=window.glAddLine;
+  window.glAddLine=function(type){
+    if(type!=='canning'){if(typeof _prev==='function')_prev(type);return;}
+    var tbl=getTable();if(!tbl)return;
+    var uid='glcan'+Date.now(),def='12oz-standard',b=calc(150,def);
+    var opts=CAN_FORMATS.map(function(f){return'<option value="'+f.value+'"'+(f.value===def?' selected':'')+'>'+f.label+'</option>';}).join('');
+    var RS='display:grid;grid-template-columns:2fr 1fr 1fr 1fr 36px;gap:0;padding:10px 12px;border-top:1px solid rgba(255,255,255,.05);align-items:start';
+    var SS='background:#1a2a3a;color:#fff;border:1px solid rgba(0,229,192,.4);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;width:100%;max-width:160px';
+    var SI='width:60px;background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:6px;padding:3px 6px;font-size:12px;font-weight:600;text-align:center';
+    var row=document.createElement('div');row.id=uid;row.setAttribute('style',RS);
+    row.innerHTML='<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Canning</div><select id="'+uid+'-format" onchange="window.glCanFormatChange(\"'+uid+'\")" style="'+SS+'">'+opts+'</select></div>'+'<div style="text-align:center"><input id="'+uid+'-cases" type="number" min="1" value="150" onchange="window.glCanFormatChange(\"'+uid+'\")" style="'+SI+'"/><div id="'+uid+'-cans" style="font-size:10px;color:var(--muted);margin-top:3px">'+b.cans.toLocaleString()+' cans</div></div>'+'<div style="text-align:right;padding-right:4px"><div id="'+uid+'-pcase" style="font-size:12px;color:#fff;font-weight:600">'+usd(b.perCase)+'/case</div><div id="'+uid+'-pcan" style="font-size:10px;color:var(--muted);margin-top:3px">'+usd(b.perCan,4)+'/can</div></div>'+'<div id="'+uid+'-total" style="text-align:right;font-size:14px;font-weight:700;color:#fff">'+usd(b.total)+'</div>'+'<div style="text-align:center"><button onclick="window.glRemoveCanLine(\"'+uid+'\")" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0;line-height:1">x</button></div>';
+    tbl.appendChild(row);
+    if(typeof window.glCalcInvTotal==='function')window.glCalcInvTotal();
+  };
+  console.log('[GL] Can format FINAL loaded');
+}());
