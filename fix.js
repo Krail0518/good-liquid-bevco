@@ -252,6 +252,187 @@
     } catch(e) { console.log('[GL] Sync error:', e.message); }
   };
 
+  /* ── 8. SEO META TAGS ───────────────────────────────
+     Injects full SEO + Open Graph + Twitter Card tags
+  ────────────────────────────────────────────────── */
+  (function addSEO(){
+    var head = document.head;
+
+    function addMeta(attrs) {
+      // Don't add if already exists
+      var selector = attrs.name ? 'meta[name="'+attrs.name+'"]' :
+                     attrs.property ? 'meta[property="'+attrs.property+'"]' : null;
+      if(selector && document.querySelector(selector)) return;
+      var m = document.createElement('meta');
+      Object.keys(attrs).forEach(function(k){ m.setAttribute(k, attrs[k]); });
+      head.appendChild(m);
+    }
+
+    // Core SEO
+    document.title = 'Good Liquid Bev Co | Beverage Co-Packer | Palmetto, FL';
+    addMeta({name:'description', content:'Good Liquid Bev Co is a family-run beverage co-packer in Palmetto, FL. Small-batch canning, bottling, R&D and consulting. GMP, PCQI & HACCP certified. Min 150 cases.'});
+    addMeta({name:'keywords', content:'beverage co-packer, small batch canning, bottling, beverage R&D, Palmetto FL, craft beverage manufacturing, GMP certified, HACCP, co-packing Florida'});
+    addMeta({name:'author', content:'Good Liquid Bev Co'});
+    addMeta({name:'robots', content:'index, follow'});
+    addMeta({name:'geo.region', content:'US-FL'});
+    addMeta({name:'geo.placename', content:'Palmetto, Florida'});
+
+    // Open Graph (Facebook, LinkedIn)
+    addMeta({property:'og:type', content:'business.business'});
+    addMeta({property:'og:title', content:'Good Liquid Bev Co | Beverage Co-Packer'});
+    addMeta({property:'og:description', content:'Family-run beverage co-packer in Palmetto, FL. Small-batch canning, bottling & R&D. GMP, PCQI & HACCP certified. Min 150 cases. Est. 2017.'});
+    addMeta({property:'og:url', content:'https://www.goodliquidbevco.com'});
+    addMeta({property:'og:site_name', content:'Good Liquid Bev Co'});
+    addMeta({property:'og:locale', content:'en_US'});
+
+    // Twitter Card
+    addMeta({name:'twitter:card', content:'summary_large_image'});
+    addMeta({name:'twitter:title', content:'Good Liquid Bev Co | Beverage Co-Packer'});
+    addMeta({name:'twitter:description', content:'Family-run beverage co-packer in Palmetto, FL. Small-batch canning, bottling & R&D. Min 150 cases. GMP certified.'});
+    addMeta({name:'twitter:site', content:'@goodliquidbevco'});
+
+    // Canonical URL
+    if(!document.querySelector('link[rel="canonical"]')) {
+      var link = document.createElement('link');
+      link.rel = 'canonical';
+      link.href = 'https://www.goodliquidbevco.com';
+      head.appendChild(link);
+    }
+
+    // Schema.org structured data (local business)
+    if(!document.getElementById('gl-schema')) {
+      var script = document.createElement('script');
+      script.id = 'gl-schema';
+      script.type = 'application/ld+json';
+      script.textContent = JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'LocalBusiness',
+        'name': 'Good Liquid Bev Co',
+        'description': 'Family-run beverage co-packer specializing in small-batch canning, bottling, and beverage R&D.',
+        'url': 'https://www.goodliquidbevco.com',
+        'telephone': '+18034935065',
+        'email': 'Mike@GoodLiquid.com',
+        'foundingDate': '2017',
+        'address': {
+          '@type': 'PostalAddress',
+          'streetAddress': '2011 51st Ave E, Unit 100',
+          'addressLocality': 'Palmetto',
+          'addressRegion': 'FL',
+          'postalCode': '34221',
+          'addressCountry': 'US'
+        },
+        'geo': {
+          '@type': 'GeoCoordinates',
+          'latitude': 27.5306,
+          'longitude': -82.5695
+        },
+        'openingHours': 'Mo-Fr 08:00-17:00',
+        'priceRange': '$$',
+        'hasCredential': ['GMP Certified','PCQI Certified','HACCP Certified'],
+        'sameAs': ['https://www.goodliquidbevco.com']
+      });
+      head.appendChild(script);
+    }
+  })();
+
+  /* ── 9. GOOGLE ANALYTICS 4 ──────────────────────────
+     Loads GA4 and tracks page views + key events.
+     Replace GA_MEASUREMENT_ID with your real ID from
+     analytics.google.com (format: G-XXXXXXXXXX)
+  ────────────────────────────────────────────────── */
+  (function addGA(){
+    var GA_ID = localStorage.getItem('gl_ga_id');
+    if(!GA_ID) {
+      console.log('[GL] Google Analytics: Set your GA4 ID with: localStorage.setItem("gl_ga_id","G-XXXXXXXXXX")');
+      return;
+    }
+
+    // Load GA4 script
+    if(document.querySelector('script[src*="googletagmanager"]')) return;
+    var script = document.createElement('script');
+    script.async = true;
+    script.src = 'https://www.googletagmanager.com/gtag/js?id=' + GA_ID;
+    document.head.appendChild(script);
+
+    // Init gtag
+    window.dataLayer = window.dataLayer || [];
+    window.gtag = function(){ window.dataLayer.push(arguments); };
+    window.gtag('js', new Date());
+    window.gtag('config', GA_ID, {
+      page_title: document.title,
+      page_location: window.location.href,
+      anonymize_ip: true
+    });
+
+    // Track key events
+    // Track Get a Quote clicks
+    document.addEventListener('click', function(e) {
+      var el = e.target.closest('a, button');
+      if(!el) return;
+      var text = el.textContent.trim();
+
+      if(text.includes('Get a quote') || text.includes('Get a Quote')) {
+        window.gtag('event','get_quote_click',{event_category:'CTA',event_label:'Hero or Nav'});
+      }
+      if(text.includes('Schedule a tour') || text.includes('tour')) {
+        window.gtag('event','schedule_tour_click',{event_category:'CTA',event_label:'Tour Button'});
+      }
+      if(text.includes('See capabilities')) {
+        window.gtag('event','see_capabilities_click',{event_category:'CTA',event_label:'Hero'});
+      }
+    });
+
+    // Track contact form submissions
+    document.addEventListener('submit', function(e) {
+      window.gtag('event','form_submit',{event_category:'Contact',event_label:'Contact Form'});
+    });
+
+    // Track booking completions
+    var origSubmitBooking = window.submitBooking;
+    if(typeof origSubmitBooking === 'function') {
+      window.submitBooking = async function() {
+        window.gtag('event','booking_submitted',{event_category:'Conversion',event_label:'Tour Booking'});
+        return origSubmitBooking.apply(this, arguments);
+      };
+    }
+
+    // Track section views with Intersection Observer
+    var sections = {
+      'hero':'Homepage View',
+      'about':'About Section',
+      'services':'Services Section',
+      'pricing':'Pricing Section',
+      'certifications':'Certifications Section',
+      'team':'Team Section',
+      'contact':'Contact Section'
+    };
+
+    if('IntersectionObserver' in window) {
+      var observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+          if(entry.isIntersecting) {
+            var label = sections[entry.target.id];
+            if(label) {
+              window.gtag('event','section_view',{
+                event_category:'Engagement',
+                event_label: label,
+                non_interaction: true
+              });
+              observer.unobserve(entry.target);
+            }
+          }
+        });
+      }, {threshold: 0.3});
+
+      Object.keys(sections).forEach(function(id) {
+        var el = document.getElementById(id);
+        if(el) observer.observe(el);
+      });
+    }
+
+    console.log('[GL] Google Analytics loaded:', GA_ID);
+  })();
+
   console.log('[GL] fix.js loaded — DOM structure fixed, login patched');
 
 })();
