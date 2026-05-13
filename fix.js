@@ -89,6 +89,33 @@
     if(typeof _origCNav === 'function') _origCNav(page, el);
   };
 
+
+  /* ── INTERCEPT ALL NEW INVOICE ENTRY POINTS ──────── */
+  // Override cNav to redirect newinv to builder
+  var _cNavOrig = window.cNav;
+  window.cNav = function(page, el) {
+    if(page === 'newinv' || page === 'new-invoice' || page === 'newInvoice') {
+      window.openNewInvoiceBuilder();
+      return;
+    }
+    if(typeof _cNavOrig === 'function') _cNavOrig(page, el);
+  };
+
+  // Override openNewInvoice (old function name)
+  window.openNewInvoice = window.openNewInvoiceBuilder;
+
+  // Intercept ALL clicks on buttons/links with "New Invoice" text
+  document.addEventListener('click', function(e) {
+    var el = e.target.closest('button, a, .cni');
+    if(!el) return;
+    var text = el.textContent.trim();
+    if(text.includes('New Invoice') || text.includes('+ New Invoice')) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      window.openNewInvoiceBuilder();
+    }
+  }, true); // capture phase - fires before anything else
+
   /* ══════════════════════════════════════════════════
      1. FIX DOM STRUCTURE
      crm-body was trapped inside crm-top
