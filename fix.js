@@ -1282,6 +1282,94 @@ window.glChangeRDType = function(i, type){
   glUpdateTotals();
 };
 
+
+
+/* ── FORMAT / TYPE PICKERS ──────────────────────────── */
+var _glPickerCallback = null;
+
+window.glShowFormatPicker = function(callback){
+  _glPickerCallback = callback;
+  document.getElementById('gl-fmt-picker')?.remove();
+  
+  var formats = [
+    {fmt:'12oz-standard', label:'12oz Standard', note:'$0.48–$0.28/can · 24 cans/case'},
+    {fmt:'12oz-sleek',    label:'12oz Sleek',    note:'$0.48–$0.28/can · 24 cans/case'},
+    {fmt:'16oz-standard', label:'16oz Standard', note:'$0.58–$0.38/can · 24 cans/case'}
+  ];
+
+  var modal = document.createElement('div');
+  modal.id = 'gl-fmt-picker';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:700;background:rgba(6,13,26,.95);display:flex;align-items:center;justify-content:center';
+  
+  var html = '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:28px;width:380px">' +
+    '<div style="font-family:var(--ff-disp);font-size:16px;letter-spacing:2px;color:var(--white);margin-bottom:6px">SELECT CAN FORMAT</div>' +
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:20px">Price auto-calculates from your rate card based on quantity</div>';
+  
+  formats.forEach(function(f, i){
+    html += '<button class="gl-fmt-btn" data-fmt="' + f.fmt + '" style="width:100%;text-align:left;padding:14px 16px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:10px;color:var(--white);cursor:pointer;margin-bottom:8px;display:block">' +
+      '<div style="font-weight:700;font-size:14px;margin-bottom:2px">&#x1F9C3; ' + f.label + '</div>' +
+      '<div style="font-size:11px;color:var(--muted)">' + f.note + '</div></button>';
+  });
+  
+  html += '<button id="gl-fmt-cancel" style="width:100%;padding:10px;background:none;border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer">Cancel</button></div>';
+  modal.innerHTML = html;
+  
+  modal.addEventListener('click', function(e){
+    var btn = e.target.closest('.gl-fmt-btn');
+    if(btn){
+      var fmt = btn.getAttribute('data-fmt');
+      modal.remove();
+      if(_glPickerCallback){ _glPickerCallback(fmt); _glPickerCallback = null; }
+    }
+    var cancel = e.target.closest('#gl-fmt-cancel');
+    if(cancel || e.target === modal){ modal.remove(); _glPickerCallback = null; }
+  });
+  
+  document.body.appendChild(modal);
+};
+
+window.glShowRDPicker = function(callback){
+  _glPickerCallback = callback;
+  document.getElementById('gl-rd-picker')?.remove();
+  
+  var rdTypes = [
+    {id:'formulation', label:'R&D Formulation',     price:1000, unit:'SKU', note:'$1,000/SKU · 3 iterations included',    icon:'&#x1F9EA;'},
+    {id:'benchtop',    label:'Benchtop Verification',price:500,  unit:'SKU', note:'$500/SKU · Required for co-packing',    icon:'&#x1F52C;'},
+    {id:'ip-license',  label:'IP License',           price:6000, unit:'yr',  note:'$6,000/yr · Annual licensing',          icon:'&#x1F4DC;'},
+    {id:'ip-purchase', label:'IP Purchase',          price:15000,unit:'',    note:'$15,000 · Full ownership',              icon:'&#x1F3C6;'},
+    {id:'materials',   label:'Materials Sourcing',   price:0,    unit:'',    note:'Cost + 10% · Enter actual cost in Unit Price', icon:'&#x1F4E6;'}
+  ];
+
+  var modal = document.createElement('div');
+  modal.id = 'gl-rd-picker';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:700;background:rgba(6,13,26,.95);display:flex;align-items:center;justify-content:center';
+  
+  var html = '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:28px;width:400px">' +
+    '<div style="font-family:var(--ff-disp);font-size:16px;letter-spacing:2px;color:var(--white);margin-bottom:20px">SELECT R&D / IP SERVICE</div>';
+  
+  rdTypes.forEach(function(r, i){
+    html += '<button class="gl-rd-btn" data-idx="' + i + '" style="width:100%;text-align:left;padding:14px 16px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:10px;color:var(--white);cursor:pointer;margin-bottom:8px;display:block">' +
+      '<div style="font-weight:700;font-size:14px;margin-bottom:2px">' + r.icon + ' ' + r.label + '</div>' +
+      '<div style="font-size:11px;color:var(--muted)">' + r.note + '</div></button>';
+  });
+  
+  html += '<button id="gl-rd-cancel" style="width:100%;padding:10px;background:none;border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer">Cancel</button></div>';
+  modal.innerHTML = html;
+  
+  modal.addEventListener('click', function(e){
+    var btn = e.target.closest('.gl-rd-btn');
+    if(btn){
+      var idx = parseInt(btn.getAttribute('data-idx'));
+      modal.remove();
+      if(_glPickerCallback){ _glPickerCallback(rdTypes[idx]); _glPickerCallback = null; }
+    }
+    var cancel = e.target.closest('#gl-rd-cancel');
+    if(cancel || e.target === modal){ modal.remove(); _glPickerCallback = null; }
+  });
+  
+  document.body.appendChild(modal);
+};
+
 /* ── WIRE INTO CRM ───────────────────────────────── */
   // Replace the old new-invoice page trigger
   window.openNewInvoice = window.openNewInvoiceBuilder;
