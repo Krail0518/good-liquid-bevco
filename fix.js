@@ -569,690 +569,315 @@
 
   console.log('[GL] fix.js v2.1 loaded');
 })();
-/* ─────────────────────────────────────────────────────────────
-   CAN FORMAT PATCH  — add to bottom of fix.js
-   Adds can size dropdown to canning line items in invoice builder
-   ───────────────────────────────────────────────────────────── */
 
-(function patchCanFormat() {
+/* ==========================================================
+   PRICING PATCH — Supabase rates + admin editor
+   Canning & Bottling pulled from DB, never hardcoded
+   ========================================================== */
+(function(){
 
-  /* Rate card — cost per can by format */
-  var CAN_FORMATS = [
-    { value: '12oz-standard', label: '12oz Standard', canCost: 0.32 },
-    { value: '12oz-sleek',    label: '12oz Sleek',    canCost: 0.34 },
-    { value: '16oz-standard', label: '16oz Standard', canCost: 0.36 },
-    { value: '19.2oz-standard', label: '19.2oz Standard', canCost: 0.38 },
-  ];
+  var SURL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/rest/v1';
+  var SKEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmamtlcW14d3V5aGJxeXVnY2dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNDI2MDksImV4cCI6MjA5MzkxODYwOX0.godgU_jeprCqSzqe0ji_ZA_hwvPF2s7BmzQyAB-c_xE';
+  var SH   = { 'apikey': SKEY, 'Authorization': 'Bearer ' + SKEY, 'Content-Type': 'application/json' };
   var CANS_PER_CASE = 24;
-  var MFG_TIERS = [[1000,16],[500,20],[300,24],[150,28]]; // [min cases, $/case]
 
-  function getMfgRate(cases) {
-    for (var i = 0; i < MFG_TIERS.length; i++) {
-      if (cases >= MFG_TIERS[i][0]) return MFG_TIERS[i][1];
-    }
-    return 28;
-  }
+  /* ── Rate cache ────────────────────────────────────────── */
+  window._glRates = { canning: [], bottling: [], loaded: false };
 
-  function calcCanningBreakdown(cases, format) {
-    var fmt      = CAN_FORMATS.find(function(f){ return f.value === format; }) || CAN_FORMATS[0];
-    var cans     = cases * CANS_PER_CASE;
-    var mfgRate  = getMfgRate(cases);           // $ per case
-    var mfg      = mfgRate * cases;
-    var cansCost = fmt.canCost * cans;
-    var pkg      = 0.055 * cans;
-    var total    = mfg + cansCost + pkg;
-    var perCase  = total / cases;
-    var perCan   = total / cans;
-    return { total: total, perCase: perCase, perCan: perCan, mfgRate: mfgRate, canCost: fmt.canCost, cans: cans };
-  }
-
-  function calcCanningTotal(cases, format) {
-    return calcCanningBreakdown(cases, format).total;
-  }
-
-  function fmt$(n, dec) {
-    return '$' + n.toLocaleString('en-US', {minimumFractionDigits: dec||2, maximumFractionDigits: dec||2});
-  }
-
-  /* Rebuild a canning line row with the format selector + price breakdown */
-  function buildCanningRow(lineId, cases, format) {
-    var b    = calcCanningBreakdown(cases, format);
-    var fmt  = CAN_FORMATS.find(function(f){ return f.value === format; }) || CAN_FORMATS[0];
-    var opts = CAN_FORMATS.map(function(f){
-      return '<option value="'+f.value+'"'+(f.value===format?' selected':'')+'>'+f.label+'</option>';
-    }).join('');
-
-    return (
-      '<div id="'+lineId+'" style="'+
-        'background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);'+
-        'border-radius:10px;padding:14px 16px;margin-bottom:8px;">'+
-
-        /* ── Row 1: label + format dropdown + remove ── */
-        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'+
-          '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'+
-            '<span style="font-size:13px;font-weight:700;color:var(--teal)">🥫 Canning</span>'+
-            '<select id="'+lineId+'-format" onchange="window.glCanFormatChange(\''+lineId+'\')" '+
-              'style="background:#1a2a3a;color:#fff;border:1px solid rgba(0,229,192,.4);'+
-              'border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;font-weight:600;">'+
-              opts+
-            '</select>'+
-          '</div>'+
-          '<button onclick="window.glRemoveCanLine(\''+lineId+'\')" '+
-            'style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;'+
-            'padding:2px 6px;opacity:.5;line-height:1" title="Remove">✕</button>'+
-        '</div>'+
-
-        /* ── Row 2: cases input + cans count ── */
-        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">'+
-          '<span style="font-size:11px;color:var(--muted);min-width:40px">Cases</span>'+
-          '<input id="'+lineId+'-cases" type="number" min="1" value="'+cases+'" '+
-            'onchange="window.glCanFormatChange(\''+lineId+'\')" '+
-            'style="width:74px;background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.18);'+
-            'border-radius:6px;padding:4px 10px;font-size:13px;font-weight:600;"/>'+
-          '<span id="'+lineId+'-cans-label" style="font-size:11px;color:var(--muted)">'+
-            '= '+b.cans.toLocaleString()+' cans'+
-          '</span>'+
-        '</div>'+
-
-        /* ── Row 3: price breakdown pills ── */
-        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'+
-          '<div style="background:rgba(0,229,192,.08);border:1px solid rgba(0,229,192,.2);border-radius:6px;padding:5px 10px;font-size:11px;">'+
-            '<span style="color:var(--muted)">Per case&nbsp;</span>'+
-            '<span id="'+lineId+'-per-case" style="color:#fff;font-weight:700;">'+fmt$(b.perCase)+'</span>'+
-          '</div>'+
-          '<div style="background:rgba(0,229,192,.08);border:1px solid rgba(0,229,192,.2);border-radius:6px;padding:5px 10px;font-size:11px;">'+
-            '<span style="color:var(--muted)">Per can&nbsp;</span>'+
-            '<span id="'+lineId+'-per-can" style="color:#fff;font-weight:700;">'+fmt$(b.perCan, 4)+'</span>'+
-          '</div>'+
-        '</div>'+
-
-        /* ── Row 4: line total ── */
-        '<div style="display:flex;align-items:baseline;justify-content:flex-end;gap:8px;'+
-          'border-top:1px solid rgba(255,255,255,.07);padding-top:10px;">'+
-          '<span style="font-size:11px;color:var(--muted)">Line total</span>'+
-          '<span id="'+lineId+'-total" style="font-size:18px;font-weight:700;color:#fff;">'+
-            fmt$(b.total)+
-          '</span>'+
-        '</div>'+
-
-      '</div>'
-    );
-  }
-
-  /* Called when format or cases changes — recalc all breakdown fields in-place */
-  window.glCanFormatChange = function(lineId) {
-    var casesEl    = document.getElementById(lineId + '-cases');
-    var formatEl   = document.getElementById(lineId + '-format');
-    var totalEl    = document.getElementById(lineId + '-total');
-    var perCaseEl  = document.getElementById(lineId + '-per-case');
-    var perCanEl   = document.getElementById(lineId + '-per-can');
-    var cansLabel  = document.getElementById(lineId + '-cans-label');
-    if (!casesEl || !formatEl || !totalEl) return;
-
-    var cases  = parseInt(casesEl.value) || 150;
-    var format = formatEl.value;
-    var b      = calcCanningBreakdown(cases, format);
-
-    totalEl.textContent   = fmt$(b.total);
-    if (perCaseEl)  perCaseEl.textContent  = fmt$(b.perCase);
-    if (perCanEl)   perCanEl.textContent   = fmt$(b.perCan, 4);
-    if (cansLabel)  cansLabel.textContent  = '= ' + b.cans.toLocaleString() + ' cans';
-
-    if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
+  window.glLoadRates = async function() {
+    if (window._glRates.loaded) return window._glRates;
+    try {
+      var res = await Promise.all([
+        fetch(SURL + '/canning_rates?order=format,min_cases',  {headers: SH}).then(function(r){return r.json();}),
+        fetch(SURL + '/bottling_rates?order=format,min_units', {headers: SH}).then(function(r){return r.json();})
+      ]);
+      window._glRates.canning  = Array.isArray(res[0]) ? res[0] : [];
+      window._glRates.bottling = Array.isArray(res[1]) ? res[1] : [];
+      window._glRates.loaded   = true;
+    } catch(e) { console.error('[GL] Rate load failed', e); }
+    return window._glRates;
   };
 
-  /* Remove a canning line and recalc */
-  window.glRemoveCanLine = function(lineId) {
-    var el = document.getElementById(lineId);
-    if (el) el.remove();
-    if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
-  };
-
-  /* Collect all canning lines for save/PDF */
-  window.glGetCanningLines = function() {
-    var lines = [];
-    document.querySelectorAll('[id^="gl-can-line-"]').forEach(function(row) {
-      var id     = row.id;
-      var cases  = parseInt(document.getElementById(id+'-cases')?.value) || 0;
-      var format = document.getElementById(id+'-format')?.value || '12oz-standard';
-      var fmt    = CAN_FORMATS.find(function(f){ return f.value === format; }) || CAN_FORMATS[0];
-      var total  = calcCanningTotal(cases, format);
-      lines.push({
-        type: 'canning',
-        description: 'Canning — ' + fmt.label + ' (' + (cases*CANS_PER_CASE) + ' cans / ' + cases + ' cases)',
-        amount: total
-      });
-    });
-    return lines;
-  };
-
-  /* ── Patch glAddLine to intercept 'canning' ───────────────── */
-  var _originalAddLine = window.glAddLine;
-
-  window.glAddLine = function(type) {
-    if (type !== 'canning') {
-      /* pass all other types through to original */
-      if (typeof _originalAddLine === 'function') return _originalAddLine(type);
-      return;
+  function getCanRate(cases, format) {
+    var tiers = window._glRates.canning
+      .filter(function(r){ return r.format === format; })
+      .sort(function(a,b){ return a.min_cases - b.min_cases; });
+    if (!tiers.length) return 0.48;
+    var rate = parseFloat(tiers[0].price_per_can);
+    for (var i = 0; i < tiers.length; i++) {
+      if (cases >= tiers[i].min_cases) rate = parseFloat(tiers[i].price_per_can);
     }
-
-    /* Find or create the invoice body container */
-    var body = document.getElementById('gl-inv-body') ||
-               document.getElementById('inv-line-items') ||
-               document.querySelector('.inv-lines');
-
-    if (!body) {
-      console.warn('[GL] Cannot find invoice body to inject canning line');
-      return;
-    }
-
-    var uid    = 'gl-can-line-' + Date.now();
-    var cases  = 150;
-    var format = '12oz-standard';
-
-    var wrapper = document.createElement('div');
-    wrapper.innerHTML = buildCanningRow(uid, cases, format);
-    body.appendChild(wrapper.firstChild);
-
-    if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
-  };
-
-  console.log('[GL] Can format patch loaded ✅');
-
-})();
-/* ─────────────────────────────────────────────────────────────
-   CAN FORMAT PATCH v2 — append to bottom of fix.js
-   Fixes: correct container, matching grid, format + per-case/per-can
-   ───────────────────────────────────────────────────────────── */
-
-(function patchCanFormat() {
-
-  var CAN_FORMATS = [
-    { value: '12oz-standard',   label: '12oz Standard',   canCost: 0.32 },
-    { value: '12oz-sleek',      label: '12oz Sleek',      canCost: 0.34 },
-    { value: '16oz-standard',   label: '16oz Standard',   canCost: 0.36 },
-    { value: '19.2oz-standard', label: '19.2oz Standard', canCost: 0.38 },
-  ];
-  var CANS_PER_CASE = 24;
-  var MFG_TIERS = [[1000,16],[500,20],[300,24],[150,28]];
-
-  function getMfgRate(cases) {
-    for (var i = 0; i < MFG_TIERS.length; i++) {
-      if (cases >= MFG_TIERS[i][0]) return MFG_TIERS[i][1];
-    }
-    return 28;
+    return rate;
   }
 
-  function calcBreakdown(cases, format) {
-    var fmt     = CAN_FORMATS.find(function(f){ return f.value === format; }) || CAN_FORMATS[0];
-    var cans    = cases * CANS_PER_CASE;
-    var mfg     = getMfgRate(cases) * cases;
-    var canCost = fmt.canCost * cans;
-    var pkg     = 0.055 * cans;
-    var total   = mfg + canCost + pkg;
-    return { total: total, perCase: total/cases, perCan: total/cans, cans: cans };
+  function getBottleRate(units, format) {
+    var tiers = window._glRates.bottling
+      .filter(function(r){ return r.format === format; })
+      .sort(function(a,b){ return a.min_units - b.min_units; });
+    if (!tiers.length) return 2.25;
+    var rate = parseFloat(tiers[0].price_per_unit);
+    for (var i = 0; i < tiers.length; i++) {
+      if (units >= tiers[i].min_units) rate = parseFloat(tiers[i].price_per_unit);
+    }
+    return rate;
   }
 
-  function money(n, dec) {
-    return '$' + n.toLocaleString('en-US', {
-      minimumFractionDigits: dec !== undefined ? dec : 2,
-      maximumFractionDigits: dec !== undefined ? dec : 2
+  function usd(n, d) {
+    return '$' + parseFloat(n).toLocaleString('en-US', {
+      minimumFractionDigits: d == null ? 2 : d,
+      maximumFractionDigits: d == null ? 2 : d
     });
   }
 
   function getLineTable() {
-    var body = document.getElementById('gl-inv-body');
-    if (!body) return null;
-    for (var i = 0; i < body.children.length; i++) {
-      var child = body.children[i];
-      if (child.textContent.indexOf('DESCRIPTION') !== -1 &&
-          child.textContent.indexOf('UNIT PRICE') !== -1) {
-        return child;
-      }
-    }
-    return null;
+    var b = document.getElementById('gl-inv-body');
+    return b ? b.children[2] : null;
   }
 
-  window.glCanFormatChange = function(uid) {
-    var casesEl  = document.getElementById(uid + '-cases');
-    var formatEl = document.getElementById(uid + '-format');
-    if (!casesEl || !formatEl) return;
-    var cases  = Math.max(1, parseInt(casesEl.value) || 150);
-    var format = formatEl.value;
-    var b      = calcBreakdown(cases, format);
-    var t = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; };
-    t(uid+'-total', money(b.total));
-    t(uid+'-pcase', money(b.perCase)+'/case');
-    t(uid+'-pcan',  money(b.perCan,4)+'/can');
-    t(uid+'-cans',  b.cans.toLocaleString()+' cans');
-    if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
-  };
-
-  window.glRemoveCanLine = function(uid) {
-    var el = document.getElementById(uid);
-    if (el) el.remove();
-    if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
-  };
-
-  var _orig = window.glAddLine;
-
-  window.glAddLine = function(type) {
-    if (type !== 'canning') {
-      if (typeof _orig === 'function') _orig(type);
-      return;
-    }
-    var table = getLineTable();
-    if (!table) {
-      console.warn('[GL] line-items table not found');
-      if (typeof _orig === 'function') _orig(type);
-      return;
-    }
-    var uid    = 'gl-can-' + Date.now();
-    var cases  = 150;
-    var format = '12oz-standard';
-    var b      = calcBreakdown(cases, format);
-    var opts   = CAN_FORMATS.map(function(f) {
-      return '<option value="'+f.value+'"'+(f.value===format?' selected':'')+'>'+f.label+'</option>';
-    }).join('');
-
-    var row = document.createElement('div');
-    row.id = uid;
-    row.setAttribute('style',
-      'display:grid;grid-template-columns:2fr 1fr 1fr 1fr 36px;gap:0;'+
-      'padding:10px 12px;border-top:1px solid rgba(255,255,255,.05);align-items:center');
-
-    row.innerHTML =
-      '<div>'+
-        '<div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">🥫 Canning</div>'+
-        '<select id="'+uid+'-format" onchange="window.glCanFormatChange(\''+uid+'\')" '+
-          'style="background:#1a2a3a;color:#fff;border:1px solid rgba(0,229,192,.4);'+
-          'border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;width:100%;max-width:160px">'+
-          opts+
-        '</select>'+
-      '</div>'+
-      '<div style="text-align:center">'+
-        '<input id="'+uid+'-cases" type="number" min="1" value="'+cases+'" '+
-          'onchange="window.glCanFormatChange(\''+uid+'\')" '+
-          'style="width:60px;background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.18);'+
-          'border-radius:6px;padding:3px 6px;font-size:12px;font-weight:600;text-align:center"/>'+
-        '<div id="'+uid+'-cans" style="font-size:10px;color:var(--muted);margin-top:3px">'+
-          b.cans.toLocaleString()+' cans'+
-        '</div>'+
-      '</div>'+
-      '<div style="text-align:right;padding-right:4px">'+
-        '<div id="'+uid+'-pcase" style="font-size:12px;color:#fff;font-weight:600">'+money(b.perCase)+'/case</div>'+
-        '<div id="'+uid+'-pcan"  style="font-size:10px;color:var(--muted);margin-top:2px">'+money(b.perCan,4)+'/can</div>'+
-      '</div>'+
-      '<div id="'+uid+'-total" style="text-align:right;font-size:14px;font-weight:700;color:#fff">'+money(b.total)+'</div>'+
-      '<div style="text-align:center">'+
-        '<button onclick="window.glRemoveCanLine(\''+uid+'\')" '+
-          'style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;opacity:.6;padding:0">✕</button>'+
-      '</div>';
-
-    table.appendChild(row);
-    if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
-  };
-
-  console.log('[GL] Can format patch v2 loaded');
-
-})();
-
-/* ==============================================
-   CAN FORMAT PATCH v3 — appended to fix.js
-   ============================================== */
-(function patchCanFormat() {
-  var CAN_FORMATS = [
-    { value: '12oz-standard',   label: '12oz Standard',   canCost: 0.32 },
-    { value: '12oz-sleek',      label: '12oz Sleek',      canCost: 0.34 },
-    { value: '16oz-standard',   label: '16oz Standard',   canCost: 0.36 },
-    { value: '19.2oz-standard', label: '19.2oz Standard', canCost: 0.38 }
-  ];
-  var CANS_PER_CASE = 24;
-  var MFG_TIERS = [[1000,16],[500,20],[300,24],[150,28]];
-
-  function getMfgRate(cases) {
-    for (var i = 0; i < MFG_TIERS.length; i++) {
-      if (cases >= MFG_TIERS[i][0]) return MFG_TIERS[i][1];
-    }
-    return 28;
-  }
-
-  function calcBreakdown(cases, format) {
-    var fmt  = CAN_FORMATS.find(function(f) { return f.value === format; }) || CAN_FORMATS[0];
-    var cans = cases * CANS_PER_CASE;
-    var tot  = getMfgRate(cases) * cases + fmt.canCost * cans + 0.055 * cans;
-    return { total: tot, perCase: tot / cases, perCan: tot / cans, cans: cans };
-  }
-
-  function usd(n, dec) {
-    return '$' + n.toLocaleString('en-US', {
-      minimumFractionDigits:  dec === undefined ? 2 : dec,
-      maximumFractionDigits:  dec === undefined ? 2 : dec
-    });
-  }
-
-  function getLineTable() {
-    var body = document.getElementById('gl-inv-body');
-    if (!body) return null;
-    for (var i = 0; i < body.children.length; i++) {
-      var c = body.children[i];
-      if (c.textContent.indexOf('DESCRIPTION') !== -1 &&
-          c.textContent.indexOf('UNIT PRICE')  !== -1) return c;
-    }
-    return null;
-  }
-
+  /* ── Canning line ──────────────────────────────────────── */
   window.glCanFormatChange = function(uid) {
     var ce = document.getElementById(uid + '-cases');
     var fe = document.getElementById(uid + '-format');
     if (!ce || !fe) return;
-    var b = calcBreakdown(Math.max(1, parseInt(ce.value) || 150), fe.value);
-    function set(id, v) { var el = document.getElementById(id); if (el) el.textContent = v; }
-    set(uid + '-total', usd(b.total));
-    set(uid + '-pcase', usd(b.perCase) + '/case');
-    set(uid + '-pcan',  usd(b.perCan, 4) + '/can');
-    set(uid + '-cans',  b.cans.toLocaleString() + ' cans');
+    var cases   = Math.max(1, parseInt(ce.value) || 150);
+    var format  = fe.value;
+    var perCan  = getCanRate(cases, format);
+    var perCase = perCan * CANS_PER_CASE;
+    var total   = perCase * cases;
+    function s(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; }
+    s(uid + '-total', usd(total));
+    s(uid + '-pcase', usd(perCase) + '/case');
+    s(uid + '-pcan',  usd(perCan, 4) + '/can');
+    s(uid + '-cans',  (cases * CANS_PER_CASE).toLocaleString() + ' cans');
     if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
   };
 
   window.glRemoveCanLine = function(uid) {
-    var el = document.getElementById(uid);
-    if (el) el.remove();
+    var e = document.getElementById(uid); if (e) e.remove();
     if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
   };
 
-  var _orig = window.glAddLine;
-  window.glAddLine = function(type) {
-    if (type !== 'canning') { if (typeof _orig === 'function') _orig(type); return; }
-    var table = getLineTable();
-    if (!table) { if (typeof _orig === 'function') _orig(type); return; }
-
-    var uid  = 'gl-can-' + Date.now();
-    var def  = '12oz-standard';
-    var b    = calcBreakdown(150, def);
-    var opts = CAN_FORMATS.map(function(f) {
-      return '<option value="' + f.value + '"' + (f.value === def ? ' selected' : '') + '>' + f.label + '</option>';
-    }).join('');
-
-    var ROW_STYLE = 'display:grid;grid-template-columns:2fr 1fr 1fr 1fr 36px;gap:0;' +
-      'padding:10px 12px;border-top:1px solid rgba(255,255,255,.05);align-items:center';
-
-    var SEL_STYLE = 'background:#1a2a3a;color:#fff;border:1px solid rgba(0,229,192,.4);' +
-      'border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;width:100%;max-width:160px';
-
-    var INP_STYLE = 'width:60px;background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.18);' +
-      'border-radius:6px;padding:3px 6px;font-size:12px;font-weight:600;text-align:center';
-
-    var row = document.createElement('div');
-    row.id = uid;
-    row.setAttribute('style', ROW_STYLE);
-    row.innerHTML =
-      '<div>' +
-        '<div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Canning</div>' +
-        '<select id="' + uid + '-format" onchange="window.glCanFormatChange(\'' + uid + '\')" style="' + SEL_STYLE + '">' + opts + '</select>' +
-      '</div>' +
-      '<div style="text-align:center">' +
-        '<input id="' + uid + '-cases" type="number" min="1" value="150" onchange="window.glCanFormatChange(\'' + uid + '\')" style="' + INP_STYLE + '"/>' +
-        '<div id="' + uid + '-cans" style="font-size:10px;color:var(--muted);margin-top:3px">' + b.cans.toLocaleString() + ' cans</div>' +
-      '</div>' +
-      '<div style="text-align:right;padding-right:4px">' +
-        '<div id="' + uid + '-pcase" style="font-size:12px;color:#fff;font-weight:600">' + usd(b.perCase) + '/case</div>' +
-        '<div id="' + uid + '-pcan"  style="font-size:10px;color:var(--muted);margin-top:2px">' + usd(b.perCan, 4) + '/can</div>' +
-      '</div>' +
-      '<div id="' + uid + '-total" style="text-align:right;font-size:14px;font-weight:700;color:#fff">' + usd(b.total) + '</div>' +
-      '<div style="text-align:center">' +
-        '<button onclick="window.glRemoveCanLine(\'' + uid + '\')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;opacity:.6;padding:0">x</button>' +
-      '</div>';
-
-    table.appendChild(row);
+  /* ── Bottling line ─────────────────────────────────────── */
+  window.glBottleQtyChange = function(uid) {
+    var qe = document.getElementById(uid + '-qty');
+    var fe = document.getElementById(uid + '-format');
+    if (!qe || !fe) return;
+    var qty       = Math.max(1, parseInt(qe.value) || 500);
+    var format    = fe.value;
+    var perUnit   = getBottleRate(qty, format);
+    var total     = perUnit * qty;
+    function s(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; }
+    s(uid + '-total', usd(total));
+    s(uid + '-punit', usd(perUnit, 4) + '/btl');
     if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
   };
 
-  console.log('[GL] Can format patch v3 loaded');
-}());
-
-
-/* === CAN FORMAT PATCH FINAL === */
-(function patchCanFormat(){
-  var CAN_FORMATS=[{value:'12oz-standard',label:'12oz Standard',canCost:0.32},{value:'12oz-sleek',label:'12oz Sleek',canCost:0.34},{value:'16oz-standard',label:'16oz Standard',canCost:0.36},{value:'19.2oz-standard',label:'19.2oz Standard',canCost:0.38}];
-  var CANS=24,TIERS=[[1000,16],[500,20],[300,24],[150,28]];
-  function mfg(c){for(var i=0;i<TIERS.length;i++)if(c>=TIERS[i][0])return TIERS[i][1];return 28;}
-  function calc(cases,fmt){var f=CAN_FORMATS.find(function(x){return x.value===fmt;})||CAN_FORMATS[0];var cans=cases*CANS,tot=mfg(cases)*cases+f.canCost*cans+0.055*cans;return{total:tot,perCase:tot/cases,perCan:tot/cans,cans:cans};}
-  function usd(n,d){return'$'+n.toLocaleString('en-US',{minimumFractionDigits:d===undefined?2:d,maximumFractionDigits:d===undefined?2:d});}
-  function getTable(){var b=document.getElementById('gl-inv-body');return b?b.children[2]:null;}
-  window.glCanFormatChange=function(uid){var ce=document.getElementById(uid+'-cases'),fe=document.getElementById(uid+'-format');if(!ce||!fe)return;var b=calc(Math.max(1,parseInt(ce.value)||150),fe.value);function s(id,v){var e=document.getElementById(id);if(e)e.textContent=v;}s(uid+'-total',usd(b.total));s(uid+'-pcase',usd(b.perCase)+'/case');s(uid+'-pcan',usd(b.perCan,4)+'/can');s(uid+'-cans',b.cans.toLocaleString()+' cans');if(typeof window.glCalcInvTotal==='function')window.glCalcInvTotal();};
-  window.glRemoveCanLine=function(uid){var e=document.getElementById(uid);if(e)e.remove();if(typeof window.glCalcInvTotal==='function')window.glCalcInvTotal();};
-  var _prev=window.glAddLine;
-  window.glAddLine=function(type){
-    if(type!=='canning'){if(typeof _prev==='function')_prev(type);return;}
-    var tbl=getTable();if(!tbl)return;
-    var uid='glcan'+Date.now(),def='12oz-standard',b=calc(150,def);
-    var opts=CAN_FORMATS.map(function(f){return'<option value="'+f.value+'"'+(f.value===def?' selected':'')+'>'+f.label+'</option>';}).join('');
-    var RS='display:grid;grid-template-columns:2fr 1fr 1fr 1fr 36px;gap:0;padding:10px 12px;border-top:1px solid rgba(255,255,255,.05);align-items:start';
-    var SS='background:#1a2a3a;color:#fff;border:1px solid rgba(0,229,192,.4);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;width:100%;max-width:160px';
-    var SI='width:60px;background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:6px;padding:3px 6px;font-size:12px;font-weight:600;text-align:center';
-    var row=document.createElement('div');row.id=uid;row.setAttribute('style',RS);
-    row.innerHTML='<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Canning</div><select id="'+uid+'-format" onchange="window.glCanFormatChange(\"'+uid+'\")" style="'+SS+'">'+opts+'</select></div>'+'<div style="text-align:center"><input id="'+uid+'-cases" type="number" min="1" value="150" onchange="window.glCanFormatChange(\"'+uid+'\")" style="'+SI+'"/><div id="'+uid+'-cans" style="font-size:10px;color:var(--muted);margin-top:3px">'+b.cans.toLocaleString()+' cans</div></div>'+'<div style="text-align:right;padding-right:4px"><div id="'+uid+'-pcase" style="font-size:12px;color:#fff;font-weight:600">'+usd(b.perCase)+'/case</div><div id="'+uid+'-pcan" style="font-size:10px;color:var(--muted);margin-top:3px">'+usd(b.perCan,4)+'/can</div></div>'+'<div id="'+uid+'-total" style="text-align:right;font-size:14px;font-weight:700;color:#fff">'+usd(b.total)+'</div>'+'<div style="text-align:center"><button onclick="window.glRemoveCanLine(\"'+uid+'\")" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0;line-height:1">x</button></div>';
-    tbl.appendChild(row);
-    if(typeof window.glCalcInvTotal==='function')window.glCalcInvTotal();
+  window.glRemoveBottleLine = function(uid) {
+    var e = document.getElementById(uid); if (e) e.remove();
+    if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
   };
-  console.log('[GL] Can format FINAL loaded');
-}());
-/* === CAN FORMAT PATCH FINAL v2 === */
-(function(){
-var RATES={
-  "12oz-standard":[[150,0.48],[340,0.43],[501,0.38],[1000,0.35],[2500,0.31],[5000,0.28]],
-  "12oz-sleek":   [[150,0.48],[340,0.43],[501,0.38],[1000,0.35],[2500,0.31],[5000,0.28]],
-  "16oz-standard":[[150,0.58],[340,0.53],[501,0.48],[1000,0.45],[2500,0.41],[5000,0.38]]
-};
-var CANS=24;
-var FMT=[{value:"12oz-standard",label:"12oz Standard"},{value:"12oz-sleek",label:"12oz Sleek"},{value:"16oz-standard",label:"16oz Standard"}];
-function rate(cases,fmt){var t=RATES[fmt]||RATES["12oz-standard"],v=t[0][1];for(var i=0;i<t.length;i++)if(cases>=t[i][0])v=t[i][1];return v;}
-function calc(cases,fmt){var pc=rate(cases,fmt);return{perCan:pc,perCase:pc*CANS,total:pc*CANS*cases,cans:cases*CANS};}
-function usd(n,d){return"$"+n.toLocaleString("en-US",{minimumFractionDigits:d==null?2:d,maximumFractionDigits:d==null?2:d});}
-function tbl(){var b=document.getElementById("gl-inv-body");return b?b.children[2]:null;}
-window.glCanFormatChange=function(uid){
-  var ce=document.getElementById(uid+"-cases"),fe=document.getElementById(uid+"-format");
-  if(!ce||!fe)return;
-  var b=calc(Math.max(1,parseInt(ce.value)||150),fe.value);
-  function s(id,v){var e=document.getElementById(id);if(e)e.textContent=v;}
-  s(uid+"-total",usd(b.total));
-  s(uid+"-pcase",usd(b.perCase)+"/case");
-  s(uid+"-pcan",usd(b.perCan,4)+"/can");
-  s(uid+"-cans",b.cans.toLocaleString()+" cans");
-  if(typeof window.glCalcInvTotal==="function")window.glCalcInvTotal();
-};
-window.glRemoveCanLine=function(uid){var e=document.getElementById(uid);if(e)e.remove();if(typeof window.glCalcInvTotal==="function")window.glCalcInvTotal();};
-var _p=window.glAddLine;
-window.glAddLine=function(type){
-  if(type!=="canning"){if(typeof _p==="function")_p(type);return;}
-  var t=tbl();if(!t)return;
-  var uid="glcan"+Date.now(),b=calc(150,"12oz-standard");
-  var opts=FMT.map(function(f){return'<option value="'+f.value+'"'+(f.value==="12oz-standard"?" selected":"")+'>'+f.label+'</option>';}).join("");
-  var row=document.createElement("div");
-  row.id=uid;
-  row.setAttribute("style","display:grid;grid-template-columns:2fr 1fr 1fr 1fr 36px;gap:0;padding:10px 12px;border-top:1px solid rgba(255,255,255,.05);align-items:start");
-  row.innerHTML=
-    '<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Canning</div>'
-    +'<select id="'+uid+'-format" onchange="window.glCanFormatChange(this.closest(\'[id^=glcan]\').id)" style="background:#1a2a3a;color:#fff;border:1px solid rgba(0,229,192,.4);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;width:100%;max-width:160px">'+opts+'</select></div>'
-    +'<div style="text-align:center"><input id="'+uid+'-cases" type="number" min="1" value="150" onchange="window.glCanFormatChange(this.closest(\'[id^=glcan]\').id)" style="width:60px;background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:6px;padding:3px 6px;font-size:12px;font-weight:600;text-align:center"/>'
-    +'<div id="'+uid+'-cans" style="font-size:10px;color:var(--muted);margin-top:3px">'+b.cans.toLocaleString()+' cans</div></div>'
-    +'<div style="text-align:right;padding-right:4px"><div id="'+uid+'-pcase" style="font-size:12px;color:#fff;font-weight:600">'+usd(b.perCase)+'/case</div>'
-    +'<div id="'+uid+'-pcan" style="font-size:10px;color:var(--muted);margin-top:3px">'+usd(b.perCan,4)+'/can</div></div>'
-    +'<div id="'+uid+'-total" style="text-align:right;font-size:14px;font-weight:700;color:#fff">'+usd(b.total)+'</div>'
-    +'<div style="text-align:center"><button onclick="window.glRemoveCanLine(this.closest(\'[id^=glcan]\').id)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0;line-height:1">x</button></div>';
-  t.appendChild(row);
-  if(typeof window.glCalcInvTotal==="function")window.glCalcInvTotal();
-};
-console.log("[GL] rate card patch v2 loaded");
-}());
-const fs = require('fs');
-const path = require('path');
 
-const fixPath = path.join(__dirname, 'fix.js');
+  /* ── Override glAddLine ────────────────────────────────── */
+  var _prev = window.glAddLine;
+  window.glAddLine = async function(type) {
+    if (type !== 'canning' && type !== 'bottling') {
+      if (typeof _prev === 'function') _prev(type);
+      return;
+    }
 
-const patch = `
-
-/* === PRICING PATCH - Supabase rates for canning & bottling === */
-(function(){
-  var SURL='https://ufjkeqmxwuyhbqyugcgg.supabase.co/rest/v1';
-  var SKEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmamtlcW14d3V5aGJxeXVnY2dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNDI2MDksImV4cCI6MjA5MzkxODYwOX0.godgU_jeprCqSzqe0ji_ZA_hwvPF2s7BmzQyAB-c_xE';
-  var SH={'apikey':SKEY,'Authorization':'Bearer '+SKEY,'Content-Type':'application/json'};
-  var CPCase=24;
-  window._glRates={canning:[],bottling:[],loaded:false};
-  window.glLoadRates=async function(){
-    if(window._glRates.loaded)return window._glRates;
-    try{
-      var res=await Promise.all([
-        fetch(SURL+'/canning_rates?order=format,min_cases',{headers:SH}).then(function(r){return r.json();}),
-        fetch(SURL+'/bottling_rates?order=format,min_units',{headers:SH}).then(function(r){return r.json();})
-      ]);
-      window._glRates.canning=Array.isArray(res[0])?res[0]:[];
-      window._glRates.bottling=Array.isArray(res[1])?res[1]:[];
-      window._glRates.loaded=true;
-    }catch(e){console.error('[GL] Rate load failed',e);}
-    return window._glRates;
-  };
-  function getCanRate(cases,fmt){
-    var t=window._glRates.canning.filter(function(r){return r.format===fmt;}).sort(function(a,b){return a.min_cases-b.min_cases;});
-    if(!t.length)return 0.48;
-    var v=parseFloat(t[0].price_per_can);
-    for(var i=0;i<t.length;i++)if(cases>=t[i].min_cases)v=parseFloat(t[i].price_per_can);
-    return v;
-  }
-  function getBtlRate(units,fmt){
-    var t=window._glRates.bottling.filter(function(r){return r.format===fmt;}).sort(function(a,b){return a.min_units-b.min_units;});
-    if(!t.length)return 2.25;
-    var v=parseFloat(t[0].price_per_unit);
-    for(var i=0;i<t.length;i++)if(units>=t[i].min_units)v=parseFloat(t[i].price_per_unit);
-    return v;
-  }
-  function usd(n,d){return'$'+parseFloat(n).toLocaleString('en-US',{minimumFractionDigits:d==null?2:d,maximumFractionDigits:d==null?2:d});}
-  function getTbl(){var b=document.getElementById('gl-inv-body');return b?b.children[2]:null;}
-  window.glCanFormatChange=function(uid){
-    var ce=document.getElementById(uid+'-cases'),fe=document.getElementById(uid+'-format');
-    if(!ce||!fe)return;
-    var cases=Math.max(1,parseInt(ce.value)||150),fmt=fe.value;
-    var pc=getCanRate(cases,fmt),pcase=pc*CPCase,tot=pcase*cases;
-    function s(id,v){var e=document.getElementById(id);if(e)e.textContent=v;}
-    s(uid+'-total',usd(tot));s(uid+'-pcase',usd(pcase)+'/case');
-    s(uid+'-pcan',usd(pc,4)+'/can');s(uid+'-cans',(cases*CPCase).toLocaleString()+' cans');
-    if(typeof window.glCalcInvTotal==='function')window.glCalcInvTotal();
-  };
-  window.glRemoveCanLine=function(uid){var e=document.getElementById(uid);if(e)e.remove();if(typeof window.glCalcInvTotal==='function')window.glCalcInvTotal();};
-  window.glBtlChange=function(uid){
-    var qe=document.getElementById(uid+'-qty'),fe=document.getElementById(uid+'-format');
-    if(!qe||!fe)return;
-    var qty=Math.max(1,parseInt(qe.value)||500),fmt=fe.value;
-    var pu=getBtlRate(qty,fmt),tot=pu*qty;
-    function s(id,v){var e=document.getElementById(id);if(e)e.textContent=v;}
-    s(uid+'-total',usd(tot));s(uid+'-punit',usd(pu,4)+'/btl');
-    if(typeof window.glCalcInvTotal==='function')window.glCalcInvTotal();
-  };
-  window.glRemoveBtlLine=function(uid){var e=document.getElementById(uid);if(e)e.remove();if(typeof window.glCalcInvTotal==='function')window.glCalcInvTotal();};
-  var _prev=window.glAddLine;
-  window.glAddLine=async function(type){
-    if(type!=='canning'&&type!=='bottling'){if(typeof _prev==='function')_prev(type);return;}
     await window.glLoadRates();
-    var tbl=getTbl();if(!tbl){if(typeof _prev==='function')_prev(type);return;}
-    var RS='display:grid;grid-template-columns:2fr 1fr 1fr 1fr 36px;gap:0;padding:10px 12px;border-top:1px solid rgba(255,255,255,.05);align-items:start';
-    var SS='background:#1a2a3a;color:#fff;border:1px solid rgba(0,229,192,.4);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;width:100%;max-width:160px';
-    var SI='width:60px;background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:6px;padding:3px 6px;font-size:12px;font-weight:600;text-align:center';
-    if(type==='canning'){
-      var uid='glcan'+Date.now(),fmts=[],seen={};
-      window._glRates.canning.forEach(function(r){if(!seen[r.format]){seen[r.format]=true;fmts.push({value:r.format,label:r.format_label});}});
-      if(!fmts.length)fmts=[{value:'12oz-standard',label:'12oz Standard'}];
-      var def=fmts[0].value,pc=getCanRate(150,def),pcase=pc*CPCase,tot=pcase*150;
-      var opts=fmts.map(function(f){return'<option value="'+f.value+'"'+(f.value===def?' selected':'')+'>'+f.label+'</option>';}).join('');
-      var row=document.createElement('div');row.id=uid;row.setAttribute('style',RS);
-      row.innerHTML='<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Canning</div><select id="'+uid+'-format" onchange="window.glCanFormatChange(this.closest(\'[id^=glcan]\').id)" style="'+SS+'">'+opts+'</select></div>'
-        +'<div style="text-align:center"><input id="'+uid+'-cases" type="number" min="1" value="150" onchange="window.glCanFormatChange(this.closest(\'[id^=glcan]\').id)" style="'+SI+'"/><div id="'+uid+'-cans" style="font-size:10px;color:var(--muted);margin-top:3px">'+(150*CPCase).toLocaleString()+' cans</div></div>'
-        +'<div style="text-align:right;padding-right:4px"><div id="'+uid+'-pcase" style="font-size:12px;color:#fff;font-weight:600">'+usd(pcase)+'/case</div><div id="'+uid+'-pcan" style="font-size:10px;color:var(--muted);margin-top:3px">'+usd(pc,4)+'/can</div></div>'
-        +'<div id="'+uid+'-total" style="text-align:right;font-size:14px;font-weight:700;color:#fff">'+usd(tot)+'</div>'
-        +'<div style="text-align:center"><button onclick="window.glRemoveCanLine(this.closest(\'[id^=glcan]\').id)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0">x</button></div>';
-      tbl.appendChild(row);
+    var t = getLineTable();
+    if (!t) { if (typeof _prev === 'function') _prev(type); return; }
+
+    var RS = 'display:grid;grid-template-columns:2fr 1fr 1fr 1fr 36px;gap:0;' +
+             'padding:10px 12px;border-top:1px solid rgba(255,255,255,.05);align-items:start';
+    var SS = 'background:#1a2a3a;color:#fff;border:1px solid rgba(0,229,192,.4);' +
+             'border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;width:100%;max-width:160px';
+    var SI = 'width:60px;background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.18);' +
+             'border-radius:6px;padding:3px 6px;font-size:12px;font-weight:600;text-align:center';
+
+    if (type === 'canning') {
+      var uid = 'glcan' + Date.now();
+      var formats = [];
+      var seen = {};
+      window._glRates.canning.forEach(function(r) {
+        if (!seen[r.format]) { seen[r.format] = true; formats.push({value: r.format, label: r.format_label}); }
+      });
+      if (!formats.length) formats = [{value:'12oz-standard',label:'12oz Standard'}];
+      var def    = formats[0].value;
+      var perCan = getCanRate(150, def);
+      var pcase  = perCan * CANS_PER_CASE;
+      var total  = pcase * 150;
+      var opts   = formats.map(function(f) {
+        return '<option value="' + f.value + '"' + (f.value === def ? ' selected' : '') + '>' + f.label + '</option>';
+      }).join('');
+      var row = document.createElement('div');
+      row.id = uid;
+      row.setAttribute('style', RS);
+      row.innerHTML =
+        '<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Canning</div>' +
+        '<select id="' + uid + '-format" onchange="window.glCanFormatChange(this.closest(\'[id^=glcan]\').id)" style="' + SS + '">' + opts + '</select></div>' +
+        '<div style="text-align:center"><input id="' + uid + '-cases" type="number" min="1" value="150" onchange="window.glCanFormatChange(this.closest(\'[id^=glcan]\').id)" style="' + SI + '"/>' +
+        '<div id="' + uid + '-cans" style="font-size:10px;color:var(--muted);margin-top:3px">' + (150*CANS_PER_CASE).toLocaleString() + ' cans</div></div>' +
+        '<div style="text-align:right;padding-right:4px">' +
+        '<div id="' + uid + '-pcase" style="font-size:12px;color:#fff;font-weight:600">' + usd(pcase) + '/case</div>' +
+        '<div id="' + uid + '-pcan"  style="font-size:10px;color:var(--muted);margin-top:3px">' + usd(perCan,4) + '/can</div></div>' +
+        '<div id="' + uid + '-total" style="text-align:right;font-size:14px;font-weight:700;color:#fff">' + usd(total) + '</div>' +
+        '<div style="text-align:center"><button onclick="window.glRemoveCanLine(this.closest(\'[id^=glcan]\').id)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0">x</button></div>';
+      t.appendChild(row);
     }
-    if(type==='bottling'){
-      var uid='glbtl'+Date.now(),bfmts=[],bseen={};
-      window._glRates.bottling.forEach(function(r){if(!bseen[r.format]){bseen[r.format]=true;bfmts.push({value:r.format,label:r.format_label});}});
-      if(!bfmts.length)bfmts=[{value:'750ml',label:'750ml Bottle'}];
-      var bdef=bfmts[0].value,pu=getBtlRate(500,bdef),btot=pu*500;
-      var bopts=bfmts.map(function(f){return'<option value="'+f.value+'"'+(f.value===bdef?' selected':'')+'>'+f.label+'</option>';}).join('');
-      var brow=document.createElement('div');brow.id=uid;brow.setAttribute('style',RS);
-      brow.innerHTML='<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Bottling</div><select id="'+uid+'-format" onchange="window.glBtlChange(this.closest(\'[id^=glbtl]\').id)" style="'+SS+'">'+bopts+'</select></div>'
-        +'<div style="text-align:center"><input id="'+uid+'-qty" type="number" min="1" value="500" onchange="window.glBtlChange(this.closest(\'[id^=glbtl]\').id)" style="'+SI+'"/><div style="font-size:10px;color:var(--muted);margin-top:3px">bottles</div></div>'
-        +'<div style="text-align:right;padding-right:4px"><div id="'+uid+'-punit" style="font-size:12px;color:#fff;font-weight:600">'+usd(pu,4)+'/btl</div></div>'
-        +'<div id="'+uid+'-total" style="text-align:right;font-size:14px;font-weight:700;color:#fff">'+usd(btot)+'</div>'
-        +'<div style="text-align:center"><button onclick="window.glRemoveBtlLine(this.closest(\'[id^=glbtl]\').id)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0">x</button></div>';
-      tbl.appendChild(brow);
+
+    if (type === 'bottling') {
+      var uid = 'glbtl' + Date.now();
+      var bformats = [];
+      var bseen = {};
+      window._glRates.bottling.forEach(function(r) {
+        if (!bseen[r.format]) { bseen[r.format] = true; bformats.push({value: r.format, label: r.format_label}); }
+      });
+      if (!bformats.length) bformats = [{value:'750ml',label:'750ml Bottle'}];
+      var bdef    = bformats[0].value;
+      var perUnit = getBottleRate(500, bdef);
+      var btotal  = perUnit * 500;
+      var bopts   = bformats.map(function(f) {
+        return '<option value="' + f.value + '"' + (f.value === bdef ? ' selected' : '') + '>' + f.label + '</option>';
+      }).join('');
+      var brow = document.createElement('div');
+      brow.id = uid;
+      brow.setAttribute('style', RS);
+      brow.innerHTML =
+        '<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Bottling</div>' +
+        '<select id="' + uid + '-format" onchange="window.glBottleQtyChange(this.closest(\'[id^=glbtl]\').id)" style="' + SS + '">' + bopts + '</select></div>' +
+        '<div style="text-align:center"><input id="' + uid + '-qty" type="number" min="1" value="500" onchange="window.glBottleQtyChange(this.closest(\'[id^=glbtl]\').id)" style="' + SI + '"/>' +
+        '<div style="font-size:10px;color:var(--muted);margin-top:3px">bottles</div></div>' +
+        '<div style="text-align:right;padding-right:4px">' +
+        '<div id="' + uid + '-punit" style="font-size:12px;color:#fff;font-weight:600">' + usd(perUnit,4) + '/btl</div></div>' +
+        '<div id="' + uid + '-total" style="text-align:right;font-size:14px;font-weight:700;color:#fff">' + usd(btotal) + '</div>' +
+        '<div style="text-align:center"><button onclick="window.glRemoveBottleLine(this.closest(\'[id^=glbtl]\').id)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0">x</button></div>';
+      t.appendChild(brow);
     }
-    if(typeof window.glCalcInvTotal==='function')window.glCalcInvTotal();
+
+    if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
   };
-  window.glOpenPricing=async function(){
+
+  /* ── Pricing Admin Page ────────────────────────────────── */
+  window.glOpenPricing = async function() {
     document.getElementById('gl-pricing-modal')?.remove();
     await window.glLoadRates();
-    var modal=document.createElement('div');
-    modal.id='gl-pricing-modal';
-    modal.setAttribute('style','position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px');
-    function buildRows(rows,pkField,minField,priceField,tkey){
-      return rows.map(function(r){
-        return '<tr style="border-top:1px solid rgba(255,255,255,.06)">'
-          +'<td style="padding:7px 8px;font-size:12px;color:#fff">'+r.format_label+'</td>'
-          +'<td style="padding:7px 8px;font-size:12px;color:var(--muted)">'+r[minField]+'+</td>'
-          +'<td style="padding:7px 8px"><input data-id="'+r.id+'" data-tbl="'+tkey+'" data-fld="'+priceField+'" value="'+parseFloat(r[priceField]).toFixed(4)+'" type="number" step="0.0001" min="0" style="width:90px;background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:4px 8px;font-size:12px"/></td>'
-          +'<td style="padding:7px 8px"><button onclick="window.glSaveRate(this)" data-id="'+r.id+'" data-tbl="'+tkey+'" data-fld="'+priceField+'" style="background:rgba(0,229,192,.15);border:1px solid rgba(0,229,192,.3);color:var(--teal);border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer">Save</button></td>'
-          +'</tr>';
-      }).join('');
+
+    var modal = document.createElement('div');
+    modal.id = 'gl-pricing-modal';
+    modal.setAttribute('style',
+      'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px');
+
+    function buildTable(title, rows, pkField, labelField, minField, priceField, tableKey) {
+      var grouped = {};
+      rows.forEach(function(r) { (grouped[r[labelField]] = grouped[r[labelField]] || []).push(r); });
+      var html = '<div style="margin-bottom:24px">' +
+        '<div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:10px">' + title + '</div>' +
+        '<table style="width:100%;border-collapse:collapse">' +
+        '<tr style="font-size:11px;color:var(--muted)">' +
+        '<th style="text-align:left;padding:6px 8px">Format</th>' +
+        '<th style="text-align:left;padding:6px 8px">Min ' + (tableKey==='canning'?'Cases':'Units') + '</th>' +
+        '<th style="text-align:left;padding:6px 8px">Price</th>' +
+        '<th style="padding:6px 8px"></th></tr>';
+      rows.forEach(function(r) {
+        html += '<tr style="border-top:1px solid rgba(255,255,255,.06)">' +
+          '<td style="padding:7px 8px;font-size:12px;color:#fff">' + r[labelField] + '</td>' +
+          '<td style="padding:7px 8px;font-size:12px;color:var(--muted)">' + r[minField] + '+</td>' +
+          '<td style="padding:7px 8px">' +
+          '<input data-id="' + r.id + '" data-table="' + tableKey + '" data-field="' + priceField + '" ' +
+          'value="' + parseFloat(r[priceField]).toFixed(4) + '" type="number" step="0.0001" min="0" ' +
+          'style="width:90px;background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:4px 8px;font-size:12px"/>' +
+          '</td>' +
+          '<td style="padding:7px 8px">' +
+          '<button onclick="window.glSaveRate(this)" data-id="' + r.id + '" data-table="' + tableKey + '" data-field="' + priceField + '" ' +
+          'style="background:rgba(0,229,192,.15);border:1px solid rgba(0,229,192,.3);color:var(--teal);border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer">Save</button>' +
+          '</td></tr>';
+      });
+      html += '</table></div>';
+      return html;
     }
-    modal.innerHTML='<div style="background:#0d1f33;border:1px solid rgba(255,255,255,.1);border-radius:14px;width:100%;max-width:620px;max-height:85vh;overflow-y:auto;padding:24px">'
-      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px"><div style="font-size:16px;font-weight:700;color:#fff">Pricing Manager</div>'
-      +'<button onclick="document.getElementById(\'gl-pricing-modal\').remove()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1">x</button></div>'
-      +'<div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">CANNING (per can)</div>'
-      +'<table style="width:100%;border-collapse:collapse;margin-bottom:24px"><tr style="font-size:11px;color:var(--muted)"><th style="text-align:left;padding:6px 8px">Format</th><th style="text-align:left;padding:6px 8px">Min Cases</th><th style="text-align:left;padding:6px 8px">$/Can</th><th></th></tr>'
-      +buildRows(window._glRates.canning,'id','min_cases','price_per_can','canning')+'</table>'
-      +'<div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">BOTTLING (per bottle)</div>'
-      +'<table style="width:100%;border-collapse:collapse"><tr style="font-size:11px;color:var(--muted)"><th style="text-align:left;padding:6px 8px">Format</th><th style="text-align:left;padding:6px 8px">Min Units</th><th style="text-align:left;padding:6px 8px">$/Bottle</th><th></th></tr>'
-      +buildRows(window._glRates.bottling,'id','min_units','price_per_unit','bottling')+'</table>'
-      +'<div style="font-size:11px;color:var(--muted);margin-top:16px">Changes save instantly to the database.</div></div>';
+
+    modal.innerHTML =
+      '<div style="background:#0d1f33;border:1px solid rgba(255,255,255,.1);border-radius:14px;width:100%;max-width:620px;max-height:85vh;overflow-y:auto;padding:24px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">' +
+          '<div style="font-size:16px;font-weight:700;color:#fff">Pricing Manager</div>' +
+          '<button onclick="document.getElementById(\'gl-pricing-modal\').remove()" ' +
+          'style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">x</button>' +
+        '</div>' +
+        buildTable('CANNING RATES (per can)', window._glRates.canning, 'id', 'format_label', 'min_cases', 'price_per_can', 'canning') +
+        buildTable('BOTTLING RATES (per bottle)', window._glRates.bottling, 'id', 'format_label', 'min_units', 'price_per_unit', 'bottling') +
+        '<div style="font-size:11px;color:var(--muted);margin-top:8px">Changes save instantly to the database and apply to all new invoices.</div>' +
+      '</div>';
+
     document.body.appendChild(modal);
   };
-  window.glSaveRate=async function(btn){
-    var id=btn.getAttribute('data-id'),tbl=btn.getAttribute('data-tbl'),fld=btn.getAttribute('data-fld');
-    var input=btn.closest('tr').querySelector('input');
-    var val=parseFloat(input.value);
-    if(isNaN(val)||val<=0){alert('Invalid price');return;}
-    btn.textContent='...';
-    var ep=SURL+'/'+(tbl==='canning'?'canning_rates':'bottling_rates')+'?id=eq.'+id;
-    var body={updated_at:new Date().toISOString()};body[fld]=val;
-    try{
-      var res=await fetch(ep,{method:'PATCH',headers:Object.assign({},SH,{'Prefer':'return=minimal'}),body:JSON.stringify(body)});
-      if(res.ok||res.status===204){
-        btn.textContent='Saved';btn.style.color='#22c55e';
-        var cache=tbl==='canning'?window._glRates.canning:window._glRates.bottling;
-        var row=cache.find(function(r){return r.id==id;});if(row)row[fld]=val;
-        setTimeout(function(){btn.textContent='Save';btn.style.color='';},2000);
-      }else{btn.textContent='Error';}
-    }catch(e){btn.textContent='Error';console.error(e);}
+
+  window.glSaveRate = async function(btn) {
+    var id    = btn.getAttribute('data-id');
+    var tbl   = btn.getAttribute('data-table');
+    var field = btn.getAttribute('data-field');
+    var input = btn.parentNode.parentNode.querySelector('input[data-id="' + id + '"]');
+    var val   = parseFloat(input.value);
+    if (isNaN(val) || val <= 0) { alert('Invalid price'); return; }
+
+    btn.textContent = '...';
+    var endpoint = SURL + '/' + (tbl === 'canning' ? 'canning_rates' : 'bottling_rates') + '?id=eq.' + id;
+    var body = {};
+    body[field] = val;
+    body['updated_at'] = new Date().toISOString();
+
+    try {
+      var res = await fetch(endpoint, {
+        method: 'PATCH',
+        headers: Object.assign({}, SH, {'Prefer': 'return=minimal'}),
+        body: JSON.stringify(body)
+      });
+      if (res.ok || res.status === 204) {
+        btn.textContent = 'Saved';
+        btn.style.background = 'rgba(34,197,94,.2)';
+        btn.style.borderColor = 'rgba(34,197,94,.4)';
+        btn.style.color = '#22c55e';
+        // Update cache
+        var cache = tbl === 'canning' ? window._glRates.canning : window._glRates.bottling;
+        var row = cache.find(function(r){ return r.id == id; });
+        if (row) row[field] = val;
+        setTimeout(function(){ btn.textContent='Save'; btn.style.background=''; btn.style.borderColor=''; btn.style.color=''; }, 2000);
+      } else {
+        btn.textContent = 'Error';
+        console.error('[GL] Save failed', res.status);
+      }
+    } catch(e) {
+      btn.textContent = 'Error';
+      console.error('[GL] Save error', e);
+    }
   };
-  console.log('[GL] Pricing patch loaded');
+
+  /* ── Add Pricing nav button to CRM sidebar ─────────────── */
+  function injectPricingNav() {
+    var sidebar = document.querySelector('.cpills') || document.querySelector('[class*="nav"]');
+    if (document.getElementById('gl-pricing-nav')) return;
+    var btn = document.createElement('button');
+    btn.id = 'gl-pricing-nav';
+    btn.textContent = '$ Pricing';
+    btn.onclick = window.glOpenPricing;
+    btn.setAttribute('style',
+      'background:rgba(0,229,192,.1);border:1px solid rgba(0,229,192,.3);color:var(--teal);' +
+      'border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;margin:4px');
+    // Add to page in a sensible spot — next to invoices button if it exists
+    var invoiceBtn = [...document.querySelectorAll('button,a')].find(function(el){
+      return el.textContent.includes('Invoice') || el.textContent.includes('invoice');
+    });
+    if (invoiceBtn && invoiceBtn.parentNode) {
+      invoiceBtn.parentNode.insertBefore(btn, invoiceBtn.nextSibling);
+    } else {
+      document.body.appendChild(btn);
+    }
+  }
+
+  // Inject nav after CRM loads
+  setTimeout(injectPricingNav, 1500);
+  document.addEventListener('click', function() { setTimeout(injectPricingNav, 500); });
+
+  console.log('[GL] Pricing patch loaded — Supabase rates active');
 }());
-`;
-
-// Read current fix.js
-const current = fs.readFileSync(fixPath, 'utf8');
-
-// Check patch not already applied
-if (current.includes('PRICING PATCH')) {
-  console.log('Patch already applied. Skipping.');
-  process.exit(0);
-}
-
-// Write combined file
-const combined = current + patch;
-fs.writeFileSync(fixPath, combined, 'utf8');
-
-// Verify
-const verify = fs.readFileSync(fixPath, 'utf8');
-console.log('Done. Lines: ' + verify.split('\n').length);
-console.log('Has patch: ' + verify.includes('PRICING PATCH'));
-
