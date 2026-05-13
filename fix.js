@@ -5,28 +5,38 @@
   'use strict';
 
 
-  /* ── 0. ENSURE USERS ARRAY IS POPULATED ─────────── */
-  if (!window.users || window.users.length === 0) {
-    window.users = [
-      {
-        id: 'u1', name: 'Mike Krail', email: 'mike@goodliquid.com',
-        password: 'GL2026admin', role: 'admin', status: 'active',
-        initials: 'MK', color: '#f5c842', tc: '#0a1628', lastLogin: 'Never'
-      },
-      {
-        id: 'u2', name: 'Sandra Krail', email: 'sandra@goodliquid.com',
-        password: 'GL2026ops', role: 'sales', status: 'active',
-        initials: 'SK', color: '#1a6fff', tc: '#fff', lastLogin: 'Never'
-      }
-    ];
-    console.log('[GL] Users array initialized from fix.js');
-  }
+  /* ── 0. ALWAYS DEFINE CORE USERS ───────────────────
+     The main script lost the users array.
+     fix.js always provides it.
+  ────────────────────────────────────────────────── */
+  var coreUsers = [
+    {
+      id: 'u1', name: 'Mike Krail', email: 'mike@goodliquid.com',
+      password: 'GL2026admin', role: 'admin', status: 'active',
+      initials: 'MK', color: '#f5c842', tc: '#0a1628', lastLogin: 'Never'
+    },
+    {
+      id: 'u2', name: 'Sandra Krail', email: 'sandra@goodliquid.com',
+      password: 'GL2026ops', role: 'sales', status: 'active',
+      initials: 'SK', color: '#1a6fff', tc: '#fff', lastLogin: 'Never'
+    }
+  ];
 
-  /* Always ensure Mike is admin even if array exists */
-  if (window.users) {
-    var mike = window.users.find(function(u){ return u.email === 'mike@goodliquid.com'; });
-    if (mike) mike.role = 'admin';
+  // Merge with any existing users, always guaranteeing core users exist
+  if (!window.users || window.users.length === 0) {
+    window.users = coreUsers;
+  } else {
+    // Ensure Mike is admin and core users exist
+    coreUsers.forEach(function(cu) {
+      var existing = window.users.find(function(u){ return u.email === cu.email; });
+      if (existing) {
+        existing.role = cu.role; // enforce correct role
+      } else {
+        window.users.unshift(cu); // add if missing
+      }
+    });
   }
+  console.log('[GL] Users:', window.users.map(function(u){ return u.email + ':' + u.role; }));
 
   /* ── 1. FIX BROKEN HTML STRUCTURE ─────────────────
      crm-body, notif-panel, cnav-overlay were trapped
