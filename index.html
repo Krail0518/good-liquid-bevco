@@ -649,207 +649,111 @@ select option, .fsel option {
 .forecast-amount { font-family:var(--ff-disp);font-size:28px;letter-spacing:1px;background:linear-gradient(135deg,var(--teal),#1a6fff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text; }
 .forecast-label { font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-top:4px; }
 
-/* ═══════════════════════════════════════════
-   MOBILE OPTIMIZATION — Public Site
-═══════════════════════════════════════════ */
-@media (max-width: 768px) {
-  /* Nav */
-  #main-nav { padding: 0 16px; height: 54px; }
-  .nav-links { display: none; }
-  .nav-links.mobile-open {
-    display: flex; flex-direction: column;
-    position: fixed; top: 54px; left: 0; right: 0;
-    background: rgba(10,22,40,.98); backdrop-filter: blur(20px);
-    padding: 16px; gap: 4px; z-index: 300;
-    border-bottom: 1px solid rgba(0,229,192,.15);
-  }
-  .nav-links.mobile-open a {
-    padding: 12px 16px; border-radius: 8px;
-    font-size: 15px; border-bottom: 1px solid rgba(255,255,255,.05);
-  }
-  #mobile-menu-btn {
-    display: flex !important; align-items: center; justify-content: center;
-    width: 38px; height: 38px; background: rgba(255,255,255,.06);
-    border: 1px solid rgba(255,255,255,.1); border-radius: 8px;
-    cursor: pointer; font-size: 18px; color: var(--white);
-  }
 
-  /* Hero */
-  #hero { padding: 80px 20px 60px !important; min-height: 100svh; }
-  #hero h1, #hero .hero-title { font-size: clamp(42px, 12vw, 80px) !important; }
-  #hero .hero-sub { font-size: 14px !important; }
-  #hero .hero-btns { flex-direction: column; gap: 10px; }
-  #hero .hero-btns a, #hero .hero-btns button { width: 100%; text-align: center; }
-  .stat-row { grid-template-columns: repeat(2,1fr) !important; gap: 12px !important; }
-
-  /* Sections */
-  section { padding: 60px 20px !important; }
-  .sec-title { font-size: clamp(28px, 8vw, 48px) !important; }
-  .service-grid, .cert-grid, .team-grid { grid-template-columns: 1fr !important; }
-  .pricing-grid { grid-template-columns: 1fr !important; }
-  .process-steps { flex-direction: column !important; }
-  .fac-grid { grid-template-columns: 1fr !important; }
-
-  /* Contact form */
-  .contact-grid { grid-template-columns: 1fr !important; }
-  .form-row { grid-template-columns: 1fr !important; }
-
-  /* Chat widget */
-  #gl-chat-bubble { bottom: 16px; left: 16px; width: 46px; height: 46px; font-size: 20px; }
-  #gl-chat-window { 
-    bottom: 74px; left: 8px; right: 8px; width: auto !important;
-    height: 420px;
-  }
-
-  /* Booking overlay */
-  .booking-box { padding: 20px; }
-  .booking-box > div:nth-child(2) { grid-template-columns: 1fr !important; }
-  .time-slots { grid-template-columns: repeat(2,1fr) !important; }
-}
-
-/* ═══════════════════════════════════════════
-   MOBILE OPTIMIZATION — CRM Admin
-═══════════════════════════════════════════ */
-@media (max-width: 768px) {
-  /* CRM Layout - keep row, sidebar slides over */
-  
-  /* Top bar */
-  #crm-top { padding: 0 12px; height: 48px; }
-  .crm-brand { font-size: 12px; letter-spacing: 1px; }
-  
-  /* Sidebar — overlay on mobile, doesn't affect layout */
-  .cnav {
-    position: fixed; left: -280px; top: 48px; bottom: 0;
-    width: 260px; z-index: 600;
-    transition: transform .25s ease;
-    background: #0a1628;
-    border-right: 1px solid rgba(0,229,192,.12);
-    overflow-y: auto;
-    box-shadow: 4px 0 20px rgba(0,0,0,.5);
-  }
-  .cnav.mobile-open { left: 0; }
-  .cnav-overlay {
-    position: fixed; inset: 0; top: 48px;
-    background: rgba(0,0,0,.6); z-index: 599;
-    display: none;
-  }
-  .cnav-overlay.show { display: block; }
-  #mobile-crm-menu {
-    display: flex !important; align-items: center; justify-content: center;
-    width: 34px; height: 34px; background: rgba(255,255,255,.06);
-    border: 1px solid rgba(255,255,255,.1); border-radius: 8px;
-    cursor: pointer; font-size: 16px; color: var(--white); margin-right: 8px;
-  }
-  
-  /* Pages */
-  .cpg { padding: 14px 14px 80px; }
-  .cph { flex-direction: column; align-items: flex-start; gap: 10px; }
-  .cph .cbtn { width: 100%; text-align: center; }
-  
-  /* Tables — scroll horizontally */
-  .ctbl-wrap, table.ctbl { 
-    display: block; overflow-x: auto; 
-    -webkit-overflow-scrolling: touch;
-    white-space: nowrap;
-  }
-  
-  /* Kanban — horizontal scroll */
-  .kboard { 
-    flex-direction: row; overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 16px; gap: 12px;
-  }
-  .kcol { min-width: 240px; flex-shrink: 0; }
-  
-  /* Dashboard stats */
-  .dash-stats { grid-template-columns: repeat(2,1fr) !important; gap: 10px !important; }
-  .dash-row { grid-template-columns: 1fr !important; gap: 12px !important; }
-  
-  /* Calendar */
-  .cal-grid { gap: 2px; }
-  .cal-day { min-height: 52px; padding: 4px; }
-  .cal-day-num { font-size: 10px; }
-  .cal-event { font-size: 8px; }
-  
-  /* Modals */
-  .modal-box { 
-    width: 95vw !important; max-width: 95vw !important;
-    padding: 16px; margin: 10px;
-    max-height: 90vh; overflow-y: auto;
-  }
-  .modal-ov { padding: 10px; align-items: center; }
-  
-  /* AI toolbar */
-  #ai-tools {
-    left: 0; right: 0; bottom: 0;
-    border-radius: 0; padding: 8px 10px;
-    overflow-x: auto; gap: 6px;
-    -webkit-overflow-scrolling: touch;
-    white-space: nowrap;
-    border-left: none; border-right: none; border-bottom: none;
-  }
-  #ai-tools button { font-size: 10px; padding: 6px 10px; }
-  
-  /* Invoice detail */
-  .inv-detail-grid { grid-template-columns: 1fr !important; }
-  
-  /* Notification panel */
-  #notif-panel { right: 0; left: 0; width: 100%; border-radius: 0 0 14px 14px; top: 48px; }
-
-  /* Customer portal */
-  .portal-body { padding: 14px; }
-  .portal-body > div:nth-child(2) { grid-template-columns: 1fr !important; }
-
-  /* Pipeline switch */
-  .pipeline-switch { overflow-x: auto; padding-bottom: 4px; }
-
-  /* Forms */
-  .frow { margin-bottom: 10px; }
-  .finp { font-size: 16px !important; } /* Prevents iOS zoom */
-  select.fsel { font-size: 16px !important; }
-
-  /* Time tracker */
-  #tt-display { font-size: 28px !important; }
-}
-
-/* Hide mobile-only elements on desktop */
-#mobile-menu-btn, #mobile-crm-menu { display: none; }
-
-/* Smooth scrolling on mobile */
-html { scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
-* { -webkit-tap-highlight-color: rgba(0,229,192,.15); }
-
-/* Safe area for iPhone notch */
-#crm-top, #main-nav { padding-top: env(safe-area-inset-top); }
 #ai-tools { padding-bottom: calc(env(safe-area-inset-bottom) + 8px); }
 
-/* ═══════════════════════════════════════════
-   DESKTOP OVERRIDE — ensures sidebar always 
-   shows correctly on screens > 768px
-═══════════════════════════════════════════ */
-@media (min-width: 769px) {
-  .cnav {
-    position: relative !important;
-    left: 0 !important;
-    top: auto !important;
-    bottom: auto !important;
-    display: flex !important;
-    flex-direction: column !important;
-    width: 220px !important;
-    min-width: 220px !important;
-    max-width: 220px !important;
-    height: 100% !important;
-    overflow-y: auto !important;
-    box-shadow: none !important;
-    transition: none !important;
-    z-index: auto !important;
-  }
-  .cnav-overlay { display: none !important; }
+
+  
   #mobile-crm-menu { display: none !important; }
   #mobile-menu-btn { display: none !important; }
   .nav-links { display: flex !important; position: static !important; }
   #crm-body { flex: 1 !important; overflow-y: auto !important; }
 }
+
+/* ═══════════════════════════════════════════
+   MOBILE — Safe responsive CSS
+   Only affects screens under 768px
+   Desktop layout is completely untouched
+═══════════════════════════════════════════ */
+
+/* Mobile hamburger buttons — hidden on desktop */
+#mobile-menu-btn { display: none; }
+#mobile-crm-menu { display: none; }
+#cnav-overlay { display: none; }
+
+@media (max-width: 768px) {
+  /* Show mobile buttons */
+  #mobile-menu-btn {
+    display: flex !important;
+    align-items: center; justify-content: center;
+    width: 38px; height: 38px;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 8px; cursor: pointer;
+    font-size: 18px; color: var(--white);
+    flex-shrink: 0;
+  }
+  #mobile-crm-menu {
+    display: flex !important;
+    align-items: center; justify-content: center;
+    width: 34px; height: 34px;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 8px; cursor: pointer;
+    font-size: 16px; color: var(--white);
+    margin-right: 8px; flex-shrink: 0;
+  }
+
+  /* Hide desktop nav links, show on tap */
+  .nav-links { display: none; }
+  .nav-links.mobile-open {
+    display: flex; flex-direction: column;
+    position: fixed; top: 54px; left: 0; right: 0;
+    background: rgba(10,22,40,.98);
+    backdrop-filter: blur(20px);
+    padding: 16px; gap: 4px; z-index: 300;
+    border-bottom: 1px solid rgba(0,229,192,.15);
+  }
+
+  /* Hero */
+  #hero { padding: 80px 20px 60px !important; }
+
+  /* Sections */
+  section { padding: 50px 16px !important; }
+  .service-grid, .cert-grid, .team-grid,
+  .pricing-grid, .fac-grid { grid-template-columns: 1fr !important; }
+
+  /* CRM sidebar — slides in over content, doesn't affect layout */
+  .cnav {
+    position: fixed !important;
+    left: -280px !important;
+    top: 48px; bottom: 0;
+    width: 260px; z-index: 600;
+    transition: left .25s ease;
+    overflow-y: auto;
+    box-shadow: 4px 0 20px rgba(0,0,0,.5);
+  }
+  .cnav.mobile-open { left: 0 !important; }
+  #cnav-overlay {
+    display: none;
+    position: fixed; inset: 0; top: 48px;
+    background: rgba(0,0,0,.5); z-index: 599;
+  }
+  #cnav-overlay.show { display: block; }
+
+  /* Tables scroll */
+  .ctbl { display: block; overflow-x: auto; white-space: nowrap; }
+
+  /* Kanban scroll */
+  .kboard { overflow-x: auto; gap: 12px; }
+  .kcol { min-width: 220px; flex-shrink: 0; }
+
+  /* Modals full width */
+  .modal-box { width: 95vw !important; max-width: 95vw !important; padding: 16px; }
+
+  /* AI toolbar scroll */
+  #ai-tools { overflow-x: auto; white-space: nowrap; border-radius: 0; }
+
+  /* Forms — prevent iOS zoom */
+  .finp, select { font-size: 16px !important; }
+
+  /* Chat widget */
+  #gl-chat-window { left: 8px; right: 8px; width: auto !important; }
+
+  /* Dashboard stats */
+  .dash-stats { grid-template-columns: repeat(2,1fr) !important; }
+}
+
 </style>
 </head>
 <body>
