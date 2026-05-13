@@ -874,7 +874,26 @@
   function glInvDiscount(sub){ return sub * (glInvState.discount/100); }
   function glInvTotal(){ var s=glInvSubtotal(); return s - glInvDiscount(s); }
 
-  /* ── OPEN INVOICE BUILDER ──────────────────────────── */
+  
+  /* ── ENSURE CLIENTS ARE POPULATED ──────────────────── */
+  function glEnsureClients(){
+    if(!window.clients || window.clients.length === 0){
+      window.clients = [
+        {id:'c1',name:'Tide & Taste Co.',email:'contact@tidetaste.com',service:'Canning',status:'active'},
+        {id:'c2',name:'Bloom Functional',email:'hello@bloomfunctional.com',service:'R&D',status:'active'},
+        {id:'c3',name:'SunBurst Seltzers',email:'mike@sunburst.com',service:'Canning',status:'active'},
+        {id:'c4',name:'Harbor Brew Co.',email:'info@harborbrew.com',service:'Bottling',status:'active'},
+        {id:'c5',name:'Prism Hydration',email:'orders@prismh2o.com',service:'Canning',status:'lead'},
+        {id:'c6',name:'NorthWave Drinks',email:'hello@northwave.com',service:'Canning',status:'lead'},
+        {id:'c7',name:'Peak Performance',email:'ops@peakperformance.com',service:'R&D',status:'active'},
+        {id:'c8',name:'Coastal Craft',email:'info@coastalcraft.com',service:'Bottling',status:'active'},
+      ];
+      console.log('[GL] Clients populated from fix.js');
+    }
+  }
+  glEnsureClients();
+
+/* ── OPEN INVOICE BUILDER ──────────────────────────── */
   window.openNewInvoiceBuilder = function(){
     var existing = document.getElementById('gl-inv-builder');
     if(existing){ existing.classList.add('show'); glRenderInvBuilder(); return; }
@@ -1229,7 +1248,41 @@
     if(typeof addNotification==='function') addNotification('📄 PDF generated','Invoice '+inv.id+' ready to save','success');
   };
 
-  /* ── WIRE INTO CRM ───────────────────────────────── */
+  
+window.glChangeCannFormat = function(i, format){
+  var line = glInvState.lines[i];
+  if(!line) return;
+  line.canType = format;
+  var labels = {'12oz-standard':'12oz Standard','12oz-sleek':'12oz Sleek','16oz-standard':'16oz Standard'};
+  line.description = 'Canning — ' + (labels[format]||format);
+  // Recalculate price if qty set
+  if(line.qty > 0){
+    line.unitPrice = GL_RATE_CARD.canning.getRate(format, line.qty);
+    line.total = line.qty * line.unitPrice;
+  }
+  glUpdateTotals();
+};
+
+window.glChangeRDType = function(i, type){
+  var line = glInvState.lines[i];
+  if(!line) return;
+  var opts = {
+    'formulation': {label:'R&D Formulation', price:1000, unit:'SKU', note:'3 iterations included'},
+    'benchtop':    {label:'Benchtop Verification', price:500, unit:'SKU', note:'Required for co-packing'},
+    'ip-license':  {label:'IP License', price:6000, unit:'yr', note:'Annual licensing'},
+    'ip-purchase': {label:'IP Purchase', price:15000, unit:'', note:'Full ownership'},
+    'materials':   {label:'Materials Sourcing', price:0, unit:'', note:'Cost + 10% — enter cost in Unit Price'}
+  };
+  var opt = opts[type]||opts['formulation'];
+  line.description = opt.label;
+  line.unitPrice = opt.price;
+  line.unit = opt.unit;
+  line.note = opt.note;
+  line.total = line.qty * opt.price;
+  glUpdateTotals();
+};
+
+/* ── WIRE INTO CRM ───────────────────────────────── */
   // Replace the old new-invoice page trigger
   window.openNewInvoice = window.openNewInvoiceBuilder;
 
