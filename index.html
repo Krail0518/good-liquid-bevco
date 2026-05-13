@@ -849,7 +849,6 @@ html { scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
   #mobile-menu-btn { display: none !important; }
   .nav-links { display: flex !important; position: static !important; }
   #crm-body { flex: 1 !important; overflow-y: auto !important; }
-  #crm-panel { display: flex !important; flex-direction: row !important; }
 }
 </style>
 </head>
@@ -5889,24 +5888,7 @@ const _origInitCRM2 = initCRM;
 initCRM = function() {
   _origInitCRM2();
 
-  // Add Time Tracker to sidebar Tools section
-  const cnav = document.querySelector('.cnav');
-  if(cnav && !document.getElementById('nav-time-tracker')) {
-    const toolsSec = Array.from(cnav.children).find(el =>
-      el.classList.contains('cni-sec') && el.textContent.trim() === 'Tools'
-    );
-    if(toolsSec) {
-      const ttLink = document.createElement('div');
-      ttLink.id = 'nav-time-tracker';
-      ttLink.className = 'cni';
-      ttLink.innerHTML = '<span class="cni-ico">⏱️</span>Time Tracker';
-      ttLink.onclick = openTimeTracker;
-      // Insert after announcements
-      const annLink = Array.from(cnav.children).find(el => el.textContent.includes('Announcements'));
-      if(annLink) annLink.after(ttLink);
-      else cnav.insertBefore(ttLink, toolsSec.nextSibling);
-    }
-  }
+  // Time Tracker already in sidebar HTML
 
   // Override client row clicks to open enhanced detail view
   setTimeout(() => {
