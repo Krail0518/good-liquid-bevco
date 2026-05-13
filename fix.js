@@ -569,3 +569,194 @@
 
   console.log('[GL] fix.js v2.1 loaded');
 })();
+/* ─────────────────────────────────────────────────────────────
+   CAN FORMAT PATCH  — add to bottom of fix.js
+   Adds can size dropdown to canning line items in invoice builder
+   ───────────────────────────────────────────────────────────── */
+
+(function patchCanFormat() {
+
+  /* Rate card — cost per can by format */
+  var CAN_FORMATS = [
+    { value: '12oz-standard', label: '12oz Standard', canCost: 0.32 },
+    { value: '12oz-sleek',    label: '12oz Sleek',    canCost: 0.34 },
+    { value: '16oz-standard', label: '16oz Standard', canCost: 0.36 },
+    { value: '19.2oz-standard', label: '19.2oz Standard', canCost: 0.38 },
+  ];
+  var CANS_PER_CASE = 24;
+  var MFG_TIERS = [[1000,16],[500,20],[300,24],[150,28]]; // [min cases, $/case]
+
+  function getMfgRate(cases) {
+    for (var i = 0; i < MFG_TIERS.length; i++) {
+      if (cases >= MFG_TIERS[i][0]) return MFG_TIERS[i][1];
+    }
+    return 28;
+  }
+
+  function calcCanningBreakdown(cases, format) {
+    var fmt      = CAN_FORMATS.find(function(f){ return f.value === format; }) || CAN_FORMATS[0];
+    var cans     = cases * CANS_PER_CASE;
+    var mfgRate  = getMfgRate(cases);           // $ per case
+    var mfg      = mfgRate * cases;
+    var cansCost = fmt.canCost * cans;
+    var pkg      = 0.055 * cans;
+    var total    = mfg + cansCost + pkg;
+    var perCase  = total / cases;
+    var perCan   = total / cans;
+    return { total: total, perCase: perCase, perCan: perCan, mfgRate: mfgRate, canCost: fmt.canCost, cans: cans };
+  }
+
+  function calcCanningTotal(cases, format) {
+    return calcCanningBreakdown(cases, format).total;
+  }
+
+  function fmt$(n, dec) {
+    return '$' + n.toLocaleString('en-US', {minimumFractionDigits: dec||2, maximumFractionDigits: dec||2});
+  }
+
+  /* Rebuild a canning line row with the format selector + price breakdown */
+  function buildCanningRow(lineId, cases, format) {
+    var b    = calcCanningBreakdown(cases, format);
+    var fmt  = CAN_FORMATS.find(function(f){ return f.value === format; }) || CAN_FORMATS[0];
+    var opts = CAN_FORMATS.map(function(f){
+      return '<option value="'+f.value+'"'+(f.value===format?' selected':'')+'>'+f.label+'</option>';
+    }).join('');
+
+    return (
+      '<div id="'+lineId+'" style="'+
+        'background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);'+
+        'border-radius:10px;padding:14px 16px;margin-bottom:8px;">'+
+
+        /* ── Row 1: label + format dropdown + remove ── */
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'+
+          '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'+
+            '<span style="font-size:13px;font-weight:700;color:var(--teal)">🥫 Canning</span>'+
+            '<select id="'+lineId+'-format" onchange="window.glCanFormatChange(\''+lineId+'\')" '+
+              'style="background:#1a2a3a;color:#fff;border:1px solid rgba(0,229,192,.4);'+
+              'border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;font-weight:600;">'+
+              opts+
+            '</select>'+
+          '</div>'+
+          '<button onclick="window.glRemoveCanLine(\''+lineId+'\')" '+
+            'style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;'+
+            'padding:2px 6px;opacity:.5;line-height:1" title="Remove">✕</button>'+
+        '</div>'+
+
+        /* ── Row 2: cases input + cans count ── */
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">'+
+          '<span style="font-size:11px;color:var(--muted);min-width:40px">Cases</span>'+
+          '<input id="'+lineId+'-cases" type="number" min="1" value="'+cases+'" '+
+            'onchange="window.glCanFormatChange(\''+lineId+'\')" '+
+            'style="width:74px;background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.18);'+
+            'border-radius:6px;padding:4px 10px;font-size:13px;font-weight:600;"/>'+
+          '<span id="'+lineId+'-cans-label" style="font-size:11px;color:var(--muted)">'+
+            '= '+b.cans.toLocaleString()+' cans'+
+          '</span>'+
+        '</div>'+
+
+        /* ── Row 3: price breakdown pills ── */
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'+
+          '<div style="background:rgba(0,229,192,.08);border:1px solid rgba(0,229,192,.2);border-radius:6px;padding:5px 10px;font-size:11px;">'+
+            '<span style="color:var(--muted)">Per case&nbsp;</span>'+
+            '<span id="'+lineId+'-per-case" style="color:#fff;font-weight:700;">'+fmt$(b.perCase)+'</span>'+
+          '</div>'+
+          '<div style="background:rgba(0,229,192,.08);border:1px solid rgba(0,229,192,.2);border-radius:6px;padding:5px 10px;font-size:11px;">'+
+            '<span style="color:var(--muted)">Per can&nbsp;</span>'+
+            '<span id="'+lineId+'-per-can" style="color:#fff;font-weight:700;">'+fmt$(b.perCan, 4)+'</span>'+
+          '</div>'+
+        '</div>'+
+
+        /* ── Row 4: line total ── */
+        '<div style="display:flex;align-items:baseline;justify-content:flex-end;gap:8px;'+
+          'border-top:1px solid rgba(255,255,255,.07);padding-top:10px;">'+
+          '<span style="font-size:11px;color:var(--muted)">Line total</span>'+
+          '<span id="'+lineId+'-total" style="font-size:18px;font-weight:700;color:#fff;">'+
+            fmt$(b.total)+
+          '</span>'+
+        '</div>'+
+
+      '</div>'
+    );
+  }
+
+  /* Called when format or cases changes — recalc all breakdown fields in-place */
+  window.glCanFormatChange = function(lineId) {
+    var casesEl    = document.getElementById(lineId + '-cases');
+    var formatEl   = document.getElementById(lineId + '-format');
+    var totalEl    = document.getElementById(lineId + '-total');
+    var perCaseEl  = document.getElementById(lineId + '-per-case');
+    var perCanEl   = document.getElementById(lineId + '-per-can');
+    var cansLabel  = document.getElementById(lineId + '-cans-label');
+    if (!casesEl || !formatEl || !totalEl) return;
+
+    var cases  = parseInt(casesEl.value) || 150;
+    var format = formatEl.value;
+    var b      = calcCanningBreakdown(cases, format);
+
+    totalEl.textContent   = fmt$(b.total);
+    if (perCaseEl)  perCaseEl.textContent  = fmt$(b.perCase);
+    if (perCanEl)   perCanEl.textContent   = fmt$(b.perCan, 4);
+    if (cansLabel)  cansLabel.textContent  = '= ' + b.cans.toLocaleString() + ' cans';
+
+    if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
+  };
+
+  /* Remove a canning line and recalc */
+  window.glRemoveCanLine = function(lineId) {
+    var el = document.getElementById(lineId);
+    if (el) el.remove();
+    if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
+  };
+
+  /* Collect all canning lines for save/PDF */
+  window.glGetCanningLines = function() {
+    var lines = [];
+    document.querySelectorAll('[id^="gl-can-line-"]').forEach(function(row) {
+      var id     = row.id;
+      var cases  = parseInt(document.getElementById(id+'-cases')?.value) || 0;
+      var format = document.getElementById(id+'-format')?.value || '12oz-standard';
+      var fmt    = CAN_FORMATS.find(function(f){ return f.value === format; }) || CAN_FORMATS[0];
+      var total  = calcCanningTotal(cases, format);
+      lines.push({
+        type: 'canning',
+        description: 'Canning — ' + fmt.label + ' (' + (cases*CANS_PER_CASE) + ' cans / ' + cases + ' cases)',
+        amount: total
+      });
+    });
+    return lines;
+  };
+
+  /* ── Patch glAddLine to intercept 'canning' ───────────────── */
+  var _originalAddLine = window.glAddLine;
+
+  window.glAddLine = function(type) {
+    if (type !== 'canning') {
+      /* pass all other types through to original */
+      if (typeof _originalAddLine === 'function') return _originalAddLine(type);
+      return;
+    }
+
+    /* Find or create the invoice body container */
+    var body = document.getElementById('gl-inv-body') ||
+               document.getElementById('inv-line-items') ||
+               document.querySelector('.inv-lines');
+
+    if (!body) {
+      console.warn('[GL] Cannot find invoice body to inject canning line');
+      return;
+    }
+
+    var uid    = 'gl-can-line-' + Date.now();
+    var cases  = 150;
+    var format = '12oz-standard';
+
+    var wrapper = document.createElement('div');
+    wrapper.innerHTML = buildCanningRow(uid, cases, format);
+    body.appendChild(wrapper.firstChild);
+
+    if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
+  };
+
+  console.log('[GL] Can format patch loaded ✅');
+
+})();
