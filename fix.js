@@ -270,6 +270,186 @@
     if(typeof window.exitCRM==='function')window.exitCRM();
   };
 
+  /* ══════════════════════════════════════════════
+     ADMIN USER MANAGEMENT (Supabase Auth-backed)
+     Overrides the legacy local-only flows so user
+     invites, password resets, and removals go
+     through Supabase Auth + profiles table.
+  ══════════════════════════════════════════════ */
+
+  /* ── createInvitedUser — admin creates a new CRM user via Supabase signUp ── */
+  window.createInvitedUser=async function(){
+    var nameEl=document.getElementById('inv-name');
+    var emailEl=document.getElementById('inv-email');
+    var pwEl=document.getElementById('inv-password');
+    var roleEl=document.getElementById('inv-role');
+    var err=document.getElementById('inv-err');
+    var ok=document.getElementById('inv-ok');
+    if(!nameEl||!emailEl||!pwEl||!roleEl)return;
+    if(err)err.style.display='none';
+    if(ok)ok.style.display='none';
+    var name=nameEl.value.trim();
+    var email=emailEl.value.trim().toLowerCase();
+    var password=pwEl.value;
+    var role=roleEl.value;
+    function setErr(m){if(err){err.textContent=m;err.style.display='block';}}
+    if(!name){setErr('Name is required');return;}
+    if(!email||email.indexOf('@')<0){setErr('Valid email is required');return;}
+    if(password.length<8){setErr('Password must be at least 8 characters');return;}
+    if((window.users||[]).find(function(u){return u.email.toLowerCase()===email;})){setErr('A user with that email already exists');return;}
+
+    var sb=getSupa();
+    if(!sb){setErr('Auth service unavailable.');return;}
+
+    var initials=name.split(' ').map(function(p){return p[0];}).join('').toUpperCase().substring(0,2);
+    var palettes=[['#1a3a6e','#9FE1CB'],['#0F6E56','#E1F5EE'],['#854F0B','#FAEEDA'],['#3C3489','#EEEDFE'],['#712B13','#FAECE7']];
+    var pal=palettes[(window.users||[]).length%palettes.length];
+
+    try{
+      var r=await sb.auth.signUp({email:email,password:password,options:{data:{name:name,role:role,initials:initials,color:pal[0],tc:pal[1]}}});
+      if(r.error){setErr(r.error.message||'Sign-up failed');return;}
+      var newId=(r.data&&r.data.user)?r.data.user.id:null;
+      // Update profile row created by trigger with role/colors
+      if(newId){
+        var upd=await sb.from('profiles').update({name:name,role:role,initials:initials,color:pal[0],tc:pal[1]}).eq('id',newId);
+        if(upd.error)console.warn('[GL] profile update failed (admin update policy missing?)',upd.error);
+      }
+      // Update local users array so UI refreshes immediately
+      window.users=window.users||[];
+      window.users.push({id:newId||('u'+Date.now()),name:name,email:email,role:role,initials:initials,color:pal[0],tc:pal[1],status:'active',lastLogin:'Never'});
+      if(ok){
+        ok.style.display='block';
+        ok.textContent='User created. They must click the confirmation email link before they can log in. Password: '+password;
+      }
+      if(typeof renderUsersPanel==='function')renderUsersPanel();
+      if(typeof renderUsers==='function')renderUsers();
+      if(typeof addNotification==='function')addNotification('👤 User invited: '+name,email+' — confirmation email sent','success');
+      setTimeout(function(){if(typeof closeInviteModal==='function')closeInviteModal();},4000);
+    }catch(e){
+      console.error('[GL] signUp threw',e);
+      setErr('Failed: '+(e.message||'unknown'));
+    }
+  };
+
+  /* ── resetPw — admin clicks Reset on a user row → send password reset email ── */
+  window.resetPw=async function(uid){
+    var u=(window.users||[]).find(function(x){return x.id===uid;});
+    if(!u){alert('User not found.');return;}
+    var sb=getSupa();
+    if(!sb){alert('Auth service unavailable.');return;}
+    if(!confirm('Send password reset email to '+u.email+'? They will click the link to choose a new password.'))return;
+    try{
+      var r=await sb.auth.resetPasswordForEmail(u.email,{redirectTo:window.location.origin});
+      if(r.error){alert('Reset failed: '+r.error.message);return;}
+      alert('✓ Password reset email sent to '+u.email);
+      if(typeof addNotification==='function')addNotification('📧 Reset email sent',u.email,'success');
+    }catch(e){
+      console.error('[GL] resetPasswordForEmail threw',e);
+      alert('Failed: '+(e.message||'unknown error'));
+    }
+  };
+
+  /* ── doChangePassword — change-password modal (self change OR admin reset other) ── */
+  window.doChangePassword=async function(){
+    var newPw=(document.getElementById('change-pw-new')||{}).value||'';
+    var confirmPw=(document.getElementById('change-pw-confirm')||{}).value||'';
+    var err=document.getElementById('change-pw-err');
+    var ok=document.getElementById('change-pw-ok');
+    if(err)err.style.display='none';
+    if(ok)ok.style.display='none';
+    function setErr(m){if(err){err.textContent=m;err.style.display='block';}}
+    function setOk(m){if(ok){ok.textContent=m;ok.style.display='block';}}
+    if(newPw.length<8){setErr('Password must be at least 8 characters.');return;}
+    if(newPw!==confirmPw){setErr('Passwords do not match.');return;}
+
+    var sb=getSupa();
+    if(!sb){setErr('Auth service unavailable.');return;}
+
+    var isAdmin=window.currentUser&&window.currentUser.role==='admin';
+    var sel=document.getElementById('change-pw-user-sel');
+    var targetId=null;
+    if(isAdmin&&sel&&sel.value&&window.currentUser&&sel.value!==window.currentUser.id)targetId=sel.value;
+
+    if(!targetId){
+      try{
+        var r=await sb.auth.updateUser({password:newPw});
+        if(r.error){setErr(r.error.message);return;}
+        setOk('Password updated.');
+        if(typeof addNotification==='function')addNotification('🔑 Password changed','Your password was updated','success');
+        setTimeout(function(){if(typeof closeChangePwModal==='function')closeChangePwModal();},1500);
+      }catch(e){setErr('Failed: '+(e.message||'unknown'));}
+    }else{
+      var target=(window.users||[]).find(function(u){return u.id===targetId;});
+      if(!target){setErr('Target user not found.');return;}
+      try{
+        var rr=await sb.auth.resetPasswordForEmail(target.email,{redirectTo:window.location.origin});
+        if(rr.error){setErr(rr.error.message);return;}
+        setOk('Reset email sent to '+target.email+'.');
+        if(typeof addNotification==='function')addNotification('📧 Reset email sent',target.email,'success');
+        setTimeout(function(){if(typeof closeChangePwModal==='function')closeChangePwModal();},2000);
+      }catch(e){setErr('Failed: '+(e.message||'unknown'));}
+    }
+  };
+
+  /* ── removeUser — soft delete (status=inactive); hard delete needs dashboard ── */
+  window.removeUser=async function(id){
+    var u=(window.users||[]).find(function(x){return x.id===id;});
+    if(!u)return;
+    if(!confirm('Remove '+u.name+'? They will lose CRM access immediately.\n\nNote: their Supabase Auth account remains. To fully delete, remove from the Auth → Users dashboard.'))return;
+    var sb=getSupa();
+    var uuidRe=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if(sb&&uuidRe.test(u.id||'')){
+      try{
+        var r=await sb.from('profiles').update({status:'inactive',updated_at:new Date().toISOString()}).eq('id',u.id);
+        if(r.error)console.warn('[GL] profile status update failed',r.error);
+      }catch(e){console.error('[GL] removeUser profile update threw',e);}
+    }
+    if(window.users)window.users=window.users.filter(function(x){return x.id!==id;});
+    if(typeof renderUsersPanel==='function')renderUsersPanel();
+    if(typeof renderUsers==='function')renderUsers();
+    if(typeof addNotification==='function')addNotification('👤 User removed: '+u.name,u.email,'warning');
+  };
+
+  /* ── sendResetLink — public "Forgot password?" → email a reset link ── */
+  window.sendResetLink=async function(){
+    var email=(document.getElementById('reset-email-inp')||{}).value||'';
+    email=email.trim();
+    if(!email)return;
+    var sb=getSupa();
+    if(!sb){alert('Auth service unavailable.');return;}
+    document.getElementById('reset-step1').style.display='none';
+    document.getElementById('reset-success').style.display='block';
+    try{
+      await sb.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin});
+    }catch(e){console.error('[GL] resetPasswordForEmail threw',e);}
+  };
+
+  /* ── checkPw addition: reject inactive profiles (applied via wrapping) ── */
+  var _glOrigCheckPw=window.checkPw;
+  window.checkPw=async function(){
+    var origLoginUser=window.loginUser;
+    var rejectedReason=null;
+    // Intercept loginUser briefly to inspect the profile before completing
+    window.loginUser=function(u){
+      if(u&&u.status==='inactive'){
+        rejectedReason='inactive';
+        return;
+      }
+      origLoginUser(u);
+    };
+    try{
+      await _glOrigCheckPw();
+    }finally{
+      window.loginUser=origLoginUser;
+    }
+    if(rejectedReason==='inactive'){
+      var err=document.getElementById('pw-err');
+      if(err){err.style.display='block';err.textContent='This account has been disabled.';}
+      // Also sign out the orphan session so we don't leak auth
+      var sb=getSupa();if(sb){try{await sb.auth.signOut();}catch(e){}}
+    }
+  };
+
   /* ── SEO ── */
   (function(){
     var h=document.head;
