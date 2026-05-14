@@ -105,10 +105,12 @@
   }
   glEnsureClients();
 
-  /* ── PERMISSIONS ── */
-  var ALL=['dashboard','clients','pipeline','invoices','invoice-detail','new-invoice','referrals','referrers','activity','users','customers','calendar','production-cal','tasks','documents','inventory','announcements','time-tracker','reports','ai-settings'];
-  if(window.PERMISSIONS){window.PERMISSIONS.admin=ALL;window.PERMISSIONS.sales=['dashboard','clients','pipeline','invoices','new-invoice','referrals','referrers','activity','calendar','production-cal','tasks','announcements','reports'];}
-  else{window.PERMISSIONS={admin:ALL,sales:['dashboard','clients','pipeline','invoices','new-invoice','referrals','referrers','activity','calendar','production-cal','tasks','announcements','reports'],viewer:['dashboard','clients','invoices','activity']};}
+  /* ── PERMISSIONS ──
+     Page-name convention matches index.html cNav calls (e.g. 'newinv', not 'new-invoice').
+     window.PERMISSIONS is bridged from index.html so both the role-filter UI and can() share one table. */
+  var ALL=['dashboard','clients','pipeline','invoices','invoice-detail','newinv','referrals','referrers','activity','users','customers','calendar','production-cal','tasks','documents','inventory','announcements','time-tracker','reports','ai-settings'];
+  if(window.PERMISSIONS){window.PERMISSIONS.admin=ALL;window.PERMISSIONS.sales=['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','tasks','announcements','reports'];}
+  else{window.PERMISSIONS={admin:ALL,sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','tasks','announcements','reports'],viewer:['dashboard','clients','invoices','activity']};}
   window.can=function(page){var u=window.currentUser;if(!u)return false;if(u.role==='admin')return true;return(window.PERMISSIONS[u.role]||[]).includes(page);};
   var _cNavOrig2=window.cNav;
   window.cNav=function(page,el){if(!window.can(page)){if(typeof addNotification==='function')addNotification('Access denied',page,'warning');return;}if(typeof _cNavOrig2==='function')_cNavOrig2(page,el);};

@@ -1128,23 +1128,23 @@ select option, .fsel option {
         <div class="cni" onclick="cNav(&#39;invoices&#39;,this)"><span class="cni-ico">🧾</span>Invoices</div>
         <div class="cni" onclick="cNav(&#39;newinv&#39;,this)"><span class="cni-ico">➕</span>New Invoice</div>
         <div class="cni-sec">Referrals</div>
-        <div class="cni" onclick="cNav(&#39;referrals&#39;,this)"><span class="cni-ico">🤝</span>Referrals</div>
-        <div class="cni" onclick="cNav(&#39;referrers&#39;,this)"><span class="cni-ico">👤</span>Referrers</div>
+        <div class="cni" id="nav-referrals" onclick="cNav(&#39;referrals&#39;,this)"><span class="cni-ico">🤝</span>Referrals</div>
+        <div class="cni" id="nav-referrers" onclick="cNav(&#39;referrers&#39;,this)"><span class="cni-ico">👤</span>Referrers</div>
         <div class="cni-sec">Other</div>
-        <div class="cni" onclick="cNav(&#39;activity&#39;,this)"><span class="cni-ico">📡</span>Activity</div>
+        <div class="cni" id="nav-activity" onclick="cNav(&#39;activity&#39;,this)"><span class="cni-ico">📡</span>Activity</div>
         <div class="cni-sec">Calendars</div>
-        <div class="cni" onclick="cNav(&#39;calendar&#39;,this)"><span class="cni-ico">📅</span>General Calendar</div>
-        <div class="cni" onclick="cNav(&#39;production-cal&#39;,this)"><span class="cni-ico">🏭</span>Production Schedule</div>
+        <div class="cni" id="nav-calendar" onclick="cNav(&#39;calendar&#39;,this)"><span class="cni-ico">📅</span>General Calendar</div>
+        <div class="cni" id="nav-production-cal" onclick="cNav(&#39;production-cal&#39;,this)"><span class="cni-ico">🏭</span>Production Schedule</div>
         <div class="cni-sec">Tools</div>
-        <div class="cni" onclick="cNav(&#39;tasks&#39;,this)"><span class="cni-ico">✅</span>Tasks</div>
-        <div class="cni" onclick="cNav(&#39;documents&#39;,this)"><span class="cni-ico">📁</span>Documents</div>
-        <div class="cni" onclick="cNav(&#39;inventory&#39;,this)"><span class="cni-ico">📦</span>Inventory</div>
-        <div class="cni" onclick="cNav(&#39;announcements&#39;,this)"><span class="cni-ico">📣</span>Announcements</div>
-        <div class="cni" onclick="openTimeTracker()"><span class="cni-ico">⏱️</span>Time Tracker</div>
+        <div class="cni" id="nav-tasks" onclick="cNav(&#39;tasks&#39;,this)"><span class="cni-ico">✅</span>Tasks</div>
+        <div class="cni" id="nav-documents" onclick="cNav(&#39;documents&#39;,this)"><span class="cni-ico">📁</span>Documents</div>
+        <div class="cni" id="nav-inventory" onclick="cNav(&#39;inventory&#39;,this)"><span class="cni-ico">📦</span>Inventory</div>
+        <div class="cni" id="nav-announcements" onclick="cNav(&#39;announcements&#39;,this)"><span class="cni-ico">📣</span>Announcements</div>
+        <div class="cni" id="nav-time-tracker" onclick="openTimeTracker()"><span class="cni-ico">⏱️</span>Time Tracker</div>
         <div class="cni" id="nav-users" onclick="cNav(&#39;users&#39;,this)" style="display:none"><span class="cni-ico">🔑</span>Users &amp; permissions</div>
         <div class="cni" id="nav-customers" onclick="cNav(&#39;customers&#39;,this)" style="display:none"><span class="cni-ico">🌐</span>Customer Logins</div>
-        <div class="cni" onclick="openReports()" style="color:var(--teal)"><span class="cni-ico">📊</span>Reports</div>
-        <div class="cni" onclick="openAISettings()" style="color:var(--teal)"><span class="cni-ico">🤖</span>AI Settings</div>
+        <div class="cni" id="nav-reports" onclick="openReports()" style="color:var(--teal)"><span class="cni-ico">📊</span>Reports</div>
+        <div class="cni" id="nav-ai-settings" onclick="openAISettings()" style="color:var(--teal)"><span class="cni-ico">🤖</span>AI Settings</div>
       </div>
     </div>
 
@@ -1904,7 +1904,9 @@ let users=window.users=[
   {id:'u2',name:'Sandra Krail',email:'sandra@goodliquid.com',role:'sales',status:'active',lastLogin:'Yesterday',initials:'SK',color:'#1a3a6e',tc:'#9FE1CB'},
 ];
 let currentUser=null;
-const PERMISSIONS={
+/* Bridged to window so fix.js can override/extend and index.html's filter
+   (renderUsers area) reads the same merged table. fix.js mutates this in place. */
+const PERMISSIONS=window.PERMISSIONS={
   admin:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','users'],
   sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity'],
   viewer:['dashboard','clients','announcements']
@@ -2755,15 +2757,13 @@ function updateCRMForUser(){
   badge.style.background = rs.bg;
   badge.style.color = rs.color;
   badge.textContent = rs.text;
-  // Show/hide nav items based on role
-  const allowed = PERMISSIONS[u.role]||[];
+  // Show/hide nav items based on role. Use window.can() so this respects the
+  // merged PERMISSIONS table (fix.js extends sales with calendar/tasks/etc).
   document.querySelectorAll('.cni[id^="nav-"]').forEach(el=>{
     const page = el.id.replace('nav-','');
-    el.style.display = allowed.includes(page)?'':'none';
+    const ok = (typeof window.can==='function') ? window.can(page) : (PERMISSIONS[u.role]||[]).includes(page);
+    el.style.display = ok?'':'none';
   });
-  // Users nav: admin only
-  const navUsers = document.getElementById('nav-users');
-  if(navUsers) navUsers.style.display = u.role==='admin'?'':'none';
   // Navigate to dashboard
   cNav('dashboard', document.querySelector('.cni.act')||document.querySelectorAll('.cni')[0]);
 }
@@ -3739,8 +3739,8 @@ async function aiDraftEmail(clientName, invoiceNum, amount, status) {
     Keep it professional but friendly. Sign off as Mike Krail, Good Liquid Bev Co, (803) 493-5065.
     Include subject line. Keep it concise and effective.`
   );
-  document.getElementById('ai-modal-body').textContent = text;
-  document.querySelector('#ai-modal .flex.gap-10').style.display='flex';
+  // Re-render the modal with content + buttons (helper handles teardown of the loading instance).
+  showAIModal('Email Drafter', text, false);
 }
 
 // ─── AI: SCORE LEAD ───
