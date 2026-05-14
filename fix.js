@@ -1316,3 +1316,62 @@
   window.glLoadRates();
   console.log('[GL] Invoice patch v2 loaded');
 }());
+/* ============================================================
+   INVOICE FIX - discount display + save validation
+   ============================================================ */
+(function(){
+
+  window.glCalcInvTotal=function(){
+    var tot=0;
+    document.querySelectorAll('[data-gl-total]').forEach(function(el){
+      tot+=parseFloat(el.getAttribute('data-gl-total'))||0;
+    });
+    var box=document.getElementById('ginv-totals-box');if(!box)return;
+    var disc=document.getElementById('ginv-disc');
+    var pct=disc?parseFloat(disc.value)||0:0;
+    var discAmt=tot*(pct/100);
+    var grand=tot-discAmt;
+    var subRow=box.children[0];
+    if(subRow&&subRow.children[1])subRow.children[1].textContent=window.glUsd(tot);
+    var discRow=document.getElementById('gl-disc-row');
+    if(pct>0){
+      if(!discRow){
+        discRow=document.createElement('div');
+        discRow.id='gl-disc-row';
+        discRow.setAttribute('style','font-size:12px;color:var(--muted);display:flex;justify-content:space-between;margin-bottom:8px');
+        box.insertBefore(discRow,box.children[1]);
+      }
+      discRow.innerHTML='<span>Discount ('+pct+'%)</span><span style="color:#22c55e">-'+window.glUsd(discAmt)+'</span>';
+    }else{
+      if(discRow)discRow.remove();
+    }
+    var totRow=document.getElementById('gl-disc-row')?box.children[2]:box.children[1];
+    if(totRow&&totRow.children[1])totRow.children[1].textContent=window.glUsd(grand);
+  };
+
+  var _origSave=window.glSaveInvoice;
+  window.glSaveInvoice=function(){
+    var lineCount=document.querySelectorAll('[data-gl-total]').length;
+    if(lineCount===0){alert('Add at least one line item.');return;}
+    if(typeof window.glLines==='undefined')window.glLines=[];
+    if(typeof window.glInvLines==='undefined')window.glInvLines=[];
+    if(typeof _origSave==='function')_origSave();
+  };
+
+  var _origPDF=window.glExportPDF;
+  window.glExportPDF=function(){
+    var lineCount=document.querySelectorAll('[data-gl-total]').length;
+    if(lineCount===0){alert('Add at least one line item.');return;}
+    if(typeof _origPDF==='function')_origPDF();
+  };
+
+  document.addEventListener('click',function(){
+    var disc=document.getElementById('ginv-disc');
+    if(disc&&!disc._glWired2){
+      disc.addEventListener('input',function(){window.glCalcInvTotal();});
+      disc._glWired2=true;
+    }
+  });
+
+  console.log('[GL] Invoice fix loaded');
+}());
