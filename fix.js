@@ -80,10 +80,10 @@
     }
   }, true);
 
-  /* ── CORE USERS ── */
+  /* ── CORE USERS (profile only; passwords live in Supabase crm_users) ── */
   var coreUsers = [
-    {id:'u1',name:'Mike Krail',email:'mike@goodliquid.com',password:'GL2026admin',role:'admin',status:'active',initials:'MK',color:'#f5c842',tc:'#0a1628',lastLogin:'Never'},
-    {id:'u2',name:'Sandra Krail',email:'sandra@goodliquid.com',password:'GL2026ops',role:'sales',status:'active',initials:'SK',color:'#1a6fff',tc:'#fff',lastLogin:'Never'}
+    {id:'u1',name:'Mike Krail',email:'mike@goodliquid.com',role:'admin',status:'active',initials:'MK',color:'#f5c842',tc:'#0a1628',lastLogin:'Never'},
+    {id:'u2',name:'Sandra Krail',email:'sandra@goodliquid.com',role:'sales',status:'active',initials:'SK',color:'#1a6fff',tc:'#fff',lastLogin:'Never'}
   ];
   if(!window.users||window.users.length===0){window.users=coreUsers;}
   else{coreUsers.forEach(function(cu){var ex=window.users.find(function(u){return u.email===cu.email;});if(ex)ex.role=cu.role;else window.users.unshift(cu);});}
@@ -176,24 +176,61 @@
     setTimeout(function(){var n=document.querySelector('.cnav');if(n)n.scrollTop=0;},150);
   };
 
-  /* ── checkPw ── */
+  /* ── Supabase REST config (anon key already public in client JS) ── */
+  var GL_SURL='https://ufjkeqmxwuyhbqyugcgg.supabase.co/rest/v1';
+  var GL_SKEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmamtlcW14d3V5aGJxeXVnY2dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNDI2MDksImV4cCI6MjA5MzkxODYwOX0.godgU_jeprCqSzqe0ji_ZA_hwvPF2s7BmzQyAB-c_xE';
+  var GL_SH={apikey:GL_SKEY,Authorization:'Bearer '+GL_SKEY};
+
+  /* ── checkPw — auth via Supabase crm_users, no local password fallback ── */
   window.checkPw=async function(){
     var eEl=document.getElementById('pw-email'),pEl=document.getElementById('pw-input'),err=document.getElementById('pw-err');
     if(!eEl||!pEl)return;
     var email=eEl.value.trim().toLowerCase(),pw=pEl.value;
-    if(err)err.style.display='none';
-    function showErr(){if(err)err.style.display='block';pEl.classList.add('wrong');setTimeout(function(){pEl.classList.remove('wrong');},500);}
-    if(window.customerLogins){var c=window.customerLogins.find(function(x){return x.email.toLowerCase()===email&&x.password===pw;});if(c){window.currentPortalUser=c;if(typeof closePw==='function')closePw();if(typeof openCustomerPortal==='function')openCustomerPortal(c);return;}}
-    var sbKey=localStorage.getItem('gl_supabase_key');
-    if(sbKey){try{var res=await fetch('https://ufjkeqmxwuyhbqyugcgg.supabase.co/rest/v1/crm_users?email=eq.'+encodeURIComponent(email)+'&select=password_hash',{headers:{'apikey':sbKey,'Authorization':'Bearer '+sbKey}});var rows=await res.json();if(Array.isArray(rows)&&rows.length>0&&rows[0].password_hash){if(atob(rows[0].password_hash)!==pw){showErr();return;}var u=(window.users||[]).find(function(x){return x.email.toLowerCase()===email;});if(u){window.loginUser(u);return;}window.loginUser({id:'sb'+Date.now(),name:email.split('@')[0],email:email,password:pw,role:'sales',initials:email[0].toUpperCase(),color:'#1a6fff',tc:'#fff',status:'active',lastLogin:'Just now'});return;}}catch(e){console.log('[GL]',e.message);}}
-    var u=(window.users||[]).find(function(x){return x.email.toLowerCase()===email&&x.password===pw&&x.status==='active';});
-    if(!u){showErr();return;}window.loginUser(u);
+    if(err){err.style.display='none';err.textContent='Incorrect email or password.';}
+    function showErr(msg){if(err){err.style.display='block';if(msg)err.textContent=msg;}pEl.classList.add('wrong');setTimeout(function(){pEl.classList.remove('wrong');},500);}
+
+    // Customer portal logins live in browser localStorage (not in crm_users)
+    if(window.customerLogins){
+      var c=window.customerLogins.find(function(x){return x.email.toLowerCase()===email&&x.password===pw;});
+      if(c){window.currentPortalUser=c;if(typeof closePw==='function')closePw();if(typeof openCustomerPortal==='function')openCustomerPortal(c);return;}
+    }
+
+    // CRM staff: authenticate against Supabase
+    try{
+      var res=await fetch(GL_SURL+'/crm_users?email=eq.'+encodeURIComponent(email)+'&select=password_hash',{headers:GL_SH});
+      if(!res.ok)throw new Error('HTTP '+res.status);
+      var rows=await res.json();
+      if(!Array.isArray(rows)||rows.length===0||!rows[0].password_hash){showErr();return;}
+      var stored='';try{stored=atob(rows[0].password_hash);}catch(e){stored='';}
+      if(stored!==pw){showErr();return;}
+      // Password matched — look up profile (name/role/colors) from local users array
+      var u=(window.users||[]).find(function(x){return x.email.toLowerCase()===email&&x.status!=='inactive';});
+      if(!u){
+        u={id:'sb'+Date.now(),name:email.split('@')[0],email:email,role:'sales',initials:email[0].toUpperCase(),color:'#1a6fff',tc:'#fff',status:'active',lastLogin:'Just now'};
+      }
+      window.loginUser(u);
+    }catch(e){
+      console.error('[GL] Login lookup failed:',e);
+      showErr('Login service unavailable. Try again.');
+    }
   };
 
-  /* ── syncPasswordToSupabase ── */
+  /* ── syncPasswordToSupabase — upsert to crm_users using embedded anon key ── */
   window.syncPasswordToSupabase=async function(email,pw){
-    var k=localStorage.getItem('gl_supabase_key');if(!k)return;
-    try{await fetch('https://ufjkeqmxwuyhbqyugcgg.supabase.co/rest/v1/crm_users',{method:'POST',headers:{'apikey':k,'Authorization':'Bearer '+k,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates'},body:JSON.stringify({email:email.toLowerCase(),password_hash:btoa(pw),updated_at:new Date().toISOString()})});}catch(e){}
+    try{
+      var res=await fetch(GL_SURL+'/crm_users',{
+        method:'POST',
+        headers:Object.assign({},GL_SH,{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates'}),
+        body:JSON.stringify({email:email.toLowerCase(),password_hash:btoa(pw),updated_at:new Date().toISOString()})
+      });
+      if(!res.ok)throw new Error('HTTP '+res.status+' '+(await res.text()));
+      console.log('[GL] Password synced to Supabase for',email);
+      return true;
+    }catch(e){
+      console.error('[GL] Password sync failed:',e);
+      if(typeof addNotification==='function')addNotification('Password sync failed',email+' — '+(e.message||''),'warning');
+      return false;
+    }
   };
 
   /* ── SEO ── */
