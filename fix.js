@@ -1046,3 +1046,273 @@
   window.glLoadRates();
   console.log('[GL] Invoice pricing loaded');
 }());
+
+/* ============================================================
+   INVOICE PATCH v2 - handles ALL line types, fixes discount
+   ============================================================ */
+(function(){
+  var SURL='https://ufjkeqmxwuyhbqyugcgg.supabase.co/rest/v1';
+  var SKEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmamtlcW14d3V5aGJxeXVnY2dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNDI2MDksImV4cCI6MjA5MzkxODYwOX0.godgU_jeprCqSzqe0ji_ZA_hwvPF2s7BmzQyAB-c_xE';
+  var SH={'apikey':SKEY,'Authorization':'Bearer '+SKEY,'Content-Type':'application/json'};
+  var CPC=24;
+
+  /* ── Supabase rates ── */
+  window._glR={c:[],b:[],ok:false};
+  window.glLoadRates=async function(){
+    if(window._glR.ok)return;
+    var res=await Promise.all([
+      fetch(SURL+'/canning_rates?order=format,min_cases',{headers:SH}).then(function(r){return r.json();}),
+      fetch(SURL+'/bottling_rates?order=format,min_units',{headers:SH}).then(function(r){return r.json();})
+    ]);
+    window._glR.c=Array.isArray(res[0])?res[0]:[];
+    window._glR.b=Array.isArray(res[1])?res[1]:[];
+    window._glR.ok=true;
+  };
+  window.glGetCanRate=function(cases,fmt){
+    var t=window._glR.c.filter(function(r){return r.format===fmt;}).sort(function(a,b){return a.min_cases-b.min_cases;});
+    if(!t.length)return 0;
+    var v=parseFloat(t[0].price_per_can);
+    for(var i=0;i<t.length;i++)if(cases>=t[i].min_cases)v=parseFloat(t[i].price_per_can);
+    return v;
+  };
+  window.glGetBtlRate=function(qty,fmt){
+    var t=window._glR.b.filter(function(r){return r.format===fmt;}).sort(function(a,b){return a.min_units-b.min_units;});
+    if(!t.length)return 0;
+    var v=parseFloat(t[0].price_per_unit);
+    for(var i=0;i<t.length;i++)if(qty>=t[i].min_units)v=parseFloat(t[i].price_per_unit);
+    return v;
+  };
+  window.glUsd=function(n,d){return'$'+parseFloat(n||0).toLocaleString('en-US',{minimumFractionDigits:d==null?2:d,maximumFractionDigits:d==null?2:d});};
+  window.glGetTbl=function(){var b=document.getElementById('gl-inv-body');return b?b.children[2]:null;};
+
+  /* ── Invoice total recalc ── */
+  window.glCalcInvTotal=function(){
+    var tot=0;
+    document.querySelectorAll('[data-gl-total]').forEach(function(el){
+      tot+=parseFloat(el.getAttribute('data-gl-total'))||0;
+    });
+    var box=document.getElementById('ginv-totals-box');if(!box)return;
+    var disc=document.getElementById('ginv-disc');
+    var pct=disc?parseFloat(disc.value)||0:0;
+    var grand=tot*(1-pct/100);
+    var s=box.children[0]?box.children[0].children[1]:null;
+    var g=box.children[1]?box.children[1].children[1]:null;
+    if(s)s.textContent=window.glUsd(tot);
+    if(g)g.textContent=window.glUsd(grand);
+  };
+
+  /* ── Wire up discount input ── */
+  function wireDiscount(){
+    var disc=document.getElementById('ginv-disc');
+    if(disc&&!disc._glWired){
+      disc.addEventListener('input',function(){window.glCalcInvTotal();});
+      disc.addEventListener('change',function(){window.glCalcInvTotal();});
+      disc._glWired=true;
+    }
+  }
+
+  /* ── Shared row style ── */
+  var RS='display:grid;grid-template-columns:2fr 1fr 1fr 1fr 36px;gap:0;padding:10px 12px;border-top:1px solid rgba(255,255,255,.05);align-items:start';
+  var SS='background:#1a2a3a;color:#fff;border:1px solid rgba(0,229,192,.4);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;width:100%;max-width:160px';
+  var SI='width:60px;background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:6px;padding:3px 6px;font-size:12px;font-weight:600;text-align:center';
+  var SIT='width:100%;background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:6px;padding:3px 6px;font-size:11px';
+
+  /* ── Remove any line ── */
+  window.glRemoveLine=function(uid){
+    var e=document.getElementById(uid);if(e)e.remove();
+    window.glCalcInvTotal();
+  };
+
+  /* ── Update canning row ── */
+  window.glUpdateCan=function(uid){
+    var ce=document.getElementById(uid+'-cases'),fe=document.getElementById(uid+'-format');
+    if(!ce||!fe)return;
+    var cases=Math.max(1,parseInt(ce.value)||150),fmt=fe.value;
+    var pc=window.glGetCanRate(cases,fmt),pcase=pc*CPC,total=pcase*cases;
+    function set(id,v){var e=document.getElementById(id);if(e)e.textContent=v;}
+    set(uid+'-pcase',window.glUsd(pcase)+'/case');
+    set(uid+'-pcan',window.glUsd(pc,4)+'/can');
+    set(uid+'-cans',(cases*CPC).toLocaleString()+' cans');
+    set(uid+'-total',window.glUsd(total));
+    var row=document.getElementById(uid);if(row)row.setAttribute('data-gl-total',total);
+    window.glCalcInvTotal();
+  };
+
+  /* ── Update bottling row ── */
+  window.glUpdateBtl=function(uid){
+    var qe=document.getElementById(uid+'-qty'),fe=document.getElementById(uid+'-format');
+    if(!qe||!fe)return;
+    var qty=Math.max(1,parseInt(qe.value)||500),fmt=fe.value;
+    var pu=window.glGetBtlRate(qty,fmt),total=pu*qty;
+    function set(id,v){var e=document.getElementById(id);if(e)e.textContent=v;}
+    set(uid+'-punit',window.glUsd(pu,4)+'/btl');
+    set(uid+'-total',window.glUsd(total));
+    var row=document.getElementById(uid);if(row)row.setAttribute('data-gl-total',total);
+    window.glCalcInvTotal();
+  };
+
+  /* ── Update manual row (rd/hours/custom) ── */
+  window.glUpdateManual=function(uid){
+    var qe=document.getElementById(uid+'-qty');
+    var pe=document.getElementById(uid+'-price');
+    if(!qe||!pe)return;
+    var qty=parseFloat(qe.value)||0;
+    var price=parseFloat(pe.value)||0;
+    var total=qty*price;
+    var te=document.getElementById(uid+'-total');
+    if(te)te.textContent=window.glUsd(total);
+    var row=document.getElementById(uid);if(row)row.setAttribute('data-gl-total',total);
+    window.glCalcInvTotal();
+  };
+
+  /* ── Build canning row ── */
+  window.glBuildCanRow=function(uid,cases,fmt,fmts,pc){
+    var pcase=pc*CPC,total=pcase*cases,cans=cases*CPC;
+    var opts=fmts.map(function(f){return'<option value="'+f.value+'"'+(f.value===fmt?' selected':'')+'>'+f.label+'</option>';}).join('');
+    var row=document.createElement('div');row.id=uid;row.setAttribute('style',RS);row.setAttribute('data-gl-total',total);
+    row.innerHTML=
+      '<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Canning</div>'+
+      '<select id="'+uid+'-format" onchange="window.glUpdateCan(\''+uid+'\')" style="'+SS+'">'+opts+'</select></div>'+
+      '<div style="text-align:center"><input id="'+uid+'-cases" type="number" min="1" value="'+cases+'" onchange="window.glUpdateCan(\''+uid+'\')" style="'+SI+'"/>'+
+      '<div id="'+uid+'-cans" style="font-size:10px;color:var(--muted);margin-top:3px">'+cans.toLocaleString()+' cans</div></div>'+
+      '<div style="text-align:right;padding-right:4px">'+
+      '<div id="'+uid+'-pcase" style="font-size:12px;color:#fff;font-weight:600">'+window.glUsd(pcase)+'/case</div>'+
+      '<div id="'+uid+'-pcan" style="font-size:10px;color:var(--muted);margin-top:3px">'+window.glUsd(pc,4)+'/can</div></div>'+
+      '<div id="'+uid+'-total" style="text-align:right;font-size:14px;font-weight:700;color:#fff">'+window.glUsd(total)+'</div>'+
+      '<div style="text-align:center"><button onclick="window.glRemoveLine(\''+uid+'\')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0;line-height:1">x</button></div>';
+    return row;
+  };
+
+  /* ── Build bottling row ── */
+  window.glBuildBtlRow=function(uid,qty,fmt,fmts,pu){
+    var total=pu*qty;
+    var opts=fmts.map(function(f){return'<option value="'+f.value+'"'+(f.value===fmt?' selected':'')+'>'+f.label+'</option>';}).join('');
+    var row=document.createElement('div');row.id=uid;row.setAttribute('style',RS);row.setAttribute('data-gl-total',total);
+    row.innerHTML=
+      '<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Bottling</div>'+
+      '<select id="'+uid+'-format" onchange="window.glUpdateBtl(\''+uid+'\')" style="'+SS+'">'+opts+'</select></div>'+
+      '<div style="text-align:center"><input id="'+uid+'-qty" type="number" min="1" value="'+qty+'" onchange="window.glUpdateBtl(\''+uid+'\')" style="'+SI+'"/>'+
+      '<div style="font-size:10px;color:var(--muted);margin-top:3px">bottles</div></div>'+
+      '<div style="text-align:right;padding-right:4px">'+
+      '<div id="'+uid+'-punit" style="font-size:12px;color:#fff;font-weight:600">'+window.glUsd(pu,4)+'/btl</div></div>'+
+      '<div id="'+uid+'-total" style="text-align:right;font-size:14px;font-weight:700;color:#fff">'+window.glUsd(total)+'</div>'+
+      '<div style="text-align:center"><button onclick="window.glRemoveLine(\''+uid+'\')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0;line-height:1">x</button></div>';
+    return row;
+  };
+
+  /* ── Build manual row (rd / hours / custom) ── */
+  window.glBuildManualRow=function(uid,label,descDefault,qty,price){
+    var total=qty*price;
+    var row=document.createElement('div');row.id=uid;row.setAttribute('style',RS);row.setAttribute('data-gl-total',total);
+    row.innerHTML=
+      '<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">'+label+'</div>'+
+      '<input id="'+uid+'-desc" type="text" value="'+descDefault+'" placeholder="Description" style="'+SIT+'"/></div>'+
+      '<div style="text-align:center"><input id="'+uid+'-qty" type="number" min="0" step="any" value="'+qty+'" onchange="window.glUpdateManual(\''+uid+'\')" style="'+SI+'"/>'+
+      '<div style="font-size:10px;color:var(--muted);margin-top:3px">qty</div></div>'+
+      '<div style="text-align:right;padding-right:4px">'+
+      '<input id="'+uid+'-price" type="number" min="0" step="any" value="'+price+'" onchange="window.glUpdateManual(\''+uid+'\')" style="'+SI+';width:80px;" placeholder="Unit $"/></div>'+
+      '<div id="'+uid+'-total" style="text-align:right;font-size:14px;font-weight:700;color:#fff">'+window.glUsd(total)+'</div>'+
+      '<div style="text-align:center"><button onclick="window.glRemoveLine(\''+uid+'\')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0;line-height:1">x</button></div>';
+    return row;
+  };
+
+  /* ── Override glAddLine — handles ALL types, never calls original ── */
+  window.glAddLine=function(type){
+    var tbl=window.glGetTbl();if(!tbl)return;
+    var ph=[...tbl.children].find(function(c){return c.textContent.trim()==='No line items yet. Add one below.';});
+    if(ph)ph.remove();
+    wireDiscount();
+
+    var uid='glline'+Date.now();
+
+    if(type==='canning'){
+      if(!window._glR.ok){
+        var lr=document.createElement('div');lr.id=uid;
+        lr.setAttribute('style','padding:12px;color:var(--muted);font-size:12px;border-top:1px solid rgba(255,255,255,.05)');
+        lr.textContent='Loading rates...';tbl.appendChild(lr);
+        window.glLoadRates().then(function(){var e=document.getElementById(uid);if(e)e.remove();window.glAddLine(type);});
+        return;
+      }
+      var fmts=[],seen={};
+      window._glR.c.forEach(function(r){if(!seen[r.format]){seen[r.format]=true;fmts.push({value:r.format,label:r.format_label});}});
+      if(!fmts.length)fmts=[{value:'12oz-standard',label:'12oz Standard'}];
+      var def=fmts[0].value,pc=window.glGetCanRate(150,def);
+      tbl.appendChild(window.glBuildCanRow(uid,150,def,fmts,pc));
+
+    }else if(type==='bottling'){
+      if(!window._glR.ok){
+        var lr=document.createElement('div');lr.id=uid;
+        lr.setAttribute('style','padding:12px;color:var(--muted);font-size:12px;border-top:1px solid rgba(255,255,255,.05)');
+        lr.textContent='Loading rates...';tbl.appendChild(lr);
+        window.glLoadRates().then(function(){var e=document.getElementById(uid);if(e)e.remove();window.glAddLine(type);});
+        return;
+      }
+      var bfmts=[],bseen={};
+      window._glR.b.forEach(function(r){if(!bseen[r.format]){bseen[r.format]=true;bfmts.push({value:r.format,label:r.format_label});}});
+      if(!bfmts.length)bfmts=[{value:'750ml',label:'750ml Bottle'}];
+      var bdef=bfmts[0].value,pu=window.glGetBtlRate(500,bdef);
+      tbl.appendChild(window.glBuildBtlRow(uid,500,bdef,bfmts,pu));
+
+    }else if(type==='rd'){
+      tbl.appendChild(window.glBuildManualRow(uid,'R&D / IP','Formulation',1,1500));
+
+    }else if(type==='hours'){
+      tbl.appendChild(window.glBuildManualRow(uid,'Production Hours','Production labor',1,125));
+
+    }else{
+      tbl.appendChild(window.glBuildManualRow(uid,'Custom','',1,0));
+    }
+
+    window.glCalcInvTotal();
+  };
+
+  /* ── Pricing admin ── */
+  window.glOpenPricing=async function(){
+    document.getElementById('gl-pm')?.remove();
+    await window.glLoadRates();
+    var m=document.createElement('div');m.id='gl-pm';
+    m.setAttribute('style','position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px');
+    function rws(data,mf,pf,tk){
+      return data.map(function(r){
+        return '<tr style="border-top:1px solid rgba(255,255,255,.06)">'+
+          '<td style="padding:7px 8px;font-size:12px;color:#fff">'+r.format_label+'</td>'+
+          '<td style="padding:7px 8px;font-size:12px;color:var(--muted)">'+r[mf]+'+</td>'+
+          '<td style="padding:7px 8px"><input data-id="'+r.id+'" data-tbl="'+tk+'" data-fld="'+pf+'" value="'+parseFloat(r[pf]).toFixed(4)+'" type="number" step="0.0001" min="0" style="width:90px;background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:4px 8px;font-size:12px"/></td>'+
+          '<td style="padding:7px 8px"><button onclick="window.glSaveRate(this)" data-id="'+r.id+'" data-tbl="'+tk+'" data-fld="'+pf+'" style="background:rgba(0,229,192,.15);border:1px solid rgba(0,229,192,.3);color:var(--teal);border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer">Save</button></td>'+
+          '</tr>';
+      }).join('');
+    }
+    m.innerHTML='<div style="background:#0d1f33;border:1px solid rgba(255,255,255,.1);border-radius:14px;width:100%;max-width:620px;max-height:85vh;overflow-y:auto;padding:24px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">'+
+      '<div style="font-size:16px;font-weight:700;color:#fff">Pricing Manager</div>'+
+      '<button onclick="document.getElementById(\'gl-pm\').remove()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1">x</button></div>'+
+      '<div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">CANNING ($/can)</div>'+
+      '<table style="width:100%;border-collapse:collapse;margin-bottom:24px"><tr style="font-size:11px;color:var(--muted)"><th style="text-align:left;padding:6px 8px">Format</th><th style="text-align:left;padding:6px 8px">Min Cases</th><th style="text-align:left;padding:6px 8px">$/Can</th><th></th></tr>'+
+      rws(window._glR.c,'min_cases','price_per_can','canning')+'</table>'+
+      '<div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">BOTTLING ($/bottle)</div>'+
+      '<table style="width:100%;border-collapse:collapse"><tr style="font-size:11px;color:var(--muted)"><th style="text-align:left;padding:6px 8px">Format</th><th style="text-align:left;padding:6px 8px">Min Units</th><th style="text-align:left;padding:6px 8px">$/Btl</th><th></th></tr>'+
+      rws(window._glR.b,'min_units','price_per_unit','bottling')+'</table>'+
+      '<div style="font-size:11px;color:var(--muted);margin-top:16px">Saves instantly to database.</div></div>';
+    document.body.appendChild(m);
+  };
+
+  window.glSaveRate=async function(btn){
+    var id=btn.getAttribute('data-id'),tbl=btn.getAttribute('data-tbl'),fld=btn.getAttribute('data-fld');
+    var inp=btn.closest('tr').querySelector('input');
+    var val=parseFloat(inp.value);if(isNaN(val)||val<=0){alert('Invalid');return;}
+    btn.textContent='...';
+    var ep=SURL+'/'+(tbl==='canning'?'canning_rates':'bottling_rates')+'?id=eq.'+id;
+    var body={updated_at:new Date().toISOString()};body[fld]=val;
+    var res=await fetch(ep,{method:'PATCH',headers:Object.assign({},SH,{'Prefer':'return=minimal'}),body:JSON.stringify(body)});
+    if(res.ok||res.status===204){
+      btn.textContent='Saved';btn.style.color='#22c55e';
+      var cache=tbl==='canning'?window._glR.c:window._glR.b;
+      var row=cache.find(function(r){return r.id==id;});if(row)row[fld]=val;
+      window._glR.ok=false;
+      setTimeout(function(){btn.textContent='Save';btn.style.color='';},2000);
+    }else{btn.textContent='Error';}
+  };
+
+  window.glLoadRates();
+  console.log('[GL] Invoice patch v2 loaded');
+}());
