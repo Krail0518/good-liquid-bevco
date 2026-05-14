@@ -2059,51 +2059,8 @@ window.loginUser = function loginUser(u){
   loadNotifications();
 }
 
-window.checkPw = async function checkPw(){
-  const email = document.getElementById('pw-email').value.trim().toLowerCase();
-  const pw = document.getElementById('pw-input').value;
-  const err = document.getElementById('pw-err');
-  err.style.display='none';
-
-  // 1. Check customer portal logins
-  const customer = customerLogins.find(c=>c.email.toLowerCase()===email && c.password===pw);
-  if(customer){ currentPortalUser=customer; closePw(); openCustomerPortal(customer); return; }
-
-  // 2. Check crm_users via direct REST fetch (no Supabase auth calls)
-  const sbKey = localStorage.getItem('gl_supabase_key');
-  if(sbKey){
-    try {
-      const res = await fetch(
-        'https://ufjkeqmxwuyhbqyugcgg.supabase.co/rest/v1/crm_users?email=eq.' + encodeURIComponent(email) + '&select=password_hash',
-        { headers: { 'apikey': sbKey, 'Authorization': 'Bearer ' + sbKey } }
-      );
-      const rows = await res.json();
-      if(rows && rows.length > 0 && rows[0].password_hash){
-        const decoded = atob(rows[0].password_hash);
-        if(decoded !== pw){
-          err.style.display='block';
-          document.getElementById('pw-input').classList.add('wrong');
-          setTimeout(()=>document.getElementById('pw-input').classList.remove('wrong'),500);
-          return;
-        }
-        const u = users.find(x=>x.email.toLowerCase()===email);
-        if(u){ loginUser(u); return; }
-        loginUser({id:'sb'+Date.now(),name:email.split('@')[0],email,password:pw,role:'sales',initials:email[0].toUpperCase(),color:'#1a6fff',tc:'#fff',status:'active',lastLogin:'Just now'});
-        return;
-      }
-    } catch(e){ console.log('Supabase REST error:',e.message); }
-  }
-
-  // 3. Fall back to local users array
-  const u = users.find(x=>x.email.toLowerCase()===email && x.password===pw && x.status==='active');
-  if(!u){
-    err.style.display='block';
-    document.getElementById('pw-input').classList.add('wrong');
-    setTimeout(()=>document.getElementById('pw-input').classList.remove('wrong'),500);
-    return;
-  }
-  loginUser(u);
-}
+// Dead checkPw v1 removed in Round 4 cleanup — overridden later in this file
+// by the supa.auth.signInWithPassword version, which fix.js then wraps for the live login flow.
 
 
 /* ═══════════════════════════════════════
@@ -2700,44 +2657,13 @@ function populateClientDropdown(){
   clients.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.name;sel.appendChild(o)});
 }
 
-function saveInvoice(status){
-  const cid=document.getElementById('inv-client').value;
-  if(!cid){alert('Please select a client.');return}
-  const c=clients.find(x=>x.id===cid);
-  const{lines,total,desc}=calcTotal();
-  const date=document.getElementById('inv-date').value||new Date().toISOString().split('T')[0];
-  const notes=document.getElementById('inv-notes')?.value||'';
-  const num='GL-'+new Date().getFullYear()+'-'+(invoices.length+1).toString().padStart(3,'0');
-  invoices.push({id:num,client:cid,clientName:c?.name||'',svc:desc,amount:total,date,status,notes});
-  if(c)c.billed+=total;
-  renderInvoices();renderDash();renderClients();
-  cNav('invoices',document.querySelectorAll('.cni')[4]);
-  setTimeout(()=>viewInvoice(num),150);
-}
+// Dead saveInvoice (sync) and dead checkPw v2 removed in Round 4 cleanup.
+// saveInvoice was superseded by the async Supabase version later in this file.
+// checkPw v2 referenced the removed `password` field on users — superseded by
+// the supa.auth version below + fix.js's Supabase Auth wrapper.
 
 /* ═══ MULTI-USER AUTH & PERMISSIONS ═══ */
 let editingUserId = null;
-
-function checkPw(){
-  const email = (document.getElementById('pw-email').value||'').toLowerCase().trim();
-  const pw = document.getElementById('pw-input').value;
-  const user = users.find(u=>u.email.toLowerCase()===email && u.password===pw && u.status==='active');
-  if(user){
-    currentUser = user;
-    user.lastLogin = 'Just now';
-    closePw();
-    document.getElementById('crm-panel').classList.add('show');
-    document.body.style.overflow='hidden';
-    updateCRMForUser();
-    initCRM();
-  } else {
-    const inp=document.getElementById('pw-input');
-    inp.classList.add('wrong');
-    document.getElementById('pw-err').style.display='block';
-    setTimeout(()=>inp.classList.remove('wrong'),500);
-    inp.value='';
-  }
-}
 
 function updateCRMForUser(){
   if(!currentUser)return;
@@ -3876,118 +3802,6 @@ async function downloadInvoicePDF(invId) {
   URL.revokeObjectURL(url);
 }
 
-/* --- BEGIN_DELETED_PDF_TEMPLATE_JUNK ---
-<button id="gl-chat-bubble" onclick="toggleChat()" title="Chat with Good Liquid AI">💬</button>
-<div id="gl-chat-window">
-  <div id="gl-chat-header">
-    <div style="display:flex;align-items:center;gap:9px">
-      <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--teal),#1a6fff);display:flex;align-items:center;justify-content:center;font-size:14px">💬</div>
-      <div><div style="font-size:13px;font-weight:700;color:var(--white)">Good Liquid AI</div><div style="font-size:10px;color:var(--teal)">Ask anything about our services</div></div>
-    </div>
-    <button onclick="toggleChat()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px">✕</button>
-  </div>
-  <div id="gl-chat-messages">
-    <div class="chat-msg bot">Hi! I'm the Good Liquid Bev Co assistant. Ask me about our canning, bottling, R&D services, pricing, or how to get started. 👋</div>
-  </div>
-  <div id="gl-chat-input-row">
-    <textarea id="gl-chat-input" placeholder="Ask about services, pricing, process…" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMsg()}"></textarea>
-    <button onclick="sendChatMsg()" style="padding:9px 14px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:16px">→</button>
-  </div>
-</div>
-
-<!-- ═══ BOOKING OVERLAY ═══ -->
-<div id="booking-overlay">
-  <div class="booking-box">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
-      <div style="font-family:var(--ff-disp);font-size:26px;letter-spacing:2px;color:var(--white)">SCHEDULE A TOUR</div>
-      <button onclick="closeBooking()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer">✕</button>
-    </div>
-    <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:28px">
-      <div>
-        <div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:10px">SELECT DATE</div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <button onclick="bkPrev()" class="cal-nav-btn">‹</button>
-          <div id="bk-month-label" style="font-family:var(--ff-disp);font-size:15px;color:var(--white);letter-spacing:1px"></div>
-          <button onclick="bkNext()" class="cal-nav-btn">›</button>
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:6px">
-          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Su</div>
-          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Mo</div>
-          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Tu</div>
-          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">We</div>
-          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Th</div>
-          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Fr</div>
-          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Sa</div>
-        </div>
-        <div class="booking-mini-cal" id="bk-cal-grid"></div>
-      </div>
-      <div>
-        <div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:10px">SELECT TIME</div>
-        <div class="time-slots" id="bk-time-slots"></div>
-        <div id="bk-selected-info" style="display:none;margin-top:14px;padding:11px;background:rgba(0,229,192,.06);border:1px solid rgba(0,229,192,.18);border-radius:8px;font-size:12px;color:var(--teal)"></div>
-      </div>
-    </div>
-    <div style="margin-top:22px;border-top:1px solid rgba(255,255,255,.07);padding-top:18px">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-        <div><input id="bk-name" placeholder="Your name" style="width:100%;padding:11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:13px;font-family:var(--ff-body)"></div>
-        <div><input id="bk-email" type="email" placeholder="Email address" style="width:100%;padding:11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:13px;font-family:var(--ff-body)"></div>
-      </div>
-      <textarea id="bk-notes" rows="2" placeholder="Brief description of your project…" style="width:100%;padding:11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:13px;font-family:var(--ff-body);resize:none;margin-bottom:12px"></textarea>
-      <button onclick="submitBooking()" style="width:100%;padding:14px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-size:14px;font-weight:800;cursor:pointer;transition:all .3s">Confirm Booking →</button>
-      <div id="bk-success" style="display:none;text-align:center;margin-top:14px;font-size:14px;color:var(--teal);font-weight:600">✓ Booking request sent! Mike will confirm within 1 business day.</div>
-    </div>
-  </div>
-</div>
-
-<!-- ═══ CUSTOMER PORTAL ═══ -->
-<div id="customer-portal">
-  <div class="portal-top">
-    <div style="display:flex;align-items:center;gap:9px">
-      <div style="font-family:var(--ff-disp);font-size:14px;letter-spacing:2px;color:var(--white)">GOOD LIQUID</div>
-      <div style="font-size:9px;color:var(--teal);letter-spacing:2px;text-transform:uppercase">Client Portal</div>
-    </div>
-    <div style="display:flex;align-items:center;gap:12px">
-      <div style="font-size:12px;color:var(--muted)" id="portal-user-name">Loading…</div>
-      <button class="cbtn" style="font-size:10px;padding:4px 10px" onclick="logoutPortal()">Sign out</button>
-    </div>
-  </div>
-  <div class="portal-body">
-    <div style="margin-bottom:24px">
-      <div style="font-family:var(--ff-disp);font-size:28px;letter-spacing:2px;color:var(--white);margin-bottom:6px" id="portal-greeting">Welcome back!</div>
-      <div style="font-size:14px;color:var(--muted)">View your account, invoices, and production status.</div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
-      <div class="portal-card" id="portal-company-card">
-        <div style="font-size:10px;letter-spacing:2px;color:var(--teal);margin-bottom:12px">COMPANY INFO</div>
-        <div id="portal-company-info"></div>
-      </div>
-      <div class="portal-card" id="portal-production-card">
-        <div style="font-size:10px;letter-spacing:2px;color:var(--teal);margin-bottom:12px">PRODUCTION STATUS</div>
-        <div id="portal-production-info"></div>
-      </div>
-    </div>
-    <div class="portal-card">
-      <div style="font-size:10px;letter-spacing:2px;color:var(--teal);margin-bottom:14px">YOUR INVOICES</div>
-      <table class="ctbl"><thead><tr><th>Invoice #</th><th>Service</th><th>Amount</th><th>Date</th><th>Status</th></tr></thead>
-      <tbody id="portal-invoices"></tbody></table>
-    </div>
-    <div style="margin-top:16px;text-align:center">
-      <div style="font-size:12px;color:var(--muted)">Questions? Contact us at <a href="mailto:Mike@GoodLiquid.com" style="color:var(--teal)">Mike@GoodLiquid.com</a> · (803) 493-5065</div>
-    </div>
-  </div>
-</div>
-
-<!-- ═══ PASSWORD RESET OVERLAY ═══ -->
-<div id="reset-overlay">
-  <div style="background:#0a1628;border:1px solid rgba(0,229,192,.18);border-radius:22px;padding:40px;width:380px;text-align:center">
-    <div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:2px;color:var(--white);margin-bottom:8px">RESET PASSWORD</div>
-    <div style="font-size:13px;color:var(--muted);margin-bottom:24px">Enter your email to receive a reset link.</div>
-    <div id="reset-step1">
-      <input type="email" id="reset-email-inp" placeholder="your@email.com" style="width:100%;padding:13px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:9px;color:var(--white);font-size:14px;font-family:var(--ff-body);margin-bottom:13px">
-      <button onclick="sendResetLink()" style="width:100%;padding:13px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-size:14px;font-weight:800;cursor:pointer;margin-bottom:11px">Send Reset Link →</button>
-    </div>
-    <div id="reset-success" style="display:none">(orphaned reset overlay markup from old PDF template — kept only inside this block comment, not in DOM)</div>
-END_DELETED_PDF_TEMPLATE_JUNK --- */
 
 // ─── CLIENT DETAIL PANEL ───
 function openClientDetail(cid) {
