@@ -1317,11 +1317,20 @@
   console.log('[GL] Invoice patch v2 loaded');
 }());
 /* ============================================================
-   INVOICE FIX v3 - DOM-based save
-   glAddLine appends DOM rows but never touches INV.lines, so
-   save must read lines straight from the rendered rows.
+   INVOICE FIX v4 - DOM-based save + Supabase persistence
+   - glAddLine appends DOM rows but never touches INV.lines, so
+     save reads lines straight from the rendered rows.
+   - Save fires a background POST to Supabase invoices table so
+     records survive page refresh and sync across devices.
+     Requires permissive RLS policy on `invoices` (see README/
+     project notes). On RLS or network failure, the in-memory
+     save still succeeds and a warning notification fires.
    ============================================================ */
 (function(){
+
+  var SURL='https://ufjkeqmxwuyhbqyugcgg.supabase.co/rest/v1';
+  var SKEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmamtlcW14d3V5aGJxeXVnY2dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNDI2MDksImV4cCI6MjA5MzkxODYwOX0.godgU_jeprCqSzqe0ji_ZA_hwvPF2s7BmzQyAB-c_xE';
+  var SH={apikey:SKEY,Authorization:'Bearer '+SKEY,'Content-Type':'application/json'};
 
   window.glCalcInvTotal=function(){
     var tot=0;
@@ -1433,6 +1442,35 @@
     if(typeof renderInvoices==='function')renderInvoices();
     if(typeof addNotification==='function')addNotification('Invoice saved: '+invId,(client.name||'')+' · '+window.glUsd(amount),'success');
     var ov=document.getElementById('gl-inv-builder');if(ov)ov.classList.remove('show');
+
+    // Fire-and-forget Supabase persistence (keeps synchronous contract for glExportPDF)
+    var dueIso='';try{dueIso=new Date(Date.parse(date)+30*86400000).toISOString().slice(0,10);}catch(e){dueIso='';}
+    fetch(SURL+'/invoices',{
+      method:'POST',
+      headers:Object.assign({},SH,{'Prefer':'return=representation'}),
+      body:JSON.stringify({
+        invoice_number:invId,
+        client_id:(cid&&cid.charAt(0)==='c')?null:cid,
+        client_name:client.name||'',
+        service:inv.svc,
+        amount:amount,
+        status:'pending',
+        invoice_date:date,
+        due_date:dueIso||null,
+        notes:'',
+        line_items:lines
+      })
+    }).then(function(r){
+      if(!r.ok)return r.text().then(function(t){throw new Error('HTTP '+r.status+' '+t);});
+      return r.json();
+    }).then(function(rows){
+      if(Array.isArray(rows)&&rows[0])inv.supaId=rows[0].id;
+      console.log('[GL] Invoice synced to Supabase:',invId,inv.supaId||'');
+    }).catch(function(err){
+      console.error('[GL] Supabase sync failed for '+invId+':',err);
+      if(typeof addNotification==='function')addNotification('Cloud sync failed','Invoice '+invId+' saved locally only. '+(err.message||''),'warning');
+    });
+
     return inv;
   };
 
@@ -1444,5 +1482,5 @@
     }
   });
 
-  console.log('[GL] Invoice fix v3 loaded - DOM-based save');
+  console.log('[GL] Invoice fix v4 loaded - DOM save + Supabase sync');
 }());
