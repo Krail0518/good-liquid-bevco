@@ -774,7 +774,7 @@ select option, .fsel option {
     <a href="javascript:void(0)" onclick="event.preventDefault();navTo(&#39;pricing&#39;)">Pricing</a>
     <a href="javascript:void(0)" onclick="event.preventDefault();navTo(&#39;certifications&#39;)">Certifications</a>
     <a href="javascript:void(0)" onclick="event.preventDefault();navTo(&#39;team&#39;)">Team</a>
-    <a href="javascript:void(0)" class="nav-cta" onclick="navTo(\'contact\')">Get a Quote</a>
+    <a href="javascript:void(0)" class="nav-cta" onclick="navTo(&#39;contact&#39;)">Get a Quote</a>
     <a href="#" onclick="event.preventDefault();openAdmin()" style="padding:9px 22px;border:1.5px solid #f5c842;color:#f5c842;border-radius:6px;font-size:13px;font-weight:600;transition:all .25s;margin-left:8px;">🔒 Admin</a>
   </div>
 </nav>
@@ -792,8 +792,8 @@ select option, .fsel option {
     <div class="hero-row">
       <p class="hero-sub">Good Liquid Bev Co turns your beverage concept into a finished, palletized product — from formulation to first shipment. Small-batch specialists, big results.</p>
       <div class="hero-acts">
-        <a href="javascript:void(0)" class="bh pri" onclick="navTo(\'contact\')">Get a quote →</a>
-        <a href="javascript:void(0)" onclick="navTo(\'services\')" class="bh sec" onclick="event.preventDefault();navTo(&#39;services&#39;)">See capabilities</a>
+        <a href="javascript:void(0)" class="bh pri" onclick="navTo(&#39;contact&#39;)">Get a quote →</a>
+        <a href="javascript:void(0)" class="bh sec" onclick="navTo(&#39;services&#39;)">See capabilities</a>
       </div>
     </div>
     <div class="hero-stats">
@@ -1052,8 +1052,8 @@ select option, .fsel option {
     <div><div style="font-size:13px;font-weight:700;color:var(--white)">Good Liquid Bev Co</div><div style="font-size:10px;color:var(--muted)">Est. 2017 · Palmetto, FL 34221</div></div>
   </div>
   <div class="flinks">
-    <a href="javascript:void(0)" onclick="navTo(\'about\')">About</a><a href="javascript:void(0)" onclick="navTo(\'services\')">Services</a><a href="javascript:void(0)" onclick="navTo(\'pricing\')">Pricing</a>
-    <a href="javascript:void(0)" onclick="navTo(\'certifications\')">Certifications</a><a href="javascript:void(0)" onclick="navTo(\'team\')">Team</a><a href="mailto:Mike@GoodLiquid.com">Contact</a>
+    <a href="javascript:void(0)" onclick="navTo(&#39;about&#39;)">About</a><a href="javascript:void(0)" onclick="navTo(&#39;services&#39;)">Services</a><a href="javascript:void(0)" onclick="navTo(&#39;pricing&#39;)">Pricing</a>
+    <a href="javascript:void(0)" onclick="navTo(&#39;certifications&#39;)">Certifications</a><a href="javascript:void(0)" onclick="navTo(&#39;team&#39;)">Team</a><a href="mailto:Mike@GoodLiquid.com">Contact</a>
   </div>
   <div class="fright">© 2026 Good Liquid Bev Co.</div>
 </footer>
@@ -3866,8 +3866,18 @@ async function downloadInvoicePDF(invId) {
     </tbody>
   </table>
   <div class="footer">Payment to Good Liquid Bev Co · Mike@GoodLiquid.com · (803) 493-5065 · goodliquidbevco.com</div>
-  
-<!-- ═══ AI CHAT WIDGET ═══ -->
+</body></html>`;
+
+  const blob = new Blob([html], {type:'text/html'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${inv.id}-Good-Liquid.html`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* --- BEGIN_DELETED_PDF_TEMPLATE_JUNK ---
 <button id="gl-chat-bubble" onclick="toggleChat()" title="Chat with Good Liquid AI">💬</button>
 <div id="gl-chat-window">
   <div id="gl-chat-header">
@@ -3977,21 +3987,8 @@ async function downloadInvoicePDF(invId) {
       <input type="email" id="reset-email-inp" placeholder="your@email.com" style="width:100%;padding:13px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:9px;color:var(--white);font-size:14px;font-family:var(--ff-body);margin-bottom:13px">
       <button onclick="sendResetLink()" style="width:100%;padding:13px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-size:14px;font-weight:800;cursor:pointer;margin-bottom:11px">Send Reset Link →</button>
     </div>
-    <div id="reset-success" style="display:none;color:var(--teal);font-size:13px;font-weight:600;padding:14px">✓ If an account exists, a reset link has been sent to that email.</div>
-    <button onclick="closeResetOverlay()" style="font-size:13px;color:var(--muted);cursor:pointer;border:none;background:none;font-family:var(--ff-body)">← Back to login</button>
-  </div>
-</div>
-
-</body></html>`;
-
-  const blob = new Blob([html], {type:'text/html'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${inv.id}-Good-Liquid.html`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+    <div id="reset-success" style="display:none">(orphaned reset overlay markup from old PDF template — kept only inside this block comment, not in DOM)</div>
+END_DELETED_PDF_TEMPLATE_JUNK --- */
 
 // ─── CLIENT DETAIL PANEL ───
 function openClientDetail(cid) {
