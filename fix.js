@@ -176,12 +176,41 @@
     setTimeout(function(){var n=document.querySelector('.cnav');if(n)n.scrollTop=0;},150);
   };
 
-  /* ── Supabase REST config (anon key already public in client JS) ── */
-  var GL_SURL='https://ufjkeqmxwuyhbqyugcgg.supabase.co/rest/v1';
-  var GL_SKEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmamtlcW14d3V5aGJxeXVnY2dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNDI2MDksImV4cCI6MjA5MzkxODYwOX0.godgU_jeprCqSzqe0ji_ZA_hwvPF2s7BmzQyAB-c_xE';
-  var GL_SH={apikey:GL_SKEY,Authorization:'Bearer '+GL_SKEY};
+  /* ── Supabase Auth (bcrypt passwords managed by Supabase) ── */
+  var _glSupa=null;
+  function getSupa(){
+    if(_glSupa)return _glSupa;
+    if(window.supa){_glSupa=window.supa;return _glSupa;}
+    if(window.supabase&&typeof window.supabase.createClient==='function'){
+      try{
+        _glSupa=window.supabase.createClient(
+          'https://ufjkeqmxwuyhbqyugcgg.supabase.co',
+          'sb_publishable_-37mkPw8uLzEJM21T9jJOA_YQRQ7ikB'
+        );
+        return _glSupa;
+      }catch(e){console.error('[GL] supabase init failed',e);}
+    }
+    return null;
+  }
 
-  /* ── checkPw — auth via Supabase crm_users, no local password fallback ── */
+  async function _glFetchProfile(sb,authUser){
+    try{
+      var r=await sb.from('profiles').select('*').eq('id',authUser.id).maybeSingle();
+      if(r.error){console.warn('[GL] profile fetch error',r.error);return null;}
+      if(!r.data)return null;
+      var p=r.data;
+      return {
+        id:p.id, email:p.email||authUser.email,
+        name:p.name||(authUser.email||'').split('@')[0],
+        role:p.role||'sales', status:p.status||'active',
+        initials:p.initials||(authUser.email||'?').slice(0,2).toUpperCase(),
+        color:p.color||'#1a6fff', tc:p.tc||'#fff',
+        lastLogin:'Just now'
+      };
+    }catch(e){console.error('[GL] profile fetch threw',e);return null;}
+  }
+
+  /* ── checkPw — Supabase Auth (bcrypt). Falls back to customerLogins only. ── */
   window.checkPw=async function(){
     var eEl=document.getElementById('pw-email'),pEl=document.getElementById('pw-input'),err=document.getElementById('pw-err');
     if(!eEl||!pEl)return;
@@ -189,48 +218,56 @@
     if(err){err.style.display='none';err.textContent='Incorrect email or password.';}
     function showErr(msg){if(err){err.style.display='block';if(msg)err.textContent=msg;}pEl.classList.add('wrong');setTimeout(function(){pEl.classList.remove('wrong');},500);}
 
-    // Customer portal logins live in browser localStorage (not in crm_users)
+    // Customer portal logins (browser-local, not in Supabase Auth)
     if(window.customerLogins){
       var c=window.customerLogins.find(function(x){return x.email.toLowerCase()===email&&x.password===pw;});
       if(c){window.currentPortalUser=c;if(typeof closePw==='function')closePw();if(typeof openCustomerPortal==='function')openCustomerPortal(c);return;}
     }
 
-    // CRM staff: authenticate against Supabase
+    var sb=getSupa();
+    if(!sb){showErr('Auth service unavailable.');return;}
     try{
-      var res=await fetch(GL_SURL+'/crm_users?email=eq.'+encodeURIComponent(email)+'&select=password_hash',{headers:GL_SH});
-      if(!res.ok)throw new Error('HTTP '+res.status);
-      var rows=await res.json();
-      if(!Array.isArray(rows)||rows.length===0||!rows[0].password_hash){showErr();return;}
-      var stored='';try{stored=atob(rows[0].password_hash);}catch(e){stored='';}
-      if(stored!==pw){showErr();return;}
-      // Password matched — look up profile (name/role/colors) from local users array
-      var u=(window.users||[]).find(function(x){return x.email.toLowerCase()===email&&x.status!=='inactive';});
-      if(!u){
-        u={id:'sb'+Date.now(),name:email.split('@')[0],email:email,role:'sales',initials:email[0].toUpperCase(),color:'#1a6fff',tc:'#fff',status:'active',lastLogin:'Just now'};
+      var r=await sb.auth.signInWithPassword({email:email,password:pw});
+      if(r.error||!r.data||!r.data.user){showErr();return;}
+      var profile=await _glFetchProfile(sb,r.data.user);
+      if(!profile){
+        profile={
+          id:r.data.user.id, email:r.data.user.email,
+          name:(r.data.user.email||'').split('@')[0], role:'sales', status:'active',
+          initials:(r.data.user.email||'?').slice(0,2).toUpperCase(),
+          color:'#1a6fff', tc:'#fff', lastLogin:'Just now'
+        };
       }
-      window.loginUser(u);
+      // Merge into window.users so other UI lookups find the profile
+      window.users=window.users||[];
+      var idx=window.users.findIndex(function(u){return u.email.toLowerCase()===profile.email.toLowerCase();});
+      if(idx>=0)window.users[idx]=Object.assign({},window.users[idx],profile);
+      else window.users.unshift(profile);
+      window.loginUser(profile);
     }catch(e){
-      console.error('[GL] Login lookup failed:',e);
+      console.error('[GL] sign-in threw',e);
       showErr('Login service unavailable. Try again.');
     }
   };
 
-  /* ── syncPasswordToSupabase — upsert to crm_users using embedded anon key ── */
-  window.syncPasswordToSupabase=async function(email,pw){
+  /* ── syncPasswordToSupabase — current user changes their own password via Auth ── */
+  window.syncPasswordToSupabase=async function(emailOrPw,maybePw){
+    var newPw=typeof maybePw==='string'?maybePw:emailOrPw;
+    var sb=getSupa();if(!sb)return false;
     try{
-      var res=await fetch(GL_SURL+'/crm_users',{
-        method:'POST',
-        headers:Object.assign({},GL_SH,{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates'}),
-        body:JSON.stringify({email:email.toLowerCase(),password_hash:btoa(pw),updated_at:new Date().toISOString()})
-      });
-      if(!res.ok)throw new Error('HTTP '+res.status+' '+(await res.text()));
-      console.log('[GL] Password synced to Supabase for',email);
+      var r=await sb.auth.updateUser({password:newPw});
+      if(r.error){console.error('[GL] updateUser error',r.error);return false;}
+      console.log('[GL] Password updated for current Supabase Auth user');
       return true;
-    }catch(e){
-      console.error('[GL] Password sync failed:',e);
-      if(typeof addNotification==='function')addNotification('Password sync failed',email+' — '+(e.message||''),'warning');
-      return false;
-    }
+    }catch(e){console.error('[GL] updateUser threw',e);return false;}
+  };
+
+  /* ── glSignOut — clear Supabase session and close CRM ── */
+  window.glSignOut=async function(){
+    var sb=getSupa();
+    if(sb){try{await sb.auth.signOut();}catch(e){}}
+    window.currentUser=null;
+    if(typeof window.exitCRM==='function')window.exitCRM();
   };
 
   /* ── SEO ── */

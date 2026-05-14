@@ -3043,6 +3043,7 @@ function copyEmail(){
 const SUPA_URL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co';
 const SUPA_KEY = 'sb_publishable_-37mkPw8uLzEJM21T9jJOA_YQRQ7ikB';
 const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
+window.supa = supa;  // expose to fix.js (which needs supa.auth for login)
 
 // Override checkPw — tries Supabase first, falls back to local auth
 window.checkPw = async function checkPw(){
