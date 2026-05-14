@@ -1317,7 +1317,9 @@
   console.log('[GL] Invoice patch v2 loaded');
 }());
 /* ============================================================
-   INVOICE FIX - discount display + save validation
+   INVOICE FIX v3 - DOM-based save
+   glAddLine appends DOM rows but never touches INV.lines, so
+   save must read lines straight from the rendered rows.
    ============================================================ */
 (function(){
 
@@ -1349,20 +1351,89 @@
     if(totRow&&totRow.children[1])totRow.children[1].textContent=window.glUsd(grand);
   };
 
-  var _origSave=window.glSaveInvoice;
-  window.glSaveInvoice=function(){
-    var lineCount=document.querySelectorAll('[data-gl-total]').length;
-    if(lineCount===0){alert('Add at least one line item.');return;}
-    if(typeof window.glLines==='undefined')window.glLines=[];
-    if(typeof window.glInvLines==='undefined')window.glInvLines=[];
-    if(typeof _origSave==='function')_origSave();
-  };
+  function readLinesFromDOM(){
+    var lines=[];
+    document.querySelectorAll('[data-gl-total]').forEach(function(row){
+      var uid=row.id;if(!uid)return;
+      var total=parseFloat(row.getAttribute('data-gl-total'))||0;
+      var casesEl=document.getElementById(uid+'-cases');
+      var punitEl=document.getElementById(uid+'-punit');
+      var descEl=document.getElementById(uid+'-desc');
+      var labelEl=row.querySelector('div > div');
+      var label=labelEl?labelEl.textContent.trim():'';
+      if(casesEl){
+        var cases=parseInt(casesEl.value)||0;
+        var fEl=document.getElementById(uid+'-format');
+        var fLbl=(fEl&&fEl.options[fEl.selectedIndex])?fEl.options[fEl.selectedIndex].text:'';
+        var perCase=cases>0?total/cases:0;
+        lines.push({desc:'Canning - '+fLbl,qty:cases,unitPrice:perCase,total:total,unit:'case'});
+      }else if(punitEl){
+        var qtyEl=document.getElementById(uid+'-qty');
+        var qty=qtyEl?parseInt(qtyEl.value)||0:0;
+        var fEl2=document.getElementById(uid+'-format');
+        var fLbl2=(fEl2&&fEl2.options[fEl2.selectedIndex])?fEl2.options[fEl2.selectedIndex].text:'';
+        var perBtl=qty>0?total/qty:0;
+        lines.push({desc:'Bottling - '+fLbl2,qty:qty,unitPrice:perBtl,total:total,unit:'btl'});
+      }else if(descEl){
+        var qtyMEl=document.getElementById(uid+'-qty');
+        var qtyM=qtyMEl?parseFloat(qtyMEl.value)||0:0;
+        var priceMEl=document.getElementById(uid+'-price');
+        var priceM=priceMEl?parseFloat(priceMEl.value)||0:0;
+        var typed=(descEl.value||'').trim();
+        var desc=typed?(label?label+' - '+typed:typed):(label||'Line item');
+        lines.push({desc:desc,qty:qtyM,unitPrice:priceM,total:total,unit:''});
+      }
+    });
+    return lines;
+  }
 
-  var _origPDF=window.glExportPDF;
-  window.glExportPDF=function(){
-    var lineCount=document.querySelectorAll('[data-gl-total]').length;
-    if(lineCount===0){alert('Add at least one line item.');return;}
-    if(typeof _origPDF==='function')_origPDF();
+  function nextInvId(){
+    var ids=(window.invoices||[]).map(function(i){return parseInt((i.id||'').replace(/\D/g,''))||0;});
+    return 'GL-'+(ids.length?Math.max.apply(null,ids)+1:1001);
+  }
+
+  window.glSaveInvoice=function(){
+    var cidEl=document.getElementById('ginv-client');
+    var cid=cidEl?cidEl.value:'';
+    if(!cid){alert('Please select a client');return null;}
+    var lines=readLinesFromDOM();
+    if(!lines.length){alert('Add at least one line item.');return null;}
+
+    var client=(window.clients||[]).find(function(c){return c.id===cid;})||{};
+    var invIdEl=document.getElementById('ginv-id');
+    var invId=(invIdEl&&invIdEl.value)?invIdEl.value:nextInvId();
+    var dateEl=document.getElementById('ginv-date');
+    var date=(dateEl&&dateEl.value)?dateEl.value:new Date().toISOString().slice(0,10);
+    var discEl=document.getElementById('ginv-disc');
+    var pct=discEl?parseFloat(discEl.value)||0:0;
+    var subtotal=lines.reduce(function(s,l){return s+(l.total||0);},0);
+    var discountAmt=subtotal*(pct/100);
+    var amount=subtotal-discountAmt;
+
+    var inv={
+      id:invId,
+      client:cid,
+      clientName:client.name||'',
+      clientEmail:client.email||'',
+      svc:lines.map(function(l){return l.desc;}).join(', '),
+      lines:lines,
+      addons:[],
+      discount:pct,
+      subtotal:subtotal,
+      discountAmt:discountAmt,
+      amount:amount,
+      notes:'',
+      date:date,
+      status:'pending',
+      paymentTerms:'Due upon receipt'
+    };
+    window.invoices=window.invoices||[];
+    window.invoices=window.invoices.filter(function(i){return i.id!==invId;});
+    window.invoices.unshift(inv);
+    if(typeof renderInvoices==='function')renderInvoices();
+    if(typeof addNotification==='function')addNotification('Invoice saved: '+invId,(client.name||'')+' · '+window.glUsd(amount),'success');
+    var ov=document.getElementById('gl-inv-builder');if(ov)ov.classList.remove('show');
+    return inv;
   };
 
   document.addEventListener('click',function(){
@@ -1373,5 +1444,5 @@
     }
   });
 
-  console.log('[GL] Invoice fix loaded');
+  console.log('[GL] Invoice fix v3 loaded - DOM-based save');
 }());
