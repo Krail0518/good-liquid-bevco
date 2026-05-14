@@ -1437,7 +1437,9 @@
       paymentTerms:'Due upon receipt'
     };
     window.invoices=window.invoices||[];
-    window.invoices=window.invoices.filter(function(i){return i.id!==invId;});
+    // Mutate in place so index.html's `let invoices` (bridged to window.invoices)
+    // keeps pointing at the same array. Replacing via .filter() would break that.
+    for(var _k=window.invoices.length-1;_k>=0;_k--){if(window.invoices[_k]&&window.invoices[_k].id===invId)window.invoices.splice(_k,1);}
     window.invoices.unshift(inv);
     if(typeof renderInvoices==='function')renderInvoices();
     if(typeof addNotification==='function')addNotification('Invoice saved: '+invId,(client.name||'')+' · '+window.glUsd(amount),'success');
@@ -1482,5 +1484,5 @@
     }
   });
 
-  console.log('[GL] Invoice fix v4 loaded - DOM save + Supabase sync');
+  console.log('[GL] Invoice fix v5 loaded - DOM save + Supabase sync + shared invoices array');
 }());
