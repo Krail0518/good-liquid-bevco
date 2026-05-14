@@ -775,7 +775,7 @@ select option, .fsel option {
     <a href="javascript:void(0)" onclick="event.preventDefault();navTo(&#39;certifications&#39;)">Certifications</a>
     <a href="javascript:void(0)" onclick="event.preventDefault();navTo(&#39;team&#39;)">Team</a>
     <a href="javascript:void(0)" class="nav-cta" onclick="navTo(&#39;contact&#39;)">Get a Quote</a>
-    <a href="#" onclick="event.preventDefault();openAdmin()" style="padding:9px 22px;border:1.5px solid #f5c842;color:#f5c842;border-radius:6px;font-size:13px;font-weight:600;transition:all .25s;margin-left:8px;">🔒 Admin</a>
+    <a href="javascript:void(0)" onclick="event.preventDefault();openAdmin()" style="padding:9px 22px;border:1.5px solid #f5c842;color:#f5c842;border-radius:6px;font-size:13px;font-weight:600;transition:all .25s;margin-left:8px;">🔒 Admin</a>
   </div>
 </nav>
 
@@ -1009,7 +1009,7 @@ select option, .fsel option {
         <div style="font-family:var(--ff-disp);font-size:24px;letter-spacing:1px;color:var(--white);margin-bottom:5px">PALMETTO, FL</div>
         <div style="font-family:var(--ff-mono);font-size:12px;color:var(--white);line-height:1.7;margin-bottom:16px">2011 51st Ave E, Unit 100<br>Palmetto, FL 34221</div>
         <p style="font-size:13px;color:var(--muted);line-height:1.7">Schedule a tour and see the production line in action.</p>
-        <a href="#" onclick="event.preventDefault();openBooking()" class="fac-btn">Schedule a tour →</a>
+        <a href="javascript:void(0)" onclick="event.preventDefault();openBooking()" class="fac-btn">Schedule a tour →</a>
       </div>
     </div>
   </div>
@@ -2848,6 +2848,12 @@ let currentTone = 'friendly';
 
 function openFollowUp(){
   if(!currentInvId)return;
+  // Pre-flight: don't open the composer if Mailgun isn't configured.
+  if(!localStorage.getItem('gl_mailgun_key')){
+    if(typeof addNotification==='function') addNotification('Mailgun key required','Configure the Mailgun API key (gl_mailgun_key) before sending follow-ups.','warning');
+    else alert('Configure your Mailgun API key before sending follow-up emails.');
+    return;
+  }
   const inv = invoices.find(i=>i.id===currentInvId);
   if(!inv)return;
   const c = clients.find(x=>x.id===inv.client)||{name:inv.clientName,email:''};
@@ -3609,8 +3615,15 @@ function clearAIKey(){
 const AI_MODEL = 'claude-haiku-4-5-20251001';
 
 async function callAI(systemPrompt, userPrompt) {
-  const key = getAIKey();
-  if(!key){ showAIModal('Error', 'No API key provided. Please try again.'); return 'No API key.'; }
+  // Pre-flight: if no key, dismiss any pending loading modal so it doesn't
+  // stack with the Settings modal, then open Settings (handled by getAIKey).
+  if(!AI_KEY){
+    document.getElementById('ai-modal')?.remove();
+    if(typeof addNotification==='function') addNotification('AI key required','Paste your Anthropic API key in AI Settings.','warning');
+    openAISettings();
+    return '';
+  }
+  const key = AI_KEY;
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -4686,10 +4699,21 @@ let currentFollowupInvId = null;
 
 function openFollowUpModal(){
   if(!currentInvId) return;
+  // Pre-flight: AI key needed to draft, Mailgun key needed to send.
+  if(!AI_KEY){
+    if(typeof addNotification==='function') addNotification('AI key required','Paste your Anthropic API key in AI Settings before drafting a follow-up.','warning');
+    openAISettings();
+    return;
+  }
+  if(!localStorage.getItem('gl_mailgun_key')){
+    if(typeof addNotification==='function') addNotification('Mailgun key required','Configure the Mailgun API key before sending follow-ups.','warning');
+    else alert('Configure your Mailgun API key before sending follow-up emails.');
+    return;
+  }
   const inv=invoices.find(i=>i.id===currentInvId);
   if(!inv) return;
   currentFollowupInvId=currentInvId;
-  
+
   const modal=document.getElementById('followup-modal');
   modal.classList.add('show');
   document.getElementById('followup-loading').style.display='block';
@@ -5408,6 +5432,10 @@ function toggleTimer() {
 
 function resumeTimerDisplay() {
   if(!activeTimer) return;
+  // Defensive: clear any previously-running tick before starting a new one.
+  // Open/close cycles of the time-tracker modal used to stack overlapping
+  // setInterval handles, each running until the next tick found no #tt-display.
+  if(timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   timerInterval = setInterval(() => {
     const el = document.getElementById('tt-display');
     if(!el) { clearInterval(timerInterval); return; }

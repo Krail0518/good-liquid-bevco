@@ -117,15 +117,17 @@
 
   /* ── FIX DOM STRUCTURE ── */
   function fixDOMStructure(){
+    if(fixDOMStructure._done)return;
     var panel=document.getElementById('crm-panel'),top=document.getElementById('crm-top'),body=document.getElementById('crm-body'),notif=document.getElementById('notif-panel'),ov=document.getElementById('cnav-overlay');
-    if(!panel||!top||!body)return;
+    if(!panel||!top||!body)return;  // try again next call when DOM is ready
     if(notif&&notif.parentElement===top)panel.appendChild(notif);
     if(ov&&ov.parentElement===top)panel.appendChild(ov);
     if(body.parentElement===top)panel.appendChild(body);
+    fixDOMStructure._done=true;
   }
   fixDOMStructure();
-  document.addEventListener('DOMContentLoaded',fixDOMStructure);
-  setTimeout(fixDOMStructure,100);
+  if(!fixDOMStructure._done) document.addEventListener('DOMContentLoaded',fixDOMStructure);
+  if(!fixDOMStructure._done) setTimeout(fixDOMStructure,100);
 
   /* ── CHAT BUBBLE — admin only ── */
   setTimeout(function(){
