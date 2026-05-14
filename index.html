@@ -1897,7 +1897,9 @@ select option, .fsel option {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 <script>
 /* ═══ DATA ═══ */
-let users=[
+/* All arrays are bridged to window so fix.js and index.html share the same identity.
+   Never reassign window.X via .filter()/etc — mutate in place (splice/push/unshift). */
+let users=window.users=[
   {id:'u1',name:'Mike Krail',email:'mike@goodliquid.com',role:'admin',status:'active',lastLogin:'Today',initials:'MK',color:'#0F6E56',tc:'#E1F5EE'},
   {id:'u2',name:'Sandra Krail',email:'sandra@goodliquid.com',role:'sales',status:'active',lastLogin:'Yesterday',initials:'SK',color:'#1a3a6e',tc:'#9FE1CB'},
 ];
@@ -1918,13 +1920,13 @@ function canAction(a){
 }
 const GL={name:'Good Liquid Bev Co',addr:'2011 51st Ave E, Unit 100',city:'Palmetto, FL 34221',email:'Mike@GoodLiquid.com'};
 
-let referrers=[
+let referrers=window.referrers=[
   {id:'rr1',name:'Jake Denton',rel:'Broker',email:'jake@dentonsales.com',phone:'(813) 555-0144',rate:5,color:'#1a3a6e',tc:'#9FE1CB',init:'JD',notes:'Commercial broker, sends 2-3 leads/year'},
   {id:'rr2',name:'Maria Santos',rel:'Industry contact',email:'msantos@bevworld.com',phone:'(727) 555-0289',rate:7,color:'#0F6E56',tc:'#E1F5EE',init:'MS',notes:'Beverage industry consultant'},
   {id:'rr3',name:'Dave Okafor',rel:'Business partner',email:'dave@okaforgroup.com',phone:'(941) 555-0076',rate:6,color:'#854F0B',tc:'#FAEEDA',init:'DO',notes:'Former supplier, now refers startup brands'},
 ];
 
-let referrals=[
+let referrals=window.referrals=[
   {id:'ref1',referrerId:'rr1',referrerName:'Jake Denton',clientName:'SunBurst Seltzers',dealValue:35820,rate:5,commAmount:1791,status:'paid',datePaid:'2026-04-15',notes:'Introduced via email, closed quickly',date:'2026-03-01'},
   {id:'ref2',referrerId:'rr2',referrerName:'Maria Santos',clientName:'Bloom Functional',dealValue:16000,rate:7,commAmount:1120,status:'won',datePaid:null,notes:'Came through Maria at BevWorld Expo',date:'2026-04-02'},
   {id:'ref3',referrerId:'rr3',referrerName:'Dave Okafor',clientName:'Verde Wellness',dealValue:7000,rate:6,commAmount:420,status:'paid',datePaid:'2026-04-30',notes:'Dave connected us directly',date:'2026-03-15'},
@@ -1933,7 +1935,7 @@ let referrals=[
   {id:'ref6',referrerId:'rr3',referrerName:'Dave Okafor',clientName:'Crest Beverages',dealValue:22000,rate:6,commAmount:1320,status:'lost',datePaid:null,notes:'Lost to competitor on price',date:'2026-03-28'},
 ];
 
-let clients=[
+let clients=window.clients=[
   {id:'c1',name:'Tide & Taste Co.',contact:'Jordan Mills',email:'jordan@tidetaste.com',service:'Canning',status:'active',billed:48240,referredBy:'',color:'#1a3a6e',tc:'#9FE1CB',init:'TT'},
   {id:'c2',name:'Bloom Functional',contact:'Riley Park',email:'r.park@bloomfx.com',service:'R&D + Canning',status:'active',billed:24800,referredBy:'rr2',color:'#0F6E56',tc:'#E1F5EE',init:'BF'},
   {id:'c3',name:'SunBurst Seltzers',contact:'Alex Torres',email:'a.torres@sunburst.io',service:'Canning',status:'active',billed:61500,referredBy:'rr1',color:'#854F0B',tc:'#FAEEDA',init:'SS'},
@@ -1946,21 +1948,17 @@ let clients=[
 
 let invoices=window.invoices=[];
 
-const deals={
-  'Prospecting':[{name:'NorthWave Intro',co:'NorthWave Drinks',val:'$11,000',prob:15},{name:'Datasphere Expansion',co:'Datasphere',val:'$22,000',prob:20}],
-  'Proposal':[{name:'Harbor Brew Pilot',co:'Harbor Brew Lab',val:'$5,200',prob:40},{name:'Bloom Batch #3',co:'Bloom Functional',val:'$18,400',prob:45}],
-  'Negotiation':[{name:'Verde IP Renewal',co:'Verde Wellness',val:'$6,000',prob:70},{name:'Prism 1320 Run',co:'Prism Hydration',val:'$15,800',prob:65}],
-  'Closed Won':[{name:'SunBurst Q2',co:'SunBurst Seltzers',val:'$35,820',prob:100},{name:'Tide & Taste Run 2',co:'Tide & Taste Co.',val:'$12,150',prob:100}],
-  'Closed Lost':[]
-};
+/* Deals: empty seed. Real deals come from Supabase via loadSupabaseData(),
+   or from "Add Deal" / contact form. Bridged to window so fix.js can share. */
+let deals=window.deals={'Prospecting':[],'Proposal':[],'Negotiation':[],'Closed Won':[],'Closed Lost':[]};
 
-const activities=[
-  {type:'call',icon:'📞',name:'Called SunBurst Seltzers',detail:'Q3 volume discussion',time:'2h ago'},
-  {type:'ref',icon:'🤝',name:'New referral from Maria Santos',detail:'NorthWave Drinks intro — potential $11K',time:'5h ago'},
-  {type:'email',icon:'✉️',name:'Email to Bloom Functional',detail:'Sent revised R&D proposal',time:'Yesterday'},
-  {type:'deal',icon:'⭐',name:'Commission paid — Jake Denton',detail:'$1,791 paid for SunBurst referral',time:'Yesterday'},
-  {type:'note',icon:'📝',name:'Note on Prism Hydration',detail:'Overdue invoice — follow up required',time:'2d ago'},
-];
+/* Activities: localStorage-persisted (per-device). Capped at 100 entries to
+   avoid bloat. Bridged to window. */
+let activities=window.activities=JSON.parse(localStorage.getItem('gl_activities')||'[]');
+function saveActivities(){
+  try{localStorage.setItem('gl_activities',JSON.stringify(activities.slice(0,100)));}
+  catch(e){console.warn('[GL] activities save failed',e);}
+}
 
 const PRICING={
   canning:{tiers:[
@@ -2471,7 +2469,7 @@ function payComm(id){
   if(r&&confirm(`Pay $${r.commAmount.toLocaleString()} commission to ${r.referrerName}?`)){
     r.status='paid';r.datePaid=new Date().toISOString().split('T')[0];
     renderReferrals();renderDash();
-    activities.unshift({type:'ref',icon:'🤝',name:`Commission paid — ${r.referrerName}`,detail:`$${r.commAmount.toLocaleString()} for ${r.clientName} referral`,time:'Just now'});
+    activities.unshift({type:'ref',icon:'🤝',name:`Commission paid — ${r.referrerName}`,detail:`$${r.commAmount.toLocaleString()} for ${r.clientName} referral`,time:'Just now'});saveActivities();
     renderActivity();
   }
 }
@@ -2513,7 +2511,7 @@ function saveReferral(){
   const notes=document.getElementById('ref-notes').value;
   const id='ref'+(referrals.length+1);
   referrals.push({id,referrerId:refId,referrerName:ref.name,clientName,dealValue:deal,rate,commAmount:comm,status,datePaid:null,notes,date:new Date().toISOString().split('T')[0]});
-  activities.unshift({type:'ref',icon:'🤝',name:`New referral from ${ref.name}`,detail:`${clientName} — potential $${comm.toLocaleString()} commission`,time:'Just now'});
+  activities.unshift({type:'ref',icon:'🤝',name:`New referral from ${ref.name}`,detail:`${clientName} — potential $${comm.toLocaleString()} commission`,time:'Just now'});saveActivities();
   renderReferrals();renderDash();renderActivity();
   closeRefModal();
   // Clear form
@@ -3214,7 +3212,7 @@ async function saveReferral(){
   // Update local
   const id='ref'+(referrals.length+1);
   referrals.push({id,referrerId:refId,referrerName:ref.name,clientName,dealValue:deal,rate,commAmount:comm,status,datePaid:null,notes,date:new Date().toISOString().split('T')[0]});
-  activities.unshift({type:'ref',icon:'🤝',name:`New referral from ${ref.name}`,detail:`${clientName} — potential $${comm.toLocaleString()} commission`,time:'Just now'});
+  activities.unshift({type:'ref',icon:'🤝',name:`New referral from ${ref.name}`,detail:`${clientName} — potential $${comm.toLocaleString()} commission`,time:'Just now'});saveActivities();
   renderReferrals();renderDash();renderActivity();
   closeRefModal();
   document.getElementById('ref-client-name').value='';
@@ -3502,7 +3500,7 @@ async function submitContactForm(btn){
     // 3. Auto-create a deal in the Pipeline (Prospecting stage)
     try {
       const dealName = (vals.brand_name || 'New Inquiry') + ' — Quote Request';
-      await supa.from('deals').insert([{
+      const { data: newDeal } = await supa.from('deals').insert([{
         name: dealName,
         client_name: vals.brand_name || '',
         value: 0,
@@ -3513,11 +3511,12 @@ Volume: ${vals.volume}
 Contact: ${vals.contact_name} (${vals.email})
 
 ${vals.details}`
-      }]);
-      // Also add to local deals array if CRM is open
+      }]).select().single();
+      // Also add to local deals array if CRM is open. Use the Supabase-returned
+      // UUID so later moves/edits on this card actually persist.
       if(typeof deals !== 'undefined' && deals['Prospecting']){
         deals['Prospecting'].push({
-          id: 'tmp_' + Date.now(),
+          id: newDeal ? newDeal.id : ('tmp_' + Date.now()),
           name: dealName, co: vals.brand_name || '',
           val: '$0', prob: 20
         });
@@ -4350,7 +4349,7 @@ function saveCalEvent(){
   renderCal(type);
   if(type==='production') renderProductionRuns();
   addNotification('📅 Event added: '+title,date+' at '+time,'success');
-  activities.unshift({type:'note',icon:'📅',name:'Calendar: '+title,detail:date+' '+time,time:'Just now'});
+  activities.unshift({type:'note',icon:'📅',name:'Calendar: '+title,detail:date+' '+time,time:'Just now'});saveActivities();
   document.getElementById('cal-ev-title').value='';
 }
 
@@ -4992,7 +4991,7 @@ function saveMeetingNotes(){
   const clientId=document.getElementById('mn-client').value;
   const notes=document.getElementById('mn-result').textContent;
   const client=clients.find(c=>c.id===clientId);
-  activities.unshift({type:'note',icon:'📝',name:'Meeting notes: '+(client?client.name:'General'),detail:notes.substring(0,80)+'…',time:'Just now'});
+  activities.unshift({type:'note',icon:'📝',name:'Meeting notes: '+(client?client.name:'General'),detail:notes.substring(0,80)+'…',time:'Just now'});saveActivities();
   addNotification('📝 Meeting notes saved','Notes saved for '+(client?client.name:'General'),'success');
   closeMeetingNotesModal();
 }
