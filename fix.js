@@ -1837,3 +1837,103 @@
 
   console.log('[GL] Admin user-panel v1 loaded (role dropdown + set-password)');
 }());
+
+/* ============================================================
+   MAILGUN SETTINGS
+   - openMailgunSettings: modal to paste/view the Mailgun API key
+   - Fixes sendOnboardingEmail so it actually checks Mailgun before
+     reporting success, opens Settings when key is missing.
+   ============================================================ */
+(function(){
+  window.openMailgunSettings = function(){
+    var existing = document.getElementById('mg-settings-overlay');
+    if(existing) existing.remove();
+    var ov = document.createElement('div');
+    ov.id = 'mg-settings-overlay';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:900;background:rgba(6,13,26,.95);backdrop-filter:blur(16px);display:flex;align-items:center;justify-content:center;padding:20px');
+    var saved = localStorage.getItem('gl_mailgun_key') || '';
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:36px;width:100%;max-width:520px">' +
+        '<div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:2px;color:var(--teal);margin-bottom:8px">📧 MAILGUN SETTINGS</div>' +
+        '<div style="font-size:13px;color:var(--muted);margin-bottom:24px;line-height:1.6">Mailgun sends onboarding emails, follow-ups, and tour confirmations. Paste your private API key — it stays in this browser only.</div>' +
+        (saved ? '<div style="background:rgba(29,158,117,.1);border:1px solid rgba(29,158,117,.3);border-radius:8px;padding:10px 14px;font-size:13px;color:#1D9E75;margin-bottom:16px">✅ API key is saved and active</div>' : '') +
+        '<div style="margin-bottom:16px"><div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">MAILGUN PRIVATE API KEY</div>' +
+          '<input id="mg-key-input" type="password" value="' + saved.replace(/"/g,'&quot;') + '" placeholder="key-..." style="width:100%;padding:13px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#fff;font-size:13px;font-family:var(--ff-mono);box-sizing:border-box"></div>' +
+        '<div style="font-size:11px;color:var(--muted);margin-bottom:20px">Find it at <span style="color:var(--teal)">app.mailgun.com → Send → Sending → Domain settings → API Keys</span></div>' +
+        '<div style="display:flex;gap:10px">' +
+          '<button onclick="window.glSaveMailgunKey()" style="flex:1;padding:13px;background:var(--teal);color:#0a1628;border:none;border-radius:8px;font-weight:800;cursor:pointer;font-size:14px">Save Key</button>' +
+          (saved ? '<button onclick="window.glTestMailgun()" style="padding:13px 18px;background:rgba(245,200,66,.08);color:#f5c842;border:1px solid rgba(245,200,66,.3);border-radius:8px;cursor:pointer;font-size:13px">Test send</button>' : '') +
+          '<button onclick="document.getElementById(\'mg-settings-overlay\').remove()" style="padding:13px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer">Cancel</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+  };
+
+  window.glSaveMailgunKey = function(){
+    var k = (document.getElementById('mg-key-input')||{}).value || '';
+    k = k.trim();
+    if(!k){ alert('Please paste a Mailgun API key.'); return; }
+    localStorage.setItem('gl_mailgun_key', k);
+    document.getElementById('mg-settings-overlay').remove();
+    if(typeof addNotification==='function') addNotification('Mailgun key saved','Onboarding + follow-up emails will now send.','success');
+    else alert('✅ Mailgun key saved.');
+  };
+
+  window.glTestMailgun = async function(){
+    var key = localStorage.getItem('gl_mailgun_key');
+    if(!key){ alert('Save a key first.'); return; }
+    if(typeof window.sendMailgunEmail !== 'function'){ alert('sendMailgunEmail unavailable.'); return; }
+    var ok = await window.sendMailgunEmail('mike@goodliquid.com','Mailgun test from Good Liquid CRM','This is a test email confirming Mailgun is wired up. — Good Liquid CRM');
+    if(ok) alert('✓ Test email sent to mike@goodliquid.com');
+    else alert('✗ Test failed. Check the API key and the browser console for the Mailgun response.');
+  };
+
+  /* Replace sendOnboardingEmail with a version that pre-flights the Mailgun
+     key, awaits the send, and only reports success when the send actually
+     succeeded. */
+  window.sendOnboardingEmail = async function(){
+    if(!localStorage.getItem('gl_mailgun_key')){
+      if(typeof addNotification==='function') addNotification('Mailgun key required','Paste your Mailgun API key in Settings before sending onboarding emails.','warning');
+      window.openMailgunSettings();
+      return;
+    }
+    var email = prompt('Customer email address to send onboarding link:');
+    if(!email) return;
+    email = email.trim();
+    if(!email || email.indexOf('@')<0){ alert('Invalid email.'); return; }
+    var name = prompt('Customer name:');
+    if(!name) return;
+    name = name.trim();
+    if(!name){ alert('Name required.'); return; }
+
+    var tempPw = 'GL' + Math.random().toString(36).substring(2,8).toUpperCase();
+    var list = window.customerLogins || [];
+    list.push({id:'cust-'+Date.now(),name:name,email:email,password:tempPw,createdAt:new Date().toISOString()});
+    window.customerLogins = list;
+    if(typeof saveCustomerLogins==='function') saveCustomerLogins();
+    if(typeof renderCustomerLogins==='function') renderCustomerLogins();
+
+    var body =
+      'Hi ' + name + ',\n\n' +
+      'Welcome to Good Liquid Bev Co! Your client portal is ready.\n\n' +
+      'Login at: https://www.goodliquidbevco.com\n' +
+      'Email: ' + email + '\n' +
+      'Temporary password: ' + tempPw + '\n\n' +
+      'Please change your password after first login.\n\n' +
+      'Best,\nMike Krail\nGood Liquid Bev Co\nMike@GoodLiquid.com | (803) 493-5065';
+
+    var ok = false;
+    try{ ok = await window.sendMailgunEmail(email, 'Welcome to Good Liquid Bev Co — Your Portal Access', body); }
+    catch(e){ console.error('[GL] onboarding mailgun threw', e); ok = false; }
+
+    if(ok){
+      if(typeof addNotification==='function') addNotification('📧 Onboarding email sent to '+name,email,'success');
+      alert('✓ Onboarding email sent to '+email+'\n\nTemp password (share this securely too): '+tempPw);
+    } else {
+      if(typeof addNotification==='function') addNotification('Email send failed',email+' — see console for details','warning');
+      alert('✗ Mailgun send failed for '+email+'.\n\nThe account was created locally with temp password:\n  '+tempPw+'\n\nCheck Mailgun Settings (API key valid? Domain authorized?) and try again.');
+    }
+  };
+
+  console.log('[GL] Mailgun settings v1 loaded');
+}());
