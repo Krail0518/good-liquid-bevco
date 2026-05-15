@@ -1925,6 +1925,7 @@
       { label:'💳 Stripe Checkout', fn:'openStripeSettings', admin:true },
       { label:'🛡️ Sentry', fn:'openSentrySettings', admin:true },
       { label:'📝 E-Signatures', fn:'openSignSettings', admin:true },
+      { label:'💼 QuickBooks', fn:'openQBOSettings', admin:true },
       { label:'✍️ Email Signature', fn:'openEmailSignatureSettings' },
       { label:'🗑️ Clear local cache', fn:'glClearLocalCache', admin:true, danger:true }
     ];
@@ -6398,3 +6399,232 @@
   console.log('[GL] E-signatures (Dropbox Sign) loaded');
 }());
 
+/* ============================================================
+   QUICKBOOKS ONLINE — connect + invoice push
+   - OAuth lives in Supabase Edge Functions (qbo-connect /
+     qbo-callback). The function holds the client_id, client_secret,
+     refresh_token, and realm_id.
+   - Browser opens /qbo-connect in a popup. Intuit redirects to
+     /qbo-callback which stores tokens server-side and posts
+     "qbo_connected" back to the opener via window.postMessage.
+   - Push: POST invoice JSON to /qbo-push-invoice. Function maps
+     to QuickBooks Invoice + CustomerRef and returns QB invoice id.
+   - All three URLs share a base configured in settings.
+   ============================================================ */
+(function(){
+  var DEFAULT_BASE = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1';
+  function getBase(){ return (localStorage.getItem('gl_qbo_fn_base') || DEFAULT_BASE).trim().replace(/\/$/, ''); }
+  function fnUrl(name){ return getBase() + '/' + name; }
+
+  function isConnected(){ return localStorage.getItem('gl_qbo_connected') === '1'; }
+  function setConnected(v){
+    if(v) localStorage.setItem('gl_qbo_connected','1');
+    else localStorage.removeItem('gl_qbo_connected');
+  }
+
+  // Listen for the OAuth-callback postMessage from the popup.
+  window.addEventListener('message', function(ev){
+    if(!ev || !ev.data) return;
+    if(ev.data === 'qbo_connected' || (ev.data && ev.data.type === 'qbo_connected')){
+      setConnected(true);
+      if(typeof addNotification === 'function') addNotification('💼 QuickBooks connected','','success');
+      if(typeof window.glAudit === 'function') window.glAudit('qbo_connected', '', {});
+      // refresh settings modal if open
+      var s = document.getElementById('gl-qbo-modal'); if(s){ s.remove(); window.openQBOSettings(); }
+    }
+  });
+
+  async function authHeader(){
+    try {
+      var s = window.supa && await window.supa.auth.getSession();
+      if(s && s.data && s.data.session) return { Authorization: 'Bearer ' + s.data.session.access_token };
+    } catch(e){}
+    return {};
+  }
+
+  window.glConnectQBO = async function(){
+    var hdr = await authHeader();
+    // Two-step: ask the function for an Intuit OAuth URL, then open the popup.
+    try {
+      var r = await fetch(fnUrl('qbo-connect'), { method:'POST', headers: Object.assign({'Content-Type':'application/json'}, hdr), body: JSON.stringify({ origin: location.origin }) });
+      if(!r.ok){ alert('Could not start QBO connect: HTTP ' + r.status); return; }
+      var d = await r.json();
+      if(!d.auth_url){ alert('Function did not return auth_url.'); return; }
+      var w = 620, h = 720;
+      var l = (screen.width - w) / 2, t = (screen.height - h) / 2;
+      window.open(d.auth_url, 'qbo_oauth', 'width=' + w + ',height=' + h + ',left=' + l + ',top=' + t);
+    } catch(e){
+      alert('QBO connect failed: ' + (e.message || ''));
+    }
+  };
+
+  window.glDisconnectQBO = async function(){
+    if(!confirm('Disconnect QuickBooks Online? You will need to reconnect to push invoices.')) return;
+    var hdr = await authHeader();
+    try {
+      await fetch(fnUrl('qbo-disconnect'), { method:'POST', headers: hdr });
+    } catch(e){}
+    setConnected(false);
+    if(typeof window.glAudit === 'function') window.glAudit('qbo_disconnected', '', {});
+    if(typeof addNotification === 'function') addNotification('💼 QuickBooks disconnected','','info');
+    var s = document.getElementById('gl-qbo-modal'); if(s){ s.remove(); window.openQBOSettings(); }
+  };
+
+  window.glPushInvoiceToQBO = async function(invoice){
+    if(!invoice) return { ok:false, error:'no invoice' };
+    if(!isConnected()){
+      if(!confirm('QuickBooks not connected. Open settings to connect?')) return { ok:false, error:'not connected' };
+      window.openQBOSettings(); return { ok:false, error:'not connected' };
+    }
+    if(typeof window.glStartBusy === 'function') window.glStartBusy('Pushing to QuickBooks…');
+    try {
+      var client = (window.clients||[]).find(function(c){ return c.id === invoice.client; }) || {};
+      var payload = {
+        invoice_id: invoice.id,
+        amount:     invoice.total || invoice.amount || 0,
+        currency:   'USD',
+        issued_at:  invoice.issuedAt || invoice.date || new Date().toISOString().slice(0,10),
+        due_at:     invoice.dueAt || invoice.due || null,
+        status:     invoice.status || 'sent',
+        notes:      invoice.notes || '',
+        customer: {
+          name:    client.name || invoice.clientName || '(unknown)',
+          email:   client.email || invoice.clientEmail || '',
+          company: client.company || ''
+        },
+        lines: (invoice.lines || []).map(function(l){
+          return { description: l.description || l.desc || '', qty: l.qty || l.quantity || 1, unit_price: l.unitPrice || l.price || 0, total: l.total || 0, category: l.category || '' };
+        })
+      };
+      var hdr = await authHeader();
+      var r = await fetch(fnUrl('qbo-push-invoice'), {
+        method:'POST',
+        headers: Object.assign({'Content-Type':'application/json'}, hdr),
+        body: JSON.stringify(payload)
+      });
+      var bodyText = await r.text();
+      var data; try { data = JSON.parse(bodyText); } catch(e){ data = { raw: bodyText }; }
+      if(!r.ok){
+        console.error('[GL QBO] push failed', r.status, data);
+        return { ok:false, status: r.status, error: (data && (data.error || data.raw)) || ('HTTP ' + r.status) };
+      }
+      // Persist the QB id on the invoice so we don't double-push.
+      try {
+        invoice.qboId = data.qbo_invoice_id || data.Id || data.id;
+        invoice.qboPushedAt = new Date().toISOString();
+        if(window.supa && invoice.qboId){
+          await window.supa.from('invoices').update({ qbo_id: invoice.qboId, qbo_pushed_at: invoice.qboPushedAt }).eq('id', invoice.id);
+        }
+      } catch(e){}
+      if(typeof window.glAudit === 'function') window.glAudit('qbo_invoice_pushed', invoice.id, { qbo_id: invoice.qboId });
+      return { ok:true, data: data };
+    } catch(e){
+      console.error('[GL QBO] threw', e);
+      return { ok:false, error: e.message };
+    } finally {
+      if(typeof window.glEndBusy === 'function') window.glEndBusy();
+    }
+  };
+
+  window.openQBOSettings = function(){
+    var prior = document.getElementById('gl-qbo-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var connected = isConnected();
+    var ov = document.createElement('div');
+    ov.id = 'gl-qbo-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:920;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:520px;max-height:88vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">💼 QUICKBOOKS ONLINE</div>' +
+          '<button id="gl-qbo-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="background:rgba(245,200,66,.06);border:1px solid rgba(245,200,66,.2);border-radius:8px;padding:11px;font-size:11px;color:#f5c842;margin-bottom:16px;line-height:1.6">' +
+          '⚠ Routes through three Supabase Edge Functions (qbo-connect, qbo-callback, qbo-push-invoice). Deploy them with your Intuit app credentials before connecting.' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Edge Function base URL</div>' +
+          '<input class="finp" id="gl-qbo-base" value="' + getBase().replace(/"/g,'&quot;') + '" style="font-family:var(--ff-mono);font-size:11px">' +
+          '<div style="font-size:10px;color:#9aa7bd;margin-top:4px">e.g. https://&lt;project-ref&gt;.supabase.co/functions/v1</div>' +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.03);border-radius:8px;padding:12px;margin:14px 0">' +
+          '<div style="flex:1">' +
+            '<div style="font-size:11px;letter-spacing:1.5px;color:#9aa7bd">STATUS</div>' +
+            '<div style="font-size:14px;color:' + (connected?'#00e5c0':'#f5c842') + ';font-weight:600">' + (connected?'● Connected':'○ Not connected') + '</div>' +
+          '</div>' +
+          (connected
+            ? '<button id="gl-qbo-disc" class="cbtn" style="background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#ff8579">Disconnect</button>'
+            : '<button id="gl-qbo-conn" class="cbtn pri">Connect to QuickBooks</button>') +
+        '</div>' +
+        '<div style="display:flex;gap:8px">' +
+          '<button id="gl-qbo-save" class="cbtn pri" style="flex:1">💾 Save URL</button>' +
+          (connected ? '<button id="gl-qbo-sync" class="cbtn">⟳ Sync paid invoices</button>' : '') +
+        '</div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-qbo-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-qbo-save').addEventListener('click', function(){
+      var u = (ov.querySelector('#gl-qbo-base').value||'').trim().replace(/\/$/, '');
+      if(u) localStorage.setItem('gl_qbo_fn_base', u); else localStorage.removeItem('gl_qbo_fn_base');
+      ov.remove();
+      if(typeof addNotification === 'function') addNotification('💼 QuickBooks settings saved','','success');
+    });
+    var c = ov.querySelector('#gl-qbo-conn'); if(c) c.addEventListener('click', function(){ window.glConnectQBO(); });
+    var d = ov.querySelector('#gl-qbo-disc'); if(d) d.addEventListener('click', function(){ window.glDisconnectQBO(); });
+    var s = ov.querySelector('#gl-qbo-sync'); if(s) s.addEventListener('click', async function(){
+      var paid = (window.invoices||[]).filter(function(i){ return (i.status||'').toLowerCase() === 'paid' && !i.qboId; });
+      if(!paid.length){ alert('No unsynced paid invoices.'); return; }
+      if(!confirm('Push ' + paid.length + ' paid invoice(s) to QuickBooks?')) return;
+      s.disabled = true; s.textContent = 'Syncing 0/' + paid.length + '…';
+      var ok = 0, fail = 0;
+      for(var i = 0; i < paid.length; i++){
+        s.textContent = 'Syncing ' + (i+1) + '/' + paid.length + '…';
+        var r = await window.glPushInvoiceToQBO(paid[i]);
+        if(r.ok) ok++; else fail++;
+      }
+      alert('Done — ' + ok + ' pushed, ' + fail + ' failed.');
+      ov.remove(); window.openQBOSettings();
+    });
+    host.appendChild(ov);
+  };
+
+  // Inject "💼 Push to QuickBooks" button on the invoice detail panel
+  function injectQBOButton(){
+    var detail = document.getElementById('cpg-invoice-detail') || document.querySelector('.inv-detail');
+    if(!detail) return;
+    if(detail.querySelector('.gl-qbo-btn')) return;
+    if(!window.currentInvId) return;
+    var inv = (window.invoices||[]).find(function(i){ return i.id === window.currentInvId; });
+    if(!inv) return;
+    var btnRow = detail.querySelector('.btn-row') || detail.querySelector('.cph');
+    if(!btnRow) return;
+    var btn = document.createElement('button');
+    btn.className = 'cbtn gl-qbo-btn';
+    btn.setAttribute('style','background:rgba(45,156,219,.12);border:1px solid rgba(45,156,219,.35);color:#7fc6f5');
+    btn.textContent = inv.qboId ? ('💼 QBO #' + inv.qboId) : '💼 Push to QuickBooks';
+    if(inv.qboId) btn.disabled = true;
+    btn.addEventListener('click', async function(){
+      if(inv.qboId) return;
+      btn.disabled = true; btn.textContent = 'Pushing…';
+      var r = await window.glPushInvoiceToQBO(inv);
+      if(r.ok){
+        btn.textContent = '💼 QBO #' + (inv.qboId || '?');
+        if(typeof addNotification === 'function') addNotification('💼 Invoice pushed to QuickBooks', inv.id, 'success');
+      } else {
+        btn.disabled = false; btn.textContent = '💼 Push to QuickBooks';
+        alert('Push failed: ' + (r.error || ('HTTP ' + r.status)));
+      }
+    });
+    btnRow.appendChild(btn);
+  }
+  function startObs(){
+    var pages = document.getElementById('crm-panel');
+    if(pages){
+      new MutationObserver(function(){ setTimeout(injectQBOButton, 80); }).observe(pages, { childList:true, subtree:true });
+      injectQBOButton();
+    } else setTimeout(startObs, 700);
+  }
+  if(document.readyState !== 'loading') startObs();
+  else document.addEventListener('DOMContentLoaded', startObs);
+
+  console.log('[GL] QuickBooks Online loaded');
+}());
