@@ -1921,6 +1921,7 @@
       { label:'🔒 Two-Factor Auth', fn:'openMFASettings' },
       { label:'🐛 Error Log', fn:'glOpenErrorLog', admin:true },
       { label:'📱 SMS Alerts', fn:'openSmsSettings' },
+      { label:'🚀 Setup Wizard', fn:'openSetupWizard', admin:true },
       { label:'✍️ Email Signature', fn:'openEmailSignatureSettings' },
       { label:'🗑️ Clear local cache', fn:'glClearLocalCache', admin:true, danger:true }
     ];
@@ -5731,5 +5732,174 @@
   else document.addEventListener('DOMContentLoaded', startObs);
 
   console.log('[GL] iCal export loaded');
+}());
+
+/* ============================================================
+   FIRST-RUN SETUP WIZARD
+   Auto-opens on first admin login (gates on localStorage flag
+   gl_wizard_done). Big welcome card + 5-step checklist with
+   live status indicators and "Set up" buttons that fan out
+   to the existing settings modals. "Finish" marks done and
+   never auto-opens again — but the wizard is re-accessible
+   from the AI toolbar 🚀 Setup any time.
+   ============================================================ */
+(function(){
+  function isDone(){ return localStorage.getItem('gl_wizard_done') === '1'; }
+  function markDone(){ localStorage.setItem('gl_wizard_done', '1'); }
+
+  function statusMailgun(){ return (localStorage.getItem('gl_mailgun_key')||'').length > 10; }
+  function statusAI(){ return (localStorage.getItem('gl_ai_key')||'').length > 10; }
+  function statusSignature(){ var s = localStorage.getItem('gl_email_signature'); return s !== null && (s || '').trim().length > 0; }
+  function statusGA(){ return (localStorage.getItem('gl_ga_id')||'').length > 5; }
+  async function status2FA(){
+    var sb = window.supa;
+    if(!sb || !sb.auth || !sb.auth.mfa) return false;
+    try {
+      var r = await sb.auth.mfa.listFactors();
+      var totp = (r && r.data && r.data.totp) || [];
+      return totp.some(function(f){ return f.status === 'verified'; });
+    } catch(e){ return false; }
+  }
+
+  var STEPS = [
+    {
+      key:'mailgun', icon:'📧', title:'Mailgun API key',
+      desc:'Required for ANY outgoing email — follow-ups, password resets, onboarding, alerts. Paste your Mailgun private API key.',
+      action: 'openMailgunSettings',
+      required: true,
+      status: function(){ return Promise.resolve(statusMailgun()); }
+    },
+    {
+      key:'signature', icon:'✍️', title:'Your email signature',
+      desc:'Auto-appended to follow-up emails so each outgoing message ends with your name + contact info.',
+      action: 'openEmailSignatureSettings',
+      required: false,
+      status: function(){ return Promise.resolve(statusSignature()); }
+    },
+    {
+      key:'mfa', icon:'🔒', title:'Two-factor auth',
+      desc:'Highly recommended for admin accounts. Scan a QR code with Google Authenticator / Authy / 1Password / etc.',
+      action: 'openMFASettings',
+      required: false,
+      status: status2FA
+    },
+    {
+      key:'ai', icon:'🤖', title:'Anthropic API key',
+      desc:'Optional — enables the 🤖 AI helpers (draft email, score lead, estimate quote, etc.).',
+      action: 'openAISettings',
+      required: false,
+      status: function(){ return Promise.resolve(statusAI()); }
+    },
+    {
+      key:'ga', icon:'📈', title:'Google Analytics',
+      desc:'Optional — paste your GA4 Measurement ID to track public site traffic.',
+      action: 'openGA4Settings',
+      required: false,
+      status: function(){ return Promise.resolve(statusGA()); }
+    }
+  ];
+
+  function badge(done, required){
+    if(done) return '<span style="font-size:10px;letter-spacing:2px;color:#1D9E75;background:rgba(29,158,117,.12);border:1px solid rgba(29,158,117,.3);border-radius:10px;padding:2px 8px">✓ DONE</span>';
+    if(required) return '<span style="font-size:10px;letter-spacing:2px;color:#ff8579;background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.35);border-radius:10px;padding:2px 8px">REQUIRED</span>';
+    return '<span style="font-size:10px;letter-spacing:2px;color:#9aa7bd;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:2px 8px">OPTIONAL</span>';
+  }
+
+  async function rowsHtml(){
+    var statuses = await Promise.all(STEPS.map(function(s){ return s.status(); }));
+    return STEPS.map(function(s, i){
+      var done = statuses[i];
+      return '<div data-step="'+s.key+'" style="display:flex;align-items:center;gap:14px;padding:14px;background:rgba(255,255,255,.03);border:1px solid '+(done?'rgba(29,158,117,.2)':'rgba(255,255,255,.06)')+';border-radius:10px">' +
+        '<div style="font-size:24px;line-height:1;flex-shrink:0">'+s.icon+'</div>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">' +
+            '<div style="font-size:13px;font-weight:700;color:#fff">'+s.title+'</div>' +
+            badge(done, s.required) +
+          '</div>' +
+          '<div style="font-size:11px;color:#9aa7bd;line-height:1.5">'+s.desc+'</div>' +
+        '</div>' +
+        '<button class="gl-wiz-action" data-action="'+s.action+'" class="cbtn" style="padding:7px 14px;font-size:12px;background:'+(done?'rgba(255,255,255,.04)':'rgba(0,229,192,.1)')+';border:1px solid '+(done?'rgba(255,255,255,.1)':'rgba(0,229,192,.3)')+';color:'+(done?'#9aa7bd':'var(--teal)')+';border-radius:6px;cursor:pointer;flex-shrink:0">'+(done?'Edit':'Set up')+'</button>' +
+      '</div>';
+    }).join('');
+  }
+
+  window.openSetupWizard = async function(opts){
+    opts = opts || {};
+    var auto = !!opts.auto;  // whether this was an auto-open on first run
+
+    var prior = document.getElementById('gl-wiz-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var ov = document.createElement('div');
+    ov.id = 'gl-wiz-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:910;background:rgba(6,13,26,.9);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.25);border-radius:16px;padding:32px;width:100%;max-width:640px;max-height:90vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px">' +
+          '<div>' +
+            '<div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:2px;color:var(--teal);margin-bottom:4px">🚀 SETUP WIZARD</div>' +
+            '<div style="font-size:12px;color:#9aa7bd;line-height:1.6">Get your CRM live in about 3 minutes. Each step opens its own settings panel — come back here when you\'re done. ' + (auto ? '<br><br><b>Tip:</b> you can re-open this any time from the AI toolbar (🤖) → 🚀 Setup.' : '') + '</div>' +
+          '</div>' +
+          '<button id="gl-wiz-close" style="background:none;border:none;color:#9aa7bd;font-size:22px;cursor:pointer;line-height:1;padding:4px 8px">✕</button>' +
+        '</div>' +
+        '<div id="gl-wiz-rows" style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px"><div style="padding:20px;text-align:center;color:#9aa7bd;font-size:12px">Loading status…</div></div>' +
+        '<div style="display:flex;gap:8px;align-items:center">' +
+          '<button id="gl-wiz-refresh" class="cbtn" style="font-size:11px;padding:7px 12px">🔄 Recheck</button>' +
+          '<div style="flex:1"></div>' +
+          (auto ? '' : '<button id="gl-wiz-reopen" class="cbtn" style="font-size:11px;padding:7px 12px">Show this on next login</button>') +
+          '<button id="gl-wiz-finish" class="cbtn pri" style="padding:9px 18px">' + (auto ? '✓ Finish setup' : 'Done') + '</button>' +
+        '</div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov && !auto) ov.remove(); });
+    host.appendChild(ov);
+
+    async function refresh(){
+      var box = ov.querySelector('#gl-wiz-rows');
+      box.innerHTML = '<div style="padding:20px;text-align:center;color:#9aa7bd;font-size:12px">Loading status…</div>';
+      box.innerHTML = await rowsHtml();
+      box.querySelectorAll('.gl-wiz-action').forEach(function(b){
+        b.addEventListener('click', function(){
+          var fn = b.getAttribute('data-action');
+          if(typeof window[fn] === 'function') window[fn]();
+          else alert('Setting ' + fn + ' not available.');
+        });
+      });
+    }
+    ov.querySelector('#gl-wiz-close').addEventListener('click', function(){
+      if(auto) markDone();  // dismissed without finishing — still set the flag so we don't re-auto-open
+      ov.remove();
+    });
+    ov.querySelector('#gl-wiz-refresh').addEventListener('click', refresh);
+    if(ov.querySelector('#gl-wiz-reopen')){
+      ov.querySelector('#gl-wiz-reopen').addEventListener('click', function(){
+        localStorage.removeItem('gl_wizard_done');
+        if(typeof addNotification === 'function') addNotification('Setup wizard reset','Will auto-open on the next admin login.','success');
+        ov.remove();
+      });
+    }
+    ov.querySelector('#gl-wiz-finish').addEventListener('click', function(){
+      markDone();
+      ov.remove();
+      if(typeof addNotification === 'function') addNotification('🎉 Setup complete','You can revisit any time via 🤖 → 🚀 Setup','success');
+    });
+
+    refresh();
+  };
+
+  // Auto-open on first admin login: hook loginUser. Skip if already done
+  // or if the user isn't an admin.
+  (function(){
+    var orig = window.loginUser;
+    if(typeof orig !== 'function') return;
+    window.loginUser = function(u){
+      var r = orig.apply(this, arguments);
+      if(u && u.role === 'admin' && !isDone()){
+        // Delay so the CRM panel renders first
+        setTimeout(function(){ window.openSetupWizard({ auto: true }); }, 600);
+      }
+      return r;
+    };
+  })();
+
+  console.log('[GL] First-run setup wizard loaded');
 }());
 
