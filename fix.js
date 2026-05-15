@@ -1744,3 +1744,105 @@
 
   console.log('[GL] Invoice fix v5 loaded - DOM save + Supabase sync + shared invoices array');
 }());
+
+/* ============================================================
+   ADMIN: User panel — change role + set password
+   - Role: direct UPDATE on profiles (requires the "Admins can
+     update any profile" RLS policy we set in Round 3).
+   - Password: RPC admin_set_user_password (SECURITY DEFINER,
+     verifies caller is admin, bcrypts the new password into
+     auth.users). Requires the SQL function to be created.
+   ============================================================ */
+(function(){
+
+  function uuidish(s){return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s||'');}
+  function esc(s){return (s||'').replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+
+  window.renderUsersPanel=function(){
+    var el=document.getElementById('users-list');
+    if(!el)return;
+    var rows=(window.users||[]).map(function(u){
+      var isOwner=u.email==='mike@goodliquid.com';
+      var rolePicker=isOwner
+        ? '<span style="font-size:11px;color:var(--muted)">admin (owner)</span>'
+        : '<select onchange="window.glAdminChangeRole(\''+u.id+'\',this.value)" style="background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer">'
+          +'<option value="admin"'+(u.role==='admin'?' selected':'')+'>admin</option>'
+          +'<option value="sales"'+(u.role==='sales'?' selected':'')+'>sales</option>'
+          +'<option value="viewer"'+(u.role==='viewer'?' selected':'')+'>viewer</option>'
+        +'</select>';
+      var actions=isOwner
+        ? '<span style="font-size:10px;color:var(--muted)">Owner</span>'
+        : '<button class="cbtn" style="font-size:10px;padding:3px 8px" onclick="window.glAdminSetPassword(\''+u.id+'\')">Set password</button>'
+          +' <button class="cbtn" style="font-size:10px;padding:3px 8px;background:rgba(245,200,66,.08);border-color:rgba(245,200,66,.3);color:#f5c842" onclick="window.resetPw(\''+u.id+'\')">Email reset</button>'
+          +' <button class="cbtn red" style="font-size:10px;padding:3px 8px" onclick="window.removeUser(\''+u.id+'\')">Remove</button>';
+      return '<tr>'
+        +'<td style="font-weight:600;display:flex;align-items:center;gap:8px">'
+          +'<div style="width:28px;height:28px;border-radius:50%;background:'+(u.color||'#1a6fff')+';color:'+(u.tc||'#fff')+';display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">'+esc(u.initials||'?')+'</div>'
+          +esc(u.name||'')
+        +'</td>'
+        +'<td style="font-family:var(--ff-mono);font-size:11px">'+esc(u.email||'')+'</td>'
+        +'<td>'+rolePicker+'</td>'
+        +'<td style="font-size:11px;color:var(--muted)">'+esc(u.lastLogin||'Never')+'</td>'
+        +'<td style="display:flex;gap:6px;flex-wrap:wrap">'+actions+'</td>'
+      +'</tr>';
+    }).join('');
+    el.innerHTML='<table class="ctbl"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Last Login</th><th>Actions</th></tr></thead><tbody>'+rows+'</tbody></table>';
+  };
+
+  window.glAdminChangeRole=async function(uid,newRole){
+    var u=(window.users||[]).find(function(x){return x.id===uid;});
+    if(!u){alert('User not found.');return;}
+    if(!['admin','sales','viewer'].includes(newRole)){alert('Invalid role.');return;}
+    var sb=window.supa;
+    if(sb&&uuidish(u.id)){
+      try{
+        var r=await sb.from('profiles').update({role:newRole,updated_at:new Date().toISOString()}).eq('id',u.id);
+        if(r.error){
+          console.error('[GL] role update failed',r.error);
+          alert('Role update failed: '+r.error.message);
+          if(typeof window.renderUsersPanel==='function')window.renderUsersPanel();
+          return;
+        }
+      }catch(e){
+        console.error('[GL] role update threw',e);
+        alert('Role update failed: '+e.message);
+        if(typeof window.renderUsersPanel==='function')window.renderUsersPanel();
+        return;
+      }
+    }
+    u.role=newRole;
+    if(typeof addNotification==='function')addNotification('Role updated',u.name+' → '+newRole,'success');
+  };
+
+  window.glAdminSetPassword=async function(uid){
+    var u=(window.users||[]).find(function(x){return x.id===uid;});
+    if(!u){alert('User not found.');return;}
+    var newPw=prompt('Set a new password for '+u.name+' ('+u.email+')\n\nMinimum 6 characters. Share securely after saving.');
+    if(newPw===null)return;
+    newPw=newPw.trim();
+    if(newPw.length<6){alert('Password too short — minimum 6 characters.');return;}
+    if(!confirm('Set '+u.name+'\'s password now?\n\nMake sure to communicate the new password to them via a secure channel.'))return;
+
+    var sb=window.supa;
+    if(!sb){alert('Auth service unavailable.');return;}
+    try{
+      var r=await sb.rpc('admin_set_user_password',{target_email:u.email,new_password:newPw});
+      if(r.error){
+        console.error('[GL] admin_set_user_password rpc error',r.error);
+        alert('Failed: '+r.error.message+'\n\nMake sure the SQL function admin_set_user_password exists.');
+        return;
+      }
+      if(r.data==='ok'){
+        if(typeof addNotification==='function')addNotification('Password updated',u.email+' — share securely','success');
+        alert('✓ Password set for '+u.name+'.\n\nNew password: '+newPw+'\n\nShare it securely.');
+      }else{
+        alert('Server returned: '+r.data);
+      }
+    }catch(e){
+      console.error('[GL] admin_set_user_password threw',e);
+      alert('Failed: '+(e.message||'unknown error'));
+    }
+  };
+
+  console.log('[GL] Admin user-panel v1 loaded (role dropdown + set-password)');
+}());
