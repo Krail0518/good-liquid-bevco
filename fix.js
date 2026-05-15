@@ -3111,3 +3111,137 @@
 
   console.log('[GL] List loading skeletons + busy wrap loaded');
 }());
+
+/* ============================================================
+   DEAL -> INVOICE conversion
+   Adds a "→ Invoice" button to the deal detail modal that opens
+   the invoice builder pre-populated with the deal's client and
+   notes. Admin fills in line items and saves.
+   ============================================================ */
+(function(){
+  function injectDealToInvoice(){
+    var panel = document.getElementById('deal-detail-panel');
+    if(!panel) return;
+    // Find Save Changes button to insert next to it
+    var saveBtn = Array.from(panel.querySelectorAll('button')).find(function(b){
+      return (b.textContent||'').trim().toLowerCase().includes('save changes');
+    });
+    if(!saveBtn) return;
+    if(saveBtn.parentElement.querySelector('.gl-deal-to-inv-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'gl-deal-to-inv-btn';
+    btn.setAttribute('style','padding:12px 20px;background:rgba(26,111,255,.12);color:#6b9fff;border:1px solid rgba(26,111,255,.35);border-radius:8px;font-weight:700;font-size:14px;cursor:pointer');
+    btn.textContent = '→ Invoice';
+    btn.title = 'Create an invoice for this deal';
+    btn.addEventListener('click', function(){
+      var dealName = (document.getElementById('ddp-name')||{}).value || '';
+      var co       = (document.getElementById('ddp-co')||{}).value || '';
+      var val      = parseFloat((document.getElementById('ddp-val')||{}).value)||0;
+      var notes    = (document.getElementById('ddp-notes')||{}).value || '';
+
+      // Close the deal modal first
+      var dpanel = document.getElementById('deal-detail-panel');
+      if(dpanel) dpanel.style.display = 'none';
+
+      // Open the invoice builder
+      if(typeof window.openNewInvoiceBuilder === 'function') window.openNewInvoiceBuilder();
+      else { alert('Invoice builder not available.'); return; }
+
+      // Pre-populate after the builder renders
+      setTimeout(function(){
+        // Match client by name (case-insensitive)
+        var sel = document.getElementById('ginv-client');
+        if(sel && co){
+          var lower = co.toLowerCase();
+          var match = Array.from(sel.options).find(function(o){
+            return (o.textContent||'').toLowerCase().includes(lower);
+          });
+          if(match){ sel.value = match.value; sel.dispatchEvent(new Event('change')); }
+        }
+        // Set today's date (already default), and stash the deal context for the admin
+        if(typeof addNotification === 'function'){
+          var msg = 'Pre-filled from deal "' + dealName + '" (' + co + ')' +
+                    (val > 0 ? ' — estimated $' + Math.round(val).toLocaleString() : '');
+          addNotification('Deal → Invoice', msg, 'success');
+        }
+        // Audit
+        if(typeof window.glAudit === 'function') window.glAudit('deal_to_invoice', dealName, { client: co, value: val });
+      }, 250);
+    });
+    // Insert before the Delete button so order reads: Save / Invoice / Delete
+    saveBtn.parentElement.insertBefore(btn, saveBtn.nextSibling);
+  }
+
+  function startObs(){
+    var panel = document.getElementById('deal-detail-panel');
+    if(panel){
+      new MutationObserver(function(){ setTimeout(injectDealToInvoice, 50); }).observe(panel, {childList:true, subtree:true, attributes:true, attributeFilter:['style']});
+      injectDealToInvoice();
+    } else setTimeout(startObs, 500);
+  }
+  if(document.readyState !== 'loading') startObs();
+  else document.addEventListener('DOMContentLoaded', startObs);
+
+  console.log('[GL] Deal → Invoice converter loaded');
+}());
+
+/* ============================================================
+   STALE DEAL INDICATOR
+   Kanban cards in stages OTHER than Closed Won/Lost that haven't
+   been moved/edited in >14 days get a small ⏰ badge and slight
+   border tint so they catch the eye. "Last touched" is tracked
+   via the existing dealLastActivity localStorage map populated
+   by moveDeal / saveDealDetail.
+   ============================================================ */
+(function(){
+  var STALE_DAYS = 14;
+  function ms(){ return Date.now(); }
+  function read(){ try { return JSON.parse(localStorage.getItem('gl_deal_activity')||'{}'); } catch(e){ return {}; } }
+
+  function markStaleCards(){
+    var kanban = document.getElementById('kanban') || document.querySelector('.kboard');
+    if(!kanban) return;
+    var activity = read();
+    var staleMs = STALE_DAYS * 86400000;
+    kanban.querySelectorAll('.kcard').forEach(function(card){
+      // Already badged?
+      if(card.querySelector('.gl-stale-badge')) return;
+      // Determine the deal id from its onclick handler (openDealDetail('stage', idx))
+      var onclick = card.getAttribute('onclick') || '';
+      var m = onclick.match(/openDealDetail\('([^']+)',\s*(\d+)\)/);
+      if(!m) return;
+      var stage = m[1];
+      if(stage === 'Closed Won' || stage === 'Closed Lost') return;  // don't mark closed
+      var idx = parseInt(m[2],10);
+      var deal = (window.deals && window.deals[stage]) ? window.deals[stage][idx] : null;
+      if(!deal) return;
+      var id = deal.id;
+      var last = id && activity[id] ? activity[id] : null;
+      if(!last) return;  // never touched = newly added, don't flag
+      var age = ms() - new Date(last).getTime();
+      if(age < staleMs) return;
+      var days = Math.floor(age / 86400000);
+      var badge = document.createElement('div');
+      badge.className = 'gl-stale-badge';
+      badge.setAttribute('style','position:absolute;top:6px;right:6px;padding:2px 7px;background:rgba(245,200,66,.16);border:1px solid rgba(245,200,66,.4);color:#f5c842;border-radius:10px;font-size:9px;font-weight:700;letter-spacing:.5px');
+      badge.textContent = '⏰ ' + days + 'd';
+      badge.title = 'Last touched ' + days + ' days ago';
+      // Make sure the card is positioned so absolute child anchors
+      if(getComputedStyle(card).position === 'static') card.style.position = 'relative';
+      card.style.borderColor = 'rgba(245,200,66,.35)';
+      card.appendChild(badge);
+    });
+  }
+
+  function startObs(){
+    var kanban = document.getElementById('kanban') || document.querySelector('.kboard');
+    if(kanban){
+      new MutationObserver(function(){ setTimeout(markStaleCards, 60); }).observe(kanban, {childList:true, subtree:true});
+      markStaleCards();
+    } else setTimeout(startObs, 700);
+  }
+  if(document.readyState !== 'loading') startObs();
+  else document.addEventListener('DOMContentLoaded', startObs);
+
+  console.log('[GL] Stale deal indicator loaded');
+}());
