@@ -1805,34 +1805,89 @@
     if(typeof addNotification==='function')addNotification('Role updated',u.name+' → '+newRole,'success');
   };
 
-  window.glAdminSetPassword=async function(uid){
-    var u=(window.users||[]).find(function(x){return x.id===uid;});
-    if(!u){alert('User not found.');return;}
-    var newPw=prompt('Set a new password for '+u.name+' ('+u.email+')\n\nMinimum 6 characters. Share securely after saving.');
-    if(newPw===null)return;
-    newPw=newPw.trim();
-    if(newPw.length<6){alert('Password too short — minimum 6 characters.');return;}
-    if(!confirm('Set '+u.name+'\'s password now?\n\nMake sure to communicate the new password to them via a secure channel.'))return;
+  // Build the set-password modal lazily so we don't allocate DOM until needed.
+  function _glOpenSetPwModal(u){
+    var host = document.getElementById('crm-panel') || document.body;
+    var existing = document.getElementById('gl-setpw-modal'); if(existing) existing.remove();
+    var ov = document.createElement('div');
+    ov.id = 'gl-setpw-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:900;background:rgba(6,13,26,.85);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:28px;width:100%;max-width:440px">' +
+        '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal);margin-bottom:4px">SET PASSWORD</div>' +
+        '<div style="font-size:13px;color:#fff;margin-bottom:4px">' + (u.name||'') + '</div>' +
+        '<div style="font-size:11px;color:var(--muted);margin-bottom:18px;font-family:var(--ff-mono)">' + (u.email||'') + '</div>' +
+        '<div class="frow"><div class="flbl">New password</div><input class="finp" type="password" id="gl-setpw-new" placeholder="Min 6 characters" autocomplete="new-password"></div>' +
+        '<div class="frow"><div class="flbl">Confirm</div><input class="finp" type="password" id="gl-setpw-confirm" placeholder="Re-enter to confirm" autocomplete="new-password"></div>' +
+        '<label style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);margin:4px 0 18px;cursor:pointer">' +
+          '<input type="checkbox" id="gl-setpw-show" style="margin:0">' +
+          '<span>Show password</span>' +
+        '</label>' +
+        '<div id="gl-setpw-err" style="display:none;color:#e74c3c;font-size:12px;margin-bottom:10px"></div>' +
+        '<div style="display:flex;gap:8px">' +
+          '<button id="gl-setpw-save" class="cbtn pri" style="flex:1">Set password</button>' +
+          '<button id="gl-setpw-cancel" class="cbtn">Cancel</button>' +
+        '</div>' +
+      '</div>';
+    host.appendChild(ov);
 
-    var sb=window.supa;
-    if(!sb){alert('Auth service unavailable.');return;}
-    try{
-      var r=await sb.rpc('admin_set_user_password',{target_email:u.email,new_password:newPw});
-      if(r.error){
-        console.error('[GL] admin_set_user_password rpc error',r.error);
-        alert('Failed: '+r.error.message+'\n\nMake sure the SQL function admin_set_user_password exists.');
-        return;
+    var newEl = ov.querySelector('#gl-setpw-new');
+    var conEl = ov.querySelector('#gl-setpw-confirm');
+    var errEl = ov.querySelector('#gl-setpw-err');
+    var showEl = ov.querySelector('#gl-setpw-show');
+    showEl.addEventListener('change', function(){
+      var t = showEl.checked ? 'text' : 'password';
+      newEl.type = t; conEl.type = t;
+    });
+    ov.querySelector('#gl-setpw-cancel').addEventListener('click', function(){ ov.remove(); });
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    setTimeout(function(){ newEl.focus(); }, 50);
+
+    function showErr(m){ errEl.style.display='block'; errEl.textContent=m; }
+    function clearErr(){ errEl.style.display='none'; errEl.textContent=''; }
+
+    ov.querySelector('#gl-setpw-save').addEventListener('click', async function(){
+      clearErr();
+      var pw = newEl.value;
+      var c  = conEl.value;
+      if(pw.length < 6){ showErr('Password must be at least 6 characters.'); return; }
+      if(pw !== c){ showErr('Passwords do not match.'); return; }
+      var sb = window.supa;
+      if(!sb){ showErr('Auth service unavailable.'); return; }
+      var btn = this; var origLabel = btn.textContent; btn.disabled = true; btn.textContent = 'Saving…';
+      try{
+        var r = await sb.rpc('admin_set_user_password', {target_email: u.email, new_password: pw});
+        if(r.error){
+          showErr(r.error.message || 'RPC failed');
+          btn.disabled = false; btn.textContent = origLabel;
+          return;
+        }
+        if(r.data === 'ok'){
+          if(typeof addNotification === 'function') addNotification('Password updated', u.email + ' — share securely', 'success');
+          ov.remove();
+        } else {
+          showErr('Server returned: ' + r.data);
+          btn.disabled = false; btn.textContent = origLabel;
+        }
+      }catch(e){
+        console.error('[GL] admin_set_user_password threw', e);
+        showErr('Failed: ' + (e.message || 'unknown'));
+        btn.disabled = false; btn.textContent = origLabel;
       }
-      if(r.data==='ok'){
-        if(typeof addNotification==='function')addNotification('Password updated',u.email+' — share securely','success');
-        alert('✓ Password set for '+u.name+'.\n\nNew password: '+newPw+'\n\nShare it securely.');
-      }else{
-        alert('Server returned: '+r.data);
-      }
-    }catch(e){
-      console.error('[GL] admin_set_user_password threw',e);
-      alert('Failed: '+(e.message||'unknown error'));
-    }
+    });
+
+    [newEl, conEl].forEach(function(el){
+      el.addEventListener('keydown', function(e){
+        if(e.key === 'Enter') ov.querySelector('#gl-setpw-save').click();
+        if(e.key === 'Escape') ov.remove();
+      });
+    });
+  }
+
+  window.glAdminSetPassword = function(uid){
+    var u = (window.users || []).find(function(x){ return x.id === uid; });
+    if(!u){ alert('User not found.'); return; }
+    _glOpenSetPwModal(u);
   };
 
   console.log('[GL] Admin user-panel v1 loaded (role dropdown + set-password)');
