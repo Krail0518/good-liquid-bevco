@@ -2968,3 +2968,145 @@
 
   console.log('[GL] Quote -> Invoice workflow loaded');
 }());
+
+/* ============================================================
+   STRIPE PAYMENT LINK MANAGER
+   - Admin pastes a Stripe Payment Link URL per invoice (created
+     in their Stripe dashboard once per amount/SKU and reused).
+   - Stored in localStorage gl_invoice_paylinks as {invId: url}.
+   - Invoice rows / detail show "💳 Pay link" if present.
+   - Follow-up emails auto-append the link if present.
+   - Future: when a backend exists, swap glStripeCheckout() for a
+     real Checkout Session creator using the Stripe secret key.
+   ============================================================ */
+(function(){
+  function getLinks(){ try { return JSON.parse(localStorage.getItem('gl_invoice_paylinks')||'{}'); } catch(e){ return {}; } }
+  function saveLinks(m){ try { localStorage.setItem('gl_invoice_paylinks', JSON.stringify(m)); } catch(e){} }
+
+  window.glGetPayLink = function(invId){
+    var m = getLinks();
+    return m[invId] || '';
+  };
+
+  window.glSetPayLink = function(invId, url){
+    var m = getLinks();
+    if(url) m[invId] = url; else delete m[invId];
+    saveLinks(m);
+  };
+
+  // Override the legacy generatePayLink with a Stripe-aware version.
+  window.generatePayLink = function(invId){
+    var inv = (window.invoices||[]).find(function(i){ return i.id === invId; });
+    if(!inv){ alert('Invoice not found'); return; }
+    var existing = window.glGetPayLink(invId);
+    var host = document.getElementById('crm-panel') || document.body;
+    var prior = document.getElementById('gl-paylink-modal'); if(prior) prior.remove();
+    var modal = document.createElement('div');
+    modal.id = 'gl-paylink-modal';
+    modal.setAttribute('style','position:fixed;inset:0;z-index:900;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    modal.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:520px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">💳 PAYMENT LINK — ' + inv.id + '</div>' +
+          '<button id="gl-pl-close" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;font-size:12px">' +
+          '<div style="background:rgba(255,255,255,.04);border-radius:8px;padding:10px 12px"><div style="font-size:10px;color:var(--muted)">CLIENT</div><div style="color:#fff;font-weight:600">' + (inv.clientName||'') + '</div></div>' +
+          '<div style="background:rgba(255,255,255,.04);border-radius:8px;padding:10px 12px"><div style="font-size:10px;color:var(--muted)">AMOUNT</div><div style="color:var(--teal);font-weight:700">$' + Number(inv.amount||0).toLocaleString() + '</div></div>' +
+        '</div>' +
+        '<div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">STRIPE PAYMENT LINK</div>' +
+        '<input id="gl-pl-url" class="finp" placeholder="https://buy.stripe.com/..." value="' + existing.replace(/"/g,'&quot;') + '" style="margin-bottom:6px">' +
+        '<div style="font-size:11px;color:var(--muted);margin-bottom:14px;line-height:1.6">Create payment links in your Stripe dashboard → <span style="color:var(--teal)">dashboard.stripe.com → Product catalog → Payment links</span>. Paste the URL here. The link is included automatically in any follow-up email for this invoice.</div>' +
+        (existing ? '<div style="background:rgba(29,158,117,.08);border:1px solid rgba(29,158,117,.25);border-radius:8px;padding:10px 12px;font-size:11px;color:#1D9E75;margin-bottom:14px">✓ Link saved. Customers who click it pay via Stripe directly.</div>' : '') +
+        '<div style="display:flex;gap:8px">' +
+          '<button id="gl-pl-save" class="cbtn pri" style="flex:1">💾 Save link</button>' +
+          (existing ? '<button id="gl-pl-open" class="cbtn" style="background:rgba(0,229,192,.08);border:1px solid rgba(0,229,192,.3);color:var(--teal)">🔗 Open</button>' : '') +
+          (existing ? '<button id="gl-pl-copy" class="cbtn">📋 Copy</button>' : '') +
+          (existing ? '<button id="gl-pl-clear" class="cbtn red">Clear</button>' : '') +
+        '</div>' +
+      '</div>';
+    modal.addEventListener('click', function(e){ if(e.target === modal) modal.remove(); });
+    modal.querySelector('#gl-pl-close').addEventListener('click', function(){ modal.remove(); });
+    modal.querySelector('#gl-pl-save').addEventListener('click', function(){
+      var url = (modal.querySelector('#gl-pl-url').value||'').trim();
+      if(url && !/^https?:\/\//i.test(url)){ alert('URL must start with https://'); return; }
+      window.glSetPayLink(invId, url);
+      if(typeof addNotification === 'function') addNotification('💳 Pay link saved', invId, 'success');
+      modal.remove();
+      if(typeof renderInvoices === 'function') renderInvoices();
+    });
+    if(existing){
+      modal.querySelector('#gl-pl-open').addEventListener('click', function(){ window.open(existing, '_blank', 'noopener'); });
+      modal.querySelector('#gl-pl-copy').addEventListener('click', function(){
+        navigator.clipboard.writeText(existing).then(function(){
+          if(typeof addNotification === 'function') addNotification('Link copied', invId, 'success');
+        });
+      });
+      modal.querySelector('#gl-pl-clear').addEventListener('click', function(){
+        if(!confirm('Remove the pay link from this invoice?')) return;
+        window.glSetPayLink(invId, '');
+        modal.remove();
+        if(typeof renderInvoices === 'function') renderInvoices();
+      });
+    }
+    host.appendChild(modal);
+  };
+
+  // Wrap sendFollowupEmail so any link saved on the current invoice is
+  // appended to the email body before sending.
+  (function(){
+    var orig = window.sendFollowupEmail;
+    if(typeof orig !== 'function') return;
+    window.sendFollowupEmail = async function(){
+      var invId = window.currentFollowupInvId || window.currentInvId;
+      var link = invId ? window.glGetPayLink(invId) : '';
+      if(link){
+        var bodyEl = document.getElementById('fu-body');
+        if(bodyEl && bodyEl.value.indexOf(link) === -1){
+          bodyEl.value = bodyEl.value.replace(/\s*$/, '') + '\n\nPay securely: ' + link;
+        }
+      }
+      return orig.apply(this, arguments);
+    };
+  })();
+
+  // Inject "💳" badge / button into invoice rows that have a pay link.
+  function injectPayLinkBadges(){
+    var body = document.getElementById('inv-body');
+    if(!body) return;
+    var links = getLinks();
+    body.querySelectorAll('tr').forEach(function(tr){
+      var idCell = tr.querySelector('td:first-child');
+      if(!idCell) return;
+      var invId = (idCell.textContent||'').trim();
+      var actions = tr.querySelector('td:last-child > div');
+      if(!actions) return;
+      var existing = actions.querySelector('.gl-pl-badge');
+      var hasLink = !!links[invId];
+      if(hasLink && !existing){
+        var badge = document.createElement('button');
+        badge.className = 'cbtn gl-pl-badge';
+        badge.title = 'Open Stripe pay link';
+        badge.setAttribute('style','font-size:10px;padding:3px 7px;background:rgba(168,85,247,.12);border:1px solid rgba(168,85,247,.35);color:#c4a4f8');
+        badge.textContent = '💳';
+        badge.addEventListener('click', function(e){
+          e.stopPropagation();
+          window.open(links[invId], '_blank', 'noopener');
+        });
+        actions.insertBefore(badge, actions.firstChild);
+      } else if(!hasLink && existing){
+        existing.remove();
+      }
+    });
+  }
+
+  function startObs(){
+    var invList = document.getElementById('inv-body');
+    if(invList){ new MutationObserver(function(){ setTimeout(injectPayLinkBadges, 40); }).observe(invList, {childList:true, subtree:true}); injectPayLinkBadges(); }
+    else setTimeout(startObs, 500);
+  }
+  if(document.readyState !== 'loading') startObs();
+  else document.addEventListener('DOMContentLoaded', startObs);
+
+  console.log('[GL] Stripe pay-link manager loaded');
+}());
