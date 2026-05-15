@@ -2389,6 +2389,7 @@ function renderInvoices(){
     <td onclick="event.stopPropagation()"><div style="display:flex;gap:3px">
       ${i.status!=='paid'?`<button class="cbtn grn" style="font-size:10px;padding:3px 7px" onclick="event.stopPropagation();quickPaid('${i.id}')">Paid</button>`:''}
       <button class="cbtn" style="font-size:10px;padding:3px 7px" onclick="event.stopPropagation();viewInvoice('${i.id}')">👁</button>
+      <button class="cbtn" style="font-size:10px;padding:3px 7px;background:rgba(231,76,60,.1);border-color:rgba(231,76,60,.35);color:#ff8579" onclick="event.stopPropagation();deleteInvoice('${i.id}')" title="Delete invoice">🗑</button>
     </div></td>
   </tr>`).join('');
 }
