@@ -1237,6 +1237,11 @@ select option, .fsel option {
           </div>
           <div style="display:flex;flex-direction:column;gap:12px">
             <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">BRAND NAME *</div><input id="nc-name" placeholder="e.g. SunBurst Seltzers" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)"></div>
+            <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">LEGAL BUSINESS NAME <span style="opacity:.6">(if different)</span></div><input id="nc-legal-name" placeholder="e.g. Torres Beverages LLC" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">EIN / TAX ID</div><input id="nc-ein" placeholder="XX-XXXXXXX" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)"></div>
+              <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">WEBSITE</div><input id="nc-website" placeholder="https://brand.com" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)"></div>
+            </div>
             <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">CONTACT NAME</div><input id="nc-contact" placeholder="e.g. Alex Torres" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)"></div>
             <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">EMAIL</div><input id="nc-email" type="email" placeholder="contact@brand.com" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)"></div>
             <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">PHONE</div><input id="nc-phone" placeholder="(813) 555-0100" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)"></div>
@@ -1245,6 +1250,20 @@ select option, .fsel option {
               <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">CITY</div><input id="nc-city" placeholder="Tampa" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)"></div>
               <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">STATE</div><input id="nc-state" placeholder="FL" maxlength="2" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body);text-transform:uppercase"></div>
               <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">ZIP</div><input id="nc-zip" placeholder="33602" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)"></div>
+            </div>
+            <div>
+              <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--white);cursor:pointer;margin-bottom:8px">
+                <input type="checkbox" id="nc-billing-same" checked onchange="document.getElementById('nc-billing-block').style.display=this.checked?'none':'grid'" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">
+                Billing address same as physical
+              </label>
+              <div id="nc-billing-block" style="display:none;grid-template-columns:1fr;gap:8px">
+                <input id="nc-billing-street" placeholder="Billing street address" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)">
+                <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px">
+                  <input id="nc-billing-city" placeholder="City" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)">
+                  <input id="nc-billing-state" placeholder="State" maxlength="2" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body);text-transform:uppercase">
+                  <input id="nc-billing-zip" placeholder="Zip" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)">
+                </div>
+              </div>
             </div>
             <div>
               <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">PREFERRED COMMUNICATION</div>
@@ -1261,15 +1280,62 @@ select option, .fsel option {
                 <option>Canning</option><option>Bottling</option><option>R&amp;D</option><option>R&amp;D + Canning</option><option>Consulting</option>
               </select>
             </div>
-            <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">STATUS</div>
-              <select id="nc-status" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)">
-                <option value="lead">Lead</option><option value="active">Active</option><option value="inactive">Inactive</option>
-              </select>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">STATUS</div>
+                <select id="nc-status" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)">
+                  <option value="lead">Lead</option><option value="active">Active</option><option value="inactive">Inactive</option>
+                </select>
+              </div>
+              <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">PAYMENT TERMS</div>
+                <select id="nc-payment-terms" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)">
+                  <option value="Due on receipt">Due on receipt</option>
+                  <option value="Net 15">Net 15</option>
+                  <option value="Net 30">Net 30</option>
+                  <option value="Net 60">Net 60</option>
+                  <option value="Prepaid">Prepaid</option>
+                  <option value="COD">COD</option>
+                </select>
+              </div>
             </div>
-            <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">REFERRED BY</div>
-              <select id="nc-referrer" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)">
-                <option value="">None</option>
-              </select>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">ACCOUNT OWNER</div>
+                <select id="nc-account-owner" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)">
+                  <option value="">Unassigned</option>
+                </select>
+              </div>
+              <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">REFERRED BY</div>
+                <select id="nc-referrer" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)">
+                  <option value="">None</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">PRODUCT TYPES</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;padding:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:8px">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="nc-pt-seltzer" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">🥤 Seltzer</label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="nc-pt-kombucha" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">🍵 Kombucha</label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="nc-pt-coldbrew" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">☕ Cold Brew</label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="nc-pt-juice" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">🧃 Juice</label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="nc-pt-rtd" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">🍸 RTD Cocktail</label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="nc-pt-energy" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">⚡ Energy</label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="nc-pt-mocktail" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">🍹 Mocktail</label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="nc-pt-sparkling" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">💧 Sparkling Water</label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="nc-pt-sports" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">🏃 Sports Drink</label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="nc-pt-other" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">📦 Other</label>
+              </div>
+            </div>
+            <div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:12px">
+              <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">COMPLIANCE DOCS</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end">
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--white);cursor:pointer">
+                  <input type="checkbox" id="nc-coi-on-file" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">📄 COI on file
+                </label>
+                <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:3px">COI EXPIRES</div><input type="date" id="nc-coi-expires" style="width:100%;padding:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--white);font-size:13px;font-family:var(--ff-body)"></div>
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--white);cursor:pointer;margin-top:8px">
+                  <input type="checkbox" id="nc-w9-on-file" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">📄 W-9 on file
+                </label>
+                <div style="margin-top:8px"><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:3px">W-9 RECEIVED</div><input type="date" id="nc-w9-received" style="width:100%;padding:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--white);font-size:13px;font-family:var(--ff-body)"></div>
+              </div>
             </div>
             <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">NOTES</div><textarea id="nc-notes" rows="2" placeholder="Any notes…" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body);resize:vertical"></textarea></div>
             <button onclick="saveNewClient()" style="width:100%;padding:13px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:800;font-size:14px;cursor:pointer;margin-top:6px">Save Client →</button>
@@ -3119,10 +3185,23 @@ async function loadSupabaseData(){
   if(cR.data && cR.data.length>0){
     clients.length=0;
     cR.data.forEach(c=>clients.push({
-      id:c.id, name:c.name, contact:c.contact_name||'', email:c.email||'', phone:c.phone||'',
+      id:c.id, name:c.name,
+      legalName: c.legal_name||'', ein: c.ein||'', website: c.website||'',
+      contact:c.contact_name||'', email:c.email||'', phone:c.phone||'',
       street:c.street||'', city:c.city||'', state:c.state||'', zip:c.zip||'',
+      billingSame: c.billing_same !== false,
+      billingStreet: c.billing_street||'', billingCity: c.billing_city||'',
+      billingState: c.billing_state||'',  billingZip: c.billing_zip||'',
       commPrefs: Array.isArray(c.comm_prefs) ? c.comm_prefs : (c.comm_prefs ? [c.comm_prefs] : []),
-      service:c.service||'', status:c.status||'lead', billed:c.total_billed||0,
+      productTypes: Array.isArray(c.product_types) ? c.product_types : (c.product_types ? [c.product_types] : []),
+      service:c.service||'', status:c.status||'lead',
+      paymentTerms: c.payment_terms||'Due on receipt',
+      accountOwner: c.account_owner||'',
+      coiOnFile: !!c.coi_on_file, coiExpires: c.coi_expires||'',
+      w9OnFile:  !!c.w9_on_file,  w9Received: c.w9_received||'',
+      stripeCustomerId: c.stripe_customer_id||'',
+      qboCustomerId:    c.qbo_customer_id||'',
+      billed:c.total_billed||0,
       referredBy:c.referred_by||'', color:c.color||'#1a3a6e', tc:c.tc||'#9FE1CB',
       init:c.initials||(c.name||'').slice(0,2).toUpperCase(), notes:c.notes||''
     }));
@@ -3296,39 +3375,96 @@ function openAddClientModal(){
   // Populate referrer dropdown
   const sel = document.getElementById('nc-referrer');
   sel.innerHTML = '<option value="">None</option>' + referrers.map(r=>`<option value="${r.id}">${r.name}</option>`).join('');
+  // Populate account-owner dropdown from CRM users; default to current user.
+  const own = document.getElementById('nc-account-owner');
+  if(own){
+    const userList = (window.users||[]).filter(u=>u.status!=='inactive');
+    own.innerHTML = '<option value="">Unassigned</option>' +
+      userList.map(u=>`<option value="${u.id}">${u.name} (${u.role})</option>`).join('');
+    if(window.currentUser) own.value = window.currentUser.id;
+  }
   document.getElementById('add-client-modal').classList.add('show');
 }
 function closeAddClientModal(){
   document.getElementById('add-client-modal').classList.remove('show');
-  ['nc-name','nc-contact','nc-email','nc-phone','nc-street','nc-city','nc-state','nc-zip','nc-notes'].forEach(id=>{
+  ['nc-name','nc-legal-name','nc-ein','nc-website','nc-contact','nc-email','nc-phone',
+   'nc-street','nc-city','nc-state','nc-zip',
+   'nc-billing-street','nc-billing-city','nc-billing-state','nc-billing-zip',
+   'nc-coi-expires','nc-w9-received','nc-notes'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
   });
   ['nc-comm-email','nc-comm-sms','nc-comm-whatsapp','nc-comm-wechat'].forEach((id,i)=>{
     const el=document.getElementById(id); if(el) el.checked = (i===0); // re-default to Email only
   });
+  ['nc-pt-seltzer','nc-pt-kombucha','nc-pt-coldbrew','nc-pt-juice','nc-pt-rtd',
+   'nc-pt-energy','nc-pt-mocktail','nc-pt-sparkling','nc-pt-sports','nc-pt-other',
+   'nc-coi-on-file','nc-w9-on-file'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.checked = false;
+  });
+  const sameEl = document.getElementById('nc-billing-same');
+  if(sameEl) sameEl.checked = true;
+  const billBlock = document.getElementById('nc-billing-block');
+  if(billBlock) billBlock.style.display = 'none';
+  const pt = document.getElementById('nc-payment-terms');
+  if(pt) pt.value = 'Due on receipt';
 }
 
 async function saveNewClient(){
-  const name = document.getElementById('nc-name').value.trim();
+  const $ = id => document.getElementById(id);
+  const v = id => ($(id) ? $(id).value.trim() : '');
+  const ck = id => !!($(id) && $(id).checked);
+
+  const name = v('nc-name');
   if(!name){alert('Brand name is required.');return;}
-  const contact = document.getElementById('nc-contact').value.trim();
-  const email = document.getElementById('nc-email').value.trim();
-  const phone = document.getElementById('nc-phone').value.trim();
-  const street = document.getElementById('nc-street').value.trim();
-  const city = document.getElementById('nc-city').value.trim();
-  const state = document.getElementById('nc-state').value.trim().toUpperCase();
-  const zip = document.getElementById('nc-zip').value.trim();
+  const legalName = v('nc-legal-name');
+  const ein       = v('nc-ein');
+  const website   = v('nc-website');
+  const contact   = v('nc-contact');
+  const email     = v('nc-email');
+  const phone     = v('nc-phone');
+  const street    = v('nc-street');
+  const city      = v('nc-city');
+  const state     = v('nc-state').toUpperCase();
+  const zip       = v('nc-zip');
+
+  const billingSame = ck('nc-billing-same');
+  const billingStreet = billingSame ? street : v('nc-billing-street');
+  const billingCity   = billingSame ? city   : v('nc-billing-city');
+  const billingState  = billingSame ? state  : v('nc-billing-state').toUpperCase();
+  const billingZip    = billingSame ? zip    : v('nc-billing-zip');
+
   const commPrefs = [
-    document.getElementById('nc-comm-email').checked    ? 'email'    : null,
-    document.getElementById('nc-comm-sms').checked      ? 'sms'      : null,
-    document.getElementById('nc-comm-whatsapp').checked ? 'whatsapp' : null,
-    document.getElementById('nc-comm-wechat').checked   ? 'wechat'   : null
+    ck('nc-comm-email')    ? 'email'    : null,
+    ck('nc-comm-sms')      ? 'sms'      : null,
+    ck('nc-comm-whatsapp') ? 'whatsapp' : null,
+    ck('nc-comm-wechat')   ? 'wechat'   : null
   ].filter(Boolean);
-  const service = document.getElementById('nc-service').value;
-  const status = document.getElementById('nc-status').value || 'lead';
-  const referredBy = document.getElementById('nc-referrer').value;
-  const notes = document.getElementById('nc-notes').value.trim();
-  const init = name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+
+  const productTypes = [
+    ck('nc-pt-seltzer')   ? 'seltzer'   : null,
+    ck('nc-pt-kombucha')  ? 'kombucha'  : null,
+    ck('nc-pt-coldbrew')  ? 'coldbrew'  : null,
+    ck('nc-pt-juice')     ? 'juice'     : null,
+    ck('nc-pt-rtd')       ? 'rtd'       : null,
+    ck('nc-pt-energy')    ? 'energy'    : null,
+    ck('nc-pt-mocktail')  ? 'mocktail'  : null,
+    ck('nc-pt-sparkling') ? 'sparkling' : null,
+    ck('nc-pt-sports')    ? 'sports'    : null,
+    ck('nc-pt-other')     ? 'other'     : null
+  ].filter(Boolean);
+
+  const service       = v('nc-service');
+  const status        = v('nc-status') || 'lead';
+  const paymentTerms  = v('nc-payment-terms') || 'Due on receipt';
+  const accountOwner  = v('nc-account-owner');
+  const referredBy    = v('nc-referrer');
+  const coiOnFile     = ck('nc-coi-on-file');
+  const coiExpires    = v('nc-coi-expires') || null;
+  const w9OnFile      = ck('nc-w9-on-file');
+  const w9Received    = v('nc-w9-received') || null;
+  const notes         = v('nc-notes');
+
+  const init = name.split(' ').map(w=>w[0]||'').join('').toUpperCase().slice(0,2);
   const colors=['#1a3a6e','#0F6E56','#854F0B','#3C3489','#712B13','#27500A','#444441','#712B13'];
   const tcs=['#9FE1CB','#E1F5EE','#FAEEDA','#EEEDFE','#FAECE7','#EAF3DE','#F1EFE8','#FAECE7'];
   const ci = clients.length % colors.length;
@@ -3341,10 +3477,20 @@ async function saveNewClient(){
   let cid = localId;
   try {
     const {data:newC, error} = await supa.from('clients').insert([{
-      name, contact_name:contact, email, phone,
-      street, city, state, zip, comm_prefs: commPrefs,
-      service, status,
-      referred_by: referredBy || null, notes, total_billed:0,
+      name, legal_name:legalName, ein, website,
+      contact_name:contact, email, phone,
+      street, city, state, zip,
+      billing_same: billingSame,
+      billing_street: billingStreet, billing_city: billingCity,
+      billing_state: billingState, billing_zip: billingZip,
+      comm_prefs: commPrefs,
+      service, status, payment_terms: paymentTerms,
+      account_owner: accountOwner || null,
+      referred_by: referredBy || null,
+      product_types: productTypes,
+      coi_on_file: coiOnFile, coi_expires: coiExpires,
+      w9_on_file: w9OnFile, w9_received: w9Received,
+      notes, total_billed:0,
       initials:init, color, tc
     }]).select().single();
     if(newC && !error) cid = newC.id;
@@ -3353,9 +3499,14 @@ async function saveNewClient(){
 
   // Always add to local array
   clients.push({
-    id:cid, name, contact, email, phone,
-    street, city, state, zip, commPrefs,
-    service, status, billed:0, referredBy, color, tc, init, notes
+    id:cid, name, legalName, ein, website,
+    contact, email, phone,
+    street, city, state, zip,
+    billingSame, billingStreet, billingCity, billingState, billingZip,
+    commPrefs, productTypes,
+    service, status, paymentTerms, accountOwner,
+    coiOnFile, coiExpires, w9OnFile, w9Received,
+    billed:0, referredBy, color, tc, init, notes
   });
 
   // Update UI
@@ -3960,6 +4111,7 @@ function openClientDetail(cid) {
         <div style="background:rgba(255,255,255,.04);border-radius:10px;padding:14px;font-size:13px;color:var(--white);line-height:1.9">
           ${c.phone ? `📞 <a href="tel:${c.phone}" style="color:var(--teal)">${c.phone}</a><br>` : ''}
           ${(c.street || c.city || c.state || c.zip) ? `📍 ${[c.street, [c.city, c.state].filter(Boolean).join(', '), c.zip].filter(Boolean).join(' · ')}` : ''}
+          ${(c.billingSame === false && (c.billingStreet || c.billingCity || c.billingZip)) ? `<br>💳 <span style="color:var(--muted)">Billing:</span> ${[c.billingStreet, [c.billingCity, c.billingState].filter(Boolean).join(', '), c.billingZip].filter(Boolean).join(' · ')}` : ''}
           ${(c.commPrefs && c.commPrefs.length) ? `<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">
             <span style="font-size:10px;color:var(--muted);letter-spacing:1px;align-self:center">PREFERS:</span>
             ${c.commPrefs.map(p => {
@@ -3969,6 +4121,50 @@ function openClientDetail(cid) {
           </div>` : ''}
         </div>
       </div>` : ''}
+
+      ${(c.legalName || c.ein || c.website || c.paymentTerms || c.accountOwner) ? `<div style="margin-bottom:20px">
+        <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:10px">BUSINESS INFO</div>
+        <div style="background:rgba(255,255,255,.04);border-radius:10px;padding:14px;font-size:13px;color:var(--white);line-height:1.9">
+          ${c.legalName ? `<div><span style="color:var(--muted)">Legal name:</span> ${c.legalName}</div>` : ''}
+          ${c.ein ? `<div><span style="color:var(--muted)">EIN:</span> <code style="font-family:var(--ff-mono);font-size:12px">${c.ein}</code></div>` : ''}
+          ${c.website ? `<div><span style="color:var(--muted)">Web:</span> <a href="${c.website.startsWith('http')?c.website:'https://'+c.website}" target="_blank" rel="noopener" style="color:var(--teal)">${c.website}</a></div>` : ''}
+          ${c.paymentTerms ? `<div><span style="color:var(--muted)">Terms:</span> ${c.paymentTerms}</div>` : ''}
+          ${c.accountOwner ? `<div><span style="color:var(--muted)">Owner:</span> ${(window.users||[]).find(u=>u.id===c.accountOwner)?.name || c.accountOwner}</div>` : ''}
+        </div>
+      </div>` : ''}
+
+      ${(c.productTypes && c.productTypes.length) ? `<div style="margin-bottom:20px">
+        <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:10px">PRODUCT TYPES</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${c.productTypes.map(p => {
+            const lbl = {seltzer:'🥤 Seltzer', kombucha:'🍵 Kombucha', coldbrew:'☕ Cold Brew', juice:'🧃 Juice', rtd:'🍸 RTD Cocktail', energy:'⚡ Energy', mocktail:'🍹 Mocktail', sparkling:'💧 Sparkling Water', sports:'🏃 Sports Drink', other:'📦 Other'}[p] || p;
+            return `<span style="padding:4px 11px;border-radius:20px;font-size:12px;font-weight:600;background:rgba(168,85,247,.12);color:#c4a4f8;border:1px solid rgba(168,85,247,.3)">${lbl}</span>`;
+          }).join('')}
+        </div>
+      </div>` : ''}
+
+      ${(c.coiOnFile || c.w9OnFile) ? (function(){
+        const today = new Date(); today.setHours(0,0,0,0);
+        let coiBadge = '';
+        if(c.coiOnFile){
+          if(c.coiExpires){
+            const exp = new Date(c.coiExpires);
+            const daysLeft = Math.round((exp - today) / 86400000);
+            if(daysLeft < 0)       coiBadge = `<span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(231,76,60,.18);color:#ff8579;border:1px solid rgba(231,76,60,.4)">📄 COI · EXPIRED ${-daysLeft}d ago</span>`;
+            else if(daysLeft < 30) coiBadge = `<span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(245,200,66,.15);color:#f5c842;border:1px solid rgba(245,200,66,.35)">📄 COI · expires in ${daysLeft}d</span>`;
+            else                   coiBadge = `<span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(29,158,117,.15);color:#5fcf9e;border:1px solid rgba(29,158,117,.35)">📄 COI · expires ${c.coiExpires}</span>`;
+          } else {
+            coiBadge = `<span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(29,158,117,.15);color:#5fcf9e;border:1px solid rgba(29,158,117,.35)">📄 COI on file</span>`;
+          }
+        }
+        const w9Badge = c.w9OnFile
+          ? `<span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(29,158,117,.15);color:#5fcf9e;border:1px solid rgba(29,158,117,.35)">📄 W-9${c.w9Received?` · ${c.w9Received}`:''}</span>`
+          : '';
+        return `<div style="margin-bottom:20px">
+          <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:10px">COMPLIANCE</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">${coiBadge}${w9Badge}</div>
+        </div>`;
+      })() : ''}
 
       <div style="margin-bottom:20px">
         <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:10px">INVOICES (${cInvoices.length})</div>
@@ -5632,6 +5828,7 @@ function viewClientEnhanced(clientId) {
           ${client.email ? `📧 <a href="mailto:${client.email}" style="color:var(--teal)">${client.email}</a><br>` : ''}
           ${client.phone ? `📞 <a href="tel:${client.phone}" style="color:var(--teal)">${client.phone}</a><br>` : ''}
           ${(client.street || client.city || client.state || client.zip) ? `📍 ${[client.street, [client.city, client.state].filter(Boolean).join(', '), client.zip].filter(Boolean).join(' · ')}<br>` : ''}
+          ${(client.billingSame === false && (client.billingStreet || client.billingCity || client.billingZip)) ? `💳 <span style="color:var(--muted)">Billing:</span> ${[client.billingStreet, [client.billingCity, client.billingState].filter(Boolean).join(', '), client.billingZip].filter(Boolean).join(' · ')}<br>` : ''}
           🏷 Status: <span class="cbdg ${client.status}">${client.status}</span>
           ${(client.commPrefs && client.commPrefs.length) ? `<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">
             <span style="font-size:10px;color:var(--muted);letter-spacing:1px;align-self:center">PREFERS:</span>
@@ -5642,6 +5839,50 @@ function viewClientEnhanced(clientId) {
           </div>` : ''}
         </div>
       </div>
+
+      ${(client.legalName || client.ein || client.website || client.paymentTerms || client.accountOwner) ? `<div style="margin-bottom:18px">
+        <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">BUSINESS INFO</div>
+        <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:14px;font-size:13px;color:var(--white);line-height:1.9">
+          ${client.legalName ? `<div><span style="color:var(--muted)">Legal name:</span> ${client.legalName}</div>` : ''}
+          ${client.ein ? `<div><span style="color:var(--muted)">EIN:</span> <code style="font-family:var(--ff-mono);font-size:12px">${client.ein}</code></div>` : ''}
+          ${client.website ? `<div><span style="color:var(--muted)">Web:</span> <a href="${client.website.startsWith('http')?client.website:'https://'+client.website}" target="_blank" rel="noopener" style="color:var(--teal)">${client.website}</a></div>` : ''}
+          ${client.paymentTerms ? `<div><span style="color:var(--muted)">Terms:</span> ${client.paymentTerms}</div>` : ''}
+          ${client.accountOwner ? `<div><span style="color:var(--muted)">Owner:</span> ${(window.users||[]).find(u=>u.id===client.accountOwner)?.name || client.accountOwner}</div>` : ''}
+        </div>
+      </div>` : ''}
+
+      ${(client.productTypes && client.productTypes.length) ? `<div style="margin-bottom:18px">
+        <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">PRODUCT TYPES</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${client.productTypes.map(p => {
+            const lbl = {seltzer:'🥤 Seltzer', kombucha:'🍵 Kombucha', coldbrew:'☕ Cold Brew', juice:'🧃 Juice', rtd:'🍸 RTD Cocktail', energy:'⚡ Energy', mocktail:'🍹 Mocktail', sparkling:'💧 Sparkling Water', sports:'🏃 Sports Drink', other:'📦 Other'}[p] || p;
+            return `<span style="padding:4px 11px;border-radius:20px;font-size:12px;font-weight:600;background:rgba(168,85,247,.12);color:#c4a4f8;border:1px solid rgba(168,85,247,.3)">${lbl}</span>`;
+          }).join('')}
+        </div>
+      </div>` : ''}
+
+      ${(client.coiOnFile || client.w9OnFile || client.coiExpires || client.w9Received) ? (function(){
+        const today = new Date(); today.setHours(0,0,0,0);
+        let coiBadge = '';
+        if(client.coiOnFile){
+          if(client.coiExpires){
+            const exp = new Date(client.coiExpires);
+            const daysLeft = Math.round((exp - today) / 86400000);
+            if(daysLeft < 0)       coiBadge = `<span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(231,76,60,.18);color:#ff8579;border:1px solid rgba(231,76,60,.4)">📄 COI · EXPIRED ${-daysLeft}d ago</span>`;
+            else if(daysLeft < 30) coiBadge = `<span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(245,200,66,.15);color:#f5c842;border:1px solid rgba(245,200,66,.35)">📄 COI · expires in ${daysLeft}d</span>`;
+            else                   coiBadge = `<span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(29,158,117,.15);color:#5fcf9e;border:1px solid rgba(29,158,117,.35)">📄 COI · expires ${client.coiExpires}</span>`;
+          } else {
+            coiBadge = `<span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(29,158,117,.15);color:#5fcf9e;border:1px solid rgba(29,158,117,.35)">📄 COI on file</span>`;
+          }
+        }
+        const w9Badge = client.w9OnFile
+          ? `<span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(29,158,117,.15);color:#5fcf9e;border:1px solid rgba(29,158,117,.35)">📄 W-9${client.w9Received?` · ${client.w9Received}`:''}</span>`
+          : '';
+        return `<div style="margin-bottom:18px">
+          <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">COMPLIANCE</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">${coiBadge}${w9Badge}</div>
+        </div>`;
+      })() : ''}
 
       <div style="margin-bottom:18px">
         <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">TAGS</div>
