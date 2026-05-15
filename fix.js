@@ -3531,3 +3531,142 @@
     };
   })();
 }());
+
+/* ============================================================
+   GLOBAL SEARCH (Ctrl+K / Cmd+K)
+   Cross-entity quick switcher: invoices, clients, deals,
+   referrers, users. Keyboard-driven. Opens with a hotkey,
+   search-as-you-type, Enter to jump.
+   ============================================================ */
+(function(){
+  function esc(s){ return String(s||'').replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function open(){
+    if(document.getElementById('gl-search-modal')) return;  // already open
+    if(!document.getElementById('crm-panel') || !document.getElementById('crm-panel').classList.contains('show')) return;  // CRM not open
+    var host = document.getElementById('crm-panel');
+    var ov = document.createElement('div');
+    ov.id = 'gl-search-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1000;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:flex-start;justify-content:center;padding:80px 20px 20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.25);border-radius:12px;width:100%;max-width:600px;max-height:70vh;display:flex;flex-direction:column;box-shadow:0 30px 80px rgba(0,0,0,.6);overflow:hidden">' +
+        '<div style="display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06)">' +
+          '<span style="font-size:16px;color:var(--teal)">🔍</span>' +
+          '<input id="gl-search-input" type="text" placeholder="Search invoices, clients, deals, referrers, users…" style="flex:1;background:none;border:none;outline:none;color:#fff;font-size:14px;font-family:var(--ff-body)" autofocus>' +
+          '<kbd style="font-size:10px;color:var(--muted);background:rgba(255,255,255,.06);padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">Esc</kbd>' +
+        '</div>' +
+        '<div id="gl-search-results" style="flex:1;overflow-y:auto;padding:6px 0">' +
+          '<div style="padding:30px;text-align:center;color:var(--muted);font-size:12px">Start typing to search.</div>' +
+        '</div>' +
+        '<div style="padding:8px 18px;border-top:1px solid rgba(255,255,255,.06);font-size:10px;color:var(--muted);display:flex;justify-content:space-between">' +
+          '<span><kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:3px">↑↓</kbd> navigate · <kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:3px">⏎</kbd> open</span>' +
+          '<span><kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:3px">Ctrl+K</kbd> toggle</span>' +
+        '</div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    host.appendChild(ov);
+    var input = ov.querySelector('#gl-search-input');
+    var results = ov.querySelector('#gl-search-results');
+    var selectedIdx = 0;
+    var lastItems = [];
+
+    function navigate(item){
+      if(!item) return;
+      ov.remove();
+      try {
+        if(item.kind === 'invoice'){
+          if(typeof window.cNav === 'function') window.cNav('invoices', document.querySelectorAll('.cni')[4] || null);
+          setTimeout(function(){ if(typeof window.viewInvoice === 'function') window.viewInvoice(item.id); }, 80);
+        } else if(item.kind === 'client'){
+          if(typeof window.cNav === 'function') window.cNav('clients', null);
+          setTimeout(function(){ if(typeof window.openClientDetail === 'function') window.openClientDetail(item.id); }, 80);
+        } else if(item.kind === 'deal'){
+          if(typeof window.cNav === 'function') window.cNav('pipeline', null);
+          setTimeout(function(){ if(typeof window.openDealDetail === 'function') window.openDealDetail(item.stage, item.idx); }, 80);
+        } else if(item.kind === 'referrer'){
+          if(typeof window.cNav === 'function') window.cNav('referrers', null);
+        } else if(item.kind === 'user'){
+          if(typeof window.cNav === 'function') window.cNav('users', null);
+        }
+      } catch(e){ console.error('[GL search] navigate threw', e); }
+    }
+
+    function render(){
+      var q = (input.value||'').trim().toLowerCase();
+      if(!q){ results.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted);font-size:12px">Start typing to search.</div>'; lastItems = []; return; }
+      var items = [];
+      (window.invoices||[]).forEach(function(i){
+        var hay = ((i.id||'') + ' ' + (i.clientName||'') + ' ' + (i.svc||'')).toLowerCase();
+        if(hay.indexOf(q) >= 0) items.push({ kind:'invoice', id:i.id, title:i.id, subtitle:(i.clientName||'')+' · $'+Number(i.amount||0).toLocaleString()+' · '+(i.status||''), icon:'🧾' });
+      });
+      (window.clients||[]).forEach(function(c){
+        var hay = ((c.name||'') + ' ' + (c.contact||'') + ' ' + (c.email||'')).toLowerCase();
+        if(hay.indexOf(q) >= 0) items.push({ kind:'client', id:c.id, title:c.name||'(unnamed)', subtitle:(c.email||'')+' · '+(c.service||''), icon:'👥' });
+      });
+      var stages = window.deals ? Object.keys(window.deals) : [];
+      stages.forEach(function(s){
+        (window.deals[s]||[]).forEach(function(d, idx){
+          var hay = ((d.name||'') + ' ' + (d.co||'')).toLowerCase();
+          if(hay.indexOf(q) >= 0) items.push({ kind:'deal', stage:s, idx:idx, title:d.name||'(unnamed deal)', subtitle:(d.co||'')+' · '+s+' · '+(d.val||''), icon:'📊' });
+        });
+      });
+      (window.referrers||[]).forEach(function(r){
+        var hay = ((r.name||'') + ' ' + (r.email||'')).toLowerCase();
+        if(hay.indexOf(q) >= 0) items.push({ kind:'referrer', id:r.id, title:r.name||'(unnamed)', subtitle:(r.rel||'referrer')+' · '+(r.email||''), icon:'🤝' });
+      });
+      (window.users||[]).forEach(function(u){
+        var hay = ((u.name||'') + ' ' + (u.email||'')).toLowerCase();
+        if(hay.indexOf(q) >= 0) items.push({ kind:'user', id:u.id, title:u.name||'(unnamed)', subtitle:(u.email||'')+' · '+(u.role||''), icon:'🔑' });
+      });
+      lastItems = items.slice(0, 40);
+      if(selectedIdx >= lastItems.length) selectedIdx = 0;
+      if(!lastItems.length){
+        results.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted);font-size:12px">No matches for "'+esc(q)+'"</div>';
+        return;
+      }
+      results.innerHTML = lastItems.map(function(it, i){
+        var selected = i === selectedIdx;
+        return '<div data-i="'+i+'" class="gl-sr-row" style="display:flex;align-items:center;gap:12px;padding:10px 18px;cursor:pointer;border-left:3px solid '+(selected?'var(--teal)':'transparent')+';background:'+(selected?'rgba(0,229,192,.06)':'transparent')+'">' +
+          '<span style="font-size:18px">'+it.icon+'</span>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:13px;color:#fff;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.title)+'</div>' +
+            '<div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.subtitle)+'</div>' +
+          '</div>' +
+          '<span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">'+it.kind+'</span>' +
+        '</div>';
+      }).join('');
+      results.querySelectorAll('.gl-sr-row').forEach(function(r){
+        r.addEventListener('click', function(){ navigate(lastItems[parseInt(r.getAttribute('data-i'),10)]); });
+        r.addEventListener('mouseenter', function(){ selectedIdx = parseInt(r.getAttribute('data-i'),10); render(); });
+      });
+      // Scroll selected into view if off-screen
+      var selectedEl = results.querySelector('.gl-sr-row[data-i="'+selectedIdx+'"]');
+      if(selectedEl) selectedEl.scrollIntoView({ block: 'nearest' });
+    }
+
+    input.addEventListener('input', function(){ selectedIdx = 0; render(); });
+    input.addEventListener('keydown', function(e){
+      if(e.key === 'Escape'){ ov.remove(); }
+      else if(e.key === 'ArrowDown'){ e.preventDefault(); if(selectedIdx < lastItems.length-1) selectedIdx++; render(); }
+      else if(e.key === 'ArrowUp'){ e.preventDefault(); if(selectedIdx > 0) selectedIdx--; render(); }
+      else if(e.key === 'Enter'){ e.preventDefault(); navigate(lastItems[selectedIdx]); }
+    });
+    setTimeout(function(){ input.focus(); }, 30);
+  }
+
+  window.glOpenGlobalSearch = open;
+
+  document.addEventListener('keydown', function(e){
+    if((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')){
+      // Don't trigger if user is typing in an input/textarea unless it's already in search
+      var t = e.target;
+      var isInput = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+      var inSearch = t && t.id === 'gl-search-input';
+      if(isInput && !inSearch) return;  // let real fields handle Ctrl+K (rare)
+      e.preventDefault();
+      if(document.getElementById('gl-search-modal')) document.getElementById('gl-search-modal').remove();
+      else open();
+    }
+  });
+
+  console.log('[GL] Global search (Ctrl+K) loaded');
+}());
