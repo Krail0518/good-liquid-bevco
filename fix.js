@@ -2298,3 +2298,116 @@
 
   console.log('[GL] Clear local cache utility loaded');
 }());
+
+/* ============================================================
+   PASSWORD RECOVERY LINK HANDLER
+   When a Supabase password-reset email link is clicked, the
+   user lands here with #access_token=...&type=recovery in the
+   URL hash. supabase-js parses the tokens and emits an
+   AuthChange event 'PASSWORD_RECOVERY'. We listen for it and
+   open a "set new password" modal. On save, auth.updateUser
+   persists the new bcrypt hash and the user is signed in.
+   ============================================================ */
+(function(){
+  function openRecoveryModal(){
+    var existing = document.getElementById('gl-recovery-modal');
+    if(existing) existing.remove();
+    var ov = document.createElement('div');
+    ov.id = 'gl-recovery-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1200;background:rgba(6,13,26,.95);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:32px;width:100%;max-width:440px">' +
+        '<div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:#00e5c0;margin-bottom:6px">RESET YOUR PASSWORD</div>' +
+        '<div style="font-size:13px;color:#9ca3af;margin-bottom:22px;line-height:1.5">You arrived via a password reset link. Choose a new password to sign in.</div>' +
+        '<div class="frow"><div class="flbl">New password</div><input class="finp" type="password" id="gl-rec-new" placeholder="Min 6 characters" autocomplete="new-password"></div>' +
+        '<div class="frow"><div class="flbl">Confirm</div><input class="finp" type="password" id="gl-rec-confirm" placeholder="Re-enter to confirm" autocomplete="new-password"></div>' +
+        '<label style="display:flex;align-items:center;gap:8px;font-size:11px;color:#9ca3af;margin:4px 0 18px;cursor:pointer">' +
+          '<input type="checkbox" id="gl-rec-show" style="margin:0"><span>Show password</span>' +
+        '</label>' +
+        '<div id="gl-rec-err" style="display:none;color:#e74c3c;font-size:12px;margin-bottom:10px"></div>' +
+        '<button id="gl-rec-save" class="cbtn pri" style="width:100%">Set new password & sign in</button>' +
+      '</div>';
+    document.body.appendChild(ov);
+
+    var newEl = ov.querySelector('#gl-rec-new');
+    var conEl = ov.querySelector('#gl-rec-confirm');
+    var errEl = ov.querySelector('#gl-rec-err');
+    var showEl = ov.querySelector('#gl-rec-show');
+    var btn = ov.querySelector('#gl-rec-save');
+    showEl.addEventListener('change', function(){
+      var t = showEl.checked ? 'text' : 'password';
+      newEl.type = t; conEl.type = t;
+    });
+    function showErr(m){ errEl.style.display='block'; errEl.textContent=m; }
+    setTimeout(function(){ newEl.focus(); }, 50);
+
+    btn.addEventListener('click', async function(){
+      errEl.style.display='none';
+      var pw = newEl.value;
+      if(pw.length < 6){ showErr('Password must be at least 6 characters.'); return; }
+      if(pw !== conEl.value){ showErr('Passwords do not match.'); return; }
+      var sb = window.supa;
+      if(!sb){ showErr('Auth service unavailable.'); return; }
+      var orig = btn.textContent; btn.disabled = true; btn.textContent = 'Saving…';
+      try{
+        var r = await sb.auth.updateUser({ password: pw });
+        if(r.error){ showErr(r.error.message); btn.disabled = false; btn.textContent = orig; return; }
+        // Strip the recovery hash from the URL so a refresh doesn't re-trigger.
+        try { history.replaceState(null, '', location.pathname + location.search); } catch(e){}
+        ov.remove();
+        // Auto-open CRM via the same path as a normal login.
+        var user = r.data && r.data.user;
+        if(user && typeof window.loginUser === 'function'){
+          // Try to pull profile; if not there, build a minimal one.
+          try{
+            var prof = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
+            var p = (prof && prof.data) || {};
+            window.loginUser({
+              id: user.id, email: user.email,
+              name: p.name || (user.email||'').split('@')[0],
+              role: p.role || 'sales', status: p.status || 'active',
+              initials: p.initials || (user.email||'?').slice(0,2).toUpperCase(),
+              color: p.color || '#1a6fff', tc: p.tc || '#fff', lastLogin: 'Just now'
+            });
+          }catch(e){ console.warn('[GL] post-recovery loginUser failed', e); }
+        }
+        if(typeof addNotification==='function') addNotification('Password updated','You are now signed in with the new password.','success');
+      }catch(e){
+        console.error('[GL] recovery updateUser threw', e);
+        showErr('Failed: ' + (e.message||'unknown'));
+        btn.disabled = false; btn.textContent = orig;
+      }
+    });
+    [newEl, conEl].forEach(function(el){
+      el.addEventListener('keydown', function(e){ if(e.key==='Enter') btn.click(); });
+    });
+  }
+
+  function attach(){
+    var sb = window.supa;
+    if(!sb || !sb.auth || typeof sb.auth.onAuthStateChange !== 'function'){
+      console.warn('[GL] recovery handler: supa not ready, retrying');
+      setTimeout(attach, 400);
+      return;
+    }
+    // 1) Subscribe to future PASSWORD_RECOVERY events (fires when supabase-js
+    //    parses the recovery hash on its own).
+    sb.auth.onAuthStateChange(function(event){
+      if(event === 'PASSWORD_RECOVERY'){
+        console.log('[GL] PASSWORD_RECOVERY received → opening reset modal');
+        openRecoveryModal();
+      }
+    });
+    // 2) Defensive: if the page loaded with a recovery hash but the event
+    //    fired before we subscribed, detect it by URL and open the modal.
+    var hash = (window.location.hash || '').replace(/^#/, '');
+    if(hash.indexOf('type=recovery') >= 0){
+      console.log('[GL] recovery hash detected on load → opening reset modal');
+      setTimeout(openRecoveryModal, 300);
+    }
+  }
+  if(document.readyState !== 'loading') attach();
+  else document.addEventListener('DOMContentLoaded', attach);
+
+  console.log('[GL] Recovery link handler loaded');
+}());
