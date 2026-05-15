@@ -1919,6 +1919,7 @@
       { label:'📧 Mailgun Settings', fn:'openMailgunSettings' },
       { label:'📈 Google Analytics', fn:'openGA4Settings', admin:true },
       { label:'🔒 Two-Factor Auth', fn:'openMFASettings' },
+      { label:'🐛 Error Log', fn:'glOpenErrorLog', admin:true },
       { label:'✍️ Email Signature', fn:'openEmailSignatureSettings' },
       { label:'🗑️ Clear local cache', fn:'glClearLocalCache', admin:true, danger:true }
     ];
@@ -5223,5 +5224,164 @@
   })();
 
   console.log('[GL] 2FA (Supabase TOTP) loaded');
+}());
+
+/* ============================================================
+   ERROR LOGGER (Sentry-style, self-hosted in Supabase)
+   - Captures window.onerror and unhandledrejection
+   - Dedupes identical errors within a 60s window
+   - Skips known-harmless third-party noise (ResizeObserver, etc.)
+   - Fire-and-forget POST to error_log via anon REST
+   - Admin viewer modal (window.glOpenErrorLog) lists recent
+     errors with stack + user-agent
+   - Wake-up summary includes the table SQL
+   ============================================================ */
+(function(){
+  var SURL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/rest/v1';
+  var SKEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmamtlcW14d3V5aGJxeXVnY2dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNDI2MDksImV4cCI6MjA5MzkxODYwOX0.godgU_jeprCqSzqe0ji_ZA_hwvPF2s7BmzQyAB-c_xE';
+
+  var SKIP_PATTERNS = [
+    'ResizeObserver loop limit exceeded',
+    'ResizeObserver loop completed with undelivered notifications',
+    'Script error.', // cross-origin scripts
+    'Non-Error promise rejection captured',
+    'NetworkError when attempting to fetch resource',  // user offline
+    'Load failed'  // Safari fetch noise
+  ];
+  function shouldSkip(msg){
+    if(!msg) return true;
+    msg = String(msg);
+    for(var i=0;i<SKIP_PATTERNS.length;i++) if(msg.indexOf(SKIP_PATTERNS[i]) >= 0) return true;
+    return false;
+  }
+
+  // Dedupe: don't fire identical errors more than once per 60s
+  var lastSent = {};
+  function fingerprint(msg, source, line){ return [msg, source, line].join('|').slice(0,200); }
+  function recentlySent(fp){
+    var now = Date.now();
+    Object.keys(lastSent).forEach(function(k){ if(now - lastSent[k] > 60000) delete lastSent[k]; });
+    if(lastSent[fp]) return true;
+    lastSent[fp] = now;
+    return false;
+  }
+
+  async function postError(payload){
+    try {
+      await fetch(SURL + '/error_log', {
+        method: 'POST',
+        headers: { apikey: SKEY, Authorization: 'Bearer ' + SKEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify(payload),
+        keepalive: true
+      });
+    } catch(e){ /* silent — never let the logger break the app */ }
+  }
+
+  function capture(err){
+    if(shouldSkip(err.message)) return;
+    var fp = fingerprint(err.message, err.source, err.line_no);
+    if(recentlySent(fp)) return;
+    var actor = (window.currentUser && window.currentUser.email) || null;
+    postError({
+      actor_email: actor,
+      message: String(err.message || '').slice(0, 500),
+      source: err.source ? String(err.source).slice(0, 200) : null,
+      line_no: err.line_no || null,
+      col_no: err.col_no || null,
+      stack: err.stack ? String(err.stack).slice(0, 4000) : null,
+      user_agent: navigator.userAgent.slice(0, 200),
+      url: location.href.slice(0, 300)
+    });
+  }
+
+  window.addEventListener('error', function(e){
+    capture({
+      message: e.message,
+      source: e.filename,
+      line_no: e.lineno,
+      col_no: e.colno,
+      stack: e.error && e.error.stack
+    });
+  });
+  window.addEventListener('unhandledrejection', function(e){
+    var reason = e.reason;
+    capture({
+      message: (reason && (reason.message || reason)) + ' [unhandled promise]',
+      stack: reason && reason.stack
+    });
+  });
+
+  // ---- Admin viewer ----
+  function fmtWhen(iso){
+    if(!iso) return '';
+    var d = new Date(iso);
+    var ms = Date.now() - d.getTime();
+    if(ms < 60000) return Math.floor(ms/1000) + 's ago';
+    if(ms < 3600000) return Math.floor(ms/60000) + 'm ago';
+    if(ms < 86400000) return Math.floor(ms/3600000) + 'h ago';
+    return d.toLocaleDateString();
+  }
+  function esc(s){ return String(s||'').replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+  window.glOpenErrorLog = async function(){
+    if(!window.currentUser || window.currentUser.role !== 'admin'){ alert('Admin only.'); return; }
+    var prior = document.getElementById('gl-err-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var ov = document.createElement('div');
+    ov.id = 'gl-err-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:920;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:24px;width:100%;max-width:880px;max-height:88vh;display:flex;flex-direction:column">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+          '<div><div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">🐛 ERROR LOG</div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:2px">Last 100 captured errors (browser-side)</div></div>' +
+          '<div style="display:flex;gap:6px;align-items:center">' +
+            '<button id="gl-err-refresh" class="cbtn" style="font-size:11px;padding:5px 11px">🔄 Refresh</button>' +
+            '<button id="gl-err-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+          '</div>' +
+        '</div>' +
+        '<div id="gl-err-body" style="flex:1;overflow-y:auto;background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:6px"><div style="padding:30px;text-align:center;color:#9aa7bd;font-size:12px">Loading…</div></div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-err-close').addEventListener('click', function(){ ov.remove(); });
+    host.appendChild(ov);
+
+    async function load(){
+      var body = ov.querySelector('#gl-err-body');
+      body.innerHTML = '<div style="padding:30px;text-align:center;color:#9aa7bd;font-size:12px">Loading…</div>';
+      var sb = window.supa;
+      if(!sb){ body.innerHTML = '<div style="padding:30px;text-align:center;color:#ff8579;font-size:12px">Auth unavailable.</div>'; return; }
+      try {
+        var r = await sb.from('error_log').select('*').order('created_at',{ascending:false}).limit(100);
+        if(r.error){
+          body.innerHTML = '<div style="padding:30px;text-align:center;color:#ff8579;font-size:12px;line-height:1.6">⚠ ' + esc(r.error.message) + '<div style="font-size:11px;color:#9aa7bd;margin-top:12px">If the error_log table doesn\'t exist yet, run the SQL from the dashboard System Health widget.</div></div>';
+          return;
+        }
+        var rows = r.data || [];
+        if(!rows.length){ body.innerHTML = '<div style="padding:40px;text-align:center;color:#9aa7bd;font-size:12px">No errors captured. 🎉</div>'; return; }
+        body.innerHTML = rows.map(function(r){
+          return '<details style="border-bottom:1px solid rgba(255,255,255,.05);padding:10px 14px">' +
+            '<summary style="cursor:pointer;display:flex;align-items:center;gap:10px;font-size:12px;color:#fff;list-style:none">' +
+              '<span style="color:#9aa7bd;font-size:11px;min-width:60px">'+esc(fmtWhen(r.created_at))+'</span>' +
+              '<span style="font-family:var(--ff-mono);color:#ff8579;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(r.message)+'</span>' +
+              '<span style="font-size:10px;color:#9aa7bd">'+esc(r.actor_email||'anon')+'</span>' +
+            '</summary>' +
+            '<div style="padding:10px 0 4px;font-size:11px;color:#cfd9e6;font-family:var(--ff-mono)">' +
+              '<div><b>URL:</b> '+esc(r.url||'')+'</div>' +
+              (r.source ? '<div><b>Source:</b> '+esc(r.source)+(r.line_no?' line '+r.line_no:'')+'</div>' : '') +
+              '<div><b>UA:</b> '+esc(r.user_agent||'')+'</div>' +
+              (r.stack ? '<pre style="margin-top:8px;background:rgba(0,0,0,.3);border-radius:6px;padding:10px;overflow-x:auto;font-size:10px;line-height:1.5;color:#cfd9e6;max-height:200px">'+esc(r.stack)+'</pre>' : '') +
+            '</div>' +
+          '</details>';
+        }).join('');
+      } catch(e){
+        body.innerHTML = '<div style="padding:30px;text-align:center;color:#ff8579;font-size:12px">Failed: '+esc(e.message||'')+'</div>';
+      }
+    }
+    ov.querySelector('#gl-err-refresh').addEventListener('click', load);
+    load();
+  };
+
+  console.log('[GL] Error logger (Sentry-style) loaded');
 }());
 
