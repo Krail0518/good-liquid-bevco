@@ -2833,3 +2833,138 @@
 
   console.log('[GL] Audit log viewer loaded');
 }());
+
+/* ============================================================
+   QUOTE -> INVOICE WORKFLOW
+   - "💾 Save as Quote" button in the builder persists the same
+     line items as an invoice with status='quote' (doesn't show
+     in receivables tracking, doesn't count toward revenue).
+   - Invoice list rows with status='quote' get a "✓ Convert to
+     Invoice" button that flips status to 'pending'.
+   ============================================================ */
+(function(){
+  var SURL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/rest/v1';
+  var SKEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmamtlcW14d3V5aGJxeXVnY2dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNDI2MDksImV4cCI6MjA5MzkxODYwOX0.godgU_jeprCqSzqe0ji_ZA_hwvPF2s7BmzQyAB-c_xE';
+
+  // Save the current builder state as an invoice with status='quote'.
+  // Reuses glSaveInvoice's machinery by temporarily flipping status
+  // and undoing the flip after the call returns.
+  window.glSaveAsQuote = function(){
+    var orig = window.glSaveInvoice;
+    if(typeof orig !== 'function'){ alert('glSaveInvoice not available.'); return; }
+    var marker = '__GL_QUOTE_PATCH__';
+    if(window[marker]) return;  // re-entrancy guard
+    window[marker] = true;
+    var inv;
+    try {
+      inv = orig();
+    } finally {
+      window[marker] = false;
+    }
+    if(!inv) return;
+    // Flip status locally
+    inv.status = 'quote';
+    // Update the Supabase row via PATCH (the save above did an INSERT)
+    if(inv.id){
+      fetch(SURL + '/invoices?invoice_number=eq.' + encodeURIComponent(inv.id), {
+        method: 'PATCH',
+        headers: { apikey: SKEY, Authorization: 'Bearer ' + SKEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'quote' })
+      }).catch(function(e){ console.warn('[GL quote] status patch failed', e); });
+    }
+    // Update the visible row
+    if(typeof renderInvoices === 'function') renderInvoices();
+    if(typeof addNotification === 'function') addNotification('💾 Quote saved', inv.id + ' · ' + (inv.clientName||''), 'success');
+  };
+
+  // Promote a quote to a billable invoice by flipping status.
+  window.glConvertQuoteToInvoice = async function(invId){
+    if(!invId) return;
+    if(!confirm('Convert quote ' + invId + ' to a billable invoice?\n\nThe status will change from "quote" to "pending" and it will count toward receivables.')) return;
+    var inv = (window.invoices||[]).find(function(i){ return i.id === invId; });
+    if(!inv){ alert('Invoice not found.'); return; }
+    try {
+      var res = await fetch(SURL + '/invoices?invoice_number=eq.' + encodeURIComponent(invId), {
+        method: 'PATCH',
+        headers: { apikey: SKEY, Authorization: 'Bearer ' + SKEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'pending' })
+      });
+      if(!res.ok){
+        var t = await res.text();
+        alert('Conversion failed: HTTP ' + res.status + '\n' + t);
+        return;
+      }
+      inv.status = 'pending';
+      if(typeof renderInvoices === 'function') renderInvoices();
+      if(typeof renderDash === 'function') renderDash();
+      if(typeof addNotification === 'function') addNotification('✓ Quote converted', invId + ' is now a billable invoice', 'success');
+      if(typeof window.glAudit === 'function') window.glAudit('quote_convert', invId);
+    } catch(e){
+      console.error('[GL convert quote] threw', e);
+      alert('Failed: ' + (e.message || 'unknown'));
+    }
+  };
+
+  // Inject "💾 Save as Quote" button into the invoice builder action row.
+  function injectSaveQuoteButton(){
+    var body = document.getElementById('gl-inv-body');
+    if(!body) return;
+    var saveBtn = Array.from(body.querySelectorAll('button')).find(function(b){
+      return (b.textContent||'').trim() === '💾 Save Invoice' || (b.textContent||'').trim().includes('Save Invoice');
+    });
+    if(!saveBtn) return;
+    var row = saveBtn.parentElement;
+    if(!row || row.querySelector('.gl-save-quote-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'cbtn gl-save-quote-btn';
+    btn.setAttribute('style','flex:1;font-size:14px;background:rgba(26,111,255,.08);border:1px solid rgba(26,111,255,.3);color:#6b9fff');
+    btn.textContent = '💾 Save as Quote';
+    btn.addEventListener('click', function(){ window.glSaveAsQuote(); });
+    // Insert right after the main Save button.
+    if(saveBtn.nextSibling) row.insertBefore(btn, saveBtn.nextSibling);
+    else row.appendChild(btn);
+  }
+
+  // Inject "Convert" button onto invoice rows where status='quote'.
+  function injectConvertButtons(){
+    var body = document.getElementById('inv-body');
+    if(!body) return;
+    body.querySelectorAll('tr').forEach(function(tr){
+      var statusBadge = tr.querySelector('.cbdg');
+      if(!statusBadge) return;
+      var status = (statusBadge.textContent||'').trim().toLowerCase();
+      if(status !== 'quote') return;
+      var actionsCell = tr.querySelector('td:last-child > div') || tr.querySelector('td:last-child');
+      if(!actionsCell || actionsCell.querySelector('.gl-convert-btn')) return;
+      var idCell = tr.querySelector('td:first-child');
+      var invId = idCell ? (idCell.textContent||'').trim() : '';
+      if(!invId) return;
+      var btn = document.createElement('button');
+      btn.className = 'cbtn gl-convert-btn';
+      btn.setAttribute('style','font-size:10px;padding:3px 7px;background:rgba(26,111,255,.12);border:1px solid rgba(26,111,255,.35);color:#6b9fff');
+      btn.textContent = '→ Invoice';
+      btn.title = 'Convert this quote to a billable invoice';
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        window.glConvertQuoteToInvoice(invId);
+      });
+      actionsCell.insertBefore(btn, actionsCell.firstChild);
+      // Tint the badge so quote rows are visually distinct
+      statusBadge.setAttribute('style','background:rgba(26,111,255,.12);color:#6b9fff;border:1px solid rgba(26,111,255,.3)');
+    });
+  }
+
+  // Watch both the builder body (for Save-as-Quote button) and the invoice
+  // list body (for Convert buttons on quote rows).
+  function startObservers(){
+    var builder = document.getElementById('gl-inv-body');
+    var invList = document.getElementById('inv-body');
+    if(builder) new MutationObserver(function(){ setTimeout(injectSaveQuoteButton, 40); }).observe(builder, {childList:true, subtree:true});
+    if(invList) new MutationObserver(function(){ setTimeout(injectConvertButtons, 40); }).observe(invList, {childList:true, subtree:true});
+    if(!builder || !invList) setTimeout(startObservers, 500);
+  }
+  if(document.readyState !== 'loading') startObservers();
+  else document.addEventListener('DOMContentLoaded', startObservers);
+
+  console.log('[GL] Quote -> Invoice workflow loaded');
+}());
