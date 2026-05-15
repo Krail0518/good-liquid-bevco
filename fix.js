@@ -3110,3 +3110,50 @@
 
   console.log('[GL] Stripe pay-link manager loaded');
 }());
+
+/* ============================================================
+   DOCUMENTS: Real Supabase Storage
+   The existing uploadDocToSupabase / downloadDocFromSupabase
+   code in index.html is wired correctly but routes through a
+   dead getSupabase() that reads localStorage.gl_supabase_key
+   (which we deprecated). Repoint it at window.supa so the
+   storage uploads work with the shared authenticated client.
+
+   Requires SQL setup of the 'client-docs' bucket + RLS policies
+   (provided in wake-up notes). Until that SQL runs, the original
+   silent-fallback behavior is preserved (metadata saved, no file).
+   ============================================================ */
+(function(){
+  // Replace the legacy factory so all document storage calls share the
+  // already-initialized authenticated supabase-js client.
+  var origGet = window.getSupabase;
+  window.getSupabase = function(){
+    if(window.supa) return window.supa;
+    if(typeof origGet === 'function') try { return origGet(); } catch(e){}
+    return null;
+  };
+
+  // Add an upload-progress indicator + clearer error messages around the
+  // existing uploadDocToSupabase helper.
+  var origUpload = window.uploadDocToSupabase;
+  if(typeof origUpload === 'function'){
+    window.uploadDocToSupabase = async function(file, clientId, docType, docName){
+      if(typeof window.glStartBusy === 'function') window.glStartBusy('Uploading ' + (file && file.name ? file.name : 'document') + '…');
+      try {
+        var result = await origUpload.apply(this, arguments);
+        if(!result || !result.url){
+          // Most likely cause: bucket doesn't exist or RLS forbids.
+          // Surface that to the admin rather than silently dropping the file.
+          if(typeof addNotification === 'function') addNotification('Upload failed — file not stored', 'Check that the client-docs Supabase Storage bucket exists and that you ran the bucket SQL.', 'warning');
+        } else {
+          if(typeof addNotification === 'function') addNotification('📎 File uploaded', (file && file.name) || 'document', 'success');
+        }
+        return result;
+      } finally {
+        if(typeof window.glEndBusy === 'function') window.glEndBusy();
+      }
+    };
+  }
+
+  console.log('[GL] Documents → Supabase Storage bridge loaded');
+}());
