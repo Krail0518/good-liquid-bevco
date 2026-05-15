@@ -1918,6 +1918,7 @@
       { label:'🤖 AI Settings',    fn:'openAISettings' },
       { label:'📧 Mailgun Settings', fn:'openMailgunSettings' },
       { label:'📈 Google Analytics', fn:'openGA4Settings', admin:true },
+      { label:'🔒 Two-Factor Auth', fn:'openMFASettings' },
       { label:'✍️ Email Signature', fn:'openEmailSignatureSettings' },
       { label:'🗑️ Clear local cache', fn:'glClearLocalCache', admin:true, danger:true }
     ];
@@ -4979,5 +4980,248 @@
   };
 
   console.log('[GL] GA4 settings loaded');
+}());
+
+/* ============================================================
+   TWO-FACTOR AUTHENTICATION (TOTP via Supabase Auth)
+   - openMFASettings: modal to enroll / unenroll an authenticator
+     app (Google Authenticator, Authy, 1Password, etc.). Shows QR
+     code + base32 secret on enrollment.
+   - On login, if the user has verified TOTP factors, prompt for
+     the 6-digit code before completing sign-in. This produces
+     an AAL2 session.
+   ============================================================ */
+(function(){
+  function modal(html, onMount){
+    var prior = document.getElementById('gl-mfa-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var ov = document.createElement('div');
+    ov.id = 'gl-mfa-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:920;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML = '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:28px;width:100%;max-width:480px;max-height:88vh;overflow-y:auto">' + html + '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    host.appendChild(ov);
+    if(typeof onMount === 'function') onMount(ov);
+    return ov;
+  }
+
+  async function listFactors(sb){
+    try {
+      var r = await sb.auth.mfa.listFactors();
+      if(r && r.data){
+        var totp = (r.data.totp || []).filter(function(f){ return f.status === 'verified'; });
+        return totp;
+      }
+    } catch(e){ console.warn('[GL mfa] listFactors threw', e); }
+    return [];
+  }
+
+  function shellHeader(title){
+    return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+      '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">' + title + '</div>' +
+      '<button id="gl-mfa-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+    '</div>';
+  }
+  function wireClose(ov){
+    ov.querySelector('#gl-mfa-close').addEventListener('click', function(){ ov.remove(); });
+  }
+
+  async function showEnrollFlow(){
+    var sb = window.supa;
+    if(!sb || !sb.auth || !sb.auth.mfa){ alert('Supabase MFA not available.'); return; }
+    var enrollResp;
+    try {
+      enrollResp = await sb.auth.mfa.enroll({
+        factorType:'totp',
+        friendlyName:'Good Liquid CRM ' + new Date().toISOString().slice(0,10)
+      });
+    } catch(e){ alert('Could not start enrollment: ' + (e.message||'unknown')); return; }
+    if(enrollResp.error){ alert('Enrollment error: ' + enrollResp.error.message); return; }
+    var d = enrollResp.data;
+    var factorId = d.id;
+    var qr = d.totp && d.totp.qr_code;
+    var secret = d.totp && d.totp.secret;
+
+    var ov = modal(
+      shellHeader('🔒 ENABLE 2FA') +
+      '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.6">Scan this QR with an authenticator app (Google Authenticator, Authy, 1Password, etc). Then enter the 6-digit code it shows to confirm.</div>' +
+      '<div style="background:#fff;padding:12px;border-radius:10px;display:flex;justify-content:center;margin-bottom:12px">' +
+        (qr ? qr : '<div style="color:#1a1a2e;font-size:12px;padding:24px">No QR returned</div>') +
+      '</div>' +
+      '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:4px">CAN\'T SCAN? MANUAL ENTRY</div>' +
+      '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:10px;font-family:var(--ff-mono);font-size:12px;color:#fff;letter-spacing:1px;text-align:center;margin-bottom:18px;word-break:break-all">' + (secret || '—') + '</div>' +
+      '<div class="frow"><div class="flbl">6-digit code from your app</div>' +
+        '<input class="finp" id="gl-mfa-code" maxlength="6" inputmode="numeric" placeholder="123456" style="font-family:var(--ff-mono);letter-spacing:6px;text-align:center;font-size:18px">' +
+      '</div>' +
+      '<div id="gl-mfa-err" style="display:none;color:#e74c3c;font-size:12px;margin-bottom:10px"></div>' +
+      '<div style="display:flex;gap:8px">' +
+        '<button id="gl-mfa-verify" class="cbtn pri" style="flex:1">✓ Verify and enable</button>' +
+        '<button id="gl-mfa-cancel" class="cbtn">Cancel</button>' +
+      '</div>',
+      function(ov){
+        wireClose(ov);
+        var input = ov.querySelector('#gl-mfa-code');
+        var err   = ov.querySelector('#gl-mfa-err');
+        function showErr(m){ err.style.display = 'block'; err.textContent = m; }
+        async function verify(){
+          err.style.display = 'none';
+          var code = (input.value||'').trim();
+          if(!/^\d{6}$/.test(code)){ showErr('Enter the 6-digit code from your authenticator app.'); return; }
+          var btn = ov.querySelector('#gl-mfa-verify');
+          btn.disabled = true; btn.textContent = 'Verifying…';
+          try {
+            var ch = await sb.auth.mfa.challenge({ factorId: factorId });
+            if(ch.error) throw ch.error;
+            var v = await sb.auth.mfa.verify({ factorId: factorId, challengeId: ch.data.id, code: code });
+            if(v.error) throw v.error;
+            ov.remove();
+            if(typeof addNotification === 'function') addNotification('🔒 2FA enabled','Future logins will require your authenticator code.','success');
+            else alert('✓ 2FA enabled. Future logins will require a code.');
+          } catch(e){
+            showErr(e.message || 'Verification failed');
+            btn.disabled = false; btn.textContent = '✓ Verify and enable';
+            // Note: if the user cancels here, the factor stays in 'unverified' state.
+            // Supabase auto-cleans these but they can also unenroll explicitly.
+          }
+        }
+        ov.querySelector('#gl-mfa-verify').addEventListener('click', verify);
+        ov.querySelector('#gl-mfa-cancel').addEventListener('click', async function(){
+          // Best-effort cleanup of the unverified factor
+          try { await sb.auth.mfa.unenroll({ factorId: factorId }); } catch(e){}
+          ov.remove();
+        });
+        input.addEventListener('keydown', function(e){ if(e.key === 'Enter') verify(); });
+        setTimeout(function(){ input.focus(); }, 40);
+      }
+    );
+  }
+
+  async function showStatusFlow(){
+    var sb = window.supa;
+    if(!sb || !sb.auth || !sb.auth.mfa){ alert('Supabase MFA not available.'); return; }
+    if(!sb.auth.getSession){ alert('Not signed in.'); return; }
+    var sess = await sb.auth.getSession();
+    if(!sess.data || !sess.data.session){ alert('Sign in first.'); return; }
+    var factors = await listFactors(sb);
+    if(!factors.length){
+      // Not enrolled — go straight to enrollment
+      showEnrollFlow();
+      return;
+    }
+    var f = factors[0];  // assume single TOTP factor per user (Supabase default)
+    var ov = modal(
+      shellHeader('🔒 TWO-FACTOR AUTH') +
+      '<div style="background:rgba(29,158,117,.08);border:1px solid rgba(29,158,117,.25);border-radius:8px;padding:12px 14px;margin-bottom:16px">' +
+        '<div style="font-size:13px;color:#1D9E75;font-weight:600">✓ 2FA is enabled</div>' +
+        '<div style="font-size:11px;color:var(--muted);margin-top:3px">Factor: ' + (f.friendly_name || 'Authenticator') + ' · enrolled ' + (f.created_at ? new Date(f.created_at).toLocaleDateString() : '—') + '</div>' +
+      '</div>' +
+      '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.6">Disabling 2FA removes the requirement to enter a code on future logins. Only do this if you\'re replacing the authenticator (then re-enroll right away) or shutting down 2FA deliberately.</div>' +
+      '<div id="gl-mfa-err" style="display:none;color:#e74c3c;font-size:12px;margin-bottom:10px"></div>' +
+      '<div style="display:flex;gap:8px">' +
+        '<button id="gl-mfa-unenroll" class="cbtn red" style="flex:1">Disable 2FA</button>' +
+        '<button id="gl-mfa-cancel" class="cbtn">Close</button>' +
+      '</div>',
+      function(ov){
+        wireClose(ov);
+        ov.querySelector('#gl-mfa-cancel').addEventListener('click', function(){ ov.remove(); });
+        ov.querySelector('#gl-mfa-unenroll').addEventListener('click', async function(){
+          if(!confirm('Disable 2FA on your account?\n\nFuture logins will only require a password (no code).')) return;
+          var btn = this; btn.disabled = true; btn.textContent = 'Removing…';
+          try {
+            var r = await sb.auth.mfa.unenroll({ factorId: f.id });
+            if(r.error) throw r.error;
+            ov.remove();
+            if(typeof addNotification === 'function') addNotification('🔒 2FA disabled', '', 'warning');
+          } catch(e){
+            var err = ov.querySelector('#gl-mfa-err');
+            err.style.display = 'block'; err.textContent = 'Failed: ' + (e.message || 'unknown');
+            btn.disabled = false; btn.textContent = 'Disable 2FA';
+          }
+        });
+      }
+    );
+  }
+
+  window.openMFASettings = function(){ showStatusFlow(); };
+
+  // Prompt for the TOTP code after a successful password login.
+  async function promptMfaCode(factorId){
+    return new Promise(function(resolve){
+      var sb = window.supa;
+      modal(
+        shellHeader('🔒 ENTER 2FA CODE') +
+        '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.6">Enter the 6-digit code from your authenticator app to complete sign-in.</div>' +
+        '<div class="frow"><div class="flbl">6-digit code</div>' +
+          '<input class="finp" id="gl-mfa-code" maxlength="6" inputmode="numeric" placeholder="123456" style="font-family:var(--ff-mono);letter-spacing:6px;text-align:center;font-size:18px">' +
+        '</div>' +
+        '<div id="gl-mfa-err" style="display:none;color:#e74c3c;font-size:12px;margin-bottom:10px"></div>' +
+        '<div style="display:flex;gap:8px">' +
+          '<button id="gl-mfa-verify" class="cbtn pri" style="flex:1">✓ Verify</button>' +
+          '<button id="gl-mfa-cancel" class="cbtn">Cancel</button>' +
+        '</div>',
+        function(ov){
+          wireClose(ov);
+          var input = ov.querySelector('#gl-mfa-code');
+          var err   = ov.querySelector('#gl-mfa-err');
+          async function verify(){
+            err.style.display = 'none';
+            var code = (input.value||'').trim();
+            if(!/^\d{6}$/.test(code)){ err.style.display='block'; err.textContent='Enter the 6-digit code.'; return; }
+            var btn = ov.querySelector('#gl-mfa-verify');
+            btn.disabled = true; btn.textContent = 'Verifying…';
+            try {
+              var ch = await sb.auth.mfa.challenge({ factorId: factorId });
+              if(ch.error) throw ch.error;
+              var v = await sb.auth.mfa.verify({ factorId: factorId, challengeId: ch.data.id, code: code });
+              if(v.error) throw v.error;
+              ov.remove();
+              resolve(true);
+            } catch(e){
+              err.style.display = 'block'; err.textContent = e.message || 'Failed';
+              btn.disabled = false; btn.textContent = '✓ Verify';
+            }
+          }
+          ov.querySelector('#gl-mfa-verify').addEventListener('click', verify);
+          ov.querySelector('#gl-mfa-cancel').addEventListener('click', async function(){
+            // Sign out — they cancelled the second factor
+            try { await sb.auth.signOut(); } catch(e){}
+            window.currentUser = null;
+            if(typeof window.exitCRM === 'function') window.exitCRM();
+            ov.remove();
+            resolve(false);
+          });
+          input.addEventListener('keydown', function(e){ if(e.key === 'Enter') verify(); });
+          setTimeout(function(){ input.focus(); }, 40);
+        }
+      );
+    });
+  }
+
+  // Wrap checkPw so that after a successful password sign-in, if the user
+  // has a verified TOTP factor, we prompt for the code before completing.
+  (function(){
+    var orig = window.checkPw;
+    if(typeof orig !== 'function') return;
+    window.checkPw = async function(){
+      var before = window.currentUser;
+      var result = await orig.apply(this, arguments);
+      if(!window.currentUser || window.currentUser === before) return result;
+      var sb = window.supa;
+      if(!sb || !sb.auth || !sb.auth.mfa) return result;
+      try {
+        var factors = await listFactors(sb);
+        if(!factors.length) return result;
+        // Need to go from aal1 to aal2 — prompt for the code
+        var ok = await promptMfaCode(factors[0].id);
+        if(!ok){
+          // User cancelled — they're already signed out by promptMfaCode
+          if(typeof addNotification === 'function') addNotification('Sign-in cancelled','2FA code required.','warning');
+        }
+      } catch(e){ console.warn('[GL mfa] post-login check threw', e); }
+      return result;
+    };
+  })();
+
+  console.log('[GL] 2FA (Supabase TOTP) loaded');
 }());
 
