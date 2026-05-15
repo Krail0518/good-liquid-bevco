@@ -695,31 +695,10 @@
   window.glRemLine=function(i){if(!INV)return;INV.lines.splice(i,1);glRenderBuilder();};
 
   /* ── ADD LINE ── */
-  window.glAddLine=function(type){
-    if(!INV)return;
-    if(type==='canning'){
-      window.glShowFormatPicker(function(fmt){
-        var fmtLabel={'12oz-standard':'12oz Standard','12oz-sleek':'12oz Sleek','16oz-standard':'16oz Standard'};
-        INV.lines.push({id:'l'+Date.now(),type:'canning',description:'Canning \u2014 '+(fmtLabel[fmt]||fmt),qty:0,unit:'cases',unitPrice:0,total:0,canType:fmt,note:'Enter number of cases \u2192 price auto-calculates',editable:false});
-        glRenderBuilder();
-      });
-      return;
-    }
-    if(type==='bottling'){
-      INV.lines.push({id:'l'+Date.now(),type:'bottling',description:'Bottle Filling \u2014 750ml',qty:0,unit:'cases',unitPrice:0,total:0,note:'Enter number of cases (6 bottles/case) \u2192 price auto-calculates',editable:false});
-    } else if(type==='rd'){
-      window.glShowRDPicker(function(o){
-        INV.lines.push({id:'l'+Date.now(),type:'rd',description:o.label,qty:1,unit:o.unit,unitPrice:o.price,total:o.price*1,note:o.note,editable:false});
-        glRenderBuilder();
-      });
-      return;
-    } else if(type==='hours'){
-      INV.lines.push({id:'l'+Date.now(),type:'hours',description:'Production Hours',qty:0,unit:'hrs',unitPrice:125,total:0,note:'$125/hr \u00b7 Full day (8hrs) = $1,000',editable:false});
-    } else {
-      INV.lines.push({id:'l'+Date.now(),type:'custom',description:'',qty:1,unit:'',unitPrice:0,total:0,note:'',editable:true});
-    }
-    glRenderBuilder();
-  };
+  /* Legacy glAddLine (INV-model) removed \u2014 the live entry point is the
+     DOM-based override defined later in this file. Kept as a no-op so any
+     straggler caller fails fast instead of mutating dead state. */
+  window.glAddLine=function(){};
 
   /* ── RENDER BUILDER ── */
   function glRenderBuilder(){
@@ -809,27 +788,10 @@
     glRenderBuilder();
   };
 
-  /* ── SAVE INVOICE ── */
-  window.glSaveInvoice = function(){
-    if(!INV){alert('No invoice state');return null;}
-    var cid=document.getElementById('ginv-client')?.value||INV.clientId;
-    if(!cid){alert('Please select a client');return null;}
-    if(!INV.lines.length&&!INV.addons.some(function(a){return a.d&&a.p;})){alert('Add at least one line item');return null;}
-    var client=(window.clients||[]).find(function(c){return c.id===cid;});
-    var invId=document.getElementById('ginv-id')?.value||glNextId();
-    var allLines=INV.lines.map(function(l){return {desc:l.description,qty:l.qty,unitPrice:l.unitPrice,total:l.total,unit:l.unit};})
-      .concat(INV.addons.filter(function(a){return a.d&&a.p;}).map(function(a){return {desc:a.d,qty:1,unitPrice:parseFloat(a.p),total:parseFloat(a.p),unit:''};}));
-    var inv={id:invId,client:cid,clientName:client?.name||'',clientEmail:client?.email||'',
-      svc:allLines.map(function(l){return l.desc;}).join(', '),lines:allLines,
-      addons:INV.addons.filter(function(a){return a.d&&a.p;}),
-      discount:INV.discount,subtotal:sub(),discountAmt:discAmt(),amount:grandTotal(),
-      notes:INV.notes,date:INV.date,status:'pending',paymentTerms:'Due upon receipt'};
-    window.invoices=window.invoices||[];window.invoices.unshift(inv);
-    if(typeof renderInvoices==='function')renderInvoices();
-    if(typeof addNotification==='function')addNotification('Invoice saved: '+invId,(client?.name||'')+' \u00b7 '+glFmt(inv.amount),'success');
-    document.getElementById('gl-inv-builder')?.classList.remove('show');
-    return inv;
-  };
+  /* Legacy glSaveInvoice (INV-model) removed — overridden later by the
+     DOM-based save flow that reads from [data-gl-total] rows. The override
+     at line ~1577 is what actually persists invoices today. */
+  window.glSaveInvoice = function(){};
 
   /* ── EXPORT PDF ── */
   window.glExportPDF = function(){
