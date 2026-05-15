@@ -3915,3 +3915,134 @@
 
   console.log('[GL] Customer portal v2 loaded');
 }());
+
+/* ============================================================
+   INVOICE TOOLS: CSV export + bulk overdue reminders
+   - "📊 Export CSV" in the invoice list header. Downloads
+     the currently-filtered invoice set as CSV (handy for
+     QuickBooks / accountant handoff).
+   - "📧 Send overdue reminders" in the same header. Iterates
+     all status='overdue' invoices and fires a follow-up email
+     to each client via Mailgun. Skips invoices without a
+     client email; reports count at the end.
+   ============================================================ */
+(function(){
+  function csvEsc(s){
+    s = String(s == null ? '' : s);
+    if(/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+  function buildCsv(rows){
+    var headers = ['Invoice #','Client','Service','Amount','Status','Date','Due','Notes'];
+    var out = headers.map(csvEsc).join(',') + '\n';
+    rows.forEach(function(i){
+      var dueDate = '';
+      if(i.date){
+        try { dueDate = new Date(new Date(i.date).getTime() + 30*86400000).toISOString().slice(0,10); }
+        catch(e){ dueDate = ''; }
+      }
+      out += [
+        i.id, i.clientName, i.svc, i.amount, i.status, i.date, dueDate, i.notes||''
+      ].map(csvEsc).join(',') + '\n';
+    });
+    return out;
+  }
+  function downloadFile(name, content, type){
+    var blob = new Blob([content], { type: type || 'text/plain;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1500);
+  }
+
+  window.glExportInvoicesCsv = function(){
+    var inv = (window.invoices||[]).filter(function(i){ return i.status !== 'quote'; });
+    if(!inv.length){ alert('No invoices to export.'); return; }
+    var stamp = new Date().toISOString().slice(0,10);
+    downloadFile('goodliquid-invoices-' + stamp + '.csv', buildCsv(inv), 'text/csv;charset=utf-8');
+    if(typeof addNotification === 'function') addNotification('📊 CSV exported', inv.length + ' rows downloaded', 'success');
+    if(typeof window.glAudit === 'function') window.glAudit('export_csv', 'invoices', { rows: inv.length });
+  };
+
+  window.glSendOverdueReminders = async function(){
+    var overdue = (window.invoices||[]).filter(function(i){ return i.status === 'overdue'; });
+    if(!overdue.length){ alert('No overdue invoices.'); return; }
+    if(!localStorage.getItem('gl_mailgun_key')){
+      if(typeof window.openMailgunSettings === 'function') window.openMailgunSettings();
+      alert('Mailgun key required first.');
+      return;
+    }
+    if(!confirm('Send a reminder email to ' + overdue.length + ' overdue invoice client(s)?\n\nEach email will include the invoice id, amount, days overdue, and your Stripe pay link (if set).')) return;
+
+    var sent = 0, skipped = 0, failed = 0;
+    for(var k = 0; k < overdue.length; k++){
+      var inv = overdue[k];
+      var client = (window.clients||[]).find(function(c){ return c.id === inv.client; });
+      var to = (client && client.email) || inv.clientEmail || '';
+      if(!to || to.indexOf('@') < 0){ skipped++; continue; }
+      var days = '';
+      try { var d = (Date.now() - new Date(inv.date).getTime()) / 86400000; days = Math.floor(d) + ' days'; } catch(e){ days = ''; }
+      var payLink = typeof window.glGetPayLink === 'function' ? window.glGetPayLink(inv.id) : '';
+      var sig = typeof window.glGetSignature === 'function' ? window.glGetSignature() : '';
+      var body =
+        'Hi ' + (inv.clientName || 'there') + ',\n\n' +
+        'This is a friendly reminder that invoice ' + inv.id + ' for $' + Number(inv.amount||0).toLocaleString() +
+        (days ? ' is ' + days + ' overdue.' : ' is past due.') + '\n\n' +
+        'Please let us know if you have any questions or if there is anything blocking payment.\n\n' +
+        (payLink ? 'Pay securely: ' + payLink + '\n\n' : '') +
+        (sig ? sig : 'Best,\nMike Krail\nGood Liquid Bev Co\nMike@GoodLiquid.com · (803) 493-5065');
+      var subject = 'Payment reminder — Invoice ' + inv.id;
+      try {
+        var ok = await window.sendMailgunEmail(to, subject, body);
+        if(ok) sent++; else failed++;
+      } catch(e){ failed++; }
+    }
+    var msg = '✓ Sent ' + sent + ' reminder(s).' +
+              (skipped ? '\n⊘ Skipped ' + skipped + ' (no client email on file).' : '') +
+              (failed  ? '\n✗ Failed ' + failed + ' (check console).' : '');
+    if(typeof addNotification === 'function') addNotification('Overdue reminders', sent + ' sent / ' + (skipped+failed) + ' skipped', sent ? 'success' : 'warning');
+    if(typeof window.glAudit === 'function') window.glAudit('overdue_reminders', null, { sent: sent, skipped: skipped, failed: failed });
+    alert(msg);
+  };
+
+  // Inject the two buttons into the invoices page header.
+  function inject(){
+    var page = document.getElementById('cpg-invoices');
+    if(!page) return;
+    var header = page.querySelector('.cph');
+    if(!header) return;
+    if(header.querySelector('.gl-csv-btn')) return;
+    var newBtn = Array.from(header.querySelectorAll('button')).find(function(b){
+      return (b.textContent||'').trim().toLowerCase().includes('new invoice');
+    });
+    var csv = document.createElement('button');
+    csv.className = 'cbtn gl-csv-btn';
+    csv.setAttribute('style','margin-left:8px;background:rgba(0,229,192,.08);border:1px solid rgba(0,229,192,.3);color:var(--teal)');
+    csv.textContent = '📊 Export CSV';
+    csv.addEventListener('click', function(){ window.glExportInvoicesCsv(); });
+    var rem = document.createElement('button');
+    rem.className = 'cbtn gl-overdue-btn';
+    rem.setAttribute('style','margin-left:8px;background:rgba(245,200,66,.08);border:1px solid rgba(245,200,66,.3);color:#f5c842');
+    rem.textContent = '📧 Send overdue reminders';
+    rem.addEventListener('click', function(){ window.glSendOverdueReminders(); });
+    if(newBtn && newBtn.parentElement){
+      newBtn.parentElement.appendChild(csv);
+      newBtn.parentElement.appendChild(rem);
+    } else {
+      header.appendChild(csv);
+      header.appendChild(rem);
+    }
+  }
+  function startObs(){
+    var page = document.getElementById('cpg-invoices');
+    if(page){
+      new MutationObserver(function(){ setTimeout(inject, 50); }).observe(page, {childList:true, subtree:true});
+      inject();
+    } else setTimeout(startObs, 500);
+  }
+  if(document.readyState !== 'loading') startObs();
+  else document.addEventListener('DOMContentLoaded', startObs);
+
+  console.log('[GL] Invoice CSV export + overdue reminders loaded');
+}());
