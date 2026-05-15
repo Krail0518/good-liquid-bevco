@@ -62,14 +62,10 @@
     setTimeout(attach, 500); // run again after dynamic content loads
   })();
 
-  /* ── INTERCEPT ALL NEW INVOICE ENTRY POINTS ── */
+  /* ── INTERCEPT ALL NEW INVOICE ENTRY POINTS ──
+       The original cNav lives in index.html. We only need to wrap it once;
+       the perm-gate is added below in the same wrap. */
   var _cNavOrig = window.cNav;
-  window.cNav = function(page, el){
-    if(page==='newinv'||page==='new-invoice'||page==='newInvoice'){
-      window.openNewInvoiceBuilder(); return;
-    }
-    if(typeof _cNavOrig==='function') _cNavOrig(page, el);
-  };
   window.openNewInvoice = function(){ window.openNewInvoiceBuilder(); };
   document.addEventListener('click', function(e){
     var el = e.target.closest('button,a,.cni');
@@ -103,8 +99,13 @@
   if(window.PERMISSIONS){window.PERMISSIONS.admin=ALL;window.PERMISSIONS.sales=['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','tasks','announcements','reports'];}
   else{window.PERMISSIONS={admin:ALL,sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','tasks','announcements','reports'],viewer:['dashboard','clients','invoices','activity']};}
   window.can=function(page){var u=window.currentUser;if(!u)return false;if(u.role==='admin')return true;return(window.PERMISSIONS[u.role]||[]).includes(page);};
-  var _cNavOrig2=window.cNav;
-  window.cNav=function(page,el){if(!window.can(page)){if(typeof addNotification==='function')addNotification('Access denied',page,'warning');return;}if(typeof _cNavOrig2==='function')_cNavOrig2(page,el);};
+  /* Single cNav wrap: perm-gate first, then dispatch new-invoice variants
+     to the builder, otherwise hand off to the original cNav from index.html. */
+  window.cNav=function(page,el){
+    if(!window.can(page)){if(typeof addNotification==='function')addNotification('Access denied',page,'warning');return;}
+    if(page==='newinv'||page==='new-invoice'||page==='newInvoice'){window.openNewInvoiceBuilder();return;}
+    if(typeof _cNavOrig==='function') _cNavOrig(page,el);
+  };
 
   /* ── FIX DOM STRUCTURE ── */
   function fixDOMStructure(){
@@ -344,8 +345,33 @@
     }
   };
 
+  /* ── Wrap openChangePwModal: toggle Current-password row when an admin
+       picks another user (admin path uses reset email, not reauth). ── */
+  (function(){
+    var inner = window.openChangePwModal;
+    window.openChangePwModal = function(){
+      if(typeof inner === 'function') inner.apply(this, arguments);
+      var oldRow = document.getElementById('change-pw-old');
+      var sel    = document.getElementById('change-pw-user-sel');
+      function updateOldVisibility(){
+        if(!oldRow) return;
+        var row = oldRow.closest('.frow') || oldRow.parentElement;
+        if(!row) return;
+        var selfPick = !sel || !sel.value || (window.currentUser && sel.value === window.currentUser.id);
+        row.style.display = selfPick ? '' : 'none';
+        if(!selfPick) oldRow.value = '';
+      }
+      if(sel && !sel._glOldHookBound){
+        sel.addEventListener('change', updateOldVisibility);
+        sel._glOldHookBound = true;
+      }
+      updateOldVisibility();
+    };
+  }());
+
   /* ── doChangePassword — change-password modal (self change OR admin reset other) ── */
   window.doChangePassword=async function(){
+    var oldPw=(document.getElementById('change-pw-old')||{}).value||'';
     var newPw=(document.getElementById('change-pw-new')||{}).value||'';
     var confirmPw=(document.getElementById('change-pw-confirm')||{}).value||'';
     var err=document.getElementById('change-pw-err');
@@ -366,10 +392,18 @@
     if(isAdmin&&sel&&sel.value&&window.currentUser&&sel.value!==window.currentUser.id)targetId=sel.value;
 
     if(!targetId){
+      // Self-change: verify the current password by reauthenticating first.
+      if(!oldPw){setErr('Enter your current password to confirm the change.');return;}
+      if(oldPw===newPw){setErr('New password must differ from the current one.');return;}
+      try{
+        var check=await sb.auth.signInWithPassword({email:window.currentUser.email,password:oldPw});
+        if(check.error){setErr('Current password is incorrect.');return;}
+      }catch(e){setErr('Could not verify current password: '+(e.message||'unknown'));return;}
       try{
         var r=await sb.auth.updateUser({password:newPw});
         if(r.error){setErr(r.error.message);return;}
         setOk('Password updated.');
+        if(typeof window.glAudit==='function')window.glAudit('password_changed_self',window.currentUser.email,{});
         if(typeof addNotification==='function')addNotification('🔑 Password changed','Your password was updated','success');
         setTimeout(function(){if(typeof closeChangePwModal==='function')closeChangePwModal();},1500);
       }catch(e){setErr('Failed: '+(e.message||'unknown'));}
@@ -1824,6 +1858,50 @@
     else alert('✅ Mailgun key saved.');
   };
 
+  /* Reusable masked-credential reveal modal — used by onboarding to surface
+     a temp password without splashing it into a system alert.
+     opts: { title, message, email, password, status: 'ok'|'warn' } */
+  window.glRevealCredential = function(opts){
+    opts = opts || {};
+    var prior = document.getElementById('gl-reveal-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var statusColor = opts.status === 'warn' ? '#f5c842' : '#00e5c0';
+    var statusIcon  = opts.status === 'warn' ? '⚠' : '✓';
+    var ov = document.createElement('div');
+    ov.id = 'gl-reveal-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1100;background:rgba(6,13,26,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:480px">' +
+        '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:' + statusColor + ';margin-bottom:6px">' + statusIcon + ' ' + (opts.title || '').toUpperCase() + '</div>' +
+        (opts.message ? '<div style="font-size:13px;color:#9aa7bd;margin-bottom:16px;line-height:1.5">' + opts.message + '</div>' : '') +
+        (opts.email ? '<div style="font-size:11px;letter-spacing:1.5px;color:#9aa7bd;margin-bottom:4px">EMAIL</div>' +
+                      '<div style="font-family:var(--ff-mono);font-size:13px;color:#fff;margin-bottom:14px;word-break:break-all">' + opts.email + '</div>' : '') +
+        '<div style="font-size:11px;letter-spacing:1.5px;color:#9aa7bd;margin-bottom:4px">TEMPORARY PASSWORD</div>' +
+        '<div style="display:flex;gap:8px;margin-bottom:18px">' +
+          '<input class="finp" id="gl-reveal-pw" readonly type="password" value="' + (opts.password||'').replace(/"/g,'&quot;') + '" style="flex:1;font-family:var(--ff-mono);font-size:13px;color:#fff">' +
+          '<button class="cbtn" id="gl-reveal-toggle" style="white-space:nowrap">Reveal</button>' +
+          '<button class="cbtn pri" id="gl-reveal-copy" style="white-space:nowrap">Copy</button>' +
+        '</div>' +
+        '<div style="font-size:11px;color:#f5c842;background:rgba(245,200,66,.06);border:1px solid rgba(245,200,66,.2);border-radius:6px;padding:9px;margin-bottom:14px;line-height:1.5">Share via a separate channel (text, in person). Do not put it in the same email you just sent.</div>' +
+        '<div style="display:flex;justify-content:flex-end"><button class="cbtn" id="gl-reveal-close">Done</button></div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    var pwEl = ov.querySelector('#gl-reveal-pw');
+    var tog  = ov.querySelector('#gl-reveal-toggle');
+    var cpy  = ov.querySelector('#gl-reveal-copy');
+    tog.addEventListener('click', function(){
+      var nowHidden = pwEl.type === 'password';
+      pwEl.type = nowHidden ? 'text' : 'password';
+      tog.textContent = nowHidden ? 'Hide' : 'Reveal';
+    });
+    cpy.addEventListener('click', async function(){
+      try { await navigator.clipboard.writeText(opts.password || ''); cpy.textContent = '✓ Copied'; setTimeout(function(){ cpy.textContent = 'Copy'; }, 1500); }
+      catch(e){ pwEl.type = 'text'; pwEl.select(); document.execCommand('copy'); cpy.textContent = '✓ Copied'; setTimeout(function(){ cpy.textContent = 'Copy'; }, 1500); }
+    });
+    ov.querySelector('#gl-reveal-close').addEventListener('click', function(){ ov.remove(); });
+    host.appendChild(ov);
+  };
+
   window.glTestMailgun = async function(){
     var key = localStorage.getItem('gl_mailgun_key');
     if(!key){ alert('Save a key first.'); return; }
@@ -1873,10 +1951,18 @@
 
     if(ok){
       if(typeof addNotification==='function') addNotification('📧 Onboarding email sent to '+name,email,'success');
-      alert('✓ Onboarding email sent to '+email+'\n\nTemp password (share this securely too): '+tempPw);
+      window.glRevealCredential({
+        title: 'Onboarding email sent',
+        message: 'The welcome email is on its way to <b>'+name+'</b>. The temporary password is shown below — share it via a separate channel.',
+        email: email, password: tempPw, status: 'ok'
+      });
     } else {
       if(typeof addNotification==='function') addNotification('Email send failed',email+' — see console for details','warning');
-      alert('✗ Mailgun send failed for '+email+'.\n\nThe account was created locally with temp password:\n  '+tempPw+'\n\nCheck Mailgun Settings (API key valid? Domain authorized?) and try again.');
+      window.glRevealCredential({
+        title: 'Email send failed',
+        message: 'Mailgun rejected the message but the account was created locally. Share the password manually and check Mailgun Settings (API key valid? Domain authorized?).',
+        email: email, password: tempPw, status: 'warn'
+      });
     }
   };
 
@@ -1924,6 +2010,8 @@
       { label:'🚀 Setup Wizard', fn:'openSetupWizard', admin:true },
       { label:'💳 Stripe Checkout', fn:'openStripeSettings', admin:true },
       { label:'🛡️ Sentry', fn:'openSentrySettings', admin:true },
+      { label:'📝 E-Signatures', fn:'openSignSettings', admin:true },
+      { label:'💼 QuickBooks', fn:'openQBOSettings', admin:true },
       { label:'✍️ Email Signature', fn:'openEmailSignatureSettings' },
       { label:'🗑️ Clear local cache', fn:'glClearLocalCache', admin:true, danger:true }
     ];
@@ -6161,3 +6249,468 @@
   console.log('[GL] Stripe Checkout sessions loaded');
 }());
 
+/* ============================================================
+   E-SIGNATURES (Dropbox Sign, formerly HelloSign)
+   - Admin sends a signature request from inside the CRM.
+   - Browser → Supabase Edge Function (template in deploy notes)
+     → Dropbox Sign API. The function holds the API key.
+   - Two flows:
+       1) Send from a saved template (admin creates the template
+          in Dropbox Sign dashboard, pastes the template ID here)
+       2) Send raw text (NDA quick-send) — function wraps it as
+          a one-off PDF.
+   ============================================================ */
+(function(){
+  var DEFAULT_FN_URL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1/dropbox-sign';
+  function getFnUrl(){ return (localStorage.getItem('gl_sign_fn_url') || DEFAULT_FN_URL).trim(); }
+
+  // Saved templates as a JSON map: { name: template_id }
+  function getTemplates(){
+    try { return JSON.parse(localStorage.getItem('gl_sign_templates') || '{}'); }
+    catch(e){ return {}; }
+  }
+  function saveTemplates(m){ localStorage.setItem('gl_sign_templates', JSON.stringify(m)); }
+
+  // Helper: send a request via the Edge Function. payload shape:
+  //   { template_id?, raw_text?, signer_email, signer_name,
+  //     title, subject, message, custom_fields? }
+  window.glRequestSignature = async function(payload){
+    if(typeof window.glStartBusy === 'function') window.glStartBusy('Sending for signature…');
+    try {
+      var token = null;
+      try {
+        var s = window.supa && await window.supa.auth.getSession();
+        if(s && s.data && s.data.session) token = s.data.session.access_token;
+      } catch(e){}
+      var r = await fetch(getFnUrl(), {
+        method: 'POST',
+        headers: Object.assign({ 'Content-Type':'application/json' }, token ? { Authorization: 'Bearer ' + token } : {}),
+        body: JSON.stringify(payload)
+      });
+      if(!r.ok){
+        var t = await r.text();
+        console.error('[GL sign] HTTP', r.status, t);
+        return { ok: false, status: r.status, error: t };
+      }
+      var data = await r.json();
+      if(typeof window.glAudit === 'function') window.glAudit('signature_sent', payload.signer_email, { template: payload.template_id || 'raw', title: payload.title });
+      return { ok: true, data: data };
+    } catch(e){
+      console.error('[GL sign] threw', e);
+      return { ok: false, error: e.message };
+    } finally {
+      if(typeof window.glEndBusy === 'function') window.glEndBusy();
+    }
+  };
+
+  window.openSignSettings = function(){
+    var prior = document.getElementById('gl-sign-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var url = getFnUrl();
+    var tpls = getTemplates();
+    var tplRows = Object.keys(tpls).map(function(name){
+      return '<div data-name="' + name + '" style="display:flex;align-items:center;gap:9px;padding:7px 10px;background:rgba(255,255,255,.03);border-radius:6px;margin-bottom:5px;font-size:12px">' +
+        '<div style="flex:1"><div style="color:#fff;font-weight:600">' + name + '</div>' +
+        '<div style="font-family:var(--ff-mono);font-size:10px;color:#9aa7bd">' + tpls[name] + '</div></div>' +
+        '<button class="gl-sign-tpl-del" data-name="' + name + '" style="background:rgba(231,76,60,.15);border:1px solid rgba(231,76,60,.3);color:#e74c3c;border-radius:5px;padding:3px 8px;font-size:10px;cursor:pointer">remove</button>' +
+      '</div>';
+    }).join('') || '<div style="font-size:11px;color:#9aa7bd;padding:8px 2px">No templates saved yet.</div>';
+
+    var ov = document.createElement('div');
+    ov.id = 'gl-sign-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:920;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:540px;max-height:88vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">📝 E-SIGNATURES</div>' +
+          '<button id="gl-sign-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="background:rgba(245,200,66,.06);border:1px solid rgba(245,200,66,.2);border-radius:8px;padding:11px;font-size:11px;color:#f5c842;margin-bottom:16px;line-height:1.6">' +
+          '⚠ Routes through a Supabase Edge Function (template in deploy notes). Deploy with your Dropbox Sign API key before requests will send.' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Edge Function URL</div>' +
+          '<input class="finp" id="gl-sign-url" value="' + url.replace(/"/g,'&quot;') + '" style="font-family:var(--ff-mono);font-size:11px">' +
+        '</div>' +
+        '<div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin:14px 0 8px">SAVED TEMPLATES</div>' +
+        '<div id="gl-sign-tpls" style="margin-bottom:12px">' + tplRows + '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 2fr;gap:8px;margin-bottom:10px">' +
+          '<input class="finp" id="gl-sign-tpl-name" placeholder="Friendly name (e.g. NDA)">' +
+          '<input class="finp" id="gl-sign-tpl-id" placeholder="Template ID from Dropbox Sign" style="font-family:var(--ff-mono);font-size:11px">' +
+        '</div>' +
+        '<button id="gl-sign-tpl-add" class="cbtn" style="width:100%;margin-bottom:18px">+ Add template</button>' +
+        '<div style="display:flex;gap:8px">' +
+          '<button id="gl-sign-save" class="cbtn pri" style="flex:1">💾 Save URL</button>' +
+        '</div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-sign-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-sign-save').addEventListener('click', function(){
+      var u = (ov.querySelector('#gl-sign-url').value||'').trim();
+      if(u) localStorage.setItem('gl_sign_fn_url', u); else localStorage.removeItem('gl_sign_fn_url');
+      ov.remove();
+      if(typeof addNotification === 'function') addNotification('📝 E-signature settings saved','','success');
+    });
+    ov.querySelector('#gl-sign-tpl-add').addEventListener('click', function(){
+      var name = (ov.querySelector('#gl-sign-tpl-name').value||'').trim();
+      var id   = (ov.querySelector('#gl-sign-tpl-id').value||'').trim();
+      if(!name || !id){ alert('Both name and template ID are required.'); return; }
+      var m = getTemplates();
+      m[name] = id;
+      saveTemplates(m);
+      window.openSignSettings();  // reopen to refresh the list
+    });
+    ov.querySelectorAll('.gl-sign-tpl-del').forEach(function(b){
+      b.addEventListener('click', function(){
+        var n = b.getAttribute('data-name');
+        if(!confirm('Remove template "' + n + '"?')) return;
+        var m = getTemplates();
+        delete m[n];
+        saveTemplates(m);
+        window.openSignSettings();
+      });
+    });
+    host.appendChild(ov);
+  };
+
+  // Send-for-signature modal (per invoice / client)
+  window.glOpenSendForSignature = function(context){
+    context = context || {};
+    var prior = document.getElementById('gl-sign-send-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var tpls = getTemplates();
+    var tplOptions = '<option value="">— Raw text (no template) —</option>' +
+      Object.keys(tpls).map(function(n){ return '<option value="' + tpls[n] + '">' + n + '</option>'; }).join('');
+    var ov = document.createElement('div');
+    ov.id = 'gl-sign-send-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:930;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:560px;max-height:88vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">📝 SEND FOR SIGNATURE</div>' +
+          '<button id="gl-sign-send-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Template</div>' +
+          '<select class="fsel" id="gl-sign-tpl">' + tplOptions + '</select>' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Signer name</div>' +
+          '<input class="finp" id="gl-sign-sname" value="' + (context.signerName||'').replace(/"/g,'&quot;') + '">' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Signer email</div>' +
+          '<input class="finp" id="gl-sign-semail" value="' + (context.signerEmail||'').replace(/"/g,'&quot;') + '">' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Title</div>' +
+          '<input class="finp" id="gl-sign-title" value="' + (context.title||'').replace(/"/g,'&quot;') + '">' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Message to signer (optional)</div>' +
+          '<textarea class="finp" id="gl-sign-msg" rows="3">' + (context.message||'') + '</textarea>' +
+        '</div>' +
+        '<div id="gl-sign-raw-wrap" style="display:none">' +
+          '<div class="frow"><div class="flbl">Document text (for raw signature)</div>' +
+            '<textarea class="finp" id="gl-sign-raw" rows="6" placeholder="Paste your NDA / agreement text here…"></textarea>' +
+          '</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;margin-top:6px">' +
+          '<button id="gl-sign-send-btn" class="cbtn pri" style="flex:1">📤 Send</button>' +
+          '<button id="gl-sign-cancel" class="cbtn">Cancel</button>' +
+        '</div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    var tpl = ov.querySelector('#gl-sign-tpl');
+    var rawWrap = ov.querySelector('#gl-sign-raw-wrap');
+    function updateRawVisibility(){ rawWrap.style.display = tpl.value ? 'none' : 'block'; }
+    tpl.addEventListener('change', updateRawVisibility); updateRawVisibility();
+    ov.querySelector('#gl-sign-send-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-sign-cancel').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-sign-send-btn').addEventListener('click', async function(){
+      var payload = {
+        template_id: ov.querySelector('#gl-sign-tpl').value || null,
+        raw_text:    ov.querySelector('#gl-sign-tpl').value ? null : (ov.querySelector('#gl-sign-raw').value || '').trim(),
+        signer_name:  ov.querySelector('#gl-sign-sname').value.trim(),
+        signer_email: ov.querySelector('#gl-sign-semail').value.trim(),
+        title:        ov.querySelector('#gl-sign-title').value.trim() || 'Please sign',
+        subject:      'Please sign: ' + (ov.querySelector('#gl-sign-title').value.trim() || ''),
+        message:      ov.querySelector('#gl-sign-msg').value
+      };
+      if(!payload.signer_email || payload.signer_email.indexOf('@') < 0){ alert('Signer email required'); return; }
+      if(!payload.template_id && !payload.raw_text){ alert('Pick a template or paste document text.'); return; }
+      var btn = this; btn.disabled = true; btn.textContent = 'Sending…';
+      var r = await window.glRequestSignature(payload);
+      if(r.ok){
+        if(typeof addNotification === 'function') addNotification('📝 Signature request sent', payload.signer_email, 'success');
+        ov.remove();
+        alert('✓ Request sent to ' + payload.signer_email + '.');
+      } else {
+        alert('✗ Failed: ' + (r.error || ('HTTP ' + r.status)));
+        btn.disabled = false; btn.textContent = '📤 Send';
+      }
+    });
+    host.appendChild(ov);
+  };
+
+  // Inject "📝 Sign" button on invoice detail panel
+  function injectSignButton(){
+    var detail = document.getElementById('cpg-invoice-detail') || document.querySelector('.inv-detail');
+    if(!detail) return;
+    if(detail.querySelector('.gl-sign-btn')) return;
+    if(!window.currentInvId) return;
+    var inv = (window.invoices||[]).find(function(i){ return i.id === window.currentInvId; });
+    if(!inv) return;
+    var btnRow = detail.querySelector('.btn-row') || detail.querySelector('.cph');
+    if(!btnRow) return;
+    var client = (window.clients||[]).find(function(c){ return c.id === inv.client; }) || {};
+    var btn = document.createElement('button');
+    btn.className = 'cbtn gl-sign-btn';
+    btn.setAttribute('style','background:rgba(168,85,247,.12);border:1px solid rgba(168,85,247,.35);color:#c4a4f8');
+    btn.textContent = '📝 Send for signature';
+    btn.addEventListener('click', function(){
+      window.glOpenSendForSignature({
+        signerName: client.contact || client.name || inv.clientName,
+        signerEmail: client.email || inv.clientEmail || '',
+        title: 'Quote / Invoice ' + inv.id,
+        message: 'Please review and sign the attached document for invoice ' + inv.id + '.'
+      });
+    });
+    btnRow.appendChild(btn);
+  }
+  function startObs(){
+    var pages = document.getElementById('crm-panel');
+    if(pages){
+      new MutationObserver(function(){ setTimeout(injectSignButton, 80); }).observe(pages, { childList:true, subtree:true });
+      injectSignButton();
+    } else setTimeout(startObs, 700);
+  }
+  if(document.readyState !== 'loading') startObs();
+  else document.addEventListener('DOMContentLoaded', startObs);
+
+  console.log('[GL] E-signatures (Dropbox Sign) loaded');
+}());
+
+/* ============================================================
+   QUICKBOOKS ONLINE — connect + invoice push
+   - OAuth lives in Supabase Edge Functions (qbo-connect /
+     qbo-callback). The function holds the client_id, client_secret,
+     refresh_token, and realm_id.
+   - Browser opens /qbo-connect in a popup. Intuit redirects to
+     /qbo-callback which stores tokens server-side and posts
+     "qbo_connected" back to the opener via window.postMessage.
+   - Push: POST invoice JSON to /qbo-push-invoice. Function maps
+     to QuickBooks Invoice + CustomerRef and returns QB invoice id.
+   - All three URLs share a base configured in settings.
+   ============================================================ */
+(function(){
+  var DEFAULT_BASE = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1';
+  function getBase(){ return (localStorage.getItem('gl_qbo_fn_base') || DEFAULT_BASE).trim().replace(/\/$/, ''); }
+  function fnUrl(name){ return getBase() + '/' + name; }
+
+  function isConnected(){ return localStorage.getItem('gl_qbo_connected') === '1'; }
+  function setConnected(v){
+    if(v) localStorage.setItem('gl_qbo_connected','1');
+    else localStorage.removeItem('gl_qbo_connected');
+  }
+
+  // Listen for the OAuth-callback postMessage from the popup.
+  window.addEventListener('message', function(ev){
+    if(!ev || !ev.data) return;
+    if(ev.data === 'qbo_connected' || (ev.data && ev.data.type === 'qbo_connected')){
+      setConnected(true);
+      if(typeof addNotification === 'function') addNotification('💼 QuickBooks connected','','success');
+      if(typeof window.glAudit === 'function') window.glAudit('qbo_connected', '', {});
+      // refresh settings modal if open
+      var s = document.getElementById('gl-qbo-modal'); if(s){ s.remove(); window.openQBOSettings(); }
+    }
+  });
+
+  async function authHeader(){
+    try {
+      var s = window.supa && await window.supa.auth.getSession();
+      if(s && s.data && s.data.session) return { Authorization: 'Bearer ' + s.data.session.access_token };
+    } catch(e){}
+    return {};
+  }
+
+  window.glConnectQBO = async function(){
+    var hdr = await authHeader();
+    // Two-step: ask the function for an Intuit OAuth URL, then open the popup.
+    try {
+      var r = await fetch(fnUrl('qbo-connect'), { method:'POST', headers: Object.assign({'Content-Type':'application/json'}, hdr), body: JSON.stringify({ origin: location.origin }) });
+      if(!r.ok){ alert('Could not start QBO connect: HTTP ' + r.status); return; }
+      var d = await r.json();
+      if(!d.auth_url){ alert('Function did not return auth_url.'); return; }
+      var w = 620, h = 720;
+      var l = (screen.width - w) / 2, t = (screen.height - h) / 2;
+      window.open(d.auth_url, 'qbo_oauth', 'width=' + w + ',height=' + h + ',left=' + l + ',top=' + t);
+    } catch(e){
+      alert('QBO connect failed: ' + (e.message || ''));
+    }
+  };
+
+  window.glDisconnectQBO = async function(){
+    if(!confirm('Disconnect QuickBooks Online? You will need to reconnect to push invoices.')) return;
+    var hdr = await authHeader();
+    try {
+      await fetch(fnUrl('qbo-disconnect'), { method:'POST', headers: hdr });
+    } catch(e){}
+    setConnected(false);
+    if(typeof window.glAudit === 'function') window.glAudit('qbo_disconnected', '', {});
+    if(typeof addNotification === 'function') addNotification('💼 QuickBooks disconnected','','info');
+    var s = document.getElementById('gl-qbo-modal'); if(s){ s.remove(); window.openQBOSettings(); }
+  };
+
+  window.glPushInvoiceToQBO = async function(invoice){
+    if(!invoice) return { ok:false, error:'no invoice' };
+    if(!isConnected()){
+      if(!confirm('QuickBooks not connected. Open settings to connect?')) return { ok:false, error:'not connected' };
+      window.openQBOSettings(); return { ok:false, error:'not connected' };
+    }
+    if(typeof window.glStartBusy === 'function') window.glStartBusy('Pushing to QuickBooks…');
+    try {
+      var client = (window.clients||[]).find(function(c){ return c.id === invoice.client; }) || {};
+      var payload = {
+        invoice_id: invoice.id,
+        amount:     invoice.total || invoice.amount || 0,
+        currency:   'USD',
+        issued_at:  invoice.issuedAt || invoice.date || new Date().toISOString().slice(0,10),
+        due_at:     invoice.dueAt || invoice.due || null,
+        status:     invoice.status || 'sent',
+        notes:      invoice.notes || '',
+        customer: {
+          name:    client.name || invoice.clientName || '(unknown)',
+          email:   client.email || invoice.clientEmail || '',
+          company: client.company || ''
+        },
+        lines: (invoice.lines || []).map(function(l){
+          return { description: l.description || l.desc || '', qty: l.qty || l.quantity || 1, unit_price: l.unitPrice || l.price || 0, total: l.total || 0, category: l.category || '' };
+        })
+      };
+      var hdr = await authHeader();
+      var r = await fetch(fnUrl('qbo-push-invoice'), {
+        method:'POST',
+        headers: Object.assign({'Content-Type':'application/json'}, hdr),
+        body: JSON.stringify(payload)
+      });
+      var bodyText = await r.text();
+      var data; try { data = JSON.parse(bodyText); } catch(e){ data = { raw: bodyText }; }
+      if(!r.ok){
+        console.error('[GL QBO] push failed', r.status, data);
+        return { ok:false, status: r.status, error: (data && (data.error || data.raw)) || ('HTTP ' + r.status) };
+      }
+      // Persist the QB id on the invoice so we don't double-push.
+      try {
+        invoice.qboId = data.qbo_invoice_id || data.Id || data.id;
+        invoice.qboPushedAt = new Date().toISOString();
+        if(window.supa && invoice.qboId){
+          await window.supa.from('invoices').update({ qbo_id: invoice.qboId, qbo_pushed_at: invoice.qboPushedAt }).eq('id', invoice.id);
+        }
+      } catch(e){}
+      if(typeof window.glAudit === 'function') window.glAudit('qbo_invoice_pushed', invoice.id, { qbo_id: invoice.qboId });
+      return { ok:true, data: data };
+    } catch(e){
+      console.error('[GL QBO] threw', e);
+      return { ok:false, error: e.message };
+    } finally {
+      if(typeof window.glEndBusy === 'function') window.glEndBusy();
+    }
+  };
+
+  window.openQBOSettings = function(){
+    var prior = document.getElementById('gl-qbo-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var connected = isConnected();
+    var ov = document.createElement('div');
+    ov.id = 'gl-qbo-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:920;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:520px;max-height:88vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">💼 QUICKBOOKS ONLINE</div>' +
+          '<button id="gl-qbo-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="background:rgba(245,200,66,.06);border:1px solid rgba(245,200,66,.2);border-radius:8px;padding:11px;font-size:11px;color:#f5c842;margin-bottom:16px;line-height:1.6">' +
+          '⚠ Routes through three Supabase Edge Functions (qbo-connect, qbo-callback, qbo-push-invoice). Deploy them with your Intuit app credentials before connecting.' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Edge Function base URL</div>' +
+          '<input class="finp" id="gl-qbo-base" value="' + getBase().replace(/"/g,'&quot;') + '" style="font-family:var(--ff-mono);font-size:11px">' +
+          '<div style="font-size:10px;color:#9aa7bd;margin-top:4px">e.g. https://&lt;project-ref&gt;.supabase.co/functions/v1</div>' +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.03);border-radius:8px;padding:12px;margin:14px 0">' +
+          '<div style="flex:1">' +
+            '<div style="font-size:11px;letter-spacing:1.5px;color:#9aa7bd">STATUS</div>' +
+            '<div style="font-size:14px;color:' + (connected?'#00e5c0':'#f5c842') + ';font-weight:600">' + (connected?'● Connected':'○ Not connected') + '</div>' +
+          '</div>' +
+          (connected
+            ? '<button id="gl-qbo-disc" class="cbtn" style="background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#ff8579">Disconnect</button>'
+            : '<button id="gl-qbo-conn" class="cbtn pri">Connect to QuickBooks</button>') +
+        '</div>' +
+        '<div style="display:flex;gap:8px">' +
+          '<button id="gl-qbo-save" class="cbtn pri" style="flex:1">💾 Save URL</button>' +
+          (connected ? '<button id="gl-qbo-sync" class="cbtn">⟳ Sync paid invoices</button>' : '') +
+        '</div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-qbo-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-qbo-save').addEventListener('click', function(){
+      var u = (ov.querySelector('#gl-qbo-base').value||'').trim().replace(/\/$/, '');
+      if(u) localStorage.setItem('gl_qbo_fn_base', u); else localStorage.removeItem('gl_qbo_fn_base');
+      ov.remove();
+      if(typeof addNotification === 'function') addNotification('💼 QuickBooks settings saved','','success');
+    });
+    var c = ov.querySelector('#gl-qbo-conn'); if(c) c.addEventListener('click', function(){ window.glConnectQBO(); });
+    var d = ov.querySelector('#gl-qbo-disc'); if(d) d.addEventListener('click', function(){ window.glDisconnectQBO(); });
+    var s = ov.querySelector('#gl-qbo-sync'); if(s) s.addEventListener('click', async function(){
+      var paid = (window.invoices||[]).filter(function(i){ return (i.status||'').toLowerCase() === 'paid' && !i.qboId; });
+      if(!paid.length){ alert('No unsynced paid invoices.'); return; }
+      if(!confirm('Push ' + paid.length + ' paid invoice(s) to QuickBooks?')) return;
+      s.disabled = true; s.textContent = 'Syncing 0/' + paid.length + '…';
+      var ok = 0, fail = 0;
+      for(var i = 0; i < paid.length; i++){
+        s.textContent = 'Syncing ' + (i+1) + '/' + paid.length + '…';
+        var r = await window.glPushInvoiceToQBO(paid[i]);
+        if(r.ok) ok++; else fail++;
+      }
+      alert('Done — ' + ok + ' pushed, ' + fail + ' failed.');
+      ov.remove(); window.openQBOSettings();
+    });
+    host.appendChild(ov);
+  };
+
+  // Inject "💼 Push to QuickBooks" button on the invoice detail panel
+  function injectQBOButton(){
+    var detail = document.getElementById('cpg-invoice-detail') || document.querySelector('.inv-detail');
+    if(!detail) return;
+    if(detail.querySelector('.gl-qbo-btn')) return;
+    if(!window.currentInvId) return;
+    var inv = (window.invoices||[]).find(function(i){ return i.id === window.currentInvId; });
+    if(!inv) return;
+    var btnRow = detail.querySelector('.btn-row') || detail.querySelector('.cph');
+    if(!btnRow) return;
+    var btn = document.createElement('button');
+    btn.className = 'cbtn gl-qbo-btn';
+    btn.setAttribute('style','background:rgba(45,156,219,.12);border:1px solid rgba(45,156,219,.35);color:#7fc6f5');
+    btn.textContent = inv.qboId ? ('💼 QBO #' + inv.qboId) : '💼 Push to QuickBooks';
+    if(inv.qboId) btn.disabled = true;
+    btn.addEventListener('click', async function(){
+      if(inv.qboId) return;
+      btn.disabled = true; btn.textContent = 'Pushing…';
+      var r = await window.glPushInvoiceToQBO(inv);
+      if(r.ok){
+        btn.textContent = '💼 QBO #' + (inv.qboId || '?');
+        if(typeof addNotification === 'function') addNotification('💼 Invoice pushed to QuickBooks', inv.id, 'success');
+      } else {
+        btn.disabled = false; btn.textContent = '💼 Push to QuickBooks';
+        alert('Push failed: ' + (r.error || ('HTTP ' + r.status)));
+      }
+    });
+    btnRow.appendChild(btn);
+  }
+  function startObs(){
+    var pages = document.getElementById('crm-panel');
+    if(pages){
+      new MutationObserver(function(){ setTimeout(injectQBOButton, 80); }).observe(pages, { childList:true, subtree:true });
+      injectQBOButton();
+    } else setTimeout(startObs, 700);
+  }
+  if(document.readyState !== 'loading') startObs();
+  else document.addEventListener('DOMContentLoaded', startObs);
+
+  console.log('[GL] QuickBooks Online loaded');
+}());
