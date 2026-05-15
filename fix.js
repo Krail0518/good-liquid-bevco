@@ -6676,3 +6676,96 @@
 
   console.log('[GL] QuickBooks Online loaded');
 }());
+
+/* ============================================================
+   DELETE INVOICE
+   - Confirm prompt (paid invoices double-confirm for safety).
+   - Hard delete from Supabase by invoice_number (preferred) or by
+     row id (supaId) when present. Local-only invoices skip the
+     Supabase call.
+   - Splice from window.invoices, re-render list + dashboard.
+   - Close the detail panel if the deleted invoice is currently open.
+   - Audit log via glAudit (if loaded).
+   ============================================================ */
+(function(){
+  window.deleteInvoice = async function(id, opts){
+    opts = opts || {};
+    var list = window.invoices || [];
+    var inv = list.find(function(i){ return i.id === id || i.supaId === id; });
+    if(!inv){ alert('Invoice not found.'); return false; }
+
+    var label = inv.id + (inv.clientName ? ' — ' + inv.clientName : '');
+    if(!opts.skipConfirm){
+      var msg = 'Delete invoice ' + label + '?\n\nThis cannot be undone.';
+      if(inv.status === 'paid') msg = '⚠ This invoice is marked PAID.\n\n' + msg + '\n\nIf this was already paid out, deleting it will remove the revenue from reports.';
+      if(!confirm(msg)) return false;
+    }
+
+    var sb = window.supa;
+    if(sb){
+      try {
+        var q;
+        // Prefer the human-readable invoice_number; fall back to row id when supaId exists.
+        if(inv.id && /^GL-/i.test(inv.id)){
+          q = await sb.from('invoices').delete().eq('invoice_number', inv.id);
+        } else if(inv.supaId){
+          q = await sb.from('invoices').delete().eq('id', inv.supaId);
+        }
+        if(q && q.error){
+          console.warn('[GL] invoice delete: supabase error', q.error);
+          if(!confirm('Server reported: ' + q.error.message + '\n\nRemove from this session anyway?')) return false;
+        }
+      } catch(e){
+        console.warn('[GL] invoice delete: supabase threw', e);
+        if(!confirm('Could not reach the server.\n\nRemove from this session anyway?')) return false;
+      }
+    }
+
+    // Remove from in-memory list.
+    var idx = list.indexOf(inv);
+    if(idx >= 0) list.splice(idx, 1);
+
+    // Close the detail panel if it's showing this invoice.
+    if(window.currentInvId === inv.id || window.currentInvId === inv.supaId){
+      window.currentInvId = null;
+      var d = document.getElementById('inv-detail');
+      if(d) d.classList.remove('show');
+      if(typeof closeDetail === 'function') try { closeDetail(); } catch(e){}
+    }
+
+    if(typeof renderInvoices === 'function') try { renderInvoices(); } catch(e){}
+    if(typeof renderDash === 'function')     try { renderDash();     } catch(e){}
+    if(typeof renderActivity === 'function') try { renderActivity(); } catch(e){}
+
+    if(typeof window.glAudit === 'function') window.glAudit('invoice_deleted', inv.id, { client: inv.clientName||'', amount: inv.amount||0, status: inv.status||'' });
+    if(typeof addNotification === 'function') addNotification('🗑 Invoice deleted', label, 'warning');
+    return true;
+  };
+
+  /* Auto-inject a delete button on the invoice-detail panel header so the
+     user has a place to delete from the open view, not just the row. */
+  function injectDeleteBtn(){
+    var detailHeader = document.querySelector('#inv-detail > div:first-child');
+    if(!detailHeader) return;
+    if(detailHeader.querySelector('.gl-del-inv-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'cbtn gl-del-inv-btn';
+    btn.setAttribute('style','background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.4);color:#ff8579');
+    btn.textContent = '🗑 Delete';
+    btn.addEventListener('click', function(){
+      if(window.currentInvId) window.deleteInvoice(window.currentInvId);
+    });
+    detailHeader.appendChild(btn);
+  }
+  function startObs(){
+    var panel = document.getElementById('crm-panel');
+    if(panel){
+      new MutationObserver(function(){ setTimeout(injectDeleteBtn, 60); }).observe(panel, { childList:true, subtree:true });
+      injectDeleteBtn();
+    } else setTimeout(startObs, 700);
+  }
+  if(document.readyState !== 'loading') startObs();
+  else document.addEventListener('DOMContentLoaded', startObs);
+
+  console.log('[GL] deleteInvoice loaded');
+}());
