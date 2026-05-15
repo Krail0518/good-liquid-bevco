@@ -3116,13 +3116,13 @@ async function saveReferral(){
   const comm=Math.round(deal*rate/100);
   const status=document.getElementById('ref-status-sel').value;
   const notes=document.getElementById('ref-notes').value;
-  // Write to Supabase
-  await supa.from('referrals').insert([{
+  // Write to Supabase and capture the returned UUID so later updates can sync.
+  const { data: newRef } = await supa.from('referrals').insert([{
     referrer_id:refId, client_name:clientName, deal_value:deal,
     commission_rate:rate, commission_amount:comm, status, notes
-  }]);
+  }]).select().single();
   // Update local
-  const id='ref'+(referrals.length+1);
+  const id = newRef ? newRef.id : ('ref'+(referrals.length+1));
   referrals.push({id,referrerId:refId,referrerName:ref.name,clientName,dealValue:deal,rate,commAmount:comm,status,datePaid:null,notes,date:new Date().toISOString().split('T')[0]});
   activities.unshift({type:'ref',icon:'🤝',name:`New referral from ${ref.name}`,detail:`${clientName} — potential $${comm.toLocaleString()} commission`,time:'Just now'});saveActivities();
   renderReferrals();renderDash();renderActivity();
