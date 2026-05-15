@@ -2411,3 +2411,164 @@
 
   console.log('[GL] Recovery link handler loaded');
 }());
+
+/* ============================================================
+   QUOTE PDF EXPORT
+   Builds the same line-item PDF as glExportPDF, but labelled
+   as a QUOTE with a 30-day validity instead of an invoice with
+   due-upon-receipt terms. Reads the same lines / discount /
+   total from the in-progress invoice builder; does NOT persist
+   to the invoices table (quotes aren't billable until accepted).
+   ============================================================ */
+(function(){
+  function fmt(n){ return '$'+Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+
+  function readLinesFromBuilder(){
+    var rows = document.querySelectorAll('[data-gl-total]');
+    var lines = [];
+    rows.forEach(function(row){
+      var uid = row.id; if(!uid) return;
+      var total = parseFloat(row.getAttribute('data-gl-total'))||0;
+      var casesEl = document.getElementById(uid+'-cases');
+      var punitEl = document.getElementById(uid+'-punit');
+      var descEl  = document.getElementById(uid+'-desc');
+      var labelEl = row.querySelector('div > div');
+      var label = labelEl ? labelEl.textContent.trim() : '';
+      if(casesEl){
+        var cases = parseInt(casesEl.value)||0;
+        var fEl = document.getElementById(uid+'-format');
+        var fLbl = (fEl && fEl.options[fEl.selectedIndex]) ? fEl.options[fEl.selectedIndex].text : '';
+        var perCase = cases>0 ? total/cases : 0;
+        lines.push({ desc:'Canning - '+fLbl, qty:cases, unitPrice:perCase, total:total, unit:'case' });
+      } else if(punitEl){
+        var qtyEl = document.getElementById(uid+'-qty');
+        var qty = qtyEl ? parseInt(qtyEl.value)||0 : 0;
+        var fEl2 = document.getElementById(uid+'-format');
+        var fLbl2 = (fEl2 && fEl2.options[fEl2.selectedIndex]) ? fEl2.options[fEl2.selectedIndex].text : '';
+        var perBtl = qty>0 ? total/qty : 0;
+        lines.push({ desc:'Bottling - '+fLbl2, qty:qty, unitPrice:perBtl, total:total, unit:'btl' });
+      } else if(descEl){
+        var qtyM = parseFloat((document.getElementById(uid+'-qty')||{}).value)||0;
+        var priceM = parseFloat((document.getElementById(uid+'-price')||{}).value)||0;
+        var typed = (descEl.value||'').trim();
+        var desc = typed ? (label?label+' - '+typed:typed) : (label||'Line item');
+        lines.push({ desc:desc, qty:qtyM, unitPrice:priceM, total:total, unit:'' });
+      }
+    });
+    return lines;
+  }
+
+  function nextQuoteId(){
+    return 'GLQ-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(Math.random()*9000+1000);
+  }
+
+  window.glExportQuotePDF = function(){
+    var cidEl = document.getElementById('ginv-client');
+    var cid = cidEl ? cidEl.value : '';
+    if(!cid){ alert('Please select a client.'); return; }
+    var lines = readLinesFromBuilder();
+    if(!lines.length){ alert('Add at least one line item before exporting a quote.'); return; }
+
+    var client = (window.clients||[]).find(function(c){ return c.id === cid; }) || {};
+    var dateEl = document.getElementById('ginv-date');
+    var date = (dateEl && dateEl.value) ? dateEl.value : new Date().toISOString().slice(0,10);
+    var discEl = document.getElementById('ginv-disc');
+    var pct = discEl ? parseFloat(discEl.value)||0 : 0;
+    var subtotal = lines.reduce(function(s,l){ return s + (l.total||0); }, 0);
+    var discountAmt = subtotal * (pct/100);
+    var amount = subtotal - discountAmt;
+
+    var quoteId = nextQuoteId();
+    var validUntil = '';
+    try { validUntil = new Date(Date.parse(date) + 30*86400000).toISOString().slice(0,10); }
+    catch(e){ validUntil = ''; }
+
+    var html =
+      '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Quote '+quoteId+'</title>' +
+      '<style>body{font-family:Arial,sans-serif;margin:0;padding:40px;color:#1a1a2e;font-size:13px}' +
+        '.header{display:flex;justify-content:space-between;margin-bottom:40px}' +
+        '.brand{font-size:28px;font-weight:900;letter-spacing:2px}.brand span{color:#00e5c0}' +
+        'table{width:100%;border-collapse:collapse;margin-bottom:20px}' +
+        'th{background:#0a1628;color:#fff;padding:10px 12px;text-align:left;font-size:11px}' +
+        'td{padding:10px 12px;border-bottom:1px solid #eee;font-size:12px}' +
+        'tr:nth-child(even) td{background:#f9f9f9}' +
+        '.grand{font-size:18px;color:#1a6fff;font-weight:900}' +
+        '.footer{margin-top:40px;padding-top:20px;border-top:2px solid #eee;font-size:11px;color:#999;display:flex;justify-content:space-between}' +
+        '.badge{display:inline-block;background:#e8fff9;border:1px solid #00e5c0;color:#00695c;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700}' +
+        '.qbadge{display:inline-block;background:#eef3ff;border:1px solid #1a6fff;color:#0c3a8a;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700}' +
+        '.terms{background:#f3f6fb;border:1px solid #dde4ef;border-radius:8px;padding:14px;margin-top:18px;font-size:12px;line-height:1.7;color:#1a2240}' +
+      '</style></head><body>' +
+      '<div class="header"><div>' +
+        '<div class="brand">GOOD <span>LIQUID</span> BEV CO</div>' +
+        '<div style="font-size:11px;color:#666;margin-top:6px;line-height:1.8">2011 51st Ave E, Unit 100<br>Palmetto, FL 34221<br>Mike@GoodLiquid.com &middot; (803) 493-5065<br>goodliquidbevco.com</div>' +
+        '<div style="margin-top:8px"><span class="badge">GMP</span>&nbsp;<span class="badge">PCQI</span>&nbsp;<span class="badge">HACCP</span></div>' +
+      '</div>' +
+      '<div style="text-align:right">' +
+        '<h2 style="font-size:22px;margin:0 0 4px;color:#1a6fff">QUOTE</h2>' +
+        '<div><b>Quote #:</b> '+quoteId+'</div>' +
+        '<div><b>Date:</b> '+date+'</div>' +
+        '<div><b>Valid until:</b> '+(validUntil||'30 days from date')+'</div>' +
+        '<div style="margin-top:6px"><span class="qbadge">ESTIMATE — NOT AN INVOICE</span></div>' +
+      '</div></div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:32px"><div>' +
+        '<div style="font-size:10px;letter-spacing:2px;color:#999;margin-bottom:4px">PREPARED FOR</div>' +
+        '<div style="font-weight:700">'+ (client.name||'') +'</div>' +
+        '<div style="color:#666">'+ (client.email||'') +'</div>' +
+      '</div></div>' +
+      '<table><thead><tr><th>Description</th><th style="text-align:center">Qty</th><th style="text-align:center">Unit</th><th style="text-align:right">Unit Price</th><th style="text-align:right">Total</th></tr></thead><tbody>' +
+      lines.map(function(l){
+        return '<tr><td>'+l.desc+'</td><td style="text-align:center">'+Number(l.qty||0).toLocaleString()+'</td><td style="text-align:center">'+(l.unit||'')+'</td><td style="text-align:right">'+fmt(l.unitPrice||0)+'</td><td style="text-align:right;font-weight:600">'+fmt(l.total||0)+'</td></tr>';
+      }).join('') +
+      '<tr style="background:#f5f5f5"><td colspan="4" style="text-align:right;font-weight:600">Subtotal</td><td style="text-align:right;font-weight:700">'+fmt(subtotal)+'</td></tr>' +
+      (discountAmt>0 ? '<tr><td colspan="4" style="text-align:right;color:#c0392b">Discount ('+pct+'%)</td><td style="text-align:right;color:#c0392b;font-weight:700">&minus;'+fmt(discountAmt)+'</td></tr>' : '') +
+      '<tr style="background:#eef3ff"><td colspan="4" style="text-align:right;font-size:15px;font-weight:700">ESTIMATED TOTAL</td><td style="text-align:right"><span class="grand">'+fmt(amount)+'</span></td></tr>' +
+      '</tbody></table>' +
+      '<div class="terms"><b>Quote terms</b>' +
+        '<ul style="margin:6px 0 0 18px;padding:0;font-size:12px;color:#1a2240"><li>Pricing valid for 30 days from quote date</li>' +
+        '<li>Minimum order: 150 cases (canning) / 220 cases (bottling)</li>' +
+        '<li>50% deposit on accepted quote; balance due on completion</li>' +
+        '<li>Lead time: ~8 weeks from artwork & ingredient approval</li>' +
+        '<li>Final invoice may vary based on actual production volume</li></ul>' +
+      '</div>' +
+      '<div class="footer"><div><b>Good Liquid Bev Co</b><br>Reply to accept this quote.</div><div style="text-align:right">Questions? Mike@GoodLiquid.com<br>(803) 493-5065</div></div>' +
+      '</body></html>';
+
+    var w = window.open('', '_blank', 'width=900,height=700');
+    w.document.write(html); w.document.close();
+    w.onload = function(){ w.focus(); w.print(); };
+    if(typeof addNotification === 'function') addNotification('Quote generated', 'Quote '+quoteId+' ready to print/save','success');
+  };
+
+  // Inject the "Export as Quote" button into the invoice builder modal
+  // every time it opens (using a MutationObserver since fix.js v5 rebuilds
+  // the builder DOM each open).
+  function injectQuoteButton(){
+    var body = document.getElementById('gl-inv-body');
+    if(!body) return;
+    // Find the bottom action button row (Save Invoice / Save & Export PDF)
+    var saveBtn = Array.from(body.querySelectorAll('button')).find(function(b){
+      return (b.textContent||'').trim().includes('Save Invoice');
+    });
+    if(!saveBtn) return;
+    var row = saveBtn.parentElement;
+    if(!row || row.querySelector('.gl-quote-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'cbtn gl-quote-btn';
+    btn.setAttribute('style','flex:1;font-size:14px;background:rgba(26,111,255,.08);border:1px solid rgba(26,111,255,.3);color:#6b9fff');
+    btn.innerHTML = '📋 Export as Quote';
+    btn.addEventListener('click', function(){ window.glExportQuotePDF(); });
+    row.appendChild(btn);
+  }
+
+  // Watch the builder modal: any time gl-inv-body's children change, re-inject.
+  var observer = new MutationObserver(function(){ setTimeout(injectQuoteButton, 60); });
+  function startObserving(){
+    var body = document.getElementById('gl-inv-body');
+    if(body){ observer.observe(body, {childList:true, subtree:true}); injectQuoteButton(); }
+    else setTimeout(startObserving, 500);
+  }
+  if(document.readyState !== 'loading') startObserving();
+  else document.addEventListener('DOMContentLoaded', startObserving);
+
+  console.log('[GL] Quote PDF export loaded');
+}());
