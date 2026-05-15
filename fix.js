@@ -4244,3 +4244,312 @@
 
   console.log('[GL] Remember-this-computer login persistence loaded');
 }());
+
+/* ============================================================
+   IN-APP HELP PANEL
+   - "❓ Help" button in the CRM topbar (next to the search pill)
+   - Opens a modal with a section per CRM page + general tips
+   - Auto-scrolls to the section that matches the currently
+     active CRM panel (so Help from /invoices lands on Invoices)
+   ============================================================ */
+(function(){
+  // Maps a current `.cpg.act` id (like "cpg-invoices") to a help section anchor.
+  var PAGE_TO_SECTION = {
+    'cpg-dashboard':      'help-dashboard',
+    'cpg-clients':        'help-clients',
+    'cpg-pipeline':       'help-pipeline',
+    'cpg-invoices':       'help-invoices',
+    'cpg-invoice-detail': 'help-invoices',
+    'cpg-newinv':         'help-newinv',
+    'cpg-referrals':      'help-referrals',
+    'cpg-referrers':      'help-referrers',
+    'cpg-activity':       'help-activity',
+    'cpg-calendar':       'help-calendar',
+    'cpg-production-cal': 'help-production',
+    'cpg-tasks':          'help-tasks',
+    'cpg-documents':      'help-documents',
+    'cpg-inventory':      'help-inventory',
+    'cpg-announcements':  'help-announcements',
+    'cpg-customers':      'help-customers',
+    'cpg-users':          'help-users'
+  };
+
+  function currentSection(){
+    var active = document.querySelector('#crm-panel .cpg.act');
+    if(active && PAGE_TO_SECTION[active.id]) return PAGE_TO_SECTION[active.id];
+    return 'help-overview';
+  }
+
+  // Help content. Each section: anchor id + heading + bullets/paragraphs.
+  // Concise, scannable. Real prose, not marketing.
+  var HELP_HTML =
+    section('help-overview', '👋 Overview', [
+      'This is the Good Liquid CRM — your single dashboard for clients, deals, invoices, production schedule, and team. Most actions are one click from the left sidebar or this top bar.',
+      '<b>Quick search:</b> press <kbd>Ctrl+K</kbd> anywhere to jump to an invoice, client, deal, or user by name.',
+      '<b>AI tools:</b> click the floating 🤖 button bottom-right for AI-assisted drafting (email, invoice items, quote estimation, etc.).',
+      '<b>Settings:</b> the 🤖 menu also holds Mailgun Settings, AI Settings, Email Signature, and Clear Local Cache.'
+    ]) +
+
+    section('help-dashboard', '📊 Dashboard', [
+      'Top row: <b>Total collected</b>, <b>Pending</b>, <b>Overdue</b>, <b>Active brands</b> (counted from paid/pending/overdue invoices and active client status).',
+      'Second row: <b>Avg invoice</b>, <b>Outstanding</b>, <b>Avg days to paid</b>, <b>Quotes pending</b>.',
+      'The <b>Revenue by service</b> chart aggregates each invoice line into Canning / R&D / Bottling / Consulting. Mixed invoices split across categories.',
+      'The <b>Activity feed</b> on the right shows the last few actions (localStorage, per-device).',
+      'The <b>System Health</b> widget (admin only) probes Supabase Auth, Mailgun, AI key, audit_log table, and the client-docs Storage bucket. Any ✗ has a one-click fixer.'
+    ]) +
+
+    section('help-clients', '👥 Clients', [
+      'List of all your brand clients. Click any row to open the client detail with billed-to-date, recent invoices, deals, notes, and a 🤖 AI Summary button.',
+      '<b>Add a client:</b> "+ Add Client" button. Fields: name, contact, email, service, status (lead / active).',
+      'Status badge on each row reflects lead vs active. Active clients count toward the dashboard "Active brands" metric.',
+      'Clients persist to Supabase. The first one you add replaces the empty seed.'
+    ]) +
+
+    section('help-pipeline', '📊 Pipeline (Deals)', [
+      'Kanban board with stages: Prospecting → Proposal → Negotiation → Closed Won / Closed Lost.',
+      '<b>+ Add Deal</b> creates a new card in Prospecting. Click a card to open the detail modal — edit name / company / value / probability / notes, or move the deal between stages.',
+      'Deal detail also has a <b>→ Invoice</b> button: closes the deal modal and opens the invoice builder pre-matched to the deal\'s client.',
+      'Cards untouched for more than 14 days in active stages show a yellow <b>⏰ Nd</b> badge in the corner — visual cue to follow up.',
+      'Deals persist to Supabase. The contact form on the public site also auto-creates a Prospecting card.'
+    ]) +
+
+    section('help-invoices', '🧾 Invoices', [
+      '<b>+ New invoice</b> opens the builder (also under the Pipeline page).',
+      'Each row: invoice #, client, services, amount, date, status, quick actions.',
+      'Status colors: <span style="color:#22c55e">paid</span> · <span style="color:#f5c842">pending</span> · <span style="color:#e74c3c">overdue</span> · <span style="color:#9aa7bd">draft</span> · <span style="color:#6b9fff">quote</span>.',
+      '<b>📊 Export CSV</b> downloads every non-quote invoice — drop into QuickBooks or hand to your accountant.',
+      '<b>📧 Send overdue reminders</b> emails every overdue client at once (uses your Mailgun key + email signature). Reports sent / skipped / failed.',
+      'On quote rows, a <b>→ Invoice</b> button converts the quote to a billable invoice (flips status from "quote" to "pending").',
+      'On rows with a Stripe pay link saved (see Invoice detail), a 💳 button opens the Stripe checkout.'
+    ]) +
+
+    section('help-newinv', '➕ New Invoice', [
+      'Pick a client from the dropdown. Date defaults to today.',
+      'Add lines from four buttons: <b>+ Canning</b> · <b>+ Bottling</b> · <b>+ R&D / IP</b> · <b>+ Production Hours</b> · <b>+ Custom Line</b>.',
+      'Canning/Bottling rates pull from Supabase canning_rates / bottling_rates and tier by volume automatically.',
+      '<b>Discount:</b> bottom of the builder — enter a percent. Subtotal/discount/total update live.',
+      '<b>💾 Save Invoice</b> persists to Supabase with status=pending. Show on the Invoices list immediately, syncs across devices.',
+      '<b>💾 Save as Quote</b> persists with status=quote. Doesn\'t count toward receivables. Convert to invoice later.',
+      '<b>📄 Save & Export PDF</b> saves the invoice and opens a print-ready PDF in a new tab.',
+      '<b>📋 Export as Quote</b> generates a quote PDF (30-day validity terms, "ESTIMATE — NOT AN INVOICE" badge). Does NOT save to DB.'
+    ]) +
+
+    section('help-referrals', '🤝 Referrals', [
+      'Track deals brought in by external partners. Each referral links to a referrer, a client, and a commission rate/amount.',
+      '<b>+ Add referral</b> records: referrer, client name, deal value, rate %, status (lead / presented / won / paid / lost).',
+      'When status = won, commission counts as "owed" on the dashboard referrer card. When paid, it counts as "Paid YTD".'
+    ]) +
+
+    section('help-referrers', '👤 Referrers', [
+      'Your network of external partners (brokers, industry contacts, etc.).',
+      '<b>+ Add referrer</b> records name, relationship, email, phone, default commission rate.',
+      'Each referrer card on the dashboard shows commissions owed vs paid.'
+    ]) +
+
+    section('help-activity', '📡 Activity', [
+      'Chronological log of CRM events: calls made, emails sent, referrals created, deals moved, notes saved, commissions paid.',
+      'Stored in <i>localStorage</i> (gl_activities) — per device. Capped at 100 entries.',
+      'Distinct from the <b>audit_log</b> (which records security-relevant admin actions like login, password reset, role change) — see the Users panel for that.'
+    ]) +
+
+    section('help-calendar', '📅 Calendar', [
+      'General-purpose calendar for tour requests, meetings, milestones.',
+      'Public "Schedule a tour" submissions land here automatically.',
+      'Stored in localStorage (gl_cal_events).'
+    ]) +
+
+    section('help-production', '🏭 Production Schedule', [
+      'Calendar focused on production runs (which client, what format, how many cases).',
+      'Customers see their scheduled runs in the Customer Portal.'
+    ]) +
+
+    section('help-tasks', '✅ Tasks', [
+      'Personal to-do list. Tasks can be linked to a client.',
+      'Stored in localStorage (gl_tasks) — per device. Sandra\'s tasks live on Sandra\'s computer.'
+    ]) +
+
+    section('help-documents', '📁 Documents', [
+      'Upload files (PDF, Word, images, CSV) per client. Files persist to Supabase Storage in the <b>client-docs</b> bucket.',
+      'If the bucket isn\'t set up yet, file metadata is stored but the file itself isn\'t — the System Health widget will surface this with a "Copy SQL" fixer.',
+      'Documents are private to authenticated users.'
+    ]) +
+
+    section('help-inventory', '📦 Inventory', [
+      'Simple stock tracker for cans, bottles, gas tanks, etc. Quantity + unit + low-stock threshold.',
+      '+ Add Item adds a row. Edit qty inline. Items below their lowAt threshold flag in the dashboard.',
+      'Stored in localStorage (gl_inventory).'
+    ]) +
+
+    section('help-announcements', '📣 Announcements', [
+      'Company-wide notes that show up on every user\'s dashboard.',
+      'Stored in localStorage (per device for now).'
+    ]) +
+
+    section('help-customers', '🌐 Customer Logins (admin)', [
+      'Manage customer portal accounts (separate from CRM staff users).',
+      '<b>📧 Send Onboarding Email</b>: prompts for name + email, creates a portal login with a temp password, emails the customer the login link.',
+      'Requires Mailgun key configured (open AI toolbar → 📧 Mailgun Settings).',
+      'Customers who log in see invoices addressed to them, Pay Now buttons (Stripe links), Accept Quote buttons (emails Mike on click), and a contact form.'
+    ]) +
+
+    section('help-users', '🔑 Users & Permissions (admin)', [
+      '<b>+ Invite user</b>: creates a Supabase Auth account. Invitee must click the email confirmation link before they can log in.',
+      '<b>Role dropdown</b> per row: admin / sales / viewer. Changes persist to the profiles table immediately.',
+      '<b>Set password</b>: masked-input modal → admin_set_user_password RPC. Bcrypt-writes directly to auth.users.',
+      '<b>Email reset</b>: sends a Supabase Auth recovery email. Customer clicks the link and chooses their own new password.',
+      '<b>Remove</b>: soft-delete (profile.status = inactive). To fully remove from auth.users, use the Supabase Auth dashboard.',
+      '<b>📋 Activity log</b>: last 100 audit_log entries (logins, signouts, invoice saves, user-management actions).'
+    ]) +
+
+    section('help-settings', '⚙️ Settings & Integrations', [
+      '<b>📧 Mailgun Settings</b> (AI toolbar): paste your Mailgun private API key. Required for any outgoing email. Click Test Send to verify.',
+      '<b>🤖 AI Settings</b>: paste your Anthropic API key. Required for any 🤖 AI feature. Optional — the CRM works without it.',
+      '<b>✍️ Email Signature</b>: per-device signature auto-appended to outgoing follow-up emails.',
+      '<b>🗑️ Clear local cache</b> (admin): per-key opt-in cleanup of gl_* localStorage. Use when handing the device to a new user.',
+      '<b>System Health</b> widget on the dashboard surfaces which integrations are missing setup.'
+    ]) +
+
+    section('help-shortcuts', '⌨️ Keyboard shortcuts', [
+      '<kbd>Ctrl+K</kbd> (or <kbd>⌘K</kbd> on Mac) — open Global Search across invoices, clients, deals, referrers, users.',
+      '<kbd>Esc</kbd> — close most overlays (login, search, AI modal, settings).',
+      '<kbd>Enter</kbd> in the login form — submit.',
+      '<kbd>↑/↓</kbd> in Global Search — navigate results.'
+    ]);
+
+  function section(id, heading, items){
+    return '<section id="' + id + '" style="padding:18px 4px;border-bottom:1px solid rgba(255,255,255,.06);scroll-margin-top:60px">' +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">' +
+        '<h3 style="margin:0;font-family:var(--ff-disp);font-size:14px;letter-spacing:2px;color:var(--teal)">' + heading + '</h3>' +
+      '</div>' +
+      '<ul style="margin:0;padding-left:18px;color:#cfd9e6;font-size:13px;line-height:1.75">' +
+        items.map(function(t){ return '<li style="margin-bottom:7px">' + t + '</li>'; }).join('') +
+      '</ul>' +
+    '</section>';
+  }
+
+  function buildTOC(){
+    var entries = [
+      ['help-overview',      '👋 Overview'],
+      ['help-dashboard',     '📊 Dashboard'],
+      ['help-clients',       '👥 Clients'],
+      ['help-pipeline',      '📊 Pipeline (Deals)'],
+      ['help-invoices',      '🧾 Invoices'],
+      ['help-newinv',        '➕ New Invoice'],
+      ['help-referrals',     '🤝 Referrals'],
+      ['help-referrers',     '👤 Referrers'],
+      ['help-activity',      '📡 Activity'],
+      ['help-calendar',      '📅 Calendar'],
+      ['help-production',    '🏭 Production'],
+      ['help-tasks',         '✅ Tasks'],
+      ['help-documents',     '📁 Documents'],
+      ['help-inventory',     '📦 Inventory'],
+      ['help-announcements', '📣 Announcements'],
+      ['help-customers',     '🌐 Customer Logins'],
+      ['help-users',         '🔑 Users & Permissions'],
+      ['help-settings',      '⚙️ Settings'],
+      ['help-shortcuts',     '⌨️ Shortcuts']
+    ];
+    return entries.map(function(e){
+      return '<a href="#' + e[0] + '" data-anchor="' + e[0] + '" style="display:block;padding:5px 10px;border-radius:6px;font-size:12px;color:#9aa7bd;text-decoration:none;line-height:1.4">' + e[1] + '</a>';
+    }).join('');
+  }
+
+  window.glOpenHelp = function(scrollTo){
+    var prior = document.getElementById('gl-help-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var target = scrollTo || currentSection();
+    var ov = document.createElement('div');
+    ov.id = 'gl-help-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:950;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;width:100%;max-width:900px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;padding:18px 22px;border-bottom:1px solid rgba(255,255,255,.06)">' +
+          '<div>' +
+            '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">❓ HELP & GUIDE</div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:2px">Press <kbd style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:1px 5px;font-size:10px">?</kbd> any time · or click ❓ Help in the topbar</div>' +
+          '</div>' +
+          '<button id="gl-help-close" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:200px 1fr;flex:1;min-height:0">' +
+          '<nav id="gl-help-toc" style="border-right:1px solid rgba(255,255,255,.06);padding:14px 8px;overflow-y:auto;background:rgba(0,0,0,.15)">' + buildTOC() + '</nav>' +
+          '<main id="gl-help-body" style="padding:6px 28px 18px;overflow-y:auto">' + HELP_HTML + '</main>' +
+        '</div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-help-close').addEventListener('click', function(){ ov.remove(); });
+    // TOC click → smooth scroll
+    ov.querySelectorAll('#gl-help-toc a').forEach(function(a){
+      a.addEventListener('click', function(e){
+        e.preventDefault();
+        var id = a.getAttribute('data-anchor');
+        var el = ov.querySelector('#' + id);
+        if(el) el.scrollIntoView({behavior:'smooth', block:'start'});
+        // Visual: highlight active TOC entry
+        ov.querySelectorAll('#gl-help-toc a').forEach(function(x){ x.style.background = ''; x.style.color = '#9aa7bd'; });
+        a.style.background = 'rgba(0,229,192,.08)';
+        a.style.color = 'var(--teal)';
+      });
+    });
+    host.appendChild(ov);
+    // Scroll to target section + highlight its TOC entry
+    setTimeout(function(){
+      var el = ov.querySelector('#' + target);
+      if(el) el.scrollIntoView({behavior:'instant', block:'start'});
+      var tocLink = ov.querySelector('#gl-help-toc a[data-anchor="' + target + '"]');
+      if(tocLink){ tocLink.style.background = 'rgba(0,229,192,.08)'; tocLink.style.color = 'var(--teal)'; }
+    }, 30);
+  };
+
+  // Keyboard: "?" key opens help (when not typing)
+  document.addEventListener('keydown', function(e){
+    if(e.key !== '?') return;
+    var t = e.target;
+    if(t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if(!document.getElementById('crm-panel') || !document.getElementById('crm-panel').classList.contains('show')) return;
+    e.preventDefault();
+    if(document.getElementById('gl-help-modal')) document.getElementById('gl-help-modal').remove();
+    else window.glOpenHelp();
+  });
+
+  // Inject "❓ Help" button into the CRM topbar (right of the search pill).
+  function injectHelpButton(){
+    var brand = document.querySelector('#crm-top .crm-brand');
+    if(!brand || !brand.parentElement) return;
+    if(brand.parentElement.querySelector('.gl-help-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'gl-help-btn';
+    btn.title = 'Open help (or press ?)';
+    btn.setAttribute('style',
+      'display:flex;align-items:center;gap:6px;padding:5px 10px;' +
+      'background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);' +
+      'border-radius:7px;color:var(--muted);font-size:11px;cursor:pointer;' +
+      'font-family:var(--ff-body);transition:all .15s;margin-left:6px'
+    );
+    btn.innerHTML = '<span style="color:#9aa7bd">❓</span><span>Help</span>';
+    btn.addEventListener('mouseenter', function(){
+      btn.style.background = 'rgba(0,229,192,.08)';
+      btn.style.borderColor = 'rgba(0,229,192,.25)';
+      btn.style.color = 'var(--teal)';
+    });
+    btn.addEventListener('mouseleave', function(){
+      btn.style.background = 'rgba(255,255,255,.04)';
+      btn.style.borderColor = 'rgba(255,255,255,.08)';
+      btn.style.color = 'var(--muted)';
+    });
+    btn.addEventListener('click', function(){ window.glOpenHelp(); });
+    // Insert AFTER the search hint pill (between search and brand).
+    brand.parentElement.insertBefore(btn, brand);
+  }
+
+  function startObs(){
+    var top = document.getElementById('crm-top');
+    if(top){
+      new MutationObserver(function(){ setTimeout(injectHelpButton, 50); }).observe(top, {childList:true, subtree:true});
+      injectHelpButton();
+    } else setTimeout(startObs, 500);
+  }
+  if(document.readyState !== 'loading') startObs();
+  else document.addEventListener('DOMContentLoaded', startObs);
+
+  console.log('[GL] In-app help panel loaded');
+}());
