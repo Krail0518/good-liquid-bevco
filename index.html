@@ -5376,7 +5376,7 @@ function openTimeTracker() {
       </div>
     </div>`;
   modal.addEventListener('click', e => { if(e.target === modal) closeTimeTracker(); });
-  document.body.appendChild(modal);
+  (document.getElementById('crm-panel')||document.body).appendChild(modal);
   renderTimeTracker();
   if(activeTimer) resumeTimerDisplay();
 }
@@ -5689,7 +5689,7 @@ function openInviteModal(){
       </div>
     </div>`;
   modal.addEventListener('click', e => { if(e.target === modal) closeInviteModal(); });
-  document.body.appendChild(modal);
+  (document.getElementById('crm-panel')||document.body).appendChild(modal);
 }
 
 function closeInviteModal(){
@@ -5837,7 +5837,7 @@ function openClientNote(clientId){
       </div>
     </div>`;
   modal.addEventListener('click', e => { if(e.target === modal) modal.remove(); });
-  document.body.appendChild(modal);
+  (document.getElementById('crm-panel')||document.body).appendChild(modal);
 }
 
 function saveClientNote(clientId){
@@ -5886,7 +5886,7 @@ function openEmailTemplates(){
         <button class="cbtn pri" onclick="saveNewTemplate()" style="width:100%">Save Template</button>
       </div>
     </div>`;
-  document.body.appendChild(modal);
+  (document.getElementById('crm-panel')||document.body).appendChild(modal);
   renderEmailTemplates();
 }
 
@@ -6061,7 +6061,7 @@ function generatePayLink(invId){
       </div>
     </div>`;
   modal.addEventListener('click', e => { if(e.target === modal) modal.remove(); });
-  document.body.appendChild(modal);
+  (document.getElementById('crm-panel')||document.body).appendChild(modal);
 }
 
 /* ═══════════════════════════════════════════
