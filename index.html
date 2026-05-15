@@ -424,7 +424,9 @@ footer{background:var(--ink);border-top:1px solid rgba(255,255,255,.06);padding:
 .modal-ov{position:absolute;inset:0;background:rgba(6,13,26,.85);z-index:20;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
 .modal-ov.show{display:flex}
 /* Fixed-position overlays that sit above the CRM panel (add-client / add-deal / deal-detail).
-   Inline styles set display:none by default; .show flips them to flex. */
+   Hidden by default; .show flips them to flex. (Inline display:none was removed from the
+   markup because it overrode the class rule via CSS specificity.) */
+#add-client-modal,#add-deal-modal,#deal-detail-panel{display:none}
 #add-client-modal.show,#add-deal-modal.show,#deal-detail-panel.show{display:flex}
 .modal-box{background:var(--ink);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:28px;width:440px;max-height:80vh;overflow-y:auto}
 .modal-title{font-family:var(--ff-disp);font-size:18px;letter-spacing:1px;color:var(--white);margin-bottom:20px;display:flex;align-items:center;justify-content:space-between}
@@ -1227,7 +1229,7 @@ select option, .fsel option {
 
       <!-- CLIENTS -->
       <!-- ADD CLIENT MODAL -->
-      <div id="add-client-modal" style="display:none;position:fixed;inset:0;z-index:600;background:rgba(6,13,26,.92);backdrop-filter:blur(12px);align-items:center;justify-content:center">
+      <div id="add-client-modal" style="position:fixed;inset:0;z-index:600;background:rgba(6,13,26,.92);backdrop-filter:blur(12px);align-items:center;justify-content:center">
         <div style="background:#142238;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:32px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:22px">
             <div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:var(--teal)">ADD CLIENT</div>
@@ -1289,7 +1291,7 @@ select option, .fsel option {
       </div>
 
       <!-- ADD DEAL MODAL -->
-      <div id="add-deal-modal" style="display:none;position:fixed;inset:0;z-index:600;background:rgba(6,13,26,.92);backdrop-filter:blur(12px);align-items:center;justify-content:center">
+      <div id="add-deal-modal" style="position:fixed;inset:0;z-index:600;background:rgba(6,13,26,.92);backdrop-filter:blur(12px);align-items:center;justify-content:center">
         <div style="background:#142238;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:32px;width:100%;max-width:440px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:22px">
             <div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:var(--teal)">ADD DEAL</div>
@@ -1330,7 +1332,7 @@ select option, .fsel option {
       </div>
 
       <!-- DEAL DETAIL PANEL -->
-      <div id="deal-detail-panel" style="display:none;position:fixed;inset:0;z-index:600;background:rgba(6,13,26,.92);backdrop-filter:blur(12px);align-items:center;justify-content:center">
+      <div id="deal-detail-panel" style="position:fixed;inset:0;z-index:600;background:rgba(6,13,26,.92);backdrop-filter:blur(12px);align-items:center;justify-content:center">
         <div style="background:#142238;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:32px;width:100%;max-width:540px;max-height:90vh;overflow-y:auto">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
             <div class="bebas" style="font-size:22px;letter-spacing:2px;color:var(--teal)" id="ddp-title">DEAL DETAILS</div>
