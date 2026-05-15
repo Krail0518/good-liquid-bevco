@@ -6883,18 +6883,38 @@
 
     var commPrefs = Array.isArray(c.commPrefs) ? c.commPrefs : [];
     function ck(key){ return commPrefs.indexOf(key) >= 0 ? ' checked' : ''; }
+    var productTypes = Array.isArray(c.productTypes) ? c.productTypes : [];
+    function pt(key){ return productTypes.indexOf(key) >= 0 ? ' checked' : ''; }
+
+    var paymentTermsOptions = ['Due on receipt','Net 15','Net 30','Net 60','Prepaid','COD'].map(function(t){
+      var sel = ((c.paymentTerms||'Due on receipt') === t) ? ' selected' : '';
+      return '<option value="'+esc(t)+'"'+sel+'>'+esc(t)+'</option>';
+    }).join('');
+
+    var ownerOptions = '<option value="">Unassigned</option>' +
+      (window.users||[]).filter(function(u){ return u.status !== 'inactive'; }).map(function(u){
+        var sel = (c.accountOwner === u.id) ? ' selected' : '';
+        return '<option value="'+esc(u.id)+'"'+sel+'>'+esc(u.name)+' ('+esc(u.role)+')</option>';
+      }).join('');
+
+    var billingSame = c.billingSame !== false;
 
     var ov = document.createElement('div');
     ov.id = 'gl-edit-client-modal';
     ov.setAttribute('style','position:fixed;inset:0;z-index:1050;background:rgba(6,13,26,.92);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;padding:20px');
     ov.innerHTML =
-      '<div style="background:#142238;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:32px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto">' +
+      '<div style="background:#142238;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:32px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:22px">' +
           '<div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:var(--teal)">EDIT CLIENT</div>' +
           '<button id="gl-ec-close" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer">✕</button>' +
         '</div>' +
         '<div style="display:flex;flex-direction:column;gap:12px">' +
           '<div><div style="'+LABEL_STYLE+'">BRAND NAME *</div><input id="gl-ec-name" value="'+esc(c.name)+'" style="'+INPUT_STYLE+'"></div>' +
+          '<div><div style="'+LABEL_STYLE+'">LEGAL BUSINESS NAME <span style="opacity:.6">(if different)</span></div><input id="gl-ec-legal-name" value="'+esc(c.legalName)+'" style="'+INPUT_STYLE+'"></div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+            '<div><div style="'+LABEL_STYLE+'">EIN / TAX ID</div><input id="gl-ec-ein" placeholder="XX-XXXXXXX" value="'+esc(c.ein)+'" style="'+INPUT_STYLE+'"></div>' +
+            '<div><div style="'+LABEL_STYLE+'">WEBSITE</div><input id="gl-ec-website" placeholder="https://" value="'+esc(c.website)+'" style="'+INPUT_STYLE+'"></div>' +
+          '</div>' +
           '<div><div style="'+LABEL_STYLE+'">CONTACT NAME</div><input id="gl-ec-contact" value="'+esc(c.contact)+'" style="'+INPUT_STYLE+'"></div>' +
           '<div><div style="'+LABEL_STYLE+'">EMAIL</div><input id="gl-ec-email" type="email" value="'+esc(c.email)+'" style="'+INPUT_STYLE+'"></div>' +
           '<div><div style="'+LABEL_STYLE+'">PHONE</div><input id="gl-ec-phone" value="'+esc(c.phone)+'" style="'+INPUT_STYLE+'"></div>' +
@@ -6905,6 +6925,20 @@
             '<div><div style="'+LABEL_STYLE+'">ZIP</div><input id="gl-ec-zip" value="'+esc(c.zip)+'" style="'+INPUT_STYLE+'"></div>' +
           '</div>' +
           '<div>' +
+            '<label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--white);cursor:pointer;margin-bottom:8px">' +
+              '<input type="checkbox" id="gl-ec-billing-same"'+(billingSame?' checked':'')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">' +
+              'Billing address same as physical' +
+            '</label>' +
+            '<div id="gl-ec-billing-block" style="display:'+(billingSame?'none':'grid')+';grid-template-columns:1fr;gap:8px">' +
+              '<input id="gl-ec-billing-street" placeholder="Billing street address" value="'+esc(c.billingStreet)+'" style="'+INPUT_STYLE+'">' +
+              '<div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px">' +
+                '<input id="gl-ec-billing-city" placeholder="City" value="'+esc(c.billingCity)+'" style="'+INPUT_STYLE+'">' +
+                '<input id="gl-ec-billing-state" placeholder="State" maxlength="2" value="'+esc(c.billingState)+'" style="'+INPUT_STYLE+';text-transform:uppercase">' +
+                '<input id="gl-ec-billing-zip" placeholder="Zip" value="'+esc(c.billingZip)+'" style="'+INPUT_STYLE+'">' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div>' +
             '<div style="'+LABEL_STYLE+'">PREFERRED COMMUNICATION</div>' +
             '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;padding:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:8px">' +
               '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="gl-ec-comm-email"'+ck('email')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">✉️ Email</label>' +
@@ -6913,9 +6947,49 @@
               '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="gl-ec-comm-wechat"'+ck('wechat')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">💬 WeChat</label>' +
             '</div>' +
           '</div>' +
-          '<div><div style="'+LABEL_STYLE+'">SERVICE</div><select id="gl-ec-service" style="'+INPUT_STYLE+'">'+serviceOptions+'</select></div>' +
-          '<div><div style="'+LABEL_STYLE+'">STATUS</div><select id="gl-ec-status" style="'+INPUT_STYLE+'">'+statusOptions+'</select></div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+            '<div><div style="'+LABEL_STYLE+'">SERVICE</div><select id="gl-ec-service" style="'+INPUT_STYLE+'">'+serviceOptions+'</select></div>' +
+            '<div><div style="'+LABEL_STYLE+'">STATUS</div><select id="gl-ec-status" style="'+INPUT_STYLE+'">'+statusOptions+'</select></div>' +
+          '</div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+            '<div><div style="'+LABEL_STYLE+'">PAYMENT TERMS</div><select id="gl-ec-payment-terms" style="'+INPUT_STYLE+'">'+paymentTermsOptions+'</select></div>' +
+            '<div><div style="'+LABEL_STYLE+'">ACCOUNT OWNER</div><select id="gl-ec-account-owner" style="'+INPUT_STYLE+'">'+ownerOptions+'</select></div>' +
+          '</div>' +
           '<div><div style="'+LABEL_STYLE+'">REFERRED BY</div><select id="gl-ec-referrer" style="'+INPUT_STYLE+'">'+refOptions+'</select></div>' +
+          '<div>' +
+            '<div style="'+LABEL_STYLE+'">PRODUCT TYPES</div>' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;padding:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:8px">' +
+              '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="gl-ec-pt-seltzer"'+pt('seltzer')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">🥤 Seltzer</label>' +
+              '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="gl-ec-pt-kombucha"'+pt('kombucha')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">🍵 Kombucha</label>' +
+              '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="gl-ec-pt-coldbrew"'+pt('coldbrew')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">☕ Cold Brew</label>' +
+              '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="gl-ec-pt-juice"'+pt('juice')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">🧃 Juice</label>' +
+              '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="gl-ec-pt-rtd"'+pt('rtd')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">🍸 RTD Cocktail</label>' +
+              '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="gl-ec-pt-energy"'+pt('energy')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">⚡ Energy</label>' +
+              '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="gl-ec-pt-mocktail"'+pt('mocktail')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">🍹 Mocktail</label>' +
+              '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="gl-ec-pt-sparkling"'+pt('sparkling')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">💧 Sparkling Water</label>' +
+              '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="gl-ec-pt-sports"'+pt('sports')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">🏃 Sports Drink</label>' +
+              '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="gl-ec-pt-other"'+pt('other')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">📦 Other</label>' +
+            '</div>' +
+          '</div>' +
+          '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:12px">' +
+            '<div style="'+LABEL_STYLE+';margin-bottom:8px">COMPLIANCE DOCS</div>' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end">' +
+              '<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--white);cursor:pointer">' +
+                '<input type="checkbox" id="gl-ec-coi-on-file"'+(c.coiOnFile?' checked':'')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">📄 COI on file' +
+              '</label>' +
+              '<div><div style="'+LABEL_STYLE+';margin-bottom:3px">COI EXPIRES</div><input type="date" id="gl-ec-coi-expires" value="'+esc(c.coiExpires)+'" style="'+INPUT_STYLE+';padding:8px;font-size:13px"></div>' +
+              '<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--white);cursor:pointer;margin-top:8px">' +
+                '<input type="checkbox" id="gl-ec-w9-on-file"'+(c.w9OnFile?' checked':'')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">📄 W-9 on file' +
+              '</label>' +
+              '<div style="margin-top:8px"><div style="'+LABEL_STYLE+';margin-bottom:3px">W-9 RECEIVED</div><input type="date" id="gl-ec-w9-received" value="'+esc(c.w9Received)+'" style="'+INPUT_STYLE+';padding:8px;font-size:13px"></div>' +
+            '</div>' +
+          '</div>' +
+          ((c.stripeCustomerId || c.qboCustomerId) ?
+            '<div style="background:rgba(0,229,192,.04);border:1px solid rgba(0,229,192,.15);border-radius:8px;padding:12px">' +
+              '<div style="'+LABEL_STYLE+';margin-bottom:8px">LINKED ACCOUNTS <span style="opacity:.6">(auto-populated, read-only)</span></div>' +
+              (c.stripeCustomerId ? '<div style="font-size:12px;color:var(--white);margin-bottom:4px"><span style="color:var(--muted)">Stripe:</span> <code style="font-family:var(--ff-mono);font-size:11px">'+esc(c.stripeCustomerId)+'</code></div>' : '') +
+              (c.qboCustomerId ?    '<div style="font-size:12px;color:var(--white)"><span style="color:var(--muted)">QuickBooks:</span> <code style="font-family:var(--ff-mono);font-size:11px">'+esc(c.qboCustomerId)+'</code></div>' : '') +
+            '</div>' : '') +
           '<div><div style="'+LABEL_STYLE+'">NOTES</div><textarea id="gl-ec-notes" rows="3" style="'+INPUT_STYLE+';resize:vertical">'+esc(c.notes)+'</textarea></div>' +
           '<div id="gl-ec-err" style="display:none;color:#e74c3c;font-size:12px"></div>' +
           '<div style="display:flex;gap:8px;margin-top:6px">' +
@@ -6928,35 +7002,75 @@
     ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
     ov.querySelector('#gl-ec-close').addEventListener('click', function(){ ov.remove(); });
     ov.querySelector('#gl-ec-cancel').addEventListener('click', function(){ ov.remove(); });
+    // Toggle the billing block based on the "same as physical" checkbox.
+    var bsame = ov.querySelector('#gl-ec-billing-same');
+    var bblock = ov.querySelector('#gl-ec-billing-block');
+    bsame.addEventListener('change', function(){ bblock.style.display = bsame.checked ? 'none' : 'grid'; });
     ov.querySelector('#gl-ec-save').addEventListener('click', async function(){
       var errEl = ov.querySelector('#gl-ec-err');
       errEl.style.display = 'none';
       function setErr(m){ errEl.textContent = m; errEl.style.display = 'block'; }
+      function val(id){ var el = ov.querySelector('#'+id); return el ? el.value.trim() : ''; }
+      function chk(id){ var el = ov.querySelector('#'+id); return !!(el && el.checked); }
 
-      var name = ov.querySelector('#gl-ec-name').value.trim();
+      var name = val('gl-ec-name');
       if(!name){ setErr('Brand name is required.'); return; }
 
       var commPrefsOut = [
-        ov.querySelector('#gl-ec-comm-email').checked    ? 'email'    : null,
-        ov.querySelector('#gl-ec-comm-sms').checked      ? 'sms'      : null,
-        ov.querySelector('#gl-ec-comm-whatsapp').checked ? 'whatsapp' : null,
-        ov.querySelector('#gl-ec-comm-wechat').checked   ? 'wechat'   : null
+        chk('gl-ec-comm-email')    ? 'email'    : null,
+        chk('gl-ec-comm-sms')      ? 'sms'      : null,
+        chk('gl-ec-comm-whatsapp') ? 'whatsapp' : null,
+        chk('gl-ec-comm-wechat')   ? 'wechat'   : null
       ].filter(Boolean);
 
+      var productTypesOut = [
+        chk('gl-ec-pt-seltzer')   ? 'seltzer'   : null,
+        chk('gl-ec-pt-kombucha')  ? 'kombucha'  : null,
+        chk('gl-ec-pt-coldbrew')  ? 'coldbrew'  : null,
+        chk('gl-ec-pt-juice')     ? 'juice'     : null,
+        chk('gl-ec-pt-rtd')       ? 'rtd'       : null,
+        chk('gl-ec-pt-energy')    ? 'energy'    : null,
+        chk('gl-ec-pt-mocktail')  ? 'mocktail'  : null,
+        chk('gl-ec-pt-sparkling') ? 'sparkling' : null,
+        chk('gl-ec-pt-sports')    ? 'sports'    : null,
+        chk('gl-ec-pt-other')     ? 'other'     : null
+      ].filter(Boolean);
+
+      var street = val('gl-ec-street');
+      var city   = val('gl-ec-city');
+      var state  = val('gl-ec-state').toUpperCase();
+      var zip    = val('gl-ec-zip');
+      var bSame  = chk('gl-ec-billing-same');
+
       var patch = {
-        name:    name,
-        contact: ov.querySelector('#gl-ec-contact').value.trim(),
-        email:   ov.querySelector('#gl-ec-email').value.trim(),
-        phone:   ov.querySelector('#gl-ec-phone').value.trim(),
-        street:  ov.querySelector('#gl-ec-street').value.trim(),
-        city:    ov.querySelector('#gl-ec-city').value.trim(),
-        state:   ov.querySelector('#gl-ec-state').value.trim().toUpperCase(),
-        zip:     ov.querySelector('#gl-ec-zip').value.trim(),
-        commPrefs: commPrefsOut,
-        service: ov.querySelector('#gl-ec-service').value,
-        status:  ov.querySelector('#gl-ec-status').value,
-        referredBy: ov.querySelector('#gl-ec-referrer').value,
-        notes:   ov.querySelector('#gl-ec-notes').value.trim()
+        name:       name,
+        legalName:  val('gl-ec-legal-name'),
+        ein:        val('gl-ec-ein'),
+        website:    val('gl-ec-website'),
+        contact:    val('gl-ec-contact'),
+        email:      val('gl-ec-email'),
+        phone:      val('gl-ec-phone'),
+        street:     street,
+        city:       city,
+        state:      state,
+        zip:        zip,
+        billingSame:   bSame,
+        billingStreet: bSame ? street : val('gl-ec-billing-street'),
+        billingCity:   bSame ? city   : val('gl-ec-billing-city'),
+        billingState:  bSame ? state  : val('gl-ec-billing-state').toUpperCase(),
+        billingZip:    bSame ? zip    : val('gl-ec-billing-zip'),
+        commPrefs:    commPrefsOut,
+        productTypes: productTypesOut,
+        service:      val('gl-ec-service'),
+        status:       val('gl-ec-status'),
+        paymentTerms: val('gl-ec-payment-terms') || 'Due on receipt',
+        accountOwner: val('gl-ec-account-owner'),
+        referredBy:   val('gl-ec-referrer'),
+        coiOnFile:    chk('gl-ec-coi-on-file'),
+        coiExpires:   val('gl-ec-coi-expires'),
+        w9OnFile:     chk('gl-ec-w9-on-file'),
+        w9Received:   val('gl-ec-w9-received'),
+        notes:        val('gl-ec-notes')
       };
 
       var btn = this; var orig = btn.textContent;
@@ -6986,21 +7100,38 @@
     if(window.supa){
       try {
         var supaPatch = {
-          name:         patch.name,
-          contact_name: patch.contact,
-          email:        patch.email,
-          phone:        patch.phone,
-          street:       patch.street,
-          city:         patch.city,
-          state:        patch.state,
-          zip:          patch.zip,
-          comm_prefs:   patch.commPrefs,
-          service:      patch.service,
-          status:       patch.status,
-          referred_by:  patch.referredBy || null,
-          notes:        patch.notes,
-          initials:     newInit
+          name:           patch.name,
+          legal_name:     patch.legalName,
+          ein:            patch.ein,
+          website:        patch.website,
+          contact_name:   patch.contact,
+          email:          patch.email,
+          phone:          patch.phone,
+          street:         patch.street,
+          city:           patch.city,
+          state:          patch.state,
+          zip:            patch.zip,
+          billing_same:   patch.billingSame,
+          billing_street: patch.billingStreet,
+          billing_city:   patch.billingCity,
+          billing_state:  patch.billingState,
+          billing_zip:    patch.billingZip,
+          comm_prefs:     patch.commPrefs,
+          product_types:  patch.productTypes,
+          service:        patch.service,
+          status:         patch.status,
+          payment_terms:  patch.paymentTerms,
+          account_owner:  patch.accountOwner || null,
+          referred_by:    patch.referredBy || null,
+          coi_on_file:    !!patch.coiOnFile,
+          coi_expires:    patch.coiExpires || null,
+          w9_on_file:     !!patch.w9OnFile,
+          w9_received:    patch.w9Received || null,
+          notes:          patch.notes,
+          initials:       newInit
         };
+        // Strip undefined keys so we don't accidentally wipe values not in the patch.
+        Object.keys(supaPatch).forEach(function(k){ if(supaPatch[k] === undefined) delete supaPatch[k]; });
         var r = await window.supa.from('clients').update(supaPatch).eq('id', clientId);
         if(r && r.error){
           console.warn('[GL] glUpdateClient: supabase error', r.error);
