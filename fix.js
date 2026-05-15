@@ -4102,3 +4102,124 @@
 
   console.log('[GL] Topbar Ctrl+K hint loaded');
 }());
+
+/* ============================================================
+   "REMEMBER THIS COMPUTER" CHECKBOX
+   - Adds a checkbox to the password modal (default: checked)
+   - When checked + login succeeds: persists gl_remember='1'.
+     Next time the Admin button is clicked, we look for a live
+     Supabase Auth session and skip the password modal entirely.
+   - When unchecked: stores gl_remember='0' and registers a
+     beforeunload handler that signs the user out when the
+     tab/browser closes.
+   ============================================================ */
+(function(){
+  function injectCheckbox(){
+    var pw = document.getElementById('pw-ov');
+    if(!pw) return;
+    if(pw.querySelector('#gl-remember-cb')) return;
+    var btn = pw.querySelector('.pw-btn');
+    if(!btn) return;
+    var saved = localStorage.getItem('gl_remember');
+    // Default to true so the box is checked when the user first sees it.
+    var checked = (saved === null) || (saved === '1');
+    var label = document.createElement('label');
+    label.setAttribute('style',
+      'display:flex;align-items:center;gap:9px;font-size:12px;color:var(--muted);' +
+      'margin:6px 2px 14px;cursor:pointer;user-select:none;text-align:left'
+    );
+    label.innerHTML =
+      '<input type="checkbox" id="gl-remember-cb"' + (checked ? ' checked' : '') +
+        ' style="width:14px;height:14px;accent-color:var(--teal);cursor:pointer;margin:0">' +
+      '<span>Remember this computer <span style="font-size:10px;color:var(--muted);opacity:.7">(skip password next visit)</span></span>';
+    btn.parentNode.insertBefore(label, btn);
+  }
+
+  // Wrap checkPw so we save the preference after a successful login.
+  (function(){
+    var orig = window.checkPw;
+    if(typeof orig !== 'function') return;
+    window.checkPw = async function(){
+      var before = window.currentUser;
+      var result = await orig.apply(this, arguments);
+      var loggedIn = window.currentUser && window.currentUser !== before;
+      if(loggedIn){
+        var cb = document.getElementById('gl-remember-cb');
+        var remember = cb ? cb.checked : true;
+        localStorage.setItem('gl_remember', remember ? '1' : '0');
+      }
+      return result;
+    };
+  })();
+
+  // Sign out on browser close when remember is false.
+  window.addEventListener('beforeunload', function(){
+    if(localStorage.getItem('gl_remember') === '0' && window.supa && window.supa.auth){
+      try { window.supa.auth.signOut({ scope: 'local' }); } catch(e){}
+    }
+  });
+
+  // Wrap openAdmin so that if a session is already cached AND the user opted
+  // to be remembered, we skip the password modal and go straight to the CRM.
+  function autoLoginIfPossible(){
+    return (async function(){
+      if(localStorage.getItem('gl_remember') !== '1') return false;
+      var sb = window.supa;
+      if(!sb || !sb.auth) return false;
+      try {
+        var r = await sb.auth.getSession();
+        if(!r || !r.data || !r.data.session) return false;
+        var user = r.data.session.user;
+        var prof = null;
+        try {
+          var p = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
+          prof = p.data || null;
+        } catch(e){}
+        var profile = {
+          id: user.id, email: user.email,
+          name: (prof && prof.name) || (user.email||'').split('@')[0],
+          role: (prof && prof.role) || 'sales',
+          status: (prof && prof.status) || 'active',
+          initials: (prof && prof.initials) || (user.email||'?').slice(0,2).toUpperCase(),
+          color: (prof && prof.color) || '#1a6fff',
+          tc: (prof && prof.tc) || '#fff',
+          lastLogin: 'Just now'
+        };
+        if(profile.status === 'inactive'){
+          try { await sb.auth.signOut(); } catch(e){}
+          return false;
+        }
+        if(typeof window.loginUser === 'function') window.loginUser(profile);
+        return true;
+      } catch(e){
+        console.warn('[GL remember] auto-login attempt threw', e);
+        return false;
+      }
+    })();
+  }
+
+  (function(){
+    var orig = window.openAdmin;
+    if(typeof orig !== 'function') return;
+    window.openAdmin = async function(){
+      var ok = await autoLoginIfPossible();
+      if(ok) return;  // skipped the modal
+      orig.apply(this, arguments);
+      setTimeout(injectCheckbox, 30);
+    };
+  })();
+
+  // Also inject when the password modal opens via any other path (the
+  // "Forgot password" → back-to-login flow re-shows pw-ov directly).
+  function startObs(){
+    var pw = document.getElementById('pw-ov');
+    if(pw){
+      new MutationObserver(function(){ if(pw.classList.contains('show')) setTimeout(injectCheckbox, 40); }).observe(pw, {attributes:true, attributeFilter:['class']});
+      if(pw.classList.contains('show')) injectCheckbox();
+    } else setTimeout(startObs, 500);
+  }
+  if(document.readyState !== 'loading') startObs();
+  else document.addEventListener('DOMContentLoaded', startObs);
+
+  console.log('[GL] Remember-this-computer login persistence loaded');
+}());
