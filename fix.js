@@ -926,87 +926,6 @@
     if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
   };
 
-  /* ── Override glAddLine ────────────────────────────────── */
-  var _prev = window.glAddLine;
-  window.glAddLine = async function(type) {
-    if (type !== 'canning' && type !== 'bottling') {
-      if (typeof _prev === 'function') _prev(type);
-      return;
-    }
-
-    await window.glLoadRates();
-    var t = getLineTable();
-    if (!t) { if (typeof _prev === 'function') _prev(type); return; }
-
-    var RS = 'display:grid;grid-template-columns:2fr 1fr 1fr 1fr 36px;gap:0;' +
-             'padding:10px 12px;border-top:1px solid rgba(255,255,255,.05);align-items:start';
-    var SS = 'background:#1a2a3a;color:#fff;border:1px solid rgba(0,229,192,.4);' +
-             'border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;width:100%;max-width:160px';
-    var SI = 'width:60px;background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.18);' +
-             'border-radius:6px;padding:3px 6px;font-size:12px;font-weight:600;text-align:center';
-
-    if (type === 'canning') {
-      var uid = 'glcan' + Date.now();
-      var formats = [];
-      var seen = {};
-      window._glRates.canning.forEach(function(r) {
-        if (!seen[r.format]) { seen[r.format] = true; formats.push({value: r.format, label: r.format_label}); }
-      });
-      if (!formats.length) formats = [{value:'12oz-standard',label:'12oz Standard'}];
-      var def    = formats[0].value;
-      var perCan = getCanRate(150, def);
-      var pcase  = perCan * CANS_PER_CASE;
-      var total  = pcase * 150;
-      var opts   = formats.map(function(f) {
-        return '<option value="' + f.value + '"' + (f.value === def ? ' selected' : '') + '>' + f.label + '</option>';
-      }).join('');
-      var row = document.createElement('div');
-      row.id = uid;
-      row.setAttribute('style', RS);
-      row.innerHTML =
-        '<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Canning</div>' +
-        '<select id="' + uid + '-format" onchange="window.glCanFormatChange(this.closest(\'[id^=glcan]\').id)" style="' + SS + '">' + opts + '</select></div>' +
-        '<div style="text-align:center"><input id="' + uid + '-cases" type="number" min="1" value="150" onchange="window.glCanFormatChange(this.closest(\'[id^=glcan]\').id)" style="' + SI + '"/>' +
-        '<div id="' + uid + '-cans" style="font-size:10px;color:var(--muted);margin-top:3px">' + (150*CANS_PER_CASE).toLocaleString() + ' cans</div></div>' +
-        '<div style="text-align:right;padding-right:4px">' +
-        '<div id="' + uid + '-pcase" style="font-size:12px;color:#fff;font-weight:600">' + usd(pcase) + '/case</div>' +
-        '<div id="' + uid + '-pcan"  style="font-size:10px;color:var(--muted);margin-top:3px">' + usd(perCan,4) + '/can</div></div>' +
-        '<div id="' + uid + '-total" style="text-align:right;font-size:14px;font-weight:700;color:#fff">' + usd(total) + '</div>' +
-        '<div style="text-align:center"><button onclick="window.glRemoveCanLine(this.closest(\'[id^=glcan]\').id)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0">x</button></div>';
-      t.appendChild(row);
-    }
-
-    if (type === 'bottling') {
-      var uid = 'glbtl' + Date.now();
-      var bformats = [];
-      var bseen = {};
-      window._glRates.bottling.forEach(function(r) {
-        if (!bseen[r.format]) { bseen[r.format] = true; bformats.push({value: r.format, label: r.format_label}); }
-      });
-      if (!bformats.length) bformats = [{value:'750ml',label:'750ml Bottle'}];
-      var bdef    = bformats[0].value;
-      var perUnit = getBottleRate(500, bdef);
-      var btotal  = perUnit * 500;
-      var bopts   = bformats.map(function(f) {
-        return '<option value="' + f.value + '"' + (f.value === bdef ? ' selected' : '') + '>' + f.label + '</option>';
-      }).join('');
-      var brow = document.createElement('div');
-      brow.id = uid;
-      brow.setAttribute('style', RS);
-      brow.innerHTML =
-        '<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Bottling</div>' +
-        '<select id="' + uid + '-format" onchange="window.glBottleQtyChange(this.closest(\'[id^=glbtl]\').id)" style="' + SS + '">' + bopts + '</select></div>' +
-        '<div style="text-align:center"><input id="' + uid + '-qty" type="number" min="1" value="500" onchange="window.glBottleQtyChange(this.closest(\'[id^=glbtl]\').id)" style="' + SI + '"/>' +
-        '<div style="font-size:10px;color:var(--muted);margin-top:3px">bottles</div></div>' +
-        '<div style="text-align:right;padding-right:4px">' +
-        '<div id="' + uid + '-punit" style="font-size:12px;color:#fff;font-weight:600">' + usd(perUnit,4) + '/btl</div></div>' +
-        '<div id="' + uid + '-total" style="text-align:right;font-size:14px;font-weight:700;color:#fff">' + usd(btotal) + '</div>' +
-        '<div style="text-align:center"><button onclick="window.glRemoveBottleLine(this.closest(\'[id^=glbtl]\').id)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0">x</button></div>';
-      t.appendChild(brow);
-    }
-
-    if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
-  };
 
   /* ── Pricing Admin Page ────────────────────────────────── */
   window.glOpenPricing = async function() {
@@ -1233,35 +1152,6 @@
       +'<div id="'+uid+'-total" style="text-align:right;font-size:14px;font-weight:700;color:#fff">'+window.glUsd(total)+'</div>'
       +'<div style="text-align:center"><button onclick="window.glRemoveLine(\''+uid+'\')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0;line-height:1">x</button></div>';
     return row;
-  };
-  var _orig=window.glAddLine;
-  window.glAddLine=function(type){
-    if(type!=='canning'&&type!=='bottling'){if(typeof _orig==='function')_orig(type);return;}
-    var tbl=window.glGetTbl();if(!tbl)return;
-    var ph=[...tbl.children].find(function(c){return c.textContent.includes('No line items');});if(ph)ph.remove();
-    if(!window._glR.ok){
-      var uid='glline'+Date.now();
-      var lr=document.createElement('div');lr.id=uid;
-      lr.setAttribute('style','padding:12px;color:var(--muted);font-size:12px;border-top:1px solid rgba(255,255,255,.05)');
-      lr.textContent='Loading rates...';tbl.appendChild(lr);
-      window.glLoadRates().then(function(){var e=document.getElementById(uid);if(e)e.remove();window.glAddLine(type);});
-      return;
-    }
-    var uid='glline'+Date.now();
-    if(type==='canning'){
-      var fmts=[],seen={};
-      window._glR.c.forEach(function(r){if(!seen[r.format]){seen[r.format]=true;fmts.push({value:r.format,label:r.format_label});}});
-      if(!fmts.length)fmts=[{value:'12oz-standard',label:'12oz Standard'}];
-      var def=fmts[0].value,pc=window.glGetCanRate(150,def);
-      tbl.appendChild(window.glBuildCanRow(uid,150,def,fmts,pc));
-    }else{
-      var bfmts=[],bseen={};
-      window._glR.b.forEach(function(r){if(!bseen[r.format]){bseen[r.format]=true;bfmts.push({value:r.format,label:r.format_label});}});
-      if(!bfmts.length)bfmts=[{value:'750ml',label:'750ml Bottle'}];
-      var bdef=bfmts[0].value,pu=window.glGetBtlRate(500,bdef);
-      tbl.appendChild(window.glBuildBtlRow(uid,500,bdef,bfmts,pu));
-    }
-    window.glCalcInvTotal();
   };
   window.glOpenPricing=async function(){
     document.getElementById('gl-pm')?.remove();
