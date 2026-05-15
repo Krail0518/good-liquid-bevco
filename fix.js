@@ -3670,3 +3670,103 @@
 
   console.log('[GL] Global search (Ctrl+K) loaded');
 }());
+
+/* ============================================================
+   DASHBOARD KPI EXPANSION
+   Second metrics row under the existing collected/pending/overdue/
+   active-brands cards. Shows:
+     - Avg invoice value (across all non-quote invoices)
+     - Outstanding (pending + overdue total)
+     - Avg days to paid (from invoice date to status flip)
+     - Quotes pending (status='quote' count + total $)
+   Updates whenever renderDash runs.
+   ============================================================ */
+(function(){
+  function fmtUsd(n){ return '$' + Math.round(n||0).toLocaleString(); }
+  function fmtUsdShort(n){
+    n = Number(n||0);
+    if(n >= 1_000_000) return '$' + (n/1_000_000).toFixed(1) + 'M';
+    if(n >= 1_000)     return '$' + Math.round(n/1_000) + 'K';
+    return '$' + Math.round(n);
+  }
+  function avg(a){ if(!a.length) return 0; return a.reduce(function(s,x){return s+x;},0) / a.length; }
+
+  function buildExtraKpis(){
+    var dash = document.getElementById('cpg-dashboard');
+    if(!dash) return;
+    var metrics = document.getElementById('dash-metrics');
+    if(!metrics) return;
+    var existing = document.getElementById('gl-extra-kpis');
+    if(existing) existing.remove();
+
+    var inv = (window.invoices||[]);
+    var billable = inv.filter(function(i){ return i.status !== 'quote'; });
+    var paid = inv.filter(function(i){ return i.status === 'paid'; });
+    var pending = inv.filter(function(i){ return i.status === 'pending'; });
+    var overdue = inv.filter(function(i){ return i.status === 'overdue'; });
+    var quotes = inv.filter(function(i){ return i.status === 'quote'; });
+
+    var avgVal = avg(billable.map(function(i){ return Number(i.amount||0); }));
+    var outstanding = pending.concat(overdue).reduce(function(s,i){ return s + Number(i.amount||0); }, 0);
+    var quotesTotal = quotes.reduce(function(s,i){ return s + Number(i.amount||0); }, 0);
+
+    // Days-to-paid: approximate using created_at -> updated_at when available
+    // (Supabase rows have both; freshly loaded ones may not). Fall back to "—"
+    // when we don't have the data.
+    var daysToPaid = paid.map(function(i){
+      if(i.date && i.updatedAt){
+        var d1 = new Date(i.date).getTime();
+        var d2 = new Date(i.updatedAt).getTime();
+        if(!isNaN(d1) && !isNaN(d2) && d2 > d1) return (d2 - d1) / 86400000;
+      }
+      return null;
+    }).filter(function(d){ return d != null; });
+    var avgDays = daysToPaid.length ? Math.round(avg(daysToPaid)) : null;
+
+    var row = document.createElement('div');
+    row.id = 'gl-extra-kpis';
+    row.setAttribute('style','display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin-top:11px');
+    row.innerHTML =
+      kpiCard('Avg invoice', fmtUsdShort(avgVal), billable.length ? billable.length + ' billable' : 'no invoices yet') +
+      kpiCard('Outstanding', fmtUsdShort(outstanding), (pending.length + overdue.length) + ' open', outstanding > 0 ? '#f5c842' : '') +
+      kpiCard('Avg days to paid', avgDays != null ? avgDays + 'd' : '—', paid.length ? paid.length + ' paid' : 'no payments yet') +
+      kpiCard('Quotes pending', quotes.length || 0, quotes.length ? fmtUsdShort(quotesTotal) + ' potential' : 'none open', '#6b9fff');
+
+    metrics.parentNode.insertBefore(row, metrics.nextSibling);
+
+    // Tighten mobile: collapse to 2 cols if narrow
+    if(window.matchMedia && window.matchMedia('(max-width: 768px)').matches){
+      row.style.gridTemplateColumns = 'repeat(2,1fr)';
+    }
+  }
+  function kpiCard(label, value, sub, color){
+    color = color || 'var(--teal)';
+    return '<div style="background:#243a56;border:1px solid rgba(255,255,255,.06);border-radius:11px;padding:14px 16px">' +
+      '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">' + label.toUpperCase() + '</div>' +
+      '<div style="font-family:var(--ff-disp);font-size:24px;font-weight:700;color:' + color + ';line-height:1">' + value + '</div>' +
+      '<div style="font-size:10px;color:var(--muted);margin-top:4px">' + sub + '</div>' +
+    '</div>';
+  }
+
+  // Re-build whenever renderDash runs, so KPIs stay in sync with the data.
+  (function(){
+    var orig = window.renderDash;
+    if(typeof orig === 'function'){
+      window.renderDash = function(){
+        var r = orig.apply(this, arguments);
+        try { buildExtraKpis(); } catch(e){ console.error('[GL kpi] build threw', e); }
+        return r;
+      };
+    } else {
+      // renderDash not loaded yet — try once after a delay.
+      setTimeout(function(){
+        var o = window.renderDash;
+        if(typeof o === 'function'){
+          window.renderDash = function(){ var r = o.apply(this, arguments); try { buildExtraKpis(); } catch(e){} return r; };
+        }
+      }, 1500);
+    }
+  })();
+
+  console.log('[GL] Dashboard extra KPIs loaded');
+}());
