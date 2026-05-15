@@ -4046,3 +4046,59 @@
 
   console.log('[GL] Invoice CSV export + overdue reminders loaded');
 }());
+
+/* ============================================================
+   CRM TOPBAR: Ctrl+K hint badge
+   Small "🔍 Search ⌘K" pill in the CRM topbar, left of the
+   brand logo. Click also opens the search modal.
+   ============================================================ */
+(function(){
+  function injectHint(){
+    var brand = document.querySelector('#crm-top .crm-brand');
+    if(!brand || !brand.parentElement) return;
+    if(brand.parentElement.querySelector('.gl-kbd-hint')) return;
+    var isMac = /Mac|iPhone|iPad/.test(navigator.platform || '');
+    var btn = document.createElement('button');
+    btn.className = 'gl-kbd-hint';
+    btn.title = 'Quick search across invoices, clients, deals, referrers, users';
+    btn.setAttribute('style',
+      'display:flex;align-items:center;gap:6px;padding:5px 10px 5px 8px;' +
+      'background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);' +
+      'border-radius:7px;color:var(--muted);font-size:11px;cursor:pointer;' +
+      'font-family:var(--ff-body);transition:all .15s'
+    );
+    btn.innerHTML =
+      '<span style="color:#9aa7bd">🔍</span>' +
+      '<span>Search</span>' +
+      '<kbd style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);' +
+      'border-radius:4px;padding:1px 5px;font-size:10px;color:var(--muted);font-family:var(--ff-mono)">' +
+      (isMac ? '⌘K' : 'Ctrl+K') + '</kbd>';
+    btn.addEventListener('mouseenter', function(){
+      btn.style.background = 'rgba(0,229,192,.08)';
+      btn.style.borderColor = 'rgba(0,229,192,.25)';
+      btn.style.color = 'var(--teal)';
+    });
+    btn.addEventListener('mouseleave', function(){
+      btn.style.background = 'rgba(255,255,255,.04)';
+      btn.style.borderColor = 'rgba(255,255,255,.08)';
+      btn.style.color = 'var(--muted)';
+    });
+    btn.addEventListener('click', function(){
+      if(typeof window.glOpenGlobalSearch === 'function') window.glOpenGlobalSearch();
+    });
+    // Insert immediately before the brand element (i.e. to its left)
+    brand.parentElement.insertBefore(btn, brand);
+  }
+
+  function startObs(){
+    var top = document.getElementById('crm-top');
+    if(top){
+      new MutationObserver(function(){ setTimeout(injectHint, 50); }).observe(top, {childList:true, subtree:true});
+      injectHint();
+    } else setTimeout(startObs, 500);
+  }
+  if(document.readyState !== 'loading') startObs();
+  else document.addEventListener('DOMContentLoaded', startObs);
+
+  console.log('[GL] Topbar Ctrl+K hint loaded');
+}());
