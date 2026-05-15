@@ -1920,6 +1920,7 @@
       { label:'📈 Google Analytics', fn:'openGA4Settings', admin:true },
       { label:'🔒 Two-Factor Auth', fn:'openMFASettings' },
       { label:'🐛 Error Log', fn:'glOpenErrorLog', admin:true },
+      { label:'📱 SMS Alerts', fn:'openSmsSettings' },
       { label:'✍️ Email Signature', fn:'openEmailSignatureSettings' },
       { label:'🗑️ Clear local cache', fn:'glClearLocalCache', admin:true, danger:true }
     ];
@@ -5383,5 +5384,184 @@
   };
 
   console.log('[GL] Error logger (Sentry-style) loaded');
+}());
+
+/* ============================================================
+   TWILIO SMS — admin alerts
+   Direct browser → Twilio API is blocked by CORS. The helper
+   POSTs to a Supabase Edge Function (template in wake-up
+   notes) that holds the Twilio credentials server-side.
+   Settings UI: alert phone number + per-event toggles.
+   Edge Function URL defaults to:
+   https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1/twilio-sms
+   ============================================================ */
+(function(){
+  var DEFAULT_FN_URL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1/twilio-sms';
+  var EVENT_KEYS = [
+    { key:'gl_sms_paid',    label:'An invoice is marked paid' },
+    { key:'gl_sms_won',     label:'A deal is moved to Closed Won' },
+    { key:'gl_sms_quote',   label:'A customer accepts a quote' },
+    { key:'gl_sms_tour',    label:'A tour request comes in via the public site' },
+    { key:'gl_sms_overdue', label:'An invoice ages past due' }
+  ];
+
+  function getPhone(){ return (localStorage.getItem('gl_sms_to') || '').trim(); }
+  function getEnabled(key){ return localStorage.getItem(key) === '1'; }
+  function getFnUrl(){ return (localStorage.getItem('gl_sms_fn_url') || DEFAULT_FN_URL).trim(); }
+
+  // Public helper. Returns true on success, false otherwise.
+  window.sendSMS = async function(body, opts){
+    opts = opts || {};
+    var to = opts.to || getPhone();
+    if(!to){
+      console.log('[GL sms] no phone number configured');
+      return false;
+    }
+    if(!body) return false;
+    if(typeof window.glStartBusy === 'function') window.glStartBusy('Sending SMS…');
+    try {
+      // Use the Supabase JWT from the current session as the bearer
+      var token = null;
+      try {
+        if(window.supa && window.supa.auth && window.supa.auth.getSession){
+          var s = await window.supa.auth.getSession();
+          if(s && s.data && s.data.session) token = s.data.session.access_token;
+        }
+      } catch(e){}
+      var r = await fetch(getFnUrl(), {
+        method: 'POST',
+        headers: Object.assign(
+          { 'Content-Type': 'application/json' },
+          token ? { 'Authorization': 'Bearer ' + token } : {}
+        ),
+        body: JSON.stringify({ to: to, body: body.slice(0, 1000) })
+      });
+      if(!r.ok){
+        var t = await r.text().catch(function(){ return ''; });
+        console.error('[GL sms] HTTP', r.status, t);
+        return false;
+      }
+      return true;
+    } catch(e){
+      console.error('[GL sms] send threw', e);
+      return false;
+    } finally {
+      if(typeof window.glEndBusy === 'function') window.glEndBusy();
+    }
+  };
+
+  window.openSmsSettings = function(){
+    var prior = document.getElementById('gl-sms-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var phone = getPhone();
+    var url = getFnUrl();
+    var ov = document.createElement('div');
+    ov.id = 'gl-sms-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:920;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    var togglesHtml = EVENT_KEYS.map(function(e){
+      var on = getEnabled(e.key);
+      return '<label style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:rgba(255,255,255,.03);border-radius:6px;font-size:12px;color:#fff;cursor:pointer">' +
+        '<input type="checkbox" class="gl-sms-tog" data-k="'+e.key+'"'+(on?' checked':'')+' style="width:14px;height:14px;accent-color:var(--teal);cursor:pointer">' +
+        '<span>'+e.label+'</span>' +
+      '</label>';
+    }).join('');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:520px;max-height:88vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">📱 SMS ALERTS</div>' +
+          '<button id="gl-sms-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="background:rgba(245,200,66,.06);border:1px solid rgba(245,200,66,.2);border-radius:8px;padding:11px;font-size:11px;color:#f5c842;margin-bottom:16px;line-height:1.6">' +
+          '⚠ Browser-to-Twilio is blocked by CORS. This UI talks to a Supabase Edge Function (template in deploy notes). Deploy that function with your Twilio credentials before SMS will fire.' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Your phone number (E.164)</div>' +
+          '<input class="finp" id="gl-sms-phone" placeholder="+18034935065" value="'+phone.replace(/"/g,'&quot;')+'" style="font-family:var(--ff-mono)">' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Edge Function URL</div>' +
+          '<input class="finp" id="gl-sms-url" value="'+url.replace(/"/g,'&quot;')+'" style="font-family:var(--ff-mono);font-size:11px">' +
+        '</div>' +
+        '<div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin:14px 0 8px">ALERT ME WHEN</div>' +
+        '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:18px">'+togglesHtml+'</div>' +
+        '<div style="display:flex;gap:8px">' +
+          '<button id="gl-sms-save" class="cbtn pri" style="flex:1">💾 Save</button>' +
+          '<button id="gl-sms-test" class="cbtn">📤 Test send</button>' +
+        '</div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-sms-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-sms-save').addEventListener('click', function(){
+      var p = (ov.querySelector('#gl-sms-phone').value||'').trim();
+      var u = (ov.querySelector('#gl-sms-url').value||'').trim();
+      if(p) localStorage.setItem('gl_sms_to', p); else localStorage.removeItem('gl_sms_to');
+      if(u) localStorage.setItem('gl_sms_fn_url', u); else localStorage.removeItem('gl_sms_fn_url');
+      ov.querySelectorAll('.gl-sms-tog').forEach(function(cb){
+        var k = cb.getAttribute('data-k');
+        if(cb.checked) localStorage.setItem(k, '1'); else localStorage.removeItem(k);
+      });
+      if(typeof addNotification === 'function') addNotification('📱 SMS settings saved','','success');
+      ov.remove();
+    });
+    ov.querySelector('#gl-sms-test').addEventListener('click', async function(){
+      var p = (ov.querySelector('#gl-sms-phone').value||'').trim();
+      if(!p){ alert('Add your phone number first.'); return; }
+      // Persist the URL/phone before testing so getFnUrl/getPhone read fresh
+      localStorage.setItem('gl_sms_to', p);
+      var u = (ov.querySelector('#gl-sms-url').value||'').trim();
+      if(u) localStorage.setItem('gl_sms_fn_url', u);
+      var ok = await window.sendSMS('Good Liquid CRM test message — ' + new Date().toLocaleString());
+      if(ok) alert('✓ Test SMS dispatched. Check your phone.');
+      else alert('✗ Send failed. See browser console for the Edge Function response.');
+    });
+    host.appendChild(ov);
+  };
+
+  // Hook into key events. Wrapped lazily so they fire even if other IIFEs
+  // override the originals later. Each fires only if the matching toggle
+  // is set AND a phone number is configured.
+  function maybeSms(eventKey, msg){
+    if(!getEnabled(eventKey) || !getPhone()) return;
+    window.sendSMS(msg);  // fire-and-forget
+  }
+
+  // Invoice marked paid
+  (function(){
+    var orig = window.quickPaid;
+    if(typeof orig !== 'function') return;
+    window.quickPaid = function(id){
+      var inv = (window.invoices||[]).find(function(i){ return i.id === id; });
+      var r = orig.apply(this, arguments);
+      if(inv) maybeSms('gl_sms_paid', '💰 Invoice ' + id + ' marked paid — $' + Number(inv.amount||0).toLocaleString() + ' (' + (inv.clientName||'') + ')');
+      return r;
+    };
+  })();
+
+  // Deal moved to Closed Won
+  (function(){
+    var orig = window.moveDeal;
+    if(typeof orig !== 'function') return;
+    window.moveDeal = async function(dealId, fromStage, toStage, fallbackIdx){
+      var r = await orig.apply(this, arguments);
+      if(toStage === 'Closed Won'){
+        var deals = window.deals && window.deals[toStage] || [];
+        var d = deals.find(function(x){ return x && x.id === dealId; }) || deals[deals.length-1] || {};
+        maybeSms('gl_sms_won', '🎉 Deal closed won: ' + (d.name||'') + ' (' + (d.co||'') + ') ' + (d.val||''));
+      }
+      return r;
+    };
+  })();
+
+  // Quote accepted (when admin clicks "→ Invoice" on a quote row)
+  (function(){
+    var orig = window.glConvertQuoteToInvoice;
+    if(typeof orig !== 'function') return;
+    window.glConvertQuoteToInvoice = async function(invId){
+      var inv = (window.invoices||[]).find(function(i){ return i.id === invId; }) || {};
+      var r = await orig.apply(this, arguments);
+      maybeSms('gl_sms_quote', '✓ Quote ' + invId + ' converted to invoice — $' + Number(inv.amount||0).toLocaleString() + ' (' + (inv.clientName||'') + ')');
+      return r;
+    };
+  })();
+
+  console.log('[GL] Twilio SMS scaffold loaded');
 }());
 
