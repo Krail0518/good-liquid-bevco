@@ -1917,6 +1917,7 @@
       { label:'📊 Time Report',    fn:'openTimeTrackingReport' },
       { label:'🤖 AI Settings',    fn:'openAISettings' },
       { label:'📧 Mailgun Settings', fn:'openMailgunSettings' },
+      { label:'✍️ Email Signature', fn:'openEmailSignatureSettings' },
       { label:'🗑️ Clear local cache', fn:'glClearLocalCache', admin:true, danger:true }
     ];
     items.forEach(function(it){
@@ -3452,4 +3453,81 @@
   else document.addEventListener('DOMContentLoaded', startObs);
 
   console.log('[GL] System health widget loaded');
+}());
+
+/* ============================================================
+   EMAIL SIGNATURE
+   Per-device localStorage signature (gl_email_signature) that
+   gets auto-appended to outgoing follow-up emails before send.
+   Configurable via a new entry in the AI toolbar.
+   ============================================================ */
+(function(){
+  function defaultSig(){
+    var u = window.currentUser;
+    var name = (u && u.name) || 'Mike Krail';
+    return name + '\nGood Liquid Bev Co\nMike@GoodLiquid.com · (803) 493-5065\nhttps://www.goodliquidbevco.com';
+  }
+  window.glGetSignature = function(){
+    var s = localStorage.getItem('gl_email_signature');
+    if(s !== null) return s;  // even "" is a valid explicit setting
+    return '';
+  };
+  window.glSetSignature = function(sig){
+    if(sig === null || sig === undefined) localStorage.removeItem('gl_email_signature');
+    else localStorage.setItem('gl_email_signature', sig);
+  };
+
+  window.openEmailSignatureSettings = function(){
+    var prior = document.getElementById('gl-sig-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var current = window.glGetSignature();
+    var ov = document.createElement('div');
+    ov.id = 'gl-sig-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:900;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:24px;width:100%;max-width:540px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">✍️ EMAIL SIGNATURE</div>' +
+          '<button id="gl-sig-close" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.6">Appended to outgoing follow-up emails after the body. Stored in this browser only — Sandra needs to set hers separately on her device.</div>' +
+        '<textarea id="gl-sig-text" rows="8" style="width:100%;padding:13px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#fff;font-family:var(--ff-mono);font-size:12px;line-height:1.6;resize:vertical;box-sizing:border-box">' + (current || defaultSig()).replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</textarea>' +
+        '<div style="display:flex;gap:8px;margin-top:14px">' +
+          '<button id="gl-sig-save" class="cbtn pri" style="flex:1">💾 Save signature</button>' +
+          '<button id="gl-sig-default" class="cbtn">Restore default</button>' +
+          '<button id="gl-sig-clear" class="cbtn red">Clear</button>' +
+        '</div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-sig-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-sig-save').addEventListener('click', function(){
+      var v = ov.querySelector('#gl-sig-text').value;
+      window.glSetSignature(v);
+      if(typeof addNotification === 'function') addNotification('Signature saved','Will be appended to outgoing follow-ups.','success');
+      ov.remove();
+    });
+    ov.querySelector('#gl-sig-default').addEventListener('click', function(){
+      ov.querySelector('#gl-sig-text').value = defaultSig();
+    });
+    ov.querySelector('#gl-sig-clear').addEventListener('click', function(){
+      if(!confirm('Clear the saved signature?')) return;
+      window.glSetSignature('');
+      ov.querySelector('#gl-sig-text').value = '';
+    });
+    host.appendChild(ov);
+  };
+
+  // Wrap sendFollowupEmail so signature is appended if not already present.
+  (function(){
+    var orig = window.sendFollowupEmail;
+    if(typeof orig !== 'function') return;
+    window.sendFollowupEmail = async function(){
+      var sig = window.glGetSignature();
+      var body = document.getElementById('fu-body');
+      if(sig && body && body.value && body.value.indexOf(sig.split('\n')[0]) === -1){
+        body.value = body.value.replace(/\s*$/, '') + '\n\n' + sig;
+      }
+      return orig.apply(this, arguments);
+    };
+  })();
 }());
