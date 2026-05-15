@@ -2009,3 +2009,64 @@
 
   console.log('[GL] AI toolbar v2 loaded');
 }());
+
+/* ============================================================
+   GLOBAL BUSY INDICATOR
+   Small "Working…" pill at the top of the viewport, auto-shown
+   while any AI or Mailgun call is in-flight. Reference-counted
+   so concurrent calls don't hide it prematurely.
+   ============================================================ */
+(function(){
+  function ensurePill(){
+    var p = document.getElementById('gl-busy');
+    if(p) return p;
+    p = document.createElement('div');
+    p.id = 'gl-busy';
+    p.setAttribute('style','position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:9999;background:#142238;border:1px solid rgba(0,229,192,.35);border-radius:20px;padding:8px 18px;color:var(--teal);font-size:12px;font-weight:600;font-family:var(--ff-body);box-shadow:0 4px 20px rgba(0,0,0,.5);display:flex;align-items:center;gap:9px;pointer-events:none;opacity:0;transition:opacity .18s');
+    p.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border:2px solid rgba(0,229,192,.3);border-top-color:var(--teal);border-radius:50%;animation:gl-spin .8s linear infinite"></span><span id="gl-busy-text">Working…</span>';
+    document.body.appendChild(p);
+    if(!document.getElementById('gl-busy-style')){
+      var s = document.createElement('style');
+      s.id = 'gl-busy-style';
+      s.textContent = '@keyframes gl-spin{to{transform:rotate(360deg)}}';
+      document.head.appendChild(s);
+    }
+    return p;
+  }
+  window.glStartBusy = function(label){
+    var p = ensurePill();
+    p._count = (p._count||0) + 1;
+    var t = document.getElementById('gl-busy-text');
+    if(t) t.textContent = label || 'Working…';
+    p.style.opacity = '1';
+  };
+  window.glEndBusy = function(){
+    var p = document.getElementById('gl-busy');
+    if(!p) return;
+    p._count = Math.max(0, (p._count||0) - 1);
+    if(p._count === 0) p.style.opacity = '0';
+  };
+
+  // Wrap callAI so every AI call lights the pill.
+  var origCallAI = window.callAI;
+  if(typeof origCallAI === 'function'){
+    window.callAI = async function(){
+      window.glStartBusy('AI thinking…');
+      try { return await origCallAI.apply(this, arguments); }
+      catch(e){ console.error('[GL] callAI threw', e); throw e; }
+      finally { window.glEndBusy(); }
+    };
+  }
+  // Wrap sendMailgunEmail similarly.
+  var origMG = window.sendMailgunEmail;
+  if(typeof origMG === 'function'){
+    window.sendMailgunEmail = async function(){
+      window.glStartBusy('Sending email…');
+      try { return await origMG.apply(this, arguments); }
+      catch(e){ console.error('[GL] sendMailgunEmail threw', e); throw e; }
+      finally { window.glEndBusy(); }
+    };
+  }
+
+  console.log('[GL] Global busy indicator wired (callAI + sendMailgunEmail)');
+}());
