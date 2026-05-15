@@ -4246,211 +4246,311 @@
 }());
 
 /* ============================================================
-   IN-APP HELP PANEL
-   - "❓ Help" button in the CRM topbar (next to the search pill)
-   - Opens a modal with a section per CRM page + general tips
-   - Auto-scrolls to the section that matches the currently
-     active CRM panel (so Help from /invoices lands on Invoices)
+   IN-APP HELP PANEL (v2 — fixed layout + visual wireframes)
+   Replaces the broken v1 grid layout with a flexbox row that
+   actually renders, larger TOC items, and inline SVG mockups
+   on the busiest sections (Dashboard, Invoices, New Invoice,
+   Users) with numbered callouts mapped to bullets.
    ============================================================ */
 (function(){
-  // Maps a current `.cpg.act` id (like "cpg-invoices") to a help section anchor.
-  var PAGE_TO_SECTION = {
-    'cpg-dashboard':      'help-dashboard',
-    'cpg-clients':        'help-clients',
-    'cpg-pipeline':       'help-pipeline',
-    'cpg-invoices':       'help-invoices',
-    'cpg-invoice-detail': 'help-invoices',
-    'cpg-newinv':         'help-newinv',
-    'cpg-referrals':      'help-referrals',
-    'cpg-referrers':      'help-referrers',
-    'cpg-activity':       'help-activity',
-    'cpg-calendar':       'help-calendar',
-    'cpg-production-cal': 'help-production',
-    'cpg-tasks':          'help-tasks',
-    'cpg-documents':      'help-documents',
-    'cpg-inventory':      'help-inventory',
-    'cpg-announcements':  'help-announcements',
-    'cpg-customers':      'help-customers',
-    'cpg-users':          'help-users'
-  };
+  function section(id, heading, html){
+    return '<section id="' + id + '" style="padding:22px 4px 26px;border-bottom:1px solid rgba(255,255,255,.06);scroll-margin-top:20px">' +
+      '<h3 style="margin:0 0 14px;font-family:var(--ff-disp);font-size:15px;letter-spacing:2px;color:var(--teal)">' + heading + '</h3>' +
+      html +
+    '</section>';
+  }
+  function bullets(items){
+    return '<ul style="margin:10px 0 4px;padding-left:20px;color:#cfd9e6;font-size:13px;line-height:1.75">' +
+      items.map(function(t){ return '<li style="margin-bottom:6px">' + t + '</li>'; }).join('') +
+    '</ul>';
+  }
+  function wf(width, height, content){
+    return '<svg viewBox="0 0 ' + width + ' ' + height + '" width="100%" style="background:#0a1628;border-radius:10px;border:1px solid rgba(255,255,255,.08);margin:12px 0 4px;display:block;max-height:340px">' +
+      content +
+    '</svg>';
+  }
+  function box(x,y,w,h,fill,stroke){ return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="6" fill="'+(fill||'#243a56')+'" stroke="'+(stroke||'rgba(255,255,255,.06)')+'"/>'; }
+  function txt(x,y,t,size,color,anchor){ return '<text x="'+x+'" y="'+y+'" fill="'+(color||'#cfd9e6')+'" font-size="'+(size||11)+'" text-anchor="'+(anchor||'start')+'" font-family="Arial">'+t+'</text>'; }
+  function tag(x,y,n){ return '<circle cx="'+x+'" cy="'+y+'" r="11" fill="#00e5c0"/><text x="'+x+'" y="'+(y+4)+'" fill="#0a1628" font-size="11" text-anchor="middle" font-weight="bold" font-family="Arial">'+n+'</text>'; }
 
+  var MOCK_DASHBOARD = wf(620, 320,
+    box(0,0,140,320,'#142238','rgba(255,255,255,.05)') +
+    txt(15,28,'CRM nav',10,'#9aa7bd') +
+    txt(15,52,'• Dashboard',11,'#00e5c0') + txt(15,72,'• Clients',11,'#9aa7bd') +
+    txt(15,92,'• Pipeline',11,'#9aa7bd') + txt(15,112,'• Invoices',11,'#9aa7bd') +
+    txt(160,28,'DASHBOARD',13,'#fff') + txt(160,46,'Good Liquid · 2026',10,'#9aa7bd') +
+    box(160,60,100,52) + txt(170,82,'Collected',9,'#9aa7bd') + txt(170,103,'$0K',13,'#00e5c0') +
+    box(270,60,100,52) + txt(280,82,'Pending',9,'#9aa7bd') + txt(280,103,'$0K',13,'#fff') +
+    box(380,60,100,52) + txt(390,82,'Overdue',9,'#9aa7bd') + txt(390,103,'$0K',13,'#e74c3c') +
+    box(490,60,115,52) + txt(500,82,'Active brands',9,'#9aa7bd') + txt(500,103,'0',13,'#00e5c0') +
+    box(160,122,100,52) + txt(170,144,'Avg inv',9,'#9aa7bd') + txt(170,165,'$—',13,'#00e5c0') +
+    box(270,122,100,52) + txt(280,144,'Outstanding',9,'#9aa7bd') + txt(280,165,'$0',13,'#f5c842') +
+    box(380,122,100,52) + txt(390,144,'Days to paid',9,'#9aa7bd') + txt(390,165,'—',13,'#fff') +
+    box(490,122,115,52) + txt(500,144,'Quotes',9,'#9aa7bd') + txt(500,165,'0',13,'#6b9fff') +
+    box(160,184,280,120) + txt(300,210,'Revenue by service',10,'#9aa7bd','middle') +
+    '<rect x="190" y="240" width="20" height="50" rx="2" fill="#1a6fff"/>' +
+    '<rect x="230" y="260" width="20" height="30" rx="2" fill="#00c4a7"/>' +
+    '<rect x="270" y="245" width="20" height="45" rx="2" fill="#1a6fff"/>' +
+    '<rect x="310" y="270" width="20" height="20" rx="2" fill="#00c4a7"/>' +
+    box(450,184,155,120) + txt(460,205,'Recent activity',10,'#9aa7bd') +
+    '<line x1="460" y1="220" x2="595" y2="220" stroke="rgba(255,255,255,.05)"/>' +
+    txt(460,238,'• Invoice saved',9,'#cfd9e6') + txt(460,256,'• Deal moved',9,'#cfd9e6') + txt(460,274,'• Note added',9,'#cfd9e6') +
+    box(160,310,445,8,'rgba(0,229,192,.1)','rgba(0,229,192,.3)') +
+    tag(155,60,1) + tag(155,122,2) + tag(155,184,3) + tag(440,184,4) + tag(445,318,5)
+  );
+
+  var MOCK_INVOICES = wf(620, 290,
+    box(0,0,140,290,'#142238','rgba(255,255,255,.05)') +
+    txt(15,28,'CRM nav',10,'#9aa7bd') +
+    txt(160,28,'INVOICES',13,'#fff') + txt(160,46,'X invoices',10,'#9aa7bd') +
+    box(380,16,80,24,'#00e5c0','#00e5c0') + txt(420,32,'+ New',10,'#0a1628','middle') +
+    box(465,16,80,24,'rgba(0,229,192,.08)','rgba(0,229,192,.3)') + txt(505,32,'📊 CSV',10,'#00e5c0','middle') +
+    box(550,16,55,24,'rgba(245,200,66,.08)','rgba(245,200,66,.3)') + txt(577,32,'📧',10,'#f5c842','middle') +
+    box(160,56,445,28) + txt(175,75,'🔍 Search invoices…',11,'#9aa7bd') +
+    box(160,96,40,22,'rgba(0,229,192,.2)','rgba(0,229,192,.3)') + txt(180,111,'All',10,'#00e5c0','middle') +
+    box(205,96,55,22,'rgba(255,255,255,.04)') + txt(232,111,'Draft',10,'#9aa7bd','middle') +
+    box(265,96,65,22,'rgba(255,255,255,.04)') + txt(297,111,'Pending',10,'#9aa7bd','middle') +
+    box(335,96,55,22,'rgba(255,255,255,.04)') + txt(362,111,'Paid',10,'#9aa7bd','middle') +
+    box(395,96,65,22,'rgba(255,255,255,.04)') + txt(427,111,'Overdue',10,'#9aa7bd','middle') +
+    box(465,96,55,22,'rgba(255,255,255,.04)') + txt(492,111,'Quote',10,'#6b9fff','middle') +
+    box(160,130,445,150) +
+    '<line x1="160" y1="160" x2="605" y2="160" stroke="rgba(255,255,255,.06)"/>' +
+    txt(170,150,'Invoice #',9,'#9aa7bd') + txt(245,150,'Client',9,'#9aa7bd') +
+    txt(320,150,'Amount',9,'#9aa7bd') + txt(380,150,'Status',9,'#9aa7bd') + txt(455,150,'Actions',9,'#9aa7bd') +
+    txt(170,180,'GL-1001',10,'#00e5c0') + txt(245,180,'Acme Co.',10,'#fff') + txt(320,180,'$3,850',10,'#fff') +
+    box(380,170,55,16,'rgba(245,200,66,.12)','rgba(245,200,66,.3)') + txt(407,182,'pending',9,'#f5c842','middle') +
+    box(455,170,35,16,'rgba(34,197,94,.15)','rgba(34,197,94,.3)') + txt(472,182,'Paid',8,'#22c55e','middle') +
+    box(495,170,25,16,'rgba(168,85,247,.15)') + txt(507,182,'💳',9,'#c4a4f8','middle') +
+    box(525,170,40,16,'rgba(255,255,255,.06)') + txt(545,182,'👁',9,'#9aa7bd','middle') +
+    txt(170,210,'GL-1002',10,'#00e5c0') + txt(245,210,'Beta Brands',10,'#fff') + txt(320,210,'$5,420',10,'#fff') +
+    box(380,200,55,16,'rgba(107,159,255,.12)','rgba(107,159,255,.3)') + txt(407,212,'quote',9,'#6b9fff','middle') +
+    box(455,200,75,16,'rgba(107,159,255,.15)','rgba(107,159,255,.3)') + txt(492,212,'→ Invoice',8,'#6b9fff','middle') +
+    tag(380,16,1) + tag(465,16,2) + tag(550,16,3) + tag(160,96,4) + tag(530,178,5) + tag(490,210,6)
+  );
+
+  var MOCK_NEWINV = wf(620, 320,
+    box(0,0,620,320,'#142238','rgba(255,255,255,.05)') +
+    txt(20,28,'NEW INVOICE',13,'#00e5c0') +
+    box(20,48,180,46) + txt(28,64,'Client *',9,'#9aa7bd') + txt(28,84,'— pick a client —',11,'#cfd9e6') +
+    box(210,48,180,46) + txt(218,64,'Invoice date',9,'#9aa7bd') + txt(218,84,'2026-05-15',11,'#fff') +
+    box(400,48,200,46) + txt(408,64,'Invoice #',9,'#9aa7bd') + txt(408,84,'GL-1001',11,'#fff') +
+    box(20,104,90,26,'rgba(0,229,192,.08)','rgba(0,229,192,.3)') + txt(65,121,'+ Canning',10,'#00e5c0','middle') +
+    box(115,104,90,26,'rgba(0,229,192,.08)','rgba(0,229,192,.3)') + txt(160,121,'+ Bottling',10,'#00e5c0','middle') +
+    box(210,104,90,26,'rgba(0,229,192,.08)','rgba(0,229,192,.3)') + txt(255,121,'+ R&amp;D',10,'#00e5c0','middle') +
+    box(305,104,90,26,'rgba(0,229,192,.08)','rgba(0,229,192,.3)') + txt(350,121,'+ Hours',10,'#00e5c0','middle') +
+    box(400,104,90,26,'rgba(0,229,192,.08)','rgba(0,229,192,.3)') + txt(445,121,'+ Custom',10,'#00e5c0','middle') +
+    box(20,140,580,90) +
+    txt(30,156,'Canning · 12oz Std',10,'#00e5c0') + txt(180,156,'150 cases',10,'#fff') + txt(280,156,'$11.52/case',10,'#9aa7bd') + txt(540,156,'$1,728.00',11,'#fff','end') +
+    '<line x1="30" y1="170" x2="590" y2="170" stroke="rgba(255,255,255,.05)"/>' +
+    txt(30,188,'Bottling · 750ml',10,'#00e5c0') + txt(180,188,'500 btl',10,'#fff') + txt(280,188,'$1.85/btl',10,'#9aa7bd') + txt(540,188,'$925.00',11,'#fff','end') +
+    '<line x1="30" y1="202" x2="590" y2="202" stroke="rgba(255,255,255,.05)"/>' +
+    txt(30,220,'R&amp;D · Formulation',10,'#00e5c0') + txt(180,220,'1',10,'#fff') + txt(280,220,'$1,500',10,'#9aa7bd') + txt(540,220,'$1,500.00',11,'#fff','end') +
+    box(360,240,240,32) + txt(370,260,'Discount %',9,'#9aa7bd') + txt(550,260,'0',10,'#fff','end') +
+    box(360,278,240,28,'rgba(0,229,192,.08)','rgba(0,229,192,.3)') + txt(370,296,'TOTAL',10,'#00e5c0') + txt(590,296,'$4,153.00',12,'#00e5c0','end') +
+    box(20,278,75,28,'#00e5c0','#00e5c0') + txt(57,296,'💾 Save',10,'#0a1628','middle') +
+    box(100,278,90,28,'rgba(107,159,255,.12)','rgba(107,159,255,.3)') + txt(145,296,'💾 Quote',10,'#6b9fff','middle') +
+    box(195,278,75,28,'rgba(0,229,192,.08)','rgba(0,229,192,.3)') + txt(232,296,'📄 PDF',10,'#00e5c0','middle') +
+    box(275,278,80,28,'rgba(107,159,255,.12)','rgba(107,159,255,.3)') + txt(315,296,'📋 Q-PDF',10,'#6b9fff','middle') +
+    tag(20,48,1) + tag(20,104,2) + tag(20,140,3) + tag(360,240,4) + tag(20,278,5)
+  );
+
+  var MOCK_USERS = wf(620, 250,
+    box(0,0,620,250,'#142238','rgba(255,255,255,.05)') +
+    txt(20,28,'USERS &amp; PERMISSIONS',13,'#fff') + txt(20,46,'Manage team access',10,'#9aa7bd') +
+    box(380,16,80,24,'#00e5c0','#00e5c0') + txt(420,32,'+ Invite',10,'#0a1628','middle') +
+    box(465,16,110,24,'rgba(0,229,192,.08)','rgba(0,229,192,.3)') + txt(520,32,'📋 Activity log',9,'#00e5c0','middle') +
+    box(20,60,180,42,'rgba(0,229,192,.06)','rgba(0,229,192,.18)') + txt(30,78,'👑 ADMIN',10,'#00e5c0') + txt(30,94,'Full access',9,'#9aa7bd') +
+    box(210,60,180,42,'rgba(26,111,255,.06)','rgba(26,111,255,.18)') + txt(220,78,'💼 SALES',10,'#6b9fff') + txt(220,94,'CRM only',9,'#9aa7bd') +
+    box(400,60,200,42,'rgba(255,255,255,.04)') + txt(410,78,'👁 VIEWER',10,'#9aa7bd') + txt(410,94,'Read only',9,'#9aa7bd') +
+    box(20,114,580,120) +
+    txt(30,134,'Name',9,'#9aa7bd') + txt(180,134,'Email',9,'#9aa7bd') + txt(310,134,'Role',9,'#9aa7bd') + txt(390,134,'Actions',9,'#9aa7bd') +
+    '<line x1="30" y1="142" x2="590" y2="142" stroke="rgba(255,255,255,.06)"/>' +
+    txt(30,160,'Mike Krail',11,'#fff') + txt(180,160,'mike@goodliquid.com',10,'#9aa7bd') +
+    box(310,150,55,16,'rgba(245,200,66,.12)','rgba(245,200,66,.3)') + txt(337,162,'admin',9,'#f5c842','middle') +
+    txt(390,160,'Owner',10,'#9aa7bd') +
+    txt(30,190,'Sandra Krail',11,'#fff') + txt(180,190,'sandra@goodliquid.com',10,'#9aa7bd') +
+    box(310,180,55,18,'#243a56','rgba(255,255,255,.18)') + txt(337,193,'sales ▾',9,'#fff','middle') +
+    box(375,180,72,18,'rgba(255,255,255,.06)') + txt(411,193,'Set password',8,'#fff','middle') +
+    box(450,180,68,18,'rgba(245,200,66,.08)','rgba(245,200,66,.3)') + txt(484,193,'Email reset',8,'#f5c842','middle') +
+    box(522,180,55,18,'rgba(231,76,60,.15)','rgba(231,76,60,.3)') + txt(549,193,'Remove',8,'#e74c3c','middle') +
+    tag(380,16,1) + tag(465,16,2) + tag(20,60,3) + tag(310,180,4) + tag(450,180,5)
+  );
+
+  var SEC_OVERVIEW = bullets([
+    '<b>Quick search:</b> press <kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">Ctrl+K</kbd> anywhere to jump to an invoice, client, deal, or user by name.',
+    '<b>This help panel:</b> press <kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">?</kbd> any time, or click ❓ Help in the topbar. It opens to the section matching the page you\'re on.',
+    '<b>AI tools:</b> the floating 🤖 button bottom-right opens a menu of AI helpers plus all the settings (Mailgun, AI key, Email signature, Clear local cache).',
+    '<b>Data sync:</b> invoices, clients, deals, referrers, referrals, and user profiles all live in Supabase and sync across devices. Tasks, calendar, notifications, and the activity feed live in localStorage (per device).'
+  ]);
+
+  var SEC_DASHBOARD = MOCK_DASHBOARD +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>(1) Top metrics row</b> — Total collected (paid YTD), Pending, Overdue, Active brands.',
+      '<b>(2) Second KPI row</b> — Avg invoice value, Outstanding ($ pending + overdue), Avg days to paid, Quotes pending.',
+      '<b>(3) Revenue by service chart</b> — bar chart split by Canning / R&D / Bottling / Consulting. Mixed-service invoices split per line item.',
+      '<b>(4) Recent activity feed</b> — last few CRM actions; click to jump to the related screen.',
+      '<b>(5) System Health widget</b> (admin only) — ✓ or ✗ for Supabase Auth, Mailgun key, AI key, audit_log table, client-docs bucket. Each ✗ has a one-click fix button.'
+    ]);
+
+  var SEC_INVOICES = MOCK_INVOICES +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>(1) + New invoice</b> — opens the builder modal.',
+      '<b>(2) 📊 Export CSV</b> — downloads every non-quote invoice as CSV (drop into QuickBooks or hand to your accountant).',
+      '<b>(3) 📧 Send overdue reminders</b> — confirms, then emails every overdue client at once using Mailgun + your email signature.',
+      '<b>(4) Status filter pills</b> — All / Draft / Pending / Paid / Overdue / Quote.',
+      '<b>(5) Row actions</b> — 💳 opens the Stripe pay link for that invoice; 👁 opens the invoice detail.',
+      '<b>(6) → Invoice button</b> — appears on quote-status rows. One-click conversion from "quote" to billable "pending".'
+    ]);
+
+  var SEC_NEWINV = MOCK_NEWINV +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>(1) Client / date / invoice #</b> — client dropdown is required; date defaults to today; invoice # auto-generates.',
+      '<b>(2) Add-line buttons</b> — Canning, Bottling, R&D / IP, Production Hours, Custom. Canning & Bottling auto-tier their per-unit rate from Supabase canning_rates / bottling_rates.',
+      '<b>(3) Line rows</b> — change quantity inline; per-case / per-unit price and totals update live. The X on the right removes a line.',
+      '<b>(4) Discount + total</b> — enter a discount percent; subtotal and grand total recompute live.',
+      '<b>(5) Save buttons</b> — 💾 Save Invoice (status=pending), 💾 Save as Quote (status=quote), 📄 Save & Export PDF (real invoice PDF), 📋 Export as Quote (PDF only with 30-day validity, no DB save).'
+    ]);
+
+  var SEC_USERS = MOCK_USERS +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>(1) + Invite</b> — creates a Supabase Auth account. Invitee clicks the email confirmation link before they can log in.',
+      '<b>(2) 📋 Activity log</b> — last 100 audit_log entries. Requires the audit_log table SQL.',
+      '<b>(3) Role legend</b> — Admin (full access), Sales (CRM only), Viewer (read-only).',
+      '<b>(4) Role dropdown per row</b> — change role inline. Persists to profiles immediately.',
+      '<b>(5) Row actions</b> — Set password (masked-input modal → admin_set_user_password RPC, no email), Email reset (Supabase recovery email), Remove (soft-delete via profile.status = inactive). Owner row is locked.'
+    ]);
+
+  var SEC_CLIENTS = bullets([
+    'List of every brand client. Click any row to open detail (recent invoices, deals, notes, AI summary button).',
+    '<b>+ Add Client</b> in the header — name, contact, email, service, status (lead / active).',
+    'Status badge reflects lead vs active. Active clients count toward the dashboard "Active brands" metric.',
+    'Clients persist to Supabase via the existing add-client flow.'
+  ]);
+  var SEC_PIPELINE = bullets([
+    '<b>Kanban</b> with stages: Prospecting → Proposal → Negotiation → Closed Won / Closed Lost. Drag cards between columns (or use the arrows on each card).',
+    '<b>+ Add Deal</b> creates a Prospecting card. Click any card to open the deal detail.',
+    '<b>→ Invoice</b> button in deal detail closes the modal, opens the invoice builder pre-matched to the deal\'s client by name.',
+    'Cards untouched for >14 days in active stages show a yellow <b>⏰ Nd</b> badge.'
+  ]);
+  var SEC_REFERRALS = bullets([
+    'Track deals brought in by external partners. Each referral links to a referrer, client, deal value, commission %.',
+    'Status: lead → presented → won → paid. When status = won, commission counts as "owed" on the dashboard referrer card.',
+    'Click <b>Pay commission</b> on a won referral to mark it paid.'
+  ]);
+  var SEC_REFERRERS = bullets([
+    'Your network of external partners (brokers, industry contacts).',
+    '<b>+ Add referrer</b> — name, relationship, email, phone, default commission rate %.',
+    'Each referrer card on the dashboard shows commissions owed vs paid.'
+  ]);
+  var SEC_ACTIVITY = bullets([
+    'Chronological log of CRM events: calls, emails, referrals, deal moves, notes, commissions.',
+    'Stored in localStorage (gl_activities). <b>Per device</b>, capped at 100.',
+    'Distinct from the <b>audit_log</b> (security-relevant admin actions) — see Users → 📋 Activity log for that.'
+  ]);
+  var SEC_CALENDAR = bullets([
+    'General calendar for tour requests, meetings, milestones.',
+    'Public "Schedule a tour" submissions land here automatically.',
+    'Stored in localStorage (gl_cal_events).'
+  ]);
+  var SEC_PRODUCTION = bullets([
+    'Calendar focused on production runs (which client, format, cases).',
+    'Customers see their own scheduled runs in the Customer Portal.'
+  ]);
+  var SEC_TASKS = bullets([
+    'Personal to-do list. Tasks can be linked to a client.',
+    'Stored in localStorage (gl_tasks). <b>Per device</b>.'
+  ]);
+  var SEC_DOCUMENTS = bullets([
+    'Upload files (PDF, Word, images, CSV) per client. Files persist to Supabase Storage in the <b>client-docs</b> bucket.',
+    'If the bucket isn\'t set up yet, metadata is stored but the file isn\'t. The dashboard System Health widget has a one-click "Copy SQL" for the bucket.',
+    'Documents are private to authenticated users.'
+  ]);
+  var SEC_INVENTORY = bullets([
+    'Simple stock tracker: quantity + unit + low-stock threshold.',
+    '<b>+ Add Item</b> adds a row. Items below their lowAt threshold flag on the dashboard.',
+    'Stored in localStorage (gl_inventory).'
+  ]);
+  var SEC_ANNOUNCEMENTS = bullets([
+    'Company-wide notes shown on every user\'s dashboard.',
+    'Stored in localStorage.'
+  ]);
+  var SEC_CUSTOMERS = bullets([
+    'Manage customer portal accounts (separate from CRM staff users).',
+    '<b>📧 Send Onboarding Email</b> — prompts for name + email, creates a portal login with a temp password, emails the customer the login link.',
+    'Requires Mailgun key (🤖 toolbar → 📧 Mailgun Settings).',
+    'Customers who log in see invoices addressed to them, 💳 Pay Now buttons (Stripe), ✓ Accept Quote buttons (emails Mike), and a contact form.'
+  ]);
+  var SEC_SETTINGS = bullets([
+    'All settings under the floating 🤖 menu (bottom-right of CRM):',
+    '<b>📧 Mailgun Settings</b> — paste your Mailgun private API key. Required for outgoing email. Test send button included.',
+    '<b>🤖 AI Settings</b> — paste your Anthropic API key. Required for 🤖 AI features. Optional otherwise.',
+    '<b>✍️ Email Signature</b> — per-device signature auto-appended to outgoing follow-ups.',
+    '<b>🗑️ Clear local cache</b> (admin only) — per-key opt-in cleanup of gl_* localStorage.',
+    'The <b>System Health</b> widget on the dashboard surfaces missing integrations.'
+  ]);
+  var SEC_SHORTCUTS = bullets([
+    '<kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">Ctrl+K</kbd> / <kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">⌘K</kbd> — open Global Search across invoices / clients / deals / referrers / users.',
+    '<kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">?</kbd> — open this Help panel (auto-scrolled to the section matching your current page).',
+    '<kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">Esc</kbd> — close most overlays.',
+    '<kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">↑↓</kbd> in Global Search — navigate; <kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">Enter</kbd> opens.'
+  ]);
+
+  var HELP_HTML =
+    section('help-overview',     '👋 OVERVIEW',                   SEC_OVERVIEW) +
+    section('help-dashboard',    '📊 DASHBOARD',                  SEC_DASHBOARD) +
+    section('help-clients',      '👥 CLIENTS',                    SEC_CLIENTS) +
+    section('help-pipeline',     '📊 PIPELINE (DEALS)',           SEC_PIPELINE) +
+    section('help-invoices',     '🧾 INVOICES',                   SEC_INVOICES) +
+    section('help-newinv',       '➕ NEW INVOICE BUILDER',         SEC_NEWINV) +
+    section('help-referrals',    '🤝 REFERRALS',                  SEC_REFERRALS) +
+    section('help-referrers',    '👤 REFERRERS',                  SEC_REFERRERS) +
+    section('help-activity',     '📡 ACTIVITY FEED',              SEC_ACTIVITY) +
+    section('help-calendar',     '📅 CALENDAR',                   SEC_CALENDAR) +
+    section('help-production',   '🏭 PRODUCTION SCHEDULE',        SEC_PRODUCTION) +
+    section('help-tasks',        '✅ TASKS',                      SEC_TASKS) +
+    section('help-documents',    '📁 DOCUMENTS',                  SEC_DOCUMENTS) +
+    section('help-inventory',    '📦 INVENTORY',                  SEC_INVENTORY) +
+    section('help-announcements','📣 ANNOUNCEMENTS',              SEC_ANNOUNCEMENTS) +
+    section('help-customers',    '🌐 CUSTOMER LOGINS (ADMIN)',    SEC_CUSTOMERS) +
+    section('help-users',        '🔑 USERS & PERMISSIONS (ADMIN)',SEC_USERS) +
+    section('help-settings',     '⚙️ SETTINGS & INTEGRATIONS',    SEC_SETTINGS) +
+    section('help-shortcuts',    '⌨️ KEYBOARD SHORTCUTS',          SEC_SHORTCUTS);
+
+  var TOC_ENTRIES = [
+    ['help-overview','👋 Overview'],['help-dashboard','📊 Dashboard'],
+    ['help-clients','👥 Clients'],['help-pipeline','📊 Pipeline'],
+    ['help-invoices','🧾 Invoices'],['help-newinv','➕ New Invoice'],
+    ['help-referrals','🤝 Referrals'],['help-referrers','👤 Referrers'],
+    ['help-activity','📡 Activity'],['help-calendar','📅 Calendar'],
+    ['help-production','🏭 Production'],['help-tasks','✅ Tasks'],
+    ['help-documents','📁 Documents'],['help-inventory','📦 Inventory'],
+    ['help-announcements','📣 Announcements'],['help-customers','🌐 Customer Logins'],
+    ['help-users','🔑 Users'],['help-settings','⚙️ Settings'],
+    ['help-shortcuts','⌨️ Shortcuts']
+  ];
+  var PAGE_TO_SECTION = {
+    'cpg-dashboard':'help-dashboard','cpg-clients':'help-clients','cpg-pipeline':'help-pipeline',
+    'cpg-invoices':'help-invoices','cpg-invoice-detail':'help-invoices','cpg-newinv':'help-newinv',
+    'cpg-referrals':'help-referrals','cpg-referrers':'help-referrers','cpg-activity':'help-activity',
+    'cpg-calendar':'help-calendar','cpg-production-cal':'help-production','cpg-tasks':'help-tasks',
+    'cpg-documents':'help-documents','cpg-inventory':'help-inventory','cpg-announcements':'help-announcements',
+    'cpg-customers':'help-customers','cpg-users':'help-users'
+  };
   function currentSection(){
     var active = document.querySelector('#crm-panel .cpg.act');
     if(active && PAGE_TO_SECTION[active.id]) return PAGE_TO_SECTION[active.id];
     return 'help-overview';
   }
-
-  // Help content. Each section: anchor id + heading + bullets/paragraphs.
-  // Concise, scannable. Real prose, not marketing.
-  var HELP_HTML =
-    section('help-overview', '👋 Overview', [
-      'This is the Good Liquid CRM — your single dashboard for clients, deals, invoices, production schedule, and team. Most actions are one click from the left sidebar or this top bar.',
-      '<b>Quick search:</b> press <kbd>Ctrl+K</kbd> anywhere to jump to an invoice, client, deal, or user by name.',
-      '<b>AI tools:</b> click the floating 🤖 button bottom-right for AI-assisted drafting (email, invoice items, quote estimation, etc.).',
-      '<b>Settings:</b> the 🤖 menu also holds Mailgun Settings, AI Settings, Email Signature, and Clear Local Cache.'
-    ]) +
-
-    section('help-dashboard', '📊 Dashboard', [
-      'Top row: <b>Total collected</b>, <b>Pending</b>, <b>Overdue</b>, <b>Active brands</b> (counted from paid/pending/overdue invoices and active client status).',
-      'Second row: <b>Avg invoice</b>, <b>Outstanding</b>, <b>Avg days to paid</b>, <b>Quotes pending</b>.',
-      'The <b>Revenue by service</b> chart aggregates each invoice line into Canning / R&D / Bottling / Consulting. Mixed invoices split across categories.',
-      'The <b>Activity feed</b> on the right shows the last few actions (localStorage, per-device).',
-      'The <b>System Health</b> widget (admin only) probes Supabase Auth, Mailgun, AI key, audit_log table, and the client-docs Storage bucket. Any ✗ has a one-click fixer.'
-    ]) +
-
-    section('help-clients', '👥 Clients', [
-      'List of all your brand clients. Click any row to open the client detail with billed-to-date, recent invoices, deals, notes, and a 🤖 AI Summary button.',
-      '<b>Add a client:</b> "+ Add Client" button. Fields: name, contact, email, service, status (lead / active).',
-      'Status badge on each row reflects lead vs active. Active clients count toward the dashboard "Active brands" metric.',
-      'Clients persist to Supabase. The first one you add replaces the empty seed.'
-    ]) +
-
-    section('help-pipeline', '📊 Pipeline (Deals)', [
-      'Kanban board with stages: Prospecting → Proposal → Negotiation → Closed Won / Closed Lost.',
-      '<b>+ Add Deal</b> creates a new card in Prospecting. Click a card to open the detail modal — edit name / company / value / probability / notes, or move the deal between stages.',
-      'Deal detail also has a <b>→ Invoice</b> button: closes the deal modal and opens the invoice builder pre-matched to the deal\'s client.',
-      'Cards untouched for more than 14 days in active stages show a yellow <b>⏰ Nd</b> badge in the corner — visual cue to follow up.',
-      'Deals persist to Supabase. The contact form on the public site also auto-creates a Prospecting card.'
-    ]) +
-
-    section('help-invoices', '🧾 Invoices', [
-      '<b>+ New invoice</b> opens the builder (also under the Pipeline page).',
-      'Each row: invoice #, client, services, amount, date, status, quick actions.',
-      'Status colors: <span style="color:#22c55e">paid</span> · <span style="color:#f5c842">pending</span> · <span style="color:#e74c3c">overdue</span> · <span style="color:#9aa7bd">draft</span> · <span style="color:#6b9fff">quote</span>.',
-      '<b>📊 Export CSV</b> downloads every non-quote invoice — drop into QuickBooks or hand to your accountant.',
-      '<b>📧 Send overdue reminders</b> emails every overdue client at once (uses your Mailgun key + email signature). Reports sent / skipped / failed.',
-      'On quote rows, a <b>→ Invoice</b> button converts the quote to a billable invoice (flips status from "quote" to "pending").',
-      'On rows with a Stripe pay link saved (see Invoice detail), a 💳 button opens the Stripe checkout.'
-    ]) +
-
-    section('help-newinv', '➕ New Invoice', [
-      'Pick a client from the dropdown. Date defaults to today.',
-      'Add lines from four buttons: <b>+ Canning</b> · <b>+ Bottling</b> · <b>+ R&D / IP</b> · <b>+ Production Hours</b> · <b>+ Custom Line</b>.',
-      'Canning/Bottling rates pull from Supabase canning_rates / bottling_rates and tier by volume automatically.',
-      '<b>Discount:</b> bottom of the builder — enter a percent. Subtotal/discount/total update live.',
-      '<b>💾 Save Invoice</b> persists to Supabase with status=pending. Show on the Invoices list immediately, syncs across devices.',
-      '<b>💾 Save as Quote</b> persists with status=quote. Doesn\'t count toward receivables. Convert to invoice later.',
-      '<b>📄 Save & Export PDF</b> saves the invoice and opens a print-ready PDF in a new tab.',
-      '<b>📋 Export as Quote</b> generates a quote PDF (30-day validity terms, "ESTIMATE — NOT AN INVOICE" badge). Does NOT save to DB.'
-    ]) +
-
-    section('help-referrals', '🤝 Referrals', [
-      'Track deals brought in by external partners. Each referral links to a referrer, a client, and a commission rate/amount.',
-      '<b>+ Add referral</b> records: referrer, client name, deal value, rate %, status (lead / presented / won / paid / lost).',
-      'When status = won, commission counts as "owed" on the dashboard referrer card. When paid, it counts as "Paid YTD".'
-    ]) +
-
-    section('help-referrers', '👤 Referrers', [
-      'Your network of external partners (brokers, industry contacts, etc.).',
-      '<b>+ Add referrer</b> records name, relationship, email, phone, default commission rate.',
-      'Each referrer card on the dashboard shows commissions owed vs paid.'
-    ]) +
-
-    section('help-activity', '📡 Activity', [
-      'Chronological log of CRM events: calls made, emails sent, referrals created, deals moved, notes saved, commissions paid.',
-      'Stored in <i>localStorage</i> (gl_activities) — per device. Capped at 100 entries.',
-      'Distinct from the <b>audit_log</b> (which records security-relevant admin actions like login, password reset, role change) — see the Users panel for that.'
-    ]) +
-
-    section('help-calendar', '📅 Calendar', [
-      'General-purpose calendar for tour requests, meetings, milestones.',
-      'Public "Schedule a tour" submissions land here automatically.',
-      'Stored in localStorage (gl_cal_events).'
-    ]) +
-
-    section('help-production', '🏭 Production Schedule', [
-      'Calendar focused on production runs (which client, what format, how many cases).',
-      'Customers see their scheduled runs in the Customer Portal.'
-    ]) +
-
-    section('help-tasks', '✅ Tasks', [
-      'Personal to-do list. Tasks can be linked to a client.',
-      'Stored in localStorage (gl_tasks) — per device. Sandra\'s tasks live on Sandra\'s computer.'
-    ]) +
-
-    section('help-documents', '📁 Documents', [
-      'Upload files (PDF, Word, images, CSV) per client. Files persist to Supabase Storage in the <b>client-docs</b> bucket.',
-      'If the bucket isn\'t set up yet, file metadata is stored but the file itself isn\'t — the System Health widget will surface this with a "Copy SQL" fixer.',
-      'Documents are private to authenticated users.'
-    ]) +
-
-    section('help-inventory', '📦 Inventory', [
-      'Simple stock tracker for cans, bottles, gas tanks, etc. Quantity + unit + low-stock threshold.',
-      '+ Add Item adds a row. Edit qty inline. Items below their lowAt threshold flag in the dashboard.',
-      'Stored in localStorage (gl_inventory).'
-    ]) +
-
-    section('help-announcements', '📣 Announcements', [
-      'Company-wide notes that show up on every user\'s dashboard.',
-      'Stored in localStorage (per device for now).'
-    ]) +
-
-    section('help-customers', '🌐 Customer Logins (admin)', [
-      'Manage customer portal accounts (separate from CRM staff users).',
-      '<b>📧 Send Onboarding Email</b>: prompts for name + email, creates a portal login with a temp password, emails the customer the login link.',
-      'Requires Mailgun key configured (open AI toolbar → 📧 Mailgun Settings).',
-      'Customers who log in see invoices addressed to them, Pay Now buttons (Stripe links), Accept Quote buttons (emails Mike on click), and a contact form.'
-    ]) +
-
-    section('help-users', '🔑 Users & Permissions (admin)', [
-      '<b>+ Invite user</b>: creates a Supabase Auth account. Invitee must click the email confirmation link before they can log in.',
-      '<b>Role dropdown</b> per row: admin / sales / viewer. Changes persist to the profiles table immediately.',
-      '<b>Set password</b>: masked-input modal → admin_set_user_password RPC. Bcrypt-writes directly to auth.users.',
-      '<b>Email reset</b>: sends a Supabase Auth recovery email. Customer clicks the link and chooses their own new password.',
-      '<b>Remove</b>: soft-delete (profile.status = inactive). To fully remove from auth.users, use the Supabase Auth dashboard.',
-      '<b>📋 Activity log</b>: last 100 audit_log entries (logins, signouts, invoice saves, user-management actions).'
-    ]) +
-
-    section('help-settings', '⚙️ Settings & Integrations', [
-      '<b>📧 Mailgun Settings</b> (AI toolbar): paste your Mailgun private API key. Required for any outgoing email. Click Test Send to verify.',
-      '<b>🤖 AI Settings</b>: paste your Anthropic API key. Required for any 🤖 AI feature. Optional — the CRM works without it.',
-      '<b>✍️ Email Signature</b>: per-device signature auto-appended to outgoing follow-up emails.',
-      '<b>🗑️ Clear local cache</b> (admin): per-key opt-in cleanup of gl_* localStorage. Use when handing the device to a new user.',
-      '<b>System Health</b> widget on the dashboard surfaces which integrations are missing setup.'
-    ]) +
-
-    section('help-shortcuts', '⌨️ Keyboard shortcuts', [
-      '<kbd>Ctrl+K</kbd> (or <kbd>⌘K</kbd> on Mac) — open Global Search across invoices, clients, deals, referrers, users.',
-      '<kbd>Esc</kbd> — close most overlays (login, search, AI modal, settings).',
-      '<kbd>Enter</kbd> in the login form — submit.',
-      '<kbd>↑/↓</kbd> in Global Search — navigate results.'
-    ]);
-
-  function section(id, heading, items){
-    return '<section id="' + id + '" style="padding:18px 4px;border-bottom:1px solid rgba(255,255,255,.06);scroll-margin-top:60px">' +
-      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">' +
-        '<h3 style="margin:0;font-family:var(--ff-disp);font-size:14px;letter-spacing:2px;color:var(--teal)">' + heading + '</h3>' +
-      '</div>' +
-      '<ul style="margin:0;padding-left:18px;color:#cfd9e6;font-size:13px;line-height:1.75">' +
-        items.map(function(t){ return '<li style="margin-bottom:7px">' + t + '</li>'; }).join('') +
-      '</ul>' +
-    '</section>';
-  }
-
   function buildTOC(){
-    var entries = [
-      ['help-overview',      '👋 Overview'],
-      ['help-dashboard',     '📊 Dashboard'],
-      ['help-clients',       '👥 Clients'],
-      ['help-pipeline',      '📊 Pipeline (Deals)'],
-      ['help-invoices',      '🧾 Invoices'],
-      ['help-newinv',        '➕ New Invoice'],
-      ['help-referrals',     '🤝 Referrals'],
-      ['help-referrers',     '👤 Referrers'],
-      ['help-activity',      '📡 Activity'],
-      ['help-calendar',      '📅 Calendar'],
-      ['help-production',    '🏭 Production'],
-      ['help-tasks',         '✅ Tasks'],
-      ['help-documents',     '📁 Documents'],
-      ['help-inventory',     '📦 Inventory'],
-      ['help-announcements', '📣 Announcements'],
-      ['help-customers',     '🌐 Customer Logins'],
-      ['help-users',         '🔑 Users & Permissions'],
-      ['help-settings',      '⚙️ Settings'],
-      ['help-shortcuts',     '⌨️ Shortcuts']
-    ];
-    return entries.map(function(e){
-      return '<a href="#' + e[0] + '" data-anchor="' + e[0] + '" style="display:block;padding:5px 10px;border-radius:6px;font-size:12px;color:#9aa7bd;text-decoration:none;line-height:1.4">' + e[1] + '</a>';
+    return TOC_ENTRIES.map(function(e){
+      return '<a href="#'+e[0]+'" data-anchor="'+e[0]+'" ' +
+        'style="display:block;padding:8px 12px;margin:2px 0;border-radius:6px;font-size:12px;' +
+        'color:#9aa7bd;text-decoration:none;line-height:1.4;white-space:nowrap;' +
+        'overflow:hidden;text-overflow:ellipsis;transition:background .12s,color .12s">' + e[1] + '</a>';
     }).join('');
   }
 
@@ -4458,49 +4558,76 @@
     var prior = document.getElementById('gl-help-modal'); if(prior) prior.remove();
     var host = document.getElementById('crm-panel') || document.body;
     var target = scrollTo || currentSection();
+
     var ov = document.createElement('div');
     ov.id = 'gl-help-modal';
     ov.setAttribute('style','position:fixed;inset:0;z-index:950;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
-    ov.innerHTML =
-      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;width:100%;max-width:900px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;padding:18px 22px;border-bottom:1px solid rgba(255,255,255,.06)">' +
-          '<div>' +
-            '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">❓ HELP & GUIDE</div>' +
-            '<div style="font-size:11px;color:var(--muted);margin-top:2px">Press <kbd style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:1px 5px;font-size:10px">?</kbd> any time · or click ❓ Help in the topbar</div>' +
-          '</div>' +
-          '<button id="gl-help-close" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer">✕</button>' +
-        '</div>' +
-        '<div style="display:grid;grid-template-columns:200px 1fr;flex:1;min-height:0">' +
-          '<nav id="gl-help-toc" style="border-right:1px solid rgba(255,255,255,.06);padding:14px 8px;overflow-y:auto;background:rgba(0,0,0,.15)">' + buildTOC() + '</nav>' +
-          '<main id="gl-help-body" style="padding:6px 28px 18px;overflow-y:auto">' + HELP_HTML + '</main>' +
-        '</div>' +
-      '</div>';
+
+    var card = document.createElement('div');
+    card.setAttribute('style','background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;width:100%;max-width:960px;height:88vh;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.6)');
+
+    var header = document.createElement('div');
+    header.setAttribute('style','display:flex;justify-content:space-between;align-items:center;padding:18px 22px;border-bottom:1px solid rgba(255,255,255,.06);flex-shrink:0');
+    header.innerHTML =
+      '<div>' +
+        '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">❓ HELP &amp; GUIDE</div>' +
+        '<div style="font-size:11px;color:var(--muted);margin-top:2px">Press <kbd style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:1px 5px;font-size:10px">?</kbd> any time</div>' +
+      '</div>' +
+      '<button id="gl-help-close" title="Close" style="background:none;border:none;color:#9aa7bd;font-size:22px;cursor:pointer;padding:4px 8px;line-height:1">✕</button>';
+
+    var split = document.createElement('div');
+    split.setAttribute('style','display:flex;flex:1 1 auto;min-height:0;overflow:hidden');
+
+    var toc = document.createElement('nav');
+    toc.id = 'gl-help-toc';
+    toc.setAttribute('style','width:220px;flex:0 0 220px;border-right:1px solid rgba(255,255,255,.06);padding:14px 10px;overflow-y:auto;background:rgba(0,0,0,.18)');
+    toc.innerHTML = buildTOC();
+
+    var body = document.createElement('main');
+    body.id = 'gl-help-body';
+    body.setAttribute('style','flex:1 1 auto;min-width:0;padding:6px 30px 24px;overflow-y:auto;background:#142238;color:#fff');
+    body.innerHTML = HELP_HTML;
+
+    split.appendChild(toc);
+    split.appendChild(body);
+    card.appendChild(header);
+    card.appendChild(split);
+    ov.appendChild(card);
+
     ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
-    ov.querySelector('#gl-help-close').addEventListener('click', function(){ ov.remove(); });
-    // TOC click → smooth scroll
-    ov.querySelectorAll('#gl-help-toc a').forEach(function(a){
+    header.querySelector('#gl-help-close').addEventListener('click', function(){ ov.remove(); });
+    function highlightToc(id){
+      toc.querySelectorAll('a').forEach(function(x){
+        var on = x.getAttribute('data-anchor') === id;
+        x.style.background = on ? 'rgba(0,229,192,.1)' : '';
+        x.style.color = on ? 'var(--teal)' : '#9aa7bd';
+      });
+    }
+    toc.querySelectorAll('a').forEach(function(a){
       a.addEventListener('click', function(e){
         e.preventDefault();
-        var id = a.getAttribute('data-anchor');
-        var el = ov.querySelector('#' + id);
+        highlightToc(a.getAttribute('data-anchor'));
+        var el = body.querySelector('#' + a.getAttribute('data-anchor'));
         if(el) el.scrollIntoView({behavior:'smooth', block:'start'});
-        // Visual: highlight active TOC entry
-        ov.querySelectorAll('#gl-help-toc a').forEach(function(x){ x.style.background = ''; x.style.color = '#9aa7bd'; });
-        a.style.background = 'rgba(0,229,192,.08)';
-        a.style.color = 'var(--teal)';
       });
     });
+    document.addEventListener('keydown', function escH(e){
+      if(e.key === 'Escape' && document.getElementById('gl-help-modal')){
+        ov.remove();
+        document.removeEventListener('keydown', escH);
+      }
+    });
+
     host.appendChild(ov);
-    // Scroll to target section + highlight its TOC entry
+    // Initial scroll + TOC highlight after the modal lays out
     setTimeout(function(){
-      var el = ov.querySelector('#' + target);
-      if(el) el.scrollIntoView({behavior:'instant', block:'start'});
-      var tocLink = ov.querySelector('#gl-help-toc a[data-anchor="' + target + '"]');
-      if(tocLink){ tocLink.style.background = 'rgba(0,229,192,.08)'; tocLink.style.color = 'var(--teal)'; }
-    }, 30);
+      var el = body.querySelector('#' + target);
+      if(el) el.scrollIntoView({behavior:'auto', block:'start'});
+      highlightToc(target);
+    }, 60);
   };
 
-  // Keyboard: "?" key opens help (when not typing)
+  // "?" hotkey to toggle
   document.addEventListener('keydown', function(e){
     if(e.key !== '?') return;
     var t = e.target;
@@ -4511,7 +4638,7 @@
     else window.glOpenHelp();
   });
 
-  // Inject "❓ Help" button into the CRM topbar (right of the search pill).
+  // ❓ Help button in topbar
   function injectHelpButton(){
     var brand = document.querySelector('#crm-top .crm-brand');
     if(!brand || !brand.parentElement) return;
@@ -4537,10 +4664,8 @@
       btn.style.color = 'var(--muted)';
     });
     btn.addEventListener('click', function(){ window.glOpenHelp(); });
-    // Insert AFTER the search hint pill (between search and brand).
     brand.parentElement.insertBefore(btn, brand);
   }
-
   function startObs(){
     var top = document.getElementById('crm-top');
     if(top){
@@ -4551,5 +4676,6 @@
   if(document.readyState !== 'loading') startObs();
   else document.addEventListener('DOMContentLoaded', startObs);
 
-  console.log('[GL] In-app help panel loaded');
+  console.log('[GL] In-app help panel v2 loaded (flexbox + wireframes)');
 }());
+
