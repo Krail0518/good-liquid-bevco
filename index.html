@@ -423,6 +423,9 @@ footer{background:var(--ink);border-top:1px solid rgba(255,255,255,.06);padding:
 /* Commission modal */
 .modal-ov{position:absolute;inset:0;background:rgba(6,13,26,.85);z-index:20;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
 .modal-ov.show{display:flex}
+/* Fixed-position overlays that sit above the CRM panel (add-client / add-deal / deal-detail).
+   Inline styles set display:none by default; .show flips them to flex. */
+#add-client-modal.show,#add-deal-modal.show,#deal-detail-panel.show{display:flex}
 .modal-box{background:var(--ink);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:28px;width:440px;max-height:80vh;overflow-y:auto}
 .modal-title{font-family:var(--ff-disp);font-size:18px;letter-spacing:1px;color:var(--white);margin-bottom:20px;display:flex;align-items:center;justify-content:space-between}
 .modal-close{cursor:pointer;color:var(--muted);font-size:18px;transition:color .2s}.modal-close:hover{color:var(--white)}
@@ -2207,7 +2210,7 @@ function removeCustomerLogin(id){
 function exitCRM(){document.getElementById('crm-panel').classList.remove('show');document.body.style.overflow=''}
 
 /* ═══ CRM CORE ═══ */
-let crmInited=false,invFilter='all',invSearch='',currentInvId=null,selAddons={},refFilter='all';
+let crmInited=false,invFilter='all',invSearch='',currentInvId=window.currentInvId=null,selAddons={},refFilter='all';
 
 function initCRM(){
   if(crmInited)return;crmInited=true;
@@ -2378,7 +2381,7 @@ function quickPaid(id){const i=invoices.find(x=>x.id===id);if(i){i.status='paid'
 
 /* Invoice detail */
 function viewInvoice(id){
-  currentInvId=id;const inv=invoices.find(i=>i.id===id);if(!inv)return;
+  currentInvId=window.currentInvId=id;const inv=invoices.find(i=>i.id===id);if(!inv)return;
   const c=clients.find(x=>x.id===inv.client)||{name:inv.clientName,contact:'',email:''};
   document.getElementById('inv-detail-content').innerHTML=`
     <div style="background:var(--ink);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:28px">
@@ -3273,10 +3276,10 @@ function openAddClientModal(){
   // Populate referrer dropdown
   const sel = document.getElementById('nc-referrer');
   sel.innerHTML = '<option value="">None</option>' + referrers.map(r=>`<option value="${r.id}">${r.name}</option>`).join('');
-  document.getElementById('add-client-modal').style.display='flex';
+  document.getElementById('add-client-modal').classList.add('show');
 }
 function closeAddClientModal(){
-  document.getElementById('add-client-modal').style.display='none';
+  document.getElementById('add-client-modal').classList.remove('show');
   ['nc-name','nc-contact','nc-email','nc-phone','nc-notes'].forEach(id=>document.getElementById(id).value='');
 }
 
@@ -3334,10 +3337,10 @@ async function saveNewClient(){
 }
 
 function openAddDealModal(){
-  document.getElementById('add-deal-modal').style.display='flex';
+  document.getElementById('add-deal-modal').classList.add('show');
 }
 function closeAddDealModal(){
-  document.getElementById('add-deal-modal').style.display='none';
+  document.getElementById('add-deal-modal').classList.remove('show');
   ['nd-name','nd-co','nd-val','nd-notes'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('nd-prob').value='20';
 }
@@ -3544,11 +3547,11 @@ function openDealDetail(stage, idx){
   document.getElementById('ddp-prob').value = d.prob || 20;
   document.getElementById('ddp-stage').value = stage;
   document.getElementById('ddp-notes').value = d.notes || '';
-  document.getElementById('deal-detail-panel').style.display = 'flex';
+  document.getElementById('deal-detail-panel').classList.add('show');
 }
 
 function closeDealDetail(){
-  document.getElementById('deal-detail-panel').style.display = 'none';
+  document.getElementById('deal-detail-panel').classList.remove('show');
   currentDealStage = null;
   currentDealIdx = null;
 }
