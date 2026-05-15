@@ -1924,6 +1924,7 @@
       { label:'🚀 Setup Wizard', fn:'openSetupWizard', admin:true },
       { label:'💳 Stripe Checkout', fn:'openStripeSettings', admin:true },
       { label:'🛡️ Sentry', fn:'openSentrySettings', admin:true },
+      { label:'📝 E-Signatures', fn:'openSignSettings', admin:true },
       { label:'✍️ Email Signature', fn:'openEmailSignatureSettings' },
       { label:'🗑️ Clear local cache', fn:'glClearLocalCache', admin:true, danger:true }
     ];
@@ -6159,5 +6160,241 @@
   else document.addEventListener('DOMContentLoaded', startObs);
 
   console.log('[GL] Stripe Checkout sessions loaded');
+}());
+
+/* ============================================================
+   E-SIGNATURES (Dropbox Sign, formerly HelloSign)
+   - Admin sends a signature request from inside the CRM.
+   - Browser → Supabase Edge Function (template in deploy notes)
+     → Dropbox Sign API. The function holds the API key.
+   - Two flows:
+       1) Send from a saved template (admin creates the template
+          in Dropbox Sign dashboard, pastes the template ID here)
+       2) Send raw text (NDA quick-send) — function wraps it as
+          a one-off PDF.
+   ============================================================ */
+(function(){
+  var DEFAULT_FN_URL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1/dropbox-sign';
+  function getFnUrl(){ return (localStorage.getItem('gl_sign_fn_url') || DEFAULT_FN_URL).trim(); }
+
+  // Saved templates as a JSON map: { name: template_id }
+  function getTemplates(){
+    try { return JSON.parse(localStorage.getItem('gl_sign_templates') || '{}'); }
+    catch(e){ return {}; }
+  }
+  function saveTemplates(m){ localStorage.setItem('gl_sign_templates', JSON.stringify(m)); }
+
+  // Helper: send a request via the Edge Function. payload shape:
+  //   { template_id?, raw_text?, signer_email, signer_name,
+  //     title, subject, message, custom_fields? }
+  window.glRequestSignature = async function(payload){
+    if(typeof window.glStartBusy === 'function') window.glStartBusy('Sending for signature…');
+    try {
+      var token = null;
+      try {
+        var s = window.supa && await window.supa.auth.getSession();
+        if(s && s.data && s.data.session) token = s.data.session.access_token;
+      } catch(e){}
+      var r = await fetch(getFnUrl(), {
+        method: 'POST',
+        headers: Object.assign({ 'Content-Type':'application/json' }, token ? { Authorization: 'Bearer ' + token } : {}),
+        body: JSON.stringify(payload)
+      });
+      if(!r.ok){
+        var t = await r.text();
+        console.error('[GL sign] HTTP', r.status, t);
+        return { ok: false, status: r.status, error: t };
+      }
+      var data = await r.json();
+      if(typeof window.glAudit === 'function') window.glAudit('signature_sent', payload.signer_email, { template: payload.template_id || 'raw', title: payload.title });
+      return { ok: true, data: data };
+    } catch(e){
+      console.error('[GL sign] threw', e);
+      return { ok: false, error: e.message };
+    } finally {
+      if(typeof window.glEndBusy === 'function') window.glEndBusy();
+    }
+  };
+
+  window.openSignSettings = function(){
+    var prior = document.getElementById('gl-sign-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var url = getFnUrl();
+    var tpls = getTemplates();
+    var tplRows = Object.keys(tpls).map(function(name){
+      return '<div data-name="' + name + '" style="display:flex;align-items:center;gap:9px;padding:7px 10px;background:rgba(255,255,255,.03);border-radius:6px;margin-bottom:5px;font-size:12px">' +
+        '<div style="flex:1"><div style="color:#fff;font-weight:600">' + name + '</div>' +
+        '<div style="font-family:var(--ff-mono);font-size:10px;color:#9aa7bd">' + tpls[name] + '</div></div>' +
+        '<button class="gl-sign-tpl-del" data-name="' + name + '" style="background:rgba(231,76,60,.15);border:1px solid rgba(231,76,60,.3);color:#e74c3c;border-radius:5px;padding:3px 8px;font-size:10px;cursor:pointer">remove</button>' +
+      '</div>';
+    }).join('') || '<div style="font-size:11px;color:#9aa7bd;padding:8px 2px">No templates saved yet.</div>';
+
+    var ov = document.createElement('div');
+    ov.id = 'gl-sign-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:920;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:540px;max-height:88vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">📝 E-SIGNATURES</div>' +
+          '<button id="gl-sign-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="background:rgba(245,200,66,.06);border:1px solid rgba(245,200,66,.2);border-radius:8px;padding:11px;font-size:11px;color:#f5c842;margin-bottom:16px;line-height:1.6">' +
+          '⚠ Routes through a Supabase Edge Function (template in deploy notes). Deploy with your Dropbox Sign API key before requests will send.' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Edge Function URL</div>' +
+          '<input class="finp" id="gl-sign-url" value="' + url.replace(/"/g,'&quot;') + '" style="font-family:var(--ff-mono);font-size:11px">' +
+        '</div>' +
+        '<div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin:14px 0 8px">SAVED TEMPLATES</div>' +
+        '<div id="gl-sign-tpls" style="margin-bottom:12px">' + tplRows + '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 2fr;gap:8px;margin-bottom:10px">' +
+          '<input class="finp" id="gl-sign-tpl-name" placeholder="Friendly name (e.g. NDA)">' +
+          '<input class="finp" id="gl-sign-tpl-id" placeholder="Template ID from Dropbox Sign" style="font-family:var(--ff-mono);font-size:11px">' +
+        '</div>' +
+        '<button id="gl-sign-tpl-add" class="cbtn" style="width:100%;margin-bottom:18px">+ Add template</button>' +
+        '<div style="display:flex;gap:8px">' +
+          '<button id="gl-sign-save" class="cbtn pri" style="flex:1">💾 Save URL</button>' +
+        '</div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-sign-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-sign-save').addEventListener('click', function(){
+      var u = (ov.querySelector('#gl-sign-url').value||'').trim();
+      if(u) localStorage.setItem('gl_sign_fn_url', u); else localStorage.removeItem('gl_sign_fn_url');
+      ov.remove();
+      if(typeof addNotification === 'function') addNotification('📝 E-signature settings saved','','success');
+    });
+    ov.querySelector('#gl-sign-tpl-add').addEventListener('click', function(){
+      var name = (ov.querySelector('#gl-sign-tpl-name').value||'').trim();
+      var id   = (ov.querySelector('#gl-sign-tpl-id').value||'').trim();
+      if(!name || !id){ alert('Both name and template ID are required.'); return; }
+      var m = getTemplates();
+      m[name] = id;
+      saveTemplates(m);
+      window.openSignSettings();  // reopen to refresh the list
+    });
+    ov.querySelectorAll('.gl-sign-tpl-del').forEach(function(b){
+      b.addEventListener('click', function(){
+        var n = b.getAttribute('data-name');
+        if(!confirm('Remove template "' + n + '"?')) return;
+        var m = getTemplates();
+        delete m[n];
+        saveTemplates(m);
+        window.openSignSettings();
+      });
+    });
+    host.appendChild(ov);
+  };
+
+  // Send-for-signature modal (per invoice / client)
+  window.glOpenSendForSignature = function(context){
+    context = context || {};
+    var prior = document.getElementById('gl-sign-send-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var tpls = getTemplates();
+    var tplOptions = '<option value="">— Raw text (no template) —</option>' +
+      Object.keys(tpls).map(function(n){ return '<option value="' + tpls[n] + '">' + n + '</option>'; }).join('');
+    var ov = document.createElement('div');
+    ov.id = 'gl-sign-send-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:930;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:560px;max-height:88vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">📝 SEND FOR SIGNATURE</div>' +
+          '<button id="gl-sign-send-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Template</div>' +
+          '<select class="fsel" id="gl-sign-tpl">' + tplOptions + '</select>' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Signer name</div>' +
+          '<input class="finp" id="gl-sign-sname" value="' + (context.signerName||'').replace(/"/g,'&quot;') + '">' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Signer email</div>' +
+          '<input class="finp" id="gl-sign-semail" value="' + (context.signerEmail||'').replace(/"/g,'&quot;') + '">' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Title</div>' +
+          '<input class="finp" id="gl-sign-title" value="' + (context.title||'').replace(/"/g,'&quot;') + '">' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Message to signer (optional)</div>' +
+          '<textarea class="finp" id="gl-sign-msg" rows="3">' + (context.message||'') + '</textarea>' +
+        '</div>' +
+        '<div id="gl-sign-raw-wrap" style="display:none">' +
+          '<div class="frow"><div class="flbl">Document text (for raw signature)</div>' +
+            '<textarea class="finp" id="gl-sign-raw" rows="6" placeholder="Paste your NDA / agreement text here…"></textarea>' +
+          '</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;margin-top:6px">' +
+          '<button id="gl-sign-send-btn" class="cbtn pri" style="flex:1">📤 Send</button>' +
+          '<button id="gl-sign-cancel" class="cbtn">Cancel</button>' +
+        '</div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    var tpl = ov.querySelector('#gl-sign-tpl');
+    var rawWrap = ov.querySelector('#gl-sign-raw-wrap');
+    function updateRawVisibility(){ rawWrap.style.display = tpl.value ? 'none' : 'block'; }
+    tpl.addEventListener('change', updateRawVisibility); updateRawVisibility();
+    ov.querySelector('#gl-sign-send-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-sign-cancel').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-sign-send-btn').addEventListener('click', async function(){
+      var payload = {
+        template_id: ov.querySelector('#gl-sign-tpl').value || null,
+        raw_text:    ov.querySelector('#gl-sign-tpl').value ? null : (ov.querySelector('#gl-sign-raw').value || '').trim(),
+        signer_name:  ov.querySelector('#gl-sign-sname').value.trim(),
+        signer_email: ov.querySelector('#gl-sign-semail').value.trim(),
+        title:        ov.querySelector('#gl-sign-title').value.trim() || 'Please sign',
+        subject:      'Please sign: ' + (ov.querySelector('#gl-sign-title').value.trim() || ''),
+        message:      ov.querySelector('#gl-sign-msg').value
+      };
+      if(!payload.signer_email || payload.signer_email.indexOf('@') < 0){ alert('Signer email required'); return; }
+      if(!payload.template_id && !payload.raw_text){ alert('Pick a template or paste document text.'); return; }
+      var btn = this; btn.disabled = true; btn.textContent = 'Sending…';
+      var r = await window.glRequestSignature(payload);
+      if(r.ok){
+        if(typeof addNotification === 'function') addNotification('📝 Signature request sent', payload.signer_email, 'success');
+        ov.remove();
+        alert('✓ Request sent to ' + payload.signer_email + '.');
+      } else {
+        alert('✗ Failed: ' + (r.error || ('HTTP ' + r.status)));
+        btn.disabled = false; btn.textContent = '📤 Send';
+      }
+    });
+    host.appendChild(ov);
+  };
+
+  // Inject "📝 Sign" button on invoice detail panel
+  function injectSignButton(){
+    var detail = document.getElementById('cpg-invoice-detail') || document.querySelector('.inv-detail');
+    if(!detail) return;
+    if(detail.querySelector('.gl-sign-btn')) return;
+    if(!window.currentInvId) return;
+    var inv = (window.invoices||[]).find(function(i){ return i.id === window.currentInvId; });
+    if(!inv) return;
+    var btnRow = detail.querySelector('.btn-row') || detail.querySelector('.cph');
+    if(!btnRow) return;
+    var client = (window.clients||[]).find(function(c){ return c.id === inv.client; }) || {};
+    var btn = document.createElement('button');
+    btn.className = 'cbtn gl-sign-btn';
+    btn.setAttribute('style','background:rgba(168,85,247,.12);border:1px solid rgba(168,85,247,.35);color:#c4a4f8');
+    btn.textContent = '📝 Send for signature';
+    btn.addEventListener('click', function(){
+      window.glOpenSendForSignature({
+        signerName: client.contact || client.name || inv.clientName,
+        signerEmail: client.email || inv.clientEmail || '',
+        title: 'Quote / Invoice ' + inv.id,
+        message: 'Please review and sign the attached document for invoice ' + inv.id + '.'
+      });
+    });
+    btnRow.appendChild(btn);
+  }
+  function startObs(){
+    var pages = document.getElementById('crm-panel');
+    if(pages){
+      new MutationObserver(function(){ setTimeout(injectSignButton, 80); }).observe(pages, { childList:true, subtree:true });
+      injectSignButton();
+    } else setTimeout(startObs, 700);
+  }
+  if(document.readyState !== 'loading') startObs();
+  else document.addEventListener('DOMContentLoaded', startObs);
+
+  console.log('[GL] E-signatures (Dropbox Sign) loaded');
 }());
 
