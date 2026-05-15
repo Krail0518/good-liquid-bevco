@@ -3996,6 +3996,7 @@ function openClientDetail(cid) {
       ${typeof window.glRenderClientNotesBlock === 'function' ? window.glRenderClientNotesBlock(c) : ''}
 
       <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button onclick="if(window.glOpenEditClient)window.glOpenEditClient('${c.id}')" style="flex:1;min-width:140px;padding:11px;background:rgba(245,200,66,.12);border:1px solid rgba(245,200,66,.35);border-radius:8px;color:#f5c842;cursor:pointer;font-weight:700;font-size:13px">✏️ Edit Client</button>
         <button onclick="createForClient('${c.id}');document.getElementById('client-detail-overlay').remove()" style="flex:1;min-width:140px;padding:11px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:800;cursor:pointer;font-size:13px">+ New Invoice</button>
         <button onclick="aiSummarizeClient('${c.name}','${c.billed}','${c.service}','${c.status}','${c.notes||''}')" style="flex:1;min-width:140px;padding:11px;background:rgba(0,229,192,.1);border:1px solid rgba(0,229,192,.3);border-radius:8px;color:var(--teal);cursor:pointer;font-weight:700;font-size:13px">🤖 AI Summary</button>
         <button onclick="document.getElementById('client-detail-overlay').remove()" style="padding:11px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer;font-size:13px">Close</button>
@@ -5662,6 +5663,7 @@ function viewClientEnhanced(clientId) {
       </div>
 
       <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="if(window.glOpenEditClient)window.glOpenEditClient('${clientId}')" class="cbtn" style="background:rgba(245,200,66,.12);border-color:rgba(245,200,66,.35);color:#f5c842">✏️ Edit Client</button>
         <button onclick="aiScoreClientHealth('${clientId}')" class="cbtn" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)">🤖 AI Health Score</button>
         <button onclick="openAICommModal();document.getElementById('ai-comm-client').value='${clientId}';document.getElementById('client-detail-overlay').remove()" class="cbtn">✉️ Draft Email</button>
         <button onclick="openTimeTracker();document.getElementById('tt-client').value='${clientId}';document.getElementById('client-detail-overlay').remove()" class="cbtn">⏱️ Log Time</button>

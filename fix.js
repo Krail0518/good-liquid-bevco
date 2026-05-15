@@ -6834,3 +6834,209 @@
 
   console.log('[GL] editable client notes loaded');
 }());
+
+/* ============================================================
+   EDIT CLIENT — full record editor
+   Opens a modal pre-filled with the current client's values. On save,
+   updates Supabase + the in-memory client and re-renders the list,
+   dashboard, and (if still open) the client detail panel.
+
+   Covers every field collected at create time:
+     name, contact, email, phone,
+     street, city, state, zip,
+     comm_prefs (Email / SMS / WhatsApp / WeChat),
+     service, status, referred_by, notes.
+   ============================================================ */
+(function(){
+  var INPUT_STYLE = 'width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)';
+  var LABEL_STYLE = 'font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px';
+
+  function esc(v){
+    if(v == null) return '';
+    return String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  }
+
+  window.glOpenEditClient = function(clientId){
+    var c = (window.clients||[]).find(function(x){ return x.id === clientId; });
+    if(!c){ alert('Client not found.'); return; }
+
+    var prior = document.getElementById('gl-edit-client-modal');
+    if(prior) prior.remove();
+
+    var host = document.getElementById('crm-panel') || document.body;
+    var refOptions = '<option value="">None</option>' +
+      (window.referrers||[]).map(function(r){
+        var sel = (c.referredBy === r.id) ? ' selected' : '';
+        return '<option value="'+esc(r.id)+'"'+sel+'>'+esc(r.name)+'</option>';
+      }).join('');
+
+    var serviceOptions = ['','Canning','Bottling','R&D','R&D + Canning','Consulting'].map(function(s){
+      var v = s; var label = s || 'Select service…';
+      var sel = (c.service === v) ? ' selected' : '';
+      return '<option value="'+esc(v)+'"'+sel+'>'+esc(label)+'</option>';
+    }).join('');
+
+    var statusOptions = ['lead','active','inactive'].map(function(s){
+      var sel = ((c.status||'lead') === s) ? ' selected' : '';
+      return '<option value="'+s+'"'+sel+'>'+s.charAt(0).toUpperCase()+s.slice(1)+'</option>';
+    }).join('');
+
+    var commPrefs = Array.isArray(c.commPrefs) ? c.commPrefs : [];
+    function ck(key){ return commPrefs.indexOf(key) >= 0 ? ' checked' : ''; }
+
+    var ov = document.createElement('div');
+    ov.id = 'gl-edit-client-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1050;background:rgba(6,13,26,.92);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:32px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:22px">' +
+          '<div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:var(--teal)">EDIT CLIENT</div>' +
+          '<button id="gl-ec-close" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="display:flex;flex-direction:column;gap:12px">' +
+          '<div><div style="'+LABEL_STYLE+'">BRAND NAME *</div><input id="gl-ec-name" value="'+esc(c.name)+'" style="'+INPUT_STYLE+'"></div>' +
+          '<div><div style="'+LABEL_STYLE+'">CONTACT NAME</div><input id="gl-ec-contact" value="'+esc(c.contact)+'" style="'+INPUT_STYLE+'"></div>' +
+          '<div><div style="'+LABEL_STYLE+'">EMAIL</div><input id="gl-ec-email" type="email" value="'+esc(c.email)+'" style="'+INPUT_STYLE+'"></div>' +
+          '<div><div style="'+LABEL_STYLE+'">PHONE</div><input id="gl-ec-phone" value="'+esc(c.phone)+'" style="'+INPUT_STYLE+'"></div>' +
+          '<div><div style="'+LABEL_STYLE+'">STREET ADDRESS</div><input id="gl-ec-street" value="'+esc(c.street)+'" style="'+INPUT_STYLE+'"></div>' +
+          '<div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px">' +
+            '<div><div style="'+LABEL_STYLE+'">CITY</div><input id="gl-ec-city" value="'+esc(c.city)+'" style="'+INPUT_STYLE+'"></div>' +
+            '<div><div style="'+LABEL_STYLE+'">STATE</div><input id="gl-ec-state" maxlength="2" value="'+esc(c.state)+'" style="'+INPUT_STYLE+';text-transform:uppercase"></div>' +
+            '<div><div style="'+LABEL_STYLE+'">ZIP</div><input id="gl-ec-zip" value="'+esc(c.zip)+'" style="'+INPUT_STYLE+'"></div>' +
+          '</div>' +
+          '<div>' +
+            '<div style="'+LABEL_STYLE+'">PREFERRED COMMUNICATION</div>' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;padding:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:8px">' +
+              '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="gl-ec-comm-email"'+ck('email')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">✉️ Email</label>' +
+              '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="gl-ec-comm-sms"'+ck('sms')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">📱 SMS</label>' +
+              '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="gl-ec-comm-whatsapp"'+ck('whatsapp')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">🟢 WhatsApp</label>' +
+              '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="gl-ec-comm-wechat"'+ck('wechat')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">💬 WeChat</label>' +
+            '</div>' +
+          '</div>' +
+          '<div><div style="'+LABEL_STYLE+'">SERVICE</div><select id="gl-ec-service" style="'+INPUT_STYLE+'">'+serviceOptions+'</select></div>' +
+          '<div><div style="'+LABEL_STYLE+'">STATUS</div><select id="gl-ec-status" style="'+INPUT_STYLE+'">'+statusOptions+'</select></div>' +
+          '<div><div style="'+LABEL_STYLE+'">REFERRED BY</div><select id="gl-ec-referrer" style="'+INPUT_STYLE+'">'+refOptions+'</select></div>' +
+          '<div><div style="'+LABEL_STYLE+'">NOTES</div><textarea id="gl-ec-notes" rows="3" style="'+INPUT_STYLE+';resize:vertical">'+esc(c.notes)+'</textarea></div>' +
+          '<div id="gl-ec-err" style="display:none;color:#e74c3c;font-size:12px"></div>' +
+          '<div style="display:flex;gap:8px;margin-top:6px">' +
+            '<button id="gl-ec-save" class="cbtn pri" style="flex:1;padding:13px;font-weight:800">💾 Save changes</button>' +
+            '<button id="gl-ec-cancel" class="cbtn" style="padding:13px 20px">Cancel</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-ec-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-ec-cancel').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-ec-save').addEventListener('click', async function(){
+      var errEl = ov.querySelector('#gl-ec-err');
+      errEl.style.display = 'none';
+      function setErr(m){ errEl.textContent = m; errEl.style.display = 'block'; }
+
+      var name = ov.querySelector('#gl-ec-name').value.trim();
+      if(!name){ setErr('Brand name is required.'); return; }
+
+      var commPrefsOut = [
+        ov.querySelector('#gl-ec-comm-email').checked    ? 'email'    : null,
+        ov.querySelector('#gl-ec-comm-sms').checked      ? 'sms'      : null,
+        ov.querySelector('#gl-ec-comm-whatsapp').checked ? 'whatsapp' : null,
+        ov.querySelector('#gl-ec-comm-wechat').checked   ? 'wechat'   : null
+      ].filter(Boolean);
+
+      var patch = {
+        name:    name,
+        contact: ov.querySelector('#gl-ec-contact').value.trim(),
+        email:   ov.querySelector('#gl-ec-email').value.trim(),
+        phone:   ov.querySelector('#gl-ec-phone').value.trim(),
+        street:  ov.querySelector('#gl-ec-street').value.trim(),
+        city:    ov.querySelector('#gl-ec-city').value.trim(),
+        state:   ov.querySelector('#gl-ec-state').value.trim().toUpperCase(),
+        zip:     ov.querySelector('#gl-ec-zip').value.trim(),
+        commPrefs: commPrefsOut,
+        service: ov.querySelector('#gl-ec-service').value,
+        status:  ov.querySelector('#gl-ec-status').value,
+        referredBy: ov.querySelector('#gl-ec-referrer').value,
+        notes:   ov.querySelector('#gl-ec-notes').value.trim()
+      };
+
+      var btn = this; var orig = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Saving…';
+      var ok = await window.glUpdateClient(clientId, patch);
+      btn.disabled = false; btn.textContent = orig;
+      if(ok) ov.remove();
+      else   setErr('Save failed — check the browser console.');
+    });
+
+    host.appendChild(ov);
+    setTimeout(function(){ ov.querySelector('#gl-ec-name').focus(); }, 50);
+  };
+
+  window.glUpdateClient = async function(clientId, patch){
+    var list = window.clients || [];
+    var c = list.find(function(x){ return x.id === clientId; });
+    if(!c) return false;
+
+    // Recompute initials if the name changed.
+    var newInit = (patch.name||c.name||'').split(' ').map(function(w){ return w[0]||''; }).join('').toUpperCase().slice(0,2);
+
+    // Apply locally first so the UI feels instant.
+    var prevSnapshot = Object.assign({}, c);
+    Object.assign(c, patch, { init: newInit });
+
+    if(window.supa){
+      try {
+        var supaPatch = {
+          name:         patch.name,
+          contact_name: patch.contact,
+          email:        patch.email,
+          phone:        patch.phone,
+          street:       patch.street,
+          city:         patch.city,
+          state:        patch.state,
+          zip:          patch.zip,
+          comm_prefs:   patch.commPrefs,
+          service:      patch.service,
+          status:       patch.status,
+          referred_by:  patch.referredBy || null,
+          notes:        patch.notes,
+          initials:     newInit
+        };
+        var r = await window.supa.from('clients').update(supaPatch).eq('id', clientId);
+        if(r && r.error){
+          console.warn('[GL] glUpdateClient: supabase error', r.error);
+          // Roll back? We keep the local change but warn.
+          if(typeof addNotification === 'function') addNotification('Saved locally','Server error: '+r.error.message,'warning');
+        }
+      } catch(e){
+        console.warn('[GL] glUpdateClient threw', e);
+        if(typeof addNotification === 'function') addNotification('Saved locally','Server unreachable','warning');
+      }
+    }
+
+    if(typeof window.glAudit === 'function'){
+      // Audit only the fields that changed for a compact log.
+      var diff = {};
+      Object.keys(patch).forEach(function(k){
+        if(JSON.stringify(prevSnapshot[k]) !== JSON.stringify(patch[k])) diff[k] = true;
+      });
+      window.glAudit('client_edited', clientId, { fields: Object.keys(diff) });
+    }
+
+    if(typeof renderClients === 'function') try { renderClients(); } catch(e){}
+    if(typeof renderDash === 'function')    try { renderDash();    } catch(e){}
+
+    // If a detail panel is open for this client, re-open it to reflect the changes.
+    var openOv = document.getElementById('client-detail-overlay');
+    if(openOv){
+      openOv.remove();
+      if(typeof viewClientEnhanced === 'function') try { viewClientEnhanced(clientId); } catch(e){
+        if(typeof openClientDetail === 'function') openClientDetail(clientId);
+      } else if(typeof openClientDetail === 'function') openClientDetail(clientId);
+    }
+
+    if(typeof addNotification === 'function') addNotification('✓ Client updated', c.name, 'success');
+    return true;
+  };
+
+  console.log('[GL] glOpenEditClient + glUpdateClient loaded');
+}());
