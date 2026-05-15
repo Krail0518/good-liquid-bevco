@@ -2242,21 +2242,39 @@ function buildCharts(){
   document.getElementById('rev-legend').innerHTML=
     '<span style="display:flex;align-items:center;gap:4px;font-size:10px;color:#6b87ad"><span style="width:8px;height:8px;border-radius:2px;background:#1a6fff"></span>Collected</span>'+
     '<span style="display:flex;align-items:center;gap:4px;font-size:10px;color:#6b87ad"><span style="width:8px;height:8px;border-radius:2px;background:#00c4a7"></span>Pending</span>';
-  // Compute revenue per category from real invoices. Categorize by keyword
-  // in the service description (or whatever fields are populated).
+  // Compute revenue per category from real invoices. When line_items are
+  // available, aggregate per-line (a mixed invoice splits across categories);
+  // otherwise fall back to the invoice's `svc` string and counts the whole
+  // amount under the first matched category.
   const labels=['Canning','R&D','Bottling','Consulting'];
   const collected=[0,0,0,0], pending=[0,0,0,0];
+  function categoryIndex(text){
+    const t=(text||'').toLowerCase();
+    if(t.includes('cann')) return 0;
+    if(t.includes('r&d')||t.includes('formul')||t.includes('ip license')||t.includes('ip purchase')) return 1;
+    if(t.includes('bottl')) return 2;
+    if(t.includes('consult')||t.includes('hour')) return 3;
+    return -1;
+  }
   (invoices||[]).forEach(inv=>{
-    const svc=(inv.svc||'').toLowerCase();
-    let idx=-1;
-    if(svc.includes('cann')) idx=0;
-    else if(svc.includes('r&d')||svc.includes('formul')||svc.includes('ip')) idx=1;
-    else if(svc.includes('bottl')) idx=2;
-    else if(svc.includes('consult')||svc.includes('hour')) idx=3;
-    if(idx<0) return;
-    const amt=inv.amount||0;
-    if(inv.status==='paid') collected[idx]+=amt;
-    else if(inv.status==='pending'||inv.status==='overdue') pending[idx]+=amt;
+    const isPaid=inv.status==='paid';
+    const isOwed=inv.status==='pending'||inv.status==='overdue';
+    if(!isPaid && !isOwed) return;
+    if(Array.isArray(inv.lines) && inv.lines.length){
+      inv.lines.forEach(l=>{
+        const idx=categoryIndex(l.desc||l.description||'');
+        if(idx<0) return;
+        const amt=Number(l.total||0);
+        if(isPaid) collected[idx]+=amt;
+        else pending[idx]+=amt;
+      });
+    } else {
+      const idx=categoryIndex(inv.svc||'');
+      if(idx<0) return;
+      const amt=Number(inv.amount||0);
+      if(isPaid) collected[idx]+=amt;
+      else pending[idx]+=amt;
+    }
   });
   chartInst=new Chart(document.getElementById('revChart'),{
     type:'bar',
@@ -3051,7 +3069,9 @@ async function loadSupabaseData(){
     invoices.length=0;
     iR.data.forEach(i=>invoices.push({
       id:i.invoice_number||i.id, supaId:i.id, client:i.client_id||'', clientName:i.client_name||'',
-      svc:i.service||'', amount:i.amount||0, date:i.invoice_date||'', status:i.status||'draft', notes:i.notes||''
+      svc:i.service||'', amount:i.amount||0, date:i.invoice_date||'', status:i.status||'draft', notes:i.notes||'',
+      // Also hydrate line items so the dashboard chart can categorize per-line.
+      lines: Array.isArray(i.line_items) ? i.line_items : []
     }));
   }
   if(rrR.data && rrR.data.length>0){
