@@ -3047,3 +3047,67 @@
 
   console.log('[GL] Documents → Supabase Storage bridge loaded');
 }());
+
+/* ============================================================
+   LIST LOADING STATES
+   - Wrap loadSupabaseData with the global busy pill so the
+     initial CRM hydration shows a clear "Loading your data…"
+     indicator.
+   - Insert lightweight skeleton rows into the invoice / client
+     / deal renderers when those views render empty during the
+     initial load — so the user sees "loading" pulses instead
+     of "0 invoices" briefly.
+   ============================================================ */
+(function(){
+  window._glLoading = false;
+
+  // Style the pulsing skeleton row.
+  if(!document.getElementById('gl-skeleton-style')){
+    var s = document.createElement('style');
+    s.id = 'gl-skeleton-style';
+    s.textContent =
+      '@keyframes gl-pulse{0%,100%{opacity:.4}50%{opacity:1}}' +
+      '.gl-skel{display:block;height:10px;border-radius:4px;background:rgba(255,255,255,.06);animation:gl-pulse 1.2s ease-in-out infinite}' +
+      '.gl-skel-row{display:grid;grid-template-columns:140px 1fr 1fr 100px 80px;gap:14px;padding:14px 12px;border-bottom:1px solid rgba(255,255,255,.04)}';
+    document.head.appendChild(s);
+  }
+
+  function injectSkeleton(targetId, cols){
+    var el = document.getElementById(targetId);
+    if(!el) return;
+    if(el.querySelector('.gl-skel-row')) return;  // already showing skeletons
+    var rows = '';
+    for(var i=0;i<4;i++){
+      var cells = '';
+      for(var c=0;c<cols;c++) cells += '<div class="gl-skel" style="width:' + (50 + Math.random()*40) + '%"></div>';
+      rows += '<div class="gl-skel-row">' + cells + '</div>';
+    }
+    el.innerHTML = rows;
+  }
+
+  // Wrap loadSupabaseData so it (a) shows the busy pill, (b) toggles _glLoading.
+  var origLoad = window.loadSupabaseData;
+  if(typeof origLoad === 'function'){
+    window.loadSupabaseData = async function(){
+      window._glLoading = true;
+      if(typeof window.glStartBusy === 'function') window.glStartBusy('Loading your data…');
+      // Pre-populate skeletons in case the user is staring at an empty list.
+      try {
+        if(document.getElementById('inv-body') && !(window.invoices||[]).length) injectSkeleton('inv-body', 5);
+        if(document.getElementById('clients-body') && !(window.clients||[]).length) injectSkeleton('clients-body', 4);
+      } catch(e){}
+      try { return await origLoad.apply(this, arguments); }
+      catch(e){ console.error('[GL] loadSupabaseData threw', e); throw e; }
+      finally {
+        window._glLoading = false;
+        if(typeof window.glEndBusy === 'function') window.glEndBusy();
+        // Force a re-render so any skeleton rows get replaced.
+        if(typeof window.renderInvoices === 'function') try { window.renderInvoices(); } catch(e){}
+        if(typeof window.renderClients === 'function') try { window.renderClients(); } catch(e){}
+        if(typeof window.renderKanban === 'function') try { window.renderKanban(); } catch(e){}
+      }
+    };
+  }
+
+  console.log('[GL] List loading skeletons + busy wrap loaded');
+}());
