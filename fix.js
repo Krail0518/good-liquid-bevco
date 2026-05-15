@@ -1937,3 +1937,75 @@
 
   console.log('[GL] Mailgun settings v1 loaded');
 }());
+
+/* ============================================================
+   AI TOOLBAR — robust override
+   Replaces the original addAIToolbar with one that:
+   - Removes any prior toolbar before recreating (idempotent on
+     repeat login / re-render)
+   - Uses an event listener (not inline onclick) so click failures
+     show in the console
+   - Anchors inside #crm-panel for correct stacking
+   ============================================================ */
+(function(){
+  window.addAIToolbar = function(){
+    var existing = document.getElementById('ai-toolbar');
+    if(existing) existing.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var tb = document.createElement('div');
+    tb.id = 'ai-toolbar';
+    tb.setAttribute('style','position:fixed;bottom:28px;right:28px;z-index:600;display:flex;flex-direction:column;gap:8px;align-items:flex-end;pointer-events:auto');
+
+    var tools = document.createElement('div');
+    tools.id = 'ai-tools';
+    tools.setAttribute('style','display:none;flex-direction:column;gap:6px;align-items:flex-end;margin-bottom:6px');
+
+    var items = [
+      { label:'💰 Estimate Quote', fn:'aiEstimateQuote' },
+      { label:'🧾 Draft Invoice',  fn:'aiDraftInvoice' },
+      { label:'📝 Meeting Notes',  fn:'openMeetingNotesModal' },
+      { label:'✉️ Draft Email',    fn:'openAICommModal' },
+      { label:'📈 Revenue Forecast', fn:'aiGenerateForecast' },
+      { label:'📊 Reports',        fn:'openReports' },
+      { label:'⏱️ Time Tracker',   fn:'openTimeTracker' },
+      { label:'📧 Email Templates', fn:'openEmailTemplates' },
+      { label:'📊 Time Report',    fn:'openTimeTrackingReport' },
+      { label:'🤖 AI Settings',    fn:'openAISettings' },
+      { label:'📧 Mailgun Settings', fn:'openMailgunSettings' }
+    ];
+    items.forEach(function(it){
+      var b = document.createElement('button');
+      b.setAttribute('style','padding:8px 14px;background:#142238;border:1px solid rgba(0,229,192,.3);border-radius:20px;color:var(--teal);cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)');
+      b.textContent = it.label;
+      b.addEventListener('click', function(){
+        try{
+          if(typeof window[it.fn] === 'function') window[it.fn]();
+          else { console.warn('[AI toolbar] missing function:', it.fn); alert(it.label + ' is not available.'); }
+        }catch(e){ console.error('[AI toolbar] '+it.fn+' threw', e); alert(it.label + ' failed: ' + (e.message||'')); }
+        tools.style.display='none';
+      });
+      tools.appendChild(b);
+    });
+
+    var fab = document.createElement('button');
+    fab.setAttribute('title','AI Tools');
+    fab.setAttribute('style','width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--teal),#1a6fff);border:none;color:#0a1628;font-size:22px;cursor:pointer;box-shadow:0 4px 20px rgba(0,229,192,.4);font-weight:900');
+    fab.textContent = '🤖';
+    fab.addEventListener('click', function(e){
+      e.stopPropagation();
+      tools.style.display = (tools.style.display === 'none') ? 'flex' : 'none';
+      console.log('[AI toolbar] toggled →', tools.style.display);
+    });
+    // Close the popout when clicking elsewhere
+    document.addEventListener('click', function(e){
+      if(tools.style.display !== 'none' && !tb.contains(e.target)) tools.style.display = 'none';
+    });
+
+    tb.appendChild(tools);
+    tb.appendChild(fab);
+    host.appendChild(tb);
+    console.log('[AI toolbar] mounted inside', host.id || host.tagName);
+  };
+
+  console.log('[GL] AI toolbar v2 loaded');
+}());
