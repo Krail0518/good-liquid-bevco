@@ -3993,9 +3993,7 @@ function openClientDetail(cid) {
         </div>`).join('')}
       </div>` : ''}
 
-      ${c.notes ? `<div style="margin-bottom:20px"><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">NOTES</div>
-        <div style="background:rgba(255,255,255,.04);border-radius:10px;padding:14px;font-size:13px;color:var(--white);line-height:1.7">${c.notes}</div>
-      </div>` : ''}
+      ${typeof window.glRenderClientNotesBlock === 'function' ? window.glRenderClientNotesBlock(c) : ''}
 
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button onclick="createForClient('${c.id}');document.getElementById('client-detail-overlay').remove()" style="flex:1;min-width:140px;padding:11px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:800;cursor:pointer;font-size:13px">+ New Invoice</button>
@@ -5648,6 +5646,8 @@ function viewClientEnhanced(clientId) {
         <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">TAGS</div>
         ${getClientTagsEl(clientId, true)}
       </div>
+
+      ${typeof window.glRenderClientNotesBlock === 'function' ? window.glRenderClientNotesBlock(client) : ''}
 
       <div style="margin-bottom:18px">
         <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">RECENT INVOICES</div>
