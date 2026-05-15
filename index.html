@@ -1922,31 +1922,11 @@ function canAction(a){
 }
 const GL={name:'Good Liquid Bev Co',addr:'2011 51st Ave E, Unit 100',city:'Palmetto, FL 34221',email:'Mike@GoodLiquid.com'};
 
-let referrers=window.referrers=[
-  {id:'rr1',name:'Jake Denton',rel:'Broker',email:'jake@dentonsales.com',phone:'(813) 555-0144',rate:5,color:'#1a3a6e',tc:'#9FE1CB',init:'JD',notes:'Commercial broker, sends 2-3 leads/year'},
-  {id:'rr2',name:'Maria Santos',rel:'Industry contact',email:'msantos@bevworld.com',phone:'(727) 555-0289',rate:7,color:'#0F6E56',tc:'#E1F5EE',init:'MS',notes:'Beverage industry consultant'},
-  {id:'rr3',name:'Dave Okafor',rel:'Business partner',email:'dave@okaforgroup.com',phone:'(941) 555-0076',rate:6,color:'#854F0B',tc:'#FAEEDA',init:'DO',notes:'Former supplier, now refers startup brands'},
-];
-
-let referrals=window.referrals=[
-  {id:'ref1',referrerId:'rr1',referrerName:'Jake Denton',clientName:'SunBurst Seltzers',dealValue:35820,rate:5,commAmount:1791,status:'paid',datePaid:'2026-04-15',notes:'Introduced via email, closed quickly',date:'2026-03-01'},
-  {id:'ref2',referrerId:'rr2',referrerName:'Maria Santos',clientName:'Bloom Functional',dealValue:16000,rate:7,commAmount:1120,status:'won',datePaid:null,notes:'Came through Maria at BevWorld Expo',date:'2026-04-02'},
-  {id:'ref3',referrerId:'rr3',referrerName:'Dave Okafor',clientName:'Verde Wellness',dealValue:7000,rate:6,commAmount:420,status:'paid',datePaid:'2026-04-30',notes:'Dave connected us directly',date:'2026-03-15'},
-  {id:'ref4',referrerId:'rr1',referrerName:'Jake Denton',clientName:'Harbor Brew Lab',dealValue:5200,rate:5,commAmount:260,status:'presented',datePaid:null,notes:'Quote sent, awaiting decision',date:'2026-04-20'},
-  {id:'ref5',referrerId:'rr2',referrerName:'Maria Santos',clientName:'NorthWave Drinks',dealValue:11000,rate:7,commAmount:770,status:'lead',datePaid:null,notes:'Intro call scheduled',date:'2026-05-01'},
-  {id:'ref6',referrerId:'rr3',referrerName:'Dave Okafor',clientName:'Crest Beverages',dealValue:22000,rate:6,commAmount:1320,status:'lost',datePaid:null,notes:'Lost to competitor on price',date:'2026-03-28'},
-];
-
-let clients=window.clients=[
-  {id:'c1',name:'Tide & Taste Co.',contact:'Jordan Mills',email:'jordan@tidetaste.com',service:'Canning',status:'active',billed:48240,referredBy:'',color:'#1a3a6e',tc:'#9FE1CB',init:'TT'},
-  {id:'c2',name:'Bloom Functional',contact:'Riley Park',email:'r.park@bloomfx.com',service:'R&D + Canning',status:'active',billed:24800,referredBy:'rr2',color:'#0F6E56',tc:'#E1F5EE',init:'BF'},
-  {id:'c3',name:'SunBurst Seltzers',contact:'Alex Torres',email:'a.torres@sunburst.io',service:'Canning',status:'active',billed:61500,referredBy:'rr1',color:'#854F0B',tc:'#FAEEDA',init:'SS'},
-  {id:'c4',name:'Harbor Brew Lab',contact:'Morgan Chen',email:'m.chen@harborbrew.com',service:'Bottling',status:'lead',billed:0,referredBy:'rr1',color:'#3C3489',tc:'#EEEDFE',init:'HB'},
-  {id:'c5',name:'Verde Wellness',contact:'Sam Diaz',email:'s.diaz@verdewellness.com',service:'R&D',status:'active',billed:18000,referredBy:'rr3',color:'#0F6E56',tc:'#E1F5EE',init:'VW'},
-  {id:'c6',name:'Coastal Craft',contact:'Casey Rios',email:'c.rios@coastalcraft.com',service:'Canning',status:'active',billed:35600,referredBy:'',color:'#27500A',tc:'#EAF3DE',init:'CC'},
-  {id:'c7',name:'NorthWave Drinks',contact:'Taylor Reed',email:'t.reed@northwave.co',service:'Canning',status:'lead',billed:0,referredBy:'rr2',color:'#444441',tc:'#F1EFE8',init:'NW'},
-  {id:'c8',name:'Prism Hydration',contact:'Jamie Fox',email:'j.fox@prismhydration.com',service:'Bottling',status:'active',billed:29400,referredBy:'',color:'#712B13',tc:'#FAECE7',init:'PH'},
-];
+/* Referrers / Referrals / Clients: empty seeds. Real records come from
+   Supabase via loadSupabaseData(), or from the CRM "Add" buttons. */
+let referrers=window.referrers=[];
+let referrals=window.referrals=[];
+let clients=window.clients=[];
 
 let invoices=window.invoices=[];
 
