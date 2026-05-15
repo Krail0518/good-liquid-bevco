@@ -4376,6 +4376,220 @@
     tag(380,16,1) + tag(465,16,2) + tag(20,60,3) + tag(310,180,4) + tag(450,180,5)
   );
 
+  var MOCK_PIPELINE = wf(620, 280,
+    box(0,0,620,280,'#142238','rgba(255,255,255,.05)') +
+    txt(20,28,'PIPELINE',13,'#fff') + txt(20,46,'X active deals',10,'#9aa7bd') +
+    box(520,16,80,24,'#00e5c0','#00e5c0') + txt(560,32,'+ Add Deal',9,'#0a1628','middle') +
+    // 5 columns
+    box(20,60,110,210,'#243a56','rgba(255,255,255,.06)') + txt(28,80,'Prospecting',10,'#6b87ad') + txt(118,80,'2',10,'#9aa7bd','end') +
+    box(20,98,110,52,'#1c2e48','rgba(255,255,255,.08)') + txt(28,116,'NorthWave',10,'#fff') + txt(28,130,'NorthWave Drinks',8,'#9aa7bd') + txt(28,144,'$11,000',9,'#00e5c0') +
+    box(20,156,110,52,'#1c2e48','rgba(255,255,255,.08)') + txt(28,174,'Datasphere',10,'#fff') + txt(28,188,'Datasphere',8,'#9aa7bd') + txt(28,202,'$22,000',9,'#00e5c0') +
+    // stale badge example on first card
+    '<circle cx="120" cy="106" r="9" fill="rgba(245,200,66,.4)"/>' + txt(120,110,'⏰',8,'#f5c842','middle') +
+    box(140,60,110,210,'#243a56','rgba(255,255,255,.06)') + txt(148,80,'Proposal',10,'#1a6fff') + txt(238,80,'2',10,'#9aa7bd','end') +
+    box(140,98,110,52,'#1c2e48','rgba(255,255,255,.08)') + txt(148,116,'Harbor Pilot',10,'#fff') + txt(148,130,'Harbor Brew',8,'#9aa7bd') + txt(148,144,'$5,200',9,'#00e5c0') +
+    box(140,156,110,52,'#1c2e48','rgba(255,255,255,.08)') + txt(148,174,'Bloom Batch #3',10,'#fff') + txt(148,188,'Bloom Functional',8,'#9aa7bd') + txt(148,202,'$18,400',9,'#00e5c0') +
+    box(260,60,110,210,'#243a56','rgba(255,255,255,.06)') + txt(268,80,'Negotiation',10,'#f5c842') + txt(358,80,'1',10,'#9aa7bd','end') +
+    box(260,98,110,52,'#1c2e48','rgba(255,255,255,.08)') + txt(268,116,'Verde IP',10,'#fff') + txt(268,130,'Verde Wellness',8,'#9aa7bd') + txt(268,144,'$6,000',9,'#00e5c0') +
+    box(380,60,110,210,'#243a56','rgba(255,255,255,.06)') + txt(388,80,'Closed Won',10,'#00c4a7') + txt(478,80,'1',10,'#9aa7bd','end') +
+    box(380,98,110,52,'#1c2e48','rgba(255,255,255,.08)') + txt(388,116,'SunBurst Q2',10,'#fff') + txt(388,130,'SunBurst',8,'#9aa7bd') + txt(388,144,'$35,820',9,'#00e5c0') +
+    box(500,60,110,210,'#243a56','rgba(255,255,255,.06)') + txt(508,80,'Closed Lost',10,'#e74c3c') + txt(598,80,'0',10,'#9aa7bd','end') +
+    tag(520,16,1) + tag(75,98,2) + tag(135,106,3) + tag(380,98,4)
+  );
+
+  var MOCK_CLIENTS = wf(620, 240,
+    box(0,0,620,240,'#142238','rgba(255,255,255,.05)') +
+    txt(20,28,'CLIENTS',13,'#fff') + txt(20,46,'X active brands',10,'#9aa7bd') +
+    box(510,16,90,24,'#00e5c0','#00e5c0') + txt(555,32,'+ Add Client',9,'#0a1628','middle') +
+    box(20,56,580,28) + txt(35,75,'🔍 Search clients…',11,'#9aa7bd') +
+    box(20,96,580,130) +
+    '<line x1="20" y1="124" x2="600" y2="124" stroke="rgba(255,255,255,.06)"/>' +
+    txt(30,116,'Brand',9,'#9aa7bd') + txt(180,116,'Contact',9,'#9aa7bd') + txt(290,116,'Service',9,'#9aa7bd') + txt(400,116,'Status',9,'#9aa7bd') + txt(490,116,'Total billed',9,'#9aa7bd') +
+    '<circle cx="40" cy="148" r="10" fill="#1a3a6e"/><text x="40" y="151" fill="#9FE1CB" font-size="9" text-anchor="middle" font-family="Arial">TT</text>' +
+    txt(58,151,'Tide & Taste Co.',10,'#fff') + txt(180,151,'Jordan Mills',9,'#9aa7bd') + txt(290,151,'Canning',10,'#cfd9e6') +
+    box(400,142,55,16,'rgba(34,197,94,.15)','rgba(34,197,94,.3)') + txt(427,154,'active',9,'#22c55e','middle') +
+    txt(490,151,'$48,240',10,'#00e5c0') +
+    '<circle cx="40" cy="178" r="10" fill="#0F6E56"/><text x="40" y="181" fill="#E1F5EE" font-size="9" text-anchor="middle" font-family="Arial">BF</text>' +
+    txt(58,181,'Bloom Functional',10,'#fff') + txt(180,181,'Riley Park',9,'#9aa7bd') + txt(290,181,'R&amp;D + Canning',10,'#cfd9e6') +
+    box(400,172,55,16,'rgba(34,197,94,.15)','rgba(34,197,94,.3)') + txt(427,184,'active',9,'#22c55e','middle') +
+    txt(490,181,'$24,800',10,'#00e5c0') +
+    '<circle cx="40" cy="208" r="10" fill="#854F0B"/><text x="40" y="211" fill="#FAEEDA" font-size="9" text-anchor="middle" font-family="Arial">SS</text>' +
+    txt(58,211,'SunBurst Seltzers',10,'#fff') + txt(180,211,'Alex Torres',9,'#9aa7bd') + txt(290,211,'Canning',10,'#cfd9e6') +
+    box(400,202,45,16,'rgba(107,159,255,.15)','rgba(107,159,255,.3)') + txt(422,214,'lead',9,'#6b9fff','middle') +
+    txt(490,211,'$0',10,'#9aa7bd') +
+    tag(510,16,1) + tag(20,96,2) + tag(58,151,3) + tag(400,151,4)
+  );
+
+  var MOCK_REFERRALS = wf(620, 220,
+    box(0,0,620,220,'#142238','rgba(255,255,255,.05)') +
+    txt(20,28,'REFERRALS',13,'#fff') + txt(20,46,'X tracked',10,'#9aa7bd') +
+    box(490,16,110,24,'#00e5c0','#00e5c0') + txt(545,32,'+ Add referral',9,'#0a1628','middle') +
+    box(20,56,580,150) +
+    '<line x1="20" y1="84" x2="600" y2="84" stroke="rgba(255,255,255,.06)"/>' +
+    txt(30,76,'Referrer',9,'#9aa7bd') + txt(150,76,'Client',9,'#9aa7bd') + txt(270,76,'Deal',9,'#9aa7bd') + txt(360,76,'Rate',9,'#9aa7bd') + txt(420,76,'Commission',9,'#9aa7bd') + txt(520,76,'Status',9,'#9aa7bd') +
+    txt(30,108,'Jake Denton',10,'#fff') + txt(150,108,'SunBurst',10,'#cfd9e6') + txt(270,108,'$35,820',10,'#cfd9e6') + txt(360,108,'5%',10,'#9aa7bd') + txt(420,108,'$1,791',10,'#00e5c0') +
+    box(520,98,55,16,'rgba(34,197,94,.15)','rgba(34,197,94,.3)') + txt(547,110,'paid',9,'#22c55e','middle') +
+    txt(30,140,'Maria Santos',10,'#fff') + txt(150,140,'Bloom',10,'#cfd9e6') + txt(270,140,'$16,000',10,'#cfd9e6') + txt(360,140,'7%',10,'#9aa7bd') + txt(420,140,'$1,120',10,'#00e5c0') +
+    box(520,130,55,16,'rgba(245,200,66,.15)','rgba(245,200,66,.3)') + txt(547,142,'won',9,'#f5c842','middle') +
+    box(580,130,15,16,'rgba(245,200,66,.18)','rgba(245,200,66,.4)') + txt(587,142,'✓',9,'#f5c842','middle') +
+    txt(30,172,'Dave Okafor',10,'#fff') + txt(150,172,'Crest Bev',10,'#cfd9e6') + txt(270,172,'$22,000',10,'#cfd9e6') + txt(360,172,'6%',10,'#9aa7bd') + txt(420,172,'$1,320',10,'#9aa7bd') +
+    box(520,162,55,16,'rgba(231,76,60,.15)','rgba(231,76,60,.3)') + txt(547,174,'lost',9,'#e74c3c','middle') +
+    tag(490,16,1) + tag(520,108,2) + tag(595,140,3)
+  );
+
+  var MOCK_REFERRERS = wf(620, 220,
+    box(0,0,620,220,'#142238','rgba(255,255,255,.05)') +
+    txt(20,28,'REFERRERS',13,'#fff') + txt(20,46,'External partners',10,'#9aa7bd') +
+    box(480,16,120,24,'#00e5c0','#00e5c0') + txt(540,32,'+ Add referrer',9,'#0a1628','middle') +
+    // 3 referrer cards
+    box(20,60,190,150) +
+    '<circle cx="44" cy="84" r="12" fill="#1a3a6e"/><text x="44" y="88" fill="#9FE1CB" font-size="10" text-anchor="middle" font-family="Arial">JD</text>' +
+    txt(64,82,'Jake Denton',11,'#fff') + txt(64,98,'Broker',9,'#9aa7bd') +
+    txt(30,124,'jake@dentonsales.com',9,'#9aa7bd') + txt(30,142,'(813) 555-0144',9,'#9aa7bd') +
+    txt(30,168,'Rate: 5% · 2 referrals',9,'#cfd9e6') + box(30,178,160,22,'rgba(245,200,66,.08)','rgba(245,200,66,.3)') + txt(110,193,'$1,791 owed',9,'#f5c842','middle') +
+    box(220,60,190,150) +
+    '<circle cx="244" cy="84" r="12" fill="#0F6E56"/><text x="244" y="88" fill="#E1F5EE" font-size="10" text-anchor="middle" font-family="Arial">MS</text>' +
+    txt(264,82,'Maria Santos',11,'#fff') + txt(264,98,'Industry contact',9,'#9aa7bd') +
+    txt(230,124,'msantos@bevworld.com',9,'#9aa7bd') + txt(230,142,'(727) 555-0289',9,'#9aa7bd') +
+    txt(230,168,'Rate: 7% · 2 referrals',9,'#cfd9e6') + box(230,178,160,22,'rgba(29,158,117,.08)','rgba(29,158,117,.3)') + txt(310,193,'$1,120 paid YTD',9,'#1D9E75','middle') +
+    box(420,60,190,150) +
+    '<circle cx="444" cy="84" r="12" fill="#854F0B"/><text x="444" y="88" fill="#FAEEDA" font-size="10" text-anchor="middle" font-family="Arial">DO</text>' +
+    txt(464,82,'Dave Okafor',11,'#fff') + txt(464,98,'Business partner',9,'#9aa7bd') +
+    txt(430,124,'dave@okaforgroup.com',9,'#9aa7bd') + txt(430,142,'(941) 555-0076',9,'#9aa7bd') +
+    txt(430,168,'Rate: 6% · 1 referral',9,'#cfd9e6') + box(430,178,160,22,'rgba(255,255,255,.04)') + txt(510,193,'$0 owed',9,'#9aa7bd','middle') +
+    tag(480,16,1) + tag(20,60,2)
+  );
+
+  var MOCK_DOCUMENTS = wf(620, 230,
+    box(0,0,620,230,'#142238','rgba(255,255,255,.05)') +
+    txt(20,28,'DOCUMENTS',13,'#fff') + txt(20,46,'Per-client file storage',10,'#9aa7bd') +
+    box(490,16,110,24,'#00e5c0','#00e5c0') + txt(545,32,'+ Upload',9,'#0a1628','middle') +
+    box(20,60,580,160) +
+    '<line x1="20" y1="88" x2="600" y2="88" stroke="rgba(255,255,255,.06)"/>' +
+    txt(30,80,'Name',9,'#9aa7bd') + txt(220,80,'Client',9,'#9aa7bd') + txt(340,80,'Type',9,'#9aa7bd') + txt(420,80,'Uploaded',9,'#9aa7bd') + txt(530,80,'Action',9,'#9aa7bd') +
+    txt(30,108,'📄 Bloom Master Formula.pdf',10,'#fff') + txt(220,108,'Bloom Functional',10,'#cfd9e6') +
+    box(340,98,55,16,'rgba(0,229,192,.1)','rgba(0,229,192,.3)') + txt(367,110,'R&amp;D',9,'#00e5c0','middle') +
+    txt(420,108,'2026-05-12',10,'#9aa7bd') +
+    box(530,98,55,16,'rgba(0,229,192,.1)','rgba(0,229,192,.3)') + txt(557,110,'⬇ Open',9,'#00e5c0','middle') +
+    txt(30,140,'🖼️ SunBurst label artwork.png',10,'#fff') + txt(220,140,'SunBurst Seltzers',10,'#cfd9e6') +
+    box(340,130,55,16,'rgba(168,85,247,.1)','rgba(168,85,247,.3)') + txt(367,142,'design',9,'#c4a4f8','middle') +
+    txt(420,140,'2026-05-08',10,'#9aa7bd') +
+    box(530,130,55,16,'rgba(0,229,192,.1)','rgba(0,229,192,.3)') + txt(557,142,'⬇ Open',9,'#00e5c0','middle') +
+    txt(30,172,'📊 Q2 production schedule.xlsx',10,'#fff') + txt(220,172,'(general)',10,'#9aa7bd') +
+    box(340,162,55,16,'rgba(245,200,66,.1)','rgba(245,200,66,.3)') + txt(367,174,'ops',9,'#f5c842','middle') +
+    txt(420,172,'2026-05-01',10,'#9aa7bd') +
+    box(530,162,55,16,'rgba(0,229,192,.1)','rgba(0,229,192,.3)') + txt(557,174,'⬇ Open',9,'#00e5c0','middle') +
+    txt(30,205,'Files persist to Supabase Storage (client-docs bucket)',9,'#9aa7bd') +
+    tag(490,16,1) + tag(20,60,2) + tag(530,108,3)
+  );
+
+  var MOCK_CALENDAR = wf(620, 250,
+    box(0,0,620,250,'#142238','rgba(255,255,255,.05)') +
+    txt(20,28,'CALENDAR',13,'#fff') + txt(20,46,'General events & tour requests',10,'#9aa7bd') +
+    box(420,16,40,24,'rgba(255,255,255,.06)') + txt(440,32,'‹',12,'#fff','middle') +
+    txt(490,32,'May 2026',11,'#fff','middle') +
+    box(540,16,40,24,'rgba(255,255,255,.06)') + txt(560,32,'›',12,'#fff','middle') +
+    // 7-col grid header
+    ['Su','Mo','Tu','We','Th','Fr','Sa'].map(function(d,i){ return txt(60 + i*78, 76, d, 10, '#9aa7bd','middle'); }).join('') +
+    // 5 rows × 7 cols grid (simplified)
+    (function(){
+      var cells = '';
+      for(var r=0; r<4; r++){
+        for(var c=0; c<7; c++){
+          var x = 26 + c*78, y = 90 + r*36;
+          cells += box(x, y, 70, 30, 'rgba(255,255,255,.02)', 'rgba(255,255,255,.04)');
+          cells += txt(x+8, y+18, (r*7+c+1), 10, '#cfd9e6');
+        }
+      }
+      return cells;
+    })() +
+    // Highlight one cell with an event
+    '<rect x="338" y="126" width="70" height="30" rx="6" fill="rgba(0,229,192,.12)" stroke="rgba(0,229,192,.4)"/>' +
+    txt(346,144,'15',10,'#00e5c0') + box(363,134,42,12,'rgba(0,229,192,.18)','rgba(0,229,192,.4)') + txt(384,143,'Tour',8,'#00e5c0','middle') +
+    txt(20,240,'Public "Schedule a tour" submissions land here automatically.',9,'#9aa7bd') +
+    tag(338,126,1) + tag(420,16,2)
+  );
+
+  var MOCK_TASKS = wf(620, 220,
+    box(0,0,620,220,'#142238','rgba(255,255,255,.05)') +
+    txt(20,28,'TASKS',13,'#fff') + txt(20,46,'Personal to-do list',10,'#9aa7bd') +
+    box(510,16,90,24,'#00e5c0','#00e5c0') + txt(555,32,'+ Add Task',9,'#0a1628','middle') +
+    // Filter pills
+    box(20,56,55,22,'rgba(0,229,192,.2)','rgba(0,229,192,.3)') + txt(47,71,'All',10,'#00e5c0','middle') +
+    box(80,56,65,22,'rgba(255,255,255,.04)') + txt(112,71,'Open',10,'#9aa7bd','middle') +
+    box(150,56,75,22,'rgba(255,255,255,.04)') + txt(187,71,'Done',10,'#9aa7bd','middle') +
+    // Task rows
+    box(20,90,580,120) +
+    box(36,104,14,14,'rgba(255,255,255,.04)','rgba(255,255,255,.18)') +
+    txt(60,116,'Follow up with Bloom on Q3 volume',11,'#fff') + box(440,108,90,16,'rgba(26,111,255,.12)','rgba(26,111,255,.3)') + txt(485,120,'Bloom Functional',9,'#6b9fff','middle') +
+    box(540,108,55,16,'rgba(245,200,66,.12)','rgba(245,200,66,.3)') + txt(567,120,'due today',9,'#f5c842','middle') +
+    box(36,134,14,14,'#00e5c0','#00e5c0') + txt(43,144,'✓',10,'#0a1628','middle') +
+    txt(60,146,'Send tour confirmation to Verde',11,'#9aa7bd','start') +
+    '<line x1="60" y1="142" x2="380" y2="142" stroke="#9aa7bd" stroke-opacity=".5"/>' +
+    txt(440,146,'completed yesterday',9,'#9aa7bd') +
+    box(36,164,14,14,'rgba(255,255,255,.04)','rgba(255,255,255,.18)') +
+    txt(60,176,'Reply to NorthWave intro email',11,'#fff') + box(440,168,90,16,'rgba(26,111,255,.12)','rgba(26,111,255,.3)') + txt(485,180,'NorthWave',9,'#6b9fff','middle') +
+    box(36,194,14,14,'rgba(255,255,255,.04)','rgba(255,255,255,.18)') +
+    txt(60,206,'Order more 12oz Sleek cans',11,'#fff') + txt(440,206,'no client',9,'#9aa7bd') +
+    tag(510,16,1) + tag(36,104,2) + tag(540,108,3)
+  );
+
+  var MOCK_INVENTORY = wf(620, 220,
+    box(0,0,620,220,'#142238','rgba(255,255,255,.05)') +
+    txt(20,28,'INVENTORY',13,'#fff') + txt(20,46,'Stock tracker',10,'#9aa7bd') +
+    box(510,16,90,24,'#00e5c0','#00e5c0') + txt(555,32,'+ Add Item',9,'#0a1628','middle') +
+    box(20,60,580,150) +
+    '<line x1="20" y1="88" x2="600" y2="88" stroke="rgba(255,255,255,.06)"/>' +
+    txt(30,80,'Item',9,'#9aa7bd') + txt(280,80,'Quantity',9,'#9aa7bd') + txt(380,80,'Unit',9,'#9aa7bd') + txt(470,80,'Low at',9,'#9aa7bd') + txt(550,80,'Status',9,'#9aa7bd') +
+    txt(30,108,'12oz Standard Cans',11,'#fff') + txt(280,108,'1,200',11,'#00e5c0') + txt(380,108,'cases',10,'#cfd9e6') + txt(470,108,'200',10,'#9aa7bd') +
+    box(540,98,50,16,'rgba(34,197,94,.15)','rgba(34,197,94,.3)') + txt(565,110,'OK',9,'#22c55e','middle') +
+    txt(30,138,'CO₂ Gas',11,'#fff') + txt(280,138,'2',11,'#f5c842') + txt(380,138,'tanks',10,'#cfd9e6') + txt(470,138,'3',10,'#9aa7bd') +
+    box(540,128,50,16,'rgba(245,200,66,.15)','rgba(245,200,66,.3)') + txt(565,140,'LOW',9,'#f5c842','middle') +
+    txt(30,168,'PakTech Handles',11,'#fff') + txt(280,168,'500',11,'#00e5c0') + txt(380,168,'bags',10,'#cfd9e6') + txt(470,168,'100',10,'#9aa7bd') +
+    box(540,158,50,16,'rgba(34,197,94,.15)','rgba(34,197,94,.3)') + txt(565,170,'OK',9,'#22c55e','middle') +
+    txt(30,196,'750ml Bottles',11,'#fff') + txt(280,196,'220',11,'#00e5c0') + txt(380,196,'cases',10,'#cfd9e6') + txt(470,196,'50',10,'#9aa7bd') +
+    box(540,186,50,16,'rgba(34,197,94,.15)','rgba(34,197,94,.3)') + txt(565,198,'OK',9,'#22c55e','middle') +
+    tag(510,16,1) + tag(540,138,2)
+  );
+
+  var MOCK_CUSTOMERS = wf(620, 200,
+    box(0,0,620,200,'#142238','rgba(255,255,255,.05)') +
+    txt(20,28,'CUSTOMER LOGINS',13,'#fff') + txt(20,46,'Portal access for your clients',10,'#9aa7bd') +
+    box(420,16,180,24,'#00e5c0','#00e5c0') + txt(510,32,'📧 Send Onboarding Email',9,'#0a1628','middle') +
+    box(20,60,580,120) +
+    '<line x1="20" y1="88" x2="600" y2="88" stroke="rgba(255,255,255,.06)"/>' +
+    txt(30,80,'Name',9,'#9aa7bd') + txt(220,80,'Email',9,'#9aa7bd') + txt(390,80,'Created',9,'#9aa7bd') + txt(500,80,'Actions',9,'#9aa7bd') +
+    txt(30,108,'Jordan Mills',11,'#fff') + txt(220,108,'jordan@tidetaste.com',10,'#9aa7bd') + txt(390,108,'2026-05-10',10,'#9aa7bd') +
+    box(500,98,55,16,'rgba(245,200,66,.12)','rgba(245,200,66,.3)') + txt(527,110,'reset',9,'#f5c842','middle') +
+    box(560,98,40,16,'rgba(231,76,60,.15)','rgba(231,76,60,.3)') + txt(580,110,'remove',8,'#e74c3c','middle') +
+    txt(30,140,'Riley Park',11,'#fff') + txt(220,140,'r.park@bloomfx.com',10,'#9aa7bd') + txt(390,140,'2026-05-08',10,'#9aa7bd') +
+    box(500,130,55,16,'rgba(245,200,66,.12)','rgba(245,200,66,.3)') + txt(527,142,'reset',9,'#f5c842','middle') +
+    box(560,130,40,16,'rgba(231,76,60,.15)','rgba(231,76,60,.3)') + txt(580,142,'remove',8,'#e74c3c','middle') +
+    tag(420,16,1) + tag(500,108,2)
+  );
+
+  var MOCK_SETTINGS = wf(620, 320,
+    box(0,0,620,320,'#142238','rgba(255,255,255,.05)') +
+    txt(20,28,'CRM AREA',13,'#9aa7bd') + txt(20,46,'(any panel)',10,'#9aa7bd') +
+    // Floating 🤖 FAB bottom-right
+    '<circle cx="560" cy="270" r="26" fill="url(#fabGrad)"/>' +
+    '<defs><linearGradient id="fabGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#00e5c0"/><stop offset="100%" stop-color="#1a6fff"/></linearGradient></defs>' +
+    txt(560,277,'🤖',18,'#0a1628','middle') +
+    // Popout menu above the FAB
+    box(420,60,180,200) +
+    txt(515,80,'AI tools',10,'#9aa7bd','middle') +
+    box(432,90,156,22,'rgba(0,229,192,.06)') + txt(440,105,'💰 Estimate Quote',10,'#00e5c0') +
+    box(432,116,156,22,'rgba(0,229,192,.06)') + txt(440,131,'🧾 Draft Invoice',10,'#00e5c0') +
+    box(432,142,156,22,'rgba(0,229,192,.06)') + txt(440,157,'📝 Meeting Notes',10,'#00e5c0') +
+    box(432,168,156,22,'rgba(0,229,192,.06)') + txt(440,183,'✉️ Draft Email',10,'#00e5c0') +
+    box(432,194,156,22,'rgba(0,229,192,.06)') + txt(440,209,'📧 Mailgun Settings',10,'#00e5c0') +
+    box(432,220,156,22,'rgba(0,229,192,.06)') + txt(440,235,'🤖 AI Settings',10,'#00e5c0') +
+    box(432,246,156,22,'rgba(231,76,60,.08)','rgba(231,76,60,.3)') + txt(440,261,'🗑️ Clear cache',10,'#ff8579') +
+    // Arrow from popout to FAB
+    '<line x1="560" y1="262" x2="540" y2="245" stroke="rgba(255,255,255,.2)" stroke-dasharray="3,3"/>' +
+    tag(560,247,1) + tag(515,60,2)
+  );
+
   var SEC_OVERVIEW = bullets([
     '<b>Quick search:</b> press <kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">Ctrl+K</kbd> anywhere to jump to an invoice, client, deal, or user by name.',
     '<b>This help panel:</b> press <kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">?</kbd> any time, or click ❓ Help in the topbar. It opens to the section matching the page you\'re on.',
@@ -4424,74 +4638,103 @@
       '<b>(5) Row actions</b> — Set password (masked-input modal → admin_set_user_password RPC, no email), Email reset (Supabase recovery email), Remove (soft-delete via profile.status = inactive). Owner row is locked.'
     ]);
 
-  var SEC_CLIENTS = bullets([
-    'List of every brand client. Click any row to open detail (recent invoices, deals, notes, AI summary button).',
-    '<b>+ Add Client</b> in the header — name, contact, email, service, status (lead / active).',
-    'Status badge reflects lead vs active. Active clients count toward the dashboard "Active brands" metric.',
-    'Clients persist to Supabase via the existing add-client flow.'
-  ]);
-  var SEC_PIPELINE = bullets([
-    '<b>Kanban</b> with stages: Prospecting → Proposal → Negotiation → Closed Won / Closed Lost. Drag cards between columns (or use the arrows on each card).',
-    '<b>+ Add Deal</b> creates a Prospecting card. Click any card to open the deal detail.',
-    '<b>→ Invoice</b> button in deal detail closes the modal, opens the invoice builder pre-matched to the deal\'s client by name.',
-    'Cards untouched for >14 days in active stages show a yellow <b>⏰ Nd</b> badge.'
-  ]);
-  var SEC_REFERRALS = bullets([
-    'Track deals brought in by external partners. Each referral links to a referrer, client, deal value, commission %.',
-    'Status: lead → presented → won → paid. When status = won, commission counts as "owed" on the dashboard referrer card.',
-    'Click <b>Pay commission</b> on a won referral to mark it paid.'
-  ]);
-  var SEC_REFERRERS = bullets([
-    'Your network of external partners (brokers, industry contacts).',
-    '<b>+ Add referrer</b> — name, relationship, email, phone, default commission rate %.',
-    'Each referrer card on the dashboard shows commissions owed vs paid.'
-  ]);
+  var SEC_CLIENTS = MOCK_CLIENTS +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>(1) + Add Client</b> — header button. Opens a modal: name, contact, email, service, status (lead / active).',
+      '<b>(2) Search bar</b> — filters the list as you type (matches across name / contact / email).',
+      '<b>(3) Row click</b> — opens the client detail panel: billed-to-date, recent invoices, deals, notes, 🤖 AI Summary button.',
+      '<b>(4) Status badge</b> — green = active, blue = lead. Active clients count toward the dashboard "Active brands" metric. New clients persist to Supabase.'
+    ]);
+
+  var SEC_PIPELINE = MOCK_PIPELINE +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>(1) + Add Deal</b> — creates a card in Prospecting. Click any card to open the deal detail modal (edit name / company / value / probability / notes / stage).',
+      '<b>(2) Deal card</b> — name, company, value. Click to open detail. Drag cards between columns (or use the arrow buttons inside each card).',
+      '<b>(3) ⏰ Stale badge</b> — appears on cards in active stages (Prospecting / Proposal / Negotiation) that haven\'t been touched in >14 days. Visual cue to follow up.',
+      '<b>(4) Closed Won column</b> — moving a card here also auto-bumps the related Activity Feed. Use the <b>→ Invoice</b> button in the deal detail to spin a billable invoice from a Closed Won deal.'
+    ]);
+
+  var SEC_REFERRALS = MOCK_REFERRALS +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>(1) + Add referral</b> — pick a referrer, type the client name, deal value, rate %, status (lead / presented / won / paid / lost).',
+      '<b>(2) Status badge</b> — color-coded. Won = commission "owed" on the dashboard referrer card. Paid = counts toward "Paid YTD".',
+      '<b>(3) ✓ Pay commission</b> — appears on Won rows. Click to mark the commission paid, recompute YTD totals, and log to Activity.'
+    ]);
+
+  var SEC_REFERRERS = MOCK_REFERRERS +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>(1) + Add referrer</b> — name, relationship (broker / industry contact / business partner), email, phone, default commission rate %.',
+      '<b>(2) Referrer card</b> — avatar, name, relationship, contact info, rate %, count of referrals, and current owed / paid YTD badge. Mirrors what appears on the dashboard.'
+    ]);
   var SEC_ACTIVITY = bullets([
     'Chronological log of CRM events: calls, emails, referrals, deal moves, notes, commissions.',
     'Stored in localStorage (gl_activities). <b>Per device</b>, capped at 100.',
     'Distinct from the <b>audit_log</b> (security-relevant admin actions) — see Users → 📋 Activity log for that.'
   ]);
-  var SEC_CALENDAR = bullets([
-    'General calendar for tour requests, meetings, milestones.',
-    'Public "Schedule a tour" submissions land here automatically.',
-    'Stored in localStorage (gl_cal_events).'
-  ]);
+  var SEC_CALENDAR = MOCK_CALENDAR +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>(1) Day cell with event</b> — green highlight means an event is scheduled. Click any day to add an event or view existing ones.',
+      '<b>(2) Month navigation</b> — arrows on either side of the month label move forward / backward.',
+      'Public "Schedule a tour" submissions on the marketing site land here automatically. Stored in localStorage (gl_cal_events), per device.'
+    ]);
+
   var SEC_PRODUCTION = bullets([
-    'Calendar focused on production runs (which client, format, cases).',
-    'Customers see their own scheduled runs in the Customer Portal.'
+    'Same calendar mechanics as the General Calendar, but focused on <b>production runs</b>: which client, what format, how many cases, what stage (scheduled / in production / quality check / completed / shipped).',
+    'Customers see their own scheduled runs in the Customer Portal automatically.',
+    'Stored in localStorage (gl_prod_pipeline).'
   ]);
-  var SEC_TASKS = bullets([
-    'Personal to-do list. Tasks can be linked to a client.',
-    'Stored in localStorage (gl_tasks). <b>Per device</b>.'
-  ]);
-  var SEC_DOCUMENTS = bullets([
-    'Upload files (PDF, Word, images, CSV) per client. Files persist to Supabase Storage in the <b>client-docs</b> bucket.',
-    'If the bucket isn\'t set up yet, metadata is stored but the file isn\'t. The dashboard System Health widget has a one-click "Copy SQL" for the bucket.',
-    'Documents are private to authenticated users.'
-  ]);
-  var SEC_INVENTORY = bullets([
-    'Simple stock tracker: quantity + unit + low-stock threshold.',
-    '<b>+ Add Item</b> adds a row. Items below their lowAt threshold flag on the dashboard.',
-    'Stored in localStorage (gl_inventory).'
-  ]);
+
+  var SEC_TASKS = MOCK_TASKS +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>(1) + Add Task</b> — name, optional client link, optional due date.',
+      '<b>(2) Checkbox</b> — click to mark done. Completed tasks strike through and dim. Filter pills above the list switch between All / Open / Done.',
+      '<b>(3) Due-today badge</b> — yellow badge when a task is due today; turns red when overdue. Stored in localStorage (gl_tasks), per device.'
+    ]);
+
+  var SEC_DOCUMENTS = MOCK_DOCUMENTS +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>(1) + Upload</b> — pick a file (PDF / Word / image / CSV), select the client and document type, upload. Files persist to Supabase Storage in the <b>client-docs</b> bucket.',
+      '<b>(2) Document table</b> — every uploaded file with the client name, type badge, uploaded date.',
+      '<b>(3) ⬇ Open</b> — opens the file in a new tab from Supabase. Documents are private to authenticated users.',
+      'If the bucket isn\'t set up yet, the file metadata is recorded but the file itself isn\'t stored. The dashboard System Health widget surfaces this with a one-click "Copy SQL" button.'
+    ]);
+
+  var SEC_INVENTORY = MOCK_INVENTORY +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>(1) + Add Item</b> — name, quantity, unit (cases / tanks / bags / etc.), low-stock threshold.',
+      '<b>(2) LOW badge</b> — yellow badge when quantity is at or below the threshold. Items at LOW also surface on the dashboard. Stored in localStorage (gl_inventory).'
+    ]);
   var SEC_ANNOUNCEMENTS = bullets([
     'Company-wide notes shown on every user\'s dashboard.',
     'Stored in localStorage.'
   ]);
-  var SEC_CUSTOMERS = bullets([
-    'Manage customer portal accounts (separate from CRM staff users).',
-    '<b>📧 Send Onboarding Email</b> — prompts for name + email, creates a portal login with a temp password, emails the customer the login link.',
-    'Requires Mailgun key (🤖 toolbar → 📧 Mailgun Settings).',
-    'Customers who log in see invoices addressed to them, 💳 Pay Now buttons (Stripe), ✓ Accept Quote buttons (emails Mike), and a contact form.'
-  ]);
-  var SEC_SETTINGS = bullets([
-    'All settings under the floating 🤖 menu (bottom-right of CRM):',
-    '<b>📧 Mailgun Settings</b> — paste your Mailgun private API key. Required for outgoing email. Test send button included.',
-    '<b>🤖 AI Settings</b> — paste your Anthropic API key. Required for 🤖 AI features. Optional otherwise.',
-    '<b>✍️ Email Signature</b> — per-device signature auto-appended to outgoing follow-ups.',
-    '<b>🗑️ Clear local cache</b> (admin only) — per-key opt-in cleanup of gl_* localStorage.',
-    'The <b>System Health</b> widget on the dashboard surfaces missing integrations.'
-  ]);
+  var SEC_CUSTOMERS = MOCK_CUSTOMERS +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>(1) 📧 Send Onboarding Email</b> — prompts for name + email, creates a portal login with a temp password, emails the customer the login link via Mailgun. Requires Mailgun key (🤖 toolbar → 📧 Mailgun Settings).',
+      '<b>(2) Row actions</b> — <span style="color:#f5c842">reset</span> sends a Supabase password recovery email; <span style="color:#e74c3c">remove</span> deletes the portal login.',
+      'Customers who log in see invoices addressed to them, 💳 Pay Now buttons (using Stripe links you saved per-invoice), ✓ Accept Quote buttons (emails Mike on click), and a contact form to message you.'
+    ]);
+
+  var SEC_SETTINGS = MOCK_SETTINGS +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>(1) Floating 🤖 button</b> — bottom-right corner of any CRM page. Click to open the menu.',
+      '<b>(2) Popout menu</b> — opens above the button. Contains AI tools (Estimate Quote / Draft Invoice / Meeting Notes / Draft Email) AND all settings:',
+      '<b>📧 Mailgun Settings</b> — paste your Mailgun private API key. Required for outgoing email. Has a "Test send" button.',
+      '<b>🤖 AI Settings</b> — paste your Anthropic API key. Required for 🤖 AI features.',
+      '<b>✍️ Email Signature</b> — per-device signature auto-appended to outgoing follow-ups.',
+      '<b>🗑️ Clear local cache</b> (admin only, red styling) — per-key opt-in cleanup of gl_* localStorage. Use when handing the device to a new user.',
+      'The <b>System Health</b> widget on the dashboard also surfaces missing integrations with one-click fixers.'
+    ]);
   var SEC_SHORTCUTS = bullets([
     '<kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">Ctrl+K</kbd> / <kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">⌘K</kbd> — open Global Search across invoices / clients / deals / referrers / users.',
     '<kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">?</kbd> — open this Help panel (auto-scrolled to the section matching your current page).',
