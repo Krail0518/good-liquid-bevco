@@ -88,20 +88,11 @@
   if(!window.users||window.users.length===0){window.users=coreUsers;}
   else{coreUsers.forEach(function(cu){var ex=window.users.find(function(u){return u.email===cu.email;});if(ex)ex.role=cu.role;else window.users.unshift(cu);});}
 
-  /* ── CORE CLIENTS ── */
+  /* ── CORE CLIENTS ──
+     Production state: no demo clients. Real clients come from Supabase via
+     loadSupabaseData() or from the CRM "Add Client" button. */
   function glEnsureClients(){
-    if(!window.clients||window.clients.length===0){
-      window.clients=[
-        {id:'c1',name:'Tide & Taste Co.',email:'contact@tidetaste.com',service:'Canning',status:'active'},
-        {id:'c2',name:'Bloom Functional',email:'hello@bloomfunctional.com',service:'R&D',status:'active'},
-        {id:'c3',name:'SunBurst Seltzers',email:'mike@sunburst.com',service:'Canning',status:'active'},
-        {id:'c4',name:'Harbor Brew Co.',email:'info@harborbrew.com',service:'Bottling',status:'active'},
-        {id:'c5',name:'Prism Hydration',email:'orders@prismh2o.com',service:'Canning',status:'lead'},
-        {id:'c6',name:'NorthWave Drinks',email:'hello@northwave.com',service:'Canning',status:'lead'},
-        {id:'c7',name:'Peak Performance',email:'ops@peakperformance.com',service:'R&D',status:'active'},
-        {id:'c8',name:'Coastal Craft',email:'info@coastalcraft.com',service:'Bottling',status:'active'}
-      ];
-    }
+    window.clients = window.clients || [];
   }
   glEnsureClients();
 

@@ -2242,11 +2242,27 @@ function buildCharts(){
   document.getElementById('rev-legend').innerHTML=
     '<span style="display:flex;align-items:center;gap:4px;font-size:10px;color:#6b87ad"><span style="width:8px;height:8px;border-radius:2px;background:#1a6fff"></span>Collected</span>'+
     '<span style="display:flex;align-items:center;gap:4px;font-size:10px;color:#6b87ad"><span style="width:8px;height:8px;border-radius:2px;background:#00c4a7"></span>Pending</span>';
+  // Compute revenue per category from real invoices. Categorize by keyword
+  // in the service description (or whatever fields are populated).
+  const labels=['Canning','R&D','Bottling','Consulting'];
+  const collected=[0,0,0,0], pending=[0,0,0,0];
+  (invoices||[]).forEach(inv=>{
+    const svc=(inv.svc||'').toLowerCase();
+    let idx=-1;
+    if(svc.includes('cann')) idx=0;
+    else if(svc.includes('r&d')||svc.includes('formul')||svc.includes('ip')) idx=1;
+    else if(svc.includes('bottl')) idx=2;
+    else if(svc.includes('consult')||svc.includes('hour')) idx=3;
+    if(idx<0) return;
+    const amt=inv.amount||0;
+    if(inv.status==='paid') collected[idx]+=amt;
+    else if(inv.status==='pending'||inv.status==='overdue') pending[idx]+=amt;
+  });
   chartInst=new Chart(document.getElementById('revChart'),{
     type:'bar',
-    data:{labels:['Canning','R&D','Bottling','Consulting'],datasets:[
-      {label:'Collected',data:[58500,16000,7564,4200],backgroundColor:'#1a6fff',borderRadius:3},
-      {label:'Pending',data:[12150,7000,0,0],backgroundColor:'#00c4a7',borderRadius:3}
+    data:{labels,datasets:[
+      {label:'Collected',data:collected,backgroundColor:'#1a6fff',borderRadius:3},
+      {label:'Pending',data:pending,backgroundColor:'#00c4a7',borderRadius:3}
     ]},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{
       x:{grid:{color:gc},ticks:{color:tc,font:{size:10}}},
@@ -4436,14 +4452,7 @@ function deleteDoc(id){
 /* ═══════════════════════════════════════════
    INVENTORY TRACKER
 ═══════════════════════════════════════════ */
-let inventory = JSON.parse(localStorage.getItem('gl_inventory')||JSON.stringify([
-  {id:'inv1',name:'12oz Standard Cans',qty:1200,unit:'cases',lowAt:200},
-  {id:'inv2',name:'12oz Sleek Cans',qty:340,unit:'cases',lowAt:100},
-  {id:'inv3',name:'16oz Standard Cans',qty:80,unit:'cases',lowAt:50},
-  {id:'inv4',name:'CO₂ Gas',qty:8,unit:'tanks',lowAt:3},
-  {id:'inv5',name:'PakTech Handles',qty:500,unit:'bags',lowAt:100},
-  {id:'inv6',name:'750ml Bottles',qty:220,unit:'cases',lowAt:50},
-]));
+let inventory = JSON.parse(localStorage.getItem('gl_inventory')||'[]');
 
 function saveInventory(){ localStorage.setItem('gl_inventory', JSON.stringify(inventory)); }
 
@@ -5854,11 +5863,7 @@ function deleteClientNote(clientId, index){
    EMAIL TEMPLATES
    Save & reuse email templates via Mailgun
 ═══════════════════════════════════════════ */
-let emailTemplates = JSON.parse(localStorage.getItem('gl_email_templates') || JSON.stringify([
-  {id:'t1', name:'Quote Follow-Up', subject:'Following up on your quote — Good Liquid Bev Co', body:'Hi [Name],\n\nI wanted to follow up on the quote we sent over. Do you have any questions?\n\nBest,\nMike Krail\nGood Liquid Bev Co'},
-  {id:'t2', name:'Production Update', subject:'Your production run is scheduled — Good Liquid Bev Co', body:'Hi [Name],\n\nGreat news! Your production run is now scheduled. We will keep you updated on progress.\n\nBest,\nMike Krail'},
-  {id:'t3', name:'Welcome New Client', subject:'Welcome to Good Liquid Bev Co!', body:'Hi [Name],\n\nWelcome! We are excited to work with you. Here is what to expect next...\n\nBest,\nMike Krail\nGood Liquid Bev Co'},
-]));
+let emailTemplates = JSON.parse(localStorage.getItem('gl_email_templates') || '[]');
 
 function saveEmailTemplates(){ localStorage.setItem('gl_email_templates', JSON.stringify(emailTemplates)); }
 
