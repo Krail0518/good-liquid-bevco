@@ -4130,9 +4130,26 @@
     );
     label.innerHTML =
       '<input type="checkbox" id="gl-remember-cb"' + (checked ? ' checked' : '') +
-        ' style="width:14px;height:14px;accent-color:var(--teal);cursor:pointer;margin:0">' +
-      '<span>Remember this computer <span style="font-size:10px;color:var(--muted);opacity:.7">(skip password next visit)</span></span>';
+        ' style="width:14px;height:14px;accent-color:var(--teal);cursor:pointer;margin:0;flex-shrink:0">' +
+      '<span>Stay signed in on this computer<br>' +
+        '<span style="font-size:10px;color:var(--muted);opacity:.7">Survives closing the browser. Clicking <b>Sign out</b> still ends the session.</span>' +
+      '</span>';
     btn.parentNode.insertBefore(label, btn);
+
+    // Pre-fill the email field from the last successful login (always — independent
+    // of Remember Me). Saves typing even after an explicit sign-out.
+    var emailEl = document.getElementById('pw-email');
+    if(emailEl && !emailEl.value){
+      var last = localStorage.getItem('gl_last_email');
+      if(last) {
+        emailEl.value = last;
+        // Move focus to the password field if email is already known.
+        setTimeout(function(){
+          var pwEl = document.getElementById('pw-input');
+          if(pwEl) pwEl.focus();
+        }, 30);
+      }
+    }
   }
 
   // Wrap checkPw so we save the preference after a successful login.
@@ -4147,6 +4164,10 @@
         var cb = document.getElementById('gl-remember-cb');
         var remember = cb ? cb.checked : true;
         localStorage.setItem('gl_remember', remember ? '1' : '0');
+        // Always remember the email so they don't retype it next time.
+        if(window.currentUser && window.currentUser.email){
+          localStorage.setItem('gl_last_email', window.currentUser.email);
+        }
       }
       return result;
     };
