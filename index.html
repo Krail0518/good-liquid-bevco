@@ -4658,26 +4658,36 @@ function sendResetLink(){
 
 /* ═══════════════════════════════════════════
    MAILGUN EMAIL SERVICE
+   Domain matches the Supabase-verified Mailgun subdomain
+   (mail.goodliquidbevco.com). To override at runtime, set
+   localStorage.gl_mailgun_domain.
 ═══════════════════════════════════════════ */
-const MAILGUN_DOMAIN = 'goodliquidbevco.com';
-const MAILGUN_FROM = 'noreply@goodliquidbevco.com';
+const MAILGUN_DOMAIN_DEFAULT = 'mail.goodliquidbevco.com';
+const MAILGUN_FROM_DEFAULT = 'Good Liquid Bev Co <noreply@mail.goodliquidbevco.com>';
 
 async function sendMailgunEmail(to, subject, body){
   const apiKey = localStorage.getItem('gl_mailgun_key');
-  if(!apiKey){ console.log('[Mailgun] No API key set. Set gl_mailgun_key in localStorage.'); return false; }
+  if(!apiKey){ console.log('[Mailgun] No API key set. Open Mailgun Settings.'); return false; }
+  const domain = localStorage.getItem('gl_mailgun_domain') || MAILGUN_DOMAIN_DEFAULT;
+  const from   = localStorage.getItem('gl_mailgun_from')   || MAILGUN_FROM_DEFAULT;
   try {
     const formData = new FormData();
-    formData.append('from', 'Good Liquid Bev Co <'+MAILGUN_FROM+'>');
+    formData.append('from', from);
     formData.append('to', to);
     formData.append('subject', subject);
     formData.append('text', body);
-    const resp = await fetch(`https://api.mailgun.net/v3/${MAILGUN_DOMAIN}/messages`, {
+    const resp = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
       method: 'POST',
       headers: { 'Authorization': 'Basic '+btoa('api:'+apiKey) },
       body: formData
     });
-    return resp.ok;
-  } catch(e){ console.error('[Mailgun]',e); return false; }
+    if(!resp.ok){
+      const errText = await resp.text().catch(()=>'<no body>');
+      console.error('[Mailgun] send failed', resp.status, errText, 'domain='+domain+' from='+from);
+      return false;
+    }
+    return true;
+  } catch(e){ console.error('[Mailgun] threw',e); return false; }
 }
 
 /* ═══════════════════════════════════════════
