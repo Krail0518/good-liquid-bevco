@@ -1238,6 +1238,21 @@ select option, .fsel option {
             <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">CONTACT NAME</div><input id="nc-contact" placeholder="e.g. Alex Torres" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)"></div>
             <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">EMAIL</div><input id="nc-email" type="email" placeholder="contact@brand.com" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)"></div>
             <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">PHONE</div><input id="nc-phone" placeholder="(813) 555-0100" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)"></div>
+            <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">STREET ADDRESS</div><input id="nc-street" placeholder="123 Main St" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)"></div>
+            <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px">
+              <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">CITY</div><input id="nc-city" placeholder="Tampa" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)"></div>
+              <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">STATE</div><input id="nc-state" placeholder="FL" maxlength="2" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body);text-transform:uppercase"></div>
+              <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">ZIP</div><input id="nc-zip" placeholder="33602" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)"></div>
+            </div>
+            <div>
+              <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">PREFERRED COMMUNICATION</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;padding:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:8px">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="nc-comm-email" checked style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">✉️ Email</label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="nc-comm-sms" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">📱 SMS</label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="nc-comm-whatsapp" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">🟢 WhatsApp</label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="nc-comm-wechat" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">💬 WeChat</label>
+              </div>
+            </div>
             <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">SERVICE</div>
               <select id="nc-service" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)">
                 <option value="">Select service…</option>
@@ -3101,7 +3116,9 @@ async function loadSupabaseData(){
   if(cR.data && cR.data.length>0){
     clients.length=0;
     cR.data.forEach(c=>clients.push({
-      id:c.id, name:c.name, contact:c.contact_name||'', email:c.email||'',
+      id:c.id, name:c.name, contact:c.contact_name||'', email:c.email||'', phone:c.phone||'',
+      street:c.street||'', city:c.city||'', state:c.state||'', zip:c.zip||'',
+      commPrefs: Array.isArray(c.comm_prefs) ? c.comm_prefs : (c.comm_prefs ? [c.comm_prefs] : []),
       service:c.service||'', status:c.status||'lead', billed:c.total_billed||0,
       referredBy:c.referred_by||'', color:c.color||'#1a3a6e', tc:c.tc||'#9FE1CB',
       init:c.initials||(c.name||'').slice(0,2).toUpperCase(), notes:c.notes||''
@@ -3280,7 +3297,12 @@ function openAddClientModal(){
 }
 function closeAddClientModal(){
   document.getElementById('add-client-modal').classList.remove('show');
-  ['nc-name','nc-contact','nc-email','nc-phone','nc-notes'].forEach(id=>document.getElementById(id).value='');
+  ['nc-name','nc-contact','nc-email','nc-phone','nc-street','nc-city','nc-state','nc-zip','nc-notes'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.value='';
+  });
+  ['nc-comm-email','nc-comm-sms','nc-comm-whatsapp','nc-comm-wechat'].forEach((id,i)=>{
+    const el=document.getElementById(id); if(el) el.checked = (i===0); // re-default to Email only
+  });
 }
 
 async function saveNewClient(){
@@ -3289,6 +3311,16 @@ async function saveNewClient(){
   const contact = document.getElementById('nc-contact').value.trim();
   const email = document.getElementById('nc-email').value.trim();
   const phone = document.getElementById('nc-phone').value.trim();
+  const street = document.getElementById('nc-street').value.trim();
+  const city = document.getElementById('nc-city').value.trim();
+  const state = document.getElementById('nc-state').value.trim().toUpperCase();
+  const zip = document.getElementById('nc-zip').value.trim();
+  const commPrefs = [
+    document.getElementById('nc-comm-email').checked    ? 'email'    : null,
+    document.getElementById('nc-comm-sms').checked      ? 'sms'      : null,
+    document.getElementById('nc-comm-whatsapp').checked ? 'whatsapp' : null,
+    document.getElementById('nc-comm-wechat').checked   ? 'wechat'   : null
+  ].filter(Boolean);
   const service = document.getElementById('nc-service').value;
   const status = document.getElementById('nc-status').value || 'lead';
   const referredBy = document.getElementById('nc-referrer').value;
@@ -3301,12 +3333,14 @@ async function saveNewClient(){
 
   // Generate local ID first so it always works
   const localId = 'c_' + Date.now();
-  
+
   // Try Supabase save
   let cid = localId;
   try {
     const {data:newC, error} = await supa.from('clients').insert([{
-      name, contact_name:contact, email, phone, service, status,
+      name, contact_name:contact, email, phone,
+      street, city, state, zip, comm_prefs: commPrefs,
+      service, status,
       referred_by: referredBy || null, notes, total_billed:0,
       initials:init, color, tc
     }]).select().single();
@@ -3315,18 +3349,16 @@ async function saveNewClient(){
   } catch(e){ console.warn('Supabase unavailable, saved locally:', e); }
 
   // Always add to local array
-  clients.push({id:cid, name, contact, email, phone, service, status, billed:0, referredBy, color, tc, init, notes});
-  
+  clients.push({
+    id:cid, name, contact, email, phone,
+    street, city, state, zip, commPrefs,
+    service, status, billed:0, referredBy, color, tc, init, notes
+  });
+
   // Update UI
   renderClients();
   renderDash();
   closeAddClientModal();
-  
-  // Clear form
-  ['nc-name','nc-contact','nc-email','nc-phone','nc-notes'].forEach(id=>{
-    const el = document.getElementById(id);
-    if(el) el.value='';
-  });
   
   // Show confirmation
   const toast = document.createElement('div');
@@ -3919,6 +3951,21 @@ function openClientDetail(cid) {
       </div>
 
       ${ref ? `<div style="background:rgba(0,229,192,.05);border:1px solid rgba(0,229,192,.15);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--teal)">🤝 Referred by ${ref.name}</div>` : ''}
+
+      ${(c.phone || c.street || c.city || c.zip || (c.commPrefs && c.commPrefs.length)) ? `<div style="margin-bottom:20px">
+        <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:10px">CONTACT</div>
+        <div style="background:rgba(255,255,255,.04);border-radius:10px;padding:14px;font-size:13px;color:var(--white);line-height:1.9">
+          ${c.phone ? `📞 <a href="tel:${c.phone}" style="color:var(--teal)">${c.phone}</a><br>` : ''}
+          ${(c.street || c.city || c.state || c.zip) ? `📍 ${[c.street, [c.city, c.state].filter(Boolean).join(', '), c.zip].filter(Boolean).join(' · ')}` : ''}
+          ${(c.commPrefs && c.commPrefs.length) ? `<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">
+            <span style="font-size:10px;color:var(--muted);letter-spacing:1px;align-self:center">PREFERS:</span>
+            ${c.commPrefs.map(p => {
+              const lbl = {email:'✉️ Email', sms:'📱 SMS', whatsapp:'🟢 WhatsApp', wechat:'💬 WeChat'}[p] || p;
+              return `<span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(0,229,192,.1);color:var(--teal);border:1px solid rgba(0,229,192,.3)">${lbl}</span>`;
+            }).join('')}
+          </div>` : ''}
+        </div>
+      </div>` : ''}
 
       <div style="margin-bottom:20px">
         <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:10px">INVOICES (${cInvoices.length})</div>
@@ -5579,9 +5626,18 @@ function viewClientEnhanced(clientId) {
 
       <div style="margin-bottom:18px">
         <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">CONTACT INFO</div>
-        <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:14px;font-size:13px;color:var(--white);line-height:2">
-          📧 <a href="mailto:${client.email}" style="color:var(--teal)">${client.email}</a><br>
+        <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:14px;font-size:13px;color:var(--white);line-height:1.9">
+          ${client.email ? `📧 <a href="mailto:${client.email}" style="color:var(--teal)">${client.email}</a><br>` : ''}
+          ${client.phone ? `📞 <a href="tel:${client.phone}" style="color:var(--teal)">${client.phone}</a><br>` : ''}
+          ${(client.street || client.city || client.state || client.zip) ? `📍 ${[client.street, [client.city, client.state].filter(Boolean).join(', '), client.zip].filter(Boolean).join(' · ')}<br>` : ''}
           🏷 Status: <span class="cbdg ${client.status}">${client.status}</span>
+          ${(client.commPrefs && client.commPrefs.length) ? `<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">
+            <span style="font-size:10px;color:var(--muted);letter-spacing:1px;align-self:center">PREFERS:</span>
+            ${client.commPrefs.map(p => {
+              const lbl = {email:'✉️ Email', sms:'📱 SMS', whatsapp:'🟢 WhatsApp', wechat:'💬 WeChat'}[p] || p;
+              return `<span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(0,229,192,.1);color:var(--teal);border:1px solid rgba(0,229,192,.3)">${lbl}</span>`;
+            }).join('')}
+          </div>` : ''}
         </div>
       </div>
 
