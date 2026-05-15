@@ -752,6 +752,54 @@ select option, .fsel option {
 
   /* Dashboard stats */
   .dash-stats { grid-template-columns: repeat(2,1fr) !important; }
+  .cmetrics { grid-template-columns: repeat(2,1fr) !important; gap: 8px !important; }
+  .cmc { padding: 12px !important; }
+
+  /* New dynamically-built modals (Mailgun Settings, Set Password, Clear
+     Local Cache, Password Recovery, Email Preview, Invite User, AI
+     Settings, AI Modal) — they use inline max-width values around 440-620
+     that overflow narrow viewports. Force them to fit. */
+  #mg-settings-overlay > div,
+  #gl-setpw-modal > div,
+  #gl-clear-cache-modal > div,
+  #gl-recovery-modal > div,
+  #gl-preview-overlay > div,
+  #ai-settings-overlay > div,
+  #ai-modal > div,
+  #invite-user-modal > div {
+    max-width: 92vw !important;
+    width: 92vw !important;
+    margin: 12px;
+    padding: 20px !important;
+  }
+
+  /* AI toolbar — pull off the right edge and shrink button text */
+  #ai-toolbar { right: 12px !important; bottom: 16px !important; }
+  #ai-tools {
+    max-width: calc(100vw - 36px) !important;
+    overflow-x: hidden !important; white-space: normal !important;
+  }
+  #ai-tools button { font-size: 11px !important; padding: 7px 12px !important; }
+
+  /* Invoice builder line rows — stack the 5-column desktop grid into a more
+     compact 3-column phone layout. */
+  #gl-inv-body [style*="grid-template-columns:2fr 1fr 1fr 1fr 36px"] {
+    grid-template-columns: 1fr 80px 36px !important;
+    gap: 6px !important;
+  }
+
+  /* Invoice builder header form (client/date/inv#) — stack vertically */
+  #gl-inv-body [style*="grid-template-columns:1fr 1fr 1fr"] {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  /* CRM section heading rows: title + action button stack vertically */
+  .cph { flex-direction: column !important; align-items: flex-start !important; gap: 8px !important; }
+  .cph .cbtn { width: 100% !important; }
+
+  /* Notification panel — full width on phones */
+  #notif-panel { left: 8px !important; right: 8px !important; width: auto !important; max-width: none !important; }
 }
 
 </style>
