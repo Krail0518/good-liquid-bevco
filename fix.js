@@ -1917,6 +1917,7 @@
       { label:'📊 Time Report',    fn:'openTimeTrackingReport' },
       { label:'🤖 AI Settings',    fn:'openAISettings' },
       { label:'📧 Mailgun Settings', fn:'openMailgunSettings' },
+      { label:'📈 Google Analytics', fn:'openGA4Settings', admin:true },
       { label:'✍️ Email Signature', fn:'openEmailSignatureSettings' },
       { label:'🗑️ Clear local cache', fn:'glClearLocalCache', admin:true, danger:true }
     ];
@@ -4920,5 +4921,63 @@
   else document.addEventListener('DOMContentLoaded', startObs);
 
   console.log('[GL] In-app help panel v2 loaded (flexbox + wireframes)');
+}());
+
+/* ============================================================
+   GOOGLE ANALYTICS 4 SETTINGS
+   The gtag loader already auto-runs when localStorage.gl_ga_id
+   is set (fix.js:465). This adds a UI to paste the Measurement
+   ID without dropping to DevTools.
+   ============================================================ */
+(function(){
+  window.openGA4Settings = function(){
+    var prior = document.getElementById('gl-ga-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var saved = localStorage.getItem('gl_ga_id') || '';
+    var ov = document.createElement('div');
+    ov.id = 'gl-ga-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:900;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:28px;width:100%;max-width:480px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">📈 GOOGLE ANALYTICS</div>' +
+          '<button id="gl-ga-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="font-size:12px;color:var(--muted);margin-bottom:18px;line-height:1.6">Drops the GA4 (gtag) script into the page so you can track public site traffic. IP addresses are anonymized.</div>' +
+        (saved ? '<div style="background:rgba(29,158,117,.08);border:1px solid rgba(29,158,117,.25);border-radius:8px;padding:10px 14px;font-size:12px;color:#1D9E75;margin-bottom:14px">✓ Currently tracking with ID <code>' + saved.replace(/</g,'&lt;') + '</code></div>' : '') +
+        '<div class="frow"><div class="flbl">Measurement ID</div>' +
+          '<input class="finp" id="gl-ga-input" placeholder="G-XXXXXXXXXX" value="' + saved.replace(/"/g,'&quot;') + '" style="font-family:var(--ff-mono)">' +
+        '</div>' +
+        '<div style="font-size:11px;color:var(--muted);margin-bottom:18px;line-height:1.6">Find it in <span style="color:var(--teal)">analytics.google.com → Admin → Data Streams → your stream → Measurement ID</span>. Starts with <code>G-</code>.</div>' +
+        '<div style="display:flex;gap:8px">' +
+          '<button id="gl-ga-save" class="cbtn pri" style="flex:1">💾 Save & enable</button>' +
+          (saved ? '<button id="gl-ga-clear" class="cbtn red">Disable</button>' : '') +
+        '</div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-ga-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-ga-save').addEventListener('click', function(){
+      var id = (ov.querySelector('#gl-ga-input').value||'').trim();
+      if(!id){ alert('Please enter a Measurement ID.'); return; }
+      if(!/^G-[A-Z0-9]+$/i.test(id)){
+        if(!confirm('That doesn\'t look like a GA4 Measurement ID (should start with "G-"). Save anyway?')) return;
+      }
+      localStorage.setItem('gl_ga_id', id);
+      if(typeof addNotification === 'function') addNotification('📈 GA4 enabled','Reload the page for tracking to start.','success');
+      else alert('Saved. Reload the page to start tracking.');
+      ov.remove();
+    });
+    if(saved){
+      ov.querySelector('#gl-ga-clear').addEventListener('click', function(){
+        if(!confirm('Disable GA4 tracking on this domain?')) return;
+        localStorage.removeItem('gl_ga_id');
+        ov.remove();
+        if(typeof addNotification === 'function') addNotification('GA4 disabled','Reload to take effect.','warning');
+      });
+    }
+    host.appendChild(ov);
+  };
+
+  console.log('[GL] GA4 settings loaded');
 }());
 
