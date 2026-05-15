@@ -1922,6 +1922,8 @@
       { label:'🐛 Error Log', fn:'glOpenErrorLog', admin:true },
       { label:'📱 SMS Alerts', fn:'openSmsSettings' },
       { label:'🚀 Setup Wizard', fn:'openSetupWizard', admin:true },
+      { label:'💳 Stripe Checkout', fn:'openStripeSettings', admin:true },
+      { label:'🛡️ Sentry', fn:'openSentrySettings', admin:true },
       { label:'✍️ Email Signature', fn:'openEmailSignatureSettings' },
       { label:'🗑️ Clear local cache', fn:'glClearLocalCache', admin:true, danger:true }
     ];
@@ -5901,5 +5903,261 @@
   })();
 
   console.log('[GL] First-run setup wizard loaded');
+}());
+
+/* ============================================================
+   SENTRY (optional, plug-and-play)
+   - Paste a Sentry DSN in the settings modal to mirror the
+     client-side error logger to Sentry too. Loads the Sentry
+     browser SDK from their CDN on demand.
+   - Independent from the Supabase error_log — you can run
+     either, both, or neither.
+   ============================================================ */
+(function(){
+  var SDK_URL = 'https://browser.sentry-cdn.com/7.119.0/bundle.tracing.min.js';
+
+  function loadSentry(dsn){
+    if(window.Sentry) {
+      try { window.Sentry.init({ dsn: dsn, tracesSampleRate: 0.1, release: 'goodliquid-crm' }); } catch(e){}
+      return;
+    }
+    if(document.querySelector('script[src="' + SDK_URL + '"]')) return;
+    var s = document.createElement('script');
+    s.src = SDK_URL; s.async = true; s.crossOrigin = 'anonymous';
+    s.onload = function(){
+      if(window.Sentry){
+        try {
+          window.Sentry.init({ dsn: dsn, tracesSampleRate: 0.1, release: 'goodliquid-crm' });
+          // Stamp the current user on errors if we're signed in.
+          if(window.currentUser && window.currentUser.email){
+            try { window.Sentry.setUser({ email: window.currentUser.email, id: window.currentUser.id }); } catch(e){}
+          }
+          console.log('[GL] Sentry initialized');
+        } catch(e){ console.warn('[GL] Sentry init failed', e); }
+      }
+    };
+    document.head.appendChild(s);
+  }
+
+  // Auto-load on page load if a DSN is set
+  var saved = localStorage.getItem('gl_sentry_dsn');
+  if(saved) loadSentry(saved);
+
+  window.openSentrySettings = function(){
+    var prior = document.getElementById('gl-sentry-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var dsn = localStorage.getItem('gl_sentry_dsn') || '';
+    var ov = document.createElement('div');
+    ov.id = 'gl-sentry-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:920;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:520px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">🛡️ SENTRY</div>' +
+          '<button id="gl-sentry-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.6">Optional. Paste a Sentry DSN to mirror client-side errors to your Sentry project (in addition to the built-in Supabase error_log).</div>' +
+        (dsn ? '<div style="background:rgba(29,158,117,.08);border:1px solid rgba(29,158,117,.25);border-radius:8px;padding:10px 14px;font-size:12px;color:#1D9E75;margin-bottom:14px">✓ Sentry active</div>' : '') +
+        '<div class="frow"><div class="flbl">DSN</div>' +
+          '<input class="finp" id="gl-sentry-input" placeholder="https://xxxxx@oXXXX.ingest.sentry.io/YYYY" value="' + dsn.replace(/"/g,'&quot;') + '" style="font-family:var(--ff-mono);font-size:11px">' +
+        '</div>' +
+        '<div style="font-size:11px;color:var(--muted);margin-bottom:18px;line-height:1.6">Find it at <span style="color:var(--teal)">sentry.io → Settings → Projects → [your project] → Client Keys (DSN)</span>.</div>' +
+        '<div style="display:flex;gap:8px">' +
+          '<button id="gl-sentry-save" class="cbtn pri" style="flex:1">💾 Save & enable</button>' +
+          (dsn ? '<button id="gl-sentry-test" class="cbtn">📤 Test error</button>' : '') +
+          (dsn ? '<button id="gl-sentry-clear" class="cbtn red">Disable</button>' : '') +
+        '</div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-sentry-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-sentry-save').addEventListener('click', function(){
+      var v = (ov.querySelector('#gl-sentry-input').value||'').trim();
+      if(!v){ alert('Paste a DSN first.'); return; }
+      localStorage.setItem('gl_sentry_dsn', v);
+      loadSentry(v);
+      if(typeof addNotification === 'function') addNotification('🛡️ Sentry enabled', 'Errors mirror to your Sentry project from now on.', 'success');
+      ov.remove();
+    });
+    if(dsn){
+      ov.querySelector('#gl-sentry-test').addEventListener('click', function(){
+        try {
+          if(window.Sentry) window.Sentry.captureMessage('Good Liquid CRM test event at ' + new Date().toISOString());
+          alert('✓ Test event sent. Check your Sentry inbox.');
+        } catch(e){ alert('Failed: ' + (e.message||'')); }
+      });
+      ov.querySelector('#gl-sentry-clear').addEventListener('click', function(){
+        if(!confirm('Disable Sentry? Errors will still go to the built-in Supabase error_log.')) return;
+        localStorage.removeItem('gl_sentry_dsn');
+        if(window.Sentry) try { window.Sentry.close(); } catch(e){}
+        ov.remove();
+      });
+    }
+    host.appendChild(ov);
+  };
+
+  console.log('[GL] Sentry plug-in loaded');
+}());
+
+/* ============================================================
+   STRIPE CHECKOUT SESSIONS (real, via Edge Function)
+   - Click "Charge invoice" on an unpaid invoice → request a
+     Checkout Session from a Supabase Edge Function (template
+     in deploy notes) → redirect to Stripe-hosted checkout.
+   - The Edge Function holds the Stripe secret key server-side.
+   - Distinct from the static Stripe Payment Link manager
+     (window.generatePayLink) — that's for pre-created links;
+     this creates a session per-invoice with the exact amount.
+   ============================================================ */
+(function(){
+  var DEFAULT_FN_URL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1/stripe-checkout';
+  function getFnUrl(){ return (localStorage.getItem('gl_stripe_fn_url') || DEFAULT_FN_URL).trim(); }
+
+  window.openStripeSettings = function(){
+    var prior = document.getElementById('gl-stripe-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var pub = localStorage.getItem('gl_stripe_pub') || '';
+    var url = getFnUrl();
+    var ov = document.createElement('div');
+    ov.id = 'gl-stripe-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:920;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:560px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">💳 STRIPE CHECKOUT</div>' +
+          '<button id="gl-stripe-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="background:rgba(245,200,66,.06);border:1px solid rgba(245,200,66,.2);border-radius:8px;padding:11px;font-size:11px;color:#f5c842;margin-bottom:16px;line-height:1.6">' +
+          '⚠ Browser-to-Stripe-API is blocked by CORS. This UI talks to a Supabase Edge Function (template in deploy notes). Deploy that function with your Stripe SECRET key before live charges fire.' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Stripe PUBLISHABLE key (optional, for embedded UI)</div>' +
+          '<input class="finp" id="gl-stripe-pub" placeholder="pk_live_... or pk_test_..." value="'+pub.replace(/"/g,'&quot;')+'" style="font-family:var(--ff-mono);font-size:11px">' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Edge Function URL</div>' +
+          '<input class="finp" id="gl-stripe-url" value="'+url.replace(/"/g,'&quot;')+'" style="font-family:var(--ff-mono);font-size:11px">' +
+        '</div>' +
+        '<div style="font-size:11px;color:var(--muted);margin-bottom:18px;line-height:1.6">Distinct from the static <b>Payment Link manager</b> (💳 on any invoice row) — that\'s for re-using a Stripe Payment Link you created in the dashboard. This creates a unique Checkout Session for the invoice\'s exact amount and client email.</div>' +
+        '<div style="display:flex;gap:8px">' +
+          '<button id="gl-stripe-save" class="cbtn pri" style="flex:1">💾 Save</button>' +
+          '<button id="gl-stripe-test" class="cbtn">📤 Test session</button>' +
+        '</div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-stripe-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-stripe-save').addEventListener('click', function(){
+      var p = (ov.querySelector('#gl-stripe-pub').value||'').trim();
+      var u = (ov.querySelector('#gl-stripe-url').value||'').trim();
+      if(p) localStorage.setItem('gl_stripe_pub', p); else localStorage.removeItem('gl_stripe_pub');
+      if(u) localStorage.setItem('gl_stripe_fn_url', u); else localStorage.removeItem('gl_stripe_fn_url');
+      ov.remove();
+      if(typeof addNotification === 'function') addNotification('💳 Stripe Checkout settings saved','','success');
+    });
+    ov.querySelector('#gl-stripe-test').addEventListener('click', async function(){
+      var u = (ov.querySelector('#gl-stripe-url').value||'').trim() || DEFAULT_FN_URL;
+      try {
+        var token = null;
+        try {
+          var s = window.supa && await window.supa.auth.getSession();
+          if(s && s.data && s.data.session) token = s.data.session.access_token;
+        } catch(e){}
+        var r = await fetch(u, {
+          method: 'POST',
+          headers: Object.assign({ 'Content-Type':'application/json' }, token ? { Authorization: 'Bearer ' + token } : {}),
+          body: JSON.stringify({ amount: 100, client_email: 'test@example.com', invoice_id: 'TEST-' + Date.now(), description: 'Test charge' })
+        });
+        var text = await r.text();
+        if(r.ok){
+          try { var data = JSON.parse(text); alert('✓ Function responded. Session URL:\n' + (data.url || text.slice(0,200))); }
+          catch(e){ alert('✓ Function responded but did not return JSON.'); }
+        } else {
+          alert('✗ Function returned ' + r.status + ':\n' + text.slice(0,300));
+        }
+      } catch(e){
+        alert('✗ Could not reach function: ' + (e.message||''));
+      }
+    });
+    host.appendChild(ov);
+  };
+
+  // Create a Checkout Session for an invoice and redirect the user to Stripe.
+  window.glCreateStripeCheckout = async function(invoice, opts){
+    opts = opts || {};
+    if(!invoice || !invoice.amount){ alert('Invalid invoice.'); return null; }
+    if(typeof window.glStartBusy === 'function') window.glStartBusy('Creating Stripe Checkout…');
+    try {
+      var token = null;
+      try {
+        var s = window.supa && await window.supa.auth.getSession();
+        if(s && s.data && s.data.session) token = s.data.session.access_token;
+      } catch(e){}
+      var body = {
+        amount: Math.round(invoice.amount * 100),  // Stripe uses cents
+        currency: opts.currency || 'usd',
+        client_email: invoice.clientEmail || (function(){
+          var c = (window.clients||[]).find(function(x){ return x.id === invoice.client; });
+          return c ? c.email : '';
+        })(),
+        invoice_id: invoice.id,
+        description: 'Invoice ' + invoice.id + ' — ' + (invoice.svc || invoice.clientName || ''),
+        success_url: location.origin + '/?stripe=success&invoice=' + encodeURIComponent(invoice.id),
+        cancel_url:  location.origin + '/?stripe=cancel&invoice=' + encodeURIComponent(invoice.id)
+      };
+      var r = await fetch(getFnUrl(), {
+        method: 'POST',
+        headers: Object.assign({ 'Content-Type':'application/json' }, token ? { Authorization: 'Bearer ' + token } : {}),
+        body: JSON.stringify(body)
+      });
+      if(!r.ok){
+        var t = await r.text();
+        alert('Stripe Checkout failed: HTTP ' + r.status + '\n' + t.slice(0,300));
+        return null;
+      }
+      var data = await r.json();
+      if(!data.url){ alert('No checkout URL returned.'); return null; }
+      if(typeof window.glAudit === 'function') window.glAudit('stripe_checkout_open', invoice.id, { amount: invoice.amount });
+      // Redirect (or open in new tab if explicitly requested)
+      if(opts.newTab) window.open(data.url, '_blank', 'noopener');
+      else window.location.href = data.url;
+      return data;
+    } catch(e){
+      alert('Stripe Checkout error: ' + (e.message||''));
+      return null;
+    } finally {
+      if(typeof window.glEndBusy === 'function') window.glEndBusy();
+    }
+  };
+
+  // Inject "Charge" button on invoice detail panel (admin use)
+  function injectChargeButton(){
+    var detail = document.getElementById('cpg-invoice-detail') || document.querySelector('.inv-detail');
+    if(!detail) return;
+    if(detail.querySelector('.gl-stripe-charge-btn')) return;
+    if(!window.currentInvId) return;
+    var inv = (window.invoices||[]).find(function(i){ return i.id === window.currentInvId; });
+    if(!inv || inv.status === 'paid' || inv.status === 'quote') return;
+    var btnRow = detail.querySelector('.btn-row') || detail.querySelector('.cph');
+    if(!btnRow) return;
+    var btn = document.createElement('button');
+    btn.className = 'cbtn gl-stripe-charge-btn';
+    btn.setAttribute('style','background:rgba(168,85,247,.12);border:1px solid rgba(168,85,247,.35);color:#c4a4f8');
+    btn.textContent = '💳 Charge via Stripe';
+    btn.addEventListener('click', function(){
+      if(!confirm('Open a Stripe Checkout for invoice ' + inv.id + ' ($' + Number(inv.amount||0).toLocaleString() + ')?')) return;
+      window.glCreateStripeCheckout(inv);
+    });
+    btnRow.appendChild(btn);
+  }
+
+  // Watch the invoice-detail page for renders
+  function startObs(){
+    var pages = document.getElementById('crm-panel');
+    if(pages){
+      new MutationObserver(function(){ setTimeout(injectChargeButton, 80); }).observe(pages, { childList:true, subtree:true });
+      injectChargeButton();
+    } else setTimeout(startObs, 700);
+  }
+  if(document.readyState !== 'loading') startObs();
+  else document.addEventListener('DOMContentLoaded', startObs);
+
+  console.log('[GL] Stripe Checkout sessions loaded');
 }());
 
