@@ -2686,3 +2686,150 @@
 
   console.log('[GL] Audit log wired (login/signout/invoice/users)');
 }());
+
+/* ============================================================
+   AUDIT LOG VIEWER
+   Admin-only modal that paginates recent audit_log entries.
+   Adds an "📋 Activity log" button to the Users panel header
+   right next to "Invite User".
+   ============================================================ */
+(function(){
+  function esc(s){
+    return String(s||'').replace(/[&<>"]/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
+    });
+  }
+  function fmtWhen(iso){
+    if(!iso) return '';
+    var d = new Date(iso);
+    var ms = Date.now() - d.getTime();
+    if(ms < 60000) return Math.floor(ms/1000) + 's ago';
+    if(ms < 3600000) return Math.floor(ms/60000) + 'm ago';
+    if(ms < 86400000) return Math.floor(ms/3600000) + 'h ago';
+    if(ms < 7*86400000) return Math.floor(ms/86400000) + 'd ago';
+    return d.toLocaleDateString();
+  }
+  function actionStyle(a){
+    a = String(a||'').toLowerCase();
+    if(a.indexOf('error') >= 0) return 'background:rgba(231,76,60,.12);color:#ff8579';
+    if(a.indexOf('login') >= 0 || a.indexOf('signout') >= 0) return 'background:rgba(0,229,192,.1);color:var(--teal)';
+    if(a.indexOf('remove') >= 0 || a.indexOf('delete') >= 0) return 'background:rgba(245,200,66,.1);color:#f5c842';
+    if(a.indexOf('invite') >= 0 || a.indexOf('invoice_save') >= 0) return 'background:rgba(26,111,255,.1);color:#6b9fff';
+    if(a.indexOf('password') >= 0 || a.indexOf('role') >= 0) return 'background:rgba(168,85,247,.1);color:#c4a4f8';
+    return 'background:rgba(255,255,255,.06);color:var(--muted)';
+  }
+
+  window.glOpenAuditLog = async function(){
+    if(!window.currentUser || window.currentUser.role !== 'admin'){
+      alert('Admin only.');
+      return;
+    }
+    var existing = document.getElementById('gl-audit-modal');
+    if(existing) existing.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var ov = document.createElement('div');
+    ov.id = 'gl-audit-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:900;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:24px;width:100%;max-width:760px;max-height:85vh;display:flex;flex-direction:column">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
+          '<div>' +
+            '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">📋 ACTIVITY LOG</div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:2px">Last 100 actions across all users</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:6px;align-items:center">' +
+            '<button id="gl-audit-refresh" class="cbtn" style="font-size:11px;padding:5px 11px">🔄 Refresh</button>' +
+            '<button id="gl-audit-close" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">✕</button>' +
+          '</div>' +
+        '</div>' +
+        '<div id="gl-audit-body" style="flex:1;overflow-y:auto;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:8px">' +
+          '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">Loading…</div>' +
+        '</div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-audit-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-audit-refresh').addEventListener('click', loadEntries);
+    host.appendChild(ov);
+
+    async function loadEntries(){
+      var body = ov.querySelector('#gl-audit-body');
+      body.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">Loading…</div>';
+      var sb = window.supa;
+      if(!sb){ body.innerHTML = '<div style="padding:30px;text-align:center;color:#ff8579;font-size:13px">Auth service unavailable.</div>'; return; }
+      try{
+        var r = await sb.from('audit_log').select('*').order('created_at',{ascending:false}).limit(100);
+        if(r.error){
+          body.innerHTML = '<div style="padding:30px;text-align:center;color:#ff8579;font-size:13px;line-height:1.6">' +
+            '<div style="font-size:24px;margin-bottom:8px">⚠</div>' +
+            esc(r.error.message) +
+            '<div style="font-size:11px;margin-top:14px;color:var(--muted)">If you haven\'t created the audit_log table yet, run the SQL block from the deploy notes.</div>' +
+          '</div>';
+          return;
+        }
+        var rows = r.data || [];
+        if(!rows.length){
+          body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">No actions logged yet. Do something in the CRM and they\'ll show up here.</div>';
+          return;
+        }
+        body.innerHTML =
+          '<table style="width:100%;border-collapse:collapse">' +
+            '<thead><tr style="font-size:10px;letter-spacing:2px;color:var(--muted);text-align:left">' +
+              '<th style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.08)">WHEN</th>' +
+              '<th style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.08)">ACTOR</th>' +
+              '<th style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.08)">ACTION</th>' +
+              '<th style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.08)">TARGET</th>' +
+              '<th style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.08)">DETAILS</th>' +
+            '</tr></thead>' +
+            '<tbody>' +
+            rows.map(function(r){
+              var det = r.details ? JSON.stringify(r.details) : '';
+              if(det.length > 80) det = det.slice(0,80) + '…';
+              return '<tr style="border-bottom:1px solid rgba(255,255,255,.04)">' +
+                '<td style="padding:9px 10px;font-size:11px;color:var(--muted);white-space:nowrap" title="'+esc(r.created_at)+'">'+esc(fmtWhen(r.created_at))+'</td>' +
+                '<td style="padding:9px 10px;font-size:12px;color:#fff">'+esc(r.actor_email||'system')+'</td>' +
+                '<td style="padding:9px 10px"><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;'+actionStyle(r.action)+'">'+esc(r.action||'?')+'</span></td>' +
+                '<td style="padding:9px 10px;font-size:12px;color:#fff;font-family:var(--ff-mono)">'+esc(r.target||'')+'</td>' +
+                '<td style="padding:9px 10px;font-size:11px;color:var(--muted);font-family:var(--ff-mono)">'+esc(det)+'</td>' +
+              '</tr>';
+            }).join('') +
+            '</tbody>' +
+          '</table>';
+      }catch(e){
+        console.error('[GL audit viewer] load failed', e);
+        body.innerHTML = '<div style="padding:30px;text-align:center;color:#ff8579;font-size:13px">Failed: '+esc(e.message||'unknown')+'</div>';
+      }
+    }
+    loadEntries();
+  };
+
+  // Inject the "Activity log" button next to the Users panel header button.
+  function injectAuditBtn(){
+    var page = document.getElementById('cpg-users');
+    if(!page) return;
+    var header = page.querySelector('.cph');
+    if(!header) return;
+    if(header.querySelector('.gl-audit-btn')) return;
+    if(!window.currentUser || window.currentUser.role !== 'admin') return;
+    var inviteBtn = Array.from(header.querySelectorAll('button')).find(function(b){
+      return (b.textContent||'').trim().toLowerCase().includes('invite');
+    });
+    var btn = document.createElement('button');
+    btn.className = 'cbtn gl-audit-btn';
+    btn.setAttribute('style','margin-left:8px;background:rgba(0,229,192,.08);border:1px solid rgba(0,229,192,.3);color:var(--teal)');
+    btn.textContent = '📋 Activity log';
+    btn.addEventListener('click', function(){ window.glOpenAuditLog(); });
+    if(inviteBtn && inviteBtn.parentElement) inviteBtn.parentElement.appendChild(btn);
+    else header.appendChild(btn);
+  }
+  // Re-attempt injection whenever the users page renders
+  var observer = new MutationObserver(function(){ setTimeout(injectAuditBtn, 50); });
+  function startObs(){
+    var p = document.getElementById('cpg-users');
+    if(p){ observer.observe(p, {childList:true, subtree:true}); injectAuditBtn(); }
+    else setTimeout(startObs, 500);
+  }
+  if(document.readyState !== 'loading') startObs();
+  else document.addEventListener('DOMContentLoaded', startObs);
+
+  console.log('[GL] Audit log viewer loaded');
+}());
