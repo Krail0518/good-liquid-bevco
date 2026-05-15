@@ -6769,3 +6769,68 @@
 
   console.log('[GL] deleteInvoice loaded');
 }());
+
+/* ============================================================
+   EDIT CLIENT NOTES
+   Inline-editable notes textarea on both client detail panels. The
+   panels render a textarea + Save button (no separate edit modal);
+   this helper persists the change to Supabase and the in-memory
+   record. Used by the buttons wired in openClientDetail and
+   viewClientEnhanced.
+   ============================================================ */
+(function(){
+  window.glSaveClientNotes = async function(clientId, notesText){
+    var c = (window.clients||[]).find(function(x){ return x.id === clientId; });
+    if(!c){ alert('Client not found.'); return false; }
+    var trimmed = (notesText == null ? '' : String(notesText)).trim();
+    c.notes = trimmed;
+
+    if(window.supa){
+      try {
+        var r = await window.supa.from('clients').update({ notes: trimmed }).eq('id', clientId);
+        if(r && r.error){
+          console.warn('[GL] glSaveClientNotes: supabase error', r.error);
+          if(typeof addNotification === 'function') addNotification('Notes saved locally','Server error — see console','warning');
+          return false;
+        }
+      } catch(e){
+        console.warn('[GL] glSaveClientNotes threw', e);
+        if(typeof addNotification === 'function') addNotification('Notes saved locally','Server unreachable','warning');
+        return false;
+      }
+    }
+    if(typeof window.glAudit === 'function') window.glAudit('client_notes_edited', clientId, { length: trimmed.length });
+    if(typeof addNotification === 'function') addNotification('📝 Notes saved', c.name, 'success');
+    return true;
+  };
+
+  /* Helper used by both detail panels to render a consistent
+     "click to expand, save inline" notes block.
+     Returns an HTML string with a textarea + save button. */
+  window.glRenderClientNotesBlock = function(client){
+    var notes = (client.notes||'').replace(/</g,'&lt;');
+    return ''
+      + '<div style="margin-bottom:18px">'
+      +   '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
+      +     '<div style="font-size:10px;letter-spacing:2px;color:var(--muted)">NOTES</div>'
+      +     '<span id="gl-notes-status-'+client.id+'" style="font-size:11px;color:var(--muted)">'+(client.notes ? '' : 'empty — add some')+'</span>'
+      +   '</div>'
+      +   '<textarea id="gl-notes-'+client.id+'" rows="4" placeholder="Add notes about this client — preferences, history, key dates…" '
+      +     'style="width:100%;padding:11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:13px;font-family:var(--ff-body);resize:vertical;line-height:1.5">'+notes+'</textarea>'
+      +   '<div style="display:flex;justify-content:flex-end;margin-top:6px">'
+      +     '<button class="cbtn pri" style="font-size:12px;padding:6px 14px" '
+      +       'onclick="(async function(){'
+      +         'var t=document.getElementById(\'gl-notes-'+client.id+'\').value;'
+      +         'var s=document.getElementById(\'gl-notes-status-'+client.id+'\');'
+      +         'var btn=event.target;var orig=btn.textContent;btn.disabled=true;btn.textContent=\'Saving…\';'
+      +         'var ok=await window.glSaveClientNotes(\''+client.id+'\',t);'
+      +         'btn.disabled=false;btn.textContent=orig;'
+      +         'if(s) s.textContent=ok?\'✓ saved\':\'⚠ saved locally only\';'
+      +         'setTimeout(function(){if(s)s.textContent=\'\';},2500);'
+      +       '})()">💾 Save notes</button>'
+      +   '</div>'
+      + '</div>';
+  };
+
+  console.log('[GL] editable client notes loaded');
+}());
