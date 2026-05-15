@@ -2026,11 +2026,16 @@
       { label:'📧 Email Templates', fn:'openEmailTemplates' },
       { label:'📊 Time Report',    fn:'openTimeTrackingReport' },
       { label:'🤖 AI Settings',    fn:'openAISettings' },
-      { label:'📧 Mailgun Settings', fn:'openMailgunSettings' }
+      { label:'📧 Mailgun Settings', fn:'openMailgunSettings' },
+      { label:'🗑️ Clear local cache', fn:'glClearLocalCache', admin:true, danger:true }
     ];
     items.forEach(function(it){
+      // Hide admin-only items for non-admin users.
+      if(it.admin && (!window.currentUser || window.currentUser.role !== 'admin')) return;
       var b = document.createElement('button');
-      b.setAttribute('style','padding:8px 14px;background:#142238;border:1px solid rgba(0,229,192,.3);border-radius:20px;color:var(--teal);cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)');
+      var base = 'padding:8px 14px;background:#142238;border:1px solid rgba(0,229,192,.3);border-radius:20px;color:var(--teal);cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)';
+      if(it.danger) base = base.replace('rgba(0,229,192,.3)','rgba(231,76,60,.4)').replace('var(--teal)','#ff8579');
+      b.setAttribute('style', base);
       b.textContent = it.label;
       b.addEventListener('click', function(){
         try{
@@ -2206,4 +2211,90 @@
   else document.addEventListener('DOMContentLoaded', function(){ setTimeout(injectPreviewButton, 50); });
 
   console.log('[GL] Follow-up preview v1 loaded');
+}());
+
+/* ============================================================
+   ADMIN UTILITY: clear local cache
+   Wipes the gl_* localStorage keys that hold per-device app
+   state (tasks, notifications, calendar, etc.) but preserves
+   configuration keys (API keys, Mailgun settings). Useful when
+   switching browsers or onboarding a new device.
+   ============================================================ */
+(function(){
+  // Keys that hold per-device app state — safe to wipe.
+  var APP_STATE_KEYS = [
+    'gl_tasks','gl_activities','gl_notifications','gl_cal_events',
+    'gl_inventory','gl_documents','gl_announcements','gl_customer_logins',
+    'gl_followup_log','gl_deal_activity','gl_client_notes','gl_client_tags',
+    'gl_email_templates','gl_time_entries','gl_active_timer','gl_prod_pipeline'
+  ];
+  // Keys that hold configuration / credentials — preserved by default.
+  var CONFIG_KEYS = [
+    'gl_ai_key','gl_mailgun_key','gl_mailgun_domain','gl_mailgun_from','gl_supabase_key','gl_ga_id'
+  ];
+
+  function buildModal(){
+    var existing = document.getElementById('gl-clear-cache-modal');
+    if(existing) existing.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var present = {};
+    APP_STATE_KEYS.concat(CONFIG_KEYS).forEach(function(k){ if(localStorage.getItem(k) !== null) present[k] = (localStorage.getItem(k)||'').length; });
+    var ov = document.createElement('div');
+    ov.id = 'gl-clear-cache-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:900;background:rgba(6,13,26,.85);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px');
+    var stateRows = APP_STATE_KEYS.map(function(k){
+      var len = present[k];
+      var hasData = len !== undefined && len > 2;
+      return '<label style="display:flex;align-items:center;gap:9px;padding:6px 0;font-size:12px;color:'+(hasData?'#fff':'var(--muted)')+'">'+
+        '<input type="checkbox" class="gl-cc-state" data-k="'+k+'"'+(hasData?' checked':'')+'>'+
+        '<code style="font-family:var(--ff-mono);font-size:11px">'+k+'</code>'+
+        (hasData?'<span style="color:var(--muted);font-size:10px">~'+len+' bytes</span>':'<span style="color:var(--muted);font-size:10px">(empty)</span>')+
+      '</label>';
+    }).join('');
+    var configRows = CONFIG_KEYS.map(function(k){
+      var has = present[k] !== undefined;
+      return '<label style="display:flex;align-items:center;gap:9px;padding:6px 0;font-size:12px;color:'+(has?'#fff':'var(--muted)')+'">'+
+        '<input type="checkbox" class="gl-cc-config" data-k="'+k+'">'+
+        '<code style="font-family:var(--ff-mono);font-size:11px">'+k+'</code>'+
+        (has?'<span style="color:#1D9E75;font-size:10px">set</span>':'<span style="color:var(--muted);font-size:10px">(not set)</span>')+
+      '</label>';
+    }).join('');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(231,76,60,.3);border-radius:14px;padding:26px;width:100%;max-width:520px;max-height:88vh;overflow-y:auto">' +
+        '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:#ff8579;margin-bottom:6px">🗑️ CLEAR LOCAL CACHE</div>' +
+        '<div style="font-size:12px;color:var(--muted);margin-bottom:18px;line-height:1.6">Wipes selected keys from this browser\'s localStorage. Cloud data (Supabase) is untouched.</div>' +
+        '<div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">APP STATE (safe to wipe)</div>' +
+        '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:10px 14px;margin-bottom:14px">' + stateRows + '</div>' +
+        '<div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">CONFIGURATION (unchecked by default)</div>' +
+        '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:10px 14px;margin-bottom:14px">' + configRows + '</div>' +
+        '<div style="background:rgba(245,200,66,.06);border:1px solid rgba(245,200,66,.2);border-radius:6px;padding:9px 12px;font-size:11px;color:#f5c842;margin-bottom:14px">⚠ Page will reload after clearing.</div>' +
+        '<div style="display:flex;gap:8px">' +
+          '<button id="gl-cc-confirm" class="cbtn red" style="flex:1">Clear selected</button>' +
+          '<button id="gl-cc-cancel" class="cbtn">Cancel</button>' +
+        '</div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-cc-cancel').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-cc-confirm').addEventListener('click', function(){
+      var toRemove = [];
+      ov.querySelectorAll('input.gl-cc-state:checked, input.gl-cc-config:checked').forEach(function(cb){
+        toRemove.push(cb.getAttribute('data-k'));
+      });
+      if(toRemove.length === 0){ alert('Nothing selected.'); return; }
+      if(!confirm('Remove ' + toRemove.length + ' localStorage keys and reload?\n\n' + toRemove.join('\n'))) return;
+      toRemove.forEach(function(k){ try { localStorage.removeItem(k); } catch(e){} });
+      location.reload();
+    });
+    host.appendChild(ov);
+  }
+
+  window.glClearLocalCache = function(){
+    if(!window.currentUser || window.currentUser.role !== 'admin'){
+      alert('Admin only.');
+      return;
+    }
+    buildModal();
+  };
+
+  console.log('[GL] Clear local cache utility loaded');
 }());
