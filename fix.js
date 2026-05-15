@@ -5565,3 +5565,171 @@
   console.log('[GL] Twilio SMS scaffold loaded');
 }());
 
+/* ============================================================
+   iCAL (.ics) EXPORT — production calendar + general calendar
+   Generates an RFC 5545-compliant .ics file from the user's
+   calEvents (gl_cal_events localStorage). Drop into Apple
+   Calendar / Google Calendar / Outlook to subscribe.
+   Injects an 📅 Export button into both calendar pages.
+   ============================================================ */
+(function(){
+  function pad(n){ return n < 10 ? '0' + n : '' + n; }
+  function toIcsDate(input){
+    var d = input instanceof Date ? input : new Date(input);
+    if(isNaN(d.getTime())) return null;
+    // Use UTC (Z) format
+    return d.getUTCFullYear() +
+      pad(d.getUTCMonth()+1) +
+      pad(d.getUTCDate()) + 'T' +
+      pad(d.getUTCHours()) +
+      pad(d.getUTCMinutes()) +
+      pad(d.getUTCSeconds()) + 'Z';
+  }
+  function icsEscape(s){
+    // RFC 5545: backslash, comma, semicolon, newline
+    return String(s||'').replace(/\\/g,'\\\\').replace(/,/g,'\\,').replace(/;/g,'\\;').replace(/\r?\n/g,'\\n');
+  }
+  function fold(line){
+    // RFC 5545: max 75 octets per line; continuation = CRLF + space
+    if(line.length <= 75) return line;
+    var out = line.slice(0, 75);
+    var rest = line.slice(75);
+    while(rest.length > 74){ out += '\r\n ' + rest.slice(0, 74); rest = rest.slice(74); }
+    if(rest.length) out += '\r\n ' + rest;
+    return out;
+  }
+
+  function parseEventDateTime(ev){
+    // Try multiple shapes: ev.date + ev.time, ev.startMs, ev.start, ev.when
+    var start = null, end = null;
+    if(ev.startMs){ start = new Date(ev.startMs); }
+    else if(ev.start){ start = new Date(ev.start); }
+    else if(ev.date){
+      var t = (ev.time || '09:00').trim();
+      // accept "9:00 AM" or "14:00"
+      var m12 = t.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+      var h, mi;
+      if(m12){ h = parseInt(m12[1],10); mi = parseInt(m12[2],10); if(/PM/i.test(m12[3]) && h !== 12) h += 12; if(/AM/i.test(m12[3]) && h === 12) h = 0; }
+      else {
+        var m24 = t.match(/^(\d{1,2}):(\d{2})$/);
+        if(m24){ h = parseInt(m24[1],10); mi = parseInt(m24[2],10); } else { h = 9; mi = 0; }
+      }
+      start = new Date(ev.date + 'T' + pad(h) + ':' + pad(mi) + ':00');
+    }
+    if(!start || isNaN(start.getTime())) return null;
+    end = ev.endMs ? new Date(ev.endMs) : new Date(start.getTime() + (ev.durationMin||60) * 60000);
+    return { start: start, end: end };
+  }
+
+  function eventTitle(ev){
+    if(ev.title) return ev.title;
+    if(ev.name) return ev.name;
+    if(ev.type === 'production') return 'Production: ' + (ev.clientName || ev.client || '');
+    return ev.type || 'Event';
+  }
+  function eventDescription(ev){
+    var parts = [];
+    if(ev.notes) parts.push(ev.notes);
+    if(ev.format) parts.push('Format: ' + ev.format);
+    if(ev.qty) parts.push('Quantity: ' + ev.qty + ' cases');
+    if(ev.clientName || ev.client) parts.push('Client: ' + (ev.clientName || ev.client));
+    return parts.join('\n');
+  }
+
+  function buildIcs(events){
+    var lines = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Good Liquid Bev Co//CRM//EN',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      'X-WR-CALNAME:Good Liquid Bev Co',
+      'X-WR-TIMEZONE:America/New_York'
+    ];
+    var stamp = toIcsDate(new Date());
+    events.forEach(function(ev){
+      var when = parseEventDateTime(ev);
+      if(!when) return;
+      var uid = (ev.id || ('ev-' + Date.now() + '-' + Math.random().toString(36).slice(2,8))) + '@goodliquidbevco.com';
+      lines.push('BEGIN:VEVENT');
+      lines.push('UID:' + uid);
+      lines.push('DTSTAMP:' + stamp);
+      lines.push('DTSTART:' + toIcsDate(when.start));
+      lines.push('DTEND:'   + toIcsDate(when.end));
+      lines.push(fold('SUMMARY:' + icsEscape(eventTitle(ev))));
+      var desc = eventDescription(ev);
+      if(desc) lines.push(fold('DESCRIPTION:' + icsEscape(desc)));
+      lines.push('LOCATION:2011 51st Ave E Unit 100\\, Palmetto FL 34221');
+      lines.push('END:VEVENT');
+    });
+    lines.push('END:VCALENDAR');
+    // RFC 5545 requires CRLF line endings
+    return lines.join('\r\n');
+  }
+
+  function download(name, content){
+    var blob = new Blob([content], { type: 'text/calendar;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1500);
+  }
+
+  window.glExportCalendarIcs = function(filterType){
+    var events = (window.calEvents || []);
+    if(filterType === 'production') events = events.filter(function(e){ return e.type === 'production'; });
+    if(filterType === 'general')    events = events.filter(function(e){ return e.type !== 'production'; });
+    if(!events.length){
+      alert('No events to export.');
+      return;
+    }
+    var stamp = new Date().toISOString().slice(0,10);
+    var name = filterType === 'production' ? 'goodliquid-production-' + stamp + '.ics'
+            : filterType === 'general'     ? 'goodliquid-calendar-'   + stamp + '.ics'
+            : 'goodliquid-events-' + stamp + '.ics';
+    var ics = buildIcs(events);
+    download(name, ics);
+    if(typeof addNotification === 'function') addNotification('📅 Calendar exported', events.length + ' events · drop into Apple/Google/Outlook', 'success');
+    if(typeof window.glAudit === 'function') window.glAudit('export_ics', filterType || 'all', { events: events.length });
+  };
+
+  // Inject export buttons into both calendar pages.
+  function inject(){
+    [
+      { pageId:'cpg-calendar',       filter:'general',    label:'📅 Export to calendar', title:'Download an .ics file of general events (open in Apple/Google/Outlook to subscribe)' },
+      { pageId:'cpg-production-cal', filter:'production', label:'📅 Export to calendar', title:'Download an .ics file of production runs' }
+    ].forEach(function(spec){
+      var page = document.getElementById(spec.pageId);
+      if(!page) return;
+      var header = page.querySelector('.cph');
+      if(!header) return;
+      if(header.querySelector('.gl-ics-btn-' + spec.filter)) return;
+      var btn = document.createElement('button');
+      btn.className = 'cbtn gl-ics-btn-' + spec.filter;
+      btn.title = spec.title;
+      btn.setAttribute('style','margin-left:8px;background:rgba(0,229,192,.08);border:1px solid rgba(0,229,192,.3);color:var(--teal)');
+      btn.textContent = spec.label;
+      btn.addEventListener('click', function(){ window.glExportCalendarIcs(spec.filter); });
+      // Try to put it alongside any existing header button.
+      var existingBtn = header.querySelector('button');
+      if(existingBtn && existingBtn.parentElement){
+        existingBtn.parentElement.appendChild(btn);
+      } else {
+        header.appendChild(btn);
+      }
+    });
+  }
+  function startObs(){
+    var cal = document.getElementById('cpg-calendar') || document.getElementById('cpg-production-cal');
+    if(cal){
+      new MutationObserver(function(){ setTimeout(inject, 50); }).observe(cal.parentElement || cal, {childList:true, subtree:true});
+      inject();
+    } else setTimeout(startObs, 700);
+  }
+  if(document.readyState !== 'loading') startObs();
+  else document.addEventListener('DOMContentLoaded', startObs);
+
+  console.log('[GL] iCal export loaded');
+}());
+
