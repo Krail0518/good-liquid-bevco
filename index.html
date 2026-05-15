@@ -2043,17 +2043,8 @@ function closePw(){document.getElementById('pw-ov').classList.remove('show');doc
 
 /* ═══════════════════════════════════════
    SUPABASE AUTH + MULTI-USER LOGIN
+   The live client is window.supa, created in fix.js.
 ═══════════════════════════════════════ */
-// Config — keys stored in Supabase, not hardcoded
-// Supabase client initialized with env-style approach
-const SUPABASE_URL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co';
-const SUPABASE_ANON_KEY = localStorage.getItem('gl_supabase_key') || '';
-let supabaseClient = null;
-try {
-  if(window.supabase && SUPABASE_ANON_KEY) {
-    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  }
-} catch(e) {}
 
 
 /* ═══════════════════════════════════════════
@@ -5232,81 +5223,17 @@ cNav=function(page,el){
 
 
 /* ═══════════════════════════════════════════
-   SUPABASE AUTH — FULL INTEGRATION
-   Moves passwords out of localStorage into
-   Supabase Auth. Passwords set here survive
-   across all browsers/devices.
-═══════════════════════════════════════════ */
-function getSupabase() {
-  const key = localStorage.getItem('gl_supabase_key');
-  if(!key || !window.supabase) return null;
-  try { return window.supabase.createClient(SUPABASE_URL, key); }
-  catch(e) { return null; }
-}
-
-// Sync a user password TO Supabase (called when change-password runs)
-async function syncPasswordToSupabase(email, newPassword){
-  const sbKey = localStorage.getItem('gl_supabase_key');
-  if(!sbKey) return;
-  try {
-    await fetch('https://ufjkeqmxwuyhbqyugcgg.supabase.co/rest/v1/crm_users', {
-      method: 'POST',
-      headers: {
-        'apikey': sbKey,
-        'Authorization': 'Bearer ' + sbKey,
-        'Content-Type': 'application/json',
-        'Prefer': 'resolution=merge-duplicates'
-      },
-      body: JSON.stringify({email: email.toLowerCase(), password_hash: btoa(newPassword), updated_at: new Date().toISOString()})
-    });
-    console.log('Password synced to Supabase for', email);
-  } catch(e){ console.log('Supabase sync error:', e.message); }
-}
-
-// Try loading password from Supabase on login
-async function loadPasswordFromSupabase(email) {
-  const sb = getSupabase();
-  if(!sb) return null;
-  try {
-    const { data } = await sb.from('crm_users').select('password_hash').eq('email', email.toLowerCase()).single();
-    if(data?.password_hash) return atob(data.password_hash);
-  } catch(e) {}
-  return null;
-}
-
-// Enhanced doChangePassword with Supabase sync
-const _origDoChangePassword = doChangePassword;
-doChangePassword = async function() {
-  const newPw = document.getElementById('change-pw-new')?.value;
-  const isAdmin = currentUser && currentUser.role === 'admin';
-  let targetUser = currentUser;
-  if(isAdmin && document.getElementById('change-pw-user-sel')) {
-    const uid = document.getElementById('change-pw-user-sel').value;
-    targetUser = users.find(u => u.id === uid) || currentUser;
-  }
-  _origDoChangePassword();
-  // After local change, sync to Supabase
-  if(newPw && targetUser) {
-    await syncPasswordToSupabase(targetUser.email, newPw);
-    console.log('Password synced to Supabase for', targetUser.email);
-  }
-};
-
-/* ═══════════════════════════════════════════
    SUPABASE DOCUMENT STORAGE
-   Real file upload + download via Supabase
-   Storage bucket 'client-docs'
+   Real file upload + download via the live window.supa client
+   (created in fix.js) against the 'client-docs' bucket.
 ═══════════════════════════════════════════ */
 async function uploadDocToSupabase(file, clientId, docType, docName) {
-  const sb = getSupabase();
-  if(!sb) {
-    // Fallback: save metadata only (no actual file)
-    return { url: null, path: null };
-  }
+  const sb = window.supa;
+  if(!sb) return { url: null, path: null };
   try {
     const ext = file.name.split('.').pop();
     const path = `${clientId}/${Date.now()}_${docName.replace(/\s+/g,'_')}.${ext}`;
-    const { data, error } = await sb.storage.from('client-docs').upload(path, file, {
+    const { error } = await sb.storage.from('client-docs').upload(path, file, {
       cacheControl: '3600', upsert: false
     });
     if(error) throw error;
@@ -5319,7 +5246,7 @@ async function uploadDocToSupabase(file, clientId, docType, docName) {
 }
 
 async function downloadDocFromSupabase(path) {
-  const sb = getSupabase();
+  const sb = window.supa;
   if(!sb || !path) return null;
   try {
     const { data } = await sb.storage.from('client-docs').download(path);
@@ -5804,9 +5731,6 @@ async function createInvitedUser(){
   };
   users.push(newUser);
 
-  // Save to Supabase
-  await syncPasswordToSupabase(email, password);
-
   // Send welcome email via Mailgun
   await sendMailgunEmail(
     email,
@@ -5848,13 +5772,6 @@ async function removeUser(id){
   const u = users.find(x => x.id === id);
   if(!u) return;
   users = users.filter(x => x.id !== id);
-
-  // Remove from Supabase
-  const sb = getSupabase();
-  if(sb) {
-    try { await sb.from('crm_users').delete().eq('email', u.email); } catch(e) {}
-  }
-
   renderUsersPanel();
   addNotification('👤 User removed: ' + u.name, u.email, 'warning');
 }

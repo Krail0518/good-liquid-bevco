@@ -62,14 +62,10 @@
     setTimeout(attach, 500); // run again after dynamic content loads
   })();
 
-  /* ── INTERCEPT ALL NEW INVOICE ENTRY POINTS ── */
+  /* ── INTERCEPT ALL NEW INVOICE ENTRY POINTS ──
+       The original cNav lives in index.html. We only need to wrap it once;
+       the perm-gate is added below in the same wrap. */
   var _cNavOrig = window.cNav;
-  window.cNav = function(page, el){
-    if(page==='newinv'||page==='new-invoice'||page==='newInvoice'){
-      window.openNewInvoiceBuilder(); return;
-    }
-    if(typeof _cNavOrig==='function') _cNavOrig(page, el);
-  };
   window.openNewInvoice = function(){ window.openNewInvoiceBuilder(); };
   document.addEventListener('click', function(e){
     var el = e.target.closest('button,a,.cni');
@@ -103,8 +99,13 @@
   if(window.PERMISSIONS){window.PERMISSIONS.admin=ALL;window.PERMISSIONS.sales=['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','tasks','announcements','reports'];}
   else{window.PERMISSIONS={admin:ALL,sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','tasks','announcements','reports'],viewer:['dashboard','clients','invoices','activity']};}
   window.can=function(page){var u=window.currentUser;if(!u)return false;if(u.role==='admin')return true;return(window.PERMISSIONS[u.role]||[]).includes(page);};
-  var _cNavOrig2=window.cNav;
-  window.cNav=function(page,el){if(!window.can(page)){if(typeof addNotification==='function')addNotification('Access denied',page,'warning');return;}if(typeof _cNavOrig2==='function')_cNavOrig2(page,el);};
+  /* Single cNav wrap: perm-gate first, then dispatch new-invoice variants
+     to the builder, otherwise hand off to the original cNav from index.html. */
+  window.cNav=function(page,el){
+    if(!window.can(page)){if(typeof addNotification==='function')addNotification('Access denied',page,'warning');return;}
+    if(page==='newinv'||page==='new-invoice'||page==='newInvoice'){window.openNewInvoiceBuilder();return;}
+    if(typeof _cNavOrig==='function') _cNavOrig(page,el);
+  };
 
   /* ── FIX DOM STRUCTURE ── */
   function fixDOMStructure(){
@@ -344,8 +345,33 @@
     }
   };
 
+  /* ── Wrap openChangePwModal: toggle Current-password row when an admin
+       picks another user (admin path uses reset email, not reauth). ── */
+  (function(){
+    var inner = window.openChangePwModal;
+    window.openChangePwModal = function(){
+      if(typeof inner === 'function') inner.apply(this, arguments);
+      var oldRow = document.getElementById('change-pw-old');
+      var sel    = document.getElementById('change-pw-user-sel');
+      function updateOldVisibility(){
+        if(!oldRow) return;
+        var row = oldRow.closest('.frow') || oldRow.parentElement;
+        if(!row) return;
+        var selfPick = !sel || !sel.value || (window.currentUser && sel.value === window.currentUser.id);
+        row.style.display = selfPick ? '' : 'none';
+        if(!selfPick) oldRow.value = '';
+      }
+      if(sel && !sel._glOldHookBound){
+        sel.addEventListener('change', updateOldVisibility);
+        sel._glOldHookBound = true;
+      }
+      updateOldVisibility();
+    };
+  }());
+
   /* ── doChangePassword — change-password modal (self change OR admin reset other) ── */
   window.doChangePassword=async function(){
+    var oldPw=(document.getElementById('change-pw-old')||{}).value||'';
     var newPw=(document.getElementById('change-pw-new')||{}).value||'';
     var confirmPw=(document.getElementById('change-pw-confirm')||{}).value||'';
     var err=document.getElementById('change-pw-err');
@@ -366,10 +392,18 @@
     if(isAdmin&&sel&&sel.value&&window.currentUser&&sel.value!==window.currentUser.id)targetId=sel.value;
 
     if(!targetId){
+      // Self-change: verify the current password by reauthenticating first.
+      if(!oldPw){setErr('Enter your current password to confirm the change.');return;}
+      if(oldPw===newPw){setErr('New password must differ from the current one.');return;}
+      try{
+        var check=await sb.auth.signInWithPassword({email:window.currentUser.email,password:oldPw});
+        if(check.error){setErr('Current password is incorrect.');return;}
+      }catch(e){setErr('Could not verify current password: '+(e.message||'unknown'));return;}
       try{
         var r=await sb.auth.updateUser({password:newPw});
         if(r.error){setErr(r.error.message);return;}
         setOk('Password updated.');
+        if(typeof window.glAudit==='function')window.glAudit('password_changed_self',window.currentUser.email,{});
         if(typeof addNotification==='function')addNotification('🔑 Password changed','Your password was updated','success');
         setTimeout(function(){if(typeof closeChangePwModal==='function')closeChangePwModal();},1500);
       }catch(e){setErr('Failed: '+(e.message||'unknown'));}
@@ -1824,6 +1858,50 @@
     else alert('✅ Mailgun key saved.');
   };
 
+  /* Reusable masked-credential reveal modal — used by onboarding to surface
+     a temp password without splashing it into a system alert.
+     opts: { title, message, email, password, status: 'ok'|'warn' } */
+  window.glRevealCredential = function(opts){
+    opts = opts || {};
+    var prior = document.getElementById('gl-reveal-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var statusColor = opts.status === 'warn' ? '#f5c842' : '#00e5c0';
+    var statusIcon  = opts.status === 'warn' ? '⚠' : '✓';
+    var ov = document.createElement('div');
+    ov.id = 'gl-reveal-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1100;background:rgba(6,13,26,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:480px">' +
+        '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:' + statusColor + ';margin-bottom:6px">' + statusIcon + ' ' + (opts.title || '').toUpperCase() + '</div>' +
+        (opts.message ? '<div style="font-size:13px;color:#9aa7bd;margin-bottom:16px;line-height:1.5">' + opts.message + '</div>' : '') +
+        (opts.email ? '<div style="font-size:11px;letter-spacing:1.5px;color:#9aa7bd;margin-bottom:4px">EMAIL</div>' +
+                      '<div style="font-family:var(--ff-mono);font-size:13px;color:#fff;margin-bottom:14px;word-break:break-all">' + opts.email + '</div>' : '') +
+        '<div style="font-size:11px;letter-spacing:1.5px;color:#9aa7bd;margin-bottom:4px">TEMPORARY PASSWORD</div>' +
+        '<div style="display:flex;gap:8px;margin-bottom:18px">' +
+          '<input class="finp" id="gl-reveal-pw" readonly type="password" value="' + (opts.password||'').replace(/"/g,'&quot;') + '" style="flex:1;font-family:var(--ff-mono);font-size:13px;color:#fff">' +
+          '<button class="cbtn" id="gl-reveal-toggle" style="white-space:nowrap">Reveal</button>' +
+          '<button class="cbtn pri" id="gl-reveal-copy" style="white-space:nowrap">Copy</button>' +
+        '</div>' +
+        '<div style="font-size:11px;color:#f5c842;background:rgba(245,200,66,.06);border:1px solid rgba(245,200,66,.2);border-radius:6px;padding:9px;margin-bottom:14px;line-height:1.5">Share via a separate channel (text, in person). Do not put it in the same email you just sent.</div>' +
+        '<div style="display:flex;justify-content:flex-end"><button class="cbtn" id="gl-reveal-close">Done</button></div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    var pwEl = ov.querySelector('#gl-reveal-pw');
+    var tog  = ov.querySelector('#gl-reveal-toggle');
+    var cpy  = ov.querySelector('#gl-reveal-copy');
+    tog.addEventListener('click', function(){
+      var nowHidden = pwEl.type === 'password';
+      pwEl.type = nowHidden ? 'text' : 'password';
+      tog.textContent = nowHidden ? 'Hide' : 'Reveal';
+    });
+    cpy.addEventListener('click', async function(){
+      try { await navigator.clipboard.writeText(opts.password || ''); cpy.textContent = '✓ Copied'; setTimeout(function(){ cpy.textContent = 'Copy'; }, 1500); }
+      catch(e){ pwEl.type = 'text'; pwEl.select(); document.execCommand('copy'); cpy.textContent = '✓ Copied'; setTimeout(function(){ cpy.textContent = 'Copy'; }, 1500); }
+    });
+    ov.querySelector('#gl-reveal-close').addEventListener('click', function(){ ov.remove(); });
+    host.appendChild(ov);
+  };
+
   window.glTestMailgun = async function(){
     var key = localStorage.getItem('gl_mailgun_key');
     if(!key){ alert('Save a key first.'); return; }
@@ -1873,10 +1951,18 @@
 
     if(ok){
       if(typeof addNotification==='function') addNotification('📧 Onboarding email sent to '+name,email,'success');
-      alert('✓ Onboarding email sent to '+email+'\n\nTemp password (share this securely too): '+tempPw);
+      window.glRevealCredential({
+        title: 'Onboarding email sent',
+        message: 'The welcome email is on its way to <b>'+name+'</b>. The temporary password is shown below — share it via a separate channel.',
+        email: email, password: tempPw, status: 'ok'
+      });
     } else {
       if(typeof addNotification==='function') addNotification('Email send failed',email+' — see console for details','warning');
-      alert('✗ Mailgun send failed for '+email+'.\n\nThe account was created locally with temp password:\n  '+tempPw+'\n\nCheck Mailgun Settings (API key valid? Domain authorized?) and try again.');
+      window.glRevealCredential({
+        title: 'Email send failed',
+        message: 'Mailgun rejected the message but the account was created locally. Share the password manually and check Mailgun Settings (API key valid? Domain authorized?).',
+        email: email, password: tempPw, status: 'warn'
+      });
     }
   };
 
