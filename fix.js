@@ -3245,3 +3245,211 @@
 
   console.log('[GL] Stale deal indicator loaded');
 }());
+
+/* ============================================================
+   SYSTEM HEALTH WIDGET
+   Admin-only dashboard widget that probes the key integrations
+   (Supabase Auth, Mailgun key, AI key, audit_log table,
+   client-docs storage bucket) and shows ✓/✗ with an action to
+   fix any missing piece. Solves the "which setup steps did I
+   forget to run" problem.
+   ============================================================ */
+(function(){
+  var SURL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/rest/v1';
+  var SKEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmamtlcW14d3V5aGJxeXVnY2dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNDI2MDksImV4cCI6MjA5MzkxODYwOX0.godgU_jeprCqSzqe0ji_ZA_hwvPF2s7BmzQyAB-c_xE';
+
+  async function checkAuth(){
+    var sb = window.supa;
+    if(!sb || !sb.auth) return { ok:false, msg:'Supabase client not loaded' };
+    try {
+      var r = await sb.auth.getSession();
+      if(r && r.data && r.data.session) return { ok:true, msg:'Signed in as ' + r.data.session.user.email };
+      return { ok:false, msg:'No active session' };
+    } catch(e){ return { ok:false, msg:e.message||'auth check threw' }; }
+  }
+  async function checkAuditTable(){
+    try {
+      var r = await fetch(SURL + '/audit_log?select=count&limit=1', {
+        headers: { apikey: SKEY, Authorization: 'Bearer ' + SKEY, 'Prefer':'count=exact' }
+      });
+      if(r.ok) return { ok:true, msg:'Table ready' };
+      if(r.status === 404 || r.status === 400) return { ok:false, msg:'Run the audit_log SQL', action:'audit_sql' };
+      return { ok:false, msg:'HTTP ' + r.status };
+    } catch(e){ return { ok:false, msg:e.message||'check threw' }; }
+  }
+  async function checkStorageBucket(){
+    var sb = window.supa;
+    if(!sb || !sb.storage) return { ok:false, msg:'Storage client not loaded' };
+    try {
+      // List 1 file in the client-docs bucket to confirm it exists + RLS allows read.
+      var r = await sb.storage.from('client-docs').list('', { limit: 1 });
+      if(r && !r.error) return { ok:true, msg:'Bucket ready' };
+      var m = (r.error && r.error.message) || '';
+      if(m.toLowerCase().indexOf('not found') >= 0 || m.toLowerCase().indexOf('bucket') >= 0) {
+        return { ok:false, msg:'Run the client-docs bucket SQL', action:'bucket_sql' };
+      }
+      return { ok:false, msg:m || 'Bucket check failed' };
+    } catch(e){ return { ok:false, msg:e.message||'storage check threw' }; }
+  }
+  function checkMailgun(){
+    var k = localStorage.getItem('gl_mailgun_key');
+    if(k && k.length > 10) return { ok:true, msg:'Key set ('+ k.slice(0,8) +'…)' };
+    return { ok:false, msg:'Click to add your Mailgun key', action:'mailgun_settings' };
+  }
+  function checkAIKey(){
+    var k = localStorage.getItem('gl_ai_key');
+    if(k && k.length > 10) return { ok:true, msg:'Key set ('+ k.slice(0,8) +'…)' };
+    return { ok:false, msg:'Optional — click to add your Anthropic key', action:'ai_settings', optional:true };
+  }
+
+  async function buildWidget(){
+    var dash = document.getElementById('cpg-dashboard');
+    if(!dash) return;
+    if(!window.currentUser || window.currentUser.role !== 'admin') return;
+    var existing = document.getElementById('gl-health-widget');
+    if(existing) existing.remove();
+
+    var w = document.createElement('div');
+    w.id = 'gl-health-widget';
+    w.setAttribute('style','background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:16px 20px;margin-top:18px');
+    w.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
+        '<div><div style="font-family:var(--ff-disp);font-size:13px;letter-spacing:2px;color:var(--white)">SYSTEM HEALTH</div><div style="font-size:10px;color:var(--muted);margin-top:1px">Admin only · auto-refresh on dashboard open</div></div>' +
+        '<button id="gl-health-refresh" class="cbtn" style="font-size:10px;padding:4px 9px">🔄 Recheck</button>' +
+      '</div>' +
+      '<div id="gl-health-rows" style="display:flex;flex-direction:column;gap:6px">' +
+        '<div style="font-size:12px;color:var(--muted)">Running checks…</div>' +
+      '</div>';
+    dash.appendChild(w);
+
+    async function refresh(){
+      var rows = w.querySelector('#gl-health-rows');
+      rows.innerHTML = '<div style="font-size:12px;color:var(--muted)">Running checks…</div>';
+      var checks = [
+        { key:'auth',    label:'Supabase Auth',         run: checkAuth },
+        { key:'mailgun', label:'Mailgun API key',       run: function(){ return Promise.resolve(checkMailgun()); } },
+        { key:'ai',      label:'Anthropic AI key',      run: function(){ return Promise.resolve(checkAIKey()); } },
+        { key:'audit',   label:'audit_log table',       run: checkAuditTable },
+        { key:'storage', label:'client-docs bucket',    run: checkStorageBucket }
+      ];
+      var results = await Promise.all(checks.map(function(c){ return c.run().then(function(r){ return { c:c, r:r }; }); }));
+      rows.innerHTML = results.map(function(x){
+        var ok = !!x.r.ok;
+        var optional = !!x.r.optional;
+        var color = ok ? '#1D9E75' : (optional ? '#f5c842' : '#ff8579');
+        var icon  = ok ? '✓' : (optional ? '○' : '✗');
+        var actionHtml = '';
+        if(!ok && x.r.action){
+          var label = x.r.action === 'mailgun_settings' ? 'Open Mailgun Settings'
+                    : x.r.action === 'ai_settings' ? 'Open AI Settings'
+                    : x.r.action === 'audit_sql' ? 'Copy SQL'
+                    : x.r.action === 'bucket_sql' ? 'Copy SQL'
+                    : 'Fix';
+          actionHtml = '<button class="gl-health-action" data-action="'+x.r.action+'" style="margin-left:8px;font-size:10px;padding:3px 8px;background:rgba(0,229,192,.08);border:1px solid rgba(0,229,192,.3);border-radius:6px;color:var(--teal);cursor:pointer;font-family:var(--ff-body)">'+label+'</button>';
+        }
+        return '<div style="display:flex;align-items:center;gap:10px;font-size:12px;color:#fff">' +
+                 '<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:rgba(' + (ok?'29,158,117':optional?'245,200,66':'231,76,60') + ',.18);color:'+color+';font-weight:700;font-size:11px;flex-shrink:0">'+icon+'</span>' +
+                 '<span style="font-weight:600;min-width:170px">'+x.c.label+'</span>' +
+                 '<span style="color:var(--muted);font-size:11px">'+(x.r.msg||'')+'</span>' +
+                 actionHtml +
+               '</div>';
+      }).join('');
+      rows.querySelectorAll('.gl-health-action').forEach(function(b){
+        b.addEventListener('click', function(){
+          var a = b.getAttribute('data-action');
+          if(a === 'mailgun_settings' && typeof window.openMailgunSettings === 'function') window.openMailgunSettings();
+          else if(a === 'ai_settings' && typeof window.openAISettings === 'function') window.openAISettings();
+          else if(a === 'audit_sql') showSqlModal('audit_log table', AUDIT_SQL);
+          else if(a === 'bucket_sql') showSqlModal('client-docs storage bucket', BUCKET_SQL);
+        });
+      });
+    }
+    w.querySelector('#gl-health-refresh').addEventListener('click', refresh);
+    refresh();
+  }
+
+  var AUDIT_SQL =
+    "CREATE TABLE IF NOT EXISTS audit_log (\n" +
+    "  id BIGSERIAL PRIMARY KEY,\n" +
+    "  actor_id UUID REFERENCES auth.users ON DELETE SET NULL,\n" +
+    "  actor_email TEXT,\n" +
+    "  action TEXT NOT NULL,\n" +
+    "  target TEXT,\n" +
+    "  details JSONB,\n" +
+    "  created_at TIMESTAMPTZ NOT NULL DEFAULT now()\n" +
+    ");\n" +
+    "ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;\n\n" +
+    "DROP POLICY IF EXISTS \"Authenticated insert audit_log\" ON audit_log;\n" +
+    "CREATE POLICY \"Authenticated insert audit_log\" ON audit_log\n" +
+    "  FOR INSERT TO authenticated WITH CHECK (true);\n\n" +
+    "DROP POLICY IF EXISTS \"Admins read audit_log\" ON audit_log;\n" +
+    "CREATE POLICY \"Admins read audit_log\" ON audit_log\n" +
+    "  FOR SELECT TO authenticated\n" +
+    "  USING ((SELECT role FROM profiles WHERE id = auth.uid()) = 'admin');\n\n" +
+    "CREATE INDEX IF NOT EXISTS audit_log_created_at_idx ON audit_log (created_at DESC);";
+
+  var BUCKET_SQL =
+    "INSERT INTO storage.buckets (id, name, public)\n" +
+    "VALUES ('client-docs', 'client-docs', false)\n" +
+    "ON CONFLICT (id) DO NOTHING;\n\n" +
+    "DROP POLICY IF EXISTS \"Authenticated read client-docs\"   ON storage.objects;\n" +
+    "CREATE POLICY \"Authenticated read client-docs\"   ON storage.objects\n" +
+    "  FOR SELECT TO authenticated USING (bucket_id = 'client-docs');\n\n" +
+    "DROP POLICY IF EXISTS \"Authenticated write client-docs\"  ON storage.objects;\n" +
+    "CREATE POLICY \"Authenticated write client-docs\"  ON storage.objects\n" +
+    "  FOR INSERT TO authenticated WITH CHECK (bucket_id = 'client-docs');\n\n" +
+    "DROP POLICY IF EXISTS \"Authenticated update client-docs\" ON storage.objects;\n" +
+    "CREATE POLICY \"Authenticated update client-docs\" ON storage.objects\n" +
+    "  FOR UPDATE TO authenticated USING (bucket_id = 'client-docs');\n\n" +
+    "DROP POLICY IF EXISTS \"Authenticated delete client-docs\" ON storage.objects;\n" +
+    "CREATE POLICY \"Authenticated delete client-docs\" ON storage.objects\n" +
+    "  FOR DELETE TO authenticated USING (bucket_id = 'client-docs');";
+
+  function showSqlModal(title, sql){
+    var prior = document.getElementById('gl-sql-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var ov = document.createElement('div');
+    ov.id = 'gl-sql-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:900;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:24px;width:100%;max-width:680px;max-height:85vh;display:flex;flex-direction:column">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
+          '<div><div style="font-family:var(--ff-disp);font-size:16px;letter-spacing:2px;color:var(--teal)">SETUP SQL — ' + title.toUpperCase() + '</div><div style="font-size:11px;color:var(--muted);margin-top:2px">Paste into Supabase SQL editor → Run</div></div>' +
+          '<button id="gl-sql-close" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<textarea id="gl-sql-text" readonly style="flex:1;width:100%;background:#0a1628;color:#fff;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:14px;font-family:var(--ff-mono);font-size:11px;line-height:1.5;resize:none;min-height:280px"></textarea>' +
+        '<div style="display:flex;gap:8px;margin-top:12px">' +
+          '<button id="gl-sql-copy" class="cbtn pri" style="flex:1">📋 Copy</button>' +
+          '<a id="gl-sql-open" target="_blank" rel="noopener" href="https://supabase.com/dashboard/project/ufjkeqmxwuyhbqyugcgg/sql/new" class="cbtn" style="text-decoration:none;text-align:center">↗ Open SQL editor</a>' +
+          '<button id="gl-sql-done" class="cbtn">Close</button>' +
+        '</div>' +
+      '</div>';
+    ov.querySelector('#gl-sql-text').value = sql;
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-sql-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-sql-done').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-sql-copy').addEventListener('click', function(){
+      navigator.clipboard.writeText(sql).then(function(){
+        var b = ov.querySelector('#gl-sql-copy');
+        var orig = b.textContent;
+        b.textContent = '✓ Copied';
+        setTimeout(function(){ b.textContent = orig; }, 1500);
+      });
+    });
+    host.appendChild(ov);
+  }
+
+  // Build the widget once on dashboard render. Inject via observer on cpg-dashboard.
+  function startObs(){
+    var dash = document.getElementById('cpg-dashboard');
+    if(dash){
+      buildWidget();
+      // Re-build when dashboard visibility flips (so it refreshes when re-shown)
+      new MutationObserver(function(){ if(!document.getElementById('gl-health-widget')) setTimeout(buildWidget, 100); }).observe(dash, {childList:true, subtree:true});
+    } else setTimeout(startObs, 700);
+  }
+  if(document.readyState !== 'loading') startObs();
+  else document.addEventListener('DOMContentLoaded', startObs);
+
+  console.log('[GL] System health widget loaded');
+}());
