@@ -2125,3 +2125,85 @@
 
   console.log('[GL] Global busy indicator wired (callAI + sendMailgunEmail)');
 }());
+
+/* ============================================================
+   FOLLOW-UP EMAIL: preview before send
+   Adds a "📄 Preview" button to the follow-up composer modal.
+   Shows the email rendered as the recipient would see it
+   (white background, From / To / Subject headers, body in serif).
+   ============================================================ */
+(function(){
+  function escapeHtml(s){
+    return (s||'').replace(/[&<>"]/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
+    });
+  }
+
+  window.glPreviewFollowup = function(){
+    var toEl   = document.getElementById('fu-to');
+    var subjEl = document.getElementById('fu-subject');
+    var bodyEl = document.getElementById('fu-body');
+    if(!toEl || !subjEl || !bodyEl){ alert('Compose modal not open.'); return; }
+    var to = toEl.value, subject = subjEl.value, body = bodyEl.value;
+    var from = localStorage.getItem('gl_mailgun_from') || 'Good Liquid Bev Co <noreply@mail.goodliquidbevco.com>';
+
+    var host = document.getElementById('crm-panel') || document.body;
+    var prev = document.getElementById('gl-preview-overlay'); if(prev) prev.remove();
+    var ov = document.createElement('div');
+    ov.id = 'gl-preview-overlay';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1100;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#fff;color:#1a1a2e;border-radius:14px;width:100%;max-width:600px;max-height:88vh;overflow-y:auto;font-family:Arial,sans-serif;box-shadow:0 30px 80px rgba(0,0,0,.6)">' +
+        '<div style="background:#142238;color:#fff;padding:14px 20px;border-radius:14px 14px 0 0;display:flex;justify-content:space-between;align-items:center">' +
+          '<div style="font-family:var(--ff-disp);font-size:14px;letter-spacing:2px;color:#00e5c0">📄 EMAIL PREVIEW</div>' +
+          '<button id="gl-preview-close" style="background:none;border:none;color:#9ca3af;font-size:20px;cursor:pointer;line-height:1">✕</button>' +
+        '</div>' +
+        '<div style="padding:24px 28px">' +
+          '<div style="border-bottom:1px solid #e5e7eb;padding-bottom:14px;margin-bottom:20px;font-size:13px;line-height:1.85">' +
+            '<div><span style="color:#6b7280;display:inline-block;width:70px">From:</span><strong>' + escapeHtml(from) + '</strong></div>' +
+            '<div><span style="color:#6b7280;display:inline-block;width:70px">To:</span>' + escapeHtml(to) + '</div>' +
+            '<div><span style="color:#6b7280;display:inline-block;width:70px">Subject:</span><strong>' + escapeHtml(subject) + '</strong></div>' +
+          '</div>' +
+          '<div style="font-size:14px;line-height:1.75;white-space:pre-wrap;color:#1a1a2e;font-family:Georgia,serif">' + escapeHtml(body) + '</div>' +
+          '<div style="border-top:1px solid #e5e7eb;margin-top:28px;padding-top:16px;display:flex;gap:10px;justify-content:flex-end">' +
+            '<button id="gl-preview-back" style="padding:10px 20px;background:#f3f4f6;color:#1a1a2e;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">← Keep editing</button>' +
+            '<button id="gl-preview-send" style="padding:10px 24px;background:#00e5c0;color:#0a1628;border:none;border-radius:6px;font-size:13px;font-weight:800;cursor:pointer">📤 Send now</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-preview-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-preview-back').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-preview-send').addEventListener('click', function(){
+      ov.remove();
+      if(typeof window.sendFollowupEmail === 'function') window.sendFollowupEmail();
+    });
+    host.appendChild(ov);
+  };
+
+  function injectPreviewButton(){
+    var content = document.getElementById('followup-content');
+    if(!content) return;
+    // Find the button row (last div with display:flex inside content)
+    var rows = content.querySelectorAll('div');
+    var btnRow = null;
+    rows.forEach(function(d){
+      var s = d.getAttribute('style') || '';
+      if(s.indexOf('display:flex') >= 0 && s.indexOf('gap:8px') >= 0) btnRow = d;
+    });
+    if(!btnRow) return;
+    if(btnRow.querySelector('.gl-preview-btn')) return;
+    var btn = document.createElement('button');
+    btn.className = 'cbtn gl-preview-btn';
+    btn.textContent = '📄 Preview';
+    btn.setAttribute('style','background:rgba(0,229,192,.08);border:1px solid rgba(0,229,192,.3);color:var(--teal)');
+    btn.addEventListener('click', function(){ window.glPreviewFollowup(); });
+    var sendBtn = btnRow.querySelector('button.pri');
+    if(sendBtn) btnRow.insertBefore(btn, sendBtn);
+    else btnRow.appendChild(btn);
+  }
+  if(document.readyState !== 'loading') setTimeout(injectPreviewButton, 50);
+  else document.addEventListener('DOMContentLoaded', function(){ setTimeout(injectPreviewButton, 50); });
+
+  console.log('[GL] Follow-up preview v1 loaded');
+}());
