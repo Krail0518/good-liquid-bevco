@@ -12211,6 +12211,12 @@
   function whereToFind(text){
     return '<div style="font-size:11px;color:#9aa7bd;margin:4px 0 12px;padding:6px 10px;background:rgba(255,255,255,.03);border-radius:6px"><b style="color:#f5c842">Where to find it:</b> ' + text + '</div>';
   }
+  // Big locator banner at the top of each section so it is obvious where each tool lives
+  function locator(html){
+    return '<div style="margin:8px 0 14px;padding:12px 14px;background:rgba(245,200,66,.08);border:1px solid rgba(245,200,66,.25);border-left:3px solid #f5c842;border-radius:0 8px 8px 0;font-size:12.5px;line-height:1.7;color:#cfd9e6">' +
+      '<div style="font-size:10px;letter-spacing:2px;color:#f5c842;font-weight:700;margin-bottom:6px">📍 LOCATOR — WHERE THESE LIVE IN THE CRM</div>' +
+      html + '</div>';
+  }
 
   /* SECTION 1 — OPERATIONS PRO */
   var MOCK_OPS_PRO = wf(620, 280,
@@ -12232,7 +12238,12 @@
   );
 
   var SEC_OPS_PRO = MOCK_OPS_PRO +
-    intro('The <b>Operations Pro</b> sidebar section groups your production-line tooling. Everything here writes to Supabase (with localStorage fallback) and creates an audit log entry on every action.') +
+    locator(
+      '<b>Formula Vault, Yield Tracker</b> &rarr; sidebar &rarr; <b>Operations Pro</b> section.<br>' +
+      '<b>Production Runs, Sample Shipments</b> &rarr; sidebar &rarr; <b>Operations</b> section.<br>' +
+      '<b>CIP / Sanitation Log</b> &rarr; sidebar &rarr; <b>Compliance</b> section.'
+    ) +
+    intro('Your production-line + compliance tooling. Spread across three sidebar sections (Operations, Operations Pro, Compliance) because they map to different parts of your day. Everything here writes to Supabase (with localStorage fallback) and creates an audit log entry on every action.') +
     subhead('🧪', 'FORMULA VAULT') +
     intro('Single source of truth for client recipes. Each formula is versioned (v1, v2, ...) so you can iterate without losing history.') +
     bullets([
@@ -12322,7 +12333,12 @@
   );
 
   var SEC_QS = MOCK_QS +
-    intro('The <b>Quality & Supply</b> sidebar section is your compliance + supplier toolkit. Everything here is written for an FDA audit.') +
+    locator(
+      '<b>Defects / NCRs, Vendors</b> &rarr; sidebar &rarr; <b>Quality & Supply</b> section.<br>' +
+      '<b>Audit Log</b> &rarr; sidebar &rarr; <b>Compliance</b> section.<br>' +
+      '<b>Recipe Cost Calculator</b> &rarr; floating <b>🤖 AI toolbar</b> (bottom-right of any CRM page, admin only).'
+    ) +
+    intro('Your compliance + supplier toolkit. Everything here is written for an FDA audit.') +
     subhead('🚨', 'DEFECT / NCR TRACKER') +
     intro('Non-conformance report (NCR) log. Every quality issue gets a paper trail with category, severity, root cause, corrective action, and status.') +
     bullets([
@@ -12394,7 +12410,11 @@
   );
 
   var SEC_MARKETING = MOCK_MARKETING +
-    intro('The <b>Marketing</b> sidebar section + a stack of AI tools turn the CRM into a content factory. Every tool uses your saved Anthropic key (AI Settings).') +
+    locator(
+      '<b>Content Calendar</b> &rarr; sidebar &rarr; <b>Marketing</b> section.<br>' +
+      '<b>Everything else</b> (Social Drafter, Auto Case Study, Post Ideas, AI Image Prompts, Email Drip Generator, LinkedIn Outreach) &rarr; floating <b>🤖 AI toolbar</b> &mdash; the small robot button bottom-right of any CRM page. Click it to expand the menu of all 22+ AI tools.'
+    ) +
+    intro('A content factory built on top of the CRM. The Content Calendar is a sidebar page; the AI drafting tools all live in the floating bot button menu. Every AI tool uses your saved Anthropic key (🤖 AI toolbar &rarr; AI Settings).') +
     subhead('📅', 'CONTENT CALENDAR') +
     intro('Schedule posts across IG, LinkedIn, X, blog, and email blasts. Calendar grid view.') +
     bullets([
@@ -12475,7 +12495,10 @@
   );
 
   var SEC_GROWTH = MOCK_GROWTH +
-    intro('A grab bag of revenue-side tools: prioritise hot leads, model trade-show spend, see who is about to churn, suggest upsells.') +
+    locator(
+      '<b>All Growth Tools live in the floating 🤖 AI toolbar</b> (bottom-right of any CRM page). Click the bot button to expand the menu, then pick the tool. Admin-only items show a 🔒 hint.'
+    ) +
+    intro('A grab bag of revenue-side tools: prioritise hot leads, model trade-show spend, see who is about to churn, suggest upsells. None of these are sidebar pages &mdash; they all open as modal overlays from the AI toolbar.') +
     subhead('🌪️', 'TRADE SHOW ROI TRACKER (admin)') +
     intro('Log every show you spend money on. Track booth + travel + samples + collateral spend vs. the pipeline value of leads it generated.') +
     bullets([
@@ -12555,6 +12578,11 @@
   );
 
   var SEC_REVOPS = MOCK_REVOPS +
+    locator(
+      '<b>AR Aging, Weighted Pipeline Forecast, KPI Scorecard</b> &rarr; widgets on the <b>Dashboard</b> page (no clicking required &mdash; they render alongside the existing dashboard cards).<br>' +
+      '<b>AR Collection emails, Revenue Forecast (12-month), Capacity Heatmap</b> &rarr; floating <b>🤖 AI toolbar</b> (admin).<br>' +
+      '<b>Run &rarr; Invoice</b> &rarr; action button on cards in the <b>Ship</b> column of the Production Runs kanban (sidebar &rarr; Operations &rarr; Production Runs).'
+    ) +
     intro('A handful of widgets and AI tools that keep cash moving and pipeline visible.') +
     subhead('💰', 'AR AGING DASHBOARD WIDGET') +
     intro('Auto-buckets every unpaid invoice into 0-30 / 31-60 / 61-90 / 90+ day buckets. Sits on the Dashboard so you see it every morning.') +
@@ -12628,7 +12656,15 @@
   );
 
   var SEC_CR = MOCK_CR +
-    intro('Tools that touch the customer directly — portal, surveys, onboarding flow, anniversaries.') +
+    locator(
+      '<b>Customer Logins</b> (admin page to send portal invites + reset / remove portal accounts) &rarr; sidebar &rarr; <b>Tools</b> section (near the bottom).<br>' +
+      '<b>Customer Portal itself</b> &rarr; this is what your <i>customer</i> sees, not you. They get a magic-link email when you click Send Onboarding Email. Their URL is <code>goodliquidbevco.com#portal/&lt;client-uuid&gt;</code>.<br>' +
+      '<b>Onboarding Wizard, NPS responses</b> &rarr; floating <b>🤖 AI toolbar</b> (admin).<br>' +
+      '<b>NPS survey link to send to a customer</b> &rarr; client record &rarr; "Send NPS survey" button.<br>' +
+      '<b>Anniversary widget</b> &rarr; auto-renders on the <b>Dashboard</b> when any client hits a milestone this week.<br>' +
+      '<b>Run Sheet PDF</b> &rarr; "📄 Print sheet" button on cards in the Production Runs kanban.'
+    ) +
+    intro('Tools that touch the customer directly &mdash; portal, surveys, onboarding flow, anniversaries. <b>There is no single "Customer Relations" sidebar section</b> &mdash; these are scattered across the sidebar Tools area, the AI toolbar, the Dashboard, and inline on client / production-run records.') +
     subhead('🌐', 'CUSTOMER PORTAL') +
     intro('Each client gets a private URL where they can see their invoices, pay (Stripe), accept quotes, and message you. No login = a magic-link in their email.') +
     bullets([
@@ -12699,6 +12735,9 @@
   );
 
   var SEC_PUBLIC = MOCK_PUBLIC +
+    locator(
+      'All sections in this group are on the <b>public marketing website</b> at <code>goodliquidbevco.com</code> &mdash; no CRM login required. Scroll through the homepage to find them; the nav bar links to most.'
+    ) +
     intro('The public marketing site (goodliquidbevco.com) got several new sections to help convert visitors. All are live now.') +
     subhead('🌱', 'SUSTAINABILITY SECTION') +
     intro('Honest data on what makes our line greener than the alternative: aluminum recycle rate, water per filled can, kWh per case, recyclable outbound packaging.') +
@@ -12750,10 +12789,10 @@
   var NEW_SECTIONS = [
     { id:'help-ops-pro',   icon:'🏭', label:'Operations Pro',     html:SEC_OPS_PRO },
     { id:'help-qs',        icon:'✅',       label:'Quality & Supply',   html:SEC_QS },
-    { id:'help-marketing', icon:'📣', label:'Marketing Engine',   html:SEC_MARKETING },
+    { id:'help-marketing', icon:'📣', label:'Marketing & Content',html:SEC_MARKETING },
     { id:'help-growth',    icon:'🚀', label:'Growth Tools',       html:SEC_GROWTH },
     { id:'help-revops',    icon:'💰', label:'Revenue Ops',        html:SEC_REVOPS },
-    { id:'help-cr',        icon:'🌐', label:'Customer Relations', html:SEC_CR },
+    { id:'help-cr',        icon:'🌐', label:'Customer-Facing Tools', html:SEC_CR },
     { id:'help-public',    icon:'🏠', label:'Public Website',     html:SEC_PUBLIC }
   ];
 
