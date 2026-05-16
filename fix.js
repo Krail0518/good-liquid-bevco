@@ -796,11 +796,25 @@
   /* ── EXPORT PDF ── */
   window.glExportPDF = function(){
     var inv=window.glSaveInvoice();if(!inv)return;
-    var client=(window.clients||[]).find(function(c){return c.id===inv.client;});
+    var client=(window.clients||[]).find(function(c){return c.id===inv.client;}) || {};
+    // Build a proper Bill To block from the client's billing address.
+    var useBilling = client.billingSame === false && (client.billingStreet || client.billingCity);
+    var bStreet = useBilling ? client.billingStreet : client.street;
+    var bCity   = useBilling ? client.billingCity   : client.city;
+    var bState  = useBilling ? client.billingState  : client.state;
+    var bZip    = useBilling ? client.billingZip    : client.zip;
+    var bLine2  = [bCity, bState].filter(Boolean).join(', ') + (bZip ? ' ' + bZip : '');
+    var billToHtml = '<div style="font-weight:700">' + (client.legalName || client.name || inv.clientName || '') + '</div>'
+      + (client.legalName && client.legalName !== client.name ? '<div style="color:#666;font-size:11px">dba ' + client.name + '</div>' : '')
+      + (bStreet ? '<div style="color:#444;font-size:12px;margin-top:2px">' + bStreet + '</div>' : '')
+      + (bLine2.trim() ? '<div style="color:#444;font-size:12px">' + bLine2 + '</div>' : '')
+      + (client.contact ? '<div style="color:#666;font-size:11px;margin-top:3px">Attn: ' + client.contact + '</div>' : '')
+      + (client.email || inv.clientEmail ? '<div style="color:#666;font-size:11px">' + (client.email || inv.clientEmail) + '</div>' : '');
+    var terms = inv.paymentTerms || client.paymentTerms || 'Due on receipt';
     var html='<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;margin:0;padding:40px;color:#1a1a2e;font-size:13px}.header{display:flex;justify-content:space-between;margin-bottom:40px}.brand{font-size:28px;font-weight:900;letter-spacing:2px}.brand span{color:#00e5c0}table{width:100%;border-collapse:collapse;margin-bottom:20px}th{background:#0a1628;color:#fff;padding:10px 12px;text-align:left;font-size:11px}td{padding:10px 12px;border-bottom:1px solid #eee;font-size:12px}tr:nth-child(even)td{background:#f9f9f9}.grand{font-size:18px;color:#00e5c0;font-weight:900}.footer{margin-top:40px;padding-top:20px;border-top:2px solid #eee;font-size:11px;color:#999;display:flex;justify-content:space-between}.badge{display:inline-block;background:#e8fff9;border:1px solid #00e5c0;color:#00695c;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700}</style></head><body>'+
       '<div class="header"><div><div class="brand">GOOD <span>LIQUID</span> BEV CO</div><div style="font-size:11px;color:#666;margin-top:6px;line-height:1.8">2011 51st Ave E, Unit 100<br>Palmetto, FL 34221<br>Mike@GoodLiquid.com &middot; (803) 493-5065<br>goodliquidbevco.com</div><div style="margin-top:8px"><span class="badge">GMP</span>&nbsp;<span class="badge">PCQI</span>&nbsp;<span class="badge">HACCP</span></div></div>'+
-      '<div style="text-align:right"><h2 style="font-size:22px;margin:0 0 4px">INVOICE</h2><div><b>Invoice #:</b> '+inv.id+'</div><div><b>Date:</b> '+inv.date+'</div><div><b>Terms:</b> Due upon receipt</div></div></div>'+
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:32px"><div><div style="font-size:10px;letter-spacing:2px;color:#999;margin-bottom:4px">BILL TO</div><div style="font-weight:700">'+(client?.name||inv.clientName)+'</div><div style="color:#666">'+(client?.email||inv.clientEmail)+'</div></div></div>'+
+      '<div style="text-align:right"><h2 style="font-size:22px;margin:0 0 4px">INVOICE</h2><div><b>Invoice #:</b> '+inv.id+'</div><div><b>Date:</b> '+inv.date+'</div><div><b>Terms:</b> '+terms+'</div></div></div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:32px"><div><div style="font-size:10px;letter-spacing:2px;color:#999;margin-bottom:4px">BILL TO</div>'+billToHtml+'</div></div>'+
       '<table><thead><tr><th>Description</th><th style="text-align:center">Qty</th><th style="text-align:center">Unit</th><th style="text-align:right">Unit Price</th><th style="text-align:right">Total</th></tr></thead><tbody>'+
       inv.lines.map(function(l){return '<tr><td>'+l.desc+'</td><td style="text-align:center">'+Number(l.qty||0).toLocaleString()+'</td><td style="text-align:center">'+(l.unit||'')+'</td><td style="text-align:right">'+glFmt(l.unitPrice||0)+'</td><td style="text-align:right;font-weight:600">'+glFmt(l.total||0)+'</td></tr>';}).join('')+
       '<tr style="background:#f5f5f5"><td colspan="4" style="text-align:right;font-weight:600">Subtotal</td><td style="text-align:right;font-weight:700">'+glFmt(inv.subtotal)+'</td></tr>'+
@@ -1569,7 +1583,9 @@
       notes:'',
       date:date,
       status:'pending',
-      paymentTerms:'Due upon receipt'
+      // Default to the client's terms (set in the Edit Client modal); fall back
+      // to "Due on receipt" for clients without terms configured.
+      paymentTerms: client.paymentTerms || 'Due on receipt'
     };
     window.invoices=window.invoices||[];
     // Mutate in place so index.html's `let invoices` (bridged to window.invoices)
@@ -1580,8 +1596,17 @@
     if(typeof addNotification==='function')addNotification('Invoice saved: '+invId,(client.name||'')+' · '+window.glUsd(amount),'success');
     var ov=document.getElementById('gl-inv-builder');if(ov)ov.classList.remove('show');
 
-    // Fire-and-forget Supabase persistence (keeps synchronous contract for glExportPDF)
-    var dueIso='';try{dueIso=new Date(Date.parse(date)+30*86400000).toISOString().slice(0,10);}catch(e){dueIso='';}
+    // Compute the due date from the payment terms instead of hardcoding +30d.
+    var dueIso='';
+    try {
+      var t = (inv.paymentTerms || '').toLowerCase();
+      var addDays = 0;
+      if(/^net\s*(\d+)/.test(t)) addDays = parseInt(RegExp.$1, 10);
+      else if(t === 'prepaid')   addDays = null;     // no due date
+      else if(t === 'cod')       addDays = 0;
+      else                       addDays = 0;        // "Due on receipt"
+      if(addDays !== null) dueIso = new Date(Date.parse(date) + addDays*86400000).toISOString().slice(0,10);
+    } catch(e){ dueIso=''; }
     fetch(SURL+'/invoices',{
       method:'POST',
       headers:Object.assign({},SH,{'Prefer':'return=representation'}),
@@ -1594,6 +1619,7 @@
         status:'pending',
         invoice_date:date,
         due_date:dueIso||null,
+        payment_terms: inv.paymentTerms,
         notes:'',
         line_items:lines
       })

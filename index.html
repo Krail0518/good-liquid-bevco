@@ -1084,15 +1084,80 @@ select option, .fsel option {
     <div class="cf rv d2">
       <div class="cf-title">REQUEST A QUOTE</div>
       <div class="frow2">
-        <div class="field"><label>Brand name</label><input type="text" placeholder="Your Beverage Co."></div>
-        <div class="field"><label>Your name</label><input type="text" placeholder="First &amp; last"></div>
+        <div class="field"><label>Brand name</label><input id="qf-brand" type="text" placeholder="Your Beverage Co."></div>
+        <div class="field"><label>Your name</label><input id="qf-name" type="text" placeholder="First &amp; last"></div>
       </div>
-      <div class="field"><label>Email</label><input type="email" placeholder="you@brand.com"></div>
       <div class="frow2">
-        <div class="field"><label>Service</label><select><option>Beverage R&amp;D</option><option>Small batch canning</option><option>Bottle filling</option><option>Co-packing</option><option>Consulting</option><option>Not sure yet</option></select></div>
-        <div class="field"><label>Volume</label><select><option>150–339 cases (pilot)</option><option>340–500 cases</option><option>501–999 cases</option><option>1,000–2,499</option><option>2,500+ cases</option></select></div>
+        <div class="field"><label>Email</label><input id="qf-email" type="email" placeholder="you@brand.com"></div>
+        <div class="field"><label>Phone</label><input id="qf-phone" type="tel" placeholder="(555) 555-0100"></div>
       </div>
-      <div class="field"><label>Project details</label><textarea style="width:100%;padding:12px 15px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:13px;font-family:var(--ff-body);resize:none" rows="3" placeholder="Product concept, flavor, timeline, questions…"></textarea></div>
+      <div class="frow2">
+        <div class="field"><label>City</label><input id="qf-city" type="text" placeholder="Tampa"></div>
+        <div class="field"><label>State</label><input id="qf-state" type="text" maxlength="2" placeholder="FL" style="text-transform:uppercase"></div>
+      </div>
+      <div class="frow2">
+        <div class="field"><label>Service</label><select id="qf-service">
+          <option value="">Select service…</option>
+          <option>Beverage R&amp;D</option>
+          <option>Small batch canning</option>
+          <option>Bottle filling</option>
+          <option>Co-packing</option>
+          <option>Consulting</option>
+          <option>Not sure yet</option>
+        </select></div>
+        <div class="field"><label>Product type</label><select id="qf-product">
+          <option value="">Select…</option>
+          <option value="seltzer">Seltzer</option>
+          <option value="kombucha">Kombucha</option>
+          <option value="coldbrew">Cold brew</option>
+          <option value="juice">Juice</option>
+          <option value="rtd">RTD cocktail</option>
+          <option value="energy">Energy drink</option>
+          <option value="mocktail">Mocktail</option>
+          <option value="sparkling">Sparkling water</option>
+          <option value="sports">Sports drink</option>
+          <option value="other">Other</option>
+        </select></div>
+      </div>
+      <div class="frow2">
+        <div class="field"><label>Volume / yr</label><select id="qf-volume">
+          <option>150–339 cases (pilot)</option>
+          <option>340–500 cases</option>
+          <option>501–999 cases</option>
+          <option>1,000–2,499</option>
+          <option>2,500+ cases</option>
+        </select></div>
+        <div class="field"><label>Timeline</label><select id="qf-timeline">
+          <option value="">When?</option>
+          <option value="asap">ASAP</option>
+          <option value="1-3mo">1–3 months</option>
+          <option value="3-6mo">3–6 months</option>
+          <option value="6-12mo">6–12 months</option>
+          <option value="12mo+">12+ months / exploring</option>
+        </select></div>
+      </div>
+      <div class="frow2">
+        <div class="field"><label>Funding stage</label><select id="qf-funding">
+          <option value="">Select…</option>
+          <option value="self">Self-funded / bootstrapped</option>
+          <option value="pre-launch">Pre-launch (raising)</option>
+          <option value="funded">Funded round closed</option>
+          <option value="revenue">Generating revenue</option>
+          <option value="prefer-not">Prefer not to say</option>
+        </select></div>
+        <div class="field"><label>How did you find us?</label><select id="qf-source">
+          <option value="">Select…</option>
+          <option value="google">Google search</option>
+          <option value="instagram">Instagram</option>
+          <option value="linkedin">LinkedIn</option>
+          <option value="trade_show">Trade show</option>
+          <option value="industry_pub">Industry publication</option>
+          <option value="customer_referral">Customer referral</option>
+          <option value="word_of_mouth">Word of mouth</option>
+          <option value="other">Other</option>
+        </select></div>
+      </div>
+      <div class="field"><label>Project details</label><textarea id="qf-details" style="width:100%;padding:12px 15px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:13px;font-family:var(--ff-body);resize:vertical" rows="3" placeholder="Product concept, flavor, packaging vision, certifications needed, questions…"></textarea></div>
       <button class="sub-btn" onclick="submitContactForm(this)">Send inquiry →</button>
       <div class="form-ok" id="form-ok">✓ Sent! Mike or Sandra will respond within 1 business day.</div>
     </div>
@@ -2603,8 +2668,19 @@ function viewInvoice(id){
         </div>
       </div>
       <div style="margin-bottom:18px"><div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:4px">BILL TO</div>
-        <div style="font-weight:700;font-size:13px;color:var(--white)">${c.name}</div>
-        <div style="font-size:11px;color:var(--muted)">${c.contact}</div><div style="font-size:11px;color:var(--muted)">${c.email}</div></div>
+        <div style="font-weight:700;font-size:13px;color:var(--white)">${c.legalName || c.name}</div>
+        ${c.legalName && c.legalName !== c.name ? `<div style="font-size:11px;color:var(--muted)">dba ${c.name}</div>` : ''}
+        ${(function(){
+          const useBilling = c.billingSame === false && (c.billingStreet || c.billingCity);
+          const street = useBilling ? c.billingStreet : c.street;
+          const city   = useBilling ? c.billingCity   : c.city;
+          const state  = useBilling ? c.billingState  : c.state;
+          const zip    = useBilling ? c.billingZip    : c.zip;
+          return street ? `<div style="font-size:11px;color:var(--muted)">${street}</div><div style="font-size:11px;color:var(--muted)">${[city, state].filter(Boolean).join(', ')}${zip ? ' ' + zip : ''}</div>` : '';
+        })()}
+        ${c.contact ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">Attn: ${c.contact}</div>` : ''}
+        ${c.email ? `<div style="font-size:11px;color:var(--muted)">${c.email}</div>` : ''}
+      </div>
       <table style="width:100%;border-collapse:collapse;margin-bottom:14px;font-size:12px">
         <thead><tr style="background:rgba(255,255,255,.04)">
           <th style="text-align:left;padding:9px 11px;font-size:10px;color:var(--muted);border-bottom:1px solid rgba(255,255,255,.07)">Description</th>
@@ -3348,6 +3424,8 @@ async function loadSupabaseData(){
     iR.data.forEach(i=>invoices.push({
       id:i.invoice_number||i.id, supaId:i.id, client:i.client_id||'', clientName:i.client_name||'',
       svc:i.service||'', amount:i.amount||0, date:i.invoice_date||'', status:i.status||'draft', notes:i.notes||'',
+      paymentTerms: i.payment_terms || '',
+      dueDate: i.due_date || '',
       // Also hydrate line items so the dashboard chart can categorize per-line.
       lines: Array.isArray(i.line_items) ? i.line_items : []
     }));
@@ -3864,73 +3942,128 @@ function navTo(id){
 
 
 async function submitContactForm(btn){
-  const section = document.getElementById('contact');
-  const inputs = section.querySelectorAll('input, select, textarea');
-  const vals = {};
-  const labels = ['brand_name','contact_name','email','service','volume','details'];
-  inputs.forEach((el,i)=>{ vals[labels[i]||'field_'+i] = el.value; });
+  const v = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  const vals = {
+    brand_name:    v('qf-brand'),
+    contact_name:  v('qf-name'),
+    email:         v('qf-email'),
+    phone:         v('qf-phone'),
+    city:          v('qf-city'),
+    state:         v('qf-state').toUpperCase(),
+    service:       v('qf-service'),
+    product_type:  v('qf-product'),
+    volume:        v('qf-volume'),
+    timeline:      v('qf-timeline'),
+    funding_stage: v('qf-funding'),
+    lead_source:   v('qf-source'),
+    details:       v('qf-details')
+  };
+
+  // Basic validation
+  if(!vals.brand_name || !vals.contact_name || !vals.email){
+    alert('Brand name, your name, and email are required.');
+    return;
+  }
+  if(vals.email.indexOf('@') < 0){
+    alert('Please enter a valid email.');
+    return;
+  }
 
   btn.textContent = 'Sending…';
   btn.disabled = true;
 
+  // Build a single human-readable note block we'll reuse in the deal + the email.
+  const noteBlock = [
+    'Brand: ' + vals.brand_name,
+    'Contact: ' + vals.contact_name + ' (' + vals.email + (vals.phone ? ', ' + vals.phone : '') + ')',
+    (vals.city || vals.state) ? 'Location: ' + [vals.city, vals.state].filter(Boolean).join(', ') : null,
+    'Service: ' + (vals.service || '—'),
+    'Product type: ' + (vals.product_type || '—'),
+    'Volume: ' + (vals.volume || '—'),
+    'Timeline: ' + (vals.timeline || '—'),
+    'Funding stage: ' + (vals.funding_stage || '—'),
+    'Lead source: ' + (vals.lead_source || '—'),
+    '',
+    vals.details || '(no project details given)'
+  ].filter(Boolean).join('\n');
+
+  let formspreeOk = false;
   try {
-    // 1. Send email via Formspree
+    // 1. Notify Mike + Sandra via Formspree
     const emailRes = await fetch('https://formspree.io/f/mykolyee', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(vals)
+      body: JSON.stringify(Object.assign({}, vals, { _subject: '[Good Liquid] New quote: ' + vals.brand_name, summary: noteBlock }))
     });
+    formspreeOk = emailRes.ok;
 
-    // 2. Save to Supabase contact_submissions table
+    // 2. Save the raw submission (audit + future analytics).
     try {
       await supa.from('contact_submissions').insert([{
-        brand_name: vals.brand_name,
-        contact_name: vals.contact_name,
-        email: vals.email,
-        service: vals.service,
-        volume: vals.volume,
-        message: vals.details,
-        status: 'new'
+        brand_name:    vals.brand_name,
+        contact_name:  vals.contact_name,
+        email:         vals.email,
+        phone:         vals.phone,
+        city:          vals.city,
+        state:         vals.state,
+        service:       vals.service,
+        product_type:  vals.product_type,
+        volume:        vals.volume,
+        timeline:      vals.timeline,
+        funding_stage: vals.funding_stage,
+        lead_source:   vals.lead_source,
+        message:       vals.details,
+        status:        'new'
       }]);
-    } catch(e){ console.warn('Supabase contact save failed:', e); }
+    } catch(e){ console.warn('Supabase contact_submissions insert failed:', e); }
 
-    // 3. Auto-create a deal in the Pipeline (Prospecting stage)
+    // 3. Auto-create a deal in the Pipeline (Prospecting stage) so the lead
+    //    lands on the kanban and shows up in pipeline reports immediately.
+    let newDealId = null;
     try {
-      const dealName = (vals.brand_name || 'New Inquiry') + ' — Quote Request';
+      const dealName = vals.brand_name + ' — Quote Request';
       const { data: newDeal } = await supa.from('deals').insert([{
         name: dealName,
-        client_name: vals.brand_name || '',
+        client_name: vals.brand_name,
         value: 0,
         stage: 'Prospecting',
         probability: 20,
-        notes: `Service: ${vals.service}
-Volume: ${vals.volume}
-Contact: ${vals.contact_name} (${vals.email})
-
-${vals.details}`
+        notes: noteBlock
       }]).select().single();
-      // Also add to local deals array if CRM is open. Use the Supabase-returned
-      // UUID so later moves/edits on this card actually persist.
+      newDealId = newDeal ? newDeal.id : null;
       if(typeof deals !== 'undefined' && deals['Prospecting']){
         deals['Prospecting'].push({
-          id: newDeal ? newDeal.id : ('tmp_' + Date.now()),
-          name: dealName, co: vals.brand_name || '',
-          val: '$0', prob: 20
+          id: newDealId || ('tmp_' + Date.now()),
+          name: dealName, co: vals.brand_name,
+          val: '$0', prob: 20, notes: noteBlock
         });
         if(typeof renderKanban === 'function') renderKanban();
-        if(typeof renderDash === 'function') renderDash();
+        if(typeof renderDash === 'function')   renderDash();
       }
     } catch(e){ console.warn('Pipeline deal creation failed:', e); }
 
-    if(emailRes.ok){
+    // 4. Drop a notification in the CRM if it's open.
+    if(typeof addNotification === 'function'){
+      addNotification('💼 New quote request: ' + vals.brand_name, (vals.contact_name || '') + ' · ' + (vals.email || ''), 'success');
+    }
+
+    if(formspreeOk){
       document.getElementById('form-ok').style.display = 'block';
-      inputs.forEach(el => el.value = '');
+      ['qf-brand','qf-name','qf-email','qf-phone','qf-city','qf-state','qf-service','qf-product','qf-volume','qf-timeline','qf-funding','qf-source','qf-details'].forEach(id => {
+        const el = document.getElementById(id); if(el) el.value = '';
+      });
+      setTimeout(() => {
+        const ok = document.getElementById('form-ok'); if(ok) ok.style.display = 'none';
+        btn.textContent = 'Send inquiry →';
+        btn.disabled = false;
+      }, 6000);
     } else {
       btn.textContent = 'Send inquiry →';
       btn.disabled = false;
-      alert('Something went wrong. Please email Mike@GoodLiquid.com directly.');
+      alert('Something went wrong sending the email. Your inquiry was saved — Mike will see it. Or email Mike@GoodLiquid.com directly.');
     }
   } catch(e){
+    console.error('submitContactForm threw', e);
     btn.textContent = 'Send inquiry →';
     btn.disabled = false;
     alert('Something went wrong. Please email Mike@GoodLiquid.com directly.');
@@ -4222,7 +4355,25 @@ async function downloadInvoicePDF(invId) {
   const inv = invoices.find(i=>i.id===invId);
   if(!inv) return;
   const c = clients.find(x=>x.id===inv.client)||{name:inv.clientName,contact:'',email:''};
-  
+
+  // Build a proper Bill To block using the client's billing address if it
+  // differs from physical, otherwise the physical address.
+  const useBilling = c.billingSame === false && (c.billingStreet || c.billingCity);
+  const bStreet = useBilling ? c.billingStreet : c.street;
+  const bCity   = useBilling ? c.billingCity   : c.city;
+  const bState  = useBilling ? c.billingState  : c.state;
+  const bZip    = useBilling ? c.billingZip    : c.zip;
+  const bLine2  = [bCity, bState].filter(Boolean).join(', ') + (bZip ? ' ' + bZip : '');
+  const billToHtml = `<strong>${c.legalName || c.name}</strong>`
+    + (c.legalName && c.legalName !== c.name ? `<br><span style="color:#666;font-size:12px">dba ${c.name}</span>` : '')
+    + (bStreet ? `<br>${bStreet}` : '')
+    + (bLine2.trim() ? `<br>${bLine2}` : '')
+    + (c.contact ? `<br><span style="color:#666;font-size:12px">Attn: ${c.contact}</span>` : '')
+    + (c.email ? `<br><span style="color:#666;font-size:12px">${c.email}</span>` : '');
+
+  // Prefer the client's payment terms, fall back to whatever's on the invoice.
+  const terms = inv.paymentTerms || c.paymentTerms || 'Due on receipt';
+
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
   <style>
     body{font-family:Arial,sans-serif;max-width:700px;margin:40px auto;color:#1a1a1a;font-size:14px}
@@ -4256,9 +4407,9 @@ async function downloadInvoicePDF(invId) {
     </div>
   </div>
   <div class="meta">
-    <div class="meta-box"><h4>Bill To</h4><p><strong>${c.name}</strong><br>${c.contact}<br>${c.email}</p></div>
+    <div class="meta-box"><h4>Bill To</h4><p>${billToHtml}</p></div>
     <div class="meta-box" style="text-align:right"><h4>Invoice Details</h4>
-      <p>Date: ${inv.date}<br>Due: ${inv.due_date||'Net 30'}</p></div>
+      <p>Date: ${inv.date}<br>Terms: ${terms}</p></div>
   </div>
   <table>
     <thead><tr><th>Description</th><th style="text-align:right">Amount</th></tr></thead>
