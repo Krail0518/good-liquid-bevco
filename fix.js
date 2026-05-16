@@ -1980,6 +1980,8 @@
     tools.setAttribute('style','display:none;flex-direction:column;gap:6px;align-items:flex-end;margin-bottom:6px');
 
     var items = [
+      { label:'✉️ Email drip generator', fn:'openEmailDripGenerator' },
+      { label:'💼 LinkedIn outreach', fn:'openLinkedInOutreach' },
       { label:'💰 Estimate Quote', fn:'aiEstimateQuote' },
       { label:'🧾 Draft Invoice',  fn:'aiDraftInvoice' },
       { label:'📝 Meeting Notes',  fn:'openMeetingNotesModal' },
@@ -7757,4 +7759,243 @@
   };
 
   console.log('[GL] capacity indicator loaded');
+}());
+
+/* ============================================================
+   PUBLIC RESOURCE LIBRARY (blog grid)
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  var DEMO = [
+    { title:'How to launch a hard kombucha brand', tag:'Brand launch', excerpt:'From recipe to retail in 5 milestones. What to expect on cost, timeline, and the FDA paperwork no one warns you about.', read_time_min:6, url:'#' },
+    { title:'Canning MOQs explained', tag:'Operations', excerpt:'Why 150 cases is our floor and what economic ladder kicks in at 500 / 1k / 5k. Read this before you ask for a quote.', read_time_min:4, url:'#' },
+    { title:'Pasteurization vs cold-fill — pick one', tag:'R&D', excerpt:'A practical decision tree based on pH, sugar, and where you plan to distribute. We make the call on every formulation we run.', read_time_min:5, url:'#' },
+    { title:'PakTech handles + custom lid colors — what they cost', tag:'Packaging', excerpt:'Two upgrades brands always ask about. Real numbers on the per-can adder and when they pay off in shelf appeal.', read_time_min:3, url:'#' }
+  ];
+
+  function tagColor(t){
+    var map = { 'Brand launch':'#5fcf9e', 'Operations':'#7fc6f5', 'R&D':'#c4a4f8', 'Packaging':'#f5c842' };
+    return map[t] || '#9aa7bd';
+  }
+
+  function cardHtml(p){
+    var col = tagColor(p.tag);
+    var safeUrl = p.url || '#';
+    var newTab = (p.url && p.url.indexOf('http') === 0) ? ' target="_blank" rel="noopener"' : '';
+    return '<a href="' + esc(safeUrl) + '"'+newTab+' style="text-decoration:none;display:flex;flex-direction:column;gap:11px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:22px;transition:border-color .15s" onmouseover="this.style.borderColor=\'rgba(0,229,192,.35)\'" onmouseout="this.style.borderColor=\'rgba(255,255,255,.08)\'">' +
+      (p.tag ? '<span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:600;letter-spacing:1px;background:' + col + '22;color:' + col + ';border:1px solid ' + col + '44;width:fit-content">' + esc(p.tag) + '</span>' : '') +
+      '<div style="font-family:var(--ff-disp);font-size:16px;letter-spacing:.5px;color:#fff;line-height:1.3">' + esc(p.title || 'Untitled') + '</div>' +
+      '<div style="font-size:13px;color:var(--muted);line-height:1.65">' + esc(p.excerpt || '') + '</div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:auto;padding-top:6px;border-top:1px solid rgba(255,255,255,.06)">' +
+        '<span style="font-size:11px;color:var(--muted)">' + (p.read_time_min ? p.read_time_min + ' min read' : 'Read more') + '</span>' +
+        '<span style="font-size:13px;color:var(--teal)">Read →</span>' +
+      '</div>' +
+    '</a>';
+  }
+
+  async function load(){
+    var host = document.getElementById('gl-resources');
+    if(!host) return;
+    var items = null;
+    try {
+      if(window.supa){
+        var r = await window.supa.from('resources').select('*').eq('published', true).order('display_order',{ascending:true,nullsFirst:false}).limit(8);
+        if(r && r.data && r.data.length) items = r.data;
+      }
+    } catch(e){}
+    items = items || DEMO;
+    host.innerHTML = items.map(cardHtml).join('');
+  }
+
+  function start(){
+    if(document.getElementById('gl-resources')) load();
+    else setTimeout(start, 600);
+  }
+  if(document.readyState !== 'loading') start();
+  else document.addEventListener('DOMContentLoaded', start);
+
+  console.log('[GL] public resource library loaded');
+}());
+
+/* ============================================================
+   EMAIL DRIP CAMPAIGN GENERATOR (AI)
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var VERTICALS = ['RTD cocktail brand','Kombucha brand','Cold brew / coffee brand','Functional / wellness drink','Sparkling water brand','Energy drink brand','Hop water / NA beer brand','Sports / hydration brand','Generic — beverage startup'];
+
+  window.openEmailDripGenerator = function(){
+    var prior = document.getElementById('gl-drip-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var verticalOpts = VERTICALS.map(function(v){ return '<option>' + esc(v) + '</option>'; }).join('');
+    var ov = document.createElement('div');
+    ov.id = 'gl-drip-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1000;background:rgba(6,13,26,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:640px;max-height:88vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">✉️ EMAIL DRIP GENERATOR</div>' +
+          '<button id="gl-drip-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="font-size:12px;color:#9aa7bd;margin-bottom:14px;line-height:1.6">AI drafts a 5-email cold-lead nurture sequence tailored to a beverage vertical. Each email has subject + body, copy-ready to drop into Mailgun, Mailchimp, or your tool of choice.</div>' +
+        '<div class="frow"><div class="flbl">Target vertical</div><select class="fsel" id="gl-drip-vertical">' + verticalOpts + '</select></div>' +
+        '<div class="frow"><div class="flbl">Lead source</div>' +
+          '<select class="fsel" id="gl-drip-source">' +
+            '<option value="cold">Pure cold outreach (we found them)</option>' +
+            '<option value="form">Filled out quote form but went quiet</option>' +
+            '<option value="show">Met us at a trade show</option>' +
+            '<option value="referral">Came in via referral, never followed up</option>' +
+          '</select>' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Pacing</div>' +
+          '<select class="fsel" id="gl-drip-pace">' +
+            '<option value="aggressive">Aggressive (every 2 days)</option>' +
+            '<option value="standard" selected>Standard (every 4 days)</option>' +
+            '<option value="slow">Slow burn (weekly)</option>' +
+          '</select>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px"><button id="gl-drip-go" class="cbtn pri" style="flex:1">✨ Draft 5-email sequence</button></div>' +
+        '<div id="gl-drip-out" style="margin-top:16px"></div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-drip-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-drip-go').addEventListener('click', async function(){
+      var btn = this; var out = ov.querySelector('#gl-drip-out');
+      var vertical = ov.querySelector('#gl-drip-vertical').value;
+      var source   = ov.querySelector('#gl-drip-source').value;
+      var pace     = ov.querySelector('#gl-drip-pace').value;
+      btn.disabled = true; btn.textContent = '✨ Drafting…';
+      out.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:14px;text-align:center">Composing 5 emails…</div>';
+      var sys = 'You write cold-lead nurture sequences for Good Liquid Bev Co, a family-run beverage co-packer in Palmetto FL. Voice: confident, direct, founder-first-person ("we"). Avoid corporate filler ("innovative", "leverage", "passionate"). Each email is short (under 120 words). Sequence opens curious, builds value, ends with a clear ask.';
+      var paceLine = ({ aggressive:'2 days apart', standard:'4 days apart', slow:'7 days apart' })[pace];
+      var sourceLine = ({
+        cold:'pure cold outreach — they don\'t know us yet',
+        form:'they filled out our quote form but went silent',
+        show:'we met them at a trade show',
+        referral:'a referrer introduced them but they haven\'t responded'
+      })[source];
+      var user = 'Draft a 5-email nurture sequence for a ' + vertical + '. Context: ' + sourceLine + '. Pacing: ' + paceLine + '.\n\nReturn EXACTLY this format with the === delimiter, no preamble:\n\n=== Email 1 ===\nSubject: <subject>\nBody:\n<body>\n\n=== Email 2 ===\n...etc through Email 5. Subjects should sound like a real person sent them.';
+      if(typeof window.callAI !== 'function'){
+        out.innerHTML = '<div style="color:#f5c842;font-size:13px;padding:14px">AI not configured. Open AI Settings to paste your Anthropic key.</div>';
+        btn.disabled = false; btn.textContent = '✨ Draft 5-email sequence'; return;
+      }
+      var text = await window.callAI(sys, user);
+      btn.disabled = false; btn.textContent = '✨ Draft 5-email sequence';
+      if(!text){ out.innerHTML = '<div style="color:#f5c842;font-size:13px;padding:14px">No AI response.</div>'; return; }
+      var parts = text.split(/===\s*Email\s*\d+\s*===/i).map(function(s){ return s.trim(); }).filter(Boolean);
+      if(!parts.length) parts = [text];
+      out.innerHTML = parts.map(function(p, i){
+        return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:14px;margin-bottom:10px">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+            '<div style="font-family:var(--ff-disp);font-size:10px;letter-spacing:2px;color:var(--teal)">EMAIL ' + (i+1) + '</div>' +
+            '<button class="gl-drip-copy cbtn" data-text="' + esc(p).replace(/"/g,'&quot;') + '" style="font-size:10px;padding:4px 10px">📋 Copy</button>' +
+          '</div>' +
+          '<div style="font-size:13px;color:var(--white);line-height:1.6;white-space:pre-wrap">' + esc(p) + '</div>' +
+        '</div>';
+      }).join('');
+      out.querySelectorAll('.gl-drip-copy').forEach(function(b){
+        b.addEventListener('click', async function(){
+          var t = b.getAttribute('data-text') || '';
+          try { await navigator.clipboard.writeText(t); } catch(e){
+            var ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+          }
+          b.textContent = '✓ Copied'; setTimeout(function(){ b.textContent = '📋 Copy'; }, 1500);
+        });
+      });
+      if(typeof window.glAudit === 'function') window.glAudit('drip_generated', '', { vertical: vertical, source: source, pace: pace });
+    });
+    host.appendChild(ov);
+  };
+
+  console.log('[GL] email drip generator loaded');
+}());
+
+/* ============================================================
+   LINKEDIN OUTREACH HELPER (AI)
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  window.openLinkedInOutreach = function(){
+    var prior = document.getElementById('gl-li-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var ov = document.createElement('div');
+    ov.id = 'gl-li-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1000;background:rgba(6,13,26,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:580px;max-height:88vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">💼 LINKEDIN OUTREACH</div>' +
+          '<button id="gl-li-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="font-size:12px;color:#9aa7bd;margin-bottom:14px;line-height:1.6">Drafts 3 personalized cold messages. Open their LinkedIn in another tab, paste a recent post line into "Recent context" — that\'s what makes the message feel human.</div>' +
+        '<div class="frow"><div class="flbl">Brand or person name *</div><input class="finp" id="gl-li-target" placeholder="e.g. SunBurst Seltzers / Alex Torres"></div>' +
+        '<div class="frow"><div class="flbl">Their role (if known)</div><input class="finp" id="gl-li-role" placeholder="e.g. Founder & CEO"></div>' +
+        '<div class="frow"><div class="flbl">Recent context (paste 1-2 lines from a post / bio)</div><textarea class="finp" id="gl-li-context" rows="3" placeholder="e.g. just posted about expanding into the Carolinas, talked about needing co-pack capacity for Q3"></textarea></div>' +
+        '<div class="frow"><div class="flbl">Length</div>' +
+          '<select class="fsel" id="gl-li-len">' +
+            '<option value="connect" selected>Connection request (under 300 chars)</option>' +
+            '<option value="message">Direct message (3-5 sentences)</option>' +
+            '<option value="inmail">InMail (longer, with offer)</option>' +
+          '</select>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px"><button id="gl-li-go" class="cbtn pri" style="flex:1">✨ Draft 3 versions</button></div>' +
+        '<div id="gl-li-out" style="margin-top:16px"></div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-li-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-li-go').addEventListener('click', async function(){
+      var btn = this; var out = ov.querySelector('#gl-li-out');
+      var target  = ov.querySelector('#gl-li-target').value.trim();
+      var role    = ov.querySelector('#gl-li-role').value.trim();
+      var context = ov.querySelector('#gl-li-context').value.trim();
+      var len     = ov.querySelector('#gl-li-len').value;
+      if(!target){ alert('Who are we reaching out to?'); return; }
+      btn.disabled = true; btn.textContent = '✨ Drafting…';
+      out.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:14px;text-align:center">Composing…</div>';
+      var lenLine = ({
+        connect: 'a connection request under 300 characters (LinkedIn\'s hard limit)',
+        message: 'a 3-5 sentence DM that fits on one screen',
+        inmail:  'a longer InMail (8-10 sentences) with a soft pitch and one specific offer'
+      })[len];
+      var sys = 'You write LinkedIn outreach for Good Liquid Bev Co, a family-run beverage co-packer in Palmetto FL. Mike Krail (founder) is the sender. Voice: warm, specific, never templated. Always reference something concrete from the recipient — never use "innovative", "leverage", "passionate".';
+      var user = 'Draft ' + lenLine + ' for outreach to: ' + target + (role ? ' (' + role + ')' : '') +
+        '\n\nRecent context to reference (if any): ' + (context || '[none provided — keep it about co-packing fit without name-drops]') +
+        '\n\nReturn 3 distinct variations using this format:\n\n=== Version 1 ===\n<message>\n\n=== Version 2 ===\n<message>\n\n=== Version 3 ===\n<message>\n\nNo preamble.';
+      if(typeof window.callAI !== 'function'){
+        out.innerHTML = '<div style="color:#f5c842;font-size:13px;padding:14px">AI not configured. Open AI Settings to paste your Anthropic key.</div>';
+        btn.disabled = false; btn.textContent = '✨ Draft 3 versions'; return;
+      }
+      var text = await window.callAI(sys, user);
+      btn.disabled = false; btn.textContent = '✨ Draft 3 versions';
+      if(!text){ out.innerHTML = '<div style="color:#f5c842;font-size:13px;padding:14px">No AI response.</div>'; return; }
+      var parts = text.split(/===\s*Version\s*\d+\s*===/i).map(function(s){ return s.trim(); }).filter(Boolean);
+      if(!parts.length) parts = [text];
+      out.innerHTML = parts.map(function(p, i){
+        var charCount = p.length;
+        var warn = len === 'connect' && charCount > 300 ? '<span style="color:#ff8579;font-size:10px;margin-left:6px">⚠ ' + charCount + ' chars (over LinkedIn limit)</span>' : '<span style="font-size:10px;color:var(--muted);margin-left:6px">' + charCount + ' chars</span>';
+        return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:14px;margin-bottom:10px">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+            '<div><span style="font-family:var(--ff-disp);font-size:10px;letter-spacing:2px;color:var(--teal)">VERSION ' + (i+1) + '</span>' + warn + '</div>' +
+            '<button class="gl-li-copy cbtn" data-text="' + esc(p).replace(/"/g,'&quot;') + '" style="font-size:10px;padding:4px 10px">📋 Copy</button>' +
+          '</div>' +
+          '<div style="font-size:13px;color:var(--white);line-height:1.6;white-space:pre-wrap">' + esc(p) + '</div>' +
+        '</div>';
+      }).join('');
+      out.querySelectorAll('.gl-li-copy').forEach(function(b){
+        b.addEventListener('click', async function(){
+          var t = b.getAttribute('data-text') || '';
+          try { await navigator.clipboard.writeText(t); } catch(e){
+            var ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+          }
+          b.textContent = '✓ Copied'; setTimeout(function(){ b.textContent = '📋 Copy'; }, 1500);
+        });
+      });
+      if(typeof window.glAudit === 'function') window.glAudit('linkedin_outreach', target, { length: len });
+    });
+    host.appendChild(ov);
+  };
+
+  console.log('[GL] linkedin outreach loaded');
 }());
