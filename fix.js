@@ -1980,6 +1980,7 @@
     tools.setAttribute('style','display:none;flex-direction:column;gap:6px;align-items:flex-end;margin-bottom:6px');
 
     var items = [
+      { label:'📊 Capacity heatmap', fn:'openCapacityHeatmap', admin:true },
       { label:'💰 Estimate Quote', fn:'aiEstimateQuote' },
       { label:'🧾 Draft Invoice',  fn:'aiDraftInvoice' },
       { label:'📝 Meeting Notes',  fn:'openMeetingNotesModal' },
@@ -7757,4 +7758,253 @@
   };
 
   console.log('[GL] capacity indicator loaded');
+}());
+
+/* ============================================================
+   REVENUE FORECAST DASHBOARD (12-month stacked bar)
+   ============================================================ */
+(function(){
+  function fmt$(n){ return '$' + Math.round(n||0).toLocaleString(); }
+  function monthKey(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); }
+  function dollarsFromVal(v){
+    if(typeof v === 'number') return v;
+    if(!v) return 0;
+    return parseFloat(String(v).replace(/[$,]/g,'')) || 0;
+  }
+
+  function gather(){
+    var months = [];
+    var anchor = new Date(); anchor.setDate(1);
+    for(var i = -6; i <= 5; i++){
+      var d = new Date(anchor.getFullYear(), anchor.getMonth() + i, 1);
+      months.push({ key: monthKey(d), label: d.toLocaleString('en-US',{month:'short'}) + (i === 0 ? ' (now)' : ''), paid:0, open:0, pipeline:0, isNow: i === 0 });
+    }
+    var byKey = {}; months.forEach(function(m){ byKey[m.key] = m; });
+    (window.invoices||[]).forEach(function(i){
+      if(!i || !i.date) return;
+      var k = monthKey(new Date(i.date));
+      if(!byKey[k]) return;
+      if((i.status||'').toLowerCase() === 'paid') byKey[k].paid += (i.amount||0);
+      else byKey[k].open += (i.amount||0);
+    });
+    var weightedTotal = 0;
+    var deals = window.deals || {};
+    Object.keys(deals).forEach(function(stage){
+      if(stage === 'Closed Won' || stage === 'Closed Lost') return;
+      (deals[stage]||[]).forEach(function(d){
+        weightedTotal += dollarsFromVal(d.val) * ((d.prob != null ? d.prob : 20) / 100);
+      });
+    });
+    var perMonth = weightedTotal / 3;
+    for(var k = 1; k <= 3; k++){
+      var futKey = monthKey(new Date(anchor.getFullYear(), anchor.getMonth() + k, 1));
+      if(byKey[futKey]) byKey[futKey].pipeline = perMonth;
+    }
+    return months;
+  }
+
+  window.renderRevenueForecast = function(){
+    var host = document.getElementById('cpg-dashboard');
+    if(!host) return;
+    var existing = document.getElementById('gl-rev-forecast');
+    var months = gather();
+    var max = months.reduce(function(m,r){ return Math.max(m, r.paid + r.open + r.pipeline); }, 0);
+    if(max === 0){ if(existing) existing.remove(); return; }
+    var trailing = months.slice(0,6).reduce(function(s,m){ return s + m.paid + m.open; }, 0);
+    var forecast6 = months.slice(6).reduce(function(s,m){ return s + m.paid + m.open + m.pipeline; }, 0);
+    var bars = months.map(function(m){
+      var total = m.paid + m.open + m.pipeline;
+      var pH = max ? Math.round(m.paid / max * 160) : 0;
+      var oH = max ? Math.round(m.open / max * 160) : 0;
+      var fH = max ? Math.round(m.pipeline / max * 160) : 0;
+      return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;min-width:0">' +
+        '<div style="font-size:10px;color:var(--muted);margin-bottom:6px;height:14px;text-align:center">' + (total > 0 ? '$' + (Math.round(total/100)/10) + 'k' : '') + '</div>' +
+        '<div style="display:flex;flex-direction:column-reverse;height:160px;width:80%;max-width:42px;background:rgba(255,255,255,.02);border-radius:6px 6px 0 0;overflow:hidden">' +
+          (pH > 0 ? '<div style="height:' + pH + 'px;background:#5fcf9e"></div>' : '') +
+          (oH > 0 ? '<div style="height:' + oH + 'px;background:#f5c842"></div>' : '') +
+          (fH > 0 ? '<div style="height:' + fH + 'px;background:rgba(0,229,192,.4);border-top:1px dashed var(--teal)"></div>' : '') +
+        '</div>' +
+        '<div style="font-size:10px;color:' + (m.isNow ? 'var(--teal)' : 'var(--muted)') + ';margin-top:6px;font-weight:' + (m.isNow ? '700' : '400') + '">' + m.label + '</div>' +
+      '</div>';
+    }).join('');
+    var html =
+      '<div id="gl-rev-forecast" class="ccard" style="grid-column:1/-1;margin-top:14px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+          '<div class="ccard-t" style="margin:0">12-month revenue forecast</div>' +
+          '<div style="display:flex;gap:14px;font-size:11px">' +
+            '<span style="color:#9aa7bd">Trailing 6mo · <b style="color:#fff">' + fmt$(trailing) + '</b></span>' +
+            '<span style="color:#9aa7bd">Next 6mo · <b style="color:var(--teal)">' + fmt$(forecast6) + '</b></span>' +
+          '</div>' +
+        '</div>' +
+        '<div style="display:flex;align-items:flex-end;gap:8px;padding:8px 0">' + bars + '</div>' +
+        '<div style="display:flex;justify-content:center;gap:14px;font-size:10px;color:var(--muted);margin-top:10px;letter-spacing:1px">' +
+          '<span><span style="display:inline-block;width:10px;height:10px;background:#5fcf9e;border-radius:2px;vertical-align:middle"></span> PAID</span>' +
+          '<span><span style="display:inline-block;width:10px;height:10px;background:#f5c842;border-radius:2px;vertical-align:middle"></span> INVOICED · OPEN</span>' +
+          '<span><span style="display:inline-block;width:10px;height:10px;background:rgba(0,229,192,.5);border-radius:2px;vertical-align:middle"></span> WEIGHTED PIPELINE</span>' +
+        '</div>' +
+      '</div>';
+    if(existing) existing.outerHTML = html;
+    else host.insertAdjacentHTML('beforeend', html);
+  };
+  (function wrap(){
+    var orig = window.renderDash;
+    if(typeof orig !== 'function'){ setTimeout(wrap, 500); return; }
+    window.renderDash = function(){
+      var r = orig.apply(this, arguments);
+      try { window.renderRevenueForecast(); } catch(e){ console.warn('[GL] forecast threw', e); }
+      return r;
+    };
+  })();
+  console.log('[GL] revenue forecast loaded');
+}());
+
+/* ============================================================
+   PRODUCTION CAPACITY HEATMAP
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  var WEEKLY_CAPACITY_CASES = 8000;
+  function weekKey(d){
+    var dt = new Date(d);
+    dt.setHours(0,0,0,0);
+    dt.setDate(dt.getDate() - dt.getDay());
+    return dt.toISOString().slice(0,10);
+  }
+  function gather(){
+    var weeks = [];
+    var anchor = new Date(); anchor.setHours(0,0,0,0);
+    anchor.setDate(anchor.getDate() - anchor.getDay());
+    for(var i = 0; i < 12; i++){
+      var d = new Date(anchor); d.setDate(d.getDate() + i*7);
+      weeks.push({ key: weekKey(d), label: d.toLocaleDateString('en-US',{month:'short',day:'numeric'}), cases:0, runs:[] });
+    }
+    var byKey = {}; weeks.forEach(function(w){ byKey[w.key] = w; });
+    (window.glProductionRuns||[]).forEach(function(r){
+      if(!r.scheduled_date) return;
+      var k = weekKey(r.scheduled_date);
+      if(!byKey[k]) return;
+      byKey[k].cases += (r.cases || 0);
+      byKey[k].runs.push(r);
+    });
+    return weeks;
+  }
+  window.openCapacityHeatmap = function(){
+    var prior = document.getElementById('gl-cap-heat-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var weeks = gather();
+    var rowsHtml = weeks.map(function(w){
+      var pct = Math.min(100, Math.round(w.cases / WEEKLY_CAPACITY_CASES * 100));
+      var over = w.cases > WEEKLY_CAPACITY_CASES;
+      var color = over ? '#ff8579' : pct >= 80 ? '#f5c842' : '#5fcf9e';
+      return '<div style="display:grid;grid-template-columns:100px 1fr 110px;gap:14px;align-items:center;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.04)">' +
+        '<div style="font-size:12px;color:var(--white);font-weight:600">' + w.label + '</div>' +
+        '<div><div style="height:16px;background:rgba(255,255,255,.05);border-radius:4px;overflow:hidden;position:relative">' +
+          '<div style="position:absolute;left:0;top:0;height:100%;width:' + Math.min(100, pct) + '%;background:' + color + '"></div>' +
+          (over ? '<div style="position:absolute;right:6px;top:0;line-height:16px;color:#fff;font-size:10px;font-weight:700;letter-spacing:1px">OVER</div>' : '') +
+        '</div></div>' +
+        '<div style="text-align:right;color:' + color + ';font-weight:700;font-size:13px">' + w.cases.toLocaleString() + ' / ' + WEEKLY_CAPACITY_CASES.toLocaleString() + '</div>' +
+      '</div>';
+    }).join('');
+    var totalPlanned = weeks.reduce(function(s,w){ return s + w.cases; }, 0);
+    var overCount = weeks.filter(function(w){ return w.cases > WEEKLY_CAPACITY_CASES; }).length;
+    var ov = document.createElement('div');
+    ov.id = 'gl-cap-heat-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1000;background:rgba(6,13,26,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:740px;max-height:88vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">📊 CAPACITY HEATMAP</div>' +
+          '<button id="gl-ch-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="font-size:12px;color:#9aa7bd;margin-bottom:14px;line-height:1.6">Next 12 weeks of planned production vs. ~8,000 cases/week theoretical capacity. Red bars need a reshuffle or extra capacity.</div>' +
+        '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-bottom:18px">' +
+          '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:13px;text-align:center"><div style="font-size:10px;color:var(--muted);letter-spacing:1px">12-WEEK PLANNED</div><div style="font-family:var(--ff-disp);font-size:22px;color:var(--white);margin-top:3px">' + totalPlanned.toLocaleString() + '</div></div>' +
+          '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:13px;text-align:center"><div style="font-size:10px;color:var(--muted);letter-spacing:1px">WEEKLY CAPACITY</div><div style="font-family:var(--ff-disp);font-size:22px;color:var(--teal);margin-top:3px">' + WEEKLY_CAPACITY_CASES.toLocaleString() + '</div></div>' +
+          '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(' + (overCount ? '231,76,60' : '29,158,117') + ',.25);border-radius:10px;padding:13px;text-align:center"><div style="font-size:10px;color:var(--muted);letter-spacing:1px">OVER CAPACITY</div><div style="font-family:var(--ff-disp);font-size:22px;color:' + (overCount ? '#ff8579' : '#5fcf9e') + ';margin-top:3px">' + overCount + ' week' + (overCount === 1 ? '' : 's') + '</div></div>' +
+        '</div>' +
+        rowsHtml +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-ch-close').addEventListener('click', function(){ ov.remove(); });
+    host.appendChild(ov);
+  };
+  console.log('[GL] capacity heatmap loaded');
+}());
+
+/* ============================================================
+   KPI SCORECARD (business pulse dashboard widget)
+   ============================================================ */
+(function(){
+  function fmt$(n){ return '$' + Math.round(n||0).toLocaleString(); }
+  function gather(){
+    var now = new Date();
+    var mStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    var yStart = new Date(now.getFullYear(), 0, 1);
+    var invs = window.invoices || [];
+    var mtdRev = 0, ytdRev = 0, allRev = 0, paidCount = 0, totalCount = 0, daysToPayTotal = 0, daysToPayCount = 0;
+    invs.forEach(function(i){
+      if(!i || !i.date) return;
+      var d = new Date(i.date);
+      var amt = i.amount || 0;
+      totalCount++;
+      if(d >= yStart) ytdRev += amt;
+      if(d >= mStart) mtdRev += amt;
+      allRev += amt;
+      if((i.status||'').toLowerCase() === 'paid'){
+        paidCount++;
+        if(i.paid_at || i.paidAt){
+          var paidDate = new Date(i.paid_at || i.paidAt);
+          if(!isNaN(paidDate)){
+            daysToPayTotal += Math.round((paidDate - d) / 86400000);
+            daysToPayCount++;
+          }
+        }
+      }
+    });
+    return {
+      mtdRev: mtdRev, ytdRev: ytdRev,
+      avgInv: totalCount ? allRev / totalCount : 0,
+      paidRate: totalCount ? Math.round(paidCount / totalCount * 100) : 0,
+      avgDays: daysToPayCount ? Math.round(daysToPayTotal / daysToPayCount) : null,
+      activeClients: (window.clients||[]).filter(function(c){ return c.status === 'active'; }).length
+    };
+  }
+  window.renderKpiScorecard = function(){
+    var host = document.getElementById('cpg-dashboard');
+    if(!host) return;
+    var existing = document.getElementById('gl-kpi-scorecard');
+    var k = gather();
+    if(k.mtdRev === 0 && k.ytdRev === 0 && k.activeClients === 0){ if(existing) existing.remove(); return; }
+    var card = function(label, value, sub){
+      return '<div style="flex:1;min-width:140px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:13px">' +
+        '<div style="font-size:10px;letter-spacing:2px;color:var(--muted)">' + label + '</div>' +
+        '<div style="font-family:var(--ff-disp);font-size:20px;color:var(--white);margin-top:4px">' + value + '</div>' +
+        (sub ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + sub + '</div>' : '') +
+      '</div>';
+    };
+    var html =
+      '<div id="gl-kpi-scorecard" class="ccard" style="grid-column:1/-1;margin-top:14px">' +
+        '<div class="ccard-t">Business pulse</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:11px;margin-top:10px">' +
+          card('MTD REVENUE', fmt$(k.mtdRev)) +
+          card('YTD REVENUE', fmt$(k.ytdRev)) +
+          card('AVG INVOICE', fmt$(k.avgInv)) +
+          card('PAID RATE', k.paidRate + '%', k.paidRate >= 90 ? '✓ healthy' : k.paidRate >= 70 ? 'tighten collections' : 'collections need attention') +
+          card('AVG DAYS TO PAY', k.avgDays != null ? k.avgDays + 'd' : '—', 'invoice → paid_at') +
+          card('ACTIVE CLIENTS', k.activeClients) +
+        '</div>' +
+      '</div>';
+    if(existing) existing.outerHTML = html;
+    else host.insertAdjacentHTML('beforeend', html);
+  };
+  (function wrap(){
+    var orig = window.renderDash;
+    if(typeof orig !== 'function'){ setTimeout(wrap, 500); return; }
+    window.renderDash = function(){
+      var r = orig.apply(this, arguments);
+      try { window.renderKpiScorecard(); } catch(e){ console.warn('[GL] KPI threw', e); }
+      return r;
+    };
+  })();
+  console.log('[GL] KPI scorecard loaded');
 }());
