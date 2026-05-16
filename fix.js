@@ -1980,6 +1980,7 @@
     tools.setAttribute('style','display:none;flex-direction:column;gap:6px;align-items:flex-end;margin-bottom:6px');
 
     var items = [
+      { label:'💰 AR Collection', fn:'openARCollection', admin:true },
       { label:'💰 Estimate Quote', fn:'aiEstimateQuote' },
       { label:'🧾 Draft Invoice',  fn:'aiDraftInvoice' },
       { label:'📝 Meeting Notes',  fn:'openMeetingNotesModal' },
@@ -7757,4 +7758,260 @@
   };
 
   console.log('[GL] capacity indicator loaded');
+}());
+
+/* ============================================================
+   RUN → INVOICE AUTO-DRAFT
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function ratePerCase(format){
+    var map = { '12oz Standard can':9.12, '12oz Sleek can':9.12, '16oz Standard can':11.52, '750ml bottle':9.48 };
+    return map[format] || 9.12;
+  }
+  window.glDraftInvoiceFromRun = function(runId){
+    var run = (window.glProductionRuns||[]).find(function(r){ return r.id === runId; });
+    if(!run){ alert('Production run not found.'); return; }
+    var cid = run.client_id;
+    var client = (window.clients||[]).find(function(c){ return c.id === cid; });
+    if(!client){ if(!confirm('No matching client found for this run. Draft an invoice anyway?')) return; }
+    var cases = run.cases || 0;
+    var format = run.format || '12oz Standard can';
+    var perCase = ratePerCase(format);
+    var lineDesc = 'Co-packing — ' + (run.run_name || 'Run') + ' · ' + format;
+    window._glPendingDraft = {
+      client_id: cid,
+      client_name: client ? client.name : (run.client_name || ''),
+      lines: [{ desc: lineDesc, qty: cases, unit: 'cases', unitPrice: perCase, total: cases * perCase }],
+      notes: 'Drafted from production run ' + (run.run_name || run.id) + '. Verify yield, ingredients, and add-ons before sending.',
+      paymentTerms: client && client.paymentTerms || 'Net 30'
+    };
+    if(typeof window.openNewInvoiceBuilder === 'function'){
+      window.openNewInvoiceBuilder();
+      setTimeout(function(){
+        var clientSel = document.getElementById('ginv-client');
+        if(clientSel && cid) clientSel.value = cid;
+        if(typeof addNotification === 'function') addNotification('🧾 Draft created', 'Verify line items + add-ons before saving', 'info');
+      }, 250);
+    } else if(typeof window.cNav === 'function'){
+      window.cNav('newinv', null);
+    } else {
+      alert('Could not open the invoice builder automatically.');
+    }
+    if(typeof window.glAudit === 'function') window.glAudit('invoice_drafted_from_run', runId, { cases: cases, format: format });
+  };
+  function injectButtons(){
+    var detail = document.getElementById('cpg-production-runs');
+    if(!detail || !detail.classList.contains('act')) return;
+    detail.querySelectorAll('.gl-prun-card').forEach(function(card){
+      if(card.querySelector('.gl-r2i-btn')) return;
+      var col = card.closest('.gl-prun-col');
+      if(!col) return;
+      var stage = col.getAttribute('data-stage');
+      if(stage !== 'Ship') return;
+      var id = card.getAttribute('data-id');
+      var btn = document.createElement('button');
+      btn.className = 'cbtn gl-r2i-btn';
+      btn.setAttribute('style','font-size:10px;padding:4px 9px;margin-top:6px;background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.35);color:var(--teal);width:100%');
+      btn.textContent = '🧾 Draft invoice';
+      btn.addEventListener('click', function(e){ e.stopPropagation(); window.glDraftInvoiceFromRun(id); });
+      card.appendChild(btn);
+    });
+  }
+  function start(){
+    var panel = document.getElementById('crm-panel');
+    if(!panel){ setTimeout(start, 600); return; }
+    new MutationObserver(function(){ setTimeout(injectButtons, 80); }).observe(panel, { childList:true, subtree:true });
+  }
+  if(document.readyState !== 'loading') start();
+  else document.addEventListener('DOMContentLoaded', start);
+  console.log('[GL] run → invoice draft loaded');
+}());
+
+/* ============================================================
+   AR COLLECTION EMAILS (AI-drafted, Mailgun-sent)
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function fmt$(n){ return '$' + Math.round(n||0).toLocaleString(); }
+
+  function gatherOverdue(){
+    var today = new Date(); today.setHours(0,0,0,0);
+    return (window.invoices||[]).filter(function(i){
+      if(!i || (i.status||'').toLowerCase() === 'paid') return false;
+      var dueStr = i.dueDate || i.due_date;
+      var due;
+      if(dueStr) due = new Date(dueStr);
+      else if(i.date) due = new Date(Date.parse(i.date) + 30*86400000);
+      else return false;
+      due.setHours(0,0,0,0);
+      return due < today;
+    }).map(function(i){
+      var dueStr = i.dueDate || i.due_date;
+      var due = dueStr ? new Date(dueStr) : new Date(Date.parse(i.date) + 30*86400000);
+      due.setHours(0,0,0,0);
+      var daysLate = Math.round((today - due) / 86400000);
+      return { inv: i, daysLate: daysLate };
+    }).sort(function(a,b){ return b.daysLate - a.daysLate; });
+  }
+  function toneFor(days){
+    if(days <= 15) return 'gentle nudge';
+    if(days <= 45) return 'firm but professional';
+    return 'formal — escalating to collection';
+  }
+  async function draftEmail(inv, daysLate){
+    var client = (window.clients||[]).find(function(c){ return c.id === inv.client; }) || {};
+    var contactName = client.contact || 'there';
+    var tone = toneFor(daysLate);
+    if(typeof window.callAI !== 'function'){
+      var subj = 'Invoice ' + inv.id + ' — ' + (daysLate <= 15 ? 'gentle reminder' : daysLate <= 45 ? 'past due notice' : 'collection notice');
+      var body = 'Hi ' + contactName + ',\n\nOur records show invoice ' + inv.id + ' for ' + fmt$(inv.amount) + ' is ' + daysLate + ' day' + (daysLate === 1 ? '' : 's') + ' past its due date.\n\n' +
+        (daysLate <= 15 ? 'A quick check that this didn\'t slip through — let me know if you need a fresh copy or a different payment method.\n\nThanks,\nMike\nGood Liquid Bev Co'
+        : daysLate <= 45 ? 'Please remit payment within the next 5 business days. If there\'s an issue with the invoice itself, reply to this email and we\'ll get it sorted.\n\nBest,\nMike Krail\nGood Liquid Bev Co'
+        : 'This account is now significantly past due. We need payment received within 7 business days to avoid further escalation. Please call (803) 493-5065 if you\'d like to discuss a payment plan.\n\nRegards,\nMike Krail\nGood Liquid Bev Co');
+      return { subject: subj, body: body };
+    }
+    var sys = 'You write collection emails for Good Liquid Bev Co (Palmetto FL beverage co-packer). Mike Krail is the sender. Voice matches the tone level. Keep it under 100 words. End with a clear next step. Sign "Mike Krail, Good Liquid Bev Co".';
+    var user = 'Draft a ' + tone + ' collection email for invoice ' + inv.id + '. Owed: ' + fmt$(inv.amount) + '. Days past due: ' + daysLate + '. Contact: ' + contactName + ' (' + (client.name||'') + ').\n\nReturn EXACTLY this format:\nSubject: <subject line>\nBody:\n<email body>';
+    var text = await window.callAI(sys, user);
+    var m = text && text.match(/Subject:\s*(.+?)\nBody:\n([\s\S]+)/i);
+    if(m) return { subject: m[1].trim(), body: m[2].trim() };
+    return { subject: 'Invoice ' + inv.id + ' — past due', body: text || '' };
+  }
+  window.openARCollection = function(){
+    var prior = document.getElementById('gl-ar-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var rows = gatherOverdue();
+    var bodyHtml = rows.length
+      ? rows.map(function(r){
+          var inv = r.inv;
+          var client = (window.clients||[]).find(function(c){ return c.id === inv.client; }) || {};
+          var color = r.daysLate <= 15 ? '#f5c842' : r.daysLate <= 45 ? '#ff8579' : '#e74c3c';
+          return '<div style="background:rgba(255,255,255,.03);border:1px solid ' + color + '44;border-radius:10px;padding:14px;margin-bottom:9px">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+              '<div><div style="font-size:13px;color:var(--white);font-weight:600">' + esc(inv.id) + ' · ' + fmt$(inv.amount) + '</div>' +
+              '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + esc(inv.clientName || client.name || '—') + ' · ' + esc(client.email || inv.clientEmail || 'no email on file') + '</div></div>' +
+              '<div style="color:' + color + ';font-weight:700;font-size:13px">' + r.daysLate + 'd late</div>' +
+            '</div>' +
+            '<div style="display:flex;gap:6px">' +
+              '<button class="cbtn gl-ar-draft" data-invid="' + esc(inv.id) + '" data-late="' + r.daysLate + '" style="font-size:11px;padding:5px 11px">✏️ Draft email</button>' +
+              '<button class="cbtn gl-ar-send" data-invid="' + esc(inv.id) + '" data-late="' + r.daysLate + '" style="font-size:11px;padding:5px 11px;background:rgba(0,229,192,.12);border-color:rgba(0,229,192,.35);color:var(--teal)" ' + (!(client.email || inv.clientEmail) ? 'disabled' : '') + '>📧 Draft + send</button>' +
+            '</div>' +
+            '<div class="gl-ar-out" id="gl-ar-out-' + esc(inv.id) + '" style="margin-top:10px"></div>' +
+          '</div>';
+        }).join('')
+      : '<div style="padding:30px;text-align:center;color:#5fcf9e;font-size:13px">✓ No invoices past due. Cash flow is clean.</div>';
+    var ov = document.createElement('div');
+    ov.id = 'gl-ar-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1000;background:rgba(6,13,26,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:620px;max-height:88vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">💰 AR COLLECTION</div>' +
+          '<button id="gl-ar-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="font-size:12px;color:#9aa7bd;margin-bottom:14px;line-height:1.6">Overdue invoices with one-click email drafts. Tone scales with days late: amber = gentle, orange = firm, red = formal.</div>' +
+        bodyHtml +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-ar-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelectorAll('.gl-ar-draft, .gl-ar-send').forEach(function(b){
+      b.addEventListener('click', async function(){
+        var invId = b.getAttribute('data-invid');
+        var late  = parseInt(b.getAttribute('data-late'), 10);
+        var inv = (window.invoices||[]).find(function(i){ return i.id === invId; });
+        if(!inv) return;
+        var out = ov.querySelector('#gl-ar-out-' + invId);
+        var sending = b.classList.contains('gl-ar-send');
+        var orig = b.textContent;
+        b.disabled = true; b.textContent = '✏️ Drafting…';
+        out.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:8px">Drafting…</div>';
+        var draft = await draftEmail(inv, late);
+        b.disabled = false; b.textContent = orig;
+        var client = (window.clients||[]).find(function(c){ return c.id === inv.client; }) || {};
+        var to = client.email || inv.clientEmail || '';
+        out.innerHTML =
+          '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:10px;font-size:12px">' +
+            '<div style="color:var(--muted);font-size:10px;letter-spacing:1px">SUBJECT</div>' +
+            '<div style="color:var(--white);font-weight:600;margin-bottom:8px">' + esc(draft.subject) + '</div>' +
+            '<div style="color:var(--muted);font-size:10px;letter-spacing:1px">BODY</div>' +
+            '<div style="color:var(--white);white-space:pre-wrap;line-height:1.5;margin-bottom:10px">' + esc(draft.body) + '</div>' +
+            '<div style="display:flex;gap:6px">' +
+              '<button class="cbtn" onclick="(async function(b){try{await navigator.clipboard.writeText(' + JSON.stringify(draft.subject + '\n\n' + draft.body) + ');b.textContent=\'✓ Copied\';setTimeout(function(){b.textContent=\'📋 Copy\'},1500);}catch(e){alert(\'Copy failed\')}})(this)" style="font-size:11px;padding:5px 11px">📋 Copy</button>' +
+              (sending && to && typeof window.sendMailgunEmail === 'function'
+                ? '<button class="cbtn pri" onclick="(async function(b){b.disabled=true;b.textContent=\'Sending…\';var ok=await window.sendMailgunEmail(' + JSON.stringify(to) + ',' + JSON.stringify(draft.subject) + ',' + JSON.stringify(draft.body) + ');b.disabled=false;b.textContent=ok?\'✓ Sent\':\'✗ Failed\';if(ok&&typeof window.glAudit===\'function\')window.glAudit(\'ar_email_sent\',' + JSON.stringify(invId) + ',{days_late:' + late + '});})(this)" style="font-size:11px;padding:5px 11px">📧 Send now</button>'
+                : '<button class="cbtn" disabled style="font-size:11px;padding:5px 11px;opacity:.5">' + (to ? 'Mailgun not configured' : 'No email on file') + '</button>') +
+            '</div>' +
+          '</div>';
+      });
+    });
+    host.appendChild(ov);
+  };
+  console.log('[GL] AR collection emails loaded');
+}());
+
+/* ============================================================
+   WEIGHTED PIPELINE FORECAST (dashboard widget)
+   ============================================================ */
+(function(){
+  function fmt$(n){ return '$' + Math.round(n||0).toLocaleString(); }
+  function dollarsFromVal(v){
+    if(typeof v === 'number') return v;
+    if(!v) return 0;
+    return parseFloat(String(v).replace(/[$,]/g,'')) || 0;
+  }
+  window.renderPipelineForecast = function(){
+    var host = document.getElementById('cpg-dashboard');
+    if(!host) return;
+    var existing = document.getElementById('gl-forecast-card');
+    var deals = window.deals || {};
+    var byStage = {};
+    var total = 0;
+    Object.keys(deals).forEach(function(stage){
+      if(stage === 'Closed Won' || stage === 'Closed Lost') return;
+      var sub = 0;
+      (deals[stage]||[]).forEach(function(d){
+        var v = dollarsFromVal(d.val);
+        var p = (d.prob != null ? d.prob : 20) / 100;
+        sub += v * p;
+      });
+      byStage[stage] = sub;
+      total += sub;
+    });
+    if(total === 0){ if(existing) existing.remove(); return; }
+    var stageBars = Object.keys(byStage).map(function(stage){
+      var amt = byStage[stage];
+      var pct = total ? Math.round(amt / total * 100) : 0;
+      return '<div style="margin-bottom:7px"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--white);margin-bottom:3px"><span>' + stage + '</span><span style="color:var(--teal);font-weight:600">' + fmt$(amt) + '</span></div>' +
+        '<div style="height:6px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden"><div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,var(--teal),#1a6fff)"></div></div></div>';
+    }).join('');
+    var html =
+      '<div id="gl-forecast-card" class="ccard" style="grid-column:1/-1;margin-top:14px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+          '<div class="ccard-t" style="margin:0">Weighted pipeline forecast</div>' +
+          '<div style="font-family:var(--ff-disp);font-size:22px;color:var(--teal)">' + fmt$(total) + '</div>' +
+        '</div>' +
+        stageBars +
+        '<div style="font-size:10px;color:var(--muted);margin-top:8px;letter-spacing:1px">Σ (deal value × probability) across open pipeline stages.</div>' +
+      '</div>';
+    if(existing){ existing.outerHTML = html; }
+    else {
+      var dashRow = host.querySelector('.dash-row');
+      if(dashRow && dashRow.nextElementSibling){
+        dashRow.nextElementSibling.insertAdjacentHTML('afterend', html);
+      } else {
+        host.insertAdjacentHTML('beforeend', html);
+      }
+    }
+  };
+  (function wrap(){
+    var orig = window.renderDash;
+    if(typeof orig !== 'function'){ setTimeout(wrap, 500); return; }
+    window.renderDash = function(){
+      var r = orig.apply(this, arguments);
+      try { window.renderPipelineForecast(); } catch(e){ console.warn('[GL] forecast threw', e); }
+      return r;
+    };
+  })();
+  console.log('[GL] weighted pipeline forecast loaded');
 }());
