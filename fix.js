@@ -1972,6 +1972,7 @@
       { label:'🚀 Setup Wizard', fn:'openSetupWizard', admin:true },
       { label:'💳 Stripe Checkout', fn:'openStripeSettings', admin:true },
       { label:'🛡️ Sentry', fn:'openSentrySettings', admin:true },
+      { label:'📅 Capacity badge', fn:'openCapacitySettings', admin:true },
       { label:'📝 E-Signatures', fn:'openSignSettings', admin:true },
       { label:'💼 QuickBooks', fn:'openQBOSettings', admin:true },
       { label:'✍️ Email Signature', fn:'openEmailSignatureSettings' },
@@ -7498,4 +7499,236 @@
   })();
 
   console.log('[GL] dashboard compliance alert loaded');
+}());
+
+/* ============================================================
+   PUBLIC FACILITY GALLERY
+   Pulls photos from the Supabase Storage 'facility-photos' bucket
+   and drops them into the #facility-gallery grid on the public site.
+   Renders elegant SVG placeholders if the bucket is empty or
+   unreachable so the section never looks broken.
+   Admin uploads via the CRM (separate admin UI to follow if needed
+   — for now drop files into the bucket through the Supabase dashboard).
+   ============================================================ */
+(function(){
+  var PLACEHOLDERS = [
+    { label: 'Canning line',     icon: '🥫' },
+    { label: 'Filling station',  icon: '⚙' },
+    { label: 'Cold-fill tank',   icon: '🧊' },
+    { label: 'Palletizing',      icon: '📦' },
+    { label: 'Quality check',    icon: '🔬' },
+    { label: 'PakTech handles',  icon: '🤝' }
+  ];
+
+  function tileHtml(src, label){
+    if(src){
+      return '<a href="' + src + '" target="_blank" rel="noopener" style="display:block;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.02);aspect-ratio:4/3;position:relative">' +
+        '<img src="' + src + '" alt="' + (label||'Facility photo').replace(/"/g,'&quot;') + '" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block">' +
+        (label ? '<div style="position:absolute;left:0;right:0;bottom:0;padding:10px 12px;background:linear-gradient(to top,rgba(0,0,0,.7),transparent);color:#fff;font-size:11px;letter-spacing:1px;font-family:var(--ff-disp)">' + label + '</div>' : '') +
+      '</a>';
+    }
+    // Placeholder tile — graceful fallback if the bucket is empty / unreachable.
+    return '<div style="border-radius:12px;overflow:hidden;border:1px dashed rgba(255,255,255,.12);background:linear-gradient(135deg,rgba(0,229,192,.05),rgba(26,111,255,.04));aspect-ratio:4/3;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--muted);gap:8px">' +
+      '<div style="font-size:38px;opacity:.45">' + label.icon + '</div>' +
+      '<div style="font-size:11px;letter-spacing:2px;color:rgba(255,255,255,.45);font-family:var(--ff-disp)">' + label.label + '</div>' +
+    '</div>';
+  }
+
+  async function renderGallery(){
+    var host = document.getElementById('facility-gallery');
+    if(!host) return;
+
+    var photos = [];
+    try {
+      if(window.supa && window.supa.storage){
+        var r = await window.supa.storage.from('facility-photos').list('', { limit: 24, sortBy: { column:'name', order:'asc' } });
+        if(r && r.data){
+          photos = r.data.filter(function(o){
+            // Only images, skip the auto-created .emptyFolderPlaceholder file.
+            return o.name && !o.name.startsWith('.') && /\.(jpe?g|png|webp|gif|avif)$/i.test(o.name);
+          });
+        }
+      }
+    } catch(e){ console.warn('[GL] facility-photos list failed', e); }
+
+    var html;
+    if(photos.length){
+      // Public URLs work because the bucket is set public; if not, signed URLs
+      // would be needed but that defeats SEO/embedding so we assume public.
+      html = photos.map(function(p){
+        var u = window.supa.storage.from('facility-photos').getPublicUrl(p.name);
+        var url = (u && u.data && u.data.publicUrl) || '';
+        // Use filename (minus extension) as the caption.
+        var label = p.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ');
+        return tileHtml(url, label);
+      }).join('');
+    } else {
+      // No photos uploaded yet — show the 6 elegant placeholders so the
+      // section still looks intentional.
+      html = PLACEHOLDERS.map(function(p){ return tileHtml(null, p); }).join('');
+    }
+    host.innerHTML = html;
+  }
+
+  function start(){
+    if(document.getElementById('facility-gallery')) renderGallery();
+    else setTimeout(start, 600);
+  }
+  if(document.readyState !== 'loading') start();
+  else document.addEventListener('DOMContentLoaded', start);
+
+  console.log('[GL] public facility gallery loaded');
+}());
+
+/* ============================================================
+   PUBLIC CAPACITY INDICATOR
+   - Renders a "Q3 2026: 65% booked · Q4 opens Sep 1" badge in the
+     hero so visitors see urgency + production transparency.
+   - Data lives in Supabase table `capacity` (one row per quarter)
+     with anon read access; the admin edits via a toolbar item.
+   - Falls back to a sensible hardcoded default if the table is
+     empty or unreachable, so the badge always shows something.
+   - Pulses on the hero to draw the eye.
+   ============================================================ */
+(function(){
+  function currentQuarter(){
+    var now = new Date();
+    var q = Math.floor(now.getMonth() / 3) + 1; // 1..4
+    return { q: q, y: now.getFullYear() };
+  }
+  function nextQuarter(){
+    var c = currentQuarter();
+    return c.q === 4 ? { q:1, y:c.y+1 } : { q:c.q+1, y:c.y };
+  }
+  function quarterStartMonthName(q){ return ['Jan','Apr','Jul','Oct'][q-1]; }
+
+  var DEFAULT_CAPACITY = {
+    quarter: 'Q' + currentQuarter().q + ' ' + currentQuarter().y,
+    booked: 60,
+    next_label: 'Q' + nextQuarter().q + ' opens ' + quarterStartMonthName(nextQuarter().q) + ' 1',
+    updated_at: ''
+  };
+
+  async function loadCapacity(){
+    // Prefer Supabase, fall back to localStorage override, fall back to default.
+    var override = null;
+    try {
+      var ls = localStorage.getItem('gl_capacity_override');
+      if(ls) override = JSON.parse(ls);
+    } catch(e){}
+    if(override) return override;
+
+    if(window.supa){
+      try {
+        var r = await window.supa.from('capacity').select('*').order('updated_at',{ascending:false}).limit(1);
+        if(r && r.data && r.data[0]) return r.data[0];
+      } catch(e){ /* table may not exist yet — silent fallback */ }
+    }
+    return DEFAULT_CAPACITY;
+  }
+
+  function fmt(c){
+    var pct = Math.max(0, Math.min(100, parseInt(c.booked, 10) || 0));
+    return (c.quarter || DEFAULT_CAPACITY.quarter) + ': ' + pct + '% booked · ' + (c.next_label || DEFAULT_CAPACITY.next_label);
+  }
+
+  async function renderBadge(){
+    var host = document.getElementById('gl-capacity-badge');
+    var txt  = document.getElementById('gl-capacity-text');
+    if(!host || !txt) return;
+    var c = await loadCapacity();
+    txt.textContent = fmt(c);
+    host.style.display = 'inline-flex';
+  }
+
+  // Inject the pulse keyframe once (shared with the dot in the badge).
+  function injectPulse(){
+    if(document.getElementById('gl-capacity-style')) return;
+    var s = document.createElement('style');
+    s.id = 'gl-capacity-style';
+    s.textContent = '@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.85)}}';
+    document.head.appendChild(s);
+  }
+
+  function start(){
+    injectPulse();
+    if(document.getElementById('gl-capacity-badge')) renderBadge();
+    else setTimeout(start, 600);
+  }
+  if(document.readyState !== 'loading') start();
+  else document.addEventListener('DOMContentLoaded', start);
+
+  /* Admin-only editor (CRM toolbar). Lets Mike update the badge in 10
+     seconds without touching code. Writes to Supabase if the table
+     exists; otherwise stores a localStorage override (same device only). */
+  window.openCapacitySettings = async function(){
+    var prior = document.getElementById('gl-cap-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var c = await loadCapacity();
+    var ov = document.createElement('div');
+    ov.id = 'gl-cap-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:920;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:460px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">📅 CAPACITY BADGE</div>' +
+          '<button id="gl-cap-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="font-size:12px;color:#9aa7bd;margin-bottom:18px;line-height:1.6">Shown in the hero of the public site. Set what visitors should see right now.</div>' +
+        '<div class="frow"><div class="flbl">Quarter label</div><input class="finp" id="gl-cap-quarter" value="' + (c.quarter||'').replace(/"/g,'&quot;') + '" placeholder="Q3 2026"></div>' +
+        '<div class="frow"><div class="flbl">% booked</div><input class="finp" id="gl-cap-booked" type="number" min="0" max="100" value="' + (parseInt(c.booked,10)||0) + '"></div>' +
+        '<div class="frow"><div class="flbl">Next-quarter line</div><input class="finp" id="gl-cap-next" value="' + (c.next_label||'').replace(/"/g,'&quot;') + '" placeholder="Q4 opens Oct 1"></div>' +
+        '<div style="background:rgba(0,229,192,.05);border:1px solid rgba(0,229,192,.15);border-radius:8px;padding:11px;font-size:11px;color:#9aa7bd;margin:8px 0 16px">Preview: <span id="gl-cap-preview" style="color:var(--teal);font-weight:600"></span></div>' +
+        '<div style="display:flex;gap:8px">' +
+          '<button id="gl-cap-save" class="cbtn pri" style="flex:1">💾 Save</button>' +
+          '<button id="gl-cap-reset" class="cbtn">Reset to default</button>' +
+        '</div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    host.appendChild(ov);
+
+    function readForm(){
+      return {
+        quarter:    ov.querySelector('#gl-cap-quarter').value.trim(),
+        booked:     parseInt(ov.querySelector('#gl-cap-booked').value, 10) || 0,
+        next_label: ov.querySelector('#gl-cap-next').value.trim(),
+        updated_at: new Date().toISOString()
+      };
+    }
+    function updatePreview(){ ov.querySelector('#gl-cap-preview').textContent = fmt(readForm()); }
+    ['gl-cap-quarter','gl-cap-booked','gl-cap-next'].forEach(function(id){
+      ov.querySelector('#'+id).addEventListener('input', updatePreview);
+    });
+    updatePreview();
+
+    ov.querySelector('#gl-cap-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-cap-reset').addEventListener('click', function(){
+      localStorage.removeItem('gl_capacity_override');
+      ov.remove();
+      renderBadge();
+      if(typeof addNotification === 'function') addNotification('📅 Capacity reset', 'Cleared override','info');
+    });
+    ov.querySelector('#gl-cap-save').addEventListener('click', async function(){
+      var data = readForm();
+      var btn = this; btn.disabled = true; btn.textContent = 'Saving…';
+      // Try Supabase first; fall back to local override.
+      var supaOk = false;
+      if(window.supa){
+        try {
+          var r = await window.supa.from('capacity').insert([data]);
+          supaOk = !r.error;
+          if(r.error) console.warn('[GL] capacity insert error', r.error);
+        } catch(e){ console.warn('[GL] capacity insert threw', e); }
+      }
+      if(!supaOk) localStorage.setItem('gl_capacity_override', JSON.stringify(data));
+      else        localStorage.removeItem('gl_capacity_override');
+      btn.disabled = false; btn.textContent = '💾 Save';
+      ov.remove();
+      renderBadge();
+      if(typeof addNotification === 'function') addNotification('📅 Capacity updated', supaOk ? 'Synced to Supabase' : 'Saved locally (table missing?)','success');
+      if(typeof window.glAudit === 'function') window.glAudit('capacity_updated', '', data);
+    });
+  };
+
+  console.log('[GL] capacity indicator loaded');
 }());
