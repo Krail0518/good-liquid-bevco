@@ -1983,6 +1983,8 @@
       { label:'📣 Social post drafter', fn:'openSocialDrafter' },
       { label:'📰 Auto case study', fn:'openCaseStudyBuilder' },
       { label:'💡 Post ideas this week', fn:'openPostSuggester' },
+      { label:'🎯 Cross-sell ideas', fn:'openCrossSellSuggester' },
+      { label:'📊 Win-loss analytics', fn:'openWinLossAnalytics' },
       { label:'💰 Estimate Quote', fn:'aiEstimateQuote' },
       { label:'🧾 Draft Invoice',  fn:'aiDraftInvoice' },
       { label:'📝 Meeting Notes',  fn:'openMeetingNotesModal' },
@@ -8919,4 +8921,289 @@
   })();
 
   console.log('[GL] AR aging widget loaded');
+   CROSS-SELL SUGGESTER (rules-based)
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  function lastInvoiceDate(clientId){
+    var invs = (window.invoices||[]).filter(function(i){ return i.client === clientId; });
+    if(!invs.length) return null;
+    var dates = invs.map(function(i){ return i.date ? new Date(i.date) : null; }).filter(Boolean);
+    if(!dates.length) return null;
+    return new Date(Math.max.apply(null, dates));
+  }
+
+  function gatherForClient(c){
+    var out = [];
+    var service = (c.service || '').toLowerCase();
+    var prods = c.productTypes || [];
+    if(service.indexOf('bottl') >= 0 && service.indexOf('can') < 0){
+      out.push({ id:'canning', title:'Offer canning', why:'Client only bottles with us. Canning runs lower MOQ and many bottling clients want a canned line extension.' });
+    }
+    if(service.indexOf('r&d') >= 0 && service.indexOf('canning') < 0 && service.indexOf('bottling') < 0){
+      out.push({ id:'first_run', title:'Pitch first production run', why:'They started with R&D. Worth checking if the formula is locked and ready to scale.' });
+    }
+    if(prods.indexOf('kombucha') >= 0){
+      out.push({ id:'pasteur', title:'Flash pasteurization for shelf stability', why:'Live kombucha typically needs refrigerated distribution. Pasteurization opens shelf-stable channels.' });
+    }
+    if(prods.indexOf('coldbrew') >= 0 || prods.indexOf('rtd') >= 0){
+      out.push({ id:'nitro', title:'Nitrogen dosing for mouthfeel', why:'Cold brew + RTD cocktails benefit from nitro — better mouthfeel, premium positioning, a few cents per can.' });
+    }
+    if(service.indexOf('bottl') >= 0 && !(c.notes||'').toLowerCase().includes('label')){
+      out.push({ id:'labels', title:'Label application service', why:'We can apply front + back labels in-line. Most bottling clients are paying a separate vendor for this.' });
+    }
+    if(c.status === 'active'){
+      var last = lastInvoiceDate(c.id);
+      var ninetyAgo = new Date(); ninetyAgo.setDate(ninetyAgo.getDate() - 90);
+      if(!last || last < ninetyAgo){
+        out.push({ id:'reengage', title:'Re-engage — no invoice in 90+ days', why:'Active client but no recent run. Quick check-in usually surfaces what they need.' });
+      }
+    }
+    return out;
+  }
+
+  function gatherAll(){
+    var rows = [];
+    (window.clients||[]).forEach(function(c){
+      if(c.status === 'inactive') return;
+      var sugs = gatherForClient(c);
+      sugs.forEach(function(s){ rows.push({ client:c, suggestion:s }); });
+    });
+    return rows;
+  }
+
+  function rowHtml(client, suggestion){
+    return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 14px;margin-bottom:9px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">' +
+        '<div style="min-width:0;flex:1">' +
+          '<div style="font-size:13px;color:var(--white);font-weight:600;margin-bottom:2px">' + esc(client.name) + ' · <span style="color:var(--teal);font-weight:500">' + esc(suggestion.title) + '</span></div>' +
+          '<div style="font-size:11px;color:var(--muted);line-height:1.5">' + esc(suggestion.why) + '</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:6px;flex-shrink:0">' +
+          '<button class="cbtn gl-cs-draft" data-cid="' + esc(client.id) + '" data-title="' + esc(suggestion.title) + '" data-why="' + esc(suggestion.why) + '" style="font-size:11px;padding:5px 11px">✉️ Draft</button>' +
+          '<button class="cbtn gl-cs-view" data-cid="' + esc(client.id) + '" style="font-size:11px;padding:5px 11px">Open</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  window.openCrossSellSuggester = function(){
+    var prior = document.getElementById('gl-cs-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var rows = gatherAll();
+    var ov = document.createElement('div');
+    ov.id = 'gl-cs-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1000;background:rgba(6,13,26,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    var body = rows.length
+      ? rows.map(function(r){ return rowHtml(r.client, r.suggestion); }).join('')
+      : '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No cross-sell opportunities right now. Add more product-type or service data on your clients to surface ideas.</div>';
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:620px;max-height:88vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">🎯 CROSS-SELL OPPORTUNITIES</div>' +
+          '<button class="gl-cs-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="font-size:12px;color:#9aa7bd;margin-bottom:14px">' + rows.length + ' opportunit' + (rows.length === 1 ? 'y' : 'ies') + ' found across the active client base.</div>' +
+        body +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('.gl-cs-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelectorAll('.gl-cs-view').forEach(function(b){
+      b.addEventListener('click', function(){
+        var cid = b.getAttribute('data-cid');
+        ov.remove();
+        if(typeof window.viewClientEnhanced === 'function') window.viewClientEnhanced(cid);
+        else if(typeof window.openClientDetail === 'function') window.openClientDetail(cid);
+      });
+    });
+    ov.querySelectorAll('.gl-cs-draft').forEach(function(b){
+      b.addEventListener('click', function(){
+        var cid = b.getAttribute('data-cid');
+        var title = b.getAttribute('data-title');
+        var why = b.getAttribute('data-why');
+        if(typeof window.openAICommModal === 'function'){
+          ov.remove();
+          window.openAICommModal();
+          setTimeout(function(){
+            var sel = document.getElementById('ai-comm-client'); if(sel) sel.value = cid;
+            var ctx = document.getElementById('ai-comm-context');
+            if(ctx) ctx.value = 'Cross-sell opportunity: ' + title + '\n\nWhy: ' + why + '\n\nDraft a short, friendly email pitching this to the client.';
+          }, 200);
+        } else {
+          alert('Cross-sell: ' + title + '\n\nWhy: ' + why + '\n\n(AI email modal not available — copy this and send manually.)');
+        }
+        if(typeof window.glAudit === 'function') window.glAudit('cross_sell_drafted', cid, { rule: title });
+      });
+    });
+    host.appendChild(ov);
+  };
+
+  console.log('[GL] cross-sell suggester loaded');
+}());
+
+/* ============================================================
+   WIN-LOSS TRACKER
+   - Hooks saveDealDetail: when a deal moves to Closed Won/Lost,
+     prompt for reason + value + notes.
+   - Persists via supa.from('deals').update(...). Stripped-undefined
+     pattern means missing columns just no-op if migration not run.
+   - openWinLossAnalytics aggregates won/lost/win-rate/top reasons.
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var WON_REASONS  = ['Price competitive','Speed/timeline','Capability fit','Personal relationship','Referral','Other'];
+  var LOST_REASONS = ['Price too high','Capability mismatch','Timeline too long','Picked competitor','Lost to in-house','Project paused','No response','Other'];
+
+  function promptOutcome(dealName, isWon){
+    return new Promise(function(resolve){
+      var prior = document.getElementById('gl-wl-prompt'); if(prior) prior.remove();
+      var host = document.getElementById('crm-panel') || document.body;
+      var reasons = isWon ? WON_REASONS : LOST_REASONS;
+      var opts = reasons.map(function(r){ return '<option value="'+esc(r)+'">'+esc(r)+'</option>'; }).join('');
+      var ov = document.createElement('div');
+      ov.id = 'gl-wl-prompt';
+      ov.setAttribute('style','position:fixed;inset:0;z-index:1100;background:rgba(6,13,26,.92);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;padding:20px');
+      ov.innerHTML =
+        '<div style="background:#142238;border:1px solid ' + (isWon ? 'rgba(29,158,117,.4)' : 'rgba(231,76,60,.4)') + ';border-radius:14px;padding:26px;width:100%;max-width:440px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:' + (isWon ? '#5fcf9e' : '#ff8579') + ';margin-bottom:6px">' + (isWon ? '🎉 CLOSED WON' : '😔 CLOSED LOST') + '</div>' +
+          '<div style="font-size:13px;color:#9aa7bd;margin-bottom:18px">' + esc(dealName) + ' — log the outcome so patterns emerge over time.</div>' +
+          '<div class="frow"><div class="flbl">Primary reason</div><select class="fsel" id="gl-wl-reason">' + opts + '</select></div>' +
+          '<div class="frow"><div class="flbl">Deal value at close ($)</div><input class="finp" id="gl-wl-value" type="number" min="0" placeholder="0"></div>' +
+          '<div class="frow"><div class="flbl">Notes (optional)</div><textarea class="finp" id="gl-wl-notes" rows="2" placeholder="What specifically — pricing detail, competitor name, anything that helps future analysis…"></textarea></div>' +
+          '<div style="display:flex;gap:8px;margin-top:6px">' +
+            '<button id="gl-wl-save" class="cbtn pri" style="flex:1">💾 Save outcome</button>' +
+            '<button id="gl-wl-skip" class="cbtn">Skip</button>' +
+          '</div>' +
+        '</div>';
+      ov.querySelector('#gl-wl-save').addEventListener('click', function(){
+        resolve({
+          reason: ov.querySelector('#gl-wl-reason').value,
+          value:  parseFloat(ov.querySelector('#gl-wl-value').value) || 0,
+          notes:  ov.querySelector('#gl-wl-notes').value.trim()
+        });
+        ov.remove();
+      });
+      ov.querySelector('#gl-wl-skip').addEventListener('click', function(){ ov.remove(); resolve(null); });
+      host.appendChild(ov);
+    });
+  }
+
+  (function wrap(){
+    if(typeof window.saveDealDetail !== 'function'){ setTimeout(wrap, 600); return; }
+    if(window.saveDealDetail._wlWrapped) return;
+    var orig = window.saveDealDetail;
+    window.saveDealDetail = async function(){
+      var stageEl = document.getElementById('ddp-stage');
+      var nameEl  = document.getElementById('ddp-name');
+      var stage = stageEl ? stageEl.value : '';
+      var isClosed = (stage === 'Closed Won' || stage === 'Closed Lost');
+      var movingToClosed = isClosed && (window.currentDealStage !== stage);
+      if(movingToClosed){
+        var outcome = await promptOutcome(nameEl ? nameEl.value : 'Deal', stage === 'Closed Won');
+        if(outcome) window._glPendingOutcome = outcome;
+      }
+      var r = orig.apply(this, arguments);
+      if(window._glPendingOutcome && window.supa){
+        try {
+          var name = nameEl ? nameEl.value : '';
+          var deals = window.deals || {};
+          var found = null;
+          Object.keys(deals).forEach(function(s){
+            (deals[s]||[]).forEach(function(d){ if(d && d.name === name) found = d; });
+          });
+          if(found && found.id && String(found.id).indexOf('tmp_') !== 0){
+            var p = { outcome_reason: window._glPendingOutcome.reason, outcome_value: window._glPendingOutcome.value, outcome_notes: window._glPendingOutcome.notes, closed_at: new Date().toISOString() };
+            await window.supa.from('deals').update(p).eq('id', found.id);
+            found.outcomeReason = p.outcome_reason;
+            found.outcomeValue  = p.outcome_value;
+            found.outcomeNotes  = p.outcome_notes;
+            found.closedAt      = p.closed_at;
+          }
+          if(typeof addNotification === 'function') addNotification('📊 Outcome logged', window._glPendingOutcome.reason, 'success');
+          if(typeof window.glAudit === 'function') window.glAudit('deal_outcome_logged', name, { stage: stage, reason: window._glPendingOutcome.reason });
+        } catch(e){ console.warn('[GL] outcome save failed', e); }
+        delete window._glPendingOutcome;
+      }
+      return r;
+    };
+    window.saveDealDetail._wlWrapped = true;
+  })();
+
+  window.openWinLossAnalytics = async function(){
+    var prior = document.getElementById('gl-wl-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+
+    var rows = [];
+    if(window.supa){
+      try {
+        var r = await window.supa.from('deals').select('*').in('stage',['Closed Won','Closed Lost']).order('closed_at',{ascending:false,nullsFirst:false});
+        if(r && r.data) rows = r.data;
+      } catch(e){ console.warn('[GL] win-loss fetch failed', e); }
+    }
+    if(!rows.length){
+      var ddeals = window.deals || {};
+      ['Closed Won','Closed Lost'].forEach(function(s){
+        (ddeals[s]||[]).forEach(function(d){
+          rows.push({ name:d.name, stage:s, outcome_reason:d.outcomeReason||'(no reason)', outcome_value:d.outcomeValue||0, closed_at:d.closedAt||null });
+        });
+      });
+    }
+    var won  = rows.filter(function(d){ return d.stage === 'Closed Won'; });
+    var lost = rows.filter(function(d){ return d.stage === 'Closed Lost'; });
+    var winTotal  = won.reduce(function(s,d){ return s + (Number(d.outcome_value)||0); }, 0);
+    var lostTotal = lost.reduce(function(s,d){ return s + (Number(d.outcome_value)||0); }, 0);
+    var winRate = (won.length + lost.length) ? Math.round(won.length / (won.length + lost.length) * 100) : 0;
+    var byReason = {};
+    lost.forEach(function(d){ var k = d.outcome_reason || '(no reason)'; byReason[k] = (byReason[k] || 0) + 1; });
+    var topReasons = Object.keys(byReason).sort(function(a,b){ return byReason[b] - byReason[a]; }).slice(0, 5);
+    function fmt$(n){ return '$' + Math.round(n).toLocaleString(); }
+
+    var ov = document.createElement('div');
+    ov.id = 'gl-wl-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1000;background:rgba(6,13,26,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:580px;max-height:88vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">📊 WIN-LOSS ANALYTICS</div>' +
+          '<button id="gl-wl-modclose" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px">' +
+          '<div style="background:rgba(29,158,117,.08);border:1px solid rgba(29,158,117,.25);border-radius:10px;padding:12px;text-align:center">' +
+            '<div style="font-size:10px;color:#5fcf9e;letter-spacing:1px">WON</div>' +
+            '<div style="font-family:var(--ff-disp);font-size:22px;color:var(--white);margin:3px 0">' + won.length + '</div>' +
+            '<div style="font-size:11px;color:var(--muted)">' + fmt$(winTotal) + '</div>' +
+          '</div>' +
+          '<div style="background:rgba(231,76,60,.08);border:1px solid rgba(231,76,60,.25);border-radius:10px;padding:12px;text-align:center">' +
+            '<div style="font-size:10px;color:#ff8579;letter-spacing:1px">LOST</div>' +
+            '<div style="font-family:var(--ff-disp);font-size:22px;color:var(--white);margin:3px 0">' + lost.length + '</div>' +
+            '<div style="font-size:11px;color:var(--muted)">' + fmt$(lostTotal) + '</div>' +
+          '</div>' +
+          '<div style="background:rgba(0,229,192,.08);border:1px solid rgba(0,229,192,.25);border-radius:10px;padding:12px;text-align:center">' +
+            '<div style="font-size:10px;color:var(--teal);letter-spacing:1px">WIN RATE</div>' +
+            '<div style="font-family:var(--ff-disp);font-size:22px;color:var(--white);margin:3px 0">' + winRate + '%</div>' +
+            '<div style="font-size:11px;color:var(--muted)">' + (won.length + lost.length) + ' decided</div>' +
+          '</div>' +
+        '</div>' +
+        '<div style="font-family:var(--ff-disp);font-size:11px;letter-spacing:2px;color:#9aa7bd;margin-bottom:8px">TOP LOSS REASONS</div>' +
+        (topReasons.length
+          ? topReasons.map(function(rsn){
+              var pct = lost.length ? Math.round(byReason[rsn] / lost.length * 100) : 0;
+              return '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.05)">' +
+                '<div style="color:var(--white);font-size:13px">' + esc(rsn) + '</div>' +
+                '<div style="display:flex;align-items:center;gap:10px">' +
+                  '<div style="width:120px;height:6px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden"><div style="width:' + pct + '%;height:100%;background:#ff8579"></div></div>' +
+                  '<div style="color:var(--muted);font-size:11px;min-width:60px;text-align:right">' + byReason[rsn] + ' · ' + pct + '%</div>' +
+                '</div>' +
+              '</div>';
+            }).join('')
+          : '<div style="font-size:12px;color:var(--muted);padding:14px 0">No losses logged yet. As you close deals with a reason, this list will populate.</div>'
+        ) +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-wl-modclose').addEventListener('click', function(){ ov.remove(); });
+    host.appendChild(ov);
+  };
+
+  console.log('[GL] win-loss tracker loaded');
 }());
