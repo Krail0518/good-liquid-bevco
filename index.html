@@ -1458,6 +1458,9 @@ select option, .fsel option {
         <div class="cni-sec">Compliance</div>
         <div class="cni" id="nav-cip" onclick="cNav(&#39;cip&#39;,this)"><span class="cni-ico">🧼</span>CIP / Sanitation Log</div>
         <div class="cni" id="nav-audit" onclick="cNav(&#39;audit&#39;,this)" style="display:none"><span class="cni-ico">📜</span>Audit Log</div>
+        <div class="cni-sec">Quality &amp; Supply</div>
+        <div class="cni" id="nav-defects" onclick="cNav(&#39;defects&#39;,this)"><span class="cni-ico">⚠️</span>Defects / NCRs</div>
+        <div class="cni" id="nav-vendors" onclick="cNav(&#39;vendors&#39;,this)"><span class="cni-ico">🏭</span>Vendors</div>
         <div class="cni-sec">Tools</div>
         <div class="cni" id="nav-tasks" onclick="cNav(&#39;tasks&#39;,this)"><span class="cni-ico">✅</span>Tasks</div>
         <div class="cni" id="nav-documents" onclick="cNav(&#39;documents&#39;,this)"><span class="cni-ico">📁</span>Documents</div>
@@ -1556,6 +1559,24 @@ select option, .fsel option {
           <button class="cbtn pri" onclick="window.glOpenAddContent && window.glOpenAddContent()">+ New Post</button>
         </div>
         <div id="cc-body"></div>
+      </div>
+
+      <!-- DEFECTS / NCRs -->
+      <div id="cpg-defects" class="cpg">
+        <div class="cph">
+          <div><div class="cpt">DEFECTS / NCRs</div><div class="cps" id="def-sub">Non-conformance reports — track, root-cause, close out</div></div>
+          <button class="cbtn pri" onclick="window.glOpenAddDefect && window.glOpenAddDefect()">+ Log Defect</button>
+        </div>
+        <div id="def-body"></div>
+      </div>
+
+      <!-- VENDORS -->
+      <div id="cpg-vendors" class="cpg">
+        <div class="cph">
+          <div><div class="cpt">VENDORS</div><div class="cps" id="ven-sub">Suppliers + lead times + COI status</div></div>
+          <button class="cbtn pri" onclick="window.glOpenAddVendor && window.glOpenAddVendor()">+ Add Vendor</button>
+        </div>
+        <div id="ven-body"></div>
       </div>
 
       <!-- CLIENTS -->
