@@ -4218,24 +4218,30 @@
   function injectCheckbox(){
     var pw = document.getElementById('pw-ov');
     if(!pw) return;
-    if(pw.querySelector('#gl-remember-cb')) return;
-    var btn = pw.querySelector('.pw-btn');
-    if(!btn) return;
     var saved = localStorage.getItem('gl_remember');
     // Default to true so the box is checked when the user first sees it.
     var checked = (saved === null) || (saved === '1');
-    var label = document.createElement('label');
-    label.setAttribute('style',
-      'display:flex;align-items:center;gap:9px;font-size:12px;color:var(--muted);' +
-      'margin:6px 2px 14px;cursor:pointer;user-select:none;text-align:left'
-    );
-    label.innerHTML =
-      '<input type="checkbox" id="gl-remember-cb"' + (checked ? ' checked' : '') +
-        ' style="width:14px;height:14px;accent-color:var(--teal);cursor:pointer;margin:0;flex-shrink:0">' +
-      '<span>Stay signed in on this computer<br>' +
-        '<span style="font-size:10px;color:var(--muted);opacity:.7">Survives closing the browser. Clicking <b>Sign out</b> still ends the session.</span>' +
-      '</span>';
-    btn.parentNode.insertBefore(label, btn);
+    var existing = pw.querySelector('#gl-remember-cb');
+    if(existing){
+      // HTML already contains the checkbox — just sync its state from localStorage.
+      existing.checked = checked;
+    } else {
+      var btn = pw.querySelector('.pw-btn');
+      if(btn){
+        var label = document.createElement('label');
+        label.setAttribute('style',
+          'display:flex;align-items:center;gap:9px;font-size:12px;color:var(--muted);' +
+          'margin:6px 2px 14px;cursor:pointer;user-select:none;text-align:left'
+        );
+        label.innerHTML =
+          '<input type="checkbox" id="gl-remember-cb"' + (checked ? ' checked' : '') +
+            ' style="width:14px;height:14px;accent-color:var(--teal);cursor:pointer;margin:0;flex-shrink:0">' +
+          '<span>Stay signed in on this computer<br>' +
+            '<span style="font-size:10px;color:var(--muted);opacity:.7">Survives closing the browser. Clicking <b>Sign out</b> still ends the session.</span>' +
+          '</span>';
+        btn.parentNode.insertBefore(label, btn);
+      }
+    }
 
     // Pre-fill the email field from the last successful login (always — independent
     // of Remember Me). Saves typing even after an explicit sign-out.
