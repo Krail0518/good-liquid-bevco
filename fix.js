@@ -12868,3 +12868,332 @@
 
   console.log('[GL] help — new-features addon loaded (7 sections)');
 }());
+
+
+/* ============================================================
+   AI TOOLBAR REDESIGN
+   Replaces the 39-item vertical pill stack (which scrolled off
+   the top/bottom of the viewport) with a categorised popup panel:
+   - 380px wide, max-height 75vh, anchored bottom-right
+   - Search input at the top — filters items across all categories
+   - 6 collapsible category sections, 2-col grid of compact buttons
+   - First category ("AI tools") expanded by default
+   - Esc or click-outside to close
+
+   Wraps window.addAIToolbar so the original flat list still mounts
+   (for backward compat / event handlers), then removes the old
+   #ai-tools popout and overrides the FAB click to open the new panel.
+   ============================================================ */
+(function(){
+  var CATEGORIES = [
+    {
+      title:'AI tools', icon:'🤖', expanded:true,
+      items:[
+        { label:'Estimate Quote',    icon:'💰', fn:'aiEstimateQuote' },
+        { label:'Draft Invoice',     icon:'🧾', fn:'aiDraftInvoice' },
+        { label:'Meeting Notes',     icon:'📝', fn:'openMeetingNotesModal' },
+        { label:'Draft Email',       icon:'✉️', fn:'openAICommModal' },
+        { label:'Revenue Forecast',  icon:'📈', fn:'aiGenerateForecast' }
+      ]
+    },
+    {
+      title:'Marketing & Content', icon:'📣',
+      items:[
+        { label:'Social post drafter',    icon:'📣', fn:'openSocialDrafter' },
+        { label:'Auto case study',        icon:'📰', fn:'openCaseStudyBuilder' },
+        { label:'Post ideas this week',   icon:'💡', fn:'openPostSuggester' },
+        { label:'AI Image Prompts',       icon:'🎨', fn:'openAIImagePrompts' },
+        { label:'Email drip generator',   icon:'✉️', fn:'openEmailDripGenerator' },
+        { label:'LinkedIn outreach',      icon:'💼', fn:'openLinkedInOutreach' }
+      ]
+    },
+    {
+      title:'Growth & Pipeline', icon:'🚀',
+      items:[
+        { label:'Cross-sell ideas',       icon:'🎯', fn:'openCrossSellSuggester' },
+        { label:'Win-loss analytics',     icon:'📊', fn:'openWinLossAnalytics' },
+        { label:'Trade Show ROI',         icon:'🎪', fn:'openTradeShowROI', admin:true },
+        { label:'Service Packages',       icon:'📦', fn:'openServicePackages', admin:true },
+        { label:'Churn Risk',             icon:'🔮', fn:'openChurnPredictor', admin:true }
+      ]
+    },
+    {
+      title:'Revenue & Customer', icon:'💰',
+      items:[
+        { label:'AR Collection',          icon:'💰', fn:'openARCollection', admin:true },
+        { label:'Onboarding wizard',      icon:'🚀', fn:'openOnboardingWizard', admin:true },
+        { label:'NPS responses',          icon:'⭐', fn:'openNpsResults', admin:true },
+        { label:'Capacity heatmap',       icon:'📊', fn:'openCapacityHeatmap', admin:true },
+        { label:'Recipe cost calc',       icon:'🧮', fn:'openRecipeCostCalc', admin:true }
+      ]
+    },
+    {
+      title:'Reports & Time', icon:'📊',
+      items:[
+        { label:'Reports',                icon:'📊', fn:'openReports' },
+        { label:'Time Tracker',           icon:'⏱️', fn:'openTimeTracker' },
+        { label:'Time Report',            icon:'📊', fn:'openTimeTrackingReport' },
+        { label:'Email Templates',        icon:'📧', fn:'openEmailTemplates' }
+      ]
+    },
+    {
+      title:'Settings & Integrations', icon:'⚙️',
+      items:[
+        { label:'AI Settings',            icon:'🤖', fn:'openAISettings' },
+        { label:'Mailgun',                icon:'📧', fn:'openMailgunSettings' },
+        { label:'Email Signature',        icon:'✍️', fn:'openEmailSignatureSettings' },
+        { label:'SMS Alerts',             icon:'📱', fn:'openSmsSettings' },
+        { label:'Stripe Checkout',        icon:'💳', fn:'openStripeSettings', admin:true },
+        { label:'QuickBooks',             icon:'💼', fn:'openQBOSettings', admin:true },
+        { label:'E-Signatures',           icon:'📝', fn:'openSignSettings', admin:true },
+        { label:'Two-Factor Auth',        icon:'🔒', fn:'openMFASettings' },
+        { label:'Google Analytics',       icon:'📈', fn:'openGA4Settings', admin:true },
+        { label:'Sentry',                 icon:'🛡️', fn:'openSentrySettings', admin:true },
+        { label:'Capacity badge',         icon:'📅', fn:'openCapacitySettings', admin:true },
+        { label:'Setup Wizard',           icon:'🚀', fn:'openSetupWizard', admin:true },
+        { label:'Error Log',              icon:'🐛', fn:'glOpenErrorLog', admin:true },
+        { label:'Clear local cache',      icon:'🗑️', fn:'glClearLocalCache', admin:true, danger:true }
+      ]
+    }
+  ];
+
+  function isAdmin(){ return window.currentUser && window.currentUser.role === 'admin'; }
+
+  function makeItemButton(it){
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.fn = it.fn;
+    b.dataset.label = (it.icon + ' ' + it.label).toLowerCase();
+    var base = 'display:flex;align-items:center;gap:7px;padding:8px 10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;color:#cfd9e6;cursor:pointer;font-size:12px;font-weight:500;text-align:left;line-height:1.2;transition:all .12s;min-height:34px;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+    if(it.danger){
+      base = base
+        .replace('rgba(255,255,255,.04)','rgba(231,76,60,.08)')
+        .replace('rgba(255,255,255,.08)','rgba(231,76,60,.25)')
+        .replace('#cfd9e6','#ff8579');
+    }
+    b.setAttribute('style', base);
+    b.innerHTML = '<span style="font-size:14px;flex-shrink:0">' + it.icon + '</span><span style="overflow:hidden;text-overflow:ellipsis">' + it.label + '</span>';
+    b.addEventListener('mouseenter', function(){
+      if(it.danger) b.style.background = 'rgba(231,76,60,.18)';
+      else { b.style.background = 'rgba(0,229,192,.08)'; b.style.borderColor = 'rgba(0,229,192,.3)'; b.style.color = '#fff'; }
+    });
+    b.addEventListener('mouseleave', function(){
+      if(it.danger) b.style.background = 'rgba(231,76,60,.08)';
+      else { b.style.background = 'rgba(255,255,255,.04)'; b.style.borderColor = 'rgba(255,255,255,.08)'; b.style.color = '#cfd9e6'; }
+    });
+    b.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      try {
+        if(typeof window[it.fn] === 'function') window[it.fn]();
+        else { console.warn('[AI toolbar] missing function:', it.fn); alert(it.icon + ' ' + it.label + ' is not available yet.'); }
+      } catch(e){
+        console.error('[AI toolbar] ' + it.fn + ' threw', e);
+        alert(it.label + ' failed: ' + (e.message || ''));
+      }
+      closePanel();
+    });
+    return b;
+  }
+
+  function makeSection(cat){
+    var sec = document.createElement('div');
+    sec.className = 'gl-tb-sec';
+    sec.dataset.title = cat.title.toLowerCase();
+    sec.setAttribute('style','margin:0 0 4px');
+
+    var head = document.createElement('button');
+    head.type = 'button';
+    head.className = 'gl-tb-sec-head';
+    head.setAttribute('style','display:flex;align-items:center;justify-content:space-between;width:100%;padding:8px 10px;background:rgba(255,255,255,.02);border:none;border-bottom:1px solid rgba(255,255,255,.05);color:#9aa7bd;font-size:11px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;cursor:pointer;text-align:left;transition:color .12s');
+
+    var visibleItems = cat.items.filter(function(it){ return !it.admin || isAdmin(); });
+
+    head.innerHTML =
+      '<span style="display:flex;align-items:center;gap:7px">' +
+        '<span style="font-size:13px">' + cat.icon + '</span>' +
+        '<span>' + cat.title + '</span>' +
+        '<span style="color:#5fcf9e;background:rgba(0,229,192,.08);border:1px solid rgba(0,229,192,.18);padding:1px 6px;border-radius:10px;font-size:9px;letter-spacing:.5px;text-transform:none">' + visibleItems.length + '</span>' +
+      '</span>' +
+      '<span class="gl-tb-chev" style="color:#5fcf9e;font-size:10px;transition:transform .15s;transform:rotate(' + (cat.expanded ? '90' : '0') + 'deg)">▸</span>';
+
+    head.addEventListener('mouseenter', function(){ head.style.color = '#fff'; });
+    head.addEventListener('mouseleave', function(){ head.style.color = '#9aa7bd'; });
+
+    var grid = document.createElement('div');
+    grid.className = 'gl-tb-grid';
+    grid.setAttribute('style','display:' + (cat.expanded ? 'grid' : 'none') + ';grid-template-columns:1fr 1fr;gap:5px;padding:7px 8px 10px');
+
+    visibleItems.forEach(function(it){ grid.appendChild(makeItemButton(it)); });
+
+    head.addEventListener('click', function(){
+      var open = grid.style.display !== 'none';
+      grid.style.display = open ? 'none' : 'grid';
+      head.querySelector('.gl-tb-chev').style.transform = 'rotate(' + (open ? '0' : '90') + 'deg)';
+    });
+
+    sec.appendChild(head);
+    sec.appendChild(grid);
+    if(!visibleItems.length){
+      sec.style.display = 'none';
+    }
+    return sec;
+  }
+
+  function buildPanel(){
+    var panel = document.createElement('div');
+    panel.id = 'gl-ai-panel';
+    panel.setAttribute('style','position:fixed;bottom:90px;right:28px;z-index:601;width:380px;max-height:75vh;background:#142238;border:1px solid rgba(0,229,192,.25);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.6);display:none;flex-direction:column;overflow:hidden;color:#cfd9e6;font-family:var(--ff-body, system-ui)');
+
+    // Header — title + search + close
+    var head = document.createElement('div');
+    head.setAttribute('style','padding:14px 14px 10px;border-bottom:1px solid rgba(255,255,255,.07);background:linear-gradient(180deg,rgba(0,229,192,.06),transparent);flex-shrink:0');
+    head.innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px">' +
+        '<div style="font-family:var(--ff-disp,sans-serif);font-size:13px;letter-spacing:2px;color:var(--teal,#00e5c0);font-weight:700">🤖 TOOLS &amp; SETTINGS</div>' +
+        '<button id="gl-ai-close" title="Close (Esc)" style="background:none;border:none;color:#9aa7bd;font-size:16px;cursor:pointer;padding:2px 6px;line-height:1">✕</button>' +
+      '</div>';
+    var searchWrap = document.createElement('div');
+    searchWrap.setAttribute('style','position:relative');
+    var search = document.createElement('input');
+    search.id = 'gl-ai-search';
+    search.type = 'text';
+    search.placeholder = 'Search tools…';
+    search.setAttribute('style','width:100%;padding:8px 12px 8px 32px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#fff;font-size:12px;outline:none;box-sizing:border-box;font-family:inherit');
+    search.addEventListener('focus', function(){ search.style.borderColor = 'rgba(0,229,192,.4)'; });
+    search.addEventListener('blur',  function(){ search.style.borderColor = 'rgba(255,255,255,.1)'; });
+    searchWrap.appendChild(search);
+    searchWrap.insertAdjacentHTML('beforeend','<span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#9aa7bd;font-size:13px;pointer-events:none">🔍</span>');
+    head.appendChild(searchWrap);
+
+    // Body — scrollable list of category sections
+    var body = document.createElement('div');
+    body.id = 'gl-ai-body';
+    body.setAttribute('style','overflow-y:auto;flex:1;padding:6px 6px 8px');
+    CATEGORIES.forEach(function(cat){ body.appendChild(makeSection(cat)); });
+
+    // Footer
+    var foot = document.createElement('div');
+    foot.setAttribute('style','padding:7px 14px;border-top:1px solid rgba(255,255,255,.05);font-size:10px;color:#5b6a7f;text-align:center;flex-shrink:0');
+    foot.innerHTML = '<kbd style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:3px;padding:1px 5px;font-size:9px;font-family:inherit">Esc</kbd> to close';
+
+    panel.appendChild(head);
+    panel.appendChild(body);
+    panel.appendChild(foot);
+
+    head.querySelector('#gl-ai-close').addEventListener('click', function(ev){ ev.stopPropagation(); closePanel(); });
+
+    // Search filtering — show only items whose label includes the query;
+    // auto-expand any section that has matches.
+    search.addEventListener('input', function(){
+      var q = search.value.trim().toLowerCase();
+      Array.from(body.querySelectorAll('.gl-tb-sec')).forEach(function(sec){
+        var grid = sec.querySelector('.gl-tb-grid');
+        var btns = Array.from(grid.querySelectorAll('button'));
+        var anyMatch = false;
+        btns.forEach(function(b){
+          var hit = !q || b.dataset.label.indexOf(q) !== -1;
+          b.style.display = hit ? 'flex' : 'none';
+          if(hit) anyMatch = true;
+        });
+        if(q){
+          grid.style.display = anyMatch ? 'grid' : 'none';
+          sec.style.display = anyMatch ? 'block' : 'none';
+          var chev = sec.querySelector('.gl-tb-chev');
+          if(chev) chev.style.transform = 'rotate(90deg)';
+        } else {
+          // Restore original expanded/collapsed state from data-title lookup
+          var cat = CATEGORIES.find(function(c){ return c.title.toLowerCase() === sec.dataset.title; });
+          var visibleCount = (cat ? cat.items : []).filter(function(it){ return !it.admin || isAdmin(); }).length;
+          sec.style.display = visibleCount ? 'block' : 'none';
+          grid.style.display = (cat && cat.expanded) ? 'grid' : 'none';
+          var chev = sec.querySelector('.gl-tb-chev');
+          if(chev) chev.style.transform = 'rotate(' + (cat && cat.expanded ? '90' : '0') + 'deg)';
+        }
+      });
+    });
+
+    return panel;
+  }
+
+  function openPanel(){
+    var panel = document.getElementById('gl-ai-panel');
+    if(!panel) return;
+    panel.style.display = 'flex';
+    setTimeout(function(){
+      var s = document.getElementById('gl-ai-search');
+      if(s) s.focus();
+    }, 50);
+  }
+  function closePanel(){
+    var panel = document.getElementById('gl-ai-panel');
+    if(panel) panel.style.display = 'none';
+  }
+  function togglePanel(){
+    var panel = document.getElementById('gl-ai-panel');
+    if(panel && panel.style.display === 'flex') closePanel();
+    else openPanel();
+  }
+  window.glToggleAIPanel = togglePanel;
+
+  function applyRedesign(){
+    var tb = document.getElementById('ai-toolbar');
+    if(!tb){ setTimeout(applyRedesign, 400); return; }
+    if(tb.dataset.glRedesigned === '1') return;
+
+    // Hide the old #ai-tools popout (we replace it entirely)
+    var oldTools = document.getElementById('ai-tools');
+    if(oldTools) oldTools.remove();
+
+    // Find the original FAB (the only <button> child of #ai-toolbar after we removed #ai-tools)
+    var fab = tb.querySelector('button');
+    if(fab){
+      // Strip the original FAB's click listeners by cloning the node, then bind our toggle
+      var fresh = fab.cloneNode(true);
+      fab.parentNode.replaceChild(fresh, fab);
+      fresh.addEventListener('click', function(ev){
+        ev.stopPropagation();
+        togglePanel();
+      });
+    }
+
+    // Mount the panel into the CRM host (sibling of the toolbar)
+    var host = document.getElementById('crm-panel') || document.body;
+    var existing = document.getElementById('gl-ai-panel');
+    if(existing) existing.remove();
+    host.appendChild(buildPanel());
+
+    tb.dataset.glRedesigned = '1';
+
+    // Esc closes the panel; click outside closes too
+    if(!window.__glAiPanelKeyBound){
+      document.addEventListener('keydown', function(e){
+        if(e.key === 'Escape'){
+          var p = document.getElementById('gl-ai-panel');
+          if(p && p.style.display === 'flex') closePanel();
+        }
+      });
+      document.addEventListener('click', function(e){
+        var p = document.getElementById('gl-ai-panel');
+        if(!p || p.style.display !== 'flex') return;
+        if(p.contains(e.target)) return;
+        if(tb && tb.contains(e.target)) return;
+        closePanel();
+      });
+      window.__glAiPanelKeyBound = true;
+    }
+  }
+
+  function wrap(){
+    var orig = window.addAIToolbar;
+    if(typeof orig !== 'function'){ setTimeout(wrap, 400); return; }
+    window.addAIToolbar = function(){
+      orig.apply(this, arguments);
+      setTimeout(applyRedesign, 30);
+    };
+    // Also run once now in case the toolbar was already mounted before this addon loaded.
+    if(document.getElementById('ai-toolbar')) setTimeout(applyRedesign, 30);
+  }
+  wrap();
+
+  console.log('[GL] AI toolbar redesign loaded — categorised panel + search');
+}());
