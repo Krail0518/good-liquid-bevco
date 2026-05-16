@@ -12178,3 +12178,654 @@
   };
   console.log('[GL] recipe cost calculator loaded');
 }());
+
+/* ============================================================
+   IN-APP HELP — NEW FEATURES ADDON
+   Adds 7 sections covering everything built in the last 24 hours:
+   Operations Pro, Quality & Supply, Marketing Engine, Growth Tools,
+   Revenue Ops, Customer Relations, and the upgraded Public Website.
+   Wraps window.glOpenHelp without touching the original module —
+   sections + TOC entries inject after the modal mounts.
+   ============================================================ */
+(function(){
+  function wf(w, h, content){
+    return '<svg viewBox="0 0 ' + w + ' ' + h + '" width="100%" style="background:#0a1628;border-radius:10px;border:1px solid rgba(255,255,255,.08);margin:12px 0 4px;display:block;max-height:340px">' + content + '</svg>';
+  }
+  function box(x,y,w,h,fill,stroke){ return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="6" fill="'+(fill||'#243a56')+'" stroke="'+(stroke||'rgba(255,255,255,.06)')+'"/>'; }
+  function txt(x,y,t,size,color,anchor){ return '<text x="'+x+'" y="'+y+'" fill="'+(color||'#cfd9e6')+'" font-size="'+(size||11)+'" text-anchor="'+(anchor||'start')+'" font-family="Arial">'+t+'</text>'; }
+  function tag(x,y,n){ return '<circle cx="'+x+'" cy="'+y+'" r="11" fill="#00e5c0"/><text x="'+x+'" y="'+(y+4)+'" fill="#0a1628" font-size="11" text-anchor="middle" font-weight="bold" font-family="Arial">'+n+'</text>'; }
+  function bullets(items){
+    return '<ul style="margin:10px 0 4px;padding-left:20px;color:#cfd9e6;font-size:13px;line-height:1.75">' +
+      items.map(function(t){ return '<li style="margin-bottom:6px">' + t + '</li>'; }).join('') + '</ul>';
+  }
+  function subhead(emoji, name){
+    return '<div style="margin:18px 0 4px;padding:8px 12px;background:rgba(0,229,192,.06);border-left:3px solid var(--teal);border-radius:0 6px 6px 0"><b style="color:var(--teal);font-size:13px;letter-spacing:1px">' + emoji + ' ' + name + '</b></div>';
+  }
+  function intro(text){
+    return '<p style="color:#cfd9e6;font-size:13px;line-height:1.7;margin:0 0 12px">' + text + '</p>';
+  }
+  function steps(items){
+    return '<ol style="margin:6px 0 10px;padding-left:22px;color:#cfd9e6;font-size:12.5px;line-height:1.7">' +
+      items.map(function(t){ return '<li style="margin-bottom:4px">' + t + '</li>'; }).join('') + '</ol>';
+  }
+  function whereToFind(text){
+    return '<div style="font-size:11px;color:#9aa7bd;margin:4px 0 12px;padding:6px 10px;background:rgba(255,255,255,.03);border-radius:6px"><b style="color:#f5c842">Where to find it:</b> ' + text + '</div>';
+  }
+
+  /* SECTION 1 — OPERATIONS PRO */
+  var MOCK_OPS_PRO = wf(620, 280,
+    box(0,0,140,280,'#142238','rgba(255,255,255,.05)') +
+    txt(15,28,'OPERATIONS PRO',9,'#9aa7bd') +
+    txt(15,52,'• Formula Vault',11,'#00e5c0') +
+    txt(15,72,'• Yield Tracker',11,'#9aa7bd') +
+    txt(15,92,'• Production Runs',11,'#9aa7bd') +
+    txt(15,112,'• Sample Shipments',11,'#9aa7bd') +
+    txt(15,132,'• CIP / Sanitation',11,'#9aa7bd') +
+    txt(160,28,'FORMULA VAULT',13,'#fff') +
+    txt(160,46,'Versioned recipes per client',10,'#9aa7bd') +
+    box(160,60,440,30) + txt(170,79,'+ New Formula',11,'#00e5c0') + tag(580,75,1) +
+    box(160,100,440,160,'#1c2e48') +
+    txt(170,124,'Name',9,'#9aa7bd') + txt(260,124,'Client',9,'#9aa7bd') + txt(370,124,'Version',9,'#9aa7bd') + txt(460,124,'Allergens',9,'#9aa7bd') + txt(550,124,'Status',9,'#9aa7bd') +
+    txt(170,150,'SunBurst v3',11,'#fff') + txt(260,150,'SunBurst',11,'#cfd9e6') + txt(370,150,'v3',11,'#00e5c0') + txt(460,150,'none',10,'rgba(255,255,255,.3)') + txt(550,150,'Approved',10,'#5fcf9e') +
+    txt(170,175,'Wildkind Mango',11,'#fff') + txt(260,175,'Wildkind',11,'#cfd9e6') + txt(370,175,'v2',11,'#00e5c0') + txt(460,175,'sulfites',10,'#ff8579') + txt(550,175,'Benchtop',10,'#f5c842') +
+    txt(170,200,'Bayline Nitro',11,'#fff') + txt(260,200,'Bayline',11,'#cfd9e6') + txt(370,200,'v1',11,'#00e5c0') + txt(460,200,'dairy',10,'#ff8579') + txt(550,200,'Draft',10,'#9aa7bd') + tag(580,200,2)
+  );
+
+  var SEC_OPS_PRO = MOCK_OPS_PRO +
+    intro('The <b>Operations Pro</b> sidebar section groups your production-line tooling. Everything here writes to Supabase (with localStorage fallback) and creates an audit log entry on every action.') +
+    subhead('🧪', 'FORMULA VAULT') +
+    intro('Single source of truth for client recipes. Each formula is versioned (v1, v2, ...) so you can iterate without losing history.') +
+    bullets([
+      '<b>Captures:</b> name, version, ingredients (multi-line), allergen profile (multi-select from 10 standard allergens), target yield per case, batch size, pH/brix targets, notes, approval status.',
+      '<b>Approval flow:</b> Draft → Benchtop verified → Production approved → Archived. Status colour-codes the row.',
+      '<b>Allergens</b> render as red pills so an off-spec ingredient is impossible to miss on the line.'
+    ]) +
+    steps([
+      'Open CRM → sidebar → <b>Operations Pro → Formula Vault</b>.',
+      'Click <b>+ New Formula</b> (callout 1). Pick a client from the dropdown.',
+      'Fill name, version, ingredients (one per line). Tick any allergens present.',
+      'Set status. Save. The row appears in the table (callout 2).',
+      'Click any row to edit. Bump the version when reformulating — old versions stay searchable.'
+    ]) +
+    whereToFind('Sidebar → Operations Pro → Formula Vault') +
+    subhead('📈', 'YIELD TRACKER') +
+    intro('Log actual cases produced vs. forecast for every run. Tracks yield % over time so you can spot a line drifting before it bites a client.') +
+    bullets([
+      '<b>Captures:</b> run date, client, format, forecast cases, actual cases, downtime minutes, scrap reason, notes.',
+      '<b>Auto-calculates yield %</b> (actual / forecast). Colours green ≥95%, amber 85–94%, red &lt;85%.',
+      '<b>Rolling 30-day average</b> shown at the top so trends jump out.'
+    ]) +
+    steps([
+      'Sidebar → <b>Operations Pro → Yield Tracker</b>.',
+      'Click <b>+ Log Yield</b> after a run wraps.',
+      'Pick the client, set the format, enter forecast + actual cases.',
+      'Add scrap reason if yield was below target — this feeds the audit trail.',
+      'Save. The row colour-codes itself; trend updates live.'
+    ]) +
+    whereToFind('Sidebar → Operations Pro → Yield Tracker') +
+    subhead('🏭', 'PRODUCTION RUNS — KANBAN') +
+    intro('Operations kanban for every run in flight. Six columns map your real-world stages.') +
+    bullets([
+      '<b>Columns:</b> Discovery → Formulation → Sample → COA → Production → Ship.',
+      '<b>Each card:</b> client, run name, format, cases, scheduled date.',
+      '<b>Move between stages</b> via the stage dropdown on the card (no drag-and-drop yet — keeps it shippable).',
+      'Backed by Supabase <code>production_runs</code> table; falls back to localStorage if the table is missing.'
+    ]) +
+    steps([
+      'Sidebar → <b>Operations Pro → Production Runs</b>.',
+      'Click <b>+ Add Run</b>. Pick client, name the run (e.g. "SunBurst Mar batch"), set format + cases + scheduled date.',
+      'As work progresses, click the stage dropdown on the card to advance it.',
+      'When it hits Ship, file it off — appears in the activity feed as "shipped".'
+    ]) +
+    whereToFind('Sidebar → Operations Pro → Production Runs') +
+    subhead('📬', 'SAMPLE SHIPMENTS') +
+    intro('Track every sample that leaves the facility so nothing falls into the prospect-followup void.') +
+    bullets([
+      '<b>Captures:</b> recipient name + address, what you shipped, carrier, tracking number, ship date, status (prepping / shipped / delivered / followup-sent / dead).',
+      '<b>Followup nudge:</b> any sample marked "delivered" more than 7 days ago surfaces a yellow "send followup?" badge.'
+    ]) +
+    steps([
+      'Sidebar → <b>Operations Pro → Sample Shipments</b>.',
+      '<b>+ New Sample</b> when you pack one out. Paste tracking when you have it.',
+      'Update status as it moves. Mark "followup-sent" once you reach out — the nudge clears.'
+    ]) +
+    whereToFind('Sidebar → Operations Pro → Sample Shipments') +
+    subhead('🧽', 'CIP / SANITATION LOG (compliance)') +
+    intro('FDA-defensible record of every cleaning cycle between runs. If an auditor walks in, this is the page you open first.') +
+    bullets([
+      '<b>Captures:</b> date/time, line, cleaning method (CIP / manual / both), chemicals used + concentration, water temp, contact time, operator, ATP swab result, pass/fail, notes.',
+      '<b>Linked to the run that ran before and after</b> if known — full traceability per audit lot.',
+      'Every entry hits the <b>Audit Log</b> automatically so changes are tracked too.'
+    ]) +
+    steps([
+      'Sidebar → <b>Operations Pro → CIP / Sanitation</b>.',
+      '<b>+ Log Cleaning</b> immediately after a CIP cycle. Pick method, chemicals, concentration.',
+      'Enter ATP swab result (the number from your luminometer).',
+      'Pass/fail auto-flags red if the ATP exceeds your threshold.'
+    ]) +
+    whereToFind('Sidebar → Operations Pro → CIP / Sanitation Log');
+
+  /* SECTION 2 — QUALITY & SUPPLY */
+  var MOCK_QS = wf(620, 250,
+    box(0,0,620,40,'#142238') +
+    txt(15,26,'QUALITY & SUPPLY',12,'#fff') +
+    box(15,55,290,180,'#1c2e48') + txt(25,78,'DEFECT TRACKER',11,'#ff8579') +
+    txt(25,98,'Carb off-spec · Wildkind',10,'#cfd9e6') + txt(25,114,'High · Open',9,'#f5c842') +
+    txt(25,134,'Can dent · SunBurst',10,'#cfd9e6') + txt(25,150,'Low · Contained',9,'#5fcf9e') +
+    txt(25,170,'Allergen exposure · ECCM',10,'#cfd9e6') + txt(25,186,'Critical · Investigating',9,'#e74c3c') +
+    tag(295,80,1) +
+    box(315,55,290,180,'#1c2e48') + txt(325,78,'AUDIT LOG',11,'#00e5c0') +
+    txt(325,98,'mike · client_created',10,'#cfd9e6') + txt(325,114,'2m ago',9,'#9aa7bd') +
+    txt(325,134,'system · formula_edited',10,'#cfd9e6') + txt(325,150,'18m ago',9,'#9aa7bd') +
+    txt(325,170,'mike · invoice_sent',10,'#cfd9e6') + txt(325,186,'1h ago',9,'#9aa7bd') +
+    tag(595,80,2)
+  );
+
+  var SEC_QS = MOCK_QS +
+    intro('The <b>Quality & Supply</b> sidebar section is your compliance + supplier toolkit. Everything here is written for an FDA audit.') +
+    subhead('🚨', 'DEFECT / NCR TRACKER') +
+    intro('Non-conformance report (NCR) log. Every quality issue gets a paper trail with category, severity, root cause, corrective action, and status.') +
+    bullets([
+      '<b>Categories:</b> Fill weight, Carbonation, pH/brix off-spec, Foam-over, Can dent, Label misregister, Coding error, Contamination suspected, Allergen exposure, Other.',
+      '<b>Severity:</b> Low (cosmetic) → Medium (recoverable) → High (hold + investigate) → Critical (recall risk).',
+      '<b>Status:</b> Open → Investigating → Contained → Closed. Linked to a production run if known.'
+    ]) +
+    steps([
+      'Sidebar → <b>Quality & Supply → Defect Tracker</b>.',
+      '<b>+ Log Defect</b> as soon as a quality issue surfaces (callout 1).',
+      'Pick category + severity. Link to the run if you know which one.',
+      'Fill root cause + corrective action as you investigate. Status updates as you go.',
+      'Closed defects archive but stay searchable for the audit binder.'
+    ]) +
+    whereToFind('Sidebar → Quality & Supply → Defect Tracker') +
+    subhead('📋', 'AUDIT LOG VIEWER') +
+    intro('Append-only system log: every CRUD action across the CRM writes a row. Filter by actor, action, or target.') +
+    bullets([
+      '<b>Captures:</b> timestamp, actor (user email or "system"), action verb (e.g. <code>client_created</code>), target (the client name or invoice number), JSON details payload.',
+      '<b>Read-only.</b> No edit, no delete. That is the point.',
+      '<b>Filter bar</b> at the top lets you scope to one user or action type — useful for auditing.'
+    ]) +
+    steps([
+      'Sidebar → <b>Quality & Supply → Audit Log</b> (callout 2).',
+      'Filter by actor to see what one user did this week.',
+      'Filter by action to find e.g. every <code>invoice_deleted</code> event.',
+      'Click any row to expand the JSON details payload.'
+    ]) +
+    whereToFind('Sidebar → Quality & Supply → Audit Log') +
+    subhead('🏢', 'VENDOR DIRECTORY') +
+    intro('Searchable directory of every ingredient/can/label/equipment supplier you work with. Like a Rolodex with COIs.') +
+    bullets([
+      '<b>Captures:</b> vendor name, category (ingredient / can / label / co-packing equipment / freight / chemical / other), contact (name + email + phone), payment terms, notes, COI on file?, last-ordered date.',
+      '<b>Search</b> filters across name + category + notes in one box.'
+    ]) +
+    steps([
+      'Sidebar → <b>Quality & Supply → Vendor Directory</b>.',
+      '<b>+ New Vendor</b>. Categorise it for filtering later.',
+      'Save COI on file flag + COI expiry — appears as a badge if expired.',
+      'When you place an order, click the row and bump "last ordered" date.'
+    ]) +
+    whereToFind('Sidebar → Quality & Supply → Vendor Directory') +
+    subhead('🧮', 'RECIPE COST CALCULATOR (admin)') +
+    intro('Quick COGS math per case. Type in ingredients with quantity/unit/$, plus can cost + packaging + labor, and it spits out cost per case and per can.') +
+    bullets([
+      '<b>Breakdown shown:</b> Ingredients / Cans / Packaging / Labor → Total COGS per case and per can.',
+      '<b>"Copy summary"</b> button writes the breakdown to clipboard so you can paste into a quote or email.',
+      'Per-batch — does not persist. Use it to model pricing before drafting an invoice.'
+    ]) +
+    steps([
+      'Click the floating AI button (bottom-right) → <b>Recipe cost calc</b>.',
+      'Set batch yield (cases), can cost ($/case), packaging ($/case), labor ($/case).',
+      'Add ingredients: name, qty per gallon, unit (oz/g/ml), cost per unit.',
+      'Total updates live as you type. Click <b>Copy summary</b> to paste into a quote.'
+    ]) +
+    whereToFind('AI toolbar → Recipe cost calc (admin only)');
+
+  /* SECTION 3 — MARKETING ENGINE */
+  var MOCK_MARKETING = wf(620, 240,
+    box(0,0,620,40,'#142238') + txt(15,26,'MARKETING ENGINE',12,'#fff') +
+    box(15,55,190,170,'#1c2e48') + txt(25,78,'CONTENT CALENDAR',10,'#00e5c0') +
+    txt(25,100,'Mon · IG · Reel',9,'#cfd9e6') + txt(25,116,'Tue · LinkedIn',9,'#cfd9e6') +
+    txt(25,132,'Wed · Blog post',9,'#cfd9e6') + txt(25,148,'Thu · Email blast',9,'#cfd9e6') + tag(195,80,1) +
+    box(215,55,190,170,'#1c2e48') + txt(225,78,'SOCIAL DRAFTER',10,'#00e5c0') +
+    txt(225,100,'> Tone: friendly',9,'#9aa7bd') + txt(225,116,'> Platform: IG',9,'#9aa7bd') +
+    txt(225,140,'AI draft →',10,'#f5c842') + tag(395,80,2) +
+    box(415,55,190,170,'#1c2e48') + txt(425,78,'EMAIL DRIPS',10,'#00e5c0') +
+    txt(425,100,'5-touch sequences',9,'#cfd9e6') + txt(425,116,'AI-generated bodies',9,'#cfd9e6') + tag(595,80,3)
+  );
+
+  var SEC_MARKETING = MOCK_MARKETING +
+    intro('The <b>Marketing</b> sidebar section + a stack of AI tools turn the CRM into a content factory. Every tool uses your saved Anthropic key (AI Settings).') +
+    subhead('📅', 'CONTENT CALENDAR') +
+    intro('Schedule posts across IG, LinkedIn, X, blog, and email blasts. Calendar grid view.') +
+    bullets([
+      '<b>Captures:</b> date, platform, post type (reel / static / story / blog / email), title, AI-drafted body, status (draft / scheduled / published).',
+      '<b>Auto-suggests dates</b> for empty slots based on platform best-practice cadence.'
+    ]) +
+    steps([
+      'Sidebar → <b>Marketing → Content Calendar</b> (callout 1).',
+      'Click an empty date cell. Pick platform + post type. AI drafts the body — edit before saving.',
+      'Mark scheduled when posted. Mark published when live.'
+    ]) +
+    whereToFind('Sidebar → Marketing → Content Calendar') +
+    subhead('📣', 'SOCIAL POST DRAFTER (AI)') +
+    intro('Generates a ready-to-post caption with hashtags. Pick platform + tone, give it a topic, get 3 variants.') +
+    steps([
+      'AI toolbar → <b>Social post drafter</b> (callout 2).',
+      'Choose platform (IG / LinkedIn / X / Facebook) + tone (friendly / professional / playful / authoritative).',
+      'Type a topic ("new mango kombucha for SunBurst"). Click Generate.',
+      'Pick a variant. <b>Copy</b> drops it into your clipboard for posting.'
+    ]) +
+    whereToFind('AI toolbar → Social post drafter') +
+    subhead('📰', 'AUTO CASE STUDY BUILDER (AI)') +
+    intro('Picks a closed-won client, generates a 3-paragraph case study (challenge → solution → result), plus a 1-line headline + a metric pull-quote.') +
+    steps([
+      'AI toolbar → <b>Auto case study</b>.',
+      'Pick a client from the dropdown (only "closed-won" or "active" clients appear).',
+      'Click Generate. Edit any of the 3 paragraphs.',
+      'Click <b>Save to Public Case Studies</b> — appears on the homepage Case Studies grid within minutes.'
+    ]) +
+    whereToFind('AI toolbar → Auto case study') +
+    subhead('💡', 'POST IDEAS THIS WEEK (AI)') +
+    intro('Suggests 5 post ideas based on what is going on in your CRM right now — new clients, recent runs, sample shipments, upcoming COAs.') +
+    steps([
+      'AI toolbar → <b>Post ideas this week</b>.',
+      'Click Generate. Reads recent activity to surface 5 timely ideas.',
+      '<b>"Send to Content Calendar"</b> on any idea drops it onto today\'s date as a draft.'
+    ]) +
+    whereToFind('AI toolbar → Post ideas this week') +
+    subhead('🎨', 'AI IMAGE PROMPTS') +
+    intro('Generates rich image prompts for Midjourney/DALL-E/Sora based on a brief. Useful when you need product or lifestyle imagery for a post.') +
+    steps([
+      'AI toolbar → <b>AI Image Prompts</b>.',
+      'Describe what you want ("can of mango kombucha on a beach at golden hour, cinematic").',
+      'Pick style (photoreal / illustration / cinematic / minimalist). Generates 3 prompts.',
+      'Copy whichever fits → paste into your image tool.'
+    ]) +
+    whereToFind('AI toolbar → AI Image Prompts') +
+    subhead('✉️', 'EMAIL DRIP GENERATOR (AI)') +
+    intro('Generates a 5-touch email sequence (intro → educate → social proof → offer → last-call) for a target persona.') +
+    steps([
+      'AI toolbar → <b>Email drip generator</b> (callout 3).',
+      'Describe the audience ("functional beverage founders pre-launch") + offer ("free pilot canning run").',
+      'Click Generate. Five email drafts appear, ready to load into Mailgun or HubSpot.',
+      '<b>Copy all</b> to grab the whole sequence at once.'
+    ]) +
+    whereToFind('AI toolbar → Email drip generator') +
+    subhead('💼', 'LINKEDIN OUTREACH HELPER (AI)') +
+    intro('Generates a connection request + first DM tailored to a LinkedIn profile you paste in.') +
+    steps([
+      'AI toolbar → <b>LinkedIn outreach</b>.',
+      'Paste the prospect\'s headline / company / a line about their post you want to reference.',
+      'Pick angle (referral / cold / event-followup). Generate.',
+      'Get a 300-char connect note + a 600-char first DM. Copy + paste.'
+    ]) +
+    whereToFind('AI toolbar → LinkedIn outreach');
+
+  /* SECTION 4 — GROWTH TOOLS */
+  var MOCK_GROWTH = wf(620, 220,
+    box(0,0,620,40,'#142238') + txt(15,26,'GROWTH TOOLS',12,'#fff') +
+    box(15,55,190,150,'#1c2e48') + txt(25,78,'TRADE SHOW ROI',10,'#00e5c0') +
+    txt(25,100,'Expo West 2026',10,'#cfd9e6') + txt(25,116,'Spend: $12,400',9,'#9aa7bd') +
+    txt(25,132,'Pipeline: $84K',9,'#5fcf9e') + txt(25,148,'ROI: 6.8x',11,'#00e5c0') +
+    box(215,55,190,150,'#1c2e48') + txt(225,78,'CHURN RISK',10,'#ff8579') +
+    txt(225,100,'3 clients flagged',10,'#cfd9e6') + txt(225,120,'• Bayline · 92d quiet',9,'#f5c842') +
+    txt(225,136,'• ECCM · 78d quiet',9,'#f5c842') + txt(225,152,'• Vinland · 65d',9,'#cfd9e6') +
+    box(415,55,190,150,'#1c2e48') + txt(425,78,'CROSS-SELL',10,'#00e5c0') +
+    txt(425,100,'SunBurst → add Nitro?',9,'#cfd9e6') + txt(425,120,'Wildkind → add Cold-brew?',9,'#cfd9e6')
+  );
+
+  var SEC_GROWTH = MOCK_GROWTH +
+    intro('A grab bag of revenue-side tools: prioritise hot leads, model trade-show spend, see who is about to churn, suggest upsells.') +
+    subhead('🌪️', 'TRADE SHOW ROI TRACKER (admin)') +
+    intro('Log every show you spend money on. Track booth + travel + samples + collateral spend vs. the pipeline value of leads it generated.') +
+    bullets([
+      '<b>Captures:</b> show name, dates, booth cost, travel, samples cost, collateral, leads generated count, pipeline value of those leads.',
+      '<b>ROI calculation:</b> pipeline / total spend, shown live.',
+      '<b>Comparison view</b> ranks all your shows by ROI — kill the dogs, double down on winners.'
+    ]) +
+    steps([
+      'AI toolbar → <b>Trade Show ROI</b>.',
+      '<b>+ New Show</b>. Enter spend buckets + pipeline you attribute to it.',
+      'Add leads as they come in by linking client records (auto-pulls their deal value).',
+      'ROI ratio updates live. Use to justify (or kill) next year\'s booth budget.'
+    ]) +
+    whereToFind('AI toolbar → Trade Show ROI (admin)') +
+    subhead('📦', 'SERVICE PACKAGES CATALOG (admin)') +
+    intro('Bundled service offerings (e.g. "Pilot Pack" / "Launch Pack" / "Scale Pack") with fixed pricing — pulls into invoices in one click.') +
+    bullets([
+      '<b>Each package:</b> name, what is included (line items), bundled price, who it is for.',
+      '<b>Used from New Invoice builder</b> — pick a package, line items auto-fill.'
+    ]) +
+    steps([
+      'AI toolbar → <b>Service Packages</b>.',
+      '<b>+ New Package</b>. Name it. Add line items + prices. Save.',
+      'When drafting an invoice, click the package picker → all lines populate.'
+    ]) +
+    whereToFind('AI toolbar → Service Packages (admin)') +
+    subhead('🔮', 'CHURN RISK PREDICTOR (admin)') +
+    intro('Rules-based score: flags any active client who has not had a run, invoice, or note in the last 60+ days. Sorted by risk.') +
+    bullets([
+      '<b>Risk signals:</b> days since last invoice, days since last note, days since last production run, deal pipeline trajectory.',
+      '<b>Score:</b> Low / Watch / High / Critical. High and Critical get a flag on the Dashboard System Health widget.',
+      '<b>"Save as task"</b> on any flagged client creates a Tasks entry to reach out.'
+    ]) +
+    steps([
+      'AI toolbar → <b>Churn Risk</b>.',
+      'Review the list — sorted by score, highest risk first.',
+      'Click a client to see why they were flagged (signal breakdown).',
+      'Click <b>"Reach out"</b> to log a task auto-titled "Re-engage &lt;client&gt;".'
+    ]) +
+    whereToFind('AI toolbar → Churn Risk (admin)') +
+    subhead('🎯', 'CROSS-SELL SUGGESTER') +
+    intro('Looks at what each client buys today vs. what similar clients buy, and suggests upsells you haven\'t pitched yet.') +
+    steps([
+      'AI toolbar → <b>Cross-sell ideas</b>.',
+      'Pick a client (or "all" to see the whole book).',
+      'Suggestions appear with reasoning ("SunBurst buys canning + carbonation; similar clients also buy nitro infusion").',
+      'Click <b>"Draft outreach"</b> to spin up an email with the suggestion pre-written.'
+    ]) +
+    whereToFind('AI toolbar → Cross-sell ideas') +
+    subhead('📊', 'WIN-LOSS ANALYTICS') +
+    intro('Reports on closed-won vs. closed-lost deals. Captures loss reasons so you can spot patterns (priced too high? wrong stage to engage?).') +
+    bullets([
+      '<b>Loss reasons</b> tracked per deal: price / timing / fit / competitor / no-decision / other.',
+      '<b>Charts:</b> win rate trend, average days in pipeline by stage, top loss reasons by quarter.'
+    ]) +
+    steps([
+      'AI toolbar → <b>Win-loss analytics</b>.',
+      'When marking a deal lost in the Pipeline page, pick a reason — feeds this report.',
+      'Open the report monthly to look for patterns.'
+    ]) +
+    whereToFind('AI toolbar → Win-loss analytics');
+
+  /* SECTION 5 — REVENUE OPS */
+  var MOCK_REVOPS = wf(620, 250,
+    box(0,0,620,40,'#142238') + txt(15,26,'REVENUE OPS',12,'#fff') +
+    box(15,55,290,180,'#1c2e48') + txt(25,78,'AR AGING (dashboard)',10,'#00e5c0') +
+    txt(25,102,'0-30d',10,'#9aa7bd') + txt(170,102,'$24,500',10,'#5fcf9e') +
+    txt(25,124,'31-60d',10,'#9aa7bd') + txt(170,124,'$11,200',10,'#f5c842') +
+    txt(25,146,'61-90d',10,'#9aa7bd') + txt(170,146,'$4,800',10,'#ff8579') +
+    txt(25,168,'90d+',10,'#9aa7bd') + txt(170,168,'$1,791',10,'#e74c3c') +
+    txt(25,200,'Total overdue: $17,791',11,'#fff') + tag(295,80,1) +
+    box(315,55,290,180,'#1c2e48') + txt(325,78,'PIPELINE FORECAST',10,'#00e5c0') +
+    txt(325,102,'Weighted pipeline:',10,'#9aa7bd') + txt(325,124,'$248K · Q2 2026',12,'#fff') +
+    txt(325,158,'• Prospecting: $42K x 20%',9,'#cfd9e6') +
+    txt(325,176,'• Proposal: $86K x 50%',9,'#cfd9e6') +
+    txt(325,194,'• Closing: $120K x 80%',9,'#cfd9e6') + tag(595,80,2)
+  );
+
+  var SEC_REVOPS = MOCK_REVOPS +
+    intro('A handful of widgets and AI tools that keep cash moving and pipeline visible.') +
+    subhead('💰', 'AR AGING DASHBOARD WIDGET') +
+    intro('Auto-buckets every unpaid invoice into 0-30 / 31-60 / 61-90 / 90+ day buckets. Sits on the Dashboard so you see it every morning.') +
+    bullets([
+      'Bucket colour-codes: green / yellow / orange / red.',
+      'Click any bucket to filter the Invoices list to that bucket.',
+      'Updates live when you mark an invoice paid.'
+    ]) +
+    whereToFind('Dashboard page → right column (callout 1)') +
+    subhead('✉️', 'AR COLLECTION EMAILS (AI, admin)') +
+    intro('Drafts a tone-appropriate dunning email for every overdue invoice. Picks tone based on days overdue (friendly nudge → firm → final).') +
+    steps([
+      'AI toolbar → <b>AR Collection</b>.',
+      'See every overdue invoice with suggested tone + a one-click "Draft email" button.',
+      'Click Draft. The email body is pre-written referencing invoice number + amount + days overdue.',
+      'Edit, then send via Mailgun.'
+    ]) +
+    whereToFind('AI toolbar → AR Collection (admin)') +
+    subhead('🔄', 'RUN → INVOICE') +
+    intro('Convert a completed Production Run into a draft invoice in one click. Pulls client, formula, cases, and pricing.') +
+    steps([
+      'Sidebar → Operations Pro → Production Runs.',
+      'Find the run in the <b>Ship</b> column. Click the <b>"→ Invoice"</b> button on the card.',
+      'A pre-filled invoice opens in the New Invoice builder. Tweak line items if needed and send.'
+    ]) +
+    whereToFind('Production Runs kanban → "Ship" column → card action button') +
+    subhead('📈', 'WEIGHTED PIPELINE FORECAST') +
+    intro('Shows total deal value weighted by stage probability (Prospecting 20% / Proposal 50% / Negotiation 70% / Closing 80%). Updates when you move deals between stages.') +
+    bullets([
+      'Sits on the Dashboard, right next to AR Aging (callout 2).',
+      'Click through to the Pipeline page from the widget.'
+    ]) +
+    whereToFind('Dashboard page → right column') +
+    subhead('📊', 'REVENUE FORECAST DASHBOARD (12-month)') +
+    intro('Stacked bar chart of past 6 months collected + next 6 months forecasted. Forecast comes from invoiced-but-unpaid + weighted pipeline.') +
+    bullets([
+      'Click any month bar to drill into that month\'s invoices.',
+      '"Run new forecast" button regenerates with current pipeline data.'
+    ]) +
+    steps([
+      'AI toolbar → <b>Revenue Forecast</b>.',
+      'Review the 12-month bar. Past = collected (solid). Next 6 = forecast (dashed).',
+      'Hover any month for breakdown of collected / invoiced-open / weighted-pipeline contribution.'
+    ]) +
+    whereToFind('AI toolbar → Revenue Forecast (admin)') +
+    subhead('📊', 'CAPACITY HEATMAP') +
+    intro('Calendar grid showing how booked each day is. Green = open / yellow = busy / red = overbooked. Built from Production Schedule.') +
+    steps([
+      'AI toolbar → <b>Capacity heatmap</b>.',
+      'Pick a month. Each day shows booked-run count + capacity %.',
+      'Click a day to see what is scheduled.'
+    ]) +
+    whereToFind('AI toolbar → Capacity heatmap (admin)') +
+    subhead('🎯', 'KPI SCORECARD') +
+    intro('North-star metrics on one card: this-month revenue, MoM growth, deals closed, average deal size, days-to-paid, NPS. Colour-codes good/bad.') +
+    whereToFind('Dashboard page (auto-renders alongside Revenue Forecast)');
+
+  /* SECTION 6 — CUSTOMER RELATIONS */
+  var MOCK_CR = wf(620, 220,
+    box(0,0,620,40,'#142238') + txt(15,26,'CUSTOMER RELATIONS',12,'#fff') +
+    box(15,55,190,150,'#1c2e48') + txt(25,78,'CUSTOMER PORTAL',10,'#00e5c0') +
+    txt(25,102,'Per-client URL',9,'#cfd9e6') + txt(25,118,'• See invoices',9,'#9aa7bd') +
+    txt(25,134,'• Pay Now',9,'#9aa7bd') + txt(25,150,'• Accept quote',9,'#9aa7bd') +
+    txt(25,166,'• Contact you',9,'#9aa7bd') +
+    box(215,55,190,150,'#1c2e48') + txt(225,78,'NPS SURVEYS',10,'#00e5c0') +
+    txt(225,102,'Sent: 24',9,'#cfd9e6') + txt(225,120,'Score: 67',11,'#5fcf9e') +
+    txt(225,140,'• Promoters: 14',9,'#5fcf9e') + txt(225,158,'• Passives: 8',9,'#f5c842') +
+    txt(225,176,'• Detractors: 2',9,'#ff8579') +
+    box(415,55,190,150,'#1c2e48') + txt(425,78,'ONBOARDING WIZARD',10,'#00e5c0') +
+    txt(425,102,'Step 1 of 6:',9,'#cfd9e6') + txt(425,120,'Brand intake',10,'#fff')
+  );
+
+  var SEC_CR = MOCK_CR +
+    intro('Tools that touch the customer directly — portal, surveys, onboarding flow, anniversaries.') +
+    subhead('🌐', 'CUSTOMER PORTAL') +
+    intro('Each client gets a private URL where they can see their invoices, pay (Stripe), accept quotes, and message you. No login = a magic-link in their email.') +
+    bullets([
+      '<b>What they see:</b> only invoices addressed to them, with Pay Now buttons (Stripe links you saved per-invoice), Accept Quote buttons (emails you on click), and a contact form.',
+      '<b>How they get in:</b> the Send Onboarding Email button on the Customer Logins page emails them a temp password.',
+      '<b>Route:</b> <code>#portal/&lt;client-uuid&gt;</code> — bookmarkable.'
+    ]) +
+    steps([
+      'Sidebar → <b>Customer Logins (admin)</b>.',
+      'Find the client. Click <b>Send Onboarding Email</b>. They get the portal link + temp password.',
+      'They log in, see their stuff, and can pay or message — no setup on their side.'
+    ]) +
+    whereToFind('Sidebar → Customer Logins → Onboarding column') +
+    subhead('🚀', 'ONBOARDING WIZARD (admin)') +
+    intro('A 6-step intake flow you walk a brand-new client through on their first call. Captures everything: legal name, EIN, COI, billing address, product types, payment terms, primary POC.') +
+    bullets([
+      '<b>Steps:</b> Brand intake → Legal & banking → Logistics → Product types → Compliance docs → Confirm.',
+      'Auto-creates the client record with everything filled in.'
+    ]) +
+    steps([
+      'AI toolbar → <b>Onboarding wizard</b>.',
+      'Walk through each step while on the call with the new client.',
+      'Skip optional fields if not known yet. Step 6 confirms + saves.',
+      'New client appears in the Clients list, fully populated.'
+    ]) +
+    whereToFind('AI toolbar → Onboarding wizard (admin)') +
+    subhead('⭐', 'NPS SURVEYS') +
+    intro('Send a one-question Net Promoter Score survey to a client. They click a 0-10 score on a public URL; their score lands in the CRM.') +
+    bullets([
+      '<b>Public route:</b> <code>#nps/&lt;client-uuid&gt;</code> — no login required.',
+      '<b>Responses modal</b> in the CRM shows aggregate score, promoter/passive/detractor breakdown, and verbatim follow-up comments.'
+    ]) +
+    steps([
+      'Open a Client record → click <b>"Send NPS survey"</b>. (Or run a bulk-send via the Bulk Actions menu.)',
+      'Client receives an email with a one-click link to the public NPS page.',
+      'They pick 0-10 + optional comment. Submits to Supabase.',
+      'In the CRM: AI toolbar → <b>NPS responses</b> to see all results + aggregate score.'
+    ]) +
+    whereToFind('AI toolbar → NPS responses (admin)') +
+    subhead('🎂', 'ANNIVERSARY TRACKER') +
+    intro('Surfaces clients hitting their 1-year (or 2/5/10-year) anniversary as a customer. Auto-drafts a "thanks for X years!" email.') +
+    bullets([
+      'Appears on the Dashboard as an "Anniversaries this week" widget when any client is hitting a milestone.',
+      'One-click "Draft email" pre-writes a thank-you note referencing the milestone.'
+    ]) +
+    whereToFind('Dashboard widget (shown only when at least 1 anniversary this week)') +
+    subhead('📄', 'RUN SHEET PDF') +
+    intro('Generates a printable production run sheet for the floor. One page per run with formula, allergens, target yield, batch size, operator sign-off lines.') +
+    steps([
+      'Sidebar → Operations Pro → Production Runs.',
+      'Find the run. Click the <b>"Print sheet"</b> button on the card.',
+      'PDF opens in a new tab. Print it for the floor. Operator signs at bottom.'
+    ]) +
+    whereToFind('Production Runs kanban → any card → "Print sheet" button');
+
+  /* SECTION 7 — PUBLIC WEBSITE */
+  var MOCK_PUBLIC = wf(620, 220,
+    box(0,0,620,40,'#142238') + txt(15,26,'PUBLIC SITE — NEW SECTIONS',12,'#fff') +
+    box(15,55,190,150,'#1c2e48') + txt(25,78,'SUSTAINABILITY',10,'#5fcf9e') +
+    txt(25,100,'75% recycle rate',9,'#cfd9e6') + txt(25,116,'2.1L water/can',9,'#cfd9e6') +
+    txt(25,132,'0.18 kWh/case',9,'#cfd9e6') + txt(25,148,'100% recyclable',9,'#cfd9e6') +
+    box(215,55,190,150,'#1c2e48') + txt(225,78,'CASE STUDIES',10,'#f5c842') +
+    txt(225,102,'SunBurst Seltzers',10,'#fff') + txt(225,116,'12K cases / yr',9,'#9aa7bd') +
+    txt(225,140,'Wildkind Kombucha',10,'#fff') + txt(225,154,'Shelf-stable cracked',9,'#9aa7bd') +
+    box(415,55,190,150,'#1c2e48') + txt(425,78,'QUOTE CALC',10,'#7fc6f5') +
+    txt(425,102,'Format: 12oz std',9,'#cfd9e6') + txt(425,118,'Cases: 1,000',9,'#cfd9e6') +
+    txt(425,138,'Total: $8,400',11,'#00e5c0')
+  );
+
+  var SEC_PUBLIC = MOCK_PUBLIC +
+    intro('The public marketing site (goodliquidbevco.com) got several new sections to help convert visitors. All are live now.') +
+    subhead('🌱', 'SUSTAINABILITY SECTION') +
+    intro('Honest data on what makes our line greener than the alternative: aluminum recycle rate, water per filled can, kWh per case, recyclable outbound packaging.') +
+    bullets([
+      '<b>Counter cards:</b> 75% aluminum recycle, 2.1L water/can, 0.18 kWh/case, 100% recyclable outbound.',
+      '<b>"What we don\'t do"</b> block addresses common greenwashing claims so you can\'t be accused of them.',
+      '<b>Per-axis explainers</b> for can vs. PET / small-batch waste / PakTech handles / local-first sourcing.'
+    ]) +
+    whereToFind('Public site → scroll past Facility → before Case Studies, or click "Sustainability" if in nav') +
+    subhead('🏆', 'CASE STUDIES GRID') +
+    intro('Public, scroll-stopping success stories from real clients. Pulls from the Supabase <code>case_studies</code> table (managed via the Auto Case Study Builder).') +
+    bullets([
+      '<b>Default content:</b> 3 hand-written stories (SunBurst Seltzers, Wildkind Kombucha, Bayline Cold Brew).',
+      '<b>Falls back gracefully</b> if Supabase is down — uses the demo content rather than rendering empty.'
+    ]) +
+    steps([
+      'In the CRM: AI toolbar → Auto case study → generate one for a real client → "Save to Public Case Studies".',
+      'New case study appears in the grid on next page load.'
+    ]) +
+    whereToFind('Public site → "Success Stories" section') +
+    subhead('📚', 'RESOURCE LIBRARY') +
+    intro('Blog-grid for downloadable guides + posts. Same content model as case studies — admin-managed, public-rendered.') +
+    bullets([
+      'Pulls from Supabase <code>resources</code> table.',
+      'Falls back to demo posts if empty.'
+    ]) +
+    whereToFind('Public site → "Resource Library" section') +
+    subhead('💰', 'QUOTE CALCULATOR (public)') +
+    intro('On the pricing page. Visitor picks format + cases tier + add-ons, gets an instant quote without filling out a form. Hugely converts.') +
+    bullets([
+      '<b>Formats:</b> 12oz std / 12oz sleek / 16oz std (matches your rate card).',
+      '<b>Tiers:</b> 150 / 340 / 501 / 1,000 / 2,500 / 5,000 cases.',
+      '<b>Add-ons:</b> nitro, labelling, palletisation — toggle on/off.',
+      '<b>Updates total live</b> as they change inputs. CTA at the bottom: "Get formal quote" pushes them to the contact form, pre-filled.'
+    ]) +
+    whereToFind('Public site → Pricing section') +
+    subhead('🏗️', 'CAPABILITIES MATRIX + FACILITY GALLERY + CAPACITY INDICATOR') +
+    intro('Three credibility blocks added to give visitors confidence we are a real co-packer.') +
+    bullets([
+      '<b>Capabilities matrix:</b> table of what we run (formats, processes, certifications) so prospects can answer "can they make my thing?" in 10 seconds.',
+      '<b>Facility gallery:</b> photos of the line (when uploaded to Supabase storage).',
+      '<b>Capacity indicator:</b> live "this month\'s capacity: X% booked" pulled from the Production Schedule.'
+    ]) +
+    whereToFind('Public site → Capabilities, Facility, and Process sections');
+
+  /* ──────────────────────────────────────────────────────────
+     PATCH: wrap glOpenHelp to inject new sections + TOC entries
+     ────────────────────────────────────────────────────────── */
+  var NEW_SECTIONS = [
+    { id:'help-ops-pro',   icon:'🏭', label:'Operations Pro',     html:SEC_OPS_PRO },
+    { id:'help-qs',        icon:'✅',       label:'Quality & Supply',   html:SEC_QS },
+    { id:'help-marketing', icon:'📣', label:'Marketing Engine',   html:SEC_MARKETING },
+    { id:'help-growth',    icon:'🚀', label:'Growth Tools',       html:SEC_GROWTH },
+    { id:'help-revops',    icon:'💰', label:'Revenue Ops',        html:SEC_REVOPS },
+    { id:'help-cr',        icon:'🌐', label:'Customer Relations', html:SEC_CR },
+    { id:'help-public',    icon:'🏠', label:'Public Website',     html:SEC_PUBLIC }
+  ];
+
+  // Map new CRM pages to the right new help section so context-aware open works
+  var PAGE_TO_NEW_SECTION = {
+    'cpg-formulas':'help-ops-pro', 'cpg-yield':'help-ops-pro',
+    'cpg-production-runs':'help-ops-pro', 'cpg-samples':'help-ops-pro',
+    'cpg-cip':'help-ops-pro',
+    'cpg-audit':'help-qs', 'cpg-defects':'help-qs', 'cpg-vendors':'help-qs',
+    'cpg-content':'help-marketing'
+  };
+
+  function injectIntoModal(){
+    var body = document.getElementById('gl-help-body');
+    var toc  = document.getElementById('gl-help-toc');
+    if(!body || !toc) return false;
+    if(body.dataset.glAddonApplied === '1') return true;
+
+    var addonHtml = NEW_SECTIONS.map(function(s){
+      return '<section id="' + s.id + '" style="padding:22px 4px 26px;border-bottom:1px solid rgba(255,255,255,.06);scroll-margin-top:20px">' +
+        '<h3 style="margin:0 0 14px;font-family:var(--ff-disp);font-size:15px;letter-spacing:2px;color:var(--teal)">' + s.icon + ' ' + s.label.toUpperCase() + '</h3>' +
+        s.html +
+      '</section>';
+    }).join('');
+    body.insertAdjacentHTML('beforeend', addonHtml);
+
+    var dividerHtml = '<div style="margin:14px 8px 8px;padding-top:14px;border-top:1px dashed rgba(0,229,192,.2);font-size:10px;letter-spacing:2px;color:var(--teal);font-weight:600">✨ NEW FEATURES</div>';
+    var tocHtml = NEW_SECTIONS.map(function(s){
+      return '<a href="#' + s.id + '" data-anchor="' + s.id + '" ' +
+        'style="display:block;padding:8px 12px;margin:2px 0;border-radius:6px;font-size:12px;color:#9aa7bd;text-decoration:none;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background .12s,color .12s">' +
+        s.icon + ' ' + s.label + '</a>';
+    }).join('');
+    toc.insertAdjacentHTML('beforeend', dividerHtml + tocHtml);
+
+    toc.querySelectorAll('a[data-anchor]').forEach(function(a){
+      if(a.dataset.glWired === '1') return;
+      a.dataset.glWired = '1';
+      a.addEventListener('click', function(ev){
+        ev.preventDefault();
+        var t = document.getElementById(a.getAttribute('data-anchor'));
+        if(t) t.scrollIntoView({ behavior:'smooth', block:'start' });
+      });
+    });
+
+    body.dataset.glAddonApplied = '1';
+    return true;
+  }
+
+  function wrapHelp(){
+    var orig = window.glOpenHelp;
+    if(typeof orig !== 'function'){ setTimeout(wrapHelp, 500); return; }
+    window.glOpenHelp = function(scrollTo){
+      if(!scrollTo){
+        var activePg = document.querySelector('#crm-panel .cpg.act');
+        if(activePg && PAGE_TO_NEW_SECTION[activePg.id]){
+          scrollTo = PAGE_TO_NEW_SECTION[activePg.id];
+        }
+      }
+      orig(scrollTo);
+      var tries = 0;
+      var iv = setInterval(function(){
+        if(injectIntoModal() || ++tries > 8) clearInterval(iv);
+      }, 60);
+      if(scrollTo && /^help-(ops-pro|qs|marketing|growth|revops|cr|public)$/.test(scrollTo)){
+        setTimeout(function(){
+          var t = document.getElementById(scrollTo);
+          if(t) t.scrollIntoView({ behavior:'smooth', block:'start' });
+        }, 250);
+      }
+    };
+  }
+  wrapHelp();
+
+  console.log('[GL] help — new-features addon loaded (7 sections)');
+}());
