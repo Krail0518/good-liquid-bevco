@@ -1382,6 +1382,10 @@ select option, .fsel option {
     <div class="pw-err" id="pw-err">Incorrect email or password.</div>
     <input type="email" class="pw-input" id="pw-email" placeholder="your@email.com" style="letter-spacing:0;margin-bottom:10px;text-align:left;padding:13px 16px" onkeydown="if(event.key===&#39;Enter&#39;)document.getElementById(&#39;pw-input&#39;).focus()">
     <input type="password" class="pw-input" id="pw-input" placeholder="Password" style="text-align:left;padding:13px 16px" onkeydown="if(event.key===&#39;Enter&#39;)checkPw()">
+    <label style="display:flex;align-items:center;gap:9px;font-size:12px;color:var(--muted);margin:6px 2px 14px;cursor:pointer;user-select:none;text-align:left">
+      <input type="checkbox" id="gl-remember-cb" checked style="width:14px;height:14px;accent-color:var(--teal);cursor:pointer;margin:0;flex-shrink:0">
+      <span>Stay signed in on this computer<br><span style="font-size:10px;color:var(--muted);opacity:.7">Survives closing the browser. Clicking <b>Sign out</b> still ends the session.</span></span>
+    </label>
     <button class="pw-btn" onclick="checkPw()">Sign in →</button>
     <button class="pw-cancel" onclick="closePw()">Cancel</button>
     <button style="font-size:11px;color:var(--muted);cursor:pointer;border:none;background:none;font-family:var(--ff-body);margin-top:8px" onclick="document.getElementById('pw-ov').classList.remove('show');document.getElementById('reset-overlay').classList.add('show')">Forgot password?</button>
