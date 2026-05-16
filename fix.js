@@ -6897,7 +6897,37 @@
         return '<option value="'+esc(u.id)+'"'+sel+'>'+esc(u.name)+' ('+esc(u.role)+')</option>';
       }).join('');
 
-    var billingSame = c.billingSame !== false;
+    var billingSame  = c.billingSame  !== false;
+    var shippingSame = c.shippingSame !== false;
+
+    var contactTypeOptions = [
+      ['',''], ['owner','Owner'], ['executive','Executive'], ['purchasing','Purchasing'],
+      ['freight','Freight / Logistics'], ['sales','Sales'], ['other','Other']
+    ].map(function(o){
+      var sel = ((c.contactType||'') === o[0]) ? ' selected' : '';
+      return '<option value="'+esc(o[0])+'"'+sel+'>'+esc(o[1]||'Contact type…')+'</option>';
+    }).join('');
+
+    var leadSourceOptions = [
+      ['',''], ['google','Google search'], ['instagram','Instagram'], ['linkedin','LinkedIn'],
+      ['trade_show','Trade show'], ['industry_pub','Industry publication'],
+      ['customer_referral','Customer referral'], ['word_of_mouth','Word of mouth'],
+      ['cold_outreach','Cold outreach (they reached us)'], ['returning','Returning customer'],
+      ['other','Other']
+    ].map(function(o){
+      var sel = ((c.leadSource||'') === o[0]) ? ' selected' : '';
+      return '<option value="'+esc(o[0])+'"'+sel+'>'+esc(o[1]||'Select…')+'</option>';
+    }).join('');
+
+    var paymentMethodOptions = [
+      ['',''], ['ach','ACH'], ['wire','Wire'], ['credit_card','Credit card (3% fee)'], ['check','Check']
+    ].map(function(o){
+      var sel = ((c.paymentMethod||'') === o[0]) ? ' selected' : '';
+      return '<option value="'+esc(o[0])+'"'+sel+'>'+esc(o[1]||'Select…')+'</option>';
+    }).join('');
+
+    var dockDaysArr = Array.isArray(c.dockDays) ? c.dockDays : [];
+    function dck(day){ return dockDaysArr.indexOf(day) >= 0 ? ' checked' : ''; }
 
     var ov = document.createElement('div');
     ov.id = 'gl-edit-client-modal';
@@ -6915,9 +6945,17 @@
             '<div><div style="'+LABEL_STYLE+'">EIN / TAX ID</div><input id="gl-ec-ein" placeholder="XX-XXXXXXX" value="'+esc(c.ein)+'" style="'+INPUT_STYLE+'"></div>' +
             '<div><div style="'+LABEL_STYLE+'">WEBSITE</div><input id="gl-ec-website" placeholder="https://" value="'+esc(c.website)+'" style="'+INPUT_STYLE+'"></div>' +
           '</div>' +
-          '<div><div style="'+LABEL_STYLE+'">CONTACT NAME</div><input id="gl-ec-contact" value="'+esc(c.contact)+'" style="'+INPUT_STYLE+'"></div>' +
-          '<div><div style="'+LABEL_STYLE+'">EMAIL</div><input id="gl-ec-email" type="email" value="'+esc(c.email)+'" style="'+INPUT_STYLE+'"></div>' +
-          '<div><div style="'+LABEL_STYLE+'">PHONE</div><input id="gl-ec-phone" value="'+esc(c.phone)+'" style="'+INPUT_STYLE+'"></div>' +
+          '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:12px">' +
+            '<div style="'+LABEL_STYLE+';margin-bottom:8px">MAIN POINT OF CONTACT</div>' +
+            '<div style="display:flex;flex-direction:column;gap:8px">' +
+              '<input id="gl-ec-contact" placeholder="Name" value="'+esc(c.contact)+'" style="'+INPUT_STYLE+'">' +
+              '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+                '<input id="gl-ec-email" type="email" placeholder="Email" value="'+esc(c.email)+'" style="'+INPUT_STYLE+'">' +
+                '<input id="gl-ec-phone" placeholder="Phone" value="'+esc(c.phone)+'" style="'+INPUT_STYLE+'">' +
+              '</div>' +
+              '<select id="gl-ec-contact-type" style="'+INPUT_STYLE+'">'+contactTypeOptions+'</select>' +
+            '</div>' +
+          '</div>' +
           '<div><div style="'+LABEL_STYLE+'">STREET ADDRESS</div><input id="gl-ec-street" value="'+esc(c.street)+'" style="'+INPUT_STYLE+'"></div>' +
           '<div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px">' +
             '<div><div style="'+LABEL_STYLE+'">CITY</div><input id="gl-ec-city" value="'+esc(c.city)+'" style="'+INPUT_STYLE+'"></div>' +
@@ -6939,6 +6977,38 @@
             '</div>' +
           '</div>' +
           '<div>' +
+            '<label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--white);cursor:pointer;margin-bottom:8px">' +
+              '<input type="checkbox" id="gl-ec-shipping-same"'+(shippingSame?' checked':'')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">' +
+              'Shipping address same as billing' +
+            '</label>' +
+            '<div id="gl-ec-shipping-block" style="display:'+(shippingSame?'none':'grid')+';grid-template-columns:1fr;gap:8px">' +
+              '<input id="gl-ec-shipping-street" placeholder="Shipping street address" value="'+esc(c.shippingStreet)+'" style="'+INPUT_STYLE+'">' +
+              '<div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px">' +
+                '<input id="gl-ec-shipping-city" placeholder="City" value="'+esc(c.shippingCity)+'" style="'+INPUT_STYLE+'">' +
+                '<input id="gl-ec-shipping-state" placeholder="State" maxlength="2" value="'+esc(c.shippingState)+'" style="'+INPUT_STYLE+';text-transform:uppercase">' +
+                '<input id="gl-ec-shipping-zip" placeholder="Zip" value="'+esc(c.shippingZip)+'" style="'+INPUT_STYLE+'">' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:12px">' +
+            '<div style="'+LABEL_STYLE+';margin-bottom:8px">RECEIVING / LOGISTICS</div>' +
+            '<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--white);cursor:pointer;margin-bottom:10px">' +
+              '<input type="checkbox" id="gl-ec-lift-gate"'+(c.liftGate?' checked':'')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">🛗 Lift gate required for delivery' +
+            '</label>' +
+            '<div style="'+LABEL_STYLE+';margin-bottom:6px">LOADING DOCK DAYS</div>' +
+            '<div style="display:flex;flex-wrap:wrap;gap:6px 12px;margin-bottom:10px">' +
+              '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="gl-ec-dock-mon"'+dck('mon')+' style="accent-color:var(--teal);width:15px;height:15px;cursor:pointer">Mon</label>' +
+              '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="gl-ec-dock-tue"'+dck('tue')+' style="accent-color:var(--teal);width:15px;height:15px;cursor:pointer">Tue</label>' +
+              '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="gl-ec-dock-wed"'+dck('wed')+' style="accent-color:var(--teal);width:15px;height:15px;cursor:pointer">Wed</label>' +
+              '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="gl-ec-dock-thu"'+dck('thu')+' style="accent-color:var(--teal);width:15px;height:15px;cursor:pointer">Thu</label>' +
+              '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="gl-ec-dock-fri"'+dck('fri')+' style="accent-color:var(--teal);width:15px;height:15px;cursor:pointer">Fri</label>' +
+              '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="gl-ec-dock-sat"'+dck('sat')+' style="accent-color:var(--teal);width:15px;height:15px;cursor:pointer">Sat</label>' +
+              '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="gl-ec-dock-sun"'+dck('sun')+' style="accent-color:var(--teal);width:15px;height:15px;cursor:pointer">Sun</label>' +
+            '</div>' +
+            '<div style="'+LABEL_STYLE+';margin-bottom:5px">DOCK HOURS</div>' +
+            '<input id="gl-ec-dock-hours" placeholder="e.g. 7am – 3pm" value="'+esc(c.dockHours)+'" style="'+INPUT_STYLE+'">' +
+          '</div>' +
+          '<div>' +
             '<div style="'+LABEL_STYLE+'">PREFERRED COMMUNICATION</div>' +
             '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;padding:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:8px">' +
               '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="gl-ec-comm-email"'+ck('email')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">✉️ Email</label>' +
@@ -6956,6 +7026,10 @@
             '<div><div style="'+LABEL_STYLE+'">ACCOUNT OWNER</div><select id="gl-ec-account-owner" style="'+INPUT_STYLE+'">'+ownerOptions+'</select></div>' +
           '</div>' +
           '<div><div style="'+LABEL_STYLE+'">REFERRED BY</div><select id="gl-ec-referrer" style="'+INPUT_STYLE+'">'+refOptions+'</select></div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+            '<div><div style="'+LABEL_STYLE+'">HOW DID YOU FIND US?</div><select id="gl-ec-lead-source" style="'+INPUT_STYLE+'">'+leadSourceOptions+'</select></div>' +
+            '<div><div style="'+LABEL_STYLE+'">PREFERRED PAYMENT METHOD</div><select id="gl-ec-payment-method" style="'+INPUT_STYLE+'">'+paymentMethodOptions+'</select></div>' +
+          '</div>' +
           '<div>' +
             '<div style="'+LABEL_STYLE+'">PRODUCT TYPES</div>' +
             '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;padding:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:8px">' +
@@ -6978,10 +7052,28 @@
                 '<input type="checkbox" id="gl-ec-coi-on-file"'+(c.coiOnFile?' checked':'')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">📄 COI on file' +
               '</label>' +
               '<div><div style="'+LABEL_STYLE+';margin-bottom:3px">COI EXPIRES</div><input type="date" id="gl-ec-coi-expires" value="'+esc(c.coiExpires)+'" style="'+INPUT_STYLE+';padding:8px;font-size:13px"></div>' +
-              '<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--white);cursor:pointer;margin-top:8px">' +
+            '</div>' +
+            '<div style="border-top:1px solid rgba(255,255,255,.06);margin:10px 0"></div>' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end">' +
+              '<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--white);cursor:pointer">' +
                 '<input type="checkbox" id="gl-ec-w9-on-file"'+(c.w9OnFile?' checked':'')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">📄 W-9 on file' +
               '</label>' +
-              '<div style="margin-top:8px"><div style="'+LABEL_STYLE+';margin-bottom:3px">W-9 RECEIVED</div><input type="date" id="gl-ec-w9-received" value="'+esc(c.w9Received)+'" style="'+INPUT_STYLE+';padding:8px;font-size:13px"></div>' +
+              '<div><div style="'+LABEL_STYLE+';margin-bottom:3px">W-9 RECEIVED</div><input type="date" id="gl-ec-w9-received" value="'+esc(c.w9Received)+'" style="'+INPUT_STYLE+';padding:8px;font-size:13px"></div>' +
+            '</div>' +
+            (c.w9FilePath ? '<div style="font-size:12px;color:var(--teal);margin-top:6px"><a href="#" id="gl-ec-w9-link" style="color:var(--teal)">📄 View current W-9</a></div>' : '') +
+            '<div style="margin-top:8px"><div style="'+LABEL_STYLE+';margin-bottom:3px">UPLOAD NEW W-9 PDF</div>' +
+              '<input type="file" id="gl-ec-w9-file" accept=".pdf,image/*" style="'+INPUT_STYLE+';padding:8px;font-size:12px">' +
+            '</div>' +
+            '<div style="border-top:1px solid rgba(255,255,255,.06);margin:10px 0"></div>' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end">' +
+              '<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--white);cursor:pointer">' +
+                '<input type="checkbox" id="gl-ec-tax-exempt"'+(c.taxExempt?' checked':'')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">📄 State sales-tax exempt' +
+              '</label>' +
+              '<div><div style="'+LABEL_STYLE+';margin-bottom:3px">EXEMPT STATE</div><input id="gl-ec-tax-exempt-state" maxlength="2" value="'+esc(c.taxExemptState)+'" style="'+INPUT_STYLE+';padding:8px;font-size:13px;text-transform:uppercase"></div>' +
+            '</div>' +
+            (c.taxExemptFilePath ? '<div style="font-size:12px;color:var(--teal);margin-top:6px"><a href="#" id="gl-ec-tax-link" style="color:var(--teal)">📄 View current exemption certificate</a></div>' : '') +
+            '<div style="margin-top:8px"><div style="'+LABEL_STYLE+';margin-bottom:3px">UPLOAD NEW EXEMPTION CERTIFICATE</div>' +
+              '<input type="file" id="gl-ec-tax-exempt-file" accept=".pdf,image/*" style="'+INPUT_STYLE+';padding:8px;font-size:12px">' +
             '</div>' +
           '</div>' +
           ((c.stripeCustomerId || c.qboCustomerId) ?
@@ -7002,16 +7094,35 @@
     ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
     ov.querySelector('#gl-ec-close').addEventListener('click', function(){ ov.remove(); });
     ov.querySelector('#gl-ec-cancel').addEventListener('click', function(){ ov.remove(); });
-    // Toggle the billing block based on the "same as physical" checkbox.
+    // Toggle billing block based on "same as physical" checkbox.
     var bsame = ov.querySelector('#gl-ec-billing-same');
     var bblock = ov.querySelector('#gl-ec-billing-block');
     bsame.addEventListener('change', function(){ bblock.style.display = bsame.checked ? 'none' : 'grid'; });
+    // Toggle shipping block based on "same as billing" checkbox.
+    var ssame = ov.querySelector('#gl-ec-shipping-same');
+    var sblock = ov.querySelector('#gl-ec-shipping-block');
+    if(ssame && sblock) ssame.addEventListener('change', function(){ sblock.style.display = ssame.checked ? 'none' : 'grid'; });
+
+    // Wire signed-URL preview links for stored compliance docs.
+    async function openDoc(path){
+      if(!path || !window.supa) return;
+      try {
+        var r = await window.supa.storage.from('client-docs').createSignedUrl(path, 300);
+        if(r && r.data && r.data.signedUrl) window.open(r.data.signedUrl, '_blank');
+      } catch(e){ console.warn('[GL] signed url failed', e); }
+    }
+    var w9Link  = ov.querySelector('#gl-ec-w9-link');
+    var taxLink = ov.querySelector('#gl-ec-tax-link');
+    if(w9Link)  w9Link.addEventListener('click',  function(e){ e.preventDefault(); openDoc(c.w9FilePath); });
+    if(taxLink) taxLink.addEventListener('click', function(e){ e.preventDefault(); openDoc(c.taxExemptFilePath); });
+
     ov.querySelector('#gl-ec-save').addEventListener('click', async function(){
       var errEl = ov.querySelector('#gl-ec-err');
       errEl.style.display = 'none';
       function setErr(m){ errEl.textContent = m; errEl.style.display = 'block'; }
       function val(id){ var el = ov.querySelector('#'+id); return el ? el.value.trim() : ''; }
       function chk(id){ var el = ov.querySelector('#'+id); return !!(el && el.checked); }
+      function fileOf(id){ var el = ov.querySelector('#'+id); return el && el.files && el.files[0] ? el.files[0] : null; }
 
       var name = val('gl-ec-name');
       if(!name){ setErr('Brand name is required.'); return; }
@@ -7036,45 +7147,92 @@
         chk('gl-ec-pt-other')     ? 'other'     : null
       ].filter(Boolean);
 
+      var dockDaysOut = ['mon','tue','wed','thu','fri','sat','sun']
+        .filter(function(d){ return chk('gl-ec-dock-'+d); });
+
       var street = val('gl-ec-street');
       var city   = val('gl-ec-city');
       var state  = val('gl-ec-state').toUpperCase();
       var zip    = val('gl-ec-zip');
       var bSame  = chk('gl-ec-billing-same');
+      var bStreet= bSame ? street : val('gl-ec-billing-street');
+      var bCity  = bSame ? city   : val('gl-ec-billing-city');
+      var bState = bSame ? state  : val('gl-ec-billing-state').toUpperCase();
+      var bZip   = bSame ? zip    : val('gl-ec-billing-zip');
+      var sSame  = chk('gl-ec-shipping-same');
 
-      var patch = {
-        name:       name,
-        legalName:  val('gl-ec-legal-name'),
-        ein:        val('gl-ec-ein'),
-        website:    val('gl-ec-website'),
-        contact:    val('gl-ec-contact'),
-        email:      val('gl-ec-email'),
-        phone:      val('gl-ec-phone'),
-        street:     street,
-        city:       city,
-        state:      state,
-        zip:        zip,
-        billingSame:   bSame,
-        billingStreet: bSame ? street : val('gl-ec-billing-street'),
-        billingCity:   bSame ? city   : val('gl-ec-billing-city'),
-        billingState:  bSame ? state  : val('gl-ec-billing-state').toUpperCase(),
-        billingZip:    bSame ? zip    : val('gl-ec-billing-zip'),
-        commPrefs:    commPrefsOut,
-        productTypes: productTypesOut,
-        service:      val('gl-ec-service'),
-        status:       val('gl-ec-status'),
-        paymentTerms: val('gl-ec-payment-terms') || 'Due on receipt',
-        accountOwner: val('gl-ec-account-owner'),
-        referredBy:   val('gl-ec-referrer'),
-        coiOnFile:    chk('gl-ec-coi-on-file'),
-        coiExpires:   val('gl-ec-coi-expires'),
-        w9OnFile:     chk('gl-ec-w9-on-file'),
-        w9Received:   val('gl-ec-w9-received'),
-        notes:        val('gl-ec-notes')
-      };
+      // Upload new compliance files if the user picked any.
+      var w9File  = fileOf('gl-ec-w9-file');
+      var taxFile = fileOf('gl-ec-tax-exempt-file');
+      var w9OnFile = chk('gl-ec-w9-on-file');
+      var w9Received = val('gl-ec-w9-received');
+      var taxExempt = chk('gl-ec-tax-exempt');
+      var newW9Path = '', newTaxPath = '';
+      if(w9File){
+        // Implicitly mark on file if a fresh file is being attached.
+        w9OnFile = true;
+        if(!w9Received) w9Received = new Date().toISOString().slice(0,10);
+      }
+      if(taxFile) taxExempt = true;
 
       var btn = this; var orig = btn.textContent;
       btn.disabled = true; btn.textContent = 'Saving…';
+
+      if(w9File && typeof window.uploadComplianceDoc === 'function'){
+        newW9Path = await window.uploadComplianceDoc(w9File, clientId, 'w9');
+      }
+      if(taxFile && typeof window.uploadComplianceDoc === 'function'){
+        newTaxPath = await window.uploadComplianceDoc(taxFile, clientId, 'tax_exempt');
+      }
+
+      var patch = {
+        name:           name,
+        legalName:      val('gl-ec-legal-name'),
+        ein:            val('gl-ec-ein'),
+        website:        val('gl-ec-website'),
+        contact:        val('gl-ec-contact'),
+        email:          val('gl-ec-email'),
+        phone:          val('gl-ec-phone'),
+        contactType:    val('gl-ec-contact-type'),
+        street:         street,
+        city:           city,
+        state:          state,
+        zip:            zip,
+        billingSame:    bSame,
+        billingStreet:  bStreet,
+        billingCity:    bCity,
+        billingState:   bState,
+        billingZip:     bZip,
+        shippingSame:   sSame,
+        shippingStreet: sSame ? bStreet : val('gl-ec-shipping-street'),
+        shippingCity:   sSame ? bCity   : val('gl-ec-shipping-city'),
+        shippingState:  sSame ? bState  : val('gl-ec-shipping-state').toUpperCase(),
+        shippingZip:    sSame ? bZip    : val('gl-ec-shipping-zip'),
+        liftGate:       chk('gl-ec-lift-gate'),
+        dockDays:       dockDaysOut,
+        dockHours:      val('gl-ec-dock-hours'),
+        commPrefs:      commPrefsOut,
+        productTypes:   productTypesOut,
+        service:        val('gl-ec-service'),
+        status:         val('gl-ec-status'),
+        paymentTerms:   val('gl-ec-payment-terms') || 'Due on receipt',
+        paymentMethod:  val('gl-ec-payment-method'),
+        leadSource:     val('gl-ec-lead-source'),
+        accountOwner:   val('gl-ec-account-owner'),
+        referredBy:     val('gl-ec-referrer'),
+        coiOnFile:      chk('gl-ec-coi-on-file'),
+        coiExpires:     val('gl-ec-coi-expires'),
+        w9OnFile:       w9OnFile,
+        w9Received:     w9Received,
+        taxExempt:      taxExempt,
+        taxExemptState: val('gl-ec-tax-exempt-state').toUpperCase(),
+        notes:          val('gl-ec-notes')
+      };
+      // Only set file paths in the patch when a new upload happened; otherwise
+      // leave them alone so we don't overwrite the existing pointer.
+      if(newW9Path)  patch.w9FilePath = newW9Path;
+      if(newTaxPath) patch.taxExemptFilePath = newTaxPath;
+
       var ok = await window.glUpdateClient(clientId, patch);
       btn.disabled = false; btn.textContent = orig;
       if(ok) ov.remove();
@@ -7100,37 +7258,53 @@
     if(window.supa){
       try {
         var supaPatch = {
-          name:           patch.name,
-          legal_name:     patch.legalName,
-          ein:            patch.ein,
-          website:        patch.website,
-          contact_name:   patch.contact,
-          email:          patch.email,
-          phone:          patch.phone,
-          street:         patch.street,
-          city:           patch.city,
-          state:          patch.state,
-          zip:            patch.zip,
-          billing_same:   patch.billingSame,
-          billing_street: patch.billingStreet,
-          billing_city:   patch.billingCity,
-          billing_state:  patch.billingState,
-          billing_zip:    patch.billingZip,
-          comm_prefs:     patch.commPrefs,
-          product_types:  patch.productTypes,
-          service:        patch.service,
-          status:         patch.status,
-          payment_terms:  patch.paymentTerms,
-          account_owner:  patch.accountOwner || null,
-          referred_by:    patch.referredBy || null,
-          coi_on_file:    !!patch.coiOnFile,
-          coi_expires:    patch.coiExpires || null,
-          w9_on_file:     !!patch.w9OnFile,
-          w9_received:    patch.w9Received || null,
-          notes:          patch.notes,
-          initials:       newInit
+          name:            patch.name,
+          legal_name:      patch.legalName,
+          ein:             patch.ein,
+          website:         patch.website,
+          contact_name:    patch.contact,
+          email:           patch.email,
+          phone:           patch.phone,
+          contact_type:    patch.contactType || null,
+          street:          patch.street,
+          city:            patch.city,
+          state:           patch.state,
+          zip:             patch.zip,
+          billing_same:    patch.billingSame,
+          billing_street:  patch.billingStreet,
+          billing_city:    patch.billingCity,
+          billing_state:   patch.billingState,
+          billing_zip:     patch.billingZip,
+          shipping_same:   patch.shippingSame,
+          shipping_street: patch.shippingStreet,
+          shipping_city:   patch.shippingCity,
+          shipping_state:  patch.shippingState,
+          shipping_zip:    patch.shippingZip,
+          lift_gate:       !!patch.liftGate,
+          dock_days:       patch.dockDays,
+          dock_hours:      patch.dockHours,
+          comm_prefs:      patch.commPrefs,
+          product_types:   patch.productTypes,
+          service:         patch.service,
+          status:          patch.status,
+          payment_terms:   patch.paymentTerms,
+          payment_method:  patch.paymentMethod || null,
+          lead_source:     patch.leadSource || null,
+          account_owner:   patch.accountOwner || null,
+          referred_by:     patch.referredBy || null,
+          coi_on_file:     !!patch.coiOnFile,
+          coi_expires:     patch.coiExpires || null,
+          w9_on_file:      !!patch.w9OnFile,
+          w9_received:     patch.w9Received || null,
+          w9_file_path:    patch.w9FilePath,
+          tax_exempt:      !!patch.taxExempt,
+          tax_exempt_state: patch.taxExemptState || null,
+          tax_exempt_file_path: patch.taxExemptFilePath,
+          notes:           patch.notes,
+          initials:        newInit
         };
-        // Strip undefined keys so we don't accidentally wipe values not in the patch.
+        // Strip undefined keys so we don't accidentally wipe values not in the patch
+        // (file paths are only present when a fresh upload happened).
         Object.keys(supaPatch).forEach(function(k){ if(supaPatch[k] === undefined) delete supaPatch[k]; });
         var r = await window.supa.from('clients').update(supaPatch).eq('id', clientId);
         if(r && r.error){
