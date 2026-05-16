@@ -1386,6 +1386,9 @@ select option, .fsel option {
         <div class="cni" id="nav-referrers" onclick="cNav(&#39;referrers&#39;,this)"><span class="cni-ico">👤</span>Referrers</div>
         <div class="cni-sec">Other</div>
         <div class="cni" id="nav-activity" onclick="cNav(&#39;activity&#39;,this)"><span class="cni-ico">📡</span>Activity</div>
+        <div class="cni-sec">Operations</div>
+        <div class="cni" id="nav-production-runs" onclick="cNav(&#39;production-runs&#39;,this)"><span class="cni-ico">🏭</span>Production Runs</div>
+        <div class="cni" id="nav-samples" onclick="cNav(&#39;samples&#39;,this)"><span class="cni-ico">📦</span>Sample Shipments</div>
         <div class="cni-sec">Calendars</div>
         <div class="cni" id="nav-calendar" onclick="cNav(&#39;calendar&#39;,this)"><span class="cni-ico">📅</span>General Calendar</div>
         <div class="cni" id="nav-production-cal" onclick="cNav(&#39;production-cal&#39;,this)"><span class="cni-ico">🏭</span>Production Schedule</div>
@@ -1448,6 +1451,22 @@ select option, .fsel option {
           <button class="cbtn pri" onclick="window.glOpenLogYield && window.glOpenLogYield()">+ Log Completion</button>
         </div>
         <div id="yld-body"></div>
+      <!-- PRODUCTION RUNS (kanban) -->
+      <div id="cpg-production-runs" class="cpg">
+        <div class="cph">
+          <div><div class="cpt">PRODUCTION RUNS</div><div class="cps" id="prun-sub">Operations board · Discovery → Ship</div></div>
+          <button class="cbtn pri" onclick="window.glOpenAddProductionRun && window.glOpenAddProductionRun()">+ Add Run</button>
+        </div>
+        <div id="prun-board"></div>
+      </div>
+
+      <!-- SAMPLE SHIPMENTS -->
+      <div id="cpg-samples" class="cpg">
+        <div class="cph">
+          <div><div class="cpt">SAMPLE SHIPMENTS</div><div class="cps" id="samp-sub">Track samples out + auto-flag overdue follow-ups</div></div>
+          <button class="cbtn pri" onclick="window.glOpenAddSample && window.glOpenAddSample()">+ Log Shipment</button>
+        </div>
+        <div id="samp-body"></div>
       </div>
 
       <!-- CLIENTS -->

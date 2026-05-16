@@ -7784,6 +7784,23 @@
     ['approved','Production approved'],['archived','Archived']
   ];
   window.glFormulas = window.glFormulas || [];
+   PRODUCTION RUNS — operations kanban
+   - 6 columns: Discovery → Formulation → Sample → COA → Production → Ship.
+   - Each card: client + run name + format + cases + scheduled date.
+   - Add / edit / delete via modal. Move stage via dropdown (no
+     drag-and-drop yet — keeps it shippable in one PR).
+   - Backed by Supabase `production_runs` table. Falls back to local
+     localStorage if the table is missing so the UI still works.
+   - Renders into #prun-board whenever the user navigates to the page.
+   ============================================================ */
+(function(){
+  var STAGES = ['Discovery','Formulation','Sample','COA','Production','Ship'];
+  var STAGE_COLOR = {
+    Discovery:'#9aa7bd', Formulation:'#7fc6f5', Sample:'#c4a4f8',
+    COA:'#f5c842', Production:'#5fcf9e', Ship:'#00e5c0'
+  };
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  window.glProductionRuns = window.glProductionRuns || [];
 
   async function loadFromSupabase(){
     if(!window.supa) return null;
@@ -8104,6 +8121,91 @@
       }).join('');
     var ov = document.createElement('div');
     ov.id = 'gl-yld-modal';
+      var r = await window.supa.from('production_runs').select('*').order('scheduled_date',{ascending:true,nullsFirst:false});
+      if(r && r.data) return r.data;
+    } catch(e){ console.warn('[GL] production_runs load failed', e); }
+    return null;
+  }
+  function loadFromLocal(){
+    try { return JSON.parse(localStorage.getItem('gl_production_runs') || '[]'); }
+    catch(e){ return []; }
+  }
+  function saveLocal(){
+    localStorage.setItem('gl_production_runs', JSON.stringify(window.glProductionRuns));
+  }
+
+  async function refreshRuns(){
+    var rows = await loadFromSupabase();
+    if(rows) window.glProductionRuns = rows;
+    else      window.glProductionRuns = loadFromLocal();
+    renderBoard();
+  }
+
+  function renderBoard(){
+    var host = document.getElementById('prun-board');
+    if(!host) return;
+    var sub = document.getElementById('prun-sub');
+    var byStage = {};
+    STAGES.forEach(function(s){ byStage[s] = []; });
+    (window.glProductionRuns || []).forEach(function(r){
+      var s = r.stage || 'Discovery';
+      if(!byStage[s]) byStage[s] = [];
+      byStage[s].push(r);
+    });
+    var total = (window.glProductionRuns || []).length;
+    if(sub) sub.textContent = total + ' run' + (total === 1 ? '' : 's') + ' across ' + STAGES.length + ' stages';
+
+    var columnsHtml = STAGES.map(function(stage){
+      var color = STAGE_COLOR[stage];
+      var cards = byStage[stage].map(function(r){
+        var clientName = r.client_name || ((window.clients||[]).find(function(c){ return c.id === r.client_id; })||{}).name || '—';
+        var sched = r.scheduled_date ? new Date(r.scheduled_date).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—';
+        var cases = r.cases ? Number(r.cases).toLocaleString() + ' cs' : '';
+        return '<div class="gl-prun-card" data-id="' + esc(r.id) + '" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:11px 13px;margin-bottom:9px;cursor:pointer;transition:border-color .15s" onmouseover="this.style.borderColor=\'rgba(0,229,192,.35)\'" onmouseout="this.style.borderColor=\'rgba(255,255,255,.08)\'">' +
+          '<div style="font-size:13px;color:var(--white);font-weight:600;margin-bottom:4px">' + esc(r.run_name || '(untitled)') + '</div>' +
+          '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">' + esc(clientName) + '</div>' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#9aa7bd">' +
+            '<span>' + esc(r.format || '—') + (cases ? ' · ' + cases : '') + '</span>' +
+            '<span>📅 ' + sched + '</span>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+      return '<div class="gl-prun-col" data-stage="' + stage + '" style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:12px;min-height:240px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
+          '<div style="font-family:var(--ff-disp);font-size:11px;letter-spacing:2px;color:' + color + '">' + stage.toUpperCase() + '</div>' +
+          '<span style="font-size:11px;color:var(--muted);background:rgba(255,255,255,.05);padding:2px 8px;border-radius:10px">' + byStage[stage].length + '</span>' +
+        '</div>' +
+        cards +
+        (cards ? '' : '<div style="font-size:11px;color:rgba(255,255,255,.25);text-align:center;padding:14px 0;font-style:italic">empty</div>') +
+      '</div>';
+    }).join('');
+
+    host.innerHTML = '<div style="display:grid;grid-template-columns:repeat(6,minmax(180px,1fr));gap:12px;overflow-x:auto;padding-bottom:12px">' + columnsHtml + '</div>';
+    host.querySelectorAll('.gl-prun-card').forEach(function(card){
+      card.addEventListener('click', function(){ window.glOpenEditProductionRun(card.getAttribute('data-id')); });
+    });
+  }
+
+  function runModal(existing){
+    var prior = document.getElementById('gl-prun-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var isEdit = !!existing;
+    var run = existing || { run_name:'', client_id:'', client_name:'', format:'', cases:'', stage:'Discovery', scheduled_date:'', notes:'' };
+    var clientOptions = '<option value="">— Pick client —</option>' +
+      (window.clients||[]).map(function(c){
+        var sel = (c.id === run.client_id) ? ' selected' : '';
+        return '<option value="' + esc(c.id) + '"'+sel+'>' + esc(c.name) + '</option>';
+      }).join('');
+    var stageOptions = STAGES.map(function(s){
+      var sel = (s === run.stage) ? ' selected' : '';
+      return '<option value="' + s + '"'+sel+'>' + s + '</option>';
+    }).join('');
+    var formatOptions = ['','12oz Standard can','12oz Sleek can','16oz Standard can','750ml bottle','R&D / pilot','Other'].map(function(f){
+      var sel = (f === run.format) ? ' selected' : '';
+      return '<option value="' + esc(f) + '"'+sel+'>' + esc(f || 'Select format…') + '</option>';
+    }).join('');
+    var ov = document.createElement('div');
+    ov.id = 'gl-prun-modal';
     ov.setAttribute('style','position:fixed;inset:0;z-index:1000;background:rgba(6,13,26,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
     ov.innerHTML =
       '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:480px;max-height:88vh;overflow-y:auto">' +
@@ -8141,6 +8243,43 @@
       if(!name){ alert('Run name is required.'); return; }
       var cid = ov.querySelector('#gl-yld-client').value;
       var c = (window.clients||[]).find(function(x){ return x.id === cid; });
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">' + (isEdit ? '✏️ EDIT RUN' : '🏭 ADD PRODUCTION RUN') + '</div>' +
+          '<button id="gl-prun-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Run name *</div><input class="finp" id="gl-prun-name" value="' + esc(run.run_name) + '" placeholder="e.g. SunBurst Mango — Run #3"></div>' +
+        '<div class="frow"><div class="flbl">Client</div><select class="fsel" id="gl-prun-client">' + clientOptions + '</select></div>' +
+        '<div style="display:grid;grid-template-columns:2fr 1fr;gap:8px">' +
+          '<div class="frow"><div class="flbl">Format</div><select class="fsel" id="gl-prun-format">' + formatOptions + '</select></div>' +
+          '<div class="frow"><div class="flbl">Cases planned</div><input class="finp" id="gl-prun-cases" type="number" min="0" value="' + (run.cases || '') + '"></div>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+          '<div class="frow"><div class="flbl">Stage</div><select class="fsel" id="gl-prun-stage">' + stageOptions + '</select></div>' +
+          '<div class="frow"><div class="flbl">Scheduled date</div><input class="finp" id="gl-prun-date" type="date" value="' + esc(run.scheduled_date || '') + '"></div>' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Notes</div><textarea class="finp" id="gl-prun-notes" rows="3" placeholder="QC notes, allergen flags, anything the line lead should know…">' + esc(run.notes) + '</textarea></div>' +
+        '<div style="display:flex;gap:8px;margin-top:6px">' +
+          '<button id="gl-prun-save" class="cbtn pri" style="flex:1">💾 Save</button>' +
+          (isEdit ? '<button id="gl-prun-del" class="cbtn" style="background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#ff8579">Delete</button>' : '') +
+          '<button id="gl-prun-cancel" class="cbtn">Cancel</button>' +
+        '</div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-prun-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-prun-cancel').addEventListener('click', function(){ ov.remove(); });
+    var delBtn = ov.querySelector('#gl-prun-del');
+    if(delBtn) delBtn.addEventListener('click', async function(){
+      if(!confirm('Delete this run?')) return;
+      if(window.supa){ try { await window.supa.from('production_runs').delete().eq('id', run.id); } catch(e){} }
+      window.glProductionRuns = (window.glProductionRuns||[]).filter(function(r){ return r.id !== run.id; });
+      saveLocal(); renderBoard(); ov.remove();
+      if(typeof addNotification === 'function') addNotification('🏭 Run deleted', run.run_name, 'warning');
+      if(typeof window.glAudit === 'function') window.glAudit('production_run_deleted', run.id, {});
+    });
+    ov.querySelector('#gl-prun-save').addEventListener('click', async function(){
+      var name = ov.querySelector('#gl-prun-name').value.trim();
+      if(!name){ alert('Run name is required.'); return; }
+      var cid = ov.querySelector('#gl-prun-client').value;
+      var c   = (window.clients||[]).find(function(x){ return x.id === cid; });
       var data = {
         run_name:       name,
         client_id:      cid || null,
@@ -8150,6 +8289,12 @@
         completed_at:   ov.querySelector('#gl-yld-date').value || null,
         loss_reason:    ov.querySelector('#gl-yld-loss').value.trim(),
         notes:          ov.querySelector('#gl-yld-notes').value
+        format:         ov.querySelector('#gl-prun-format').value,
+        cases:          parseInt(ov.querySelector('#gl-prun-cases').value, 10) || 0,
+        stage:          ov.querySelector('#gl-prun-stage').value,
+        scheduled_date: ov.querySelector('#gl-prun-date').value || null,
+        notes:          ov.querySelector('#gl-prun-notes').value,
+        updated_at:     new Date().toISOString()
       };
       var btn = this; btn.disabled = true; btn.textContent = 'Saving…';
       if(window.supa){
@@ -8175,6 +8320,28 @@
       ov.remove(); render();
       if(typeof addNotification === 'function') addNotification(isEdit ? '📈 Yield updated' : '📈 Yield logged', data.run_name, 'success');
       if(typeof window.glAudit === 'function') window.glAudit(isEdit ? 'yield_edited' : 'yield_logged', data.run_name, { yield_pct: data.planned_cases ? Math.round(data.actual_cases / data.planned_cases * 100) : 0 });
+            await window.supa.from('production_runs').update(data).eq('id', run.id);
+            Object.assign(run, data);
+          } else {
+            var r = await window.supa.from('production_runs').insert([data]).select().single();
+            if(r && r.data){ window.glProductionRuns.push(r.data); }
+            else            { data.id = 'local_' + Date.now(); window.glProductionRuns.push(data); }
+          }
+        } catch(e){
+          console.warn('[GL] production_runs save failed; using local', e);
+          if(isEdit) Object.assign(run, data);
+          else { data.id = 'local_' + Date.now(); window.glProductionRuns.push(data); }
+        }
+      } else {
+        if(isEdit) Object.assign(run, data);
+        else { data.id = 'local_' + Date.now(); window.glProductionRuns.push(data); }
+      }
+      saveLocal();
+      btn.disabled = false; btn.textContent = '💾 Save';
+      ov.remove();
+      renderBoard();
+      if(typeof addNotification === 'function') addNotification(isEdit ? '🏭 Run updated' : '🏭 Run added', name, 'success');
+      if(typeof window.glAudit === 'function') window.glAudit(isEdit ? 'production_run_edited' : 'production_run_added', data.run_name, { stage: data.stage });
     });
     host.appendChild(ov);
   }
@@ -8189,6 +8356,19 @@
     var pg = document.getElementById('cpg-yield');
     if(!pg){ setTimeout(watch, 600); return; }
     new MutationObserver(function(){ if(pg.classList.contains('act')) refresh(); }).observe(pg, { attributes:true, attributeFilter:['class'] });
+  window.glOpenAddProductionRun  = function(){ runModal(null); };
+  window.glOpenEditProductionRun = function(id){
+    var r = (window.glProductionRuns||[]).find(function(x){ return x.id === id; });
+    if(r) runModal(r);
+  };
+
+  // Render the board whenever the Production Runs page becomes active.
+  function watch(){
+    var pg = document.getElementById('cpg-production-runs');
+    if(!pg){ setTimeout(watch, 600); return; }
+    new MutationObserver(function(){
+      if(pg.classList.contains('act')) refreshRuns();
+    }).observe(pg, { attributes:true, attributeFilter:['class'] });
   }
   if(document.readyState !== 'loading') watch();
   else document.addEventListener('DOMContentLoaded', watch);
@@ -8420,4 +8600,323 @@
   };
 
   console.log('[GL] AI marketing suite loaded');
+  console.log('[GL] production runs kanban loaded');
+}());
+
+/* ============================================================
+   SAMPLE SHIPMENTS
+   - Log a shipment in seconds: client + kind + qty + tracking +
+     follow-up date.
+   - List view with status badge; overdue follow-ups render red.
+   - Backed by Supabase `sample_shipments`; falls back to localStorage.
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var KINDS = ['Formula sample','COA / lab','Mock-up label','Finished product','Other'];
+  window.glSamples = window.glSamples || [];
+
+  async function loadFromSupabase(){
+    if(!window.supa) return null;
+    try {
+      var r = await window.supa.from('sample_shipments').select('*').order('shipped_date',{ascending:false});
+      if(r && r.data) return r.data;
+    } catch(e){ console.warn('[GL] sample_shipments load failed', e); }
+    return null;
+  }
+  function loadLocal(){
+    try { return JSON.parse(localStorage.getItem('gl_samples') || '[]'); } catch(e){ return []; }
+  }
+  function saveLocal(){ localStorage.setItem('gl_samples', JSON.stringify(window.glSamples)); }
+
+  async function refresh(){
+    var rows = await loadFromSupabase();
+    window.glSamples = rows || loadLocal();
+    render();
+  }
+
+  function render(){
+    var host = document.getElementById('samp-body');
+    if(!host) return;
+    var sub = document.getElementById('samp-sub');
+    var rows = window.glSamples || [];
+    var today = new Date(); today.setHours(0,0,0,0);
+    var overdueCount = rows.filter(function(s){
+      return s.status === 'sent' && s.follow_up_date && new Date(s.follow_up_date) < today;
+    }).length;
+    if(sub) sub.textContent = rows.length + ' shipment' + (rows.length === 1 ? '' : 's') + (overdueCount ? ' · ' + overdueCount + ' follow-up' + (overdueCount === 1 ? '' : 's') + ' overdue' : '');
+
+    if(!rows.length){
+      host.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No shipments logged yet. Click "Log Shipment" to add the first one.</div>';
+      return;
+    }
+    var rowsHtml = rows.map(function(s){
+      var clientName = s.client_name || ((window.clients||[]).find(function(c){ return c.id === s.client_id; })||{}).name || '—';
+      var shipDate = s.shipped_date ? new Date(s.shipped_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+      var followBadge = '';
+      if(s.status === 'responded'){
+        followBadge = '<span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(29,158,117,.15);color:#5fcf9e;border:1px solid rgba(29,158,117,.35)">✓ Responded</span>';
+      } else if(s.status === 'no_response'){
+        followBadge = '<span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(155,155,155,.12);color:#9aa7bd;border:1px solid rgba(155,155,155,.3)">✕ No response</span>';
+      } else if(s.follow_up_date){
+        var fu = new Date(s.follow_up_date);
+        if(fu < today){
+          var daysLate = Math.round((today - fu) / 86400000);
+          followBadge = '<span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(231,76,60,.18);color:#ff8579;border:1px solid rgba(231,76,60,.4)">⚠ Follow up · ' + daysLate + 'd overdue</span>';
+        } else {
+          var daysLeft = Math.round((fu - today) / 86400000);
+          followBadge = '<span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(245,200,66,.12);color:#f5c842;border:1px solid rgba(245,200,66,.3)">Follow up in ' + daysLeft + 'd</span>';
+        }
+      } else {
+        followBadge = '<span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(0,229,192,.1);color:var(--teal);border:1px solid rgba(0,229,192,.3)">Sent</span>';
+      }
+      return '<tr style="cursor:pointer" onclick="window.glOpenEditSample(\'' + esc(s.id) + '\')">' +
+        '<td style="padding:11px;font-weight:600;color:var(--white)">' + esc(clientName) + '</td>' +
+        '<td style="padding:11px;color:var(--muted)">' + esc(s.kind || '—') + '</td>' +
+        '<td style="padding:11px;color:var(--muted)">' + (s.qty || '—') + '</td>' +
+        '<td style="padding:11px;color:var(--muted)">' + shipDate + '</td>' +
+        '<td style="padding:11px;color:var(--muted);font-family:var(--ff-mono);font-size:11px">' + esc(s.tracking || '—') + '</td>' +
+        '<td style="padding:11px">' + followBadge + '</td>' +
+      '</tr>';
+    }).join('');
+
+    host.innerHTML = '<table class="ctbl"><thead><tr><th>Client</th><th>Kind</th><th>Qty</th><th>Shipped</th><th>Tracking</th><th>Status</th></tr></thead><tbody>' + rowsHtml + '</tbody></table>';
+  }
+
+  function sampleModal(existing){
+    var prior = document.getElementById('gl-samp-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var isEdit = !!existing;
+    var s = existing || { client_id:'', kind:'Formula sample', qty:1, shipped_date: new Date().toISOString().slice(0,10), carrier:'', tracking:'', follow_up_date:'', status:'sent', notes:'' };
+    // Default follow-up to +7 days if blank
+    if(!s.follow_up_date && s.shipped_date){
+      s.follow_up_date = new Date(Date.parse(s.shipped_date) + 7*86400000).toISOString().slice(0,10);
+    }
+    var clientOptions = '<option value="">— Pick client —</option>' +
+      (window.clients||[]).map(function(c){
+        var sel = (c.id === s.client_id) ? ' selected' : '';
+        return '<option value="' + esc(c.id) + '"'+sel+'>' + esc(c.name) + '</option>';
+      }).join('');
+    var kindOptions = KINDS.map(function(k){
+      var sel = (k === s.kind) ? ' selected' : '';
+      return '<option value="' + esc(k) + '"'+sel+'>' + esc(k) + '</option>';
+    }).join('');
+    var carrierOptions = ['','FedEx','UPS','USPS','DHL','Hand delivery','Other'].map(function(o){
+      var sel = (o === s.carrier) ? ' selected' : '';
+      return '<option value="' + esc(o) + '"'+sel+'>' + esc(o || 'Select carrier…') + '</option>';
+    }).join('');
+    var statusOptions = [['sent','Sent'],['responded','Responded'],['no_response','No response']].map(function(o){
+      var sel = (o[0] === s.status) ? ' selected' : '';
+      return '<option value="' + o[0] + '"'+sel+'>' + o[1] + '</option>';
+    }).join('');
+    var ov = document.createElement('div');
+    ov.id = 'gl-samp-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1000;background:rgba(6,13,26,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:480px;max-height:88vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">' + (isEdit ? '✏️ EDIT SHIPMENT' : '📦 LOG SHIPMENT') + '</div>' +
+          '<button id="gl-samp-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Client *</div><select class="fsel" id="gl-samp-client">' + clientOptions + '</select></div>' +
+        '<div style="display:grid;grid-template-columns:2fr 1fr;gap:8px">' +
+          '<div class="frow"><div class="flbl">Kind</div><select class="fsel" id="gl-samp-kind">' + kindOptions + '</select></div>' +
+          '<div class="frow"><div class="flbl">Qty</div><input class="finp" id="gl-samp-qty" type="number" min="1" value="' + (s.qty || 1) + '"></div>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+          '<div class="frow"><div class="flbl">Shipped date</div><input class="finp" id="gl-samp-date" type="date" value="' + esc(s.shipped_date) + '"></div>' +
+          '<div class="frow"><div class="flbl">Follow-up date</div><input class="finp" id="gl-samp-followup" type="date" value="' + esc(s.follow_up_date) + '"></div>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 2fr;gap:8px">' +
+          '<div class="frow"><div class="flbl">Carrier</div><select class="fsel" id="gl-samp-carrier">' + carrierOptions + '</select></div>' +
+          '<div class="frow"><div class="flbl">Tracking #</div><input class="finp" id="gl-samp-tracking" value="' + esc(s.tracking) + '"></div>' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Status</div><select class="fsel" id="gl-samp-status">' + statusOptions + '</select></div>' +
+        '<div class="frow"><div class="flbl">Notes</div><textarea class="finp" id="gl-samp-notes" rows="2">' + esc(s.notes) + '</textarea></div>' +
+        '<div style="display:flex;gap:8px;margin-top:6px">' +
+          '<button id="gl-samp-save" class="cbtn pri" style="flex:1">💾 Save</button>' +
+          (isEdit ? '<button id="gl-samp-del" class="cbtn" style="background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#ff8579">Delete</button>' : '') +
+          '<button id="gl-samp-cancel" class="cbtn">Cancel</button>' +
+        '</div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-samp-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-samp-cancel').addEventListener('click', function(){ ov.remove(); });
+    var delBtn = ov.querySelector('#gl-samp-del');
+    if(delBtn) delBtn.addEventListener('click', async function(){
+      if(!confirm('Delete this shipment record?')) return;
+      if(window.supa){ try { await window.supa.from('sample_shipments').delete().eq('id', s.id); } catch(e){} }
+      window.glSamples = (window.glSamples||[]).filter(function(x){ return x.id !== s.id; });
+      saveLocal(); render(); ov.remove();
+      if(typeof addNotification === 'function') addNotification('📦 Shipment deleted','','warning');
+      if(typeof window.glAudit === 'function') window.glAudit('sample_deleted', s.id, {});
+    });
+    ov.querySelector('#gl-samp-save').addEventListener('click', async function(){
+      var cid = ov.querySelector('#gl-samp-client').value;
+      if(!cid){ alert('Client is required.'); return; }
+      var c = (window.clients||[]).find(function(x){ return x.id === cid; });
+      var data = {
+        client_id:      cid,
+        client_name:    c ? c.name : '',
+        kind:           ov.querySelector('#gl-samp-kind').value,
+        qty:            parseInt(ov.querySelector('#gl-samp-qty').value, 10) || 1,
+        shipped_date:   ov.querySelector('#gl-samp-date').value || null,
+        carrier:        ov.querySelector('#gl-samp-carrier').value,
+        tracking:       ov.querySelector('#gl-samp-tracking').value.trim(),
+        follow_up_date: ov.querySelector('#gl-samp-followup').value || null,
+        status:         ov.querySelector('#gl-samp-status').value,
+        notes:          ov.querySelector('#gl-samp-notes').value
+      };
+      var btn = this; btn.disabled = true; btn.textContent = 'Saving…';
+      if(window.supa){
+        try {
+          if(isEdit){
+            await window.supa.from('sample_shipments').update(data).eq('id', s.id);
+            Object.assign(s, data);
+          } else {
+            var r = await window.supa.from('sample_shipments').insert([data]).select().single();
+            if(r && r.data){ window.glSamples.unshift(r.data); }
+            else            { data.id = 'local_' + Date.now(); window.glSamples.unshift(data); }
+          }
+        } catch(e){
+          console.warn('[GL] sample save failed; using local', e);
+          if(isEdit) Object.assign(s, data);
+          else { data.id = 'local_' + Date.now(); window.glSamples.unshift(data); }
+        }
+      } else {
+        if(isEdit) Object.assign(s, data);
+        else { data.id = 'local_' + Date.now(); window.glSamples.unshift(data); }
+      }
+      saveLocal();
+      btn.disabled = false; btn.textContent = '💾 Save';
+      ov.remove();
+      render();
+      if(typeof addNotification === 'function') addNotification(isEdit ? '📦 Shipment updated' : '📦 Shipment logged', data.client_name + ' · ' + data.kind, 'success');
+      if(typeof window.glAudit === 'function') window.glAudit(isEdit ? 'sample_edited' : 'sample_logged', data.client_id, { kind: data.kind });
+    });
+    host.appendChild(ov);
+  }
+
+  window.glOpenAddSample = function(){ sampleModal(null); };
+  window.glOpenEditSample = function(id){
+    var s = (window.glSamples||[]).find(function(x){ return x.id === id; });
+    if(s) sampleModal(s);
+  };
+
+  function watch(){
+    var pg = document.getElementById('cpg-samples');
+    if(!pg){ setTimeout(watch, 600); return; }
+    new MutationObserver(function(){
+      if(pg.classList.contains('act')) refresh();
+    }).observe(pg, { attributes:true, attributeFilter:['class'] });
+  }
+  if(document.readyState !== 'loading') watch();
+  else document.addEventListener('DOMContentLoaded', watch);
+
+  console.log('[GL] sample shipments loaded');
+}());
+
+/* ============================================================
+   AR AGING DASHBOARD WIDGET
+   Renders a compact AR summary at the top of the dashboard
+   (right under the compliance alert). Reuses the renderDash wrap
+   pattern. No SQL — pure derived view of window.invoices.
+   ============================================================ */
+(function(){
+  function fmt(n){ return '$' + Math.round(n).toLocaleString(); }
+
+  function gather(){
+    var today = new Date(); today.setHours(0,0,0,0);
+    var buckets = { current:0, due30:0, due60:0, due90:0, due90plus:0 };
+    var counts  = { current:0, due30:0, due60:0, due90:0, due90plus:0 };
+    var total = 0;
+    (window.invoices || []).forEach(function(i){
+      if(!i) return;
+      var status = (i.status||'').toLowerCase();
+      // Outstanding = anything not paid.
+      if(status === 'paid') return;
+      var amt = i.amount || 0;
+      total += amt;
+      // Try to derive a due date — invoice.dueDate column if hydrated, otherwise
+      // assume Net 30 from invoice.date.
+      var dueStr = i.dueDate || i.due_date;
+      var due;
+      if(dueStr) due = new Date(dueStr);
+      else if(i.date) due = new Date(Date.parse(i.date) + 30*86400000);
+      else            due = today;
+      due.setHours(0,0,0,0);
+      var daysLate = Math.round((today - due) / 86400000);
+      if(daysLate < 0)        { buckets.current += amt;   counts.current++; }
+      else if(daysLate < 31)  { buckets.due30 += amt;     counts.due30++; }
+      else if(daysLate < 61)  { buckets.due60 += amt;     counts.due60++; }
+      else if(daysLate < 91)  { buckets.due90 += amt;     counts.due90++; }
+      else                    { buckets.due90plus += amt; counts.due90plus++; }
+    });
+    return { buckets: buckets, counts: counts, total: total };
+  }
+
+  function buildSlot(){
+    // Insert the AR-aging slot above the compliance alert if it isn't there.
+    var existing = document.getElementById('dash-ar-aging');
+    if(existing) return existing;
+    var alert = document.getElementById('dash-compliance-alert');
+    if(!alert) return null;
+    var slot = document.createElement('div');
+    slot.id = 'dash-ar-aging';
+    alert.parentNode.insertBefore(slot, alert);
+    return slot;
+  }
+
+  window.renderARAging = function(){
+    var host = buildSlot();
+    if(!host) return;
+    var data = gather();
+    var anyLate = data.counts.due30 + data.counts.due60 + data.counts.due90 + data.counts.due90plus;
+    if(!anyLate && data.total === 0){ host.innerHTML = ''; return; }
+
+    var bucketHtml = function(label, amt, count, color, accent){
+      return '<div style="flex:1;min-width:0;background:rgba(255,255,255,.03);border:1px solid ' + accent + ';border-radius:10px;padding:10px 14px">' +
+        '<div style="font-size:10px;letter-spacing:1.5px;color:' + color + ';margin-bottom:2px">' + label + '</div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:baseline">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;color:var(--white)">' + fmt(amt) + '</div>' +
+          '<div style="font-size:11px;color:var(--muted)">' + count + '</div>' +
+        '</div>' +
+      '</div>';
+    };
+
+    var headerColor = (data.counts.due60 + data.counts.due90 + data.counts.due90plus) > 0 ? '#ff8579' : (data.counts.due30 > 0 ? '#f5c842' : 'var(--teal)');
+    var headerIcon  = headerColor === '#ff8579' ? '🚨' : headerColor === '#f5c842' ? '⚠' : '💰';
+
+    host.innerHTML =
+      '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:14px 16px;margin-bottom:14px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
+          '<div style="display:flex;align-items:center;gap:10px">' +
+            '<span style="font-size:18px">' + headerIcon + '</span>' +
+            '<div>' +
+              '<div style="font-family:var(--ff-disp);font-size:13px;letter-spacing:2px;color:' + headerColor + '">ACCOUNTS RECEIVABLE</div>' +
+              '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + fmt(data.total) + ' outstanding · ' + anyLate + ' invoice' + (anyLate === 1 ? '' : 's') + ' past due</div>' +
+            '</div>' +
+          '</div>' +
+          '<a href="javascript:void(0)" onclick="if(window.cNav)window.cNav(\'invoices\',null)" style="font-size:11px;color:var(--teal);text-decoration:none">View all →</a>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+          bucketHtml('CURRENT',    data.buckets.current,   data.counts.current,   'var(--muted)',  'rgba(255,255,255,.07)') +
+          bucketHtml('1–30 DAYS',  data.buckets.due30,     data.counts.due30,     '#f5c842',       'rgba(245,200,66,.25)') +
+          bucketHtml('31–60 DAYS', data.buckets.due60,     data.counts.due60,     '#ff8579',       'rgba(231,76,60,.25)') +
+          bucketHtml('61–90 DAYS', data.buckets.due90,     data.counts.due90,     '#ff8579',       'rgba(231,76,60,.3)') +
+          bucketHtml('90+ DAYS',   data.buckets.due90plus, data.counts.due90plus, '#ff8579',       'rgba(231,76,60,.4)') +
+        '</div>' +
+      '</div>';
+  };
+
+  (function wrap(){
+    var orig = window.renderDash;
+    if(typeof orig !== 'function'){ setTimeout(wrap, 500); return; }
+    window.renderDash = function(){
+      var r = orig.apply(this, arguments);
+      try { window.renderARAging(); } catch(e){ console.warn('[GL] AR widget render threw', e); }
+      return r;
+    };
+  })();
+
+  console.log('[GL] AR aging widget loaded');
 }());
