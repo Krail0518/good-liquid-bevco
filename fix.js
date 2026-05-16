@@ -95,9 +95,9 @@
   /* ── PERMISSIONS ──
      Page-name convention matches index.html cNav calls (e.g. 'newinv', not 'new-invoice').
      window.PERMISSIONS is bridged from index.html so both the role-filter UI and can() share one table. */
-  var ALL=['dashboard','clients','pipeline','invoices','invoice-detail','newinv','referrals','referrers','activity','users','customers','calendar','production-cal','tasks','documents','inventory','announcements','time-tracker','reports','ai-settings'];
-  if(window.PERMISSIONS){window.PERMISSIONS.admin=ALL;window.PERMISSIONS.sales=['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','tasks','announcements','reports'];}
-  else{window.PERMISSIONS={admin:ALL,sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','tasks','announcements','reports'],viewer:['dashboard','clients','invoices','activity']};}
+  var ALL=['dashboard','clients','pipeline','invoices','invoice-detail','newinv','referrals','referrers','activity','users','customers','calendar','production-cal','cip','audit','tasks','documents','inventory','announcements','time-tracker','reports','ai-settings'];
+  if(window.PERMISSIONS){window.PERMISSIONS.admin=ALL;window.PERMISSIONS.sales=['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','cip','tasks','announcements','reports'];}
+  else{window.PERMISSIONS={admin:ALL,sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','cip','tasks','announcements','reports'],viewer:['dashboard','clients','invoices','activity']};}
   window.can=function(page){var u=window.currentUser;if(!u)return false;if(u.role==='admin')return true;return(window.PERMISSIONS[u.role]||[]).includes(page);};
   /* Single cNav wrap: perm-gate first, then dispatch new-invoice variants
      to the builder, otherwise hand off to the original cNav from index.html. */
@@ -7757,4 +7757,312 @@
   };
 
   console.log('[GL] capacity indicator loaded');
+}());
+
+/* ============================================================
+   CIP / SANITATION LOG (compliance)
+   FDA-defensible record of every cleaning cycle between runs.
+   Captures: date/time, line, cleaning method (CIP / manual / both),
+   chemicals used + concentration, water temp, contact time, operator,
+   verification (ATP swab result), pass/fail, notes. Linked to the
+   run that ran before and after if known.
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  window.glCipLogs = window.glCipLogs || [];
+
+  var METHODS = ['CIP (closed-loop)','Manual scrub','CIP + manual'];
+  var CHEMICALS = ['Caustic (NaOH)','Acid (phosphoric)','Sanitizer (peracetic)','Sanitizer (chlorine)','Sanitizer (quat)','Other'];
+
+  async function loadFromSupabase(){
+    if(!window.supa) return null;
+    try { var r = await window.supa.from('cip_logs').select('*').order('cycle_at',{ascending:false}); if(r && r.data) return r.data; }
+    catch(e){}
+    return null;
+  }
+  function loadLocal(){ try { return JSON.parse(localStorage.getItem('gl_cip_logs') || '[]'); } catch(e){ return []; } }
+  function saveLocal(){ localStorage.setItem('gl_cip_logs', JSON.stringify(window.glCipLogs)); }
+
+  async function refresh(){
+    var rows = await loadFromSupabase();
+    window.glCipLogs = rows || loadLocal();
+    render();
+  }
+
+  function render(){
+    var host = document.getElementById('cip-body');
+    if(!host) return;
+    var sub = document.getElementById('cip-sub');
+    var rows = window.glCipLogs || [];
+    var fails = rows.filter(function(r){ return r.result === 'fail'; }).length;
+    if(sub) sub.textContent = rows.length + ' cycle' + (rows.length === 1 ? '' : 's') + ' logged' + (fails ? ' · ' + fails + ' fail' + (fails === 1 ? '' : 's') + ' on record' : '');
+
+    if(!rows.length){
+      host.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No cycles logged yet. Click "Log Cycle" after every sanitation between runs. FDA-required.</div>';
+      return;
+    }
+    host.innerHTML = '<table class="ctbl"><thead><tr><th>When</th><th>Line / area</th><th>Method</th><th>Chemicals</th><th>Operator</th><th>ATP swab</th><th>Result</th></tr></thead><tbody>' +
+      rows.map(function(r){
+        var when = r.cycle_at ? new Date(r.cycle_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '—';
+        var resColor = r.result === 'pass' ? '#5fcf9e' : r.result === 'fail' ? '#ff8579' : '#9aa7bd';
+        var resLabel = (r.result || 'pending').toUpperCase();
+        return '<tr style="cursor:pointer" onclick="window.glOpenEditCip(\'' + esc(r.id) + '\')">' +
+          '<td style="padding:11px;color:var(--white);font-weight:600">' + when + '</td>' +
+          '<td style="padding:11px;color:var(--muted)">' + esc(r.line_area || '—') + '</td>' +
+          '<td style="padding:11px;color:var(--muted)">' + esc(r.method || '—') + '</td>' +
+          '<td style="padding:11px;color:var(--muted);font-size:11px">' + esc((r.chemicals||[]).join(', ') || '—') + '</td>' +
+          '<td style="padding:11px;color:var(--muted)">' + esc(r.operator || '—') + '</td>' +
+          '<td style="padding:11px;color:var(--muted);font-family:var(--ff-mono);font-size:11px">' + esc(r.atp_reading || '—') + '</td>' +
+          '<td style="padding:11px;color:' + resColor + ';font-weight:700">' + resLabel + '</td>' +
+        '</tr>';
+      }).join('') + '</tbody></table>';
+  }
+
+  function cipModal(existing){
+    var prior = document.getElementById('gl-cip-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var isEdit = !!existing;
+    var c = existing || { line_area:'', method:'CIP (closed-loop)', chemicals:[], water_temp_f:'', contact_min:'', operator:'', atp_reading:'', result:'pass', notes:'', cycle_at: new Date().toISOString().slice(0,16) };
+    var methodOpts = METHODS.map(function(m){
+      var sel = (m === c.method) ? ' selected' : ''; return '<option' + sel + '>' + esc(m) + '</option>';
+    }).join('');
+    var chemChecks = CHEMICALS.map(function(x){
+      var k = x.replace(/\W+/g,'_').toLowerCase();
+      var ch = (c.chemicals||[]).indexOf(x) >= 0 ? ' checked' : '';
+      return '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--white)"><input type="checkbox" data-chem="' + esc(x) + '" id="gl-cip-ch-' + k + '"'+ch+' style="accent-color:var(--teal);width:15px;height:15px;cursor:pointer">' + esc(x) + '</label>';
+    }).join('');
+    var resultOpts = [['pass','✓ Pass'],['fail','✗ Fail'],['pending','⏳ Pending verification']].map(function(o){
+      var sel = (o[0] === c.result) ? ' selected' : ''; return '<option value="' + o[0] + '"'+sel+'>' + o[1] + '</option>';
+    }).join('');
+    var ov = document.createElement('div');
+    ov.id = 'gl-cip-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1000;background:rgba(6,13,26,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:520px;max-height:88vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">' + (isEdit ? '✏️ EDIT CYCLE' : '🧼 LOG CIP CYCLE') + '</div>' +
+          '<button id="gl-cip-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">When *</div><input class="finp" id="gl-cip-when" type="datetime-local" value="' + esc(c.cycle_at) + '"></div>' +
+        '<div class="frow"><div class="flbl">Line / area *</div><input class="finp" id="gl-cip-area" value="' + esc(c.line_area) + '" placeholder="e.g. Filler #1 / fill heads / hoses"></div>' +
+        '<div class="frow"><div class="flbl">Method</div><select class="fsel" id="gl-cip-method">' + methodOpts + '</select></div>' +
+        '<div>' +
+          '<div class="flbl" style="margin-bottom:6px">Chemicals used</div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px 12px;padding:11px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:8px;margin-bottom:12px">' + chemChecks + '</div>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+          '<div class="frow"><div class="flbl">Water temp (°F)</div><input class="finp" id="gl-cip-temp" type="number" min="0" value="' + esc(c.water_temp_f) + '"></div>' +
+          '<div class="frow"><div class="flbl">Contact (min)</div><input class="finp" id="gl-cip-contact" type="number" min="0" value="' + esc(c.contact_min) + '"></div>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+          '<div class="frow"><div class="flbl">Operator *</div><input class="finp" id="gl-cip-op" value="' + esc(c.operator) + '"></div>' +
+          '<div class="frow"><div class="flbl">ATP reading (RLU)</div><input class="finp" id="gl-cip-atp" value="' + esc(c.atp_reading) + '" placeholder="< 30 = pass"></div>' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Result *</div><select class="fsel" id="gl-cip-result">' + resultOpts + '</select></div>' +
+        '<div class="frow"><div class="flbl">Notes</div><textarea class="finp" id="gl-cip-notes" rows="2">' + esc(c.notes) + '</textarea></div>' +
+        '<div style="display:flex;gap:8px;margin-top:6px">' +
+          '<button id="gl-cip-save" class="cbtn pri" style="flex:1">💾 Save</button>' +
+          (isEdit ? '<button id="gl-cip-del" class="cbtn" style="background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#ff8579">Delete</button>' : '') +
+          '<button id="gl-cip-cancel" class="cbtn">Cancel</button>' +
+        '</div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-cip-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-cip-cancel').addEventListener('click', function(){ ov.remove(); });
+    var del = ov.querySelector('#gl-cip-del');
+    if(del) del.addEventListener('click', async function(){
+      if(!confirm('Delete this CIP cycle? FDA requires you to retain a log — only delete if entered in error.')) return;
+      if(window.supa){ try { await window.supa.from('cip_logs').delete().eq('id', c.id); } catch(e){} }
+      window.glCipLogs = (window.glCipLogs||[]).filter(function(x){ return x.id !== c.id; });
+      saveLocal(); render(); ov.remove();
+      if(typeof window.glAudit === 'function') window.glAudit('cip_cycle_deleted', c.id, {});
+    });
+    ov.querySelector('#gl-cip-save').addEventListener('click', async function(){
+      var area = ov.querySelector('#gl-cip-area').value.trim();
+      var op = ov.querySelector('#gl-cip-op').value.trim();
+      if(!area || !op){ alert('Line/area and operator are required.'); return; }
+      var chemicals = [];
+      ov.querySelectorAll('input[data-chem]').forEach(function(el){ if(el.checked) chemicals.push(el.getAttribute('data-chem')); });
+      var data = {
+        cycle_at:    ov.querySelector('#gl-cip-when').value || new Date().toISOString(),
+        line_area:   area,
+        method:      ov.querySelector('#gl-cip-method').value,
+        chemicals:   chemicals,
+        water_temp_f: parseFloat(ov.querySelector('#gl-cip-temp').value) || null,
+        contact_min:  parseInt(ov.querySelector('#gl-cip-contact').value, 10) || null,
+        operator:    op,
+        atp_reading: ov.querySelector('#gl-cip-atp').value.trim(),
+        result:      ov.querySelector('#gl-cip-result').value,
+        notes:       ov.querySelector('#gl-cip-notes').value
+      };
+      if(window.supa){
+        try {
+          if(isEdit){ await window.supa.from('cip_logs').update(data).eq('id', c.id); Object.assign(c, data); }
+          else { var r = await window.supa.from('cip_logs').insert([data]).select().single(); if(r && r.data){ window.glCipLogs.unshift(r.data); } else { data.id = 'local_' + Date.now(); window.glCipLogs.unshift(data); } }
+        } catch(e){
+          if(isEdit) Object.assign(c, data);
+          else { data.id = 'local_' + Date.now(); window.glCipLogs.unshift(data); }
+        }
+      } else {
+        if(isEdit) Object.assign(c, data);
+        else { data.id = 'local_' + Date.now(); window.glCipLogs.unshift(data); }
+      }
+      saveLocal(); ov.remove(); render();
+      if(typeof addNotification === 'function') addNotification('🧼 CIP cycle ' + (isEdit ? 'updated' : 'logged'), data.line_area + ' — ' + data.result.toUpperCase(), data.result === 'fail' ? 'warning' : 'success');
+      if(typeof window.glAudit === 'function') window.glAudit(isEdit ? 'cip_cycle_edited' : 'cip_cycle_logged', data.line_area, { result: data.result });
+    });
+    host.appendChild(ov);
+  }
+
+  window.glOpenAddCip  = function(){ cipModal(null); };
+  window.glOpenEditCip = function(id){
+    var c = (window.glCipLogs||[]).find(function(x){ return x.id === id; });
+    if(c) cipModal(c);
+  };
+
+  function watch(){
+    var pg = document.getElementById('cpg-cip');
+    if(!pg){ setTimeout(watch, 600); return; }
+    new MutationObserver(function(){ if(pg.classList.contains('act')) refresh(); }).observe(pg, { attributes:true, attributeFilter:['class'] });
+  }
+  if(document.readyState !== 'loading') watch();
+  else document.addEventListener('DOMContentLoaded', watch);
+
+  console.log('[GL] CIP / sanitation log loaded');
+}());
+
+/* ============================================================
+   AUDIT LOG VIEWER (admin-only)
+   Shows the audit_log table contents — every glAudit() call that has
+   been written throughout the app. Filterable, last 200 events.
+   The nav item is hidden until login; revealed for admin only by
+   the existing loginUser flow (matches users/customers admin-only items).
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  window.glAuditRows = window.glAuditRows || [];
+
+  async function refresh(){
+    if(!window.supa){ render([]); return; }
+    try {
+      var r = await window.supa.from('audit_log').select('*').order('created_at',{ascending:false}).limit(200);
+      if(r && r.data) window.glAuditRows = r.data;
+    } catch(e){ console.warn('[GL] audit fetch failed', e); }
+    render(window.glAuditRows);
+  }
+
+  function render(rows){
+    var host = document.getElementById('audit-body');
+    if(!host) return;
+    var sub = document.getElementById('audit-sub');
+    if(sub) sub.textContent = rows.length + ' event' + (rows.length === 1 ? '' : 's') + ' shown (most recent first)';
+    if(!rows.length){
+      host.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No audit events yet. Actions like creating clients, deleting invoices, editing formulas all write here automatically.</div>';
+      return;
+    }
+    host.innerHTML = '<table class="ctbl"><thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Target</th><th>Details</th></tr></thead><tbody>' +
+      rows.map(function(r){
+        var when = r.created_at ? new Date(r.created_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '—';
+        var details = r.details ? '<code style="font-family:var(--ff-mono);font-size:11px;color:var(--muted);max-width:240px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(JSON.stringify(r.details)) + '</code>' : '<span style="color:rgba(255,255,255,.2)">—</span>';
+        return '<tr>' +
+          '<td style="padding:11px;color:var(--muted);font-size:11px;white-space:nowrap">' + when + '</td>' +
+          '<td style="padding:11px;color:var(--white);font-size:12px">' + esc(r.actor || 'system') + '</td>' +
+          '<td style="padding:11px;color:var(--teal);font-family:var(--ff-mono);font-size:11px">' + esc(r.action) + '</td>' +
+          '<td style="padding:11px;color:var(--muted);font-size:12px">' + esc(r.target || '—') + '</td>' +
+          '<td style="padding:11px">' + details + '</td>' +
+        '</tr>';
+      }).join('') + '</tbody></table>';
+  }
+
+  function watch(){
+    var pg = document.getElementById('cpg-audit');
+    if(!pg){ setTimeout(watch, 600); return; }
+    new MutationObserver(function(){ if(pg.classList.contains('act')) refresh(); }).observe(pg, { attributes:true, attributeFilter:['class'] });
+    // Filter input
+    var f = document.getElementById('audit-filter');
+    if(f) f.addEventListener('input', function(){
+      var q = f.value.toLowerCase();
+      if(!q){ render(window.glAuditRows||[]); return; }
+      var filtered = (window.glAuditRows||[]).filter(function(r){
+        return (r.action || '').toLowerCase().includes(q) ||
+               (r.target || '').toLowerCase().includes(q) ||
+               (r.actor  || '').toLowerCase().includes(q);
+      });
+      render(filtered);
+    });
+    // Reveal sidebar entry for admins.
+    setInterval(function(){
+      var navItem = document.getElementById('nav-audit');
+      if(navItem && window.currentUser && window.currentUser.role === 'admin'){
+        navItem.style.display = 'flex';
+      }
+    }, 1500);
+  }
+  if(document.readyState !== 'loading') watch();
+  else document.addEventListener('DOMContentLoaded', watch);
+
+  console.log('[GL] audit log viewer loaded');
+}());
+
+/* ============================================================
+   LOW-STOCK DASHBOARD ALERT
+   Reads window.inventory (the existing inventory list) and surfaces
+   any item where qty <= reorder_threshold on a dashboard banner.
+   Wraps renderDash like the compliance + AR aging widgets.
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  function gather(){
+    var items = window.inventory || [];
+    return items.filter(function(i){
+      if(!i || typeof i !== 'object') return false;
+      // Two field-name conventions seen in the wild:
+      var qty = Number(i.qty != null ? i.qty : i.quantity);
+      var par = Number(i.par != null ? i.par : (i.threshold != null ? i.threshold : i.reorder_at));
+      return !isNaN(qty) && !isNaN(par) && qty <= par;
+    });
+  }
+
+  window.renderLowStockAlert = function(){
+    var host = document.getElementById('dash-low-stock');
+    if(!host) return;
+    var low = gather();
+    if(!low.length){ host.innerHTML = ''; return; }
+    var rows = low.slice(0, 6).map(function(i){
+      var name = i.name || i.item || '(unnamed)';
+      var qty = i.qty != null ? i.qty : i.quantity;
+      var par = i.par != null ? i.par : (i.threshold != null ? i.threshold : i.reorder_at);
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 12px;border-radius:7px">' +
+        '<div style="font-size:13px;color:var(--white);font-weight:600">' + esc(name) + '</div>' +
+        '<div style="font-size:12px;color:#f5c842;font-weight:700">' + qty + ' on hand · par ' + par + '</div>' +
+      '</div>';
+    }).join('');
+    host.innerHTML =
+      '<div style="background:rgba(245,200,66,.06);border:1px solid rgba(245,200,66,.3);border-radius:12px;padding:14px 16px;margin-top:14px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+          '<div style="display:flex;align-items:center;gap:10px">' +
+            '<span style="font-size:18px">📦</span>' +
+            '<div>' +
+              '<div style="font-family:var(--ff-disp);font-size:13px;letter-spacing:2px;color:#f5c842">LOW STOCK</div>' +
+              '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + low.length + ' item' + (low.length === 1 ? '' : 's') + ' at or below reorder threshold</div>' +
+            '</div>' +
+          '</div>' +
+          '<a href="javascript:void(0)" onclick="if(window.cNav)window.cNav(\'inventory\',null)" style="font-size:11px;color:var(--teal);text-decoration:none">Open inventory →</a>' +
+        '</div>' +
+        '<div>' + rows + '</div>' +
+      '</div>';
+  };
+
+  (function wrap(){
+    var orig = window.renderDash;
+    if(typeof orig !== 'function'){ setTimeout(wrap, 500); return; }
+    window.renderDash = function(){
+      var r = orig.apply(this, arguments);
+      try { window.renderLowStockAlert(); } catch(e){ console.warn('[GL] low-stock alert threw', e); }
+      return r;
+    };
+  })();
+
+  console.log('[GL] low-stock dashboard alert loaded');
 }());

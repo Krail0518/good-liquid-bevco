@@ -1319,6 +1319,9 @@ select option, .fsel option {
         <div class="cni-sec">Calendars</div>
         <div class="cni" id="nav-calendar" onclick="cNav(&#39;calendar&#39;,this)"><span class="cni-ico">📅</span>General Calendar</div>
         <div class="cni" id="nav-production-cal" onclick="cNav(&#39;production-cal&#39;,this)"><span class="cni-ico">🏭</span>Production Schedule</div>
+        <div class="cni-sec">Compliance</div>
+        <div class="cni" id="nav-cip" onclick="cNav(&#39;cip&#39;,this)"><span class="cni-ico">🧼</span>CIP / Sanitation Log</div>
+        <div class="cni" id="nav-audit" onclick="cNav(&#39;audit&#39;,this)" style="display:none"><span class="cni-ico">📜</span>Audit Log</div>
         <div class="cni-sec">Tools</div>
         <div class="cni" id="nav-tasks" onclick="cNav(&#39;tasks&#39;,this)"><span class="cni-ico">✅</span>Tasks</div>
         <div class="cni" id="nav-documents" onclick="cNav(&#39;documents&#39;,this)"><span class="cni-ico">📁</span>Documents</div>
@@ -1357,6 +1360,25 @@ select option, .fsel option {
           <div class="ccard"><div class="ccard-t">Pipeline snapshot</div><div class="pipe-bars" id="pipe-snap"></div></div>
           <div class="ccard"><div class="ccard-t">Referral commissions</div><div id="dash-ref"></div></div>
         </div>
+        <div id="dash-low-stock"></div>
+      </div>
+
+      <!-- ═══ CIP / SANITATION LOG ═══ -->
+      <div id="cpg-cip" class="cpg">
+        <div class="cph">
+          <div><div class="cpt">CIP / SANITATION LOG</div><div class="cps" id="cip-sub">Cleaning cycles between runs — FDA-defensible chain of custody</div></div>
+          <button class="cbtn pri" onclick="window.glOpenAddCip && window.glOpenAddCip()">+ Log Cycle</button>
+        </div>
+        <div id="cip-body"></div>
+      </div>
+
+      <!-- ═══ AUDIT LOG (admin only) ═══ -->
+      <div id="cpg-audit" class="cpg">
+        <div class="cph">
+          <div><div class="cpt">AUDIT LOG</div><div class="cps" id="audit-sub">Every recorded admin action — last 200 events</div></div>
+          <div><input id="audit-filter" placeholder="🔍 filter by action or target…" style="padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:12px;width:240px"></div>
+        </div>
+        <div id="audit-body"></div>
       </div>
 
       <!-- CLIENTS -->
