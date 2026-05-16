@@ -1071,6 +1071,45 @@ select option, .fsel option {
       </div>
     </div>
   </div>
+  <!-- Live quote calculator — sits at the bottom of the pricing section. -->
+  <div class="rv" style="max-width:880px;margin:60px auto 0;background:rgba(255,255,255,.03);border:1px solid rgba(0,229,192,.2);border-radius:18px;padding:32px">
+    <div style="text-align:center;margin-bottom:24px">
+      <div class="sec-tag" style="margin-bottom:8px">Instant ballpark</div>
+      <h3 style="font-family:var(--ff-disp);font-size:24px;letter-spacing:2px;color:var(--white);margin:0 0 8px">QUOTE <em style="font-style:normal;color:var(--teal)">CALCULATOR.</em></h3>
+      <p style="font-size:13px;color:var(--muted);margin:0;line-height:1.6">Plug in your run size and format to see a rough number. Final quote depends on flavor, packaging, add-ons.</p>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:22px">
+      <div><label style="display:block;font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">SERVICE</label>
+        <select id="qc-service" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)">
+          <option value="canning">Canning</option>
+          <option value="bottling">Bottle filling</option>
+        </select>
+      </div>
+      <div><label style="display:block;font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">FORMAT</label>
+        <select id="qc-format" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)">
+          <option value="12std">12oz Standard can</option>
+          <option value="12sleek">12oz Sleek can</option>
+          <option value="16std">16oz Standard can</option>
+          <option value="750ml" disabled>750ml bottle (pick Bottling)</option>
+        </select>
+      </div>
+      <div><label style="display:block;font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">CASES</label>
+        <input id="qc-cases" type="number" min="150" value="500" step="50" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)">
+      </div>
+      <div><label style="display:block;font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">ADD-ONS</label>
+        <div style="display:flex;flex-direction:column;gap:5px;padding-top:7px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--white);cursor:pointer"><input type="checkbox" id="qc-pasteur" style="accent-color:var(--teal)">Pasteurization</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--white);cursor:pointer"><input type="checkbox" id="qc-nitro" style="accent-color:var(--teal)">Nitro dosing</label>
+        </div>
+      </div>
+    </div>
+    <div style="background:rgba(0,229,192,.06);border:1px solid rgba(0,229,192,.25);border-radius:12px;padding:20px 22px;text-align:center">
+      <div style="font-size:11px;letter-spacing:2px;color:var(--teal);margin-bottom:6px">ESTIMATED RUN COST</div>
+      <div id="qc-total" style="font-family:var(--ff-disp);font-size:36px;color:var(--white);letter-spacing:1px">$0</div>
+      <div id="qc-breakdown" style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.6"></div>
+      <a href="javascript:void(0)" class="bh pri" onclick="navTo('contact')" style="display:inline-block;margin-top:18px">Lock it in — Request a quote →</a>
+    </div>
+  </div>
 </section>
 
 <section id="process" style="background:var(--ink2);position:relative;overflow:hidden">
@@ -1319,6 +1358,8 @@ select option, .fsel option {
         <div class="cni-sec">Calendars</div>
         <div class="cni" id="nav-calendar" onclick="cNav(&#39;calendar&#39;,this)"><span class="cni-ico">📅</span>General Calendar</div>
         <div class="cni" id="nav-production-cal" onclick="cNav(&#39;production-cal&#39;,this)"><span class="cni-ico">🏭</span>Production Schedule</div>
+        <div class="cni-sec">Marketing</div>
+        <div class="cni" id="nav-content" onclick="cNav(&#39;content&#39;,this)"><span class="cni-ico">🗓️</span>Content Calendar</div>
         <div class="cni-sec">Tools</div>
         <div class="cni" id="nav-tasks" onclick="cNav(&#39;tasks&#39;,this)"><span class="cni-ico">✅</span>Tasks</div>
         <div class="cni" id="nav-documents" onclick="cNav(&#39;documents&#39;,this)"><span class="cni-ico">📁</span>Documents</div>
@@ -1357,6 +1398,15 @@ select option, .fsel option {
           <div class="ccard"><div class="ccard-t">Pipeline snapshot</div><div class="pipe-bars" id="pipe-snap"></div></div>
           <div class="ccard"><div class="ccard-t">Referral commissions</div><div id="dash-ref"></div></div>
         </div>
+      </div>
+
+      <!-- CONTENT CALENDAR -->
+      <div id="cpg-content" class="cpg">
+        <div class="cph">
+          <div><div class="cpt">CONTENT CALENDAR</div><div class="cps" id="cc-sub">Plan + track social posts across channels</div></div>
+          <button class="cbtn pri" onclick="window.glOpenAddContent && window.glOpenAddContent()">+ New Post</button>
+        </div>
+        <div id="cc-body"></div>
       </div>
 
       <!-- CLIENTS -->
