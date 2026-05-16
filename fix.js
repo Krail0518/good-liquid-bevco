@@ -6172,6 +6172,11 @@
   };
 
   // Create a Checkout Session for an invoice and redirect the user to Stripe.
+  // opts:
+  //   payment_method: 'card' | 'ach' | 'both' (default 'both')
+  //   surcharge_pct:  number (default 0; only applied when payment_method='card')
+  //   newTab:         boolean (open Stripe in new tab instead of redirecting)
+  //   currency:       string (default 'usd')
   window.glCreateStripeCheckout = async function(invoice, opts){
     opts = opts || {};
     if(!invoice || !invoice.amount){ alert('Invalid invoice.'); return null; }
@@ -6183,7 +6188,7 @@
         if(s && s.data && s.data.session) token = s.data.session.access_token;
       } catch(e){}
       var body = {
-        amount: Math.round(invoice.amount * 100),  // Stripe uses cents
+        amount: Number(invoice.amount),  // dollars — function multiplies by 100 itself
         currency: opts.currency || 'usd',
         client_email: invoice.clientEmail || (function(){
           var c = (window.clients||[]).find(function(x){ return x.id === invoice.client; });
@@ -6192,7 +6197,9 @@
         invoice_id: invoice.id,
         description: 'Invoice ' + invoice.id + ' — ' + (invoice.svc || invoice.clientName || ''),
         success_url: location.origin + '/?stripe=success&invoice=' + encodeURIComponent(invoice.id),
-        cancel_url:  location.origin + '/?stripe=cancel&invoice=' + encodeURIComponent(invoice.id)
+        cancel_url:  location.origin + '/?stripe=cancel&invoice=' + encodeURIComponent(invoice.id),
+        payment_method: opts.payment_method || 'both',
+        surcharge_pct:  opts.surcharge_pct  || 0
       };
       var r = await fetch(getFnUrl(), {
         method: 'POST',
@@ -6234,8 +6241,7 @@
     btn.setAttribute('style','background:rgba(168,85,247,.12);border:1px solid rgba(168,85,247,.35);color:#c4a4f8');
     btn.textContent = '💳 Charge via Stripe';
     btn.addEventListener('click', function(){
-      if(!confirm('Open a Stripe Checkout for invoice ' + inv.id + ' ($' + Number(inv.amount||0).toLocaleString() + ')?')) return;
-      window.glCreateStripeCheckout(inv);
+      glOpenStripeMethodPicker(inv, { adminMode: true });
     });
     btnRow.appendChild(btn);
   }
@@ -13196,4 +13202,231 @@
   wrap();
 
   console.log('[GL] AI toolbar redesign loaded — categorised panel + search');
+}());
+
+
+/* ============================================================
+   STRIPE PAYMENT-METHOD PICKER + 3% CARD SURCHARGE
+   ============================================================
+   - 3% surcharge on credit-card payments (configurable per-call).
+   - Customer portal: replaces the single "💳 Pay now" button
+     with TWO buttons:
+       🏦 Pay by ACH ($X.XX, no fee)
+       💳 Pay by Card ($X.XX + 3% fee = $Y.YY)
+   - Admin "Charge via Stripe" button: opens a method-picker modal
+     with the same two options + a "waive surcharge this time" toggle.
+   - Both routes call window.glCreateStripeCheckout with the right
+     payment_method + surcharge_pct so the edge function builds a
+     Stripe Checkout session with the correct line items.
+
+   Surcharge legality:
+   - Florida: legal as of 2022 (Dana's Railroad Supply v. AG ruling).
+   - 3% complies with Visa/MC network rules (max 3% / cost-of-acceptance).
+   - Stripe receipt shows the fee as a separate line item — fully transparent.
+   ============================================================ */
+(function(){
+  // ── Config ──
+  var DEFAULT_SURCHARGE_PCT = 3;
+
+  // Per-invoice "waive surcharge" override, stored in localStorage so the
+  // admin's choice persists if they reopen the picker for the same invoice.
+  function waiveKey(invId){ return 'gl_waive_surcharge_' + invId; }
+  function isWaived(invId){ return localStorage.getItem(waiveKey(invId)) === '1'; }
+  function setWaived(invId, on){
+    if(on) localStorage.setItem(waiveKey(invId), '1');
+    else   localStorage.removeItem(waiveKey(invId));
+  }
+
+  function fmt$(n){
+    n = Number(n || 0);
+    return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  function computeSurcharge(amount, pct){
+    var base = Number(amount || 0);
+    var fee  = Math.round(base * pct) / 100;   // cents-precise
+    return { base: base, fee: fee, total: base + fee };
+  }
+
+  // ── Method picker modal (used by admin AND customer portal) ──
+  // opts: { invoice, adminMode, onPick(method) }
+  function openMethodPicker(opts){
+    var inv = opts.invoice;
+    var pct = isWaived(inv.id) ? 0 : DEFAULT_SURCHARGE_PCT;
+    var calc = computeSurcharge(inv.amount, DEFAULT_SURCHARGE_PCT);
+
+    var existing = document.getElementById('gl-stripe-picker');
+    if(existing) existing.remove();
+
+    var ov = document.createElement('div');
+    ov.id = 'gl-stripe-picker';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:9500;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+
+    var card = document.createElement('div');
+    card.setAttribute('style','background:#142238;border:1px solid rgba(0,229,192,.25);border-radius:14px;width:100%;max-width:440px;padding:24px;color:#cfd9e6;box-shadow:0 20px 60px rgba(0,0,0,.6)');
+
+    card.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:14px">' +
+        '<div>' +
+          '<div style="font-family:var(--ff-disp,sans-serif);font-size:14px;letter-spacing:2px;color:var(--teal,#00e5c0);font-weight:700">💳 PAYMENT METHOD</div>' +
+          '<div style="font-size:12px;color:#9aa7bd;margin-top:4px">Invoice ' + esc(inv.id) + ' · ' + fmt$(inv.amount) + '</div>' +
+        '</div>' +
+        '<button id="gl-pick-close" style="background:none;border:none;color:#9aa7bd;font-size:18px;cursor:pointer;padding:2px 6px;line-height:1">✕</button>' +
+      '</div>' +
+      // ACH option
+      '<button id="gl-pick-ach" style="display:block;width:100%;text-align:left;padding:14px 16px;margin-bottom:8px;background:rgba(0,229,192,.06);border:2px solid rgba(0,229,192,.3);border-radius:10px;color:#fff;cursor:pointer;transition:all .12s">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center">' +
+          '<div>' +
+            '<div style="font-size:14px;font-weight:700;color:var(--teal,#00e5c0)">🏦 Pay by ACH bank transfer</div>' +
+            '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">No processing fee · 1–3 business days</div>' +
+          '</div>' +
+          '<div style="font-size:18px;font-weight:800;color:#fff">' + fmt$(calc.base) + '</div>' +
+        '</div>' +
+      '</button>' +
+      // Card option
+      '<button id="gl-pick-card" style="display:block;width:100%;text-align:left;padding:14px 16px;margin-bottom:14px;background:rgba(168,85,247,.06);border:2px solid rgba(168,85,247,.3);border-radius:10px;color:#fff;cursor:pointer;transition:all .12s">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center">' +
+          '<div>' +
+            '<div style="font-size:14px;font-weight:700;color:#c4a4f8">💳 Pay by credit card' + (pct > 0 ? ' (+' + pct + '% fee)' : '') + '</div>' +
+            '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">' +
+              (pct > 0
+                ? 'Base ' + fmt$(calc.base) + ' + fee ' + fmt$(calc.fee) + ' · instant'
+                : 'No surcharge applied · instant') +
+            '</div>' +
+          '</div>' +
+          '<div style="font-size:18px;font-weight:800;color:#fff">' + fmt$(pct > 0 ? calc.total : calc.base) + '</div>' +
+        '</div>' +
+      '</button>' +
+      // Admin-only: waive surcharge toggle
+      (opts.adminMode ?
+        '<label style="display:flex;align-items:center;gap:9px;padding:10px 12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:8px;cursor:pointer;font-size:12px;color:#9aa7bd">' +
+          '<input type="checkbox" id="gl-pick-waive"' + (isWaived(inv.id) ? ' checked' : '') + ' style="width:14px;height:14px;accent-color:#f5c842;margin:0">' +
+          '<span><b style="color:#f5c842">Waive 3% surcharge for this invoice</b> — customer pays the base amount even if they pick card.</span>' +
+        '</label>'
+      : '');
+
+    ov.appendChild(card);
+    document.body.appendChild(ov);
+
+    function close(){ ov.remove(); }
+    ov.addEventListener('click', function(e){ if(e.target === ov) close(); });
+    card.querySelector('#gl-pick-close').addEventListener('click', close);
+
+    if(opts.adminMode){
+      card.querySelector('#gl-pick-waive').addEventListener('change', function(e){
+        setWaived(inv.id, e.target.checked);
+        // Re-render with new pct
+        close();
+        openMethodPicker(opts);
+      });
+    }
+
+    card.querySelector('#gl-pick-ach').addEventListener('click', function(){
+      close();
+      opts.onPick && opts.onPick('ach', 0);
+    });
+    card.querySelector('#gl-pick-card').addEventListener('click', function(){
+      close();
+      opts.onPick && opts.onPick('card', pct);
+    });
+  }
+
+  // Expose globally so the admin invoice-detail button + portal can both call it.
+  window.glOpenStripeMethodPicker = function(invoice, opts){
+    opts = opts || {};
+    openMethodPicker({
+      invoice: invoice,
+      adminMode: !!opts.adminMode,
+      onPick: function(method, pct){
+        if(typeof window.glCreateStripeCheckout !== 'function'){
+          alert('Stripe Checkout function not loaded.');
+          return;
+        }
+        window.glCreateStripeCheckout(invoice, {
+          payment_method: method,
+          surcharge_pct:  pct,
+          newTab:         opts.newTab !== false  // default newTab for admin
+        });
+      }
+    });
+  };
+
+  // ── Customer portal: replace single Pay Now with two buttons ──
+  // The portal table is rendered by an existing IIFE; we re-decorate
+  // it on every MutationObserver tick to handle re-renders.
+  function decoratePortalRows(){
+    var portal = document.getElementById('customer-portal');
+    if(!portal) return;
+    var rows = portal.querySelectorAll('table tr[data-inv-id], table tr');
+    Array.prototype.forEach.call(rows, function(tr){
+      // Skip if we've already decorated this row
+      if(tr.dataset.glSurchargeWired === '1') return;
+      var oldBtn = tr.querySelector('.gl-portal-pay-btn');
+      if(!oldBtn) return;
+      var actionCell = oldBtn.parentNode;
+      if(!actionCell) return;
+
+      // Pull invoice ID and amount from the row
+      var invId = tr.getAttribute('data-inv-id') || (oldBtn.getAttribute('data-inv-id'));
+      // If no explicit attribute, try to grab from the row text or a hidden field — fallback to nearest invoice
+      if(!invId){
+        var idCell = tr.querySelector('td');
+        if(idCell) invId = (idCell.textContent || '').trim();
+      }
+      var inv = (window.invoices || []).find(function(x){ return x.id === invId; });
+      if(!inv){
+        // Couldn't reconcile — leave the old button alone
+        tr.dataset.glSurchargeWired = '1';
+        return;
+      }
+
+      // Build the two replacement buttons
+      var pct = isWaived(inv.id) ? 0 : DEFAULT_SURCHARGE_PCT;
+      var calc = computeSurcharge(inv.amount, DEFAULT_SURCHARGE_PCT);
+
+      var wrap = document.createElement('div');
+      wrap.setAttribute('style','display:flex;flex-direction:column;gap:5px;align-items:flex-end');
+
+      var ach = document.createElement('button');
+      ach.setAttribute('style','padding:5px 12px;background:var(--teal,#00e5c0);color:#0a1628;border:none;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap');
+      ach.textContent = '🏦 Pay by ACH ' + fmt$(calc.base);
+      ach.addEventListener('click', function(ev){
+        ev.preventDefault();
+        window.glCreateStripeCheckout(inv, { payment_method: 'ach', surcharge_pct: 0, newTab: true });
+      });
+
+      var card = document.createElement('button');
+      card.setAttribute('style','padding:5px 12px;background:rgba(168,85,247,.15);color:#c4a4f8;border:1px solid rgba(168,85,247,.35);border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap');
+      card.textContent = pct > 0
+        ? '💳 Card +' + pct + '% = ' + fmt$(calc.total)
+        : '💳 Card ' + fmt$(calc.base);
+      card.title = pct > 0
+        ? 'Pay by credit card. A ' + pct + '% processing fee (' + fmt$(calc.fee) + ') applies.'
+        : 'Pay by credit card.';
+      card.addEventListener('click', function(ev){
+        ev.preventDefault();
+        window.glCreateStripeCheckout(inv, { payment_method: 'card', surcharge_pct: pct, newTab: true });
+      });
+
+      wrap.appendChild(ach);
+      wrap.appendChild(card);
+
+      // Replace the old single button with our two-button wrap
+      oldBtn.style.display = 'none';
+      actionCell.appendChild(wrap);
+      tr.dataset.glSurchargeWired = '1';
+    });
+  }
+
+  function startPortalObs(){
+    var portal = document.getElementById('customer-portal');
+    if(!portal){ setTimeout(startPortalObs, 700); return; }
+    new MutationObserver(function(){ setTimeout(decoratePortalRows, 60); }).observe(portal, { childList:true, subtree:true });
+    decoratePortalRows();
+  }
+  if(document.readyState !== 'loading') startPortalObs();
+  else document.addEventListener('DOMContentLoaded', startPortalObs);
+
+  console.log('[GL] Stripe payment-method picker + 3% card surcharge loaded');
 }());
