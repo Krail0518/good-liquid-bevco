@@ -1998,6 +1998,8 @@
       { label:'✉️ Email drip generator', fn:'openEmailDripGenerator' },
       { label:'💼 LinkedIn outreach', fn:'openLinkedInOutreach' },
       { label:'💰 AR Collection', fn:'openARCollection', admin:true },
+      { label:'🚀 Onboarding wizard', fn:'openOnboardingWizard', admin:true },
+      { label:'⭐ NPS responses', fn:'openNpsResults', admin:true },
       { label:'💰 Estimate Quote', fn:'aiEstimateQuote' },
       { label:'🧾 Draft Invoice',  fn:'aiDraftInvoice' },
       { label:'📝 Meeting Notes',  fn:'openMeetingNotesModal' },
@@ -9985,6 +9987,357 @@
         host.insertAdjacentHTML('beforeend', html);
       }
     }
+   NPS SURVEY MODULE
+   Public route #nps/<client-uuid>. Admin CRM modal for responses.
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  async function mountSurvey(cid){
+    var host = document.getElementById('gl-portal') || (function(){
+      var d = document.createElement('div'); d.id = 'gl-portal';
+      d.setAttribute('style','position:fixed;inset:0;z-index:9000;background:#0a1628;overflow-y:auto;padding:40px 24px');
+      document.body.appendChild(d); return d;
+    })();
+    host.style.display = 'block'; document.body.style.overflow = 'hidden';
+    var client = null;
+    if(window.supa){ try { var r = await window.supa.from('clients').select('*').eq('id', cid).maybeSingle(); if(r) client = r.data; } catch(e){} }
+    if(!client){
+      host.innerHTML = '<div style="max-width:520px;margin:80px auto;padding:32px;background:#142238;border:1px solid rgba(231,76,60,.3);border-radius:14px;text-align:center;color:#fff"><div style="font-family:var(--ff-disp);font-size:18px;color:#ff8579;margin-bottom:10px">SURVEY LINK NOT FOUND</div><div style="font-size:13px;color:#9aa7bd;line-height:1.6">Please contact Mike@GoodLiquid.com.</div></div>';
+      return;
+    }
+    var scores = '';
+    for(var i = 0; i <= 10; i++){
+      var color = i <= 6 ? '#ff8579' : i <= 8 ? '#f5c842' : '#5fcf9e';
+      scores += '<button class="gl-nps-score" data-score="' + i + '" style="width:46px;height:46px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:' + color + ';font-size:16px;font-weight:700;cursor:pointer;transition:all .15s">' + i + '</button>';
+    }
+    host.innerHTML =
+      '<div style="max-width:640px;margin:80px auto;background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:18px;padding:40px">' +
+        '<div style="font-family:var(--ff-disp);font-size:11px;letter-spacing:3px;color:var(--teal);text-align:center">GOOD LIQUID BEV CO</div>' +
+        '<h2 style="font-family:var(--ff-disp);font-size:24px;letter-spacing:1px;color:#fff;margin:14px 0 6px;text-align:center">Quick question, ' + esc((client.contact || client.name || 'friend').split(' ')[0]) + '?</h2>' +
+        '<p style="font-size:14px;color:#9aa7bd;text-align:center;line-height:1.6;margin-bottom:30px">On a scale of 0-10, how likely are you to recommend Good Liquid Bev Co to another beverage brand?</p>' +
+        '<div style="display:flex;justify-content:center;flex-wrap:wrap;gap:6px;margin-bottom:14px" id="gl-nps-scores">' + scores + '</div>' +
+        '<div style="display:flex;justify-content:space-between;font-size:10px;letter-spacing:1px;color:rgba(255,255,255,.4);max-width:540px;margin:0 auto 30px"><span>NOT LIKELY</span><span>EXTREMELY LIKELY</span></div>' +
+        '<div id="gl-nps-followup" style="display:none">' +
+          '<div class="frow"><div class="flbl" style="text-align:center">What would have made it a 10?</div><textarea class="finp" id="gl-nps-comment" rows="4"></textarea></div>' +
+          '<button id="gl-nps-submit" class="cbtn pri" style="width:100%;padding:14px;font-weight:800;font-size:14px">Submit feedback →</button>' +
+        '</div>' +
+        '<div id="gl-nps-thanks" style="display:none;text-align:center;padding:20px"><div style="font-size:48px;margin-bottom:14px">🙏</div><div style="font-family:var(--ff-disp);font-size:18px;color:var(--teal);margin-bottom:8px">THANK YOU.</div><div style="font-size:13px;color:#9aa7bd">Your feedback genuinely helps us improve. Mike or Sandra will follow up if it looks like we missed something.</div></div>' +
+      '</div>';
+    var pickedScore = null;
+    host.querySelectorAll('.gl-nps-score').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        pickedScore = parseInt(btn.getAttribute('data-score'), 10);
+        host.querySelectorAll('.gl-nps-score').forEach(function(b){ b.style.outline = ''; b.style.transform = ''; });
+        btn.style.outline = '2px solid var(--teal)';
+        btn.style.transform = 'scale(1.1)';
+        document.getElementById('gl-nps-followup').style.display = 'block';
+        document.getElementById('gl-nps-followup').scrollIntoView({ behavior:'smooth', block:'nearest' });
+      });
+    });
+    var submit = host.querySelector('#gl-nps-submit');
+    if(submit) submit.addEventListener('click', async function(){
+      if(pickedScore === null){ alert('Pick a score first.'); return; }
+      submit.disabled = true; submit.textContent = 'Submitting…';
+      var comment = document.getElementById('gl-nps-comment').value;
+      if(window.supa){
+        try { await window.supa.from('nps_responses').insert([{ client_id: cid, client_name: client.name, score: pickedScore, comment: comment, responded_at: new Date().toISOString() }]); } catch(e){}
+      }
+      document.getElementById('gl-nps-followup').style.display = 'none';
+      document.getElementById('gl-nps-scores').style.display = 'none';
+      document.querySelector('#gl-portal h2').style.display = 'none';
+      document.querySelector('#gl-portal p').style.display = 'none';
+      document.getElementById('gl-nps-thanks').style.display = 'block';
+    });
+  }
+  function maybeMount(){
+    var m = (window.location.hash || '').match(/^#nps\/([\w-]{20,})/);
+    if(!m) return;
+    mountSurvey(m[1]);
+  }
+  if(document.readyState !== 'loading') maybeMount();
+  else document.addEventListener('DOMContentLoaded', maybeMount);
+  window.addEventListener('hashchange', maybeMount);
+
+  window.glCopyNpsLink = async function(clientId){
+    if(!clientId) return;
+    var base = window.location.origin + window.location.pathname.replace(/[^/]*$/, '');
+    var url = base + '#nps/' + clientId;
+    try { await navigator.clipboard.writeText(url); } catch(e){
+      var ta = document.createElement('textarea'); ta.value = url; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+    }
+    if(typeof addNotification === 'function') addNotification('🔗 NPS link copied', url, 'success');
+    else alert('NPS link copied:\n\n' + url);
+  };
+
+  window.openNpsResults = async function(){
+    var prior = document.getElementById('gl-nps-results-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var rows = [];
+    if(window.supa){ try { var r = await window.supa.from('nps_responses').select('*').order('responded_at',{ascending:false}).limit(100); if(r && r.data) rows = r.data; } catch(e){} }
+    var promoters = rows.filter(function(r){ return r.score >= 9; }).length;
+    var detractors = rows.filter(function(r){ return r.score <= 6; }).length;
+    var nps = rows.length ? Math.round(((promoters - detractors) / rows.length) * 100) : 0;
+    var npsColor = nps >= 30 ? '#5fcf9e' : nps >= 0 ? '#f5c842' : '#ff8579';
+    var ov = document.createElement('div');
+    ov.id = 'gl-nps-results-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1000;background:rgba(6,13,26,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:640px;max-height:88vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">⭐ NPS RESPONSES</div>' +
+          '<button id="gl-nps-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        (rows.length
+          ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-bottom:18px">' +
+              '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:13px;text-align:center"><div style="font-size:10px;color:var(--muted);letter-spacing:1px">PROMOTERS (9-10)</div><div style="font-family:var(--ff-disp);font-size:22px;color:#5fcf9e;margin-top:3px">' + promoters + '</div></div>' +
+              '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:13px;text-align:center"><div style="font-size:10px;color:var(--muted);letter-spacing:1px">DETRACTORS (0-6)</div><div style="font-family:var(--ff-disp);font-size:22px;color:#ff8579;margin-top:3px">' + detractors + '</div></div>' +
+              '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:13px;text-align:center"><div style="font-size:10px;color:var(--muted);letter-spacing:1px">NPS</div><div style="font-family:var(--ff-disp);font-size:22px;color:' + npsColor + ';margin-top:3px">' + (nps > 0 ? '+' : '') + nps + '</div></div>' +
+            '</div>' +
+            rows.map(function(r){
+              var col = r.score >= 9 ? '#5fcf9e' : r.score <= 6 ? '#ff8579' : '#f5c842';
+              var when = r.responded_at ? new Date(r.responded_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '';
+              return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:14px;margin-bottom:8px">' +
+                '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+                  '<div><div style="font-size:13px;color:var(--white);font-weight:600">' + esc(r.client_name||'—') + '</div><div style="font-size:11px;color:var(--muted);margin-top:2px">' + when + '</div></div>' +
+                  '<div style="font-family:var(--ff-disp);font-size:24px;color:' + col + '">' + r.score + '</div>' +
+                '</div>' +
+                (r.comment ? '<div style="font-size:12px;color:var(--white);line-height:1.5;background:rgba(255,255,255,.02);padding:9px;border-radius:6px;font-style:italic">"' + esc(r.comment) + '"</div>' : '') +
+              '</div>';
+            }).join('')
+          : '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No responses yet. Use the CRM action "Copy NPS link" on a client to share a survey URL.</div>'
+        ) +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-nps-close').addEventListener('click', function(){ ov.remove(); });
+    host.appendChild(ov);
+  };
+  console.log('[GL] NPS survey loaded');
+}());
+
+/* ============================================================
+   CLIENT ONBOARDING WIZARD (5-step modal)
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  window.openOnboardingWizard = function(){
+    var prior = document.getElementById('gl-wiz-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var step = 1;
+    var data = { name:'', legal_name:'', ein:'', website:'', contact:'', email:'', phone:'', street:'', city:'', state:'', zip:'', service:'', product_types:[], paymentTerms:'Net 30', leadSource:'', notes:'' };
+    var ov = document.createElement('div');
+    ov.id = 'gl-wiz-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1000;background:rgba(6,13,26,.92);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    host.appendChild(ov);
+    function progress(){
+      var pct = (step / 5) * 100;
+      return '<div style="height:4px;background:rgba(255,255,255,.05);border-radius:2px;overflow:hidden;margin-bottom:20px"><div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,var(--teal),#1a6fff);transition:width .3s"></div></div>';
+    }
+    function render(){
+      var content = '';
+      if(step === 1){
+        content =
+          '<div style="font-family:var(--ff-disp);font-size:11px;letter-spacing:2px;color:var(--teal);margin-bottom:8px">STEP 1 of 5</div>' +
+          '<div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:1px;color:var(--white);margin-bottom:18px">Who are they?</div>' +
+          '<div class="frow"><div class="flbl">Brand name *</div><input class="finp" id="w-name" value="' + esc(data.name) + '" placeholder="e.g. SunBurst Seltzers"></div>' +
+          '<div class="frow"><div class="flbl">Legal business name <span style="opacity:.5">(if different)</span></div><input class="finp" id="w-legal" value="' + esc(data.legal_name) + '"></div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+            '<div class="frow"><div class="flbl">EIN / Tax ID</div><input class="finp" id="w-ein" value="' + esc(data.ein) + '"></div>' +
+            '<div class="frow"><div class="flbl">Website</div><input class="finp" id="w-web" value="' + esc(data.website) + '" placeholder="https://"></div>' +
+          '</div>';
+      } else if(step === 2){
+        content =
+          '<div style="font-family:var(--ff-disp);font-size:11px;letter-spacing:2px;color:var(--teal);margin-bottom:8px">STEP 2 of 5</div>' +
+          '<div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:1px;color:var(--white);margin-bottom:18px">How do we reach them?</div>' +
+          '<div class="frow"><div class="flbl">Main point of contact *</div><input class="finp" id="w-contact" value="' + esc(data.contact) + '" placeholder="Name"></div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+            '<div class="frow"><div class="flbl">Email *</div><input class="finp" id="w-email" type="email" value="' + esc(data.email) + '"></div>' +
+            '<div class="frow"><div class="flbl">Phone</div><input class="finp" id="w-phone" value="' + esc(data.phone) + '"></div>' +
+          '</div>';
+      } else if(step === 3){
+        content =
+          '<div style="font-family:var(--ff-disp);font-size:11px;letter-spacing:2px;color:var(--teal);margin-bottom:8px">STEP 3 of 5</div>' +
+          '<div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:1px;color:var(--white);margin-bottom:18px">Where are they?</div>' +
+          '<div class="frow"><div class="flbl">Street address</div><input class="finp" id="w-street" value="' + esc(data.street) + '"></div>' +
+          '<div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px">' +
+            '<div class="frow"><div class="flbl">City</div><input class="finp" id="w-city" value="' + esc(data.city) + '"></div>' +
+            '<div class="frow"><div class="flbl">State</div><input class="finp" id="w-state" maxlength="2" value="' + esc(data.state) + '" style="text-transform:uppercase"></div>' +
+            '<div class="frow"><div class="flbl">Zip</div><input class="finp" id="w-zip" value="' + esc(data.zip) + '"></div>' +
+          '</div>';
+      } else if(step === 4){
+        var serviceOptions = ['','Canning','Bottling','R&D','R&D + Canning','Consulting'].map(function(s){
+          var sel = (s === data.service) ? ' selected' : '';
+          return '<option value="' + esc(s) + '"'+sel+'>' + esc(s || 'Pick service…') + '</option>';
+        }).join('');
+        var prods = [['seltzer','🥤 Seltzer'],['kombucha','🍵 Kombucha'],['coldbrew','☕ Cold brew'],['juice','🧃 Juice'],['rtd','🍸 RTD'],['energy','⚡ Energy'],['mocktail','🍹 Mocktail'],['sparkling','💧 Sparkling'],['sports','🏃 Sports'],['other','📦 Other']].map(function(p){
+          var ch = data.product_types.indexOf(p[0]) >= 0 ? ' checked' : '';
+          return '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--white)"><input type="checkbox" data-pt="' + p[0] + '"'+ch+' style="accent-color:var(--teal);width:15px;height:15px">' + p[1] + '</label>';
+        }).join('');
+        content =
+          '<div style="font-family:var(--ff-disp);font-size:11px;letter-spacing:2px;color:var(--teal);margin-bottom:8px">STEP 4 of 5</div>' +
+          '<div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:1px;color:var(--white);margin-bottom:18px">What do they make?</div>' +
+          '<div class="frow"><div class="flbl">Primary service</div><select class="fsel" id="w-service">' + serviceOptions + '</select></div>' +
+          '<div class="frow"><div class="flbl">Product types</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;padding:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:8px">' + prods + '</div></div>';
+      } else if(step === 5){
+        content =
+          '<div style="font-family:var(--ff-disp);font-size:11px;letter-spacing:2px;color:var(--teal);margin-bottom:8px">STEP 5 of 5</div>' +
+          '<div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:1px;color:var(--white);margin-bottom:18px">Review &amp; save</div>' +
+          '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:16px;line-height:2;font-size:13px;color:var(--white)">' +
+            '<div><span style="color:var(--muted)">Brand:</span> ' + esc(data.name || '—') + (data.legal_name && data.legal_name !== data.name ? ' <span style="color:var(--muted)">(dba ' + esc(data.legal_name) + ')</span>' : '') + '</div>' +
+            '<div><span style="color:var(--muted)">Contact:</span> ' + esc(data.contact || '—') + ' · ' + esc(data.email || '—') + '</div>' +
+            '<div><span style="color:var(--muted)">Address:</span> ' + esc([data.street, data.city, data.state, data.zip].filter(Boolean).join(', ') || '—') + '</div>' +
+            '<div><span style="color:var(--muted)">Service:</span> ' + esc(data.service || '—') + '</div>' +
+            '<div><span style="color:var(--muted)">Products:</span> ' + esc(data.product_types.join(', ') || '—') + '</div>' +
+            '<div><span style="color:var(--muted)">Payment terms:</span> ' + esc(data.paymentTerms) + '</div>' +
+          '</div>' +
+          '<div class="frow" style="margin-top:14px"><div class="flbl">Onboarding notes</div><textarea class="finp" id="w-notes" rows="3">' + esc(data.notes) + '</textarea></div>';
+      }
+      ov.innerHTML =
+        '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:30px;width:100%;max-width:560px;max-height:88vh;overflow-y:auto">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+            '<div style="font-family:var(--ff-disp);font-size:13px;letter-spacing:2px;color:var(--teal)">🚀 ONBOARDING WIZARD</div>' +
+            '<button id="w-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+          '</div>' +
+          progress() + content +
+          '<div style="display:flex;gap:8px;margin-top:20px;justify-content:space-between">' +
+            (step > 1 ? '<button id="w-back" class="cbtn">← Back</button>' : '<div></div>') +
+            (step < 5 ? '<button id="w-next" class="cbtn pri">Next →</button>' : '<button id="w-save" class="cbtn pri">✓ Create client</button>') +
+          '</div>' +
+        '</div>';
+      ov.querySelector('#w-close').addEventListener('click', function(){ ov.remove(); });
+      var back = ov.querySelector('#w-back');
+      if(back) back.addEventListener('click', function(){ stash(); step--; render(); });
+      var next = ov.querySelector('#w-next');
+      if(next) next.addEventListener('click', function(){
+        stash();
+        if(step === 1 && !data.name){ alert('Brand name is required.'); return; }
+        if(step === 2 && (!data.contact || !data.email)){ alert('Contact name and email are required.'); return; }
+        step++; render();
+      });
+      var save = ov.querySelector('#w-save');
+      if(save) save.addEventListener('click', async function(){
+        stash();
+        save.disabled = true; save.textContent = 'Creating…';
+        var localId = 'c_' + Date.now();
+        var cid = localId;
+        if(window.supa){
+          try {
+            var r = await window.supa.from('clients').insert([{
+              name: data.name, legal_name: data.legal_name, ein: data.ein, website: data.website,
+              contact_name: data.contact, email: data.email, phone: data.phone,
+              street: data.street, city: data.city, state: data.state, zip: data.zip,
+              service: data.service, product_types: data.product_types,
+              payment_terms: data.paymentTerms, lead_source: data.leadSource,
+              notes: data.notes, status: 'lead', total_billed: 0,
+              initials: (data.name || 'X').split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().slice(0,2)
+            }]).select().single();
+            if(r && r.data){ cid = r.data.id; }
+          } catch(e){ console.warn('[GL] wizard save failed', e); }
+        }
+        if(window.clients){
+          window.clients.push({
+            id: cid, name: data.name, legalName: data.legal_name, ein: data.ein, website: data.website,
+            contact: data.contact, email: data.email, phone: data.phone,
+            street: data.street, city: data.city, state: data.state, zip: data.zip,
+            service: data.service, productTypes: data.product_types,
+            paymentTerms: data.paymentTerms, leadSource: data.leadSource,
+            notes: data.notes, status: 'lead', billed: 0,
+            init: (data.name || 'X').split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().slice(0,2),
+            color: '#1a3a6e', tc: '#9FE1CB'
+          });
+        }
+        if(typeof renderClients === 'function') renderClients();
+        if(typeof renderDash === 'function')    renderDash();
+        ov.remove();
+        if(typeof addNotification === 'function') addNotification('🚀 Client onboarded', data.name, 'success');
+        if(typeof window.glAudit === 'function') window.glAudit('client_onboarded_via_wizard', cid, { name: data.name });
+      });
+    }
+    function stash(){
+      var v = function(id){ var el = document.getElementById(id); return el ? el.value.trim() : ''; };
+      if(step === 1){ data.name = v('w-name'); data.legal_name = v('w-legal'); data.ein = v('w-ein'); data.website = v('w-web'); }
+      if(step === 2){ data.contact = v('w-contact'); data.email = v('w-email'); data.phone = v('w-phone'); }
+      if(step === 3){ data.street = v('w-street'); data.city = v('w-city'); data.state = v('w-state').toUpperCase(); data.zip = v('w-zip'); }
+      if(step === 4){
+        data.service = v('w-service');
+        data.product_types = [];
+        document.querySelectorAll('input[data-pt]').forEach(function(el){ if(el.checked) data.product_types.push(el.getAttribute('data-pt')); });
+      }
+      if(step === 5){ data.notes = v('w-notes'); }
+    }
+    render();
+  };
+  console.log('[GL] onboarding wizard loaded');
+}());
+
+/* ============================================================
+   ANNIVERSARY / BIRTHDAY DASHBOARD TRACKER
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function daysUntil(month, day){
+    var today = new Date(); today.setHours(0,0,0,0);
+    var y = today.getFullYear();
+    var target = new Date(y, month, day);
+    target.setHours(0,0,0,0);
+    if(target < today) target = new Date(y + 1, month, day);
+    return Math.round((target - today) / 86400000);
+  }
+  function gather(){
+    var rows = [];
+    (window.clients||[]).forEach(function(c){
+      var anni = c.acquired_at || c.created_at;
+      if(anni){
+        var d = new Date(anni);
+        if(!isNaN(d)){
+          var until = daysUntil(d.getMonth(), d.getDate());
+          if(until <= 14){
+            var yrs = new Date().getFullYear() - d.getFullYear();
+            rows.push({ client:c, kind:'anniversary', until:until, label: yrs + (yrs === 1 ? ' year' : ' years') + ' with us' });
+          }
+        }
+      }
+      if(c.contact_birthday){
+        var b = new Date(c.contact_birthday);
+        if(!isNaN(b)){
+          var bUntil = daysUntil(b.getMonth(), b.getDate());
+          if(bUntil <= 14){
+            rows.push({ client:c, kind:'birthday', until:bUntil, label: (c.contact || 'Contact') + '\'s birthday' });
+          }
+        }
+      }
+    });
+    rows.sort(function(a,b){ return a.until - b.until; });
+    return rows;
+  }
+  window.renderAnniversaries = function(){
+    var slot = document.getElementById('dash-anniversaries');
+    if(!slot){
+      var dash = document.getElementById('cpg-dashboard');
+      if(!dash) return;
+      slot = document.createElement('div');
+      slot.id = 'dash-anniversaries';
+      dash.appendChild(slot);
+    }
+    var rows = gather();
+    if(!rows.length){ slot.innerHTML = ''; return; }
+    slot.innerHTML =
+      '<div style="background:rgba(168,85,247,.06);border:1px solid rgba(168,85,247,.25);border-radius:12px;padding:14px 16px;margin-top:14px">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">' +
+          '<span style="font-size:18px">🎉</span>' +
+          '<div>' +
+            '<div style="font-family:var(--ff-disp);font-size:13px;letter-spacing:2px;color:#c4a4f8">UPCOMING CELEBRATIONS</div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + rows.length + ' client touchpoint' + (rows.length === 1 ? '' : 's') + ' in the next 14 days</div>' +
+          '</div>' +
+        '</div>' +
+        rows.map(function(r){
+          var icon = r.kind === 'birthday' ? '🎂' : '🥂';
+          return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid rgba(255,255,255,.04)">' +
+            '<div><span style="font-size:14px;margin-right:8px">' + icon + '</span><span style="color:var(--white);font-weight:600;font-size:13px">' + esc(r.client.name) + '</span> <span style="color:var(--muted);font-size:11px;margin-left:6px">' + esc(r.label) + '</span></div>' +
+            '<div style="color:#c4a4f8;font-weight:600;font-size:12px">' + (r.until === 0 ? 'TODAY' : 'in ' + r.until + 'd') + '</div>' +
+          '</div>';
+        }).join('') +
+      '</div>';
   };
   (function wrap(){
     var orig = window.renderDash;
@@ -10945,4 +11298,9 @@
     };
   })();
   console.log('[GL] weighted pipeline forecast loaded');
+      try { window.renderAnniversaries(); } catch(e){ console.warn('[GL] anniversaries threw', e); }
+      return r;
+    };
+  })();
+  console.log('[GL] anniversary tracker loaded');
 }());
