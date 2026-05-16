@@ -95,18 +95,10 @@
   /* ── PERMISSIONS ──
      Page-name convention matches index.html cNav calls (e.g. 'newinv', not 'new-invoice').
      window.PERMISSIONS is bridged from index.html so both the role-filter UI and can() share one table. */
-  var ALL=['dashboard','clients','pipeline','invoices','invoice-detail','newinv','referrals','referrers','activity','users','customers','calendar','production-cal','production-runs','samples','formulas','yield','tasks','documents','inventory','announcements','time-tracker','reports','ai-settings'];
-  if(window.PERMISSIONS){window.PERMISSIONS.admin=ALL;window.PERMISSIONS.sales=['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','tasks','announcements','reports'];}
-  else{window.PERMISSIONS={admin:ALL,sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','tasks','announcements','reports'],viewer:['dashboard','clients','invoices','activity']};}
-  var ALL=['dashboard','clients','pipeline','invoices','invoice-detail','newinv','referrals','referrers','activity','users','customers','calendar','production-cal','content','tasks','documents','inventory','announcements','time-tracker','reports','ai-settings'];
-  if(window.PERMISSIONS){window.PERMISSIONS.admin=ALL;window.PERMISSIONS.sales=['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','content','tasks','announcements','reports'];}
-  else{window.PERMISSIONS={admin:ALL,sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','content','tasks','announcements','reports'],viewer:['dashboard','clients','invoices','activity']};}
-  var ALL=['dashboard','clients','pipeline','invoices','invoice-detail','newinv','referrals','referrers','activity','users','customers','calendar','production-cal','cip','audit','tasks','documents','inventory','announcements','time-tracker','reports','ai-settings'];
-  if(window.PERMISSIONS){window.PERMISSIONS.admin=ALL;window.PERMISSIONS.sales=['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','cip','tasks','announcements','reports'];}
-  else{window.PERMISSIONS={admin:ALL,sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','cip','tasks','announcements','reports'],viewer:['dashboard','clients','invoices','activity']};}
-  var ALL=['dashboard','clients','pipeline','invoices','invoice-detail','newinv','referrals','referrers','activity','users','customers','calendar','production-cal','defects','vendors','tasks','documents','inventory','announcements','time-tracker','reports','ai-settings'];
-  if(window.PERMISSIONS){window.PERMISSIONS.admin=ALL;window.PERMISSIONS.sales=['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','defects','vendors','tasks','announcements','reports'];}
-  else{window.PERMISSIONS={admin:ALL,sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','defects','vendors','tasks','announcements','reports'],viewer:['dashboard','clients','invoices','activity']};}
+  var ALL=['dashboard','clients','pipeline','invoices','invoice-detail','newinv','referrals','referrers','activity','users','customers','calendar','production-cal','production-runs','samples','formulas','yield','content','cip','audit','defects','vendors','tasks','documents','inventory','announcements','time-tracker','reports','ai-settings'];
+  var SALES=['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','content','cip','defects','vendors','tasks','announcements','reports'];
+  if(window.PERMISSIONS){window.PERMISSIONS.admin=ALL;window.PERMISSIONS.sales=SALES;}
+  else{window.PERMISSIONS={admin:ALL,sales:SALES,viewer:['dashboard','clients','invoices','activity']};}
   window.can=function(page){var u=window.currentUser;if(!u)return false;if(u.role==='admin')return true;return(window.PERMISSIONS[u.role]||[]).includes(page);};
   /* Single cNav wrap: perm-gate first, then dispatch new-invoice variants
      to the builder, otherwise hand off to the original cNav from index.html. */
