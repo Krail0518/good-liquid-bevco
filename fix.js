@@ -1954,6 +1954,9 @@
     tools.setAttribute('style','display:none;flex-direction:column;gap:6px;align-items:flex-end;margin-bottom:6px');
 
     var items = [
+      { label:'📣 Social post drafter', fn:'openSocialDrafter' },
+      { label:'📰 Auto case study', fn:'openCaseStudyBuilder' },
+      { label:'💡 Post ideas this week', fn:'openPostSuggester' },
       { label:'💰 Estimate Quote', fn:'aiEstimateQuote' },
       { label:'🧾 Draft Invoice',  fn:'aiDraftInvoice' },
       { label:'📝 Meeting Notes',  fn:'openMeetingNotesModal' },
@@ -7498,4 +7501,230 @@
   })();
 
   console.log('[GL] dashboard compliance alert loaded');
+}());
+
+/* ============================================================
+   AI MARKETING SUITE
+   Three features that share the existing window.callAI helper:
+     1. openSocialDrafter   — channel + tone + topic → 3 post drafts
+     2. openCaseStudyBuilder — pick a client → 200-word case study
+     3. openPostSuggester   — scans CRM activity → 3 "post this week" ideas
+   All output is copyable; nothing auto-publishes.
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  function modal(id, title, bodyHtml, opts){
+    opts = opts || {};
+    var prior = document.getElementById(id); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var ov = document.createElement('div');
+    ov.id = id;
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1000;background:rgba(6,13,26,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:' + (opts.maxWidth || '560px') + ';max-height:88vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">' + title + '</div>' +
+          '<button class="gl-mod-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        bodyHtml +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('.gl-mod-close').addEventListener('click', function(){ ov.remove(); });
+    host.appendChild(ov);
+    return ov;
+  }
+
+  function resultCard(label, text){
+    var t = esc(text || '');
+    return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:14px;margin-bottom:10px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+        '<div style="font-family:var(--ff-disp);font-size:10px;letter-spacing:2px;color:var(--teal)">' + esc(label) + '</div>' +
+        '<button class="gl-copy-btn cbtn" style="font-size:10px;padding:4px 10px" data-text="' + t.replace(/"/g,'&quot;') + '">📋 Copy</button>' +
+      '</div>' +
+      '<div style="font-size:13px;color:var(--white);line-height:1.6;white-space:pre-wrap">' + t + '</div>' +
+    '</div>';
+  }
+
+  function wireCopyButtons(host){
+    host.querySelectorAll('.gl-copy-btn').forEach(function(b){
+      b.addEventListener('click', async function(){
+        var t = b.getAttribute('data-text') || '';
+        try { await navigator.clipboard.writeText(t); }
+        catch(e){
+          var ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+        }
+        var orig = b.textContent; b.textContent = '✓ Copied'; setTimeout(function(){ b.textContent = orig; }, 1500);
+      });
+    });
+  }
+
+  /* ─── 1. SOCIAL POST DRAFTER ─── */
+  window.openSocialDrafter = function(){
+    var clientOptions = '<option value="">— No specific client —</option>' +
+      (window.clients||[]).map(function(c){ return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>'; }).join('');
+
+    var ov = modal('gl-social-modal', '📣 AI SOCIAL POST DRAFTER',
+      '<div class="frow"><div class="flbl">Channel</div>' +
+        '<select class="fsel" id="gl-soc-channel">' +
+          '<option value="instagram">📷 Instagram</option>' +
+          '<option value="linkedin">💼 LinkedIn</option>' +
+          '<option value="x">🐦 X / Twitter</option>' +
+          '<option value="facebook">📘 Facebook</option>' +
+        '</select>' +
+      '</div>' +
+      '<div class="frow"><div class="flbl">Tone</div>' +
+        '<select class="fsel" id="gl-soc-tone">' +
+          '<option>Confident &amp; founder-voice</option>' +
+          '<option>Behind-the-scenes / casual</option>' +
+          '<option>Educational / industry insight</option>' +
+          '<option>Celebratory client win</option>' +
+          '<option>Direct sales / call-to-action</option>' +
+        '</select>' +
+      '</div>' +
+      '<div class="frow"><div class="flbl">Topic / talking point</div>' +
+        '<textarea class="finp" id="gl-soc-topic" rows="3" placeholder="e.g. We just finished a 2,500-case run of a hop-water seltzer for a small craft brewery."></textarea>' +
+      '</div>' +
+      '<div class="frow"><div class="flbl">Tie to a client (optional)</div>' +
+        '<select class="fsel" id="gl-soc-client">' + clientOptions + '</select>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px"><button id="gl-soc-go" class="cbtn pri" style="flex:1">✨ Draft 3 versions</button></div>' +
+      '<div id="gl-soc-out" style="margin-top:18px"></div>',
+      { maxWidth: '600px' });
+
+    ov.querySelector('#gl-soc-go').addEventListener('click', async function(){
+      var btn = this; var out = ov.querySelector('#gl-soc-out');
+      var channel = ov.querySelector('#gl-soc-channel').value;
+      var tone    = ov.querySelector('#gl-soc-tone').value;
+      var topic   = ov.querySelector('#gl-soc-topic').value.trim();
+      var cid     = ov.querySelector('#gl-soc-client').value;
+      if(!topic){ alert('Type in a topic or talking point first.'); return; }
+      var c = (window.clients||[]).find(function(x){ return x.id === cid; });
+      var clientCtx = c ? ('\n\nClient context: brand "' + c.name + '"' + (c.productTypes && c.productTypes.length ? ', makes ' + c.productTypes.join('/') : '') + (c.service ? ', service: ' + c.service : '') + '.') : '';
+      btn.disabled = true; btn.textContent = '✨ Drafting…';
+      out.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:14px;text-align:center">Asking the model for 3 angles…</div>';
+
+      var charLimit = channel === 'x' ? 280 : channel === 'instagram' ? 2200 : channel === 'linkedin' ? 1200 : 1500;
+      var sys = 'You are a social-media copywriter for Good Liquid Bev Co, a family-run beverage co-packer in Palmetto, FL. The brand voice is confident, direct, and craft-forward — never corporate. You write in their first-person plural ("we"). Avoid hashtag overuse and avoid "innovative", "leverage", "passionate". Each post must fit within ' + charLimit + ' characters including hashtags.';
+      var user = 'Write 3 distinct ' + channel.toUpperCase() + ' posts in this tone: "' + tone + '".\n\nTopic / talking point:\n' + topic + clientCtx + '\n\nReturn exactly this format, no preamble:\n\n=== Version 1 ===\n<post body>\n<2-5 relevant hashtags on one line>\n\n=== Version 2 ===\n<post body>\n<2-5 relevant hashtags>\n\n=== Version 3 ===\n<post body>\n<2-5 relevant hashtags>';
+
+      var text = await window.callAI(sys, user);
+      btn.disabled = false; btn.textContent = '✨ Draft 3 versions';
+      if(!text){ out.innerHTML = '<div style="color:#f5c842;font-size:13px;padding:14px">No AI response. Check that your Anthropic key is set in AI Settings.</div>'; return; }
+      var parts = text.split(/===\s*Version\s*\d+\s*===/i).map(function(s){ return s.trim(); }).filter(Boolean);
+      if(!parts.length) parts = [text];
+      out.innerHTML = parts.map(function(p, i){ return resultCard('VERSION ' + (i+1), p); }).join('');
+      wireCopyButtons(out);
+      if(typeof window.glAudit === 'function') window.glAudit('ai_social_drafted', channel, { tone: tone, hasClient: !!c });
+    });
+  };
+
+  /* ─── 2. CASE STUDY BUILDER ─── */
+  window.openCaseStudyBuilder = function(){
+    var clientOptions = '<option value="">— Pick a client —</option>' +
+      (window.clients||[]).filter(function(c){ return c.status !== 'inactive'; }).map(function(c){
+        return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>';
+      }).join('');
+
+    var ov = modal('gl-case-modal', '📰 AUTO CASE STUDY',
+      '<div style="font-size:12px;color:#9aa7bd;margin-bottom:14px;line-height:1.6">Pick a client and the model drafts a 200-word case study from their invoice history, product types, and service. Edit before publishing.</div>' +
+      '<div class="frow"><div class="flbl">Client</div><select class="fsel" id="gl-case-client">' + clientOptions + '</select></div>' +
+      '<div class="frow"><div class="flbl">Angle</div>' +
+        '<select class="fsel" id="gl-case-angle">' +
+          '<option value="general">General success story</option>' +
+          '<option value="growth">Volume growth over time</option>' +
+          '<option value="rd">R&amp;D → production journey</option>' +
+          '<option value="speed">Fast turnaround</option>' +
+        '</select>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px"><button id="gl-case-go" class="cbtn pri" style="flex:1">✨ Draft case study</button></div>' +
+      '<div id="gl-case-out" style="margin-top:18px"></div>',
+      { maxWidth: '600px' });
+
+    ov.querySelector('#gl-case-go').addEventListener('click', async function(){
+      var btn = this; var out = ov.querySelector('#gl-case-out');
+      var cid = ov.querySelector('#gl-case-client').value;
+      var angle = ov.querySelector('#gl-case-angle').value;
+      var c = (window.clients||[]).find(function(x){ return x.id === cid; });
+      if(!c){ alert('Pick a client first.'); return; }
+
+      var clientInvs = (window.invoices||[]).filter(function(i){ return i.client === cid; });
+      var totalBilled = clientInvs.reduce(function(s,i){ return s + (i.amount||0); }, 0);
+      var paidCount = clientInvs.filter(function(i){ return i.status === 'paid'; }).length;
+
+      var facts = [
+        'Brand: ' + c.name,
+        'Service: ' + (c.service || 'general co-packing'),
+        c.productTypes && c.productTypes.length ? 'Product types: ' + c.productTypes.join(', ') : null,
+        'Total billed lifetime: $' + Math.round(totalBilled).toLocaleString(),
+        'Completed runs (paid invoices): ' + paidCount,
+        c.notes ? 'Internal notes: ' + c.notes : null
+      ].filter(Boolean).join('\n');
+
+      btn.disabled = true; btn.textContent = '✨ Drafting…';
+      out.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:14px;text-align:center">Composing case study…</div>';
+
+      var angleHint = ({
+        general: 'a general success story',
+        growth:  'their growth in production volume over time',
+        rd:      'their journey from R&D / formulation through production',
+        speed:   'a fast turnaround we delivered'
+      })[angle] || 'a general success story';
+
+      var sys = 'You are a brand journalist writing a 180–220 word case study for Good Liquid Bev Co, a beverage co-packer in Palmetto FL. Keep it factual, never invent specifics that are not in the facts provided. Use the brand voice "we" (Good Liquid). End with one short line about being open to similar work.';
+      var user = 'Write a case study highlighting ' + angleHint + ' about this client. Use only the facts below — if something would require detail not provided, write it more generally rather than fabricating numbers.\n\nFACTS:\n' + facts;
+
+      var text = await window.callAI(sys, user);
+      btn.disabled = false; btn.textContent = '✨ Draft case study';
+      if(!text){ out.innerHTML = '<div style="color:#f5c842;font-size:13px;padding:14px">No AI response. Check your Anthropic key.</div>'; return; }
+      out.innerHTML = resultCard('CASE STUDY · ' + c.name, text);
+      wireCopyButtons(out);
+      if(typeof window.glAudit === 'function') window.glAudit('ai_case_study_drafted', c.id, { angle: angle });
+    });
+  };
+
+  /* ─── 3. POST-THIS-WEEK SUGGESTER ─── */
+  window.openPostSuggester = function(){
+    var ov = modal('gl-suggest-modal', '💡 POST IDEAS THIS WEEK',
+      '<div style="font-size:12px;color:#9aa7bd;margin-bottom:14px;line-height:1.6">The model scans your recent CRM activity — wins, new clients, compliance milestones — and suggests 3 posts you could publish this week.</div>' +
+      '<div style="display:flex;gap:8px"><button id="gl-suggest-go" class="cbtn pri" style="flex:1">✨ Suggest 3 posts</button></div>' +
+      '<div id="gl-suggest-out" style="margin-top:18px"></div>',
+      { maxWidth: '620px' });
+
+    ov.querySelector('#gl-suggest-go').addEventListener('click', async function(){
+      var btn = this; var out = ov.querySelector('#gl-suggest-out');
+      var clientsList = (window.clients||[]).slice(0, 20);
+      var recentInvs  = (window.invoices||[]).slice(0, 10);
+      var activeClients = clientsList.filter(function(c){ return c.status === 'active'; }).length;
+      var newLeads     = clientsList.filter(function(c){ return c.status === 'lead'; }).length;
+      var productMix   = {};
+      clientsList.forEach(function(c){ (c.productTypes||[]).forEach(function(p){ productMix[p] = (productMix[p]||0) + 1; }); });
+      var topProducts = Object.keys(productMix).sort(function(a,b){ return productMix[b] - productMix[a]; }).slice(0, 3).join(', ');
+
+      var snapshot = [
+        'Active clients: ' + activeClients,
+        'New leads in pipeline: ' + newLeads,
+        topProducts ? 'Top product types we pack: ' + topProducts : null,
+        'Recent paid invoices: ' + recentInvs.filter(function(i){return i.status==='paid';}).length,
+        'Recent runs total $: ' + recentInvs.reduce(function(s,i){return s + (i.amount||0);}, 0).toLocaleString()
+      ].filter(Boolean).join('\n');
+
+      btn.disabled = true; btn.textContent = '✨ Thinking…';
+      out.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:14px;text-align:center">Scanning the CRM…</div>';
+
+      var sys = 'You are the head of marketing for Good Liquid Bev Co, a family-run beverage co-packer in Palmetto FL. You suggest 3 short post ideas the founders can publish this week across social channels. Suggestions should feel grounded in what is actually happening at the business — do not invent specific client names or dollar amounts unless provided.';
+      var user = 'Here is a snapshot of what is happening this week:\n\n' + snapshot + '\n\nSuggest exactly 3 post ideas. For each, return:\n\n=== Idea N ===\nHeadline / hook: <one short line>\nChannel pick: <Instagram | LinkedIn | X | Facebook>\nWhy now: <one sentence — what makes this timely>\nDraft caption: <2-4 short sentences ready to post>\n\nUse the exact "=== Idea N ===" delimiter.';
+
+      var text = await window.callAI(sys, user);
+      btn.disabled = false; btn.textContent = '✨ Suggest 3 posts';
+      if(!text){ out.innerHTML = '<div style="color:#f5c842;font-size:13px;padding:14px">No AI response. Check your Anthropic key.</div>'; return; }
+      var parts = text.split(/===\s*Idea\s*\d+\s*===/i).map(function(s){ return s.trim(); }).filter(Boolean);
+      if(!parts.length) parts = [text];
+      out.innerHTML = parts.map(function(p, i){ return resultCard('IDEA ' + (i+1), p); }).join('');
+      wireCopyButtons(out);
+      if(typeof window.glAudit === 'function') window.glAudit('ai_post_suggested', '', { count: parts.length });
+    });
+  };
+
+  console.log('[GL] AI marketing suite loaded');
 }());
