@@ -13497,3 +13497,82 @@
 
   console.log('[GL] auto-login data-load fix loaded');
 }());
+
+
+/* ============================================================
+   STRIPE CHARGE BUTTON IN INVOICE TABLE ROW
+   ============================================================
+   The original injector looked for #cpg-invoice-detail / .inv-detail
+   which don't exist in the current invoice list layout — clicking
+   a row opens a print-preview-style popup, not a separate admin
+   detail panel. So the button never appeared anywhere clickable.
+
+   This addon adds a 💳 button directly into the Actions cell of
+   every non-paid invoice row in the Invoices table, alongside the
+   existing Paid / View / Delete buttons. Click opens the same
+   method-picker modal (ACH / Card+3%).
+   ============================================================ */
+(function(){
+  function injectChargeButtonsIntoTable(){
+    var tbody = document.getElementById('inv-body');
+    if(!tbody) return;
+    var rows = tbody.querySelectorAll('tr');
+    Array.prototype.forEach.call(rows, function(tr){
+      // Find this row's invoice ID — first td shows GL-XXXX
+      var idCell = tr.querySelector('td');
+      if(!idCell) return;
+      var invId = (idCell.textContent || '').trim();
+      if(!invId) return;
+
+      // Skip if already injected
+      if(tr.querySelector('.gl-stripe-row-btn')) return;
+
+      // Find the matching invoice from the in-memory list
+      var inv = (window.invoices || []).find(function(x){ return x.id === invId; });
+      if(!inv) return;
+
+      // Skip paid + quote invoices
+      if(inv.status === 'paid' || inv.status === 'quote') return;
+
+      // Find the action button group (last td → first div)
+      var actionCell = tr.children[tr.children.length - 1];
+      if(!actionCell) return;
+      var btnGroup = actionCell.querySelector('div');
+      if(!btnGroup) return;
+
+      // Build the Stripe button
+      var btn = document.createElement('button');
+      btn.className = 'cbtn gl-stripe-row-btn';
+      btn.setAttribute('style','font-size:10px;padding:3px 7px;background:rgba(168,85,247,.12);border:1px solid rgba(168,85,247,.35);color:#c4a4f8;border-radius:6px;cursor:pointer');
+      btn.setAttribute('title','Charge via Stripe (ACH or Card+3%)');
+      btn.textContent = '💳';
+      btn.addEventListener('click', function(ev){
+        ev.preventDefault();
+        ev.stopPropagation();
+        if(typeof window.glOpenStripeMethodPicker !== 'function'){
+          alert('Stripe method picker not loaded yet — try refreshing the page.');
+          return;
+        }
+        window.glOpenStripeMethodPicker(inv, { adminMode: true });
+      });
+      // Insert before the View (👁) button so it sits between Paid and View
+      var viewBtn = Array.prototype.find.call(btnGroup.children, function(b){
+        return (b.textContent || '').trim() === '👁';
+      });
+      if(viewBtn) btnGroup.insertBefore(btn, viewBtn);
+      else        btnGroup.appendChild(btn);
+    });
+  }
+
+  // Watch the invoice table for renders (renderInvoices() rebuilds innerHTML each time)
+  function start(){
+    var tbody = document.getElementById('inv-body');
+    if(!tbody){ setTimeout(start, 500); return; }
+    new MutationObserver(function(){ setTimeout(injectChargeButtonsIntoTable, 50); }).observe(tbody, { childList:true, subtree:false });
+    injectChargeButtonsIntoTable();
+  }
+  if(document.readyState !== 'loading') start();
+  else document.addEventListener('DOMContentLoaded', start);
+
+  console.log('[GL] Stripe 💳 button injected into invoice rows');
+}());
