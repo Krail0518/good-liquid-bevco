@@ -7821,6 +7821,96 @@
     var rows = await loadFromSupabase();
     window.glFormulas = rows || loadLocal();
     render();
+   PUBLIC CASE STUDIES GRID
+   Pulls from Supabase `case_studies` table; falls back to demo
+   so the section never renders empty.
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  var DEMO = [
+    { brand:'SunBurst Seltzers', tagline:'Pilot run → 12,000 cases / yr', headline:'From napkin to national', body:'Came in with a hop-water concept on a napkin. We helped formulate, ran the pilot in 4 weeks, and now produce monthly canning runs.', metric:'12,000 cases / yr', color:'#f5c842', tc:'#0a1628' },
+    { brand:'Wildkind Kombucha', tagline:'Live → shelf-stable in one summer', headline:'Cracked the shelf-stable code', body:'Wanted shelf-stable kombucha without losing the live character. Flash pasteurization plus a custom acid profile gave them retail-ready stability.', metric:'6-month shelf life', color:'#5fcf9e', tc:'#0a1628' },
+    { brand:'Bayline Cold Brew', tagline:'Nitro upgrade in 2 weeks', headline:'Premium positioning, same SKU', body:'Cold-brew brand wanted nitro for mouthfeel. We layered nitrogen dosing into their existing run — same price tier, 3¢ extra per can, premium product.', metric:'+15% margin', color:'#7fc6f5', tc:'#0a1628' }
+  ];
+
+  function cardHtml(c){
+    return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:22px;display:flex;flex-direction:column;gap:12px">' +
+      '<div style="display:flex;align-items:center;gap:11px">' +
+        '<div style="width:44px;height:44px;border-radius:50%;background:' + esc(c.color || '#1a3a6e') + ';color:' + esc(c.tc || '#fff') + ';display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px">' + esc((c.brand || 'X').split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().slice(0,2)) + '</div>' +
+        '<div style="min-width:0">' +
+          '<div style="font-family:var(--ff-disp);font-size:14px;letter-spacing:1px;color:#fff">' + esc(c.brand || 'Brand') + '</div>' +
+          (c.tagline ? '<div style="font-size:11px;color:var(--teal)">' + esc(c.tagline) + '</div>' : '') +
+        '</div>' +
+      '</div>' +
+      (c.headline ? '<div style="font-size:14px;font-weight:700;color:#fff;line-height:1.4">' + esc(c.headline) + '</div>' : '') +
+      '<div style="font-size:13px;color:var(--muted);line-height:1.65">' + esc(c.body || '') + '</div>' +
+      (c.metric ? '<div style="margin-top:auto;padding-top:6px;border-top:1px solid rgba(255,255,255,.06)"><span style="font-size:10px;letter-spacing:2px;color:var(--muted)">RESULT</span><div style="font-family:var(--ff-disp);font-size:18px;color:var(--teal);margin-top:2px">' + esc(c.metric) + '</div></div>' : '') +
+    '</div>';
+  }
+
+  async function load(){
+    var host = document.getElementById('gl-case-studies');
+    if(!host) return;
+    var items = null;
+    try {
+      if(window.supa){
+        var r = await window.supa.from('case_studies').select('*').eq('published', true).order('display_order',{ascending:true,nullsFirst:false}).limit(12);
+        if(r && r.data && r.data.length) items = r.data;
+      }
+    } catch(e){ /* fall through to demo */ }
+    items = items || DEMO;
+    host.innerHTML = items.map(cardHtml).join('');
+  }
+
+  function start(){
+    if(document.getElementById('gl-case-studies')) load();
+    else setTimeout(start, 600);
+  }
+  if(document.readyState !== 'loading') start();
+  else document.addEventListener('DOMContentLoaded', start);
+
+  console.log('[GL] public case studies loaded');
+}());
+
+/* ============================================================
+   CUSTOMER PORTAL (read-only project status)
+   URL: <site>/#portal/<client-uuid>
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function fmt$(n){ return '$' + Math.round(n || 0).toLocaleString(); }
+
+  function getClientIdFromHash(){
+    var h = window.location.hash || '';
+    var m = h.match(/^#portal\/([\w-]{20,})$/);
+    return m ? m[1] : null;
+  }
+
+  async function loadClient(cid){
+    if(!window.supa) return null;
+    try {
+      var r = await window.supa.from('clients').select('*').eq('id', cid).maybeSingle();
+      return r && r.data;
+    } catch(e){ return null; }
+  }
+
+  async function loadAll(cid){
+    if(!window.supa) return { invoices: [], runs: [], samples: [] };
+    var out = { invoices: [], runs: [], samples: [] };
+    try {
+      var inv = await window.supa.from('invoices').select('*').eq('client_id', cid).order('invoice_date',{ascending:false}).limit(20);
+      if(inv && inv.data) out.invoices = inv.data;
+    } catch(e){}
+    try {
+      var rn = await window.supa.from('production_runs').select('*').eq('client_id', cid).order('scheduled_date',{ascending:true,nullsFirst:false}).limit(20);
+      if(rn && rn.data) out.runs = rn.data;
+    } catch(e){}
+    try {
+      var sm = await window.supa.from('sample_shipments').select('*').eq('client_id', cid).order('shipped_date',{ascending:false}).limit(20);
+      if(sm && sm.data) out.samples = sm.data;
+    } catch(e){}
+    return out;
   }
 
   function statusBadge(s){
@@ -9206,4 +9296,241 @@
   };
 
   console.log('[GL] win-loss tracker loaded');
+      paid:    'background:rgba(29,158,117,.15);color:#5fcf9e;border-color:rgba(29,158,117,.35)',
+      overdue: 'background:rgba(231,76,60,.15);color:#ff8579;border-color:rgba(231,76,60,.35)',
+      pending: 'background:rgba(245,200,66,.12);color:#f5c842;border-color:rgba(245,200,66,.3)',
+      sent:    'background:rgba(0,229,192,.1);color:#00e5c0;border-color:rgba(0,229,192,.3)',
+      draft:   'background:rgba(155,155,155,.15);color:#9aa7bd;border-color:rgba(155,155,155,.3)'
+    };
+    var css = map[s] || map.draft;
+    return '<span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;border:1px solid;text-transform:uppercase;letter-spacing:1px;' + css + '">' + esc(s || 'draft') + '</span>';
+  }
+
+  function runStageBadge(stage){
+    var colors = { Discovery:'#9aa7bd', Formulation:'#7fc6f5', Sample:'#c4a4f8', COA:'#f5c842', Production:'#5fcf9e', Ship:'#00e5c0' };
+    var color = colors[stage] || '#9aa7bd';
+    return '<span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(255,255,255,.04);color:' + color + ';border:1px solid ' + color + '44">' + esc(stage || 'Discovery') + '</span>';
+  }
+
+  async function render(host, cid){
+    host.innerHTML = '<div style="max-width:840px;margin:60px auto;text-align:center;color:#9aa7bd;font-size:14px">Loading your projects…</div>';
+    host.style.display = 'block';
+
+    var client = await loadClient(cid);
+    if(!client){
+      host.innerHTML = '<div style="max-width:520px;margin:80px auto;padding:32px;background:#142238;border:1px solid rgba(231,76,60,.3);border-radius:14px;text-align:center"><div style="font-family:var(--ff-disp);font-size:18px;color:#ff8579;margin-bottom:10px">PORTAL LINK NOT FOUND</div><div style="font-size:13px;color:#9aa7bd;line-height:1.6">This link may have been mistyped or revoked. Please contact Mike@GoodLiquid.com for a fresh link.</div></div>';
+      return;
+    }
+
+    var data = await loadAll(cid);
+    var unpaidTotal = data.invoices.filter(function(i){ return i.status !== 'paid'; }).reduce(function(s,i){ return s + (i.amount||0); }, 0);
+    var openRuns = data.runs.filter(function(r){ return r.stage !== 'Ship'; }).length;
+    var pendingSamples = data.samples.filter(function(s){ return s.status === 'sent'; }).length;
+
+    host.innerHTML = '<div style="max-width:900px;margin:0 auto">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:30px;padding-bottom:20px;border-bottom:1px solid rgba(255,255,255,.08)">' +
+        '<div>' +
+          '<div style="font-family:var(--ff-disp);font-size:11px;letter-spacing:3px;color:#00e5c0">CLIENT PORTAL</div>' +
+          '<div style="font-family:var(--ff-disp);font-size:28px;letter-spacing:2px;color:#fff;margin-top:4px">' + esc(client.name) + '</div>' +
+          '<div style="font-size:12px;color:#9aa7bd;margin-top:2px">Project status · Updated ' + new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) + '</div>' +
+        '</div>' +
+        '<a href="mailto:Mike@GoodLiquid.com" style="font-size:12px;color:#00e5c0;text-decoration:none;border:1px solid rgba(0,229,192,.3);padding:8px 16px;border-radius:20px">✉ Contact Mike</a>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:30px">' +
+        '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:18px;text-align:center"><div style="font-size:11px;color:#9aa7bd;letter-spacing:2px">OPEN RUNS</div><div style="font-family:var(--ff-disp);font-size:32px;color:#fff;margin-top:6px">' + openRuns + '</div></div>' +
+        '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:18px;text-align:center"><div style="font-size:11px;color:#9aa7bd;letter-spacing:2px">SAMPLES OUT</div><div style="font-family:var(--ff-disp);font-size:32px;color:#fff;margin-top:6px">' + pendingSamples + '</div></div>' +
+        '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:18px;text-align:center"><div style="font-size:11px;color:#9aa7bd;letter-spacing:2px">UNPAID BALANCE</div><div style="font-family:var(--ff-disp);font-size:32px;color:' + (unpaidTotal > 0 ? '#f5c842' : '#5fcf9e') + ';margin-top:6px">' + fmt$(unpaidTotal) + '</div></div>' +
+      '</div>' +
+      '<div style="margin-bottom:30px">' +
+        '<div style="font-family:var(--ff-disp);font-size:13px;letter-spacing:2px;color:#00e5c0;margin-bottom:14px">PRODUCTION RUNS</div>' +
+        (data.runs.length
+          ? '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden">' +
+              data.runs.map(function(r, i){
+                var sched = r.scheduled_date ? new Date(r.scheduled_date).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—';
+                return '<div style="padding:14px 18px;display:flex;justify-content:space-between;align-items:center' + (i < data.runs.length - 1 ? ';border-bottom:1px solid rgba(255,255,255,.05)' : '') + '">' +
+                  '<div><div style="font-size:13px;color:#fff;font-weight:600">' + esc(r.run_name || '(run)') + '</div>' +
+                  '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">' + esc(r.format || '—') + (r.cases ? ' · ' + Number(r.cases).toLocaleString() + ' cases' : '') + ' · 📅 ' + sched + '</div></div>' +
+                  '<div>' + runStageBadge(r.stage || 'Discovery') + '</div>' +
+                '</div>';
+              }).join('') +
+            '</div>'
+          : '<div style="font-size:13px;color:#9aa7bd;padding:14px 0">No active runs. Reach out to Mike to schedule one.</div>'
+        ) +
+      '</div>' +
+      '<div style="margin-bottom:30px">' +
+        '<div style="font-family:var(--ff-disp);font-size:13px;letter-spacing:2px;color:#00e5c0;margin-bottom:14px">SAMPLES SHIPPED TO YOU</div>' +
+        (data.samples.length
+          ? '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden">' +
+              data.samples.map(function(s, i){
+                var shipDate = s.shipped_date ? new Date(s.shipped_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+                return '<div style="padding:14px 18px;display:flex;justify-content:space-between;align-items:center' + (i < data.samples.length - 1 ? ';border-bottom:1px solid rgba(255,255,255,.05)' : '') + '">' +
+                  '<div><div style="font-size:13px;color:#fff;font-weight:600">' + esc(s.kind || 'Sample') + (s.qty ? ' · ' + s.qty + ' unit' + (s.qty === 1 ? '' : 's') : '') + '</div>' +
+                  '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">Shipped ' + shipDate + (s.carrier ? ' via ' + esc(s.carrier) : '') + (s.tracking ? ' · ' + esc(s.tracking) : '') + '</div></div>' +
+                  '<div>' + statusBadge(s.status || 'sent') + '</div>' +
+                '</div>';
+              }).join('') +
+            '</div>'
+          : '<div style="font-size:13px;color:#9aa7bd;padding:14px 0">No samples shipped to you yet.</div>'
+        ) +
+      '</div>' +
+      '<div style="margin-bottom:50px">' +
+        '<div style="font-family:var(--ff-disp);font-size:13px;letter-spacing:2px;color:#00e5c0;margin-bottom:14px">INVOICES</div>' +
+        (data.invoices.length
+          ? '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden">' +
+              data.invoices.map(function(inv, i){
+                var d = inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+                return '<div style="padding:14px 18px;display:flex;justify-content:space-between;align-items:center' + (i < data.invoices.length - 1 ? ';border-bottom:1px solid rgba(255,255,255,.05)' : '') + '">' +
+                  '<div><div style="font-size:13px;color:#fff;font-weight:600">' + esc(inv.invoice_number || inv.id) + ' · ' + fmt$(inv.amount) + '</div>' +
+                  '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">' + esc(inv.service || '') + ' · ' + d + '</div></div>' +
+                  '<div>' + statusBadge(inv.status || 'pending') + '</div>' +
+                '</div>';
+              }).join('') +
+            '</div>'
+          : '<div style="font-size:13px;color:#9aa7bd;padding:14px 0">No invoices on file.</div>'
+        ) +
+      '</div>' +
+      '<div style="text-align:center;padding:20px 0;border-top:1px solid rgba(255,255,255,.06);font-size:11px;color:#9aa7bd">Good Liquid Bev Co · 2011 51st Ave E, Unit 100 · Palmetto, FL 34221 · <a href="mailto:Mike@GoodLiquid.com" style="color:#00e5c0">Mike@GoodLiquid.com</a></div>' +
+    '</div>';
+  }
+
+  function maybeMount(){
+    var host = document.getElementById('gl-portal');
+    if(!host) return;
+    var cid = getClientIdFromHash();
+    if(!cid){ host.style.display = 'none'; return; }
+    document.body.style.overflow = 'hidden';
+    render(host, cid);
+  }
+
+  if(document.readyState !== 'loading') maybeMount();
+  else document.addEventListener('DOMContentLoaded', maybeMount);
+  window.addEventListener('hashchange', maybeMount);
+
+  console.log('[GL] customer portal loaded');
+}());
+
+/* ============================================================
+   RUN SHEET PDF
+   window.glPrintRunSheet(runId) — printable for the line lead.
+   Pulls associated formula (allergen profile, ingredients, target
+   specs) from glFormulas so the line crew has everything in one page.
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function buildHtml(run){
+    var client = (window.clients||[]).find(function(c){ return c.id === run.client_id; }) || {};
+    var formula = (window.glFormulas||[])
+      .filter(function(f){ return f.client_id === run.client_id; })
+      .sort(function(a,b){ return (b.version||0) - (a.version||0); })[0];
+    var allergens = formula && formula.allergens ? formula.allergens : [];
+    var allergenMap = { gluten:'Gluten', dairy:'Dairy', soy:'Soy', eggs:'Eggs', tree_nuts:'Tree nuts', peanuts:'Peanuts', sesame:'Sesame', fish:'Fish', shellfish:'Shellfish', sulfites:'Sulfites' };
+    var allergenList = allergens.length
+      ? allergens.map(function(a){ return allergenMap[a] || a; }).join(' · ')
+      : '<span style="color:#666">None declared</span>';
+    var sched = run.scheduled_date ? new Date(run.scheduled_date).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}) : '—';
+
+    return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Run Sheet · ' + esc(run.run_name||'') + '</title>' +
+      '<style>' +
+      'body{font-family:Arial,sans-serif;max-width:780px;margin:30px auto;color:#111;font-size:13px;line-height:1.5}' +
+      '.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0F6E56;padding-bottom:18px;margin-bottom:24px}' +
+      '.brand{font-size:20px;font-weight:900;color:#0F6E56;letter-spacing:2px}' +
+      '.brand-sub{font-size:10px;color:#666;margin-top:3px}' +
+      'h2{font-size:14px;letter-spacing:2px;color:#0F6E56;margin:24px 0 10px;text-transform:uppercase}' +
+      '.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}' +
+      '.box{background:#f7f7f7;border:1px solid #ddd;border-radius:6px;padding:12px}' +
+      '.lbl{font-size:9px;letter-spacing:2px;color:#999;text-transform:uppercase;margin-bottom:3px}' +
+      '.val{font-weight:600;color:#111;font-size:14px}' +
+      '.allergen{background:#fee;border:1px solid #fcc;color:#c33;padding:12px;border-radius:6px;font-size:12px}' +
+      '.sig-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;margin-top:48px}' +
+      '.sig-line{border-bottom:1px solid #333;height:32px;margin-bottom:6px}' +
+      '.sig-lbl{font-size:10px;color:#666;text-transform:uppercase;letter-spacing:1px}' +
+      '@media print{body{margin:0;padding:20px}}' +
+      '</style></head><body>' +
+      '<div class="hdr">' +
+        '<div><div class="brand">GOOD LIQUID BEV CO</div><div class="brand-sub">RUN SHEET · 2011 51st Ave E, Unit 100, Palmetto FL 34221</div></div>' +
+        '<div style="text-align:right"><h2 style="margin:0;border:none;font-size:18px">' + esc(run.run_name||'Untitled Run') + '</h2><div style="color:#666;font-size:11px;margin-top:2px">Printed ' + new Date().toLocaleString() + '</div></div>' +
+      '</div>' +
+
+      '<div class="grid">' +
+        '<div class="box"><div class="lbl">CLIENT</div><div class="val">' + esc(client.name || run.client_name || '—') + '</div></div>' +
+        '<div class="box"><div class="lbl">SCHEDULED</div><div class="val">' + esc(sched) + '</div></div>' +
+        '<div class="box"><div class="lbl">FORMAT</div><div class="val">' + esc(run.format || '—') + '</div></div>' +
+        '<div class="box"><div class="lbl">CASES PLANNED</div><div class="val">' + (run.cases ? Number(run.cases).toLocaleString() : '—') + '</div></div>' +
+        '<div class="box"><div class="lbl">STAGE</div><div class="val">' + esc(run.stage || 'Production') + '</div></div>' +
+        '<div class="box"><div class="lbl">FORMULA</div><div class="val">' + (formula ? esc(formula.name) + ' · v' + (formula.version||1) : '<span style="color:#999">—</span>') + '</div></div>' +
+      '</div>' +
+
+      '<h2>Allergen profile</h2>' +
+      '<div class="allergen">' +
+        '<strong>⚠ Allergens declared on this product:</strong> ' + allergenList +
+        (allergens.length ? '<br><span style="font-size:11px;color:#666">CIP / sanitation must be verified before this run if the previous run had different allergens.</span>' : '') +
+      '</div>' +
+
+      (formula && formula.ingredients
+        ? '<h2>Ingredients</h2><div style="background:#f7f7f7;border:1px solid #ddd;border-radius:6px;padding:12px;font-family:monospace;white-space:pre-wrap;font-size:12px">' + esc(formula.ingredients) + '</div>'
+        : ''
+      ) +
+
+      (formula && (formula.ph_target || formula.brix_target || formula.batch_size_gal)
+        ? '<h2>Target specs</h2><div class="grid">' +
+          (formula.batch_size_gal ? '<div class="box"><div class="lbl">BATCH SIZE</div><div class="val">' + esc(formula.batch_size_gal) + ' gal</div></div>' : '') +
+          (formula.ph_target ? '<div class="box"><div class="lbl">pH TARGET</div><div class="val">' + esc(formula.ph_target) + '</div></div>' : '') +
+          (formula.brix_target ? '<div class="box"><div class="lbl">BRIX TARGET</div><div class="val">' + esc(formula.brix_target) + '</div></div>' : '') +
+        '</div>'
+        : ''
+      ) +
+
+      (run.notes
+        ? '<h2>Run notes</h2><div style="background:#fff8e1;border-left:4px solid #f5c842;padding:12px 16px;font-size:12px;line-height:1.6">' + esc(run.notes) + '</div>'
+        : ''
+      ) +
+
+      '<div class="sig-row">' +
+        '<div><div class="sig-line"></div><div class="sig-lbl">Line lead</div></div>' +
+        '<div><div class="sig-line"></div><div class="sig-lbl">QC sign-off</div></div>' +
+        '<div><div class="sig-line"></div><div class="sig-lbl">Date / time</div></div>' +
+      '</div>' +
+      '</body></html>';
+  }
+
+  window.glPrintRunSheetData = function(run){
+    if(!run){ alert('No run data passed.'); return; }
+    var html = buildHtml(run);
+    var w = window.open('', '_blank', 'width=900,height=900');
+    w.document.write(html);
+    w.document.close();
+    w.onload = function(){ w.focus(); w.print(); };
+    if(typeof window.glAudit === 'function') window.glAudit('run_sheet_printed', run.id || run.run_name || '', {});
+  };
+
+  window.glPrintRunSheet = function(runId){
+    var run = (window.glProductionRuns||[]).find(function(r){ return r.id === runId; });
+    if(!run){ alert('Run not found. Open a run, click Edit, then Print Run Sheet.'); return; }
+    window.glPrintRunSheetData(run);
+  };
+
+  console.log('[GL] run sheet PDF loaded');
+}());
+
+/* ============================================================
+   PORTAL LINK COPY HELPER
+   window.glCopyPortalLink(clientId) — copies the customer-portal URL
+   to the clipboard so Mike can paste it into an email. Standalone
+   helper; the Edit Client modal (PR #7) will wire a button to it.
+   ============================================================ */
+(function(){
+  window.glCopyPortalLink = async function(clientId){
+    if(!clientId){ alert('No client.'); return; }
+    var base = window.location.origin + window.location.pathname.replace(/[^/]*$/, '');
+    var url = base + '#portal/' + clientId;
+    try { await navigator.clipboard.writeText(url); }
+    catch(e){
+      var ta = document.createElement('textarea'); ta.value = url; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+    }
+    if(typeof addNotification === 'function') addNotification('🔗 Portal link copied', url, 'success');
+    else alert('Portal link copied:\n\n' + url);
+    if(typeof window.glAudit === 'function') window.glAudit('portal_link_copied', clientId, {});
+  };
+  console.log('[GL] portal link helper loaded');
 }());
