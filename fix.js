@@ -7049,9 +7049,9 @@
             '<div style="'+LABEL_STYLE+';margin-bottom:8px">COMPLIANCE DOCS</div>' +
             '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end">' +
               '<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--white);cursor:pointer">' +
-                '<input type="checkbox" id="gl-ec-coi-on-file"'+(c.coiOnFile?' checked':'')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">📄 COI on file' +
+                '<input type="checkbox" id="gl-ec-coi-on-file"'+(c.coiOnFile?' checked':'')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">📄 Certificate of Insurance (COI) on file' +
               '</label>' +
-              '<div><div style="'+LABEL_STYLE+';margin-bottom:3px">COI EXPIRES</div><input type="date" id="gl-ec-coi-expires" value="'+esc(c.coiExpires)+'" style="'+INPUT_STYLE+';padding:8px;font-size:13px"></div>' +
+              '<div><div style="'+LABEL_STYLE+';margin-bottom:3px">CERTIFICATE OF INSURANCE EXPIRES</div><input type="date" id="gl-ec-coi-expires" value="'+esc(c.coiExpires)+'" style="'+INPUT_STYLE+';padding:8px;font-size:13px"></div>' +
             '</div>' +
             '<div style="border-top:1px solid rgba(255,255,255,.06);margin:10px 0"></div>' +
             '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end">' +
@@ -7074,6 +7074,18 @@
             (c.taxExemptFilePath ? '<div style="font-size:12px;color:var(--teal);margin-top:6px"><a href="#" id="gl-ec-tax-link" style="color:var(--teal)">📄 View current exemption certificate</a></div>' : '') +
             '<div style="margin-top:8px"><div style="'+LABEL_STYLE+';margin-bottom:3px">UPLOAD NEW EXEMPTION CERTIFICATE</div>' +
               '<input type="file" id="gl-ec-tax-exempt-file" accept=".pdf,image/*" style="'+INPUT_STYLE+';padding:8px;font-size:12px">' +
+            '</div>' +
+            '<div style="border-top:1px solid rgba(255,255,255,.06);margin:10px 0"></div>' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end">' +
+              '<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--white);cursor:pointer">' +
+                '<input type="checkbox" id="gl-ec-pa-letter"'+(c.paLetterOnFile?' checked':'')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">📄 Process Authority letter on file' +
+              '</label>' +
+              '<div><div style="'+LABEL_STYLE+';margin-bottom:3px">PA LETTER EXPIRES</div><input type="date" id="gl-ec-pa-letter-expires" value="'+esc(c.paLetterExpires)+'" style="'+INPUT_STYLE+';padding:8px;font-size:13px"></div>' +
+            '</div>' +
+            (c.paLetterFilePath ? '<div style="font-size:12px;color:var(--teal);margin-top:6px"><a href="#" id="gl-ec-pa-link" style="color:var(--teal)">📄 View current Process Authority letter</a></div>' : '') +
+            '<div style="margin-top:8px"><div style="'+LABEL_STYLE+';margin-bottom:3px">UPLOAD NEW PROCESS AUTHORITY LETTER</div>' +
+              '<input type="file" id="gl-ec-pa-letter-file" accept=".pdf,image/*" style="'+INPUT_STYLE+';padding:8px;font-size:12px">' +
+              '<div style="font-size:11px;color:var(--muted);margin-top:4px">FDA-required for acidified / low-acid canned beverages.</div>' +
             '</div>' +
           '</div>' +
           ((c.stripeCustomerId || c.qboCustomerId) ?
@@ -7113,8 +7125,10 @@
     }
     var w9Link  = ov.querySelector('#gl-ec-w9-link');
     var taxLink = ov.querySelector('#gl-ec-tax-link');
+    var paLink  = ov.querySelector('#gl-ec-pa-link');
     if(w9Link)  w9Link.addEventListener('click',  function(e){ e.preventDefault(); openDoc(c.w9FilePath); });
     if(taxLink) taxLink.addEventListener('click', function(e){ e.preventDefault(); openDoc(c.taxExemptFilePath); });
+    if(paLink)  paLink.addEventListener('click',  function(e){ e.preventDefault(); openDoc(c.paLetterFilePath); });
 
     ov.querySelector('#gl-ec-save').addEventListener('click', async function(){
       var errEl = ov.querySelector('#gl-ec-err');
@@ -7164,16 +7178,19 @@
       // Upload new compliance files if the user picked any.
       var w9File  = fileOf('gl-ec-w9-file');
       var taxFile = fileOf('gl-ec-tax-exempt-file');
+      var paFile  = fileOf('gl-ec-pa-letter-file');
       var w9OnFile = chk('gl-ec-w9-on-file');
       var w9Received = val('gl-ec-w9-received');
       var taxExempt = chk('gl-ec-tax-exempt');
-      var newW9Path = '', newTaxPath = '';
+      var paLetterOnFile = chk('gl-ec-pa-letter');
+      var newW9Path = '', newTaxPath = '', newPaPath = '';
       if(w9File){
         // Implicitly mark on file if a fresh file is being attached.
         w9OnFile = true;
         if(!w9Received) w9Received = new Date().toISOString().slice(0,10);
       }
       if(taxFile) taxExempt = true;
+      if(paFile)  paLetterOnFile = true;
 
       var btn = this; var orig = btn.textContent;
       btn.disabled = true; btn.textContent = 'Saving…';
@@ -7183,6 +7200,9 @@
       }
       if(taxFile && typeof window.uploadComplianceDoc === 'function'){
         newTaxPath = await window.uploadComplianceDoc(taxFile, clientId, 'tax_exempt');
+      }
+      if(paFile && typeof window.uploadComplianceDoc === 'function'){
+        newPaPath = await window.uploadComplianceDoc(paFile, clientId, 'pa_letter');
       }
 
       var patch = {
@@ -7226,12 +7246,15 @@
         w9Received:     w9Received,
         taxExempt:      taxExempt,
         taxExemptState: val('gl-ec-tax-exempt-state').toUpperCase(),
+        paLetterOnFile: paLetterOnFile,
+        paLetterExpires:val('gl-ec-pa-letter-expires'),
         notes:          val('gl-ec-notes')
       };
       // Only set file paths in the patch when a new upload happened; otherwise
       // leave them alone so we don't overwrite the existing pointer.
       if(newW9Path)  patch.w9FilePath = newW9Path;
       if(newTaxPath) patch.taxExemptFilePath = newTaxPath;
+      if(newPaPath)  patch.paLetterFilePath = newPaPath;
 
       var ok = await window.glUpdateClient(clientId, patch);
       btn.disabled = false; btn.textContent = orig;
@@ -7300,6 +7323,9 @@
           tax_exempt:      !!patch.taxExempt,
           tax_exempt_state: patch.taxExemptState || null,
           tax_exempt_file_path: patch.taxExemptFilePath,
+          pa_letter_on_file: !!patch.paLetterOnFile,
+          pa_letter_expires: patch.paLetterExpires || null,
+          pa_letter_file_path: patch.paLetterFilePath,
           notes:           patch.notes,
           initials:        newInit
         };
