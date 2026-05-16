@@ -7371,3 +7371,131 @@
 
   console.log('[GL] glOpenEditClient + glUpdateClient loaded');
 }());
+
+/* ============================================================
+   DASHBOARD COMPLIANCE ALERT
+   Surfaces clients whose Certificate of Insurance or Process
+   Authority letter is expired or expiring within the next 30 days.
+   - Renders nothing if no docs are at risk.
+   - Renders an amber banner if only "expiring soon" items exist.
+   - Renders a red banner if anything is already expired (mixed
+     content still uses red since the expired items dominate).
+   - Click any client row to jump straight to that client's detail
+     panel. Wires through whichever viewer the CRM has loaded.
+   ============================================================ */
+(function(){
+  function daysBetween(d){
+    var today = new Date(); today.setHours(0,0,0,0);
+    var exp = new Date(d); exp.setHours(0,0,0,0);
+    return Math.round((exp - today) / 86400000);
+  }
+
+  function gatherAtRisk(){
+    var rows = [];
+    (window.clients || []).forEach(function(c){
+      function consider(kind, label, hasFlag, expDate){
+        if(!hasFlag) return;       // nothing to track if doc not on file
+        if(!expDate) return;       // no date = no expiration to warn on
+        var d = daysBetween(expDate);
+        if(d > 30) return;          // safe window
+        rows.push({
+          clientId: c.id, clientName: c.name,
+          kind: kind, label: label,
+          daysLeft: d, expDate: expDate
+        });
+      }
+      consider('coi', 'Certificate of Insurance', c.coiOnFile, c.coiExpires);
+      consider('pa',  'Process Authority letter', c.paLetterOnFile, c.paLetterExpires);
+    });
+    // Sort: expired first (most negative daysLeft), then by daysLeft ascending.
+    rows.sort(function(a,b){ return a.daysLeft - b.daysLeft; });
+    return rows;
+  }
+
+  function openClient(id){
+    if(typeof window.viewClientEnhanced === 'function') return window.viewClientEnhanced(id);
+    if(typeof window.openClientDetail === 'function') return window.openClientDetail(id);
+  }
+
+  window.renderComplianceAlert = function(){
+    var host = document.getElementById('dash-compliance-alert');
+    if(!host) return;
+    var rows = gatherAtRisk();
+    if(!rows.length){ host.innerHTML = ''; return; }
+
+    var anyExpired = rows.some(function(r){ return r.daysLeft < 0; });
+    var color = anyExpired ? '#e74c3c' : '#f5c842';
+    var bg    = anyExpired ? 'rgba(231,76,60,.07)' : 'rgba(245,200,66,.06)';
+    var border= anyExpired ? 'rgba(231,76,60,.35)' : 'rgba(245,200,66,.3)';
+    var icon  = anyExpired ? '🚨' : '⚠';
+    var headline = anyExpired
+      ? rows.filter(function(r){ return r.daysLeft < 0; }).length + ' expired · ' + rows.length + ' total flagged'
+      : rows.length + ' document' + (rows.length === 1 ? '' : 's') + ' expiring soon';
+
+    var listHtml = rows.map(function(r){
+      var sev, txt;
+      if(r.daysLeft < 0)      { sev = '#ff8579'; txt = 'EXPIRED ' + (-r.daysLeft) + 'd ago'; }
+      else if(r.daysLeft < 8) { sev = '#ff8579'; txt = 'in ' + r.daysLeft + 'd'; }
+      else                    { sev = '#f5c842'; txt = 'in ' + r.daysLeft + 'd'; }
+      return '<div class="gl-comp-row" data-cid="' + r.clientId + '" style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-radius:8px;cursor:pointer;transition:background .15s" onmouseover="this.style.background=\'rgba(255,255,255,.04)\'" onmouseout="this.style.background=\'transparent\'">' +
+        '<div style="display:flex;align-items:center;gap:10px;min-width:0">' +
+          '<span style="font-size:14px">📄</span>' +
+          '<div style="min-width:0">' +
+            '<div style="color:var(--white);font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + r.clientName + '</div>' +
+            '<div style="color:var(--muted);font-size:11px">' + r.label + ' · ' + r.expDate + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div style="color:' + sev + ';font-size:11px;font-weight:700;white-space:nowrap;letter-spacing:.5px">' + txt + '</div>' +
+      '</div>';
+    }).join('');
+
+    host.innerHTML =
+      '<div style="background:' + bg + ';border:1px solid ' + border + ';border-radius:12px;padding:14px 16px;margin-bottom:14px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
+          '<div style="display:flex;align-items:center;gap:10px">' +
+            '<span style="font-size:18px">' + icon + '</span>' +
+            '<div>' +
+              '<div style="font-family:var(--ff-disp);font-size:13px;letter-spacing:2px;color:' + color + '">COMPLIANCE EXPIRING</div>' +
+              '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + headline + '</div>' +
+            '</div>' +
+          '</div>' +
+          '<button id="gl-comp-dismiss" style="background:none;border:1px solid rgba(255,255,255,.12);color:var(--muted);font-size:11px;padding:5px 11px;border-radius:6px;cursor:pointer">hide for today</button>' +
+        '</div>' +
+        '<div style="display:flex;flex-direction:column;gap:2px">' + listHtml + '</div>' +
+      '</div>';
+
+    // Click row → open client detail.
+    host.querySelectorAll('.gl-comp-row').forEach(function(row){
+      row.addEventListener('click', function(){ openClient(row.getAttribute('data-cid')); });
+    });
+    // Hide for today (per-device).
+    var dismiss = host.querySelector('#gl-comp-dismiss');
+    if(dismiss) dismiss.addEventListener('click', function(){
+      localStorage.setItem('gl_comp_alert_hide_until', new Date().toISOString().slice(0,10));
+      host.innerHTML = '';
+    });
+  };
+
+  // Wrap renderDash so the alert refreshes whenever the dashboard re-renders.
+  (function wrap(){
+    var orig = window.renderDash;
+    if(typeof orig !== 'function'){ setTimeout(wrap, 500); return; }
+    window.renderDash = function(){
+      var r = orig.apply(this, arguments);
+      try {
+        // Honor the per-day dismiss.
+        var hideUntil = localStorage.getItem('gl_comp_alert_hide_until');
+        var today = new Date().toISOString().slice(0,10);
+        if(hideUntil === today){
+          var host = document.getElementById('dash-compliance-alert');
+          if(host) host.innerHTML = '';
+          return r;
+        }
+        window.renderComplianceAlert();
+      } catch(e){ console.warn('[GL] compliance alert render threw', e); }
+      return r;
+    };
+  })();
+
+  console.log('[GL] dashboard compliance alert loaded');
+}());

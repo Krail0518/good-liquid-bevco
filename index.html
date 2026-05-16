@@ -1210,6 +1210,7 @@ select option, .fsel option {
           <button class="cbtn pri" onclick="cNav(&#39;newinv&#39;,document.querySelectorAll(&#39;.cni&#39;)[5])">+ New Invoice</button>
         </div>
         <div class="cmetrics" id="dash-metrics"></div>
+        <div id="dash-compliance-alert"></div>
         <div class="dash-row">
           <div class="ccard">
             <div class="ccard-t">Revenue by service · 2026</div>
@@ -2006,7 +2007,17 @@ select option, .fsel option {
           </div>
           <div class="frow"><div class="flbl">Document type</div>
             <select class="fsel" id="doc-type">
-              <option>NDA</option><option>Formula</option><option>Label Artwork</option><option>COA</option><option>Contract</option><option>Invoice</option><option>Other</option>
+              <option>NDA</option>
+              <option>Formula</option>
+              <option>Label Artwork</option>
+              <option>COA</option>
+              <option>Certificate of Insurance</option>
+              <option>W-9</option>
+              <option>State Sales-Tax Exempt Certificate</option>
+              <option>Process Authority Letter</option>
+              <option>Contract</option>
+              <option>Invoice</option>
+              <option>Other</option>
             </select>
           </div>
           <div class="frow"><div class="flbl">Document name</div><input class="finp" id="doc-name" placeholder="e.g. SunBurst NDA 2026"></div>
