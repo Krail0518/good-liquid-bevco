@@ -1109,6 +1109,20 @@ select option, .fsel option {
   </div>
 </section>
 
+<section id="case-studies" style="background:var(--ink2);padding-top:90px;padding-bottom:90px">
+  <div style="text-align:center;margin-bottom:36px" class="rv">
+    <div class="sec-tag">Brands we've built</div>
+    <h2 class="sec-h">SUCCESS <em>STORIES.</em></h2>
+    <p style="font-size:15px;color:var(--muted);margin-top:14px;max-width:520px;margin-left:auto;margin-right:auto;line-height:1.7">Real beverage brands that started here. Most of these came in with a recipe on a napkin and walked out with cases on a pallet.</p>
+  </div>
+  <div id="gl-case-studies" class="rv" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;max-width:1100px;margin:0 auto">
+    <!-- Populated by JS: pulls from Supabase `case_studies` table, falls back to demo. -->
+  </div>
+  <div class="rv" style="text-align:center;margin-top:34px">
+    <a href="javascript:void(0)" class="bh pri" onclick="navTo('contact')">Start your own →</a>
+  </div>
+</section>
+
 <section id="team" style="background:var(--ink)">
   <div style="text-align:center" class="rv"><div class="sec-tag">The team</div><h2 class="sec-h">REAL PEOPLE. <em>REAL ANSWERS.</em></h2></div>
   <div class="tl rv">
@@ -7177,6 +7191,12 @@ window.addEventListener('appinstalled', () => {
     <button onclick="closeResetOverlay()" style="font-size:13px;color:var(--muted);cursor:pointer;border:none;background:none;font-family:var(--ff-body)">← Back to login</button>
   </div>
 </div>
+
+<!-- CUSTOMER PORTAL — full-screen read-only project status view.
+     Mounts when URL hash is #portal/<client-id>. The page-load script in
+     fix.js handles routing + data load. Anonymously readable via Supabase
+     anon key, scoped to a single client by ID. -->
+<div id="gl-portal" style="display:none;position:fixed;inset:0;z-index:9000;background:#0a1628;color:#fff;overflow-y:auto;padding:40px 24px;font-family:var(--ff-body)"></div>
 
 <script src="/fix.js"></script>
 </body></html>
