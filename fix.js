@@ -13430,3 +13430,70 @@
 
   console.log('[GL] Stripe payment-method picker + 3% card surcharge loaded');
 }());
+
+
+/* ============================================================
+   AUTO-LOGIN DATA LOAD FIX
+   ============================================================
+   loadSupabaseData() in index.html only fires inside checkPw() —
+   the password-typed login path. The "Stay signed in" auto-login
+   skips it, so window.clients / invoices / deals / etc. stay at 0
+   even though the data exists in Supabase.
+
+   This wraps loginUser() AND watches the #crm-panel show class so
+   we trigger loadSupabaseData() on every successful login path,
+   plus a safety re-run if the panel opens with empty arrays.
+   ============================================================ */
+(function(){
+  function isEmpty(){
+    return (window.clients||[]).length === 0
+        && (window.invoices||[]).length === 0
+        && (window.deals||[]).length === 0;
+  }
+
+  function ensureDataLoaded(){
+    if(!window.currentUser) return;
+    if(typeof window.loadSupabaseData !== 'function') return;
+    // Only run if data really is missing — don't clobber existing in-memory state
+    if(!isEmpty() && window.__glDataLoaded) return;
+    window.__glDataLoaded = true;
+    window.loadSupabaseData().then(function(){
+      try {
+        if(typeof window.renderDash === 'function') window.renderDash();
+        if(typeof window.renderClients === 'function') window.renderClients();
+        if(typeof window.renderInvoices === 'function') window.renderInvoices();
+      } catch(e){}
+      console.log('[GL] post-login data load complete — clients=' + (window.clients||[]).length +
+                  ' invoices=' + (window.invoices||[]).length +
+                  ' deals=' + (window.deals||[]).length);
+    }).catch(function(e){
+      window.__glDataLoaded = false;
+      console.warn('[GL] loadSupabaseData failed:', e);
+    });
+  }
+
+  // Wrap loginUser so post-login (any path) triggers a data refresh
+  (function wrap(){
+    var orig = window.loginUser;
+    if(typeof orig !== 'function'){ setTimeout(wrap, 400); return; }
+    window.loginUser = function(){
+      var r = orig.apply(this, arguments);
+      setTimeout(ensureDataLoaded, 60);
+      return r;
+    };
+  })();
+
+  // Also watch for the CRM panel becoming visible — covers any other entry path
+  function watchPanel(){
+    var p = document.getElementById('crm-panel');
+    if(!p){ setTimeout(watchPanel, 500); return; }
+    new MutationObserver(function(){
+      if(p.classList.contains('show')) setTimeout(ensureDataLoaded, 80);
+    }).observe(p, { attributes: true, attributeFilter: ['class'] });
+    if(p.classList.contains('show')) setTimeout(ensureDataLoaded, 80);
+  }
+  if(document.readyState !== 'loading') watchPanel();
+  else document.addEventListener('DOMContentLoaded', watchPanel);
+
+  console.log('[GL] auto-login data-load fix loaded');
+}());
