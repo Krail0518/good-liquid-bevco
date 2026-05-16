@@ -95,9 +95,9 @@
   /* ── PERMISSIONS ──
      Page-name convention matches index.html cNav calls (e.g. 'newinv', not 'new-invoice').
      window.PERMISSIONS is bridged from index.html so both the role-filter UI and can() share one table. */
-  var ALL=['dashboard','clients','pipeline','invoices','invoice-detail','newinv','referrals','referrers','activity','users','customers','calendar','production-cal','tasks','documents','inventory','announcements','time-tracker','reports','ai-settings'];
-  if(window.PERMISSIONS){window.PERMISSIONS.admin=ALL;window.PERMISSIONS.sales=['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','tasks','announcements','reports'];}
-  else{window.PERMISSIONS={admin:ALL,sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','tasks','announcements','reports'],viewer:['dashboard','clients','invoices','activity']};}
+  var ALL=['dashboard','clients','pipeline','invoices','invoice-detail','newinv','referrals','referrers','activity','users','customers','calendar','production-cal','production-runs','samples','formulas','yield','tasks','documents','inventory','announcements','time-tracker','reports','ai-settings'];
+  if(window.PERMISSIONS){window.PERMISSIONS.admin=ALL;window.PERMISSIONS.sales=['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','tasks','announcements','reports'];}
+  else{window.PERMISSIONS={admin:ALL,sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','tasks','announcements','reports'],viewer:['dashboard','clients','invoices','activity']};}
   window.can=function(page){var u=window.currentUser;if(!u)return false;if(u.role==='admin')return true;return(window.PERMISSIONS[u.role]||[]).includes(page);};
   /* Single cNav wrap: perm-gate first, then dispatch new-invoice variants
      to the builder, otherwise hand off to the original cNav from index.html. */
@@ -7757,4 +7757,438 @@
   };
 
   console.log('[GL] capacity indicator loaded');
+}());
+
+/* ============================================================
+   FORMULA VAULT
+   - Single source of truth for client recipes.
+   - Each formula belongs to one client. Versioned (v1, v2, …).
+   - Captures: name, version, ingredients (multi-line), allergen
+     profile (multi-select), target yield per case, batch size,
+     pH / brix targets, notes, approval status.
+   - Backed by Supabase `formulas` table; localStorage fallback.
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var ALLERGENS = [
+    ['gluten','🌾 Gluten'],['dairy','🥛 Dairy'],['soy','🌱 Soy'],
+    ['eggs','🥚 Eggs'],['tree_nuts','🌰 Tree nuts'],['peanuts','🥜 Peanuts'],
+    ['sesame','🌻 Sesame'],['fish','🐟 Fish'],['shellfish','🦐 Shellfish'],
+    ['sulfites','⚗️ Sulfites']
+  ];
+  var STATUSES = [
+    ['draft','Draft'],['benchtop','Benchtop verified'],
+    ['approved','Production approved'],['archived','Archived']
+  ];
+  window.glFormulas = window.glFormulas || [];
+
+  async function loadFromSupabase(){
+    if(!window.supa) return null;
+    try {
+      var r = await window.supa.from('formulas').select('*').order('updated_at',{ascending:false});
+      if(r && r.data) return r.data;
+    } catch(e){ console.warn('[GL] formulas load failed', e); }
+    return null;
+  }
+  function loadLocal(){
+    try { return JSON.parse(localStorage.getItem('gl_formulas') || '[]'); } catch(e){ return []; }
+  }
+  function saveLocal(){ localStorage.setItem('gl_formulas', JSON.stringify(window.glFormulas)); }
+
+  async function refresh(){
+    var rows = await loadFromSupabase();
+    window.glFormulas = rows || loadLocal();
+    render();
+  }
+
+  function statusBadge(s){
+    var map = {
+      draft:    'background:rgba(155,155,155,.15);color:#9aa7bd;border-color:rgba(155,155,155,.3)',
+      benchtop: 'background:rgba(245,200,66,.12);color:#f5c842;border-color:rgba(245,200,66,.3)',
+      approved: 'background:rgba(29,158,117,.15);color:#5fcf9e;border-color:rgba(29,158,117,.35)',
+      archived: 'background:rgba(231,76,60,.1);color:#ff8579;border-color:rgba(231,76,60,.3)'
+    };
+    var label = (STATUSES.find(function(x){ return x[0] === s; }) || ['',''])[1] || s;
+    return '<span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;border:1px solid;' + (map[s] || map.draft) + '">' + esc(label) + '</span>';
+  }
+
+  function allergenPills(arr){
+    if(!arr || !arr.length) return '<span style="font-size:11px;color:rgba(255,255,255,.3);font-style:italic">none declared</span>';
+    return arr.map(function(a){
+      var lbl = (ALLERGENS.find(function(x){ return x[0] === a; }) || [a, a])[1];
+      return '<span style="padding:2px 8px;border-radius:20px;font-size:10px;font-weight:600;background:rgba(231,76,60,.1);color:#ff8579;border:1px solid rgba(231,76,60,.3);margin-right:4px">' + esc(lbl) + '</span>';
+    }).join('');
+  }
+
+  function render(){
+    var host = document.getElementById('fv-body');
+    if(!host) return;
+    var sub = document.getElementById('fv-sub');
+    var rows = window.glFormulas || [];
+    var approved = rows.filter(function(f){ return f.status === 'approved'; }).length;
+    if(sub) sub.textContent = rows.length + ' formula' + (rows.length === 1 ? '' : 's') + (approved ? ' · ' + approved + ' production-approved' : '');
+
+    if(!rows.length){
+      host.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No formulas in the vault yet. Click "New Formula" to add the first one.</div>';
+      return;
+    }
+    host.innerHTML = '<table class="ctbl"><thead><tr><th>Name</th><th>Client</th><th>Version</th><th>Allergens</th><th>Status</th><th>Updated</th></tr></thead><tbody>' +
+      rows.map(function(f){
+        var clientName = f.client_name || ((window.clients||[]).find(function(c){ return c.id === f.client_id; })||{}).name || '—';
+        var updated = f.updated_at ? new Date(f.updated_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+        return '<tr style="cursor:pointer" onclick="window.glOpenEditFormula(\'' + esc(f.id) + '\')">' +
+          '<td style="padding:11px;font-weight:600;color:var(--white)">' + esc(f.name || '(untitled)') + '</td>' +
+          '<td style="padding:11px;color:var(--muted)">' + esc(clientName) + '</td>' +
+          '<td style="padding:11px;color:var(--teal);font-family:var(--ff-mono)">v' + (f.version || 1) + '</td>' +
+          '<td style="padding:11px">' + allergenPills(f.allergens) + '</td>' +
+          '<td style="padding:11px">' + statusBadge(f.status || 'draft') + '</td>' +
+          '<td style="padding:11px;color:var(--muted);font-size:11px">' + updated + '</td>' +
+        '</tr>';
+      }).join('') + '</tbody></table>';
+  }
+
+  function formulaModal(existing){
+    var prior = document.getElementById('gl-fv-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var isEdit = !!existing;
+    var f = existing || { name:'', client_id:'', client_name:'', version:1, ingredients:'', allergens:[], target_yield_cases:'', batch_size_gal:'', ph_target:'', brix_target:'', notes:'', status:'draft' };
+    var clientOptions = '<option value="">— Pick client —</option>' +
+      (window.clients||[]).map(function(c){
+        var sel = (c.id === f.client_id) ? ' selected' : '';
+        return '<option value="' + esc(c.id) + '"'+sel+'>' + esc(c.name) + '</option>';
+      }).join('');
+    var allergenChecks = ALLERGENS.map(function(a){
+      var checked = (f.allergens||[]).indexOf(a[0]) >= 0 ? ' checked' : '';
+      return '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--white)"><input type="checkbox" id="gl-fv-al-' + a[0] + '"'+checked+' style="accent-color:#ff8579;width:15px;height:15px;cursor:pointer">' + a[1] + '</label>';
+    }).join('');
+    var statusOptions = STATUSES.map(function(s){
+      var sel = (s[0] === (f.status||'draft')) ? ' selected' : '';
+      return '<option value="' + s[0] + '"'+sel+'>' + s[1] + '</option>';
+    }).join('');
+
+    var ov = document.createElement('div');
+    ov.id = 'gl-fv-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1000;background:rgba(6,13,26,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:560px;max-height:88vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">' + (isEdit ? '✏️ EDIT FORMULA' : '🧪 NEW FORMULA') + '</div>' +
+          '<button id="gl-fv-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Name *</div><input class="finp" id="gl-fv-name" value="' + esc(f.name) + '" placeholder="e.g. SunBurst Mango Seltzer"></div>' +
+        '<div style="display:grid;grid-template-columns:2fr 1fr;gap:8px">' +
+          '<div class="frow"><div class="flbl">Client *</div><select class="fsel" id="gl-fv-client">' + clientOptions + '</select></div>' +
+          '<div class="frow"><div class="flbl">Version</div><input class="finp" id="gl-fv-version" type="number" min="1" value="' + (f.version || 1) + '"></div>' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Ingredients (one per line)</div><textarea class="finp" id="gl-fv-ingredients" rows="5" placeholder="Carbonated filtered water&#10;Cane sugar&#10;Natural mango flavor&#10;Citric acid&#10;Sodium citrate" style="font-family:var(--ff-mono);font-size:12px">' + esc(f.ingredients) + '</textarea></div>' +
+        '<div>' +
+          '<div class="flbl" style="margin-bottom:6px">Allergen profile</div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px 12px;padding:11px;background:rgba(231,76,60,.04);border:1px solid rgba(231,76,60,.18);border-radius:8px;margin-bottom:12px">' + allergenChecks + '</div>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+          '<div class="frow"><div class="flbl">Target yield (cases / batch)</div><input class="finp" id="gl-fv-yield" type="number" min="0" value="' + esc(f.target_yield_cases) + '"></div>' +
+          '<div class="frow"><div class="flbl">Batch size (gallons)</div><input class="finp" id="gl-fv-batch" type="number" min="0" value="' + esc(f.batch_size_gal) + '"></div>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+          '<div class="frow"><div class="flbl">pH target</div><input class="finp" id="gl-fv-ph" value="' + esc(f.ph_target) + '" placeholder="3.5"></div>' +
+          '<div class="frow"><div class="flbl">Brix target</div><input class="finp" id="gl-fv-brix" value="' + esc(f.brix_target) + '" placeholder="10.5"></div>' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Status</div><select class="fsel" id="gl-fv-status">' + statusOptions + '</select></div>' +
+        '<div class="frow"><div class="flbl">Notes</div><textarea class="finp" id="gl-fv-notes" rows="2">' + esc(f.notes) + '</textarea></div>' +
+        '<div style="display:flex;gap:8px;margin-top:6px">' +
+          '<button id="gl-fv-save" class="cbtn pri" style="flex:1">💾 Save</button>' +
+          (isEdit ? '<button id="gl-fv-clone" class="cbtn" style="background:rgba(168,85,247,.12);border-color:rgba(168,85,247,.35);color:#c4a4f8">Clone as v' + ((f.version||1) + 1) + '</button>' : '') +
+          (isEdit ? '<button id="gl-fv-del" class="cbtn" style="background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#ff8579">Delete</button>' : '') +
+          '<button id="gl-fv-cancel" class="cbtn">Cancel</button>' +
+        '</div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-fv-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-fv-cancel').addEventListener('click', function(){ ov.remove(); });
+
+    function readForm(){
+      var allergens = ALLERGENS.map(function(a){ return a[0]; }).filter(function(k){
+        var el = ov.querySelector('#gl-fv-al-' + k); return el && el.checked;
+      });
+      var cid = ov.querySelector('#gl-fv-client').value;
+      var c = (window.clients||[]).find(function(x){ return x.id === cid; });
+      return {
+        name:    ov.querySelector('#gl-fv-name').value.trim(),
+        client_id:   cid || null,
+        client_name: c ? c.name : '',
+        version:  parseInt(ov.querySelector('#gl-fv-version').value, 10) || 1,
+        ingredients: ov.querySelector('#gl-fv-ingredients').value,
+        allergens:   allergens,
+        target_yield_cases: parseInt(ov.querySelector('#gl-fv-yield').value, 10) || null,
+        batch_size_gal:     parseFloat(ov.querySelector('#gl-fv-batch').value) || null,
+        ph_target:   ov.querySelector('#gl-fv-ph').value.trim(),
+        brix_target: ov.querySelector('#gl-fv-brix').value.trim(),
+        status:      ov.querySelector('#gl-fv-status').value,
+        notes:       ov.querySelector('#gl-fv-notes').value,
+        updated_at:  new Date().toISOString()
+      };
+    }
+
+    var delBtn = ov.querySelector('#gl-fv-del');
+    if(delBtn) delBtn.addEventListener('click', async function(){
+      if(!confirm('Delete this formula record? This cannot be undone.')) return;
+      if(window.supa){ try { await window.supa.from('formulas').delete().eq('id', f.id); } catch(e){} }
+      window.glFormulas = (window.glFormulas||[]).filter(function(x){ return x.id !== f.id; });
+      saveLocal(); render(); ov.remove();
+      if(typeof addNotification === 'function') addNotification('🧪 Formula deleted', f.name, 'warning');
+      if(typeof window.glAudit === 'function') window.glAudit('formula_deleted', f.id, {});
+    });
+    var clone = ov.querySelector('#gl-fv-clone');
+    if(clone) clone.addEventListener('click', async function(){
+      var data = readForm();
+      data.version = (f.version || 1) + 1;
+      data.status = 'draft';
+      delete data.id;
+      ov.remove();
+      // Save as a fresh row using the same flow as a new formula.
+      if(window.supa){
+        try {
+          var r = await window.supa.from('formulas').insert([data]).select().single();
+          if(r && r.data){ window.glFormulas.unshift(r.data); }
+          else            { data.id = 'local_' + Date.now(); window.glFormulas.unshift(data); }
+        } catch(e){ data.id = 'local_' + Date.now(); window.glFormulas.unshift(data); }
+      } else {
+        data.id = 'local_' + Date.now(); window.glFormulas.unshift(data);
+      }
+      saveLocal(); render();
+      if(typeof addNotification === 'function') addNotification('🧪 Cloned as v' + data.version, data.name, 'success');
+    });
+
+    ov.querySelector('#gl-fv-save').addEventListener('click', async function(){
+      var data = readForm();
+      if(!data.name){ alert('Name is required.'); return; }
+      var btn = this; btn.disabled = true; btn.textContent = 'Saving…';
+      if(window.supa){
+        try {
+          if(isEdit){
+            await window.supa.from('formulas').update(data).eq('id', f.id);
+            Object.assign(f, data);
+          } else {
+            var r = await window.supa.from('formulas').insert([data]).select().single();
+            if(r && r.data){ window.glFormulas.unshift(r.data); }
+            else            { data.id = 'local_' + Date.now(); window.glFormulas.unshift(data); }
+          }
+        } catch(e){
+          console.warn('[GL] formula save failed; using local', e);
+          if(isEdit) Object.assign(f, data);
+          else { data.id = 'local_' + Date.now(); window.glFormulas.unshift(data); }
+        }
+      } else {
+        if(isEdit) Object.assign(f, data);
+        else { data.id = 'local_' + Date.now(); window.glFormulas.unshift(data); }
+      }
+      saveLocal();
+      btn.disabled = false; btn.textContent = '💾 Save';
+      ov.remove(); render();
+      if(typeof addNotification === 'function') addNotification(isEdit ? '🧪 Formula updated' : '🧪 Formula added', data.name + ' v' + data.version, 'success');
+      if(typeof window.glAudit === 'function') window.glAudit(isEdit ? 'formula_edited' : 'formula_added', data.name, { allergens: data.allergens });
+    });
+    host.appendChild(ov);
+  }
+
+  window.glOpenAddFormula  = function(){ formulaModal(null); };
+  window.glOpenEditFormula = function(id){
+    var f = (window.glFormulas||[]).find(function(x){ return x.id === id; });
+    if(f) formulaModal(f);
+  };
+
+  function watch(){
+    var pg = document.getElementById('cpg-formulas');
+    if(!pg){ setTimeout(watch, 600); return; }
+    new MutationObserver(function(){ if(pg.classList.contains('act')) refresh(); }).observe(pg, { attributes:true, attributeFilter:['class'] });
+  }
+  if(document.readyState !== 'loading') watch();
+  else document.addEventListener('DOMContentLoaded', watch);
+
+  console.log('[GL] formula vault loaded');
+}());
+
+/* ============================================================
+   YIELD TRACKER
+   - Lightweight log of "run X planned Y cases, actually produced Z".
+   - Standalone page; doesn't depend on production_runs being shipped
+     (works even before PR #15 lands).
+   - Computes yield % per row and a rolling average at the top.
+   - Backed by Supabase `yield_logs` table; localStorage fallback.
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  window.glYieldLogs = window.glYieldLogs || [];
+
+  async function loadFromSupabase(){
+    if(!window.supa) return null;
+    try {
+      var r = await window.supa.from('yield_logs').select('*').order('completed_at',{ascending:false});
+      if(r && r.data) return r.data;
+    } catch(e){ console.warn('[GL] yield_logs load failed', e); }
+    return null;
+  }
+  function loadLocal(){
+    try { return JSON.parse(localStorage.getItem('gl_yield_logs') || '[]'); } catch(e){ return []; }
+  }
+  function saveLocal(){ localStorage.setItem('gl_yield_logs', JSON.stringify(window.glYieldLogs)); }
+
+  async function refresh(){
+    var rows = await loadFromSupabase();
+    window.glYieldLogs = rows || loadLocal();
+    render();
+  }
+
+  function pctColor(pct){
+    if(pct >= 95) return '#5fcf9e';
+    if(pct >= 85) return '#f5c842';
+    return '#ff8579';
+  }
+
+  function render(){
+    var host = document.getElementById('yld-body');
+    if(!host) return;
+    var sub = document.getElementById('yld-sub');
+    var rows = window.glYieldLogs || [];
+    var total = rows.length;
+    var avg = 0;
+    if(total){
+      avg = Math.round(rows.reduce(function(s,r){
+        var p = r.planned_cases || 0, a = r.actual_cases || 0;
+        return s + (p > 0 ? (a / p * 100) : 0);
+      }, 0) / total);
+    }
+    if(sub) sub.textContent = total + ' completed run' + (total === 1 ? '' : 's') + (total ? ' · rolling yield ' + avg + '%' : '');
+
+    var statHtml = total
+      ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-bottom:18px">' +
+        '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:13px;text-align:center"><div style="font-size:10px;color:var(--muted);letter-spacing:1px">RUNS LOGGED</div><div style="font-family:var(--ff-disp);font-size:22px;color:var(--white);margin-top:3px">' + total + '</div></div>' +
+        '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:13px;text-align:center"><div style="font-size:10px;color:var(--muted);letter-spacing:1px">ROLLING YIELD</div><div style="font-family:var(--ff-disp);font-size:22px;color:' + pctColor(avg) + ';margin-top:3px">' + avg + '%</div></div>' +
+        '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:13px;text-align:center"><div style="font-size:10px;color:var(--muted);letter-spacing:1px">TOTAL CASES PRODUCED</div><div style="font-family:var(--ff-disp);font-size:22px;color:var(--teal);margin-top:3px">' + rows.reduce(function(s,r){return s + (r.actual_cases || 0);}, 0).toLocaleString() + '</div></div>' +
+      '</div>'
+      : '';
+
+    if(!total){
+      host.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No completed runs logged yet. Click "Log Completion" after a production run to start tracking yield.</div>';
+      return;
+    }
+
+    host.innerHTML = statHtml + '<table class="ctbl"><thead><tr><th>Run</th><th>Client</th><th>Planned</th><th>Actual</th><th>Yield %</th><th>Completed</th></tr></thead><tbody>' +
+      rows.map(function(r){
+        var p = r.planned_cases || 0, a = r.actual_cases || 0;
+        var pct = p > 0 ? Math.round(a / p * 100) : 0;
+        var d = r.completed_at ? new Date(r.completed_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+        return '<tr style="cursor:pointer" onclick="window.glOpenEditYield(\'' + esc(r.id) + '\')">' +
+          '<td style="padding:11px;font-weight:600;color:var(--white)">' + esc(r.run_name || '(untitled)') + '</td>' +
+          '<td style="padding:11px;color:var(--muted)">' + esc(r.client_name || '—') + '</td>' +
+          '<td style="padding:11px;color:var(--muted)">' + p.toLocaleString() + '</td>' +
+          '<td style="padding:11px;color:var(--white);font-weight:600">' + a.toLocaleString() + '</td>' +
+          '<td style="padding:11px;color:' + pctColor(pct) + ';font-weight:700">' + pct + '%</td>' +
+          '<td style="padding:11px;color:var(--muted);font-size:11px">' + d + '</td>' +
+        '</tr>';
+      }).join('') + '</tbody></table>';
+  }
+
+  function yieldModal(existing){
+    var prior = document.getElementById('gl-yld-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var isEdit = !!existing;
+    var r = existing || { run_name:'', client_id:'', client_name:'', planned_cases:'', actual_cases:'', completed_at: new Date().toISOString().slice(0,10), loss_reason:'', notes:'' };
+    var clientOptions = '<option value="">— Pick client —</option>' +
+      (window.clients||[]).map(function(c){
+        var sel = (c.id === r.client_id) ? ' selected' : '';
+        return '<option value="' + esc(c.id) + '"'+sel+'>' + esc(c.name) + '</option>';
+      }).join('');
+    var ov = document.createElement('div');
+    ov.id = 'gl-yld-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1000;background:rgba(6,13,26,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:480px;max-height:88vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">' + (isEdit ? '✏️ EDIT YIELD LOG' : '📈 LOG RUN COMPLETION') + '</div>' +
+          '<button id="gl-yld-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Run name *</div><input class="finp" id="gl-yld-name" value="' + esc(r.run_name) + '" placeholder="e.g. SunBurst Mango Run #3"></div>' +
+        '<div class="frow"><div class="flbl">Client</div><select class="fsel" id="gl-yld-client">' + clientOptions + '</select></div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+          '<div class="frow"><div class="flbl">Planned cases</div><input class="finp" id="gl-yld-planned" type="number" min="0" value="' + esc(r.planned_cases) + '"></div>' +
+          '<div class="frow"><div class="flbl">Actual cases</div><input class="finp" id="gl-yld-actual" type="number" min="0" value="' + esc(r.actual_cases) + '"></div>' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Completed date</div><input class="finp" id="gl-yld-date" type="date" value="' + esc(r.completed_at) + '"></div>' +
+        '<div class="frow"><div class="flbl">If under-yield: what caused the loss?</div><input class="finp" id="gl-yld-loss" value="' + esc(r.loss_reason) + '" placeholder="e.g. foam-over, can dent, label misregister"></div>' +
+        '<div class="frow"><div class="flbl">Notes</div><textarea class="finp" id="gl-yld-notes" rows="2">' + esc(r.notes) + '</textarea></div>' +
+        '<div style="display:flex;gap:8px;margin-top:6px">' +
+          '<button id="gl-yld-save" class="cbtn pri" style="flex:1">💾 Save</button>' +
+          (isEdit ? '<button id="gl-yld-del" class="cbtn" style="background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#ff8579">Delete</button>' : '') +
+          '<button id="gl-yld-cancel" class="cbtn">Cancel</button>' +
+        '</div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-yld-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-yld-cancel').addEventListener('click', function(){ ov.remove(); });
+    var delBtn = ov.querySelector('#gl-yld-del');
+    if(delBtn) delBtn.addEventListener('click', async function(){
+      if(!confirm('Delete this yield log?')) return;
+      if(window.supa){ try { await window.supa.from('yield_logs').delete().eq('id', r.id); } catch(e){} }
+      window.glYieldLogs = (window.glYieldLogs||[]).filter(function(x){ return x.id !== r.id; });
+      saveLocal(); render(); ov.remove();
+    });
+    ov.querySelector('#gl-yld-save').addEventListener('click', async function(){
+      var name = ov.querySelector('#gl-yld-name').value.trim();
+      if(!name){ alert('Run name is required.'); return; }
+      var cid = ov.querySelector('#gl-yld-client').value;
+      var c = (window.clients||[]).find(function(x){ return x.id === cid; });
+      var data = {
+        run_name:       name,
+        client_id:      cid || null,
+        client_name:    c ? c.name : '',
+        planned_cases:  parseInt(ov.querySelector('#gl-yld-planned').value, 10) || 0,
+        actual_cases:   parseInt(ov.querySelector('#gl-yld-actual').value, 10) || 0,
+        completed_at:   ov.querySelector('#gl-yld-date').value || null,
+        loss_reason:    ov.querySelector('#gl-yld-loss').value.trim(),
+        notes:          ov.querySelector('#gl-yld-notes').value
+      };
+      var btn = this; btn.disabled = true; btn.textContent = 'Saving…';
+      if(window.supa){
+        try {
+          if(isEdit){
+            await window.supa.from('yield_logs').update(data).eq('id', r.id);
+            Object.assign(r, data);
+          } else {
+            var resp = await window.supa.from('yield_logs').insert([data]).select().single();
+            if(resp && resp.data){ window.glYieldLogs.unshift(resp.data); }
+            else                  { data.id = 'local_' + Date.now(); window.glYieldLogs.unshift(data); }
+          }
+        } catch(e){
+          if(isEdit) Object.assign(r, data);
+          else { data.id = 'local_' + Date.now(); window.glYieldLogs.unshift(data); }
+        }
+      } else {
+        if(isEdit) Object.assign(r, data);
+        else { data.id = 'local_' + Date.now(); window.glYieldLogs.unshift(data); }
+      }
+      saveLocal();
+      btn.disabled = false; btn.textContent = '💾 Save';
+      ov.remove(); render();
+      if(typeof addNotification === 'function') addNotification(isEdit ? '📈 Yield updated' : '📈 Yield logged', data.run_name, 'success');
+      if(typeof window.glAudit === 'function') window.glAudit(isEdit ? 'yield_edited' : 'yield_logged', data.run_name, { yield_pct: data.planned_cases ? Math.round(data.actual_cases / data.planned_cases * 100) : 0 });
+    });
+    host.appendChild(ov);
+  }
+
+  window.glOpenLogYield  = function(){ yieldModal(null); };
+  window.glOpenEditYield = function(id){
+    var r = (window.glYieldLogs||[]).find(function(x){ return x.id === id; });
+    if(r) yieldModal(r);
+  };
+
+  function watch(){
+    var pg = document.getElementById('cpg-yield');
+    if(!pg){ setTimeout(watch, 600); return; }
+    new MutationObserver(function(){ if(pg.classList.contains('act')) refresh(); }).observe(pg, { attributes:true, attributeFilter:['class'] });
+  }
+  if(document.readyState !== 'loading') watch();
+  else document.addEventListener('DOMContentLoaded', watch);
+
+  console.log('[GL] yield tracker loaded');
 }());

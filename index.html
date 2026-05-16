@@ -1319,6 +1319,9 @@ select option, .fsel option {
         <div class="cni-sec">Calendars</div>
         <div class="cni" id="nav-calendar" onclick="cNav(&#39;calendar&#39;,this)"><span class="cni-ico">📅</span>General Calendar</div>
         <div class="cni" id="nav-production-cal" onclick="cNav(&#39;production-cal&#39;,this)"><span class="cni-ico">🏭</span>Production Schedule</div>
+        <div class="cni-sec">Operations Pro</div>
+        <div class="cni" id="nav-formulas" onclick="cNav(&#39;formulas&#39;,this)"><span class="cni-ico">🧪</span>Formula Vault</div>
+        <div class="cni" id="nav-yield" onclick="cNav(&#39;yield&#39;,this)"><span class="cni-ico">📈</span>Yield Tracker</div>
         <div class="cni-sec">Tools</div>
         <div class="cni" id="nav-tasks" onclick="cNav(&#39;tasks&#39;,this)"><span class="cni-ico">✅</span>Tasks</div>
         <div class="cni" id="nav-documents" onclick="cNav(&#39;documents&#39;,this)"><span class="cni-ico">📁</span>Documents</div>
@@ -1357,6 +1360,24 @@ select option, .fsel option {
           <div class="ccard"><div class="ccard-t">Pipeline snapshot</div><div class="pipe-bars" id="pipe-snap"></div></div>
           <div class="ccard"><div class="ccard-t">Referral commissions</div><div id="dash-ref"></div></div>
         </div>
+      </div>
+
+      <!-- FORMULA VAULT -->
+      <div id="cpg-formulas" class="cpg">
+        <div class="cph">
+          <div><div class="cpt">FORMULA VAULT</div><div class="cps" id="fv-sub">Recipes, versions, ingredients, allergen profiles</div></div>
+          <button class="cbtn pri" onclick="window.glOpenAddFormula && window.glOpenAddFormula()">+ New Formula</button>
+        </div>
+        <div id="fv-body"></div>
+      </div>
+
+      <!-- YIELD TRACKER -->
+      <div id="cpg-yield" class="cpg">
+        <div class="cph">
+          <div><div class="cpt">YIELD TRACKER</div><div class="cps" id="yld-sub">Planned vs actual cases per completed run</div></div>
+          <button class="cbtn pri" onclick="window.glOpenLogYield && window.glOpenLogYield()">+ Log Completion</button>
+        </div>
+        <div id="yld-body"></div>
       </div>
 
       <!-- CLIENTS -->
