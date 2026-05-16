@@ -1980,6 +1980,9 @@
     tools.setAttribute('style','display:none;flex-direction:column;gap:6px;align-items:flex-end;margin-bottom:6px');
 
     var items = [
+      { label:'🎪 Trade Show ROI', fn:'openTradeShowROI', admin:true },
+      { label:'📦 Service Packages', fn:'openServicePackages', admin:true },
+      { label:'🔮 Churn Risk', fn:'openChurnPredictor', admin:true },
       { label:'💰 Estimate Quote', fn:'aiEstimateQuote' },
       { label:'🧾 Draft Invoice',  fn:'aiDraftInvoice' },
       { label:'📝 Meeting Notes',  fn:'openMeetingNotesModal' },
@@ -7757,4 +7760,357 @@
   };
 
   console.log('[GL] capacity indicator loaded');
+}());
+
+/* ============================================================
+   TRADE SHOW ROI TRACKER
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function fmt$(n){ return '$' + Math.round(n || 0).toLocaleString(); }
+  window.glTradeShows = window.glTradeShows || [];
+
+  async function load(){
+    if(window.supa){
+      try { var r = await window.supa.from('trade_shows').select('*').order('show_date',{ascending:false}); if(r && r.data) return r.data; } catch(e){}
+    }
+    try { return JSON.parse(localStorage.getItem('gl_trade_shows') || '[]'); } catch(e){ return []; }
+  }
+  function saveLocal(){ localStorage.setItem('gl_trade_shows', JSON.stringify(window.glTradeShows)); }
+  function roi(s){ var c = Number(s.cost) || 0; var r = Number(s.revenue) || 0; if(!c) return r > 0 ? Infinity : 0; return ((r - c) / c) * 100; }
+  function roiColor(p){ if(p === Infinity || p >= 200) return '#5fcf9e'; if(p >= 0) return '#f5c842'; return '#ff8579'; }
+  function roiLabel(p){ return p === Infinity ? '∞' : Math.round(p) + '%'; }
+
+  window.openTradeShowROI = async function(){
+    var prior = document.getElementById('gl-ts-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    window.glTradeShows = await load();
+    var rows = window.glTradeShows;
+    var totalCost = rows.reduce(function(s,r){ return s + (Number(r.cost)||0); }, 0);
+    var totalRev  = rows.reduce(function(s,r){ return s + (Number(r.revenue)||0); }, 0);
+    var totalROI  = roi({ cost: totalCost, revenue: totalRev });
+    var rowsHtml = rows.map(function(r){
+      var d = r.show_date ? new Date(r.show_date).toLocaleDateString('en-US',{month:'short',year:'numeric'}) : '—';
+      var p = roi(r);
+      return '<tr style="cursor:pointer" onclick="window.glEditTradeShow(\'' + esc(r.id) + '\')">' +
+        '<td style="padding:11px;font-weight:600;color:var(--white)">' + esc(r.name || '(untitled)') + '</td>' +
+        '<td style="padding:11px;color:var(--muted)">' + d + '</td>' +
+        '<td style="padding:11px;color:var(--muted)">' + fmt$(r.cost) + '</td>' +
+        '<td style="padding:11px;color:var(--muted)">' + (r.leads_count || 0) + '</td>' +
+        '<td style="padding:11px;color:var(--muted)">' + (r.deals_won || 0) + '</td>' +
+        '<td style="padding:11px;color:var(--white);font-weight:600">' + fmt$(r.revenue) + '</td>' +
+        '<td style="padding:11px;color:' + roiColor(p) + ';font-weight:700">' + roiLabel(p) + '</td>' +
+      '</tr>';
+    }).join('');
+    var ov = document.createElement('div');
+    ov.id = 'gl-ts-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1000;background:rgba(6,13,26,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:840px;max-height:88vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">🎪 TRADE SHOW ROI</div>' +
+          '<button id="gl-ts-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        (rows.length
+          ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-bottom:18px">' +
+              '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:13px;text-align:center"><div style="font-size:10px;color:var(--muted);letter-spacing:1px">TOTAL SPENT</div><div style="font-family:var(--ff-disp);font-size:22px;color:var(--white);margin-top:3px">' + fmt$(totalCost) + '</div></div>' +
+              '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:13px;text-align:center"><div style="font-size:10px;color:var(--muted);letter-spacing:1px">TOTAL REVENUE</div><div style="font-family:var(--ff-disp);font-size:22px;color:var(--teal);margin-top:3px">' + fmt$(totalRev) + '</div></div>' +
+              '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:13px;text-align:center"><div style="font-size:10px;color:var(--muted);letter-spacing:1px">ROLLING ROI</div><div style="font-family:var(--ff-disp);font-size:22px;color:' + roiColor(totalROI) + ';margin-top:3px">' + roiLabel(totalROI) + '</div></div>' +
+            '</div>'
+          : '') +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
+          '<div style="font-size:12px;color:#9aa7bd">' + rows.length + ' show' + (rows.length === 1 ? '' : 's') + ' tracked</div>' +
+          '<button id="gl-ts-add" class="cbtn pri" style="font-size:12px">+ Add show</button>' +
+        '</div>' +
+        (rows.length
+          ? '<table class="ctbl"><thead><tr><th>Show</th><th>When</th><th>Cost</th><th>Leads</th><th>Won</th><th>Revenue</th><th>ROI</th></tr></thead><tbody>' + rowsHtml + '</tbody></table>'
+          : '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No trade shows tracked yet. Add your first one to start measuring which shows pay back.</div>'
+        ) +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-ts-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-ts-add').addEventListener('click', function(){ tsForm(null, ov); });
+    host.appendChild(ov);
+  };
+
+  window.glEditTradeShow = function(id){
+    var s = (window.glTradeShows||[]).find(function(x){ return x.id === id; });
+    if(s) tsForm(s, document.getElementById('gl-ts-modal'));
+  };
+
+  function tsForm(existing, parent){
+    var prior = document.getElementById('gl-ts-form'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var isEdit = !!existing;
+    var s = existing || { name:'', show_date: new Date().toISOString().slice(0,10), location:'', cost:0, leads_count:0, deals_won:0, revenue:0, notes:'' };
+    var ov = document.createElement('div');
+    ov.id = 'gl-ts-form';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1100;background:rgba(6,13,26,.92);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:440px">' +
+        '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal);margin-bottom:14px">' + (isEdit ? '✏️ EDIT SHOW' : '🎪 ADD SHOW') + '</div>' +
+        '<div class="frow"><div class="flbl">Name *</div><input class="finp" id="gl-ts-name" value="' + esc(s.name) + '" placeholder="e.g. BevNet Live 2026"></div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+          '<div class="frow"><div class="flbl">Date</div><input class="finp" id="gl-ts-date" type="date" value="' + esc(s.show_date) + '"></div>' +
+          '<div class="frow"><div class="flbl">Location</div><input class="finp" id="gl-ts-loc" value="' + esc(s.location) + '"></div>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+          '<div class="frow"><div class="flbl">Total cost ($)</div><input class="finp" id="gl-ts-cost" type="number" min="0" value="' + (s.cost||0) + '"></div>' +
+          '<div class="frow"><div class="flbl">Leads collected</div><input class="finp" id="gl-ts-leads" type="number" min="0" value="' + (s.leads_count||0) + '"></div>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+          '<div class="frow"><div class="flbl">Deals won</div><input class="finp" id="gl-ts-won" type="number" min="0" value="' + (s.deals_won||0) + '"></div>' +
+          '<div class="frow"><div class="flbl">Revenue attributed ($)</div><input class="finp" id="gl-ts-rev" type="number" min="0" value="' + (s.revenue||0) + '"></div>' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Notes</div><textarea class="finp" id="gl-ts-notes" rows="2">' + esc(s.notes) + '</textarea></div>' +
+        '<div style="display:flex;gap:8px;margin-top:6px">' +
+          '<button id="gl-ts-save" class="cbtn pri" style="flex:1">💾 Save</button>' +
+          (isEdit ? '<button id="gl-ts-del" class="cbtn" style="background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#ff8579">Delete</button>' : '') +
+          '<button id="gl-ts-cancel" class="cbtn">Cancel</button>' +
+        '</div>' +
+      '</div>';
+    ov.querySelector('#gl-ts-cancel').addEventListener('click', function(){ ov.remove(); });
+    var del = ov.querySelector('#gl-ts-del');
+    if(del) del.addEventListener('click', async function(){
+      if(!confirm('Delete this show?')) return;
+      if(window.supa){ try { await window.supa.from('trade_shows').delete().eq('id', s.id); } catch(e){} }
+      window.glTradeShows = (window.glTradeShows||[]).filter(function(x){ return x.id !== s.id; });
+      saveLocal(); ov.remove();
+      if(parent) parent.remove();
+      window.openTradeShowROI();
+    });
+    ov.querySelector('#gl-ts-save').addEventListener('click', async function(){
+      var data = {
+        name:        ov.querySelector('#gl-ts-name').value.trim(),
+        show_date:   ov.querySelector('#gl-ts-date').value || null,
+        location:    ov.querySelector('#gl-ts-loc').value.trim(),
+        cost:        parseFloat(ov.querySelector('#gl-ts-cost').value) || 0,
+        leads_count: parseInt(ov.querySelector('#gl-ts-leads').value, 10) || 0,
+        deals_won:   parseInt(ov.querySelector('#gl-ts-won').value, 10) || 0,
+        revenue:     parseFloat(ov.querySelector('#gl-ts-rev').value) || 0,
+        notes:       ov.querySelector('#gl-ts-notes').value
+      };
+      if(!data.name){ alert('Name is required.'); return; }
+      if(window.supa){
+        try {
+          if(isEdit){ await window.supa.from('trade_shows').update(data).eq('id', s.id); Object.assign(s, data); }
+          else { var r = await window.supa.from('trade_shows').insert([data]).select().single(); if(r && r.data){ window.glTradeShows.unshift(r.data); } else { data.id = 'local_' + Date.now(); window.glTradeShows.unshift(data); } }
+        } catch(e){
+          if(isEdit) Object.assign(s, data);
+          else { data.id = 'local_' + Date.now(); window.glTradeShows.unshift(data); }
+        }
+      } else {
+        if(isEdit) Object.assign(s, data);
+        else { data.id = 'local_' + Date.now(); window.glTradeShows.unshift(data); }
+      }
+      saveLocal();
+      ov.remove();
+      if(parent) parent.remove();
+      window.openTradeShowROI();
+      if(typeof addNotification === 'function') addNotification('🎪 ' + (isEdit ? 'Show updated' : 'Show added'), data.name, 'success');
+    });
+    host.appendChild(ov);
+  }
+
+  console.log('[GL] trade show ROI loaded');
+}());
+
+/* ============================================================
+   PRODUCTIZED SERVICE PACKAGES
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function fmt$(n){ return '$' + Math.round(n || 0).toLocaleString(); }
+
+  var SEED = [
+    { id:'seed_launch', name:'Brand Launch Bundle', tagline:'Recipe to retail in one engagement', price:8500,
+      items:['R&D formulation (1 SKU, 3 iterations)','Benchtop verification + COA','First production run (up to 500 cases)','Brand strategy call (90 min)','PakTech handles + custom lid color'] },
+    { id:'seed_rd_run', name:'R&D + First Run', tagline:'Lower-commit on-ramp for new brands', price:4500,
+      items:['R&D formulation (1 SKU)','Benchtop verification','Pilot canning run (150 cases minimum)'] },
+    { id:'seed_quarterly', name:'Quarterly Co-pack Plan', tagline:'Locked-in capacity for growing brands', price:0,
+      items:['4 production runs reserved per year','5% discount vs. ad-hoc rate card','Priority scheduling on dock days','Quarterly business review'] }
+  ];
+
+  function loadLocal(){ try { var raw = localStorage.getItem('gl_service_packages'); if(raw) return JSON.parse(raw); } catch(e){} return SEED.slice(); }
+  function saveLocal(arr){ localStorage.setItem('gl_service_packages', JSON.stringify(arr)); }
+
+  window.openServicePackages = function(){
+    var prior = document.getElementById('gl-pkg-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var pkgs = loadLocal();
+    var rowsHtml = pkgs.map(function(p){
+      return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:18px;margin-bottom:12px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:10px">' +
+          '<div><div style="font-family:var(--ff-disp);font-size:15px;letter-spacing:1px;color:var(--white)">' + esc(p.name) + '</div>' +
+            '<div style="font-size:12px;color:var(--teal);margin-top:2px">' + esc(p.tagline) + '</div></div>' +
+          '<div style="text-align:right"><div style="font-family:var(--ff-disp);font-size:22px;color:var(--teal)">' + (p.price ? fmt$(p.price) : 'Custom') + '</div></div>' +
+        '</div>' +
+        '<ul style="margin:0;padding-left:18px;font-size:12px;color:#9aa7bd;line-height:1.7">' + p.items.map(function(it){ return '<li>' + esc(it) + '</li>'; }).join('') + '</ul>' +
+        '<div style="display:flex;gap:8px;margin-top:12px">' +
+          '<button class="cbtn gl-pkg-quote" data-id="' + esc(p.id) + '" style="font-size:11px;padding:6px 12px">📋 Copy as quote text</button>' +
+          '<button class="cbtn gl-pkg-edit" data-id="' + esc(p.id) + '" style="font-size:11px;padding:6px 12px">✏️ Edit</button>' +
+          '<button class="cbtn gl-pkg-del"  data-id="' + esc(p.id) + '" style="font-size:11px;padding:6px 12px;background:rgba(231,76,60,.1);border-color:rgba(231,76,60,.3);color:#ff8579">Delete</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+    var ov = document.createElement('div');
+    ov.id = 'gl-pkg-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1000;background:rgba(6,13,26,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:580px;max-height:88vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">📦 SERVICE PACKAGES</div>' +
+          '<button id="gl-pkg-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="font-size:12px;color:#9aa7bd;margin-bottom:18px;line-height:1.6">Pre-built bundles. "Copy as quote text" pastes into emails or quote PDFs. Stored per-device.</div>' +
+        rowsHtml +
+        '<div style="display:flex;justify-content:flex-end;margin-top:10px"><button id="gl-pkg-add" class="cbtn pri">+ New package</button></div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-pkg-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-pkg-add').addEventListener('click', function(){ ov.remove(); pkgEditor(null); });
+    ov.querySelectorAll('.gl-pkg-edit').forEach(function(b){
+      b.addEventListener('click', function(){
+        var p = pkgs.find(function(x){ return x.id === b.getAttribute('data-id'); });
+        ov.remove(); pkgEditor(p);
+      });
+    });
+    ov.querySelectorAll('.gl-pkg-quote').forEach(function(b){
+      b.addEventListener('click', async function(){
+        var p = pkgs.find(function(x){ return x.id === b.getAttribute('data-id'); });
+        if(!p) return;
+        var txt = p.name + ' — ' + (p.price ? fmt$(p.price) : 'Custom quote') + '\n' + p.tagline + '\n\nIncludes:\n' + p.items.map(function(i){ return '  • ' + i; }).join('\n');
+        try { await navigator.clipboard.writeText(txt); }
+        catch(e){
+          var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+        }
+        b.textContent = '✓ Copied'; setTimeout(function(){ b.textContent = '📋 Copy as quote text'; }, 1500);
+      });
+    });
+    ov.querySelectorAll('.gl-pkg-del').forEach(function(b){
+      b.addEventListener('click', function(){
+        var p = pkgs.find(function(x){ return x.id === b.getAttribute('data-id'); });
+        if(!p) return;
+        if(!confirm('Delete "' + p.name + '"?')) return;
+        var fresh = loadLocal().filter(function(x){ return x.id !== p.id; });
+        saveLocal(fresh);
+        ov.remove(); window.openServicePackages();
+      });
+    });
+    host.appendChild(ov);
+  };
+
+  function pkgEditor(existing){
+    var host = document.getElementById('crm-panel') || document.body;
+    var isEdit = !!existing;
+    var p = existing || { id: 'pkg_' + Date.now(), name:'', tagline:'', price:0, items:[''] };
+    var ov = document.createElement('div');
+    ov.id = 'gl-pkg-edit';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1000;background:rgba(6,13,26,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:460px">' +
+        '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal);margin-bottom:14px">' + (isEdit ? '✏️ EDIT PACKAGE' : '📦 NEW PACKAGE') + '</div>' +
+        '<div class="frow"><div class="flbl">Name *</div><input class="finp" id="gl-pkg-name" value="' + esc(p.name) + '"></div>' +
+        '<div class="frow"><div class="flbl">Tagline</div><input class="finp" id="gl-pkg-tag" value="' + esc(p.tagline) + '"></div>' +
+        '<div class="frow"><div class="flbl">Price ($ — leave 0 for "Custom")</div><input class="finp" id="gl-pkg-price" type="number" min="0" value="' + (p.price||0) + '"></div>' +
+        '<div class="frow"><div class="flbl">Items (one per line)</div><textarea class="finp" id="gl-pkg-items" rows="6">' + esc((p.items||[]).join('\n')) + '</textarea></div>' +
+        '<div style="display:flex;gap:8px;margin-top:6px">' +
+          '<button id="gl-pkg-savebtn" class="cbtn pri" style="flex:1">💾 Save</button>' +
+          '<button id="gl-pkg-cancelbtn" class="cbtn">Cancel</button>' +
+        '</div>' +
+      '</div>';
+    ov.querySelector('#gl-pkg-cancelbtn').addEventListener('click', function(){ ov.remove(); window.openServicePackages(); });
+    ov.querySelector('#gl-pkg-savebtn').addEventListener('click', function(){
+      var data = {
+        id:      p.id,
+        name:    ov.querySelector('#gl-pkg-name').value.trim(),
+        tagline: ov.querySelector('#gl-pkg-tag').value.trim(),
+        price:   parseFloat(ov.querySelector('#gl-pkg-price').value) || 0,
+        items:   ov.querySelector('#gl-pkg-items').value.split('\n').map(function(s){ return s.trim(); }).filter(Boolean)
+      };
+      if(!data.name){ alert('Name is required.'); return; }
+      var fresh = loadLocal();
+      if(isEdit){ var idx = fresh.findIndex(function(x){ return x.id === p.id; }); if(idx >= 0) fresh[idx] = data; else fresh.push(data); }
+      else { fresh.push(data); }
+      saveLocal(fresh);
+      ov.remove(); window.openServicePackages();
+    });
+    host.appendChild(ov);
+  }
+
+  console.log('[GL] service packages loaded');
+}());
+
+/* ============================================================
+   CHURN PREDICTOR (AI)
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  function gatherSnapshot(){
+    var clients = (window.clients||[]).filter(function(c){ return c.status === 'active'; });
+    var lines = clients.map(function(c){
+      var invs = (window.invoices||[]).filter(function(i){ return i.client === c.id; });
+      var latest = invs.reduce(function(m,i){
+        if(!i.date) return m;
+        var t = Date.parse(i.date);
+        return (t && (!m || t > m)) ? t : m;
+      }, null);
+      var daysSince = latest ? Math.round((Date.now() - latest) / 86400000) : null;
+      var totalBilled = invs.reduce(function(s,i){ return s + (i.amount||0); }, 0);
+      var paidCount   = invs.filter(function(i){ return i.status === 'paid'; }).length;
+      var unpaid      = invs.filter(function(i){ return i.status !== 'paid'; }).reduce(function(s,i){ return s + (i.amount||0); }, 0);
+      return c.name + ' | $' + Math.round(totalBilled).toLocaleString() + ' lifetime | ' + paidCount + ' paid runs | $' + Math.round(unpaid).toLocaleString() + ' unpaid | last invoice ' + (daysSince === null ? 'never' : daysSince + 'd ago') + ' | service: ' + (c.service||'—');
+    });
+    return lines.join('\n');
+  }
+
+  window.openChurnPredictor = function(){
+    var prior = document.getElementById('gl-churn-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var ov = document.createElement('div');
+    ov.id = 'gl-churn-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1000;background:rgba(6,13,26,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:620px;max-height:88vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">🔮 CHURN RISK</div>' +
+          '<button id="gl-churn-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="font-size:12px;color:#9aa7bd;margin-bottom:14px;line-height:1.6">AI ranks your active clients by churn risk and explains why. Uses lifetime billed, paid-run count, unpaid balance, days since last invoice.</div>' +
+        '<div style="display:flex;gap:8px"><button id="gl-churn-go" class="cbtn pri" style="flex:1">🔮 Analyze</button></div>' +
+        '<div id="gl-churn-out" style="margin-top:16px"></div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-churn-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-churn-go').addEventListener('click', async function(){
+      var btn = this; var out = ov.querySelector('#gl-churn-out');
+      var snapshot = gatherSnapshot();
+      if(!snapshot){ out.innerHTML = '<div style="color:#9aa7bd;font-size:13px;padding:14px">No active clients to analyze.</div>'; return; }
+      btn.disabled = true; btn.textContent = '🔮 Thinking…';
+      out.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:14px;text-align:center">Reading the room…</div>';
+      var sys = 'You are a CRM analyst for Good Liquid Bev Co. You spot churn risk based on invoice cadence and amount. Be concrete — name names, cite the metric driving the risk, and suggest a specific retention action. Do not invent data not in the snapshot.';
+      var user = 'Here is a snapshot of every active client (one per line):\n\n' + snapshot + '\n\nReturn the top 3 churn risks. Use this exact format:\n\n=== Risk N ===\nClient: <brand>\nRisk level: <HIGH | MEDIUM | LOW>\nWhy: <one sentence citing the specific metric>\nSuggested action: <one short concrete next step this week>';
+      if(typeof window.callAI !== 'function'){
+        out.innerHTML = '<div style="color:#f5c842;font-size:13px;padding:14px">AI not configured. Open AI Settings to paste your Anthropic key.</div>';
+        btn.disabled = false; btn.textContent = '🔮 Analyze'; return;
+      }
+      var text = await window.callAI(sys, user);
+      btn.disabled = false; btn.textContent = '🔮 Analyze';
+      if(!text){ out.innerHTML = '<div style="color:#f5c842;font-size:13px;padding:14px">No AI response.</div>'; return; }
+      var parts = text.split(/===\s*Risk\s*\d+\s*===/i).map(function(s){ return s.trim(); }).filter(Boolean);
+      if(!parts.length) parts = [text];
+      out.innerHTML = parts.map(function(p, i){
+        var level = /HIGH/i.test(p) ? '#ff8579' : /MEDIUM/i.test(p) ? '#f5c842' : '#5fcf9e';
+        return '<div style="background:rgba(255,255,255,.03);border:1px solid ' + level + '55;border-radius:10px;padding:14px;margin-bottom:10px">' +
+          '<div style="font-family:var(--ff-disp);font-size:10px;letter-spacing:2px;color:' + level + ';margin-bottom:6px">RISK ' + (i+1) + '</div>' +
+          '<div style="font-size:13px;color:var(--white);line-height:1.6;white-space:pre-wrap">' + esc(p) + '</div>' +
+        '</div>';
+      }).join('');
+      if(typeof window.glAudit === 'function') window.glAudit('churn_predicted', '', { count: parts.length });
+    });
+    host.appendChild(ov);
+  };
+
+  console.log('[GL] churn predictor loaded');
 }());
