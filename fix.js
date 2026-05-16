@@ -98,6 +98,9 @@
   var ALL=['dashboard','clients','pipeline','invoices','invoice-detail','newinv','referrals','referrers','activity','users','customers','calendar','production-cal','production-runs','samples','formulas','yield','tasks','documents','inventory','announcements','time-tracker','reports','ai-settings'];
   if(window.PERMISSIONS){window.PERMISSIONS.admin=ALL;window.PERMISSIONS.sales=['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','tasks','announcements','reports'];}
   else{window.PERMISSIONS={admin:ALL,sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','tasks','announcements','reports'],viewer:['dashboard','clients','invoices','activity']};}
+  var ALL=['dashboard','clients','pipeline','invoices','invoice-detail','newinv','referrals','referrers','activity','users','customers','calendar','production-cal','content','tasks','documents','inventory','announcements','time-tracker','reports','ai-settings'];
+  if(window.PERMISSIONS){window.PERMISSIONS.admin=ALL;window.PERMISSIONS.sales=['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','content','tasks','announcements','reports'];}
+  else{window.PERMISSIONS={admin:ALL,sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','content','tasks','announcements','reports'],viewer:['dashboard','clients','invoices','activity']};}
   window.can=function(page){var u=window.currentUser;if(!u)return false;if(u.role==='admin')return true;return(window.PERMISSIONS[u.role]||[]).includes(page);};
   /* Single cNav wrap: perm-gate first, then dispatch new-invoice variants
      to the builder, otherwise hand off to the original cNav from index.html. */
@@ -1988,6 +1991,7 @@
       { label:'🎪 Trade Show ROI', fn:'openTradeShowROI', admin:true },
       { label:'📦 Service Packages', fn:'openServicePackages', admin:true },
       { label:'🔮 Churn Risk', fn:'openChurnPredictor', admin:true },
+      { label:'🎨 AI Image Prompts', fn:'openAIImagePrompts' },
       { label:'💰 Estimate Quote', fn:'aiEstimateQuote' },
       { label:'🧾 Draft Invoice',  fn:'aiDraftInvoice' },
       { label:'📝 Meeting Notes',  fn:'openMeetingNotesModal' },
@@ -7869,6 +7873,88 @@
   function start(){
     if(document.getElementById('gl-case-studies')) load();
     else setTimeout(start, 600);
+   PUBLIC QUOTE CALCULATOR (lives on the pricing section)
+   Reads inputs from #qc-* fields and updates #qc-total + #qc-breakdown
+   on every change. Pricing data mirrors the rate card on the site.
+   ============================================================ */
+(function(){
+  // Canning rate per case by format + cases tier. Mirrors index.html pricing.
+  var RATES = {
+    canning: {
+      '12std':   [[150,11.52],[340,10.32],[501,9.12],[1000,8.40],[2500,7.44],[5000,6.72]],
+      '12sleek': [[150,11.52],[340,10.32],[501,9.12],[1000,8.40],[2500,7.44],[5000,6.72]],
+      '16std':   [[150,13.92],[340,12.72],[501,11.52],[1000,10.80],[2500,9.84],[5000,9.12]]
+    },
+    bottling: {
+      '750ml':   [[220,12.96],[660,11.46],[1320,9.48],[2640,8.46],[5280,6.72]]
+    }
+  };
+
+  function rateForCases(table, cases){
+    var match = table[0];
+    for(var i = 0; i < table.length; i++){
+      if(cases >= table[i][0]) match = table[i];
+    }
+    return match[1];
+  }
+
+  function fmt$(n){ return '$' + Math.round(n).toLocaleString(); }
+
+  function compute(){
+    var svc = document.getElementById('qc-service'); if(!svc) return;
+    var fmt = document.getElementById('qc-format');
+    var casesEl = document.getElementById('qc-cases');
+    var totalEl = document.getElementById('qc-total');
+    var bdEl    = document.getElementById('qc-breakdown');
+    var pasteur = document.getElementById('qc-pasteur');
+    var nitro   = document.getElementById('qc-nitro');
+
+    var service = svc.value;
+    // If user picks bottling, force the format to 750ml; if canning, ensure can format.
+    if(service === 'bottling'){
+      var hasBottle = false;
+      for(var i = 0; i < fmt.options.length; i++){
+        if(fmt.options[i].value === '750ml'){ hasBottle = true; fmt.options[i].disabled = false; }
+        else { fmt.options[i].disabled = true; }
+      }
+      if(hasBottle && fmt.value !== '750ml') fmt.value = '750ml';
+    } else {
+      for(var j = 0; j < fmt.options.length; j++){
+        fmt.options[j].disabled = (fmt.options[j].value === '750ml');
+      }
+      if(fmt.value === '750ml') fmt.value = '12std';
+    }
+
+    var cases = Math.max(150, parseInt(casesEl.value, 10) || 150);
+    casesEl.value = cases;
+    var table = (RATES[service] || {})[fmt.value];
+    if(!table){ totalEl.textContent = '$0'; bdEl.textContent = ''; return; }
+
+    var perCase = rateForCases(table, cases);
+    var base = perCase * cases;
+    var pCost = pasteur && pasteur.checked ? (cases * 24 * 0.08) : 0;     // ~8¢/can * 24 cans/case
+    var nCost = nitro && nitro.checked    ? (cases * 24 * 0.035) : 0;     // ~3.5¢/can
+    var total = base + pCost + nCost;
+
+    totalEl.textContent = fmt$(total);
+    var lines = [
+      'Run cost: ' + fmt$(base) + ' (' + cases.toLocaleString() + ' cases @ ' + fmt$(perCase) + '/case)'
+    ];
+    if(pCost) lines.push('+ Flash pasteurization: ' + fmt$(pCost));
+    if(nCost) lines.push('+ Nitrogen dosing: ' + fmt$(nCost));
+    lines.push('Excludes ingredients, packaging, freight.');
+    bdEl.innerHTML = lines.join('<br>');
+  }
+
+  function start(){
+    var svc = document.getElementById('qc-service');
+    if(!svc){ setTimeout(start, 600); return; }
+    ['qc-service','qc-format','qc-cases','qc-pasteur','qc-nitro'].forEach(function(id){
+      var el = document.getElementById(id);
+      if(el) el.addEventListener('input', compute);
+      if(el) el.addEventListener('change', compute);
+    });
+    compute();
   }
   if(document.readyState !== 'loading') start();
   else document.addEventListener('DOMContentLoaded', start);
@@ -8256,6 +8342,185 @@
       ov.remove(); render();
       if(typeof addNotification === 'function') addNotification(isEdit ? '🧪 Formula updated' : '🧪 Formula added', data.name + ' v' + data.version, 'success');
       if(typeof window.glAudit === 'function') window.glAudit(isEdit ? 'formula_edited' : 'formula_added', data.name, { allergens: data.allergens });
+  console.log('[GL] public quote calculator loaded');
+}());
+
+/* ============================================================
+   CONTENT CALENDAR (CRM page)
+   Month grid view of planned posts across channels. Each entry:
+   date, channel (IG/LinkedIn/X/FB), status (idea/draft/scheduled/
+   posted), short title, full caption.
+   Backed by Supabase `content_calendar` table; localStorage fallback.
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var CHANNELS = [
+    ['instagram','📷 Instagram','#E1306C'],
+    ['linkedin','💼 LinkedIn','#0077B5'],
+    ['x','🐦 X','#fff'],
+    ['facebook','📘 Facebook','#1877F2']
+  ];
+  var STATUSES = [['idea','Idea'],['draft','Draft'],['scheduled','Scheduled'],['posted','Posted']];
+  window.glContent = window.glContent || [];
+
+  async function loadFromSupabase(){
+    if(!window.supa) return null;
+    try {
+      var r = await window.supa.from('content_calendar').select('*').order('post_date',{ascending:true});
+      if(r && r.data) return r.data;
+    } catch(e){}
+    return null;
+  }
+  function loadLocal(){ try { return JSON.parse(localStorage.getItem('gl_content') || '[]'); } catch(e){ return []; } }
+  function saveLocal(){ localStorage.setItem('gl_content', JSON.stringify(window.glContent)); }
+
+  var viewMonth = new Date(); viewMonth.setDate(1);
+  async function refresh(){
+    var rows = await loadFromSupabase();
+    window.glContent = rows || loadLocal();
+    render();
+  }
+
+  function statusColor(s){
+    return ({ idea:'#9aa7bd', draft:'#f5c842', scheduled:'#7fc6f5', posted:'#5fcf9e' })[s] || '#9aa7bd';
+  }
+  function channelMeta(c){ return CHANNELS.find(function(x){ return x[0] === c; }) || ['', c, '#fff']; }
+
+  function render(){
+    var host = document.getElementById('cc-body');
+    if(!host) return;
+    var sub = document.getElementById('cc-sub');
+    var rows = window.glContent || [];
+    var scheduled = rows.filter(function(p){ return p.status === 'scheduled'; }).length;
+    if(sub) sub.textContent = rows.length + ' post' + (rows.length === 1 ? '' : 's') + (scheduled ? ' · ' + scheduled + ' scheduled' : '');
+
+    // Build month grid
+    var year = viewMonth.getFullYear(), month = viewMonth.getMonth();
+    var firstDow = new Date(year, month, 1).getDay();
+    var daysInMonth = new Date(year, month + 1, 0).getDate();
+    var monthLabel = viewMonth.toLocaleString('en-US', { month:'long', year:'numeric' });
+
+    var postsByDate = {};
+    rows.forEach(function(p){
+      if(!p.post_date) return;
+      var d = new Date(p.post_date);
+      if(d.getFullYear() === year && d.getMonth() === month){
+        var key = d.getDate();
+        if(!postsByDate[key]) postsByDate[key] = [];
+        postsByDate[key].push(p);
+      }
+    });
+
+    var headerHtml = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+      '<button class="cbtn" id="cc-prev" style="font-size:12px">← Prev</button>' +
+      '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--white)">' + monthLabel + '</div>' +
+      '<button class="cbtn" id="cc-next" style="font-size:12px">Next →</button>' +
+    '</div>';
+
+    var dowHtml = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px">' +
+      ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(function(d){
+        return '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);text-align:center;padding:4px">' + d + '</div>';
+      }).join('') +
+    '</div>';
+
+    var cells = '';
+    // Blank pre-cells
+    for(var b = 0; b < firstDow; b++){
+      cells += '<div style="min-height:90px;background:rgba(255,255,255,.01);border:1px solid rgba(255,255,255,.04);border-radius:8px"></div>';
+    }
+    for(var d = 1; d <= daysInMonth; d++){
+      var posts = postsByDate[d] || [];
+      cells += '<div style="min-height:90px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:4px">' +
+        '<div style="font-size:11px;color:var(--muted);font-weight:600">' + d + '</div>' +
+        posts.map(function(p){
+          var m = channelMeta(p.channel);
+          var col = statusColor(p.status);
+          return '<div onclick="window.glOpenEditContent(\'' + esc(p.id) + '\')" style="font-size:11px;color:var(--white);background:' + col + '22;border-left:3px solid ' + col + ';padding:4px 7px;border-radius:4px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(p.title || '') + '">' +
+            (m[0] ? m[1].split(' ')[0] + ' ' : '') + esc((p.title || '').slice(0, 20)) +
+          '</div>';
+        }).join('') +
+      '</div>';
+    }
+
+    host.innerHTML = headerHtml + dowHtml +
+      '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">' + cells + '</div>';
+
+    host.querySelector('#cc-prev').addEventListener('click', function(){
+      viewMonth = new Date(year, month - 1, 1); render();
+    });
+    host.querySelector('#cc-next').addEventListener('click', function(){
+      viewMonth = new Date(year, month + 1, 1); render();
+    });
+  }
+
+  function contentForm(existing){
+    var prior = document.getElementById('gl-cc-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var isEdit = !!existing;
+    var p = existing || { title:'', caption:'', channel:'instagram', status:'idea', post_date: new Date().toISOString().slice(0,10) };
+    var chOpts = CHANNELS.map(function(c){
+      var sel = (c[0] === p.channel) ? ' selected' : '';
+      return '<option value="' + c[0] + '"'+sel+'>' + c[1] + '</option>';
+    }).join('');
+    var stOpts = STATUSES.map(function(s){
+      var sel = (s[0] === p.status) ? ' selected' : '';
+      return '<option value="' + s[0] + '"'+sel+'>' + s[1] + '</option>';
+    }).join('');
+    var ov = document.createElement('div');
+    ov.id = 'gl-cc-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1000;background:rgba(6,13,26,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:500px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">' + (isEdit ? '✏️ EDIT POST' : '🗓️ NEW POST') + '</div>' +
+          '<button id="gl-cc-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Title (short, for the calendar tile) *</div><input class="finp" id="gl-cc-title" value="' + esc(p.title) + '"></div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">' +
+          '<div class="frow"><div class="flbl">Channel</div><select class="fsel" id="gl-cc-channel">' + chOpts + '</select></div>' +
+          '<div class="frow"><div class="flbl">Status</div><select class="fsel" id="gl-cc-status">' + stOpts + '</select></div>' +
+          '<div class="frow"><div class="flbl">Date</div><input class="finp" id="gl-cc-date" type="date" value="' + esc(p.post_date) + '"></div>' +
+        '</div>' +
+        '<div class="frow"><div class="flbl">Full caption / draft</div><textarea class="finp" id="gl-cc-caption" rows="6">' + esc(p.caption) + '</textarea></div>' +
+        '<div style="display:flex;gap:8px;margin-top:6px">' +
+          '<button id="gl-cc-save" class="cbtn pri" style="flex:1">💾 Save</button>' +
+          (isEdit ? '<button id="gl-cc-del" class="cbtn" style="background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#ff8579">Delete</button>' : '') +
+          '<button id="gl-cc-cancel" class="cbtn">Cancel</button>' +
+        '</div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-cc-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-cc-cancel').addEventListener('click', function(){ ov.remove(); });
+    var del = ov.querySelector('#gl-cc-del');
+    if(del) del.addEventListener('click', async function(){
+      if(!confirm('Delete this post?')) return;
+      if(window.supa){ try { await window.supa.from('content_calendar').delete().eq('id', p.id); } catch(e){} }
+      window.glContent = (window.glContent||[]).filter(function(x){ return x.id !== p.id; });
+      saveLocal(); render(); ov.remove();
+    });
+    ov.querySelector('#gl-cc-save').addEventListener('click', async function(){
+      var data = {
+        title:     ov.querySelector('#gl-cc-title').value.trim(),
+        caption:   ov.querySelector('#gl-cc-caption').value,
+        channel:   ov.querySelector('#gl-cc-channel').value,
+        status:    ov.querySelector('#gl-cc-status').value,
+        post_date: ov.querySelector('#gl-cc-date').value || null
+      };
+      if(!data.title){ alert('Title is required.'); return; }
+      if(window.supa){
+        try {
+          if(isEdit){ await window.supa.from('content_calendar').update(data).eq('id', p.id); Object.assign(p, data); }
+          else { var r = await window.supa.from('content_calendar').insert([data]).select().single(); if(r && r.data){ window.glContent.push(r.data); } else { data.id = 'local_' + Date.now(); window.glContent.push(data); } }
+        } catch(e){
+          if(isEdit) Object.assign(p, data);
+          else { data.id = 'local_' + Date.now(); window.glContent.push(data); }
+        }
+      } else {
+        if(isEdit) Object.assign(p, data);
+        else { data.id = 'local_' + Date.now(); window.glContent.push(data); }
+      }
+      saveLocal(); ov.remove(); render();
+      if(typeof addNotification === 'function') addNotification('🗓️ ' + (isEdit ? 'Post updated' : 'Post added'), data.title, 'success');
     });
     host.appendChild(ov);
   }
@@ -8268,6 +8533,14 @@
 
   function watch(){
     var pg = document.getElementById('cpg-formulas');
+  window.glOpenAddContent  = function(){ contentForm(null); };
+  window.glOpenEditContent = function(id){
+    var p = (window.glContent||[]).find(function(x){ return x.id === id; });
+    if(p) contentForm(p);
+  };
+
+  function watch(){
+    var pg = document.getElementById('cpg-content');
     if(!pg){ setTimeout(watch, 600); return; }
     new MutationObserver(function(){ if(pg.classList.contains('act')) refresh(); }).observe(pg, { attributes:true, attributeFilter:['class'] });
   }
@@ -8632,6 +8905,13 @@
      2. openCaseStudyBuilder — pick a client → 200-word case study
      3. openPostSuggester   — scans CRM activity → 3 "post this week" ideas
    All output is copyable; nothing auto-publishes.
+  console.log('[GL] content calendar loaded');
+}());
+
+/* ============================================================
+   AI IMAGE PROMPT GENERATOR
+   Returns 3 ready-to-paste prompts for Midjourney / DALL-E / Stable
+   Diffusion based on product type + scene + mood. Uses callAI.
    ============================================================ */
 (function(){
   function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -9723,6 +10003,11 @@
     }).join('');
     var ov = document.createElement('div');
     ov.id = 'gl-pkg-modal';
+  window.openAIImagePrompts = function(){
+    var prior = document.getElementById('gl-img-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var ov = document.createElement('div');
+    ov.id = 'gl-img-modal';
     ov.setAttribute('style','position:fixed;inset:0;z-index:1000;background:rgba(6,13,26,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
     ov.innerHTML =
       '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:580px;max-height:88vh;overflow-y:auto">' +
@@ -9876,9 +10161,69 @@
         '</div>';
       }).join('');
       if(typeof window.glAudit === 'function') window.glAudit('churn_predicted', '', { count: parts.length });
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">🎨 AI IMAGE PROMPTS</div>' +
+          '<button id="gl-img-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="font-size:12px;color:#9aa7bd;margin-bottom:14px;line-height:1.6">Generates 3 ready-to-paste prompts for Midjourney / DALL-E / Stable Diffusion. Copy any of them into your image tool of choice.</div>' +
+        '<div class="frow"><div class="flbl">Product</div><input class="finp" id="gl-img-product" placeholder="e.g. 12oz can of mango hop water"></div>' +
+        '<div class="frow"><div class="flbl">Scene / setting</div><input class="finp" id="gl-img-scene" placeholder="e.g. wet beach rocks, golden hour, ocean spray"></div>' +
+        '<div class="frow"><div class="flbl">Mood</div>' +
+          '<select class="fsel" id="gl-img-mood">' +
+            '<option>Bright + summery</option>' +
+            '<option>Moody + premium</option>' +
+            '<option>Minimal + clean studio</option>' +
+            '<option>Action / motion</option>' +
+            '<option>Behind-the-scenes documentary</option>' +
+            '<option>Editorial / magazine</option>' +
+          '</select>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px"><button id="gl-img-go" class="cbtn pri" style="flex:1">✨ Draft 3 prompts</button></div>' +
+        '<div id="gl-img-out" style="margin-top:16px"></div>' +
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-img-close').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-img-go').addEventListener('click', async function(){
+      var btn = this; var out = ov.querySelector('#gl-img-out');
+      var product = ov.querySelector('#gl-img-product').value.trim();
+      var scene   = ov.querySelector('#gl-img-scene').value.trim();
+      var mood    = ov.querySelector('#gl-img-mood').value;
+      if(!product){ alert('Describe the product first.'); return; }
+      btn.disabled = true; btn.textContent = '✨ Drafting…';
+      out.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:14px;text-align:center">Composing prompts…</div>';
+      var sys = 'You write image-generation prompts for product photography of beverage cans and bottles. Each prompt must be vivid, specific, include camera/lens hints when relevant, and stay under 80 words. Use commercial-photo language (studio, key light, rim light, depth of field). Return EXACTLY three numbered prompts separated by "=== Prompt N ===" delimiters.';
+      var user = 'Product: ' + product + '\nScene: ' + (scene || 'studio') + '\nMood: ' + mood + '\n\nReturn three distinct prompts. Variations should differ in composition (close macro vs lifestyle vs flat-lay) and lighting (key light angle, color temperature, contrast). No preamble.\n\nFormat:\n=== Prompt 1 ===\n<prompt text>\n\n=== Prompt 2 ===\n<prompt text>\n\n=== Prompt 3 ===\n<prompt text>';
+      if(typeof window.callAI !== 'function'){
+        out.innerHTML = '<div style="color:#f5c842;font-size:13px;padding:14px">AI not configured. Open AI Settings to paste your Anthropic key.</div>';
+        btn.disabled = false; btn.textContent = '✨ Draft 3 prompts'; return;
+      }
+      var text = await window.callAI(sys, user);
+      btn.disabled = false; btn.textContent = '✨ Draft 3 prompts';
+      if(!text){ out.innerHTML = '<div style="color:#f5c842;font-size:13px;padding:14px">No AI response.</div>'; return; }
+      var parts = text.split(/===\s*Prompt\s*\d+\s*===/i).map(function(s){ return s.trim(); }).filter(Boolean);
+      if(!parts.length) parts = [text];
+      out.innerHTML = parts.map(function(p, i){
+        return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:14px;margin-bottom:10px">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+            '<div style="font-family:var(--ff-disp);font-size:10px;letter-spacing:2px;color:var(--teal)">PROMPT ' + (i+1) + '</div>' +
+            '<button class="gl-img-copy cbtn" data-text="' + esc(p).replace(/"/g,'&quot;') + '" style="font-size:10px;padding:4px 10px">📋 Copy</button>' +
+          '</div>' +
+          '<div style="font-size:13px;color:var(--white);line-height:1.6;white-space:pre-wrap">' + esc(p) + '</div>' +
+        '</div>';
+      }).join('');
+      out.querySelectorAll('.gl-img-copy').forEach(function(b){
+        b.addEventListener('click', async function(){
+          var t = b.getAttribute('data-text') || '';
+          try { await navigator.clipboard.writeText(t); } catch(e){
+            var ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+          }
+          b.textContent = '✓ Copied'; setTimeout(function(){ b.textContent = '📋 Copy'; }, 1500);
+        });
+      });
+      if(typeof window.glAudit === 'function') window.glAudit('ai_image_prompts', '', { mood: mood });
     });
     host.appendChild(ov);
   };
 
   console.log('[GL] churn predictor loaded');
+  console.log('[GL] AI image prompts loaded');
 }());
