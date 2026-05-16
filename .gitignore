@@ -1,0 +1,19 @@
+# Real secrets file — never commit. Use supabase/secrets.example.env as the template.
+supabase/secrets.env
+supabase/.temp/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor swap files
+*.swp
+*~
+.vscode/
+.idea/
+
+# Local scratch
+*.scratch
+*.scratch.*
+.help-addon.js.scratch
+.toolbar-redesign.js.scratch
