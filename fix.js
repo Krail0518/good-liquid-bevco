@@ -6102,8 +6102,17 @@
      this creates a session per-invoice with the exact amount.
    ============================================================ */
 (function(){
-  var DEFAULT_FN_URL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1/stripe-checkout';
-  function getFnUrl(){ return (localStorage.getItem('gl_stripe_fn_url') || DEFAULT_FN_URL).trim(); }
+  var DEFAULT_FN_URL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1/stripe-checkout-session';
+  function getFnUrl(){
+    var stored = (localStorage.getItem('gl_stripe_fn_url') || '').trim();
+    // Auto-correct the old wrong URL that was baked into earlier builds —
+    // the deployed function is /stripe-checkout-session, not /stripe-checkout.
+    if(stored && /\/functions\/v1\/stripe-checkout$/.test(stored)){
+      stored = stored + '-session';
+      localStorage.setItem('gl_stripe_fn_url', stored);
+    }
+    return stored || DEFAULT_FN_URL;
+  }
 
   window.openStripeSettings = function(){
     var prior = document.getElementById('gl-stripe-modal'); if(prior) prior.remove();
