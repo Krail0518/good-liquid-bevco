@@ -19306,17 +19306,72 @@
               '<tr><td style="padding:3px 0;color:#555">Routing (ABA)</td><td style="font-family:monospace">063116902</td></tr>' +
             '</table>' +
           '</div>' +
+          (inv.status === 'paid'
+            ? '<div style="margin:0 28px 24px;padding:14px;background:#d1fae5;border-radius:8px;text-align:center;font-weight:700;color:#065f46">✓ Paid in full · Thank you</div>'
+            : '<div style="display:flex;gap:10px;justify-content:center;padding:0 28px 8px;flex-wrap:wrap">' +
+                '<button id="gl-pub-pay-card" style="background:#635bff;color:#fff;border:0;padding:13px 28px;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer">💳 Pay with Card</button>' +
+                '<button id="gl-pub-pay-ach" style="background:#0F6E56;color:#fff;border:0;padding:13px 28px;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer">🏦 Pay with ACH</button>' +
+              '</div>' +
+              '<div id="gl-pub-pay-status" style="text-align:center;padding:6px 28px;font-size:12px;color:#666;min-height:18px"></div>'
+          ) +
           '<div style="display:flex;gap:10px;justify-content:center;padding:0 28px 28px;flex-wrap:wrap">' +
-            '<button id="gl-pub-print" style="background:#0F6E56;color:#fff;border:0;padding:10px 22px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">⬇ Save as PDF</button>' +
+            '<button id="gl-pub-print" style="background:rgba(15,110,86,.10);color:#0F6E56;border:1px solid #0F6E56;padding:10px 22px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">⬇ Save as PDF</button>' +
           '</div>' +
           '<div style="padding:14px 28px;border-top:1px solid #eee;font-size:11px;color:#999;text-align:center;background:#fafafa">' +
             'Payment to Good Liquid Bev Co · Mike@GoodLiquid.com · (803) 493-5065 · goodliquidbevco.com' +
           '</div>' +
         '</div>' +
       '</div>' +
-      '<style>@media print { body { background:#fff!important } div[style*="max-width:720px"] { box-shadow:none!important; border:0!important } #gl-pub-print { display:none } }</style>';
+      '<style>@media print { body { background:#fff!important } div[style*="max-width:720px"] { box-shadow:none!important; border:0!important } #gl-pub-print, #gl-pub-pay-card, #gl-pub-pay-ach { display:none } }</style>';
     var printBtn = document.getElementById('gl-pub-print');
     if(printBtn) printBtn.onclick = function(){ window.print(); };
+
+    // Pay buttons — POST to the stripe-checkout-session Edge Function
+    // (deployed at /functions/v1/stripe-checkout-session, no-verify-jwt) and
+    // redirect to the Stripe-hosted checkout. The Edge Function holds the
+    // Stripe secret server-side; the customer doesn't need a CRM login.
+    function fireStripe(method){
+      var status = document.getElementById('gl-pub-pay-status');
+      var btnC = document.getElementById('gl-pub-pay-card');
+      var btnA = document.getElementById('gl-pub-pay-ach');
+      if(!status) return;
+      if(btnC) btnC.disabled = true;
+      if(btnA) btnA.disabled = true;
+      status.textContent = 'Opening secure Stripe checkout…';
+      var origin = window.location.origin;
+      var basePath = window.location.pathname;
+      var qs = '?invoice_view=' + encodeURIComponent(token);
+      var body = {
+        invoice_id: inv.invoice_number || inv.id,
+        amount: Number(inv.amount) || 0,
+        currency: 'usd',
+        description: 'Invoice ' + (inv.invoice_number || inv.id) + ' — Good Liquid Bev Co',
+        client_email: inv.client_email || '',
+        success_url: origin + basePath + qs + '&paid=1',
+        cancel_url:  origin + basePath + qs,
+        payment_method: method,
+        surcharge_pct: method === 'card' ? 3 : 0
+      };
+      fetch('https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1/stripe-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      }).then(function(r){
+        if(!r.ok) return r.text().then(function(t){ throw new Error('HTTP '+r.status+': '+t.slice(0,200)); });
+        return r.json();
+      }).then(function(data){
+        if(data && data.url){ window.location.href = data.url; }
+        else { status.textContent = 'Could not open checkout. Please use the wire instructions below.'; }
+      }).catch(function(e){
+        if(btnC) btnC.disabled = false;
+        if(btnA) btnA.disabled = false;
+        status.textContent = 'Checkout failed: ' + (e.message || '') + '. Use the wire instructions below, or contact Mike@GoodLiquid.com.';
+      });
+    }
+    var btnCard = document.getElementById('gl-pub-pay-card');
+    if(btnCard) btnCard.onclick = function(){ fireStripe('card'); };
+    var btnAch = document.getElementById('gl-pub-pay-ach');
+    if(btnAch) btnAch.onclick = function(){ fireStripe('ach'); };
   }
 
   // Generate or fetch a share token, then return a public URL.
