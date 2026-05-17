@@ -17190,3 +17190,672 @@
 
   console.log('[GL] compliance polish pack — A photos on NCR · B applicability · C single-print · D doc control · E retention · F mobile · G annual auto-reminder');
 }());
+
+
+/* ============================================================
+   COMPLIANCE ENHANCEMENTS
+   Ships nine high-impact features atop the existing compliance system:
+     1. Bulk PCQI sign-off (Weekly Review)
+     2. Recurring CCP timer (floating widget)
+     3. Inline mini-charts on History records
+     4. Lot QR-code generator
+     5. Compliance records attached to invoices
+     7. CSV import for training records
+     9. Audit-ready scorecard (Dashboard widget)
+    12. CCP trending alerts (last 10 readings → drift detection)
+    14. Lock compliance records on paid invoices
+   Items 6 / 8 / 10 / 11 / 13 / 15 / 16-19 deferred — they require
+   external services (Mailgun cron, dedicated auth role, OCR/vision API,
+   multi-tenant schema, etc.) and are documented in the PR.
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function fmtDate(d){ if(!d) return ''; var x = new Date(d); return isNaN(x.getTime()) ? String(d) : x.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
+  function fmtTs(d){ if(!d) return ''; var x = new Date(d); return isNaN(x.getTime()) ? String(d) : x.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); }
+  function nowISO(){ return new Date().toISOString(); }
+  function pcqiName(){ var u = window.currentUser || {}; return u.name || u.email || 'PCQI'; }
+
+  // ============================================================
+  // 1) BULK PCQI SIGN-OFF on Weekly Review
+  // ============================================================
+  // The Weekly Review tab already has per-row checkboxes for local ack.
+  // We add a "Sign N selected" PCQI action — updates compliance_records
+  // status from 'complete' (or any non-signed) to 'signed' in one shot.
+  function bulkSignSelected(){
+    var checked = Array.prototype.slice.call(document.querySelectorAll('.gl-wk-ack:checked'));
+    var ids = checked.map(function(cb){ return cb.getAttribute('data-id'); });
+    if(!ids.length){ alert('Tick the records you want to sign first.'); return; }
+    if(!confirm('Sign ' + ids.length + ' record' + (ids.length===1?'':'s') + ' as PCQI? Your name + timestamp will be locked into each.')) return;
+    var user = window.currentUser || {};
+    var patch = {
+      status: 'signed',
+      signed_by: user.id || null,
+      signed_at: nowISO(),
+      signature_name: pcqiName(),
+      signature_meaning: 'PCQI bulk sign-off — records reviewed in batch'
+    };
+    (async function(){
+      var done = 0;
+      for(var i = 0; i < ids.length; i++){
+        try { await window.supa.from('compliance_records').update(patch).eq('id', ids[i]); done++; }
+        catch(e){ console.warn('[GL bulk sign] failed for ' + ids[i], e); }
+      }
+      if(typeof window.glAudit === 'function') window.glAudit('compliance_bulk_signoff','', { count: done });
+      if(typeof addNotification === 'function') addNotification('✓ ' + done + ' record' + (done===1?'':'s') + ' signed', 'Bulk PCQI sign-off complete','success');
+      if(typeof window.refreshComplianceMaster === 'function') window.refreshComplianceMaster();
+    })();
+  }
+  // Inject the button into the Weekly Review header whenever it mounts
+  (function injectBulkButton(){
+    var host = document.getElementById('comp-body');
+    if(!host){ setTimeout(injectBulkButton, 700); return; }
+    new MutationObserver(function(){
+      // The weekly review tab renders an "Ack all unreviewed" or empty message.
+      // Look for the gl-wk-ack-all button area and add a sibling "Sign N selected" button.
+      var ackBtn = host.querySelector('#gl-wk-ack-all');
+      if(!ackBtn) return;
+      if(ackBtn.parentNode.querySelector('.gl-wk-bulk-sign')) return;
+      var b = document.createElement('button');
+      b.className = 'cbtn gl-wk-bulk-sign';
+      b.setAttribute('style','font-size:11px;padding:5px 11px;margin-right:6px;background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.32);color:#00e5c0');
+      b.textContent = '✓ Sign selected as PCQI';
+      b.addEventListener('click', bulkSignSelected);
+      ackBtn.parentNode.insertBefore(b, ackBtn);
+    }).observe(host, { childList:true, subtree:true });
+  })();
+
+  // ============================================================
+  // 2) RECURRING CCP TIMER (floating bottom-left widget)
+  // ============================================================
+  // Operator starts a timer when they begin a CCP monitoring run.
+  // Widget counts down to the next reading interval (30 min HTST/Hot Fill,
+  // 60 min UV, etc.). On zero: notification + auto-open the form.
+  var TIMER_INTERVALS = {
+    'FSP-PC-001': { mins: 30, label:'HTST', open:'glOpenHtstForm' },
+    'FSP-PC-002': { mins: 30, label:'Hot Fill', open:'glOpenHotFillForm' },
+    'FSP-PC-003': { mins: 240, label:'Can Seam', open:'glOpenSeamForm' },
+    'FSP-PC-004': { mins: 60, label:'UV', open:'glOpenUvForm' },
+    'GMP-INSP-001':{ mins: 60, label:'Pre-Op', open:'glOpenPreOpForm' }
+  };
+  var TIMERS_KEY = 'gl_ccp_timers';
+  function readTimers(){ try { return JSON.parse(localStorage.getItem(TIMERS_KEY) || '[]'); } catch(e){ return []; } }
+  function writeTimers(arr){ localStorage.setItem(TIMERS_KEY, JSON.stringify(arr || [])); }
+
+  window.glStartCcpTimer = function(form_code, run_id){
+    if(!TIMER_INTERVALS[form_code]) return;
+    var t = TIMER_INTERVALS[form_code];
+    var timers = readTimers();
+    // Replace any existing timer for this form_code+run combination
+    timers = timers.filter(function(x){ return !(x.form_code === form_code && x.run_id === (run_id || null)); });
+    timers.push({
+      id: 'tm_' + Date.now() + '_' + Math.random().toString(36).slice(2,5),
+      form_code: form_code, run_id: run_id || null,
+      label: t.label, mins: t.mins,
+      due_at: Date.now() + t.mins * 60000,
+      open_fn: t.open
+    });
+    writeTimers(timers);
+    renderTimerWidget();
+  };
+  window.glStopCcpTimer = function(id){
+    var timers = readTimers().filter(function(x){ return x.id !== id; });
+    writeTimers(timers);
+    renderTimerWidget();
+  };
+
+  function renderTimerWidget(){
+    var timers = readTimers();
+    var widget = document.getElementById('gl-ccp-timer-widget');
+    if(!timers.length){
+      if(widget) widget.remove();
+      return;
+    }
+    if(!widget){
+      widget = document.createElement('div');
+      widget.id = 'gl-ccp-timer-widget';
+      widget.setAttribute('style','position:fixed;bottom:28px;left:28px;z-index:550;background:#243653;border:1px solid rgba(245,200,66,.4);border-radius:10px;padding:10px 12px;box-shadow:0 12px 36px rgba(0,0,0,.5);color:#fff;font-size:12px;font-family:var(--ff-body,sans-serif);min-width:260px;max-width:320px');
+      document.body.appendChild(widget);
+    }
+    var nowMs = Date.now();
+    widget.innerHTML =
+      '<div style="font-size:10px;letter-spacing:2px;color:#f5c842;font-weight:700;margin-bottom:8px">⏱ CCP READING TIMERS</div>' +
+      timers.map(function(t){
+        var remain = Math.max(0, Math.floor((t.due_at - nowMs) / 1000));
+        var m = Math.floor(remain / 60), s = remain % 60;
+        var due = remain <= 0;
+        var color = due ? '#ff8579' : (remain < 300 ? '#f5c842' : '#5fcf9e');
+        return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><div style="flex:1"><div style="font-weight:600">' + esc(t.label) + '</div>' +
+          '<div style="font-size:11px;color:' + color + ';font-family:var(--ff-mono,monospace)">' + (due ? 'DUE NOW' : (m + 'm ' + (s<10?'0':'') + s + 's')) + '</div></div>' +
+          (due ? '<button onclick="window.glOpenTimerForm(\'' + t.id + '\')" class="cbtn" style="font-size:10px;padding:3px 8px;background:rgba(255,133,121,.15);border-color:rgba(255,133,121,.4);color:#ff8579">▶ Log</button>'
+               : '<button onclick="window.glStopCcpTimer(\'' + t.id + '\')" class="cbtn" style="font-size:10px;padding:3px 8px">✕</button>') +
+        '</div>';
+      }).join('');
+  }
+  window.glOpenTimerForm = function(id){
+    var t = readTimers().find(function(x){ return x.id === id; });
+    if(!t) return;
+    var fn = window[t.open_fn];
+    if(typeof fn === 'function'){
+      fn({ run_id: t.run_id });
+      // Reset the timer to the next interval
+      var interval = TIMER_INTERVALS[t.form_code];
+      if(interval){
+        var timers = readTimers().map(function(x){ return x.id === id ? Object.assign({}, x, { due_at: Date.now() + interval.mins*60000 }) : x; });
+        writeTimers(timers);
+      }
+      renderTimerWidget();
+    }
+  };
+  // Tick every 1s
+  setInterval(function(){
+    if(readTimers().length) renderTimerWidget();
+  }, 1000);
+
+  // Hook the existing form openers to surface a "Start timer" hint
+  // The forms render their own modal; we add a banner to the bottom.
+  function decorateFormWithTimer(form_code){
+    var modal = document.getElementById('gl-comp-modal');
+    if(!modal) return;
+    if(modal.dataset.glTimerBanner === '1') return;
+    if(!TIMER_INTERVALS[form_code]) return;
+    var t = TIMER_INTERVALS[form_code];
+    modal.dataset.glTimerBanner = '1';
+    var hint = document.createElement('div');
+    hint.setAttribute('style','margin:8px 22px;padding:8px 12px;background:rgba(245,200,66,.08);border:1px solid rgba(245,200,66,.25);border-radius:6px;font-size:11px;color:#cfd9e6;display:flex;align-items:center;gap:8px');
+    hint.innerHTML = '<span style="font-size:14px">⏱</span><div style="flex:1">Set a ' + t.mins + '-min recurring reading reminder for this run?</div>' +
+      '<button class="cbtn gl-timer-start" style="font-size:10px;padding:3px 8px">Start timer</button>';
+    var foot = modal.querySelector('.gl-cf-cancel');
+    if(foot && foot.parentNode) foot.parentNode.parentNode.insertBefore(hint, foot.parentNode);
+    hint.querySelector('.gl-timer-start').addEventListener('click', function(){
+      window.glStartCcpTimer(form_code, null);
+      hint.innerHTML = '<span style="font-size:14px;color:#5fcf9e">✓</span> Timer started — bottom-left widget.';
+    });
+  }
+  // Watch modal mounts and decorate by form_code (best-effort detection)
+  new MutationObserver(function(muts){
+    muts.forEach(function(m){
+      if(!m.addedNodes) return;
+      m.addedNodes.forEach(function(n){
+        if(n.nodeType !== 1) return;
+        // Detect by modal title
+        setTimeout(function(){
+          var modal = document.getElementById('gl-comp-modal');
+          if(!modal) return;
+          var title = modal.textContent;
+          Object.keys(TIMER_INTERVALS).forEach(function(code){
+            if(title.indexOf(code) !== -1) decorateFormWithTimer(code);
+          });
+        }, 60);
+      });
+    });
+  }).observe(document.body, { childList:true, subtree:true });
+
+  // ============================================================
+  // 3) INLINE MINI-CHARTS on History records
+  // ============================================================
+  // For CCP form records, render a simple SVG sparkline of values
+  // from the past 20 records of the same form_code.
+  async function renderMiniChartFor(formCode, container){
+    if(!window.supa) return;
+    var r = await window.supa.from('compliance_records').select('data,recorded_at').eq('form_code', formCode).order('recorded_at',{ascending:false}).limit(20);
+    var rows = (r.data || []).reverse();
+    if(rows.length < 2) return;
+    var field;
+    if(formCode === 'FSP-PC-001') field = 'temp_f';
+    if(formCode === 'FSP-PC-002') field = 'temp_f';
+    if(formCode === 'FSP-PC-004') field = 'dose';
+    if(formCode === 'FSP-PC-005') field = 'ph_final';
+    if(!field) return;
+    var values = rows.map(function(r){ var v = r.data && r.data[field]; return typeof v === 'number' ? v : parseFloat(v); }).filter(function(v){ return !isNaN(v); });
+    if(values.length < 2) return;
+    var min = Math.min.apply(null, values), max = Math.max.apply(null, values);
+    var range = (max - min) || 1;
+    var w = 280, h = 50, pad = 4;
+    var pts = values.map(function(v, i){
+      var x = pad + (i / (values.length - 1)) * (w - 2*pad);
+      var y = h - pad - ((v - min) / range) * (h - 2*pad);
+      return x.toFixed(1) + ',' + y.toFixed(1);
+    }).join(' ');
+    // CCP limit reference line
+    var lim = (window.glGetLimits && window.glGetLimits()) || {};
+    var limit = null;
+    if(formCode === 'FSP-PC-001') limit = lim.htst_temp_f;
+    if(formCode === 'FSP-PC-002') limit = lim.hot_fill_f;
+    if(formCode === 'FSP-PC-004') limit = lim.uv_dose_mj_cm2;
+    if(formCode === 'FSP-PC-005') limit = lim.final_pH_fermented;
+    var limitY = (limit && limit >= min && limit <= max) ? (h - pad - ((limit - min) / range) * (h - 2*pad)) : null;
+    var trend = values[values.length - 1] - values[0];
+    var trendArrow = Math.abs(trend) < range * 0.05 ? '→' : (trend > 0 ? '↑' : '↓');
+    var trendColor = (formCode === 'FSP-PC-005')  // pH — higher is worse for fermented
+      ? (trend > range * 0.1 ? '#ff8579' : '#5fcf9e')
+      : (trend < -range * 0.1 ? '#ff8579' : '#5fcf9e');
+    container.innerHTML =
+      '<div style="margin-top:10px;padding:8px;background:rgba(0,229,192,.04);border:1px solid rgba(0,229,192,.15);border-radius:6px">' +
+        '<div style="font-size:10px;color:#9aa7bd;letter-spacing:1px;margin-bottom:4px">' + field + ' · last ' + values.length + ' readings · trend ' + trendArrow + '</div>' +
+        '<svg viewBox="0 0 ' + w + ' ' + h + '" style="width:100%;height:50px">' +
+          (limitY !== null ? '<line x1="0" x2="' + w + '" y1="' + limitY + '" y2="' + limitY + '" stroke="#ff8579" stroke-width="1" stroke-dasharray="3,3" opacity="0.6"></line>' : '') +
+          '<polyline points="' + pts + '" fill="none" stroke="' + trendColor + '" stroke-width="2"></polyline>' +
+        '</svg>' +
+        '<div style="font-size:10px;color:#9aa7bd;display:flex;justify-content:space-between"><span>min ' + min.toFixed(1) + '</span><span>max ' + max.toFixed(1) + '</span>' + (limit ? '<span style="color:#ff8579">CL ' + limit + '</span>' : '') + '</div>' +
+      '</div>';
+  }
+  // Hook into History expanded rows
+  (function hookHistoryCharts(){
+    var host = document.getElementById('comp-body');
+    if(!host){ setTimeout(hookHistoryCharts, 700); return; }
+    new MutationObserver(function(){
+      host.querySelectorAll('.gl-hist-row').forEach(function(row){
+        if(row.dataset.glChartHooked === '1') return;
+        var detail = row.querySelector('.gl-hist-detail');
+        if(!detail) return;
+        // Get the form code from the row's first text
+        var formCode = (row.querySelector('div').textContent.match(/[A-Z]+-[A-Z]+-\d+/) || [])[0];
+        if(!formCode) return;
+        if(!['FSP-PC-001','FSP-PC-002','FSP-PC-004','FSP-PC-005'].includes(formCode)) return;
+        row.dataset.glChartHooked = '1';
+        var chartDiv = document.createElement('div');
+        chartDiv.className = 'gl-hist-chart';
+        detail.appendChild(chartDiv);
+        renderMiniChartFor(formCode, chartDiv);
+      });
+    }).observe(host, { childList:true, subtree:true });
+  })();
+
+  // ============================================================
+  // 4) LOT QR-CODE GENERATOR
+  // ============================================================
+  // Generates a printable sticker with lot, QR code (via Google Chart API),
+  // and the trace URL. Available from Trace Lot tab.
+  window.glOpenLotQr = function(lot){
+    if(!lot){
+      lot = prompt('Enter the lot number to generate a QR sticker for:');
+      if(!lot) return;
+    }
+    lot = String(lot).trim();
+    var traceUrl = location.origin + '/?trace=' + encodeURIComponent(lot);
+    var qrUrl = 'https://chart.googleapis.com/chart?cht=qr&chs=240x240&chld=Q&chl=' + encodeURIComponent(traceUrl);
+    var w = window.open('','_blank');
+    if(!w){ alert('Pop-up blocked'); return; }
+    w.document.write(
+      '<!doctype html><html><head><meta charset="utf-8"><title>Lot QR — ' + esc(lot) + '</title>' +
+      '<style>body{font-family:Helvetica,Arial,sans-serif;margin:24px;color:#0a1628}.sticker{display:inline-block;border:2px solid #0a8;padding:18px 22px;border-radius:10px;text-align:center;margin:8px;break-inside:avoid}.sticker h2{font-size:14px;letter-spacing:1px;margin:0 0 8px;color:#0a8}.sticker .lot{font-family:monospace;font-size:14px;margin-bottom:8px;font-weight:700}.sticker img{display:block;margin:0 auto 6px}.sticker .url{font-size:9px;color:#666;max-width:240px;word-break:break-all}@media print{body{margin:8px}.no-print{display:none}}</style>' +
+      '</head><body>' +
+      '<div class="no-print" style="margin-bottom:14px"><button onclick="window.print()" style="padding:8px 16px;background:#0a8;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:700">🖨️ Print sticker</button> <button onclick="window.close()" style="margin-left:6px">Close</button> · Print up to 4 copies for the pallet, BOL, master case, and warehouse copy.</div>' +
+      '<div class="sticker"><h2>GOOD LIQUID BEV CO</h2><div class="lot">' + esc(lot) + '</div><img src="' + qrUrl + '" width="180" height="180" alt="QR"><div class="url">' + esc(traceUrl) + '</div></div>'.repeat(4) +
+      '</body></html>'
+    );
+    w.document.close();
+  };
+  // Add a "Lot sticker" button to Trace Lot tab results
+  (function hookTraceQr(){
+    var host = document.getElementById('comp-body');
+    if(!host){ setTimeout(hookTraceQr, 700); return; }
+    new MutationObserver(function(){
+      var traceInput = document.getElementById('gl-trace-q');
+      if(!traceInput) return;
+      var goBtn = document.getElementById('gl-trace-go');
+      if(!goBtn || goBtn.parentNode.querySelector('.gl-trace-qr-btn')) return;
+      var qrBtn = document.createElement('button');
+      qrBtn.className = 'cbtn gl-trace-qr-btn';
+      qrBtn.setAttribute('style','padding:9px 14px;background:rgba(196,164,248,.1);border:1px solid rgba(196,164,248,.32);color:#c4a4f8;margin-left:6px');
+      qrBtn.textContent = '📱 Print lot sticker';
+      qrBtn.addEventListener('click', function(){
+        var lot = traceInput.value.trim();
+        if(!lot){ alert('Enter a lot number first.'); return; }
+        window.glOpenLotQr(lot);
+      });
+      goBtn.parentNode.appendChild(qrBtn);
+    }).observe(host, { childList:true, subtree:true });
+  })();
+
+  // ============================================================
+  // 5) COMPLIANCE RECORDS ATTACHED TO INVOICES
+  // ============================================================
+  // On any invoice detail panel, surface a "📋 Compliance for this lot"
+  // footer with record counts + a Trace Lot deep-link.
+  function injectInvoiceComplianceFooter(){
+    var detail = document.querySelector('.inv-detail') || document.getElementById('cpg-invoice-detail');
+    if(!detail) return;
+    if(detail.querySelector('.gl-inv-compliance')) return;
+    var lot = null;
+    // Best-effort lot detection from the rendered invoice — look for "Lot" label or known patterns
+    var lotMatch = (detail.innerText || '').match(/Lot[:\s]+([A-Z0-9-]+)/i);
+    if(lotMatch) lot = lotMatch[1];
+    if(!lot) return;
+    (async function(){
+      if(!window.supa) return;
+      var like = '%' + lot + '%';
+      try {
+        var r = await window.supa.from('compliance_records').select('*',{count:'exact',head:true}).or('data->>lot.ilike.' + like + ',data->>lot_number.ilike.' + like);
+        var holds = await window.supa.from('hold_tags').select('*',{count:'exact',head:true}).eq('status','open').ilike('lot_number', like);
+        var count = r.count || 0;
+        var openHolds = holds.count || 0;
+        var footer = document.createElement('div');
+        footer.className = 'gl-inv-compliance';
+        footer.setAttribute('style','margin-top:12px;padding:11px 14px;background:rgba(0,229,192,.05);border:1px solid rgba(0,229,192,.18);border-left:3px solid var(--teal);border-radius:0 8px 8px 0;font-size:11px;color:#cfd9e6;display:flex;align-items:center;gap:10px');
+        footer.innerHTML =
+          '<div style="font-size:14px">📋</div>' +
+          '<div style="flex:1"><b style="color:var(--teal)">Compliance records for lot ' + esc(lot) + ':</b> ' + count + ' record' + (count===1?'':'s') +
+            (openHolds ? ' · <span style="color:#ff8579;font-weight:700">' + openHolds + ' OPEN HOLD' + (openHolds===1?'':'S') + '</span>' : '') + '</div>' +
+          '<button class="cbtn gl-inv-trace" style="font-size:10px;padding:4px 10px">🔍 Trace</button>';
+        detail.appendChild(footer);
+        footer.querySelector('.gl-inv-trace').addEventListener('click', function(){
+          if(typeof window.cNav === 'function') window.cNav('compliance');
+          setTimeout(function(){
+            var input = document.getElementById('gl-trace-q');
+            if(input){ input.value = lot; var goBtn = document.getElementById('gl-trace-go'); if(goBtn) goBtn.click(); }
+          }, 400);
+        });
+      } catch(e){ console.warn('[GL inv-compliance] failed', e); }
+    })();
+  }
+  // Observe invoice detail mounts
+  (function watchInvoiceDetail(){
+    var pages = document.getElementById('crm-panel');
+    if(!pages){ setTimeout(watchInvoiceDetail, 700); return; }
+    new MutationObserver(function(){ setTimeout(injectInvoiceComplianceFooter, 80); }).observe(pages, { childList:true, subtree:true });
+  })();
+
+  // ============================================================
+  // 7) CSV IMPORT for training records
+  // ============================================================
+  window.glOpenTrainingCsvImport = function(){
+    var prior = document.getElementById('gl-tr-csv-modal'); if(prior) prior.remove();
+    var ov = document.createElement('div');
+    ov.id = 'gl-tr-csv-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:9000;background:rgba(6,13,26,.85);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto');
+    ov.innerHTML =
+      '<div style="background:#243653;border:1px solid rgba(0,229,192,.22);border-radius:14px;width:100%;max-width:600px;max-height:88vh;overflow-y:auto;color:#cfd9e6;box-shadow:0 20px 60px rgba(0,0,0,.6)">' +
+        '<div style="padding:18px 22px;border-bottom:1px solid rgba(255,255,255,.06)">' +
+          '<div style="font-family:var(--ff-disp);font-size:14px;letter-spacing:2px;color:var(--teal);font-weight:700">📥 BULK IMPORT — TRAINING RECORDS</div>' +
+          '<div style="font-size:11px;color:#9aa7bd;margin-top:3px">Paste CSV with header row. One training event per row.</div>' +
+        '</div>' +
+        '<div style="padding:18px 22px">' +
+          '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Required columns (in order):</div>' +
+          '<code style="display:block;padding:8px;background:rgba(255,255,255,.05);border-radius:6px;font-size:11px;color:#7fc6f5;margin-bottom:10px">employee,role,topic,method,duration_min,trainer,date</code>' +
+          '<textarea id="gl-tr-csv-text" rows="10" placeholder="employee,role,topic,method,duration_min,trainer,date&#10;Jane Doe,Operator,GMP orientation,Online,30,Mike Krail,2026-05-17&#10;..." style="width:100%;padding:10px 12px;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#fff;font-family:monospace;font-size:11px;box-sizing:border-box;resize:vertical"></textarea>' +
+          '<div id="gl-tr-csv-preview" style="margin-top:10px;font-size:11px;color:#9aa7bd"></div>' +
+        '</div>' +
+        '<div style="padding:14px 22px;border-top:1px solid rgba(255,255,255,.06);display:flex;gap:8px;justify-content:flex-end">' +
+          '<button id="gl-tr-csv-cancel" class="cbtn">Cancel</button>' +
+          '<button id="gl-tr-csv-import" class="cbtn pri">Import &amp; sign all as PCQI</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    function close(){ ov.remove(); }
+    ov.querySelector('#gl-tr-csv-cancel').addEventListener('click', close);
+    ov.addEventListener('click', function(e){ if(e.target === ov) close(); });
+
+    function parseCsv(txt){
+      var lines = txt.split(/\r?\n/).filter(function(l){ return l.trim(); });
+      if(lines.length < 2) return { error:'Need at least header + 1 row' };
+      var header = lines[0].split(',').map(function(s){ return s.trim().toLowerCase(); });
+      var need = ['employee','role','topic','method','duration_min','trainer','date'];
+      var missing = need.filter(function(n){ return header.indexOf(n) === -1; });
+      if(missing.length) return { error:'Missing required column(s): ' + missing.join(', ') };
+      var rows = [];
+      for(var i = 1; i < lines.length; i++){
+        // Simple CSV split (no quoted-comma support)
+        var cols = lines[i].split(',').map(function(s){ return s.trim(); });
+        var obj = {};
+        header.forEach(function(h, idx){ obj[h] = cols[idx] || ''; });
+        if(obj.employee) rows.push(obj);
+      }
+      return { rows: rows };
+    }
+
+    var ta = ov.querySelector('#gl-tr-csv-text');
+    var prev = ov.querySelector('#gl-tr-csv-preview');
+    ta.addEventListener('input', function(){
+      var res = parseCsv(ta.value);
+      if(res.error){ prev.innerHTML = '<span style="color:#ff8579">' + esc(res.error) + '</span>'; }
+      else {
+        prev.innerHTML = '<span style="color:#5fcf9e">✓ ' + res.rows.length + ' row' + (res.rows.length===1?'':'s') + ' ready to import.</span>';
+      }
+    });
+    ov.querySelector('#gl-tr-csv-import').addEventListener('click', async function(){
+      var res = parseCsv(ta.value);
+      if(res.error){ alert(res.error); return; }
+      if(!confirm('Import ' + res.rows.length + ' training records, signed as PCQI?')) return;
+      var btn = this; btn.disabled = true; btn.textContent = 'Importing…';
+      var user = window.currentUser || {};
+      var done = 0;
+      for(var i = 0; i < res.rows.length; i++){
+        var r = res.rows[i];
+        try {
+          await window.supa.from('compliance_records').insert([{
+            form_code: 'GMP-TR-001',
+            record_date: r.date || nowISO().slice(0,10),
+            data: {
+              employee: r.employee, role: r.role, topic: r.topic,
+              method: r.method, duration: r.duration_min, trainer: r.trainer,
+              sig: 'Y', imported_via_csv: true
+            },
+            status: 'signed',
+            signed_by: user.id || null, signed_at: nowISO(),
+            signature_name: pcqiName(),
+            signature_meaning: 'PCQI bulk-imported training record'
+          }]);
+          done++;
+        } catch(e){ console.warn('[GL training csv] failed for ' + r.employee, e); }
+      }
+      if(typeof addNotification === 'function') addNotification('📥 Imported ' + done + ' training records', '', 'success');
+      if(typeof window.glAudit === 'function') window.glAudit('training_csv_import','', { count: done });
+      close();
+      if(typeof window.refreshComplianceMaster === 'function') window.refreshComplianceMaster();
+    });
+  };
+
+  // ============================================================
+  // 9) AUDIT-READY SCORECARD (Dashboard widget)
+  // ============================================================
+  // 5 components: unsigned >7d, expired cals, overdue annual review,
+  // open Hold Tags, mock recall in last 90 days. Each red/yellow/green.
+  async function computeAuditScore(){
+    if(!window.supa) return null;
+    var sevenDaysAgo = new Date(Date.now() - 7*86400000).toISOString();
+    var ninetyDaysAgo = new Date(Date.now() - 90*86400000).toISOString();
+    var oneYearAgo = new Date(Date.now() - 365*86400000).toISOString();
+    var twentyfourMonthsAgo = new Date(Date.now() - 730*86400000).toISOString();
+    var todayDate = new Date().toISOString().slice(0,10);
+    var checks = [];
+    // (a) Unsigned records older than 7 days
+    var u = await window.supa.from('compliance_records').select('id',{count:'exact',head:true}).neq('status','signed').neq('status','voided').lt('recorded_at', sevenDaysAgo);
+    checks.push({ id:'unsigned', label:'Unsigned records >7d old', count: u.count || 0, severity: (u.count > 0 ? 'red' : 'green'), action:'Open Logs tab → sign them' });
+    // (b) Open Hold Tags
+    var h = await window.supa.from('hold_tags').select('id',{count:'exact',head:true}).eq('status','open');
+    checks.push({ id:'holds', label:'Open Hold Tags', count: h.count || 0, severity: (h.count > 0 ? 'yellow' : 'green'), action:'Sidebar → Hold Tags → disposition' });
+    // (c) Calibrations — last cal record per instrument should be <30 days
+    var cals = await window.supa.from('compliance_records').select('record_date,data').eq('form_code','GMP-CAL-001').order('record_date',{ascending:false}).limit(100);
+    var byInst = {};
+    (cals.data || []).forEach(function(c){ var inst = c.data && c.data.instrument; if(inst && !byInst[inst]) byInst[inst] = c.record_date; });
+    var staleCount = 0;
+    Object.keys(byInst).forEach(function(k){ if(byInst[k] < new Date(Date.now()-31*86400000).toISOString().slice(0,10)) staleCount++; });
+    checks.push({ id:'cals', label:'Stale calibrations (>30d)', count: staleCount, severity: (staleCount > 0 ? 'red' : 'green'), action:'Run GMP-CAL-001 for each' });
+    // (d) Annual FSP review — last one signed should be <365 days
+    var fsp = await window.supa.from('compliance_records').select('signed_at').eq('form_code','FSP-VER-002').eq('status','signed').order('signed_at',{ascending:false}).limit(1);
+    var lastFsp = fsp.data && fsp.data[0];
+    var fspOk = lastFsp && lastFsp.signed_at > oneYearAgo;
+    checks.push({ id:'fsp', label:'Annual FSP review current', count: fspOk ? 1 : 0, severity: fspOk ? 'green' : 'red', action: lastFsp ? 'Due ' + fmtDate(new Date(new Date(lastFsp.signed_at).getTime() + 365*86400000)) : 'Never done — schedule today' });
+    // (e) Mock recall in last 90 days — look for entries where data has trace evidence
+    // Approximation: we can't easily track "mock recall" as records, so use FSP-VER-002 mock_recall field or just flag green if any FSP review mentions it
+    var mock = await window.supa.from('compliance_records').select('data').eq('form_code','FSP-VER-002').gt('recorded_at', ninetyDaysAgo).limit(1);
+    var mockDone = mock.data && mock.data[0] && mock.data[0].data && mock.data[0].data.mock_recall;
+    checks.push({ id:'mock', label:'Mock recall in last 90d', count: mockDone ? 1 : 0, severity: mockDone ? 'green' : 'yellow', action:'Run 🎯 Mock Recall on Compliance page' });
+    var score = checks.filter(function(c){ return c.severity === 'green'; }).length;
+    var total = checks.length;
+    var overall = score === total ? 'green' : (checks.some(function(c){ return c.severity === 'red'; }) ? 'red' : 'yellow');
+    return { checks: checks, score: score, total: total, overall: overall };
+  }
+  async function renderAuditScorecard(){
+    var dash = document.getElementById('cpg-dashboard');
+    if(!dash) return;
+    if(dash.querySelector('#gl-audit-scorecard')) return;
+    var data = await computeAuditScore();
+    if(!data) return;
+    var widget = document.createElement('div');
+    widget.id = 'gl-audit-scorecard';
+    widget.setAttribute('style','padding:14px;background:#2e486b;border:1px solid rgba(255,255,255,.1);border-radius:10px;margin-bottom:14px');
+    var colorMap = { green:'#5fcf9e', yellow:'#f5c842', red:'#ff8579' };
+    var overallColor = colorMap[data.overall];
+    widget.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
+        '<div style="font-family:var(--ff-disp);font-size:13px;letter-spacing:2px;color:var(--teal);font-weight:700">📋 FDA AUDIT READINESS</div>' +
+        '<div style="display:flex;align-items:center;gap:8px"><div style="font-size:24px;font-weight:800;color:' + overallColor + '">' + data.score + '/' + data.total + '</div></div>' +
+      '</div>' +
+      data.checks.map(function(c){
+        var col = colorMap[c.severity];
+        return '<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:rgba(255,255,255,.03);border-left:3px solid ' + col + ';border-radius:0 6px 6px 0;margin-bottom:4px;font-size:12px">' +
+          '<div style="font-size:14px;color:' + col + ';width:14px;text-align:center">' + (c.severity === 'green' ? '✓' : (c.severity === 'red' ? '✕' : '!')) + '</div>' +
+          '<div style="flex:1"><div style="color:#fff;font-weight:600">' + esc(c.label) + (c.count !== undefined ? ' <span style="color:#9aa7bd;font-weight:400">· ' + c.count + '</span>' : '') + '</div>' +
+            '<div style="font-size:10px;color:#9aa7bd;margin-top:2px">' + esc(c.action) + '</div>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+    // Insert after the first child (or banner if any)
+    var first = dash.firstElementChild;
+    var firstNonBanner = first;
+    while(firstNonBanner && firstNonBanner.id && firstNonBanner.id.indexOf('banner') !== -1) firstNonBanner = firstNonBanner.nextElementSibling;
+    if(firstNonBanner) dash.insertBefore(widget, firstNonBanner.nextSibling || null);
+    else dash.appendChild(widget);
+  }
+  (function watchDashForScorecard(){
+    var dash = document.getElementById('cpg-dashboard');
+    if(!dash){ setTimeout(watchDashForScorecard, 700); return; }
+    new MutationObserver(function(){
+      if(dash.classList.contains('act') && !dash.querySelector('#gl-audit-scorecard')) renderAuditScorecard();
+    }).observe(dash, { attributes:true, childList:true, attributeFilter:['class'] });
+    if(dash.classList.contains('act')) renderAuditScorecard();
+  })();
+
+  // ============================================================
+  // 12) CCP TRENDING ALERTS — look at the last 10 readings of each
+  // CCP form_code; if the trend is moving toward CL, surface on dashboard.
+  // ============================================================
+  async function detectCcpTrends(){
+    if(!window.supa) return [];
+    var alerts = [];
+    var lims = (window.glGetLimits && window.glGetLimits()) || { htst_temp_f: 165, hot_fill_f: 185, uv_dose_mj_cm2: 40, final_pH_fermented: 4.6 };
+    var ccps = [
+      { code:'FSP-PC-001', field:'temp_f', limit: lims.htst_temp_f, direction:'down', label:'HTST temp', unit:'°F' },
+      { code:'FSP-PC-002', field:'temp_f', limit: lims.hot_fill_f, direction:'down', label:'Hot Fill temp', unit:'°F' },
+      { code:'FSP-PC-004', field:'dose',   limit: lims.uv_dose_mj_cm2, direction:'down', label:'UV dose', unit:'mJ/cm²' },
+      { code:'FSP-PC-005', field:'ph_final', limit: lims.final_pH_fermented, direction:'up', label:'Fermented pH', unit:'pH' }
+    ];
+    for(var i = 0; i < ccps.length; i++){
+      var c = ccps[i];
+      try {
+        var r = await window.supa.from('compliance_records').select('data,recorded_at').eq('form_code', c.code).order('recorded_at',{ascending:false}).limit(10);
+        var values = (r.data || []).map(function(rec){ var v = rec.data && rec.data[c.field]; return typeof v === 'number' ? v : parseFloat(v); }).filter(function(v){ return !isNaN(v); }).reverse();
+        if(values.length < 4) continue;
+        // Compare avg of first half vs last half
+        var half = Math.floor(values.length / 2);
+        var avg1 = values.slice(0, half).reduce(function(a,b){return a+b;}, 0) / half;
+        var avg2 = values.slice(half).reduce(function(a,b){return a+b;}, 0) / (values.length - half);
+        var drift = avg2 - avg1;
+        var driftToCl = c.direction === 'down' ? -drift : drift;
+        var distToCl = c.direction === 'down' ? (avg2 - c.limit) : (c.limit - avg2);
+        // Alert if drifting toward limit AND within 1.5× the CL margin
+        if(driftToCl > 0 && distToCl < Math.abs(c.limit * 0.05)){
+          alerts.push({ ccp: c.label, latest: avg2.toFixed(2), limit: c.limit, unit: c.unit, drift: drift.toFixed(2) });
+        }
+      } catch(e){}
+    }
+    return alerts;
+  }
+  async function renderTrendAlerts(){
+    var dash = document.getElementById('cpg-dashboard');
+    if(!dash) return;
+    var existing = dash.querySelector('#gl-trend-alerts');
+    var alerts = await detectCcpTrends();
+    if(!alerts.length){ if(existing) existing.remove(); return; }
+    if(existing) existing.remove();
+    var banner = document.createElement('div');
+    banner.id = 'gl-trend-alerts';
+    banner.setAttribute('style','padding:11px 14px;background:rgba(245,200,66,.1);border:1px solid rgba(245,200,66,.3);border-left:3px solid #f5c842;border-radius:0 8px 8px 0;margin-bottom:14px;font-size:12px;color:#cfd9e6');
+    banner.innerHTML = '<b style="color:#f5c842">📉 CCP trend warning:</b><div style="margin-top:6px">' +
+      alerts.map(function(a){ return '<div style="margin-top:3px"><b>' + esc(a.ccp) + '</b> trending toward critical limit. Last avg ' + a.latest + ' ' + esc(a.unit) + ' (CL ' + a.limit + ', drift ' + a.drift + ').</div>'; }).join('') +
+    '</div>';
+    var first = dash.firstElementChild;
+    dash.insertBefore(banner, first || null);
+  }
+  (function watchDashForTrends(){
+    var dash = document.getElementById('cpg-dashboard');
+    if(!dash){ setTimeout(watchDashForTrends, 700); return; }
+    new MutationObserver(function(){
+      if(dash.classList.contains('act')) renderTrendAlerts();
+    }).observe(dash, { attributes:true, attributeFilter:['class'] });
+    if(dash.classList.contains('act')) renderTrendAlerts();
+  })();
+
+  // ============================================================
+  // 14) LOCK records when invoice is marked paid
+  // ============================================================
+  // When the user marks an invoice paid, we find any compliance_records
+  // referencing the invoice's run/lot and stamp data.locked_at + a
+  // signature_meaning suffix. They stay visible but the History row gets
+  // a 🔒 lock badge and the form-edit path can warn.
+  function patchQuickPaid(){
+    var orig = window.quickPaid;
+    if(typeof orig !== 'function'){ setTimeout(patchQuickPaid, 700); return; }
+    if(window.__glQuickPaidLockHooked) return;
+    window.__glQuickPaidLockHooked = true;
+    window.quickPaid = function(id){
+      var r = orig.apply(this, arguments);
+      // Find this invoice's lot/run and lock related records
+      var inv = (window.invoices || []).find(function(i){ return i.id === id; });
+      if(!inv || !window.supa) return r;
+      (async function(){
+        try {
+          // Find compliance records by run_id (if invoice has one) OR by lot in data
+          var recs = [];
+          if(inv.run_id){
+            var rr = await window.supa.from('compliance_records').select('id,data').eq('run_id', inv.run_id).neq('status','voided');
+            recs = rr.data || [];
+          }
+          if(!recs.length && inv.lot){
+            var like = '%' + inv.lot + '%';
+            var rl = await window.supa.from('compliance_records').select('id,data').or('data->>lot.ilike.' + like + ',data->>lot_number.ilike.' + like).neq('status','voided');
+            recs = rl.data || [];
+          }
+          if(!recs.length) return;
+          var lockedCount = 0;
+          for(var i = 0; i < recs.length; i++){
+            var rec = recs[i];
+            if(rec.data && rec.data.locked_at) continue;
+            var newData = Object.assign({}, rec.data || {}, { locked_at: nowISO(), locked_reason: 'Invoice ' + inv.id + ' marked paid' });
+            try { await window.supa.from('compliance_records').update({ data: newData }).eq('id', rec.id); lockedCount++; }
+            catch(e){}
+          }
+          if(lockedCount && typeof addNotification === 'function'){
+            addNotification('🔒 ' + lockedCount + ' compliance record' + (lockedCount===1?'':'s') + ' locked', 'Invoice ' + inv.id + ' paid → records frozen for audit', 'info');
+          }
+          if(typeof window.glAudit === 'function') window.glAudit('records_locked_on_paid', inv.id, { count: lockedCount });
+        } catch(e){ console.warn('[GL records lock] failed', e); }
+      })();
+      return r;
+    };
+  }
+  patchQuickPaid();
+
+  // ============================================================
+  // Add Training-CSV-import button onto the Compliance master page
+  // ============================================================
+  (function injectTrainingCsv(){
+    var host = document.getElementById('comp-body');
+    if(!host){ setTimeout(injectTrainingCsv, 700); return; }
+    new MutationObserver(function(){
+      var addBtn = host.querySelector('.gl-comp-applic');
+      if(!addBtn) return;
+      if(addBtn.parentNode.querySelector('.gl-comp-csv')) return;
+      var b = document.createElement('button');
+      b.className = 'cbtn gl-comp-csv';
+      b.setAttribute('style','font-size:11px;padding:5px 11px;margin-right:6px;background:rgba(95,207,158,.08);border:1px solid rgba(95,207,158,.3);color:#5fcf9e');
+      b.textContent = '📥 Import training CSV';
+      b.addEventListener('click', function(){ window.glOpenTrainingCsvImport(); });
+      addBtn.parentNode.insertBefore(b, addBtn);
+    }).observe(host, { childList:true, subtree:true });
+  })();
+
+  console.log('[GL] compliance enhancements pack — 9 features: bulk sign + CCP timer + mini-charts + lot QR + invoice-records footer + training CSV + audit scorecard + trend alerts + paid-lock');
+}());
