@@ -19681,12 +19681,25 @@
           else if(typeof opts.bcc === 'string') bccArr = opts.bcc.split(/[,;]/).map(function(s){ return s.trim(); }).filter(Boolean);
         }
         if(sb){
+          // Auto-detect "GL-####" in the subject so the row links to its
+          // invoice and shows up under the invoice's Activity tab.
+          var invNum = null;
+          var invSupaId = null;
+          var combined = (subject||'') + ' ' + (body||'');
+          var m = combined.match(/GL-\d+/);
+          if(m){
+            invNum = m[0];
+            var matched = (window.invoices||[]).find(function(i){ return i.id === invNum; });
+            if(matched && matched.supaId) invSupaId = matched.supaId;
+          }
           await sb.from('email_log').insert({
             to_email: Array.isArray(to) ? to.join(', ') : (to||''),
             cc_emails: ccArr.length ? ccArr : null,
             bcc_emails: bccArr.length ? bccArr : null,
             subject: subject || '',
             body_preview: (body || '').slice(0, 280),
+            invoice_id: invSupaId,
+            invoice_number: invNum,
             status: ok ? 'sent' : 'failed',
             sent_at: ok ? new Date().toISOString() : null
           });
@@ -19703,10 +19716,21 @@
   window.glOpenEmailActivity = async function(invoiceFilter){
     var sb = getSB(); if(!sb) return;
     var ex = document.getElementById('gl-email-activity'); if(ex) ex.remove();
-    var q = sb.from('email_log').select('*').order('created_at', { ascending: false }).limit(100);
-    if(invoiceFilter){ q = q.eq('invoice_number', invoiceFilter); }
-    var r = await q;
-    var rows = r.data || [];
+    var fellBackToAll = false;
+    var rows;
+    if(invoiceFilter){
+      var rf = await sb.from('email_log').select('*').eq('invoice_number', invoiceFilter).order('created_at', { ascending: false }).limit(100);
+      rows = rf.data || [];
+      if(rows.length === 0){
+        // No invoice-specific sends — fall back to all and flag it.
+        var ra = await sb.from('email_log').select('*').order('created_at', { ascending: false }).limit(100);
+        rows = ra.data || [];
+        fellBackToAll = true;
+      }
+    } else {
+      var rall = await sb.from('email_log').select('*').order('created_at', { ascending: false }).limit(100);
+      rows = rall.data || [];
+    }
     var STATUS_COLOR = { sent:'#5fcf9e', delivered:'#5fcf9e', opened:'#1a6fff', clicked:'#7c3aed', bounced:'#e74c3c', failed:'#e74c3c', queued:'#f5c842' };
     var bodyHtml = rows.length ? rows.map(function(r){
       var color = STATUS_COLOR[r.status] || '#9aa7bd';
@@ -19735,7 +19759,11 @@
           '</div>' +
           '<button id="gl-ea-close" style="background:none;border:none;color:#9aa7bd;font-size:22px;cursor:pointer;line-height:1">✕</button>' +
         '</div>' +
-        '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">Open / click tracking populates when the Mailgun webhook is configured (Settings → Webhooks → POST https://&lt;your-supabase-project&gt;.functions.supabase.co/mailgun-webhook).</div>' +
+        '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">' +
+          (fellBackToAll
+            ? '<span style="color:#f5c842">⚠ No sends tagged to ' + escHtml(invoiceFilter) + ' yet — showing all sends across the account.</span>'
+            : 'Open / click tracking populates when Mailgun webhooks fire on delivered / opens / clicks.') +
+        '</div>' +
         '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:10px;max-height:60vh;overflow-y:auto">' +
           bodyHtml +
         '</div>' +
