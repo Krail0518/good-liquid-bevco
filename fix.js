@@ -1591,9 +1591,16 @@
     var lines=readLinesFromDOM();
     if(!lines.length){alert('Add at least one line item.');return null;}
 
+    // Edit mode: openEditInvoice tags the builder modal with the supa row id
+    // of the invoice being edited. When present, we UPDATE that row instead of
+    // INSERTing a new one (which would create a duplicate).
+    var builderEl = document.getElementById('gl-inv-builder');
+    var editingSupaId = builderEl ? builderEl.getAttribute('data-editing-supa-id') : null;
+    var editingId     = builderEl ? builderEl.getAttribute('data-editing-id') : null;
+
     var client=(window.clients||[]).find(function(c){return c.id===cid;})||{};
     var invIdEl=document.getElementById('ginv-id');
-    var invId=(invIdEl&&invIdEl.value)?invIdEl.value:nextInvId();
+    var invId=(invIdEl&&invIdEl.value)?invIdEl.value:(editingId||nextInvId());
     var dateEl=document.getElementById('ginv-date');
     var date=(dateEl&&dateEl.value)?dateEl.value:new Date().toISOString().slice(0,10);
     var discEl=document.getElementById('ginv-disc');
@@ -1652,33 +1659,128 @@
         if(typeof addNotification==='function')addNotification('Cloud sync skipped','Saved locally — Supabase client not loaded.','warning');
         return;
       }
-      sb.from('invoices').insert({
+      var payload = {
         invoice_number:invId,
         client_id:(cid&&cid.charAt(0)==='c')?null:cid,
         client_name:client.name||'',
         service:inv.svc,
         amount:amount,
-        status:'pending',
         invoice_date:date,
         due_date:dueIso||null,
         payment_terms: inv.paymentTerms,
-        notes:'',
         line_items:lines
-      }).select().single().then(function(r){
+      };
+      // On INSERT (new invoice) seed status=pending. On UPDATE preserve the
+      // existing row's status so editing a paid invoice doesn't accidentally
+      // un-mark it as paid.
+      var op;
+      if(editingSupaId){
+        op = sb.from('invoices').update(payload).eq('id', editingSupaId).select().single();
+      } else {
+        payload.status = 'pending';
+        payload.notes = '';
+        op = sb.from('invoices').insert(payload).select().single();
+      }
+      op.then(function(r){
         if(r.error){
           console.error('[GL] Supabase sync failed for '+invId+':', r.error);
           if(typeof addNotification==='function')addNotification('Cloud sync failed','Invoice '+invId+' saved locally only. '+(r.error.message||''),'warning');
           return;
         }
         inv.supaId = r.data && r.data.id;
-        console.log('[GL] Invoice synced to Supabase:',invId,inv.supaId||'');
+        if(r.data && r.data.status) inv.status = r.data.status;
+        console.log('[GL] Invoice synced to Supabase:',invId,inv.supaId||'',editingSupaId?'(updated)':'(inserted)');
       }).catch(function(err){
         console.error('[GL] Supabase sync threw for '+invId+':', err);
         if(typeof addNotification==='function')addNotification('Cloud sync failed','Invoice '+invId+' saved locally only. '+(err.message||''),'warning');
       });
     })();
 
+    // Clear edit-mode markers so the next save returns to insert mode.
+    if(builderEl){
+      builderEl.removeAttribute('data-editing-supa-id');
+      builderEl.removeAttribute('data-editing-id');
+    }
     return inv;
+  };
+
+  /* ── EDIT INVOICE — reopen the builder pre-filled with an existing invoice ── */
+  window.openEditInvoice = function(invId){
+    var inv = (window.invoices||[]).find(function(i){ return i.id === invId; });
+    if(!inv){ alert('Invoice not found.'); return; }
+    // Close the read-only detail panel if it's showing
+    if(typeof closeDetail === 'function') try { closeDetail(); } catch(e){}
+    var detail = document.getElementById('inv-detail');
+    if(detail) detail.classList.remove('show');
+
+    // Open the builder. openNewInvoiceBuilder resets INV via freshState(), so
+    // we configure prefill *after* it returns.
+    if(typeof window.openNewInvoiceBuilder !== 'function'){
+      alert('Invoice builder not ready.'); return;
+    }
+    window.openNewInvoiceBuilder();
+
+    setTimeout(function(){
+      var builder = document.getElementById('gl-inv-builder');
+      if(!builder){ return; }
+      // Tag the modal so glSaveInvoice does UPDATE not INSERT
+      builder.setAttribute('data-editing-id', inv.id);
+      if(inv.supaId) builder.setAttribute('data-editing-supa-id', inv.supaId);
+
+      // Header title swap NEW → EDIT
+      var titleEl = builder.querySelector('div[style*="letter-spacing:2px"][style*="font-family"]');
+      if(titleEl && /NEW INVOICE/i.test(titleEl.textContent)){
+        titleEl.textContent = 'EDIT INVOICE ' + inv.id;
+      }
+
+      // Prefill scalar fields
+      var cli = document.getElementById('ginv-client');
+      if(cli){ cli.value = inv.client || ''; if(window.INV) window.INV.clientId = cli.value; }
+      var dt = document.getElementById('ginv-date');
+      if(dt && inv.date){ dt.value = inv.date; if(window.INV) window.INV.date = inv.date; }
+      var idEl = document.getElementById('ginv-id');
+      if(idEl){ idEl.value = inv.id; }
+      var notesEl = builder.querySelector('textarea');
+      if(notesEl && inv.notes){ notesEl.value = inv.notes; if(window.INV) window.INV.notes = inv.notes; }
+      var discEl = document.getElementById('ginv-disc');
+      if(discEl && inv.discount){ discEl.value = inv.discount; if(window.INV) window.INV.discount = inv.discount; }
+
+      // Build editable rows for every existing line item. We use the manual
+      // (Custom) row builder for ALL line types so the user can freely edit
+      // description / qty / unit price regardless of whether the original was
+      // canning / bottling / R&D / hours / custom. Reset to the catalog rate
+      // is not relevant on edit — the user knows what they want.
+      var tbl = window.glGetTbl && window.glGetTbl();
+      if(tbl && Array.isArray(inv.lines)){
+        var placeholder = Array.prototype.slice.call(tbl.children).find(function(c){
+          return c.textContent && c.textContent.trim() === 'No line items yet. Add one below.';
+        });
+        if(placeholder) placeholder.remove();
+        inv.lines.forEach(function(l, ix){
+          var uid = 'gledit' + Date.now() + '_' + ix;
+          // glBuildManualRow signature: (uid, label, descDefault, qty, price)
+          // Strip the "Type - " prefix from desc to keep it readable in the
+          // description input. The label captures the type.
+          var raw = (l.desc || '').trim();
+          var parts = raw.split(' - ');
+          var label = parts.length > 1 ? parts[0] : 'Line';
+          var descBody = parts.length > 1 ? parts.slice(1).join(' - ') : raw;
+          var row = window.glBuildManualRow(uid, label, descBody, l.qty || 0, l.unitPrice || 0);
+          tbl.appendChild(row);
+        });
+        if(typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
+      }
+
+      // Prefill addons (the builder always renders 4 addon input pairs)
+      if(Array.isArray(inv.addons) && inv.addons.length){
+        var addonDescInputs = builder.querySelectorAll('input[oninput*="addons"][placeholder*="Add-on"]');
+        var addonPriceInputs = builder.querySelectorAll('input[oninput*="addons"][placeholder="$0.00"]');
+        inv.addons.forEach(function(a, ix){
+          if(addonDescInputs[ix]){ addonDescInputs[ix].value = a.d || ''; }
+          if(addonPriceInputs[ix]){ addonPriceInputs[ix].value = a.p || ''; }
+        });
+      }
+    }, 80);
   };
 
   document.addEventListener('click',function(){
