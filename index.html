@@ -2465,6 +2465,7 @@ select option, .fsel option {
           </div>
           <div id="followup-content" style="display:none">
             <div class="frow"><div class="flbl">To</div><input class="finp" id="fu-to" readonly></div>
+            <div class="frow" id="fu-cc-row" style="display:none"><div class="flbl">Cc</div><input class="finp" id="fu-cc" readonly></div>
             <div class="frow"><div class="flbl">Subject</div><input class="finp" id="fu-subject"></div>
             <div class="frow"><div class="flbl">Message</div><textarea class="finp" id="fu-body" rows="10" style="resize:vertical"></textarea></div>
             <div style="background:rgba(245,200,66,.06);border:1px solid rgba(245,200,66,.2);border-radius:8px;padding:11px;font-size:11px;color:#f5c842;margin-bottom:14px">
@@ -5754,15 +5755,24 @@ function sendResetLink(){
 const MAILGUN_DOMAIN_DEFAULT = 'mail.goodliquidbevco.com';
 const MAILGUN_FROM_DEFAULT = 'Good Liquid Bev Co <noreply@mail.goodliquidbevco.com>';
 
-async function sendMailgunEmail(to, subject, body){
+async function sendMailgunEmail(to, subject, body, opts){
   const apiKey = localStorage.getItem('gl_mailgun_key');
   if(!apiKey){ console.log('[Mailgun] No API key set. Open Mailgun Settings.'); return false; }
   const domain = localStorage.getItem('gl_mailgun_domain') || MAILGUN_DOMAIN_DEFAULT;
   const from   = localStorage.getItem('gl_mailgun_from')   || MAILGUN_FROM_DEFAULT;
+  opts = opts || {};
   try {
     const formData = new FormData();
     formData.append('from', from);
     formData.append('to', to);
+    // Optional Cc list — accepts an array of emails (or { label, email }
+    // objects from the client.additionalEmails JSONB column).
+    if(Array.isArray(opts.cc) && opts.cc.length){
+      const ccList = opts.cc.map(c => (typeof c === 'string' ? c : (c && c.email)))
+                            .filter(Boolean)
+                            .filter(e => e !== to);
+      if(ccList.length) formData.append('cc', ccList.join(', '));
+    }
     formData.append('subject', subject);
     formData.append('text', body);
     const resp = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
@@ -5829,6 +5839,21 @@ function openFollowUpModal(){
       const body=lines.filter(l=>!l.startsWith('Subject:')).join('\n').trim();
       
       document.getElementById('fu-to').value=inv.clientEmail||inv.clientName;
+      // Surface the client's additional emails as Cc so the user can see
+      // who else will be copied before sending.
+      (function(){
+        var client = (window.clients||[]).find(function(c){ return c.id === inv.client; });
+        var cc = (client && Array.isArray(client.additionalEmails)) ? client.additionalEmails : [];
+        var row = document.getElementById('fu-cc-row');
+        var inp = document.getElementById('fu-cc');
+        if(cc.length){
+          inp.value = cc.map(function(c){ return c.email + (c.label ? ' ('+c.label+')' : ''); }).join(', ');
+          row.style.display = '';
+        } else {
+          inp.value = '';
+          row.style.display = 'none';
+        }
+      })();
       document.getElementById('fu-subject').value=subject;
       document.getElementById('fu-body').value=body;
       document.getElementById('followup-loading').style.display='none';
@@ -5846,18 +5871,25 @@ async function sendFollowupEmail(){
   const to=document.getElementById('fu-to').value;
   const subject=document.getElementById('fu-subject').value;
   const body=document.getElementById('fu-body').value;
-  
-  const sent=await sendMailgunEmail(to,subject,body);
-  
+
+  // Cc the client's additional emails (AP, ops, etc.) so everyone on the
+  // account sees the follow-up.
+  const inv = (window.invoices||[]).find(i => i.id === currentFollowupInvId);
+  const client = inv ? (window.clients||[]).find(c => c.id === inv.client) : null;
+  const cc = (client && Array.isArray(client.additionalEmails)) ? client.additionalEmails : [];
+
+  const sent=await sendMailgunEmail(to,subject,body,{cc:cc});
+
   // Log the follow-up
   if(!followupLog[currentFollowupInvId]) followupLog[currentFollowupInvId]=[];
-  followupLog[currentFollowupInvId].push({date:new Date().toLocaleDateString(),subject,sent});
+  followupLog[currentFollowupInvId].push({date:new Date().toLocaleDateString(),subject,sent,ccCount:cc.length});
   localStorage.setItem('gl_followup_log',JSON.stringify(followupLog));
-  
-  addNotification('📧 Follow-up sent','Invoice '+currentFollowupInvId+' — '+to,'email');
+
+  const ccNote = cc.length ? ' (+' + cc.length + ' Cc)' : '';
+  addNotification('📧 Follow-up sent','Invoice '+currentFollowupInvId+' — '+to+ccNote,'email');
   closeFollowupModal();
-  
-  if(sent) alert('✓ Follow-up email sent via Mailgun!');
+
+  if(sent) alert('✓ Follow-up email sent via Mailgun!' + (cc.length ? '\n\nCc: ' + cc.map(c => c.email).join(', ') : ''));
   else alert('✓ Follow-up logged. (Configure Mailgun API key in AI Settings to send.)');
 }
 
