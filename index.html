@@ -4785,17 +4785,15 @@ async function downloadInvoicePDF(invId) {
     </tbody>
   </table>
   <div class="footer">Payment to Good Liquid Bev Co · Mike@GoodLiquid.com · (803) 493-5065 · goodliquidbevco.com</div>
-  <script>
-    // Auto-open the print dialog so the user can pick "Save as PDF".
-    window.addEventListener('load', function(){
-      setTimeout(function(){ try { window.print(); } catch(e){} }, 300);
-    });
-  </script>
 </body></html>`;
 
   // Open in a new window and let the browser's print-to-PDF generate a real PDF.
   // This avoids shipping a 200KB+ PDF library client-side. The user picks
   // "Save as PDF" in the print dialog destination.
+  // NOTE: we cannot embed a <script> inside the template literal above — the
+  // HTML parser doesn't care that the closing tag is inside a JS string and
+  // will terminate the OUTER script element early, breaking everything below
+  // it in this file. Instead, trigger print() on the popup window from here.
   const w = window.open('', '_blank');
   if(!w){
     alert('Popup blocked — allow popups for this site to download invoice PDFs.');
@@ -4804,6 +4802,7 @@ async function downloadInvoicePDF(invId) {
   w.document.open();
   w.document.write(html);
   w.document.close();
+  setTimeout(function(){ try { w.focus(); w.print(); } catch(e){} }, 350);
 }
 
 
