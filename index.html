@@ -3003,10 +3003,13 @@ function viewInvoice(id){
           const city   = useBilling ? c.billingCity   : c.city;
           const state  = useBilling ? c.billingState  : c.state;
           const zip    = useBilling ? c.billingZip    : c.zip;
-          return street ? `<div style="font-size:11px;color:var(--muted)">${street}</div><div style="font-size:11px;color:var(--muted)">${[city, state].filter(Boolean).join(', ')}${zip ? ' ' + zip : ''}</div>` : '';
+          return street
+            ? `<div style="font-size:11px;color:var(--muted)">${street}</div><div style="font-size:11px;color:var(--muted)">${[city, state].filter(Boolean).join(', ')}${zip ? ' ' + zip : ''}</div>`
+            : `<div style="font-size:11px;color:#6b7280;font-style:italic">(address not on file — add via Edit Client)</div>`;
         })()}
         ${c.contact ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">Attn: ${c.contact}</div>` : ''}
         ${c.email ? `<div style="font-size:11px;color:var(--muted)">${c.email}</div>` : ''}
+        ${c.phone ? `<div style="font-size:11px;color:var(--muted)">${c.phone}</div>` : ''}
       </div>
       <table style="width:100%;border-collapse:collapse;margin-bottom:14px;font-size:12px">
         <thead><tr style="background:rgba(255,255,255,.04)">
@@ -4879,9 +4882,11 @@ function buildInvoiceEmailHtml(invId, opts){
         <div style="font-size:10px;letter-spacing:2px;color:#999;text-transform:uppercase;margin-bottom:4px">Bill To</div>
         <div style="font-weight:700">${c.legalName||c.name||''}</div>
         ${c.legalName && c.legalName !== c.name ? `<div style="font-size:11px;color:#666">dba ${c.name}</div>` : ''}
-        ${bStreet ? `<div style="font-size:12px;color:#444">${bStreet}</div>` : ''}
+        ${bStreet ? `<div style="font-size:12px;color:#444">${bStreet}</div>` : '<div style="font-size:11px;color:#aaa;font-style:italic">(address not on file)</div>'}
         ${bLine2.trim() ? `<div style="font-size:12px;color:#444">${bLine2}</div>` : ''}
         ${c.contact ? `<div style="font-size:11px;color:#666;margin-top:4px">Attn: ${c.contact}</div>` : ''}
+        ${c.email ? `<div style="font-size:11px;color:#666">${c.email}</div>` : ''}
+        ${c.phone ? `<div style="font-size:11px;color:#666">${c.phone}</div>` : ''}
       </div>
       <div style="text-align:right">
         <div style="font-size:10px;letter-spacing:2px;color:#999;text-transform:uppercase;margin-bottom:4px">Invoice Details</div>
@@ -4987,7 +4992,7 @@ function openSendInvoiceModal(invId){
       status.textContent = 'Mailgun API key not set. Open AI Settings to configure.';
       return;
     }
-    btn.disabled = true; btn.textContent = 'Sending…';
+    btn.disabled = true; btn.textContent = 'Preparing PDF…';
     status.style.color = 'var(--muted)'; status.textContent = '';
     // Generate a public share token (if not already set) so the email can
     // include a "View & Pay Online" CTA. The token grants anon read on
@@ -4998,8 +5003,18 @@ function openSendInvoiceModal(invId){
         portalUrl = (await window.glGenerateInvoiceShareLink(inv.id)) || '';
       }
     } catch(e){ /* if token gen fails, send without the CTA */ }
+    // Generate a PDF blob of the invoice and attach it. Renders the same
+    // HTML the customer sees inline. Failure is non-blocking — we still
+    // send with just the HTML body.
+    let pdfAttachment = null;
+    try { pdfAttachment = await generateInvoicePdfBlob(invId); }
+    catch(e){ console.warn('[GL] PDF gen failed, sending without attachment', e); }
+    btn.textContent = 'Sending…';
     const html = `<div style="font-family:Arial,sans-serif;color:#1a1a1a;line-height:1.55"><div style="white-space:pre-wrap;padding:0 28px 14px">${message.replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</div>${buildInvoiceEmailHtml(invId, { portalUrl: portalUrl })}</div>`;
-    const ok = await sendMailgunEmail(toRaw, subject, message, { cc: ccRaw, bcc: bccRaw, html: html });
+    const ok = await sendMailgunEmail(toRaw, subject, message, {
+      cc: ccRaw, bcc: bccRaw, html: html,
+      attachments: pdfAttachment ? [pdfAttachment] : []
+    });
     btn.disabled = false; btn.textContent = '📤 Send via Mailgun';
     if(ok){
       status.style.color = '#5fcf9e';
@@ -5945,6 +5960,56 @@ function sendResetLink(){
 const MAILGUN_DOMAIN_DEFAULT = 'mail.goodliquidbevco.com';
 const MAILGUN_FROM_DEFAULT = 'Good Liquid Bev Co <noreply@mail.goodliquidbevco.com>';
 
+// Lazily load html2pdf.js (only when the user actually sends an invoice with
+// PDF attached). Bundle stays small at ~0KB for users who never send.
+let _html2pdfLoading = null;
+function ensureHtml2Pdf(){
+  if(window.html2pdf) return Promise.resolve(window.html2pdf);
+  if(_html2pdfLoading) return _html2pdfLoading;
+  _html2pdfLoading = new Promise(function(resolve, reject){
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+    s.async = true;
+    s.onload = function(){ resolve(window.html2pdf); };
+    s.onerror = function(){ _html2pdfLoading = null; reject(new Error('html2pdf load failed')); };
+    document.head.appendChild(s);
+  });
+  return _html2pdfLoading;
+}
+
+// Generate a PDF Blob from the invoice's email HTML so we can attach it to
+// the outgoing Mailgun message. Customer gets both an HTML inline view AND
+// a printable PDF file. Returns { blob, filename } or null on failure.
+async function generateInvoicePdfBlob(invId){
+  try {
+    await ensureHtml2Pdf();
+    const inv = invoices.find(i => i.id === invId);
+    if(!inv) return null;
+    const html = buildInvoiceEmailHtml(invId, {});
+    if(!html) return null;
+    // html2pdf wants a real DOM node, off-screen.
+    const holder = document.createElement('div');
+    holder.style.cssText = 'position:fixed;left:-9999px;top:0;width:720px;background:#fff';
+    holder.innerHTML = html;
+    document.body.appendChild(holder);
+    const blob = await window.html2pdf()
+      .from(holder)
+      .set({
+        margin: 12,
+        filename: invId + '.pdf',
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 2, backgroundColor: '#ffffff' },
+        jsPDF: { unit: 'pt', format: 'letter', orientation: 'portrait' }
+      })
+      .outputPdf('blob');
+    holder.remove();
+    return { blob: blob, filename: invId + '.pdf' };
+  } catch(e){
+    console.error('[GL] PDF generation failed', e);
+    return null;
+  }
+}
+
 async function sendMailgunEmail(to, subject, body, opts){
   const apiKey = localStorage.getItem('gl_mailgun_key');
   if(!apiKey){ console.log('[Mailgun] No API key set. Open Mailgun Settings.'); return false; }
@@ -5984,6 +6049,12 @@ async function sendMailgunEmail(to, subject, body, opts){
     formData.append('text', body);
     if(opts.html) formData.append('html', opts.html);
     if(opts.replyTo) formData.append('h:Reply-To', opts.replyTo);
+    // Optional file attachments: array of { blob, filename }.
+    if(Array.isArray(opts.attachments)){
+      opts.attachments.forEach(function(a){
+        if(a && a.blob && a.filename) formData.append('attachment', a.blob, a.filename);
+      });
+    }
 
     const resp = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
       method: 'POST',
