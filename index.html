@@ -5980,26 +5980,48 @@ function ensureHtml2Pdf(){
 // Generate a PDF Blob from the invoice's email HTML so we can attach it to
 // the outgoing Mailgun message. Customer gets both an HTML inline view AND
 // a printable PDF file. Returns { blob, filename } or null on failure.
+//
+// Strategy: render the source HTML inside a hidden iframe with its own
+// fresh document. This isolates the render from the CRM's dark-theme CSS
+// (which was bleeding through and producing blank captures) and gives
+// html2canvas a clean white background to work with.
 async function generateInvoicePdfBlob(invId){
+  let iframe = null;
   try {
     await ensureHtml2Pdf();
     const inv = invoices.find(i => i.id === invId);
     if(!inv) return null;
     const html = buildInvoiceEmailHtml(invId, {});
     if(!html) return null;
-    // html2canvas can't render elements that are fully off-screen with
-    // negative coordinates (some browsers skip layout for them). Render
-    // visibly in the document flow but with opacity:0 + pointer-events:none
-    // so the user never sees it, and html2canvas captures the full layout.
-    const holder = document.createElement('div');
-    holder.style.cssText = 'position:fixed;left:0;top:0;width:720px;background:#ffffff;opacity:0;pointer-events:none;z-index:-1';
-    holder.innerHTML = html;
-    document.body.appendChild(holder);
-    // Wait one paint frame so the browser commits the new node's layout
-    // before html2canvas measures it.
+
+    // Hidden iframe with a clean white document
+    iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:780px;height:1100px;border:0;opacity:0.001;pointer-events:none;z-index:-1';
+    document.body.appendChild(iframe);
+
+    // Write a minimal doc with the invoice HTML
+    const doc = iframe.contentDocument;
+    doc.open();
+    doc.write(
+      '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>' +
+      'html,body{margin:0;padding:0;background:#fff;color:#1a1a1a;font-family:Arial,Helvetica,sans-serif}' +
+      'table{border-collapse:collapse}' +
+      '</style></head><body>' + html + '</body></html>'
+    );
+    doc.close();
+
+    // Wait for the iframe's load event + a few frames so layout commits
+    await new Promise(resolve => {
+      if(iframe.contentDocument.readyState === 'complete') return resolve();
+      iframe.addEventListener('load', resolve, { once: true });
+      // Safety: never wait more than 1.5s
+      setTimeout(resolve, 1500);
+    });
     await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    const target = iframe.contentDocument.body;
     const blob = await window.html2pdf()
-      .from(holder)
+      .from(target)
       .set({
         margin: [12, 12, 12, 12],
         filename: invId + '.pdf',
@@ -6009,15 +6031,13 @@ async function generateInvoicePdfBlob(invId){
           backgroundColor: '#ffffff',
           useCORS: true,
           allowTaint: true,
-          windowWidth: 720,
-          width: 720
+          logging: false
         },
-        jsPDF: { unit: 'pt', format: 'letter', orientation: 'portrait' },
-        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+        jsPDF: { unit: 'pt', format: 'letter', orientation: 'portrait' }
       })
       .outputPdf('blob');
-    holder.remove();
-    if(!blob || blob.size < 1500){
+
+    if(!blob || blob.size < 5000){
       console.warn('[GL] PDF blob suspiciously small ('+(blob ? blob.size : 0)+' bytes) — likely blank');
       return null;
     }
@@ -6025,6 +6045,8 @@ async function generateInvoicePdfBlob(invId){
   } catch(e){
     console.error('[GL] PDF generation failed', e);
     return null;
+  } finally {
+    if(iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
   }
 }
 
