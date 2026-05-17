@@ -15552,3 +15552,459 @@
 
   console.log('[GL] compliance critical pack loaded — Hold-Tag guard + FDA export + help docs');
 }());
+
+
+/* ============================================================
+   COMPLIANCE — IMPORTANT PACK
+   (4) Records History view (all records, filterable, CIP step detail)
+   (5) PCQI Weekly Review queue (last 7 days signed records, bulk ack)
+   (6) Lot Traceability — search a lot, get every record + run + hold
+   (7) Editable CCP Critical Limits (settings modal, localStorage override)
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function fmtDate(d){ if(!d) return '—'; var x = new Date(d); if(isNaN(x.getTime())) return String(d); return x.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
+  function fmtTime(d){ if(!d) return ''; var x = new Date(d); if(isNaN(x.getTime())) return ''; return x.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
+  function fmtTs(d){ if(!d) return ''; return fmtDate(d) + ' ' + fmtTime(d); }
+  function nowISO(){ return new Date().toISOString(); }
+
+  // ── (7) Critical Limits — read overrides from localStorage at boot ──
+  var LIMITS_KEY = 'gl_ccp_limits';
+  function readLimits(){
+    try { return Object.assign({}, JSON.parse(localStorage.getItem(LIMITS_KEY) || '{}')); }
+    catch(e){ return {}; }
+  }
+  function writeLimits(obj){ localStorage.setItem(LIMITS_KEY, JSON.stringify(obj)); }
+  // Push overrides into the compliance module's DEFAULT_LIMITS object
+  // (it's hoisted via closure but we exposed nothing; mutate via a known global guard).
+  // We expose a getter all forms can use going forward, plus apply overrides
+  // to any existing DEFAULT_LIMITS we can find on window via best-effort.
+  var DEFAULT_LIMITS_PUBLIC = {
+    htst_temp_f: 165,
+    htst_hold_sec: 15,
+    hot_fill_f: 185,
+    uv_dose_mj_cm2: 40,
+    paa_ppm_min: 100,
+    paa_ppm_max: 300,
+    final_pH_fermented: 4.6,
+    cip_temp_f: 160,
+    cip_pbw_min: 30,
+    cip_caustic_min: 30,
+    cip_acid_min: 30,
+    cip_paa_min: 20
+  };
+  window.glGetLimits = function(){
+    var out = Object.assign({}, DEFAULT_LIMITS_PUBLIC);
+    var o = readLimits();
+    Object.keys(o).forEach(function(k){ if(typeof o[k] === 'number') out[k] = o[k]; });
+    return out;
+  };
+  window.glOpenLimitsSettings = function(){
+    var prior = document.getElementById('gl-limits-modal'); if(prior) prior.remove();
+    var cur = window.glGetLimits();
+    var fields = [
+      { k:'htst_temp_f',       label:'HTST hold-tube temp (°F) — CCP-1', step:'1' },
+      { k:'htst_hold_sec',     label:'HTST hold time (seconds) — CCP-1', step:'0.1' },
+      { k:'hot_fill_f',        label:'Hot fill temp at nozzle (°F) — CCP-2', step:'1' },
+      { k:'uv_dose_mj_cm2',    label:'UV dose minimum (mJ/cm²) — CCP-3', step:'1' },
+      { k:'paa_ppm_min',       label:'PAA sanitizer min (ppm)', step:'1' },
+      { k:'paa_ppm_max',       label:'PAA sanitizer max (ppm)', step:'1' },
+      { k:'final_pH_fermented',label:'Fermented beverage final pH (max) — CCP-A', step:'0.01' },
+      { k:'cip_temp_f',        label:'CIP wash temperature (°F) — steps 1-7', step:'1' },
+      { k:'cip_pbw_min',       label:'CIP PBW duration target (min)', step:'1' },
+      { k:'cip_caustic_min',   label:'CIP caustic duration target (min)', step:'1' },
+      { k:'cip_acid_min',      label:'CIP acid duration target (min)', step:'1' },
+      { k:'cip_paa_min',       label:'CIP PAA sanitize duration target (min)', step:'1' }
+    ];
+    var body = fields.map(function(f){
+      return '<div style="margin-bottom:11px"><div style="font-size:11px;color:#9aa7bd;margin-bottom:4px">' + esc(f.label) + '</div>' +
+        '<input id="gl-lim-' + f.k + '" type="number" step="' + f.step + '" value="' + cur[f.k] + '" style="width:160px;padding:9px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#fff;font-size:13px;box-sizing:border-box"></div>';
+    }).join('');
+
+    var ov = document.createElement('div');
+    ov.id = 'gl-limits-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:9000;background:rgba(6,13,26,.85);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.22);border-radius:14px;width:100%;max-width:520px;max-height:88vh;overflow-y:auto;color:#cfd9e6;box-shadow:0 20px 60px rgba(0,0,0,.6)">' +
+        '<div style="display:flex;justify-content:space-between;align-items:start;padding:18px 22px;border-bottom:1px solid rgba(255,255,255,.06)">' +
+          '<div>' +
+            '<div style="font-family:var(--ff-disp);font-size:14px;letter-spacing:2px;color:var(--teal);font-weight:700">⚙️ CCP CRITICAL LIMITS</div>' +
+            '<div style="font-size:11px;color:#9aa7bd;margin-top:3px">Defaults per LEAN_01 v2.1 — edit if your FSP differs</div>' +
+          '</div>' +
+          '<button id="gl-lim-close" style="background:none;border:none;color:#9aa7bd;font-size:18px;cursor:pointer;padding:2px 6px">✕</button>' +
+        '</div>' +
+        '<div style="padding:18px 22px">' + body +
+          '<div style="font-size:11px;color:#f5c842;background:rgba(245,200,66,.08);padding:8px 12px;border-radius:6px;margin-top:10px">Hard-refresh after saving for new limits to apply to compliance forms.</div>' +
+        '</div>' +
+        '<div style="padding:14px 22px;border-top:1px solid rgba(255,255,255,.06);display:flex;gap:8px;justify-content:flex-end">' +
+          '<button id="gl-lim-reset" class="cbtn">Reset to defaults</button>' +
+          '<button id="gl-lim-cancel" class="cbtn">Cancel</button>' +
+          '<button id="gl-lim-save" class="cbtn pri">💾 Save limits</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    function close(){ ov.remove(); }
+    ov.addEventListener('click', function(e){ if(e.target === ov) close(); });
+    ov.querySelector('#gl-lim-close').addEventListener('click', close);
+    ov.querySelector('#gl-lim-cancel').addEventListener('click', close);
+    ov.querySelector('#gl-lim-reset').addEventListener('click', function(){
+      if(!confirm('Reset all limits to LEAN_01 defaults?')) return;
+      localStorage.removeItem(LIMITS_KEY);
+      close();
+      if(typeof addNotification === 'function') addNotification('⚙️ Limits reset to defaults','','info');
+    });
+    ov.querySelector('#gl-lim-save').addEventListener('click', function(){
+      var o = {};
+      fields.forEach(function(f){
+        var v = parseFloat(ov.querySelector('#gl-lim-' + f.k).value);
+        if(!isNaN(v)) o[f.k] = v;
+      });
+      writeLimits(o);
+      if(typeof addNotification === 'function') addNotification('⚙️ CCP limits saved','Hard-refresh to apply','success');
+      if(typeof window.glAudit === 'function') window.glAudit('ccp_limits_changed','', o);
+      close();
+    });
+  };
+
+  // ── (4) Records History view ──
+  // Adds a "History" tab to the Compliance master page.
+  // Renders all compliance_records with form-code filter + date range + status filter.
+  // Click a record to expand and show data fields (including CIP 9-step breakdown).
+
+  var HISTORY_STATE = {
+    form_filter: 'all',
+    status_filter: 'all',
+    from: new Date(Date.now() - 30*86400000).toISOString().slice(0,10),
+    to:   new Date().toISOString().slice(0,10)
+  };
+
+  async function fetchHistoryRecords(){
+    if(!window.supa) return [];
+    var q = window.supa.from('compliance_records').select('*');
+    if(HISTORY_STATE.form_filter !== 'all') q = q.eq('form_code', HISTORY_STATE.form_filter);
+    if(HISTORY_STATE.status_filter !== 'all') q = q.eq('status', HISTORY_STATE.status_filter);
+    if(HISTORY_STATE.from) q = q.gte('record_date', HISTORY_STATE.from);
+    if(HISTORY_STATE.to)   q = q.lte('record_date', HISTORY_STATE.to);
+    q = q.order('recorded_at', { ascending: false }).limit(500);
+    var r = await q;
+    return r.data || [];
+  }
+
+  function expandedRecordHtml(r){
+    var data = r.data || {};
+    var html = '<div style="margin-top:8px;padding:10px 12px;background:rgba(255,255,255,.02);border-radius:6px;border:1px solid rgba(255,255,255,.06)">';
+    if(Array.isArray(data.steps)){
+      html += '<div style="font-size:10px;color:#5fcf9e;letter-spacing:1px;margin-bottom:6px">9-STEP CIP BREAKDOWN</div>' +
+        '<table style="width:100%;border-collapse:collapse;font-size:11px;color:#cfd9e6">' +
+          '<thead><tr style="color:#9aa7bd"><th style="text-align:left;padding:4px 6px">#</th><th style="text-align:left;padding:4px 6px">Step</th><th style="padding:4px 6px">Done</th><th style="padding:4px 6px">Actual min</th><th style="padding:4px 6px">Temp °F</th><th style="padding:4px 6px">Reading</th><th style="padding:4px 6px">P/F</th></tr></thead><tbody>';
+      data.steps.forEach(function(s){
+        var pfColor = s.pf === 'fail' ? '#ff8579' : '#5fcf9e';
+        html += '<tr><td style="padding:3px 6px;color:#9aa7bd">'+s.n+'</td><td style="padding:3px 6px">'+esc(s.name)+'</td><td style="padding:3px 6px;text-align:center">'+(s.done?'✓':'—')+'</td><td style="padding:3px 6px;text-align:center">'+esc(s.actual_min)+'</td><td style="padding:3px 6px;text-align:center">'+(s.temp_f||'—')+'</td><td style="padding:3px 6px">'+esc(s.reading||'')+'</td><td style="padding:3px 6px;text-align:center;color:'+pfColor+';font-weight:600">'+esc(s.pf||'').toUpperCase()+'</td></tr>';
+      });
+      html += '</tbody></table>';
+    } else {
+      // Generic key/value
+      var dataKeys = Object.keys(data).filter(function(k){ return typeof data[k] !== 'object'; });
+      if(dataKeys.length){
+        html += '<div style="font-size:10px;color:#9aa7bd;letter-spacing:1px;margin-bottom:6px">RECORD DATA</div>' +
+          '<div style="display:grid;grid-template-columns:140px 1fr;gap:3px 12px;font-size:11px">';
+        dataKeys.forEach(function(k){
+          html += '<div style="color:#9aa7bd">' + esc(k) + '</div><div style="color:#cfd9e6">' + esc(data[k]) + '</div>';
+        });
+        html += '</div>';
+      }
+    }
+    if(r.has_deviation){
+      html += '<div style="margin-top:8px;padding:8px 10px;background:rgba(231,76,60,.08);border-left:3px solid #e74c3c;border-radius:0 6px 6px 0;font-size:11px;color:#cfd9e6">' +
+        '<b style="color:#ff8579">⚠ Deviation:</b> ' + esc(r.deviation_notes || '(no notes)') +
+        (r.corrective_action ? '<br><b>Corrective:</b> ' + esc(r.corrective_action) : '') +
+      '</div>';
+    }
+    if(r.signature_name){
+      html += '<div style="margin-top:6px;font-size:10px;color:#5fcf9e">✓ Signed by ' + esc(r.signature_name) + ' on ' + esc(fmtTs(r.signed_at)) + '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  // The compliance master IIFE owns the tab state. We tap into refreshComplianceMaster
+  // and the comp-body element to add our tab. Best approach: inject a "History" tab
+  // button + handle clicks ourselves.
+  function ensureExtraTabs(){
+    var host = document.getElementById('comp-body');
+    if(!host) return;
+    var tabBar = host.querySelector('div:first-child');
+    if(!tabBar || tabBar.dataset.glExtraTabsApplied === '1') return;
+    // Find the existing tab row by looking for .gl-comp-tab buttons
+    var firstTab = host.querySelector('.gl-comp-tab');
+    if(!firstTab) return;
+    var bar = firstTab.parentNode;
+    if(bar.dataset.glExtraTabsApplied === '1') return;
+    bar.dataset.glExtraTabsApplied = '1';
+    // Insert History + Weekly Review + Trace Lot tabs before the spacer div
+    var spacer = bar.querySelector('div[style*="flex:1"]');
+    function tabBtn(key, label){
+      var b = document.createElement('button');
+      b.className = 'gl-comp-extratab';
+      b.setAttribute('data-extra-tab', key);
+      b.textContent = label;
+      b.setAttribute('style','padding:9px 16px;background:none;border:none;border-bottom:2px solid transparent;color:#9aa7bd;font-size:12px;font-weight:600;cursor:pointer;transition:all .12s');
+      b.addEventListener('mouseenter', function(){ if(currentExtra !== key) b.style.color = '#fff'; });
+      b.addEventListener('mouseleave', function(){ if(currentExtra !== key) b.style.color = '#9aa7bd'; });
+      b.addEventListener('click', function(){ openExtraTab(key); });
+      return b;
+    }
+    bar.insertBefore(tabBtn('history', '📚 History'), spacer);
+    bar.insertBefore(tabBtn('weekly', '✓ Weekly Review'), spacer);
+    bar.insertBefore(tabBtn('trace', '🔍 Trace Lot'), spacer);
+    // Also add a ⚙️ Limits button on the right side
+    var limitsBtn = document.createElement('button');
+    limitsBtn.className = 'cbtn gl-comp-limits';
+    limitsBtn.setAttribute('style','font-size:11px;padding:5px 11px;margin-right:6px;background:rgba(245,200,66,.08);border:1px solid rgba(245,200,66,.3);color:#f5c842');
+    limitsBtn.textContent = '⚙️ CCP Limits';
+    limitsBtn.addEventListener('click', function(){ window.glOpenLimitsSettings(); });
+    var holdBtn = bar.querySelector('.gl-comp-hold');
+    if(holdBtn) holdBtn.parentNode.insertBefore(limitsBtn, holdBtn);
+  }
+
+  var currentExtra = null;
+  function openExtraTab(key){
+    currentExtra = key;
+    // Deactivate the built-in tabs visually
+    var host = document.getElementById('comp-body');
+    if(!host) return;
+    host.querySelectorAll('.gl-comp-tab').forEach(function(b){
+      b.style.borderBottomColor = 'transparent';
+      b.style.color = '#9aa7bd';
+    });
+    host.querySelectorAll('.gl-comp-extratab').forEach(function(b){
+      var on = b.getAttribute('data-extra-tab') === key;
+      b.style.borderBottomColor = on ? 'var(--teal,#00e5c0)' : 'transparent';
+      b.style.color = on ? 'var(--teal,#00e5c0)' : '#9aa7bd';
+    });
+    var body = host.querySelector('#comp-tab-body');
+    if(!body) return;
+    if(key === 'history') renderHistory(body);
+    if(key === 'weekly')  renderWeeklyReview(body);
+    if(key === 'trace')   renderLotTracer(body);
+  }
+
+  async function renderHistory(host){
+    host.innerHTML = '<div style="padding:30px;text-align:center;color:#9aa7bd">Loading history…</div>';
+    var forms = ['all','GMP-INSP-001','GMP-LAB-001','GMP-ALL-001','GMP-SAN-002','GMP-REC-001','GMP-CAL-001','GMP-DIST-001','GMP-HR-001','GMP-TR-001','FSP-PC-001','FSP-PC-002','FSP-PC-003','FSP-PC-004','FSP-PC-005','FSP-SAN-001','FSP-SC-002','FSP-VER-002','QC-BR-001'];
+    var statuses = [['all','All statuses'],['draft','Draft'],['complete','Complete'],['signed','Signed']];
+    var rows = await fetchHistoryRecords();
+    host.innerHTML =
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:14px">' +
+        '<div><div style="font-size:10px;color:#9aa7bd;margin-bottom:3px">FORM</div><select id="gl-hist-form" style="width:100%;padding:7px 9px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#fff;font-size:11px">' +
+          forms.map(function(c){ return '<option value="' + c + '"' + (HISTORY_STATE.form_filter === c ? ' selected' : '') + '>' + (c === 'all' ? 'All forms' : c) + '</option>'; }).join('') +
+        '</select></div>' +
+        '<div><div style="font-size:10px;color:#9aa7bd;margin-bottom:3px">STATUS</div><select id="gl-hist-status" style="width:100%;padding:7px 9px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#fff;font-size:11px">' +
+          statuses.map(function(s){ return '<option value="' + s[0] + '"' + (HISTORY_STATE.status_filter === s[0] ? ' selected' : '') + '>' + s[1] + '</option>'; }).join('') +
+        '</select></div>' +
+        '<div><div style="font-size:10px;color:#9aa7bd;margin-bottom:3px">FROM</div><input id="gl-hist-from" type="date" value="' + HISTORY_STATE.from + '" style="width:100%;padding:7px 9px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#fff;font-size:11px;box-sizing:border-box"></div>' +
+        '<div><div style="font-size:10px;color:#9aa7bd;margin-bottom:3px">TO</div><input id="gl-hist-to" type="date" value="' + HISTORY_STATE.to + '" style="width:100%;padding:7px 9px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#fff;font-size:11px;box-sizing:border-box"></div>' +
+      '</div>' +
+      '<div style="font-size:11px;color:#9aa7bd;margin-bottom:10px">' + rows.length + ' record' + (rows.length === 1 ? '' : 's') + '</div>' +
+      '<div id="gl-hist-list">' +
+        (rows.length ? rows.map(function(r){
+          var devBadge = r.has_deviation ? '<span style="font-size:10px;color:#ff8579;background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.3);padding:2px 7px;border-radius:10px;margin-left:6px">⚠</span>' : '';
+          var sigBadge = r.status === 'signed' ? '<span style="font-size:10px;color:#5fcf9e">✓</span>' : '<span style="font-size:10px;color:#f5c842">○</span>';
+          return '<div class="gl-hist-row" data-id="' + r.id + '" style="padding:11px 13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:9px;margin-bottom:6px;cursor:pointer" onclick="this.querySelector(\'.gl-hist-detail\').style.display=this.querySelector(\'.gl-hist-detail\').style.display===\'none\'?\'block\':\'none\'">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px">' +
+              '<div style="flex:1;min-width:0">' +
+                '<div style="font-size:12px;color:#fff;font-weight:600">' + sigBadge + ' ' + esc(r.form_code) + devBadge + '</div>' +
+                '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">' + fmtTs(r.recorded_at) + ' · ' + esc(r.status) + (r.signature_name ? ' · ' + esc(r.signature_name) : '') + '</div>' +
+              '</div>' +
+            '</div>' +
+            '<div class="gl-hist-detail" style="display:none">' + expandedRecordHtml(r) + '</div>' +
+          '</div>';
+        }).join('') : '<div style="padding:30px;text-align:center;color:#9aa7bd;font-size:13px">No records match the filter.</div>') +
+      '</div>';
+    function refreshHist(){
+      HISTORY_STATE.form_filter = host.querySelector('#gl-hist-form').value;
+      HISTORY_STATE.status_filter = host.querySelector('#gl-hist-status').value;
+      HISTORY_STATE.from = host.querySelector('#gl-hist-from').value;
+      HISTORY_STATE.to = host.querySelector('#gl-hist-to').value;
+      renderHistory(host);
+    }
+    host.querySelector('#gl-hist-form').addEventListener('change', refreshHist);
+    host.querySelector('#gl-hist-status').addEventListener('change', refreshHist);
+    host.querySelector('#gl-hist-from').addEventListener('change', refreshHist);
+    host.querySelector('#gl-hist-to').addEventListener('change', refreshHist);
+  }
+
+  // ── (5) Weekly Review ──
+  // Shows signed records from the last 7 days. Lets the PCQI bulk-acknowledge them.
+  // Acks are stored locally (gl_weekly_ack JSON map of record_id → timestamp)
+  // since they're for Mike's tracking, not an FDA record.
+  function readWeeklyAcks(){
+    try { return JSON.parse(localStorage.getItem('gl_weekly_ack') || '{}'); }
+    catch(e){ return {}; }
+  }
+  function writeWeeklyAcks(o){ localStorage.setItem('gl_weekly_ack', JSON.stringify(o)); }
+
+  async function renderWeeklyReview(host){
+    host.innerHTML = '<div style="padding:30px;text-align:center;color:#9aa7bd">Loading…</div>';
+    if(!window.supa){ host.innerHTML = '<div style="padding:30px;text-align:center;color:#9aa7bd">Supabase not loaded</div>'; return; }
+    var sevenDaysAgo = new Date(Date.now() - 7*86400000).toISOString();
+    var r = await window.supa.from('compliance_records').select('*').eq('status','signed').gte('signed_at', sevenDaysAgo).order('signed_at',{ ascending: false }).limit(500);
+    var rows = r.data || [];
+    var acks = readWeeklyAcks();
+    var unacked = rows.filter(function(rec){ return !acks[rec.id]; });
+    var acked   = rows.filter(function(rec){ return !!acks[rec.id]; });
+    function rowHtml(rec, isAcked){
+      var devBadge = rec.has_deviation ? '<span style="font-size:10px;color:#ff8579;background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.3);padding:2px 7px;border-radius:10px;margin-left:6px">⚠ Had deviation</span>' : '';
+      return '<label style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:9px;margin-bottom:5px;cursor:pointer">' +
+        '<input type="checkbox" class="gl-wk-ack" data-id="' + rec.id + '"' + (isAcked ? ' checked' : '') + ' style="accent-color:var(--teal);width:15px;height:15px">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-size:12px;color:#fff">' + esc(rec.form_code) + devBadge + '</div>' +
+          '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">Signed ' + fmtTs(rec.signed_at) + ' by ' + esc(rec.signature_name || '?') + '</div>' +
+        '</div>' +
+      '</label>';
+    }
+    host.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
+        '<div style="font-size:11px;color:#9aa7bd;letter-spacing:1px;text-transform:uppercase">Last 7 days · ' + unacked.length + ' unreviewed · ' + acked.length + ' reviewed</div>' +
+        (unacked.length ? '<button id="gl-wk-ack-all" class="cbtn pri" style="font-size:11px;padding:5px 11px">✓ Ack all unreviewed</button>' : '') +
+      '</div>' +
+      (unacked.length ?
+        '<div style="margin-bottom:14px"><div style="font-size:10px;color:#f5c842;letter-spacing:2px;margin-bottom:6px">⏳ AWAITING REVIEW</div>' +
+        unacked.map(function(rec){ return rowHtml(rec, false); }).join('') + '</div>'
+        : '<div style="padding:25px;text-align:center;color:#5fcf9e;font-size:13px;margin-bottom:14px">✓ All signed records from the past 7 days have been reviewed.</div>') +
+      (acked.length ?
+        '<div><div style="font-size:10px;color:#5fcf9e;letter-spacing:2px;margin-bottom:6px">✓ REVIEWED</div>' +
+        acked.map(function(rec){ return rowHtml(rec, true); }).join('') + '</div>' : '');
+    host.querySelectorAll('.gl-wk-ack').forEach(function(cb){
+      cb.addEventListener('change', function(){
+        var acks2 = readWeeklyAcks();
+        var id = cb.getAttribute('data-id');
+        if(cb.checked) acks2[id] = nowISO();
+        else delete acks2[id];
+        writeWeeklyAcks(acks2);
+        renderWeeklyReview(host);
+      });
+    });
+    var allBtn = host.querySelector('#gl-wk-ack-all');
+    if(allBtn) allBtn.addEventListener('click', function(){
+      var acks2 = readWeeklyAcks();
+      unacked.forEach(function(rec){ acks2[rec.id] = nowISO(); });
+      writeWeeklyAcks(acks2);
+      if(typeof window.glAudit === 'function') window.glAudit('weekly_review_bulk_ack','', { count: unacked.length });
+      renderWeeklyReview(host);
+    });
+  }
+
+  // ── (6) Lot Tracer ──
+  async function renderLotTracer(host){
+    host.innerHTML =
+      '<div style="margin-bottom:14px">' +
+        '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Enter a lot number or run name. Results show every compliance record, hold tag, and production run that touched it — chronologically.</div>' +
+        '<div style="display:flex;gap:8px">' +
+          '<input id="gl-trace-q" type="text" placeholder="e.g. GLBC-JUC01-20260516-L1-001 or SunBurst Mar batch" style="flex:1;padding:9px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#fff;font-size:13px">' +
+          '<button id="gl-trace-go" class="cbtn pri" style="padding:9px 18px">🔍 Trace</button>' +
+        '</div>' +
+      '</div>' +
+      '<div id="gl-trace-results" style="font-size:12px;color:#9aa7bd;padding:25px;text-align:center">Enter a lot or run name above and click Trace.</div>';
+    var input = host.querySelector('#gl-trace-q');
+    function go(){
+      var q = input.value.trim();
+      if(!q) return;
+      doTrace(q, host.querySelector('#gl-trace-results'));
+    }
+    host.querySelector('#gl-trace-go').addEventListener('click', go);
+    input.addEventListener('keydown', function(e){ if(e.key === 'Enter') go(); });
+    input.focus();
+  }
+
+  async function doTrace(query, outEl){
+    outEl.innerHTML = '<div style="padding:25px;text-align:center;color:#9aa7bd">Searching…</div>';
+    if(!window.supa){ outEl.innerHTML = '<div style="padding:25px;text-align:center;color:#ff8579">Supabase not loaded</div>'; return; }
+    var like = '%' + query + '%';
+    try {
+      // Find matching production runs by run_name or lot mentions in notes
+      var runsR = await window.supa.from('production_runs').select('id,run_name,client_name,format,cases,stage,scheduled_date,notes').or('run_name.ilike.' + like + ',notes.ilike.' + like + ',client_name.ilike.' + like).limit(20);
+      var runs = runsR.data || [];
+      var runIds = runs.map(function(r){ return r.id; });
+      // Find compliance records by run_id OR by lot embedded in data JSONB
+      var recsByRun = [];
+      if(runIds.length){
+        var rr = await window.supa.from('compliance_records').select('*').in('run_id', runIds).order('recorded_at', { ascending: false }).limit(500);
+        recsByRun = rr.data || [];
+      }
+      // Find compliance records mentioning the lot in data->>lot or data->>'lot_number'
+      var recsByLot = [];
+      try {
+        var rl = await window.supa.from('compliance_records').select('*').or('data->>lot.ilike.' + like + ',data->>lot_number.ilike.' + like + ',data->>product.ilike.' + like).order('recorded_at', { ascending: false }).limit(200);
+        recsByLot = rl.data || [];
+      } catch(e){}
+      // Find hold tags
+      var holdR = await window.supa.from('hold_tags').select('*').or('lot_number.ilike.' + like + ',product_name.ilike.' + like + ',reason.ilike.' + like).order('hold_date',{ ascending: false }).limit(50);
+      var holds = holdR.data || [];
+      // Dedupe records
+      var allRecs = recsByRun.concat(recsByLot);
+      var seen = {};
+      var uniqRecs = allRecs.filter(function(r){ if(seen[r.id]) return false; seen[r.id] = true; return true; });
+
+      var totalMatches = runs.length + uniqRecs.length + holds.length;
+      if(!totalMatches){
+        outEl.innerHTML = '<div style="padding:25px;text-align:center;color:#9aa7bd">No matching records, runs, or hold tags found for "<b style="color:#fff">' + esc(query) + '</b>".</div>';
+        return;
+      }
+      // Build a unified timeline
+      var events = [];
+      runs.forEach(function(r){ events.push({ ts: r.scheduled_date || r.created_at, kind:'run', data:r }); });
+      uniqRecs.forEach(function(r){ events.push({ ts: r.recorded_at, kind:'record', data:r }); });
+      holds.forEach(function(h){ events.push({ ts: h.hold_date, kind:'hold', data:h }); });
+      events.sort(function(a,b){ return (b.ts||'').localeCompare(a.ts||''); });
+
+      outEl.innerHTML =
+        '<div style="font-size:11px;color:#9aa7bd;margin-bottom:10px"><b style="color:#5fcf9e">' + totalMatches + ' result' + (totalMatches===1?'':'s') + '</b> for "<b style="color:#fff">' + esc(query) + '</b>" · ' + runs.length + ' runs · ' + uniqRecs.length + ' compliance records · ' + holds.length + ' hold tags</div>' +
+        events.map(function(e){
+          if(e.kind === 'run'){
+            var r = e.data;
+            return '<div style="padding:10px 12px;background:rgba(127,198,245,.06);border-left:3px solid #7fc6f5;border-radius:0 8px 8px 0;margin-bottom:5px">' +
+              '<div style="font-size:11px;color:#7fc6f5;letter-spacing:1px">🏭 PRODUCTION RUN</div>' +
+              '<div style="font-size:13px;color:#fff;font-weight:600">' + esc(r.run_name) + '</div>' +
+              '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">' + esc(r.client_name||'') + ' · ' + esc(r.format||'') + ' · ' + esc(r.stage) + ' · ' + (r.scheduled_date ? 'scheduled ' + esc(r.scheduled_date) : '') + '</div>' +
+            '</div>';
+          }
+          if(e.kind === 'record'){
+            var rec = e.data;
+            var devBadge = rec.has_deviation ? '<span style="font-size:10px;color:#ff8579;background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.3);padding:2px 6px;border-radius:8px;margin-left:6px">⚠</span>' : '';
+            var sigBadge = rec.status === 'signed' ? '✓' : '○';
+            return '<div style="padding:10px 12px;background:rgba(0,229,192,.05);border-left:3px solid var(--teal,#00e5c0);border-radius:0 8px 8px 0;margin-bottom:5px">' +
+              '<div style="font-size:11px;color:var(--teal,#00e5c0);letter-spacing:1px">📋 COMPLIANCE RECORD</div>' +
+              '<div style="font-size:13px;color:#fff;font-weight:600">' + sigBadge + ' ' + esc(rec.form_code) + devBadge + '</div>' +
+              '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">' + fmtTs(rec.recorded_at) + ' · ' + esc(rec.status) + (rec.signature_name ? ' · ' + esc(rec.signature_name) : '') + '</div>' +
+            '</div>';
+          }
+          if(e.kind === 'hold'){
+            var h = e.data;
+            var statusColor = h.status === 'open' ? '#ff8579' : '#5fcf9e';
+            return '<div style="padding:10px 12px;background:rgba(231,76,60,.06);border-left:3px solid ' + statusColor + ';border-radius:0 8px 8px 0;margin-bottom:5px">' +
+              '<div style="font-size:11px;color:' + statusColor + ';letter-spacing:1px">🚫 HOLD TAG ' + esc(h.tag_number) + '</div>' +
+              '<div style="font-size:13px;color:#fff;font-weight:600">' + esc(h.product_name) + (h.lot_number ? ' · Lot ' + esc(h.lot_number) : '') + '</div>' +
+              '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">' + fmtTs(h.hold_date) + ' · ' + esc(h.status).toUpperCase() + (h.disposition ? ' · ' + esc(h.disposition) : '') + '</div>' +
+              '<div style="font-size:11px;color:#cfd9e6;margin-top:4px">' + esc(h.reason) + '</div>' +
+            '</div>';
+          }
+        }).join('');
+    } catch(e){
+      console.warn('[GL trace] failed', e);
+      outEl.innerHTML = '<div style="padding:25px;text-align:center;color:#ff8579">Search failed: ' + esc(e.message || 'unknown') + '</div>';
+    }
+  }
+
+  // Wire ourselves into the master page lifecycle
+  function start(){
+    var host = document.getElementById('comp-body');
+    if(!host){ setTimeout(start, 700); return; }
+    new MutationObserver(function(){ setTimeout(ensureExtraTabs, 60); }).observe(host, { childList:true, subtree:true });
+    ensureExtraTabs();
+  }
+  if(document.readyState !== 'loading') start();
+  else document.addEventListener('DOMContentLoaded', start);
+
+  console.log('[GL] compliance important pack loaded — History + Weekly Review + Trace Lot + CCP Limits');
+}());
