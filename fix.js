@@ -18389,3 +18389,360 @@
 
   console.log('[GL] compliance final JS pack — 6 features: email digest + barcode scan + OCR COA + PWA prompt + AI root-cause + monthly report');
 }());
+
+/* ============================================================
+   COMPLIANCE SQL-BACKED PACK (PR E)
+   Four enhancements requiring the 20260518_phase4_sql_pack.sql migration:
+     #10 Multi-PCQI sign-off (second signature on compliance_records)
+     #11 Inspector read-only mode (anon token-bound view)
+     #16 Multi-facility scoping (facilities table + facility_id stamping)
+     #17 Customer-managed allergen declarations (per-client portal)
+   All four degrade gracefully if migration is not yet applied — the new
+   tables/columns are referenced via try/catch and missing-column tolerance.
+   ============================================================ */
+(function(){
+  var sb = (function(){
+    try { return window.supabase || (window.__GL && window.__GL.supabase) || null; }
+    catch(e){ return null; }
+  })();
+
+  function getSB(){ return sb || window.supabase || null; }
+  function $(q, root){ return (root||document).querySelector(q); }
+  function $$(q, root){ return Array.prototype.slice.call((root||document).querySelectorAll(q)); }
+  function toast(msg, kind){
+    var d = document.createElement('div');
+    d.textContent = msg;
+    d.style.cssText = 'position:fixed;bottom:20px;right:20px;background:'+(kind==='err'?'#b91c1c':'#0f766e')+';color:#fff;padding:12px 18px;border-radius:8px;z-index:99999;font:14px system-ui;box-shadow:0 4px 12px rgba(0,0,0,.2);max-width:360px;';
+    document.body.appendChild(d);
+    setTimeout(function(){ d.remove(); }, 4500);
+  }
+  function randToken(){
+    var a = new Uint8Array(18); crypto.getRandomValues(a);
+    return Array.prototype.map.call(a, function(b){ return ('0'+b.toString(16)).slice(-2); }).join('');
+  }
+  function escHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){
+    return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c];
+  }); }
+  function fmtDate(d){ try { return new Date(d).toLocaleString(); } catch(e){ return String(d); } }
+  function getCurrentUserId(){
+    try {
+      var u = window.__GL && window.__GL.session && window.__GL.session.user;
+      if(u && u.id) return u.id;
+    } catch(e){}
+    return null;
+  }
+  function getCurrentUserName(){
+    try {
+      var u = window.__GL && window.__GL.session && window.__GL.session.user;
+      if(u && (u.user_metadata && u.user_metadata.name || u.email)) {
+        return u.user_metadata && u.user_metadata.name || u.email;
+      }
+    } catch(e){}
+    return localStorage.getItem('gl_user_display_name') || 'Mike Krail';
+  }
+
+  /* ==========================================================
+     (16) Multi-facility scoping
+     ========================================================== */
+  var FACILITY_KEY = 'gl_active_facility_id';
+  var FACILITY_CODE_KEY = 'gl_active_facility_code';
+  var facilities = [];
+  var activeFacility = null;
+
+  async function loadFacilities(){
+    var sb = getSB(); if(!sb) return;
+    try {
+      var r = await sb.from('facilities').select('id, code, name, active').eq('active', true).order('code');
+      if(r.error) return;
+      facilities = r.data || [];
+      var savedId = localStorage.getItem(FACILITY_KEY);
+      activeFacility = facilities.find(function(f){ return f.id === savedId; }) || facilities[0] || null;
+      if(activeFacility){
+        localStorage.setItem(FACILITY_KEY, activeFacility.id);
+        localStorage.setItem(FACILITY_CODE_KEY, activeFacility.code);
+      }
+      renderFacilityChip();
+    } catch(e){ /* table not yet migrated */ }
+  }
+
+  function renderFacilityChip(){
+    if(!facilities.length) return;
+    var existing = document.getElementById('gl-facility-chip');
+    if(existing) existing.remove();
+    var host = document.querySelector('header, .topbar, .app-header') || document.body;
+    var chip = document.createElement('div');
+    chip.id = 'gl-facility-chip';
+    chip.style.cssText = 'position:fixed;top:8px;right:8px;background:#0ea5e9;color:#fff;padding:4px 10px;border-radius:14px;font:12px system-ui;cursor:pointer;z-index:9999;box-shadow:0 2px 4px rgba(0,0,0,.15)';
+    chip.title = 'Active facility — click to switch';
+    chip.textContent = '🏭 ' + (activeFacility ? activeFacility.code : '—');
+    chip.onclick = openFacilityPicker;
+    document.body.appendChild(chip);
+  }
+
+  function openFacilityPicker(){
+    if(facilities.length < 2){
+      toast('Only one facility configured (' + (activeFacility ? activeFacility.code : '—') + '). Add more in Supabase → facilities.');
+      return;
+    }
+    var opts = facilities.map(function(f){
+      return '<option value="'+f.id+'"' + (f.id === (activeFacility && activeFacility.id) ? ' selected' : '') + '>' + escHtml(f.code) + ' — ' + escHtml(f.name) + '</option>';
+    }).join('');
+    var html = '<div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99998;display:flex;align-items:center;justify-content:center"><div style="background:#fff;padding:20px;border-radius:8px;min-width:320px"><h3 style="margin:0 0 12px">Switch facility</h3><select id="gl-fac-select" style="width:100%;padding:8px;font:14px system-ui">'+opts+'</select><div style="margin-top:14px;text-align:right"><button id="gl-fac-cancel" style="margin-right:8px">Cancel</button><button id="gl-fac-ok" style="background:#0ea5e9;color:#fff;padding:6px 14px;border:0;border-radius:4px">Switch</button></div></div></div>';
+    var wrap = document.createElement('div'); wrap.innerHTML = html;
+    document.body.appendChild(wrap);
+    wrap.querySelector('#gl-fac-cancel').onclick = function(){ wrap.remove(); };
+    wrap.querySelector('#gl-fac-ok').onclick = function(){
+      var id = wrap.querySelector('#gl-fac-select').value;
+      activeFacility = facilities.find(function(f){ return f.id === id; }) || activeFacility;
+      localStorage.setItem(FACILITY_KEY, activeFacility.id);
+      localStorage.setItem(FACILITY_CODE_KEY, activeFacility.code);
+      wrap.remove();
+      renderFacilityChip();
+      toast('Switched to ' + activeFacility.code + '. Reload to refresh lists.');
+    };
+  }
+
+  // Expose for other code paths that insert records:
+  window.glActiveFacilityId = function(){ return activeFacility ? activeFacility.id : null; };
+  window.glActiveFacilityCode = function(){ return activeFacility ? activeFacility.code : null; };
+
+  // Intercept compliance inserts to auto-stamp facility_id
+  (function wrapSupabaseInsert(){
+    var sb = getSB(); if(!sb || sb.__glFacilityWrapped) return;
+    var FACILITY_TABLES = { compliance_records:1, compliance_tasks:1, hold_tags:1 };
+    var origFrom = sb.from && sb.from.bind(sb);
+    if(!origFrom) return;
+    sb.from = function(tbl){
+      var qb = origFrom(tbl);
+      if(FACILITY_TABLES[tbl] && qb && qb.insert){
+        var origInsert = qb.insert.bind(qb);
+        qb.insert = function(rows, opts){
+          var fid = activeFacility && activeFacility.id;
+          if(fid){
+            if(Array.isArray(rows)) rows.forEach(function(r){ if(r && r.facility_id == null) r.facility_id = fid; });
+            else if(rows && typeof rows === 'object' && rows.facility_id == null) rows.facility_id = fid;
+          }
+          return origInsert(rows, opts);
+        };
+      }
+      return qb;
+    };
+    sb.__glFacilityWrapped = true;
+  })();
+
+  /* ==========================================================
+     (11) Inspector read-only mode
+     ========================================================== */
+  var INSPECTOR_PARAM = 'inspector';
+
+  async function checkInspectorMode(){
+    var url = new URL(window.location.href);
+    var token = url.searchParams.get(INSPECTOR_PARAM);
+    if(!token) return false;
+    var sb = getSB(); if(!sb) return false;
+    try {
+      var r = await sb.from('inspector_tokens').select('id, inspector, agency, purpose, valid_until, revoked_at')
+        .eq('token', token).maybeSingle();
+      if(r.error || !r.data) { toast('Invalid inspector token', 'err'); return false; }
+      if(r.data.revoked_at) { toast('Inspector token revoked', 'err'); return false; }
+      if(new Date(r.data.valid_until) < new Date()){ toast('Inspector token expired', 'err'); return false; }
+      activateInspectorMode(r.data);
+      // Best-effort usage tracking (anon may not have update grant — silent failure is fine):
+      try { await sb.from('inspector_tokens').update({ last_used_at: new Date().toISOString(), use_count: (r.data.use_count||0)+1 }).eq('id', r.data.id); } catch(e){}
+      return true;
+    } catch(e){ return false; }
+  }
+
+  function activateInspectorMode(data){
+    document.documentElement.classList.add('gl-inspector-mode');
+    var style = document.createElement('style');
+    style.textContent = '.gl-inspector-mode input,.gl-inspector-mode textarea,.gl-inspector-mode select{pointer-events:none!important;background:#f8fafc!important;color:#0f172a!important}.gl-inspector-mode button:not([data-inspector-ok]){opacity:.4!important;pointer-events:none!important}.gl-inspector-mode [data-write],.gl-inspector-mode .danger,.gl-inspector-mode [data-action="delete"]{display:none!important}';
+    document.head.appendChild(style);
+    var banner = document.createElement('div');
+    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#dc2626;color:#fff;padding:10px;text-align:center;font:600 14px system-ui;z-index:99999';
+    banner.innerHTML = '🔒 INSPECTOR MODE — read-only view for ' + escHtml(data.inspector) + (data.agency ? ' (' + escHtml(data.agency) + ')' : '') + ' • expires ' + fmtDate(data.valid_until);
+    document.body.appendChild(banner);
+    document.body.style.paddingTop = (banner.offsetHeight + 4) + 'px';
+    window.__glInspectorMode = true;
+  }
+
+  window.glGenerateInspectorLink = async function(){
+    if(window.__glInspectorMode){ toast('Cannot generate links in inspector mode', 'err'); return; }
+    var inspector = prompt('Inspector name (required):'); if(!inspector) return;
+    var agency = prompt('Agency (FDA / FDACS / state — optional):') || '';
+    var purpose = prompt('Visit purpose (optional):') || '';
+    var hours = parseInt(prompt('Token valid for how many hours? (default 8)', '8'), 10) || 8;
+    var sb = getSB(); if(!sb){ toast('Supabase not ready', 'err'); return; }
+    var token = randToken();
+    var validUntil = new Date(Date.now() + hours * 3600 * 1000).toISOString();
+    var row = { token: token, inspector: inspector, agency: agency || null, purpose: purpose || null, valid_until: validUntil, created_by: getCurrentUserId() };
+    var r = await sb.from('inspector_tokens').insert(row).select().single();
+    if(r.error){ toast('Failed: ' + r.error.message, 'err'); return; }
+    var link = window.location.origin + window.location.pathname + '?inspector=' + token;
+    var html = '<div style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center"><div style="background:#fff;padding:20px;border-radius:8px;max-width:560px;width:90%"><h3 style="margin:0 0 10px">Inspector access link</h3><p>Give this URL to <b>'+escHtml(inspector)+'</b>. Valid for '+hours+' hours.</p><input type="text" value="'+escHtml(link)+'" readonly style="width:100%;padding:8px;font:13px monospace;border:1px solid #ccc;border-radius:4px" id="gl-insp-link-field"><div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end"><button id="gl-insp-copy" style="background:#0ea5e9;color:#fff;padding:6px 14px;border:0;border-radius:4px">Copy</button><button id="gl-insp-close" style="padding:6px 14px">Close</button></div></div></div>';
+    var w = document.createElement('div'); w.innerHTML = html; document.body.appendChild(w);
+    w.querySelector('#gl-insp-copy').onclick = function(){
+      var f = w.querySelector('#gl-insp-link-field'); f.select(); document.execCommand('copy'); toast('Link copied');
+    };
+    w.querySelector('#gl-insp-close').onclick = function(){ w.remove(); };
+  };
+
+  /* ==========================================================
+     (10) Multi-PCQI sign-off
+     ========================================================== */
+  function injectSecondSignButton(modalRoot){
+    if(window.__glInspectorMode) return;
+    if(!modalRoot || modalRoot.querySelector('[data-gl-second-sign]')) return;
+    // Look for a signed record modal — heuristic: contains "Signed by" or a data-record-id attribute
+    var recordIdEl = modalRoot.querySelector('[data-compliance-record-id]');
+    var recordId = recordIdEl ? recordIdEl.getAttribute('data-compliance-record-id') : null;
+    if(!recordId) return;
+    var statusEl = modalRoot.querySelector('[data-record-status]');
+    var status = statusEl ? statusEl.getAttribute('data-record-status') : null;
+    if(status !== 'signed') return;
+    if(modalRoot.querySelector('[data-second-signed]')) return; // already double-signed
+    var btn = document.createElement('button');
+    btn.textContent = '✍️ Add second PCQI signature';
+    btn.setAttribute('data-gl-second-sign','1');
+    btn.style.cssText = 'background:#7c3aed;color:#fff;padding:8px 14px;border:0;border-radius:4px;margin-top:8px';
+    btn.onclick = function(){ openSecondSignModal(recordId, modalRoot); };
+    var anchor = modalRoot.querySelector('.modal-footer, .form-actions, footer') || modalRoot;
+    anchor.appendChild(btn);
+  }
+
+  function openSecondSignModal(recordId, sourceModal){
+    var name = prompt('Backup PCQI typed signature (full name):');
+    if(!name) return;
+    var ack = confirm('You are co-signing this compliance record as a second PCQI. The record will be marked dual-signed with your name and a timestamp.\n\nProceed?');
+    if(!ack) return;
+    var sb = getSB(); if(!sb){ toast('Supabase not ready', 'err'); return; }
+    var payload = { second_signed_by: getCurrentUserId(), second_signed_at: new Date().toISOString(), second_signature_name: name };
+    sb.from('compliance_records').update(payload).eq('id', recordId).select().single().then(function(r){
+      if(r.error){ toast('Failed: ' + r.error.message, 'err'); return; }
+      toast('Second signature recorded ✓');
+      var holder = sourceModal.querySelector('.signature-block, .modal-body') || sourceModal;
+      var stamp = document.createElement('div');
+      stamp.setAttribute('data-second-signed','1');
+      stamp.style.cssText = 'margin-top:8px;padding:8px;background:#ede9fe;border-left:3px solid #7c3aed;font:13px system-ui';
+      stamp.innerHTML = '✍️ <b>Second PCQI:</b> ' + escHtml(name) + ' • ' + fmtDate(payload.second_signed_at);
+      holder.appendChild(stamp);
+      var oldBtn = sourceModal.querySelector('[data-gl-second-sign]');
+      if(oldBtn) oldBtn.remove();
+    });
+  }
+
+  /* ==========================================================
+     (17) Customer-managed allergen declarations
+     ========================================================== */
+  var ALLERGEN_PARAM = 'allergen_decl';
+  var MAJOR_ALLERGENS = ['milk','eggs','fish','shellfish','tree_nuts','peanuts','wheat','soybeans','sesame'];
+
+  async function checkAllergenDeclMode(){
+    var url = new URL(window.location.href);
+    var token = url.searchParams.get(ALLERGEN_PARAM);
+    if(!token) return false;
+    var sb = getSB(); if(!sb) return false;
+    var r = await sb.from('client_allergen_declarations')
+      .select('id, product_name, allergens, claims, declared_by, declared_at, effective_date, notes, client_id')
+      .eq('share_token', token).maybeSingle();
+    if(r.error || !r.data){ document.body.innerHTML = '<div style="padding:40px;font:16px system-ui">Declaration not found or revoked.</div>'; return true; }
+    renderAllergenDeclPage(r.data);
+    return true;
+  }
+
+  function renderAllergenDeclPage(d){
+    var a = d.allergens || {};
+    var rows = MAJOR_ALLERGENS.map(function(k){
+      var present = !!a[k];
+      return '<tr><td style="padding:6px 12px;border-bottom:1px solid #e5e7eb">' + k.replace(/_/g,' ').replace(/\b\w/g, function(c){return c.toUpperCase();}) + '</td><td style="padding:6px 12px;border-bottom:1px solid #e5e7eb;color:' + (present?'#dc2626':'#16a34a') + ';font-weight:600">' + (present ? 'CONTAINS' : 'Does not contain') + '</td></tr>';
+    }).join('');
+    var claims = (d.claims && d.claims.length) ? d.claims.map(function(c){ return '<li>'+escHtml(c)+'</li>'; }).join('') : '<li>(none)</li>';
+    document.body.innerHTML = '<div style="max-width:720px;margin:30px auto;padding:30px;font:14px/1.5 system-ui;background:#fff;border:1px solid #e5e7eb;border-radius:8px"><h1 style="margin:0 0 6px">Allergen Declaration</h1><div style="color:#64748b;margin-bottom:20px">Issued by Good Liquid Bev Co — read-only customer copy</div><h2 style="margin:0 0 4px">' + escHtml(d.product_name) + '</h2><div style="color:#64748b;font-size:13px;margin-bottom:18px">Declared by ' + escHtml(d.declared_by || '—') + ' • ' + fmtDate(d.declared_at) + (d.effective_date ? ' • Effective ' + d.effective_date : '') + '</div><h3 style="margin:0 0 8px">Major food allergens</h3><table style="width:100%;border-collapse:collapse;margin-bottom:18px"><tbody>' + rows + '</tbody></table><h3 style="margin:0 0 8px">Claims</h3><ul style="margin:0 0 18px 20px">' + claims + '</ul>' + (d.notes ? '<h3 style="margin:0 0 8px">Notes</h3><div style="white-space:pre-wrap;background:#f8fafc;padding:12px;border-radius:4px">' + escHtml(d.notes) + '</div>' : '') + '<div style="margin-top:30px;padding-top:14px;border-top:1px solid #e5e7eb;color:#94a3b8;font-size:12px">This declaration is provided for informational purposes and reflects the data the customer has supplied to Good Liquid Bev Co for the listed product. Refer to current product labeling for regulatory allergen statements.</div></div>';
+    document.title = 'Allergen Declaration — ' + d.product_name;
+  }
+
+  window.glOpenAllergenDeclForm = function(clientId, clientName){
+    if(!clientId){
+      clientId = prompt('Client ID (UUID):'); if(!clientId) return;
+    }
+    var sb = getSB(); if(!sb){ toast('Supabase not ready', 'err'); return; }
+    var rows = MAJOR_ALLERGENS.map(function(k){
+      return '<label style="display:block;padding:4px 0"><input type="checkbox" name="alg_'+k+'"> '+ k.replace(/_/g,' ') +'</label>';
+    }).join('');
+    var html = '<div id="gl-alg-modal" style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99999;display:flex;align-items:center;justify-content:center"><div style="background:#fff;padding:22px;border-radius:8px;max-width:560px;width:92%;max-height:88vh;overflow:auto"><h3 style="margin:0 0 14px">Allergen Declaration — ' + escHtml(clientName||'Client') + '</h3><label>Product name<br><input id="ag-prod" style="width:100%;padding:6px"></label><div style="margin:12px 0"><b>Contains:</b>'+rows+'</div><label>Claims (comma-separated, e.g. Gluten-Free, Vegan)<br><input id="ag-claims" style="width:100%;padding:6px"></label><label style="display:block;margin-top:10px">Declared by (customer name)<br><input id="ag-by" style="width:100%;padding:6px"></label><label style="display:block;margin-top:10px">Effective date<br><input type="date" id="ag-eff" style="padding:6px"></label><label style="display:block;margin-top:10px">Notes (optional)<br><textarea id="ag-notes" rows="3" style="width:100%;padding:6px"></textarea></label><div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end"><button id="ag-cancel">Cancel</button><button id="ag-save" style="background:#0ea5e9;color:#fff;padding:6px 14px;border:0;border-radius:4px">Save + Share</button></div></div></div>';
+    var w = document.createElement('div'); w.innerHTML = html; document.body.appendChild(w);
+    w.querySelector('#ag-cancel').onclick = function(){ w.remove(); };
+    w.querySelector('#ag-save').onclick = async function(){
+      var prod = w.querySelector('#ag-prod').value.trim();
+      if(!prod){ alert('Product name required'); return; }
+      var allergens = {};
+      MAJOR_ALLERGENS.forEach(function(k){ allergens[k] = w.querySelector('[name="alg_'+k+'"]').checked; });
+      var claimsArr = w.querySelector('#ag-claims').value.split(',').map(function(s){return s.trim();}).filter(Boolean);
+      var by = w.querySelector('#ag-by').value.trim() || null;
+      var eff = w.querySelector('#ag-eff').value || null;
+      var notes = w.querySelector('#ag-notes').value.trim() || null;
+      var token = randToken();
+      var row = { client_id: clientId, product_name: prod, allergens: allergens, claims: claimsArr, declared_by: by, effective_date: eff, notes: notes, share_token: token };
+      var r = await sb.from('client_allergen_declarations').insert(row).select().single();
+      if(r.error){ alert('Failed: '+r.error.message); return; }
+      w.remove();
+      var link = window.location.origin + window.location.pathname + '?allergen_decl=' + token;
+      var html2 = '<div style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99999;display:flex;align-items:center;justify-content:center"><div style="background:#fff;padding:22px;border-radius:8px;max-width:560px;width:92%"><h3 style="margin:0 0 10px">Allergen declaration saved</h3><p>Send this link to ' + escHtml(clientName||'the customer') + ':</p><input type="text" readonly value="' + escHtml(link) + '" style="width:100%;padding:8px;font:13px monospace;border:1px solid #ccc;border-radius:4px" id="ag-link"><div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end"><button id="ag-copy" style="background:#0ea5e9;color:#fff;padding:6px 14px;border:0;border-radius:4px">Copy link</button><button id="ag-done">Done</button></div></div></div>';
+      var w2 = document.createElement('div'); w2.innerHTML = html2; document.body.appendChild(w2);
+      w2.querySelector('#ag-copy').onclick = function(){ var f = w2.querySelector('#ag-link'); f.select(); document.execCommand('copy'); toast('Link copied'); };
+      w2.querySelector('#ag-done').onclick = function(){ w2.remove(); };
+    };
+  };
+
+  /* ==========================================================
+     Header buttons + MutationObserver wiring
+     ========================================================== */
+  function injectHeaderButtons(){
+    if(window.__glInspectorMode) return;
+    var host = document.querySelector('header, .topbar, .app-header') || document.body;
+    if(document.getElementById('gl-btn-inspector')) return;
+    var bar = document.createElement('div');
+    bar.style.cssText = 'position:fixed;top:8px;left:50%;transform:translateX(-50%);display:flex;gap:6px;z-index:9998';
+    bar.innerHTML = '<button id="gl-btn-inspector" style="background:#dc2626;color:#fff;padding:6px 10px;border:0;border-radius:6px;font:12px system-ui;cursor:pointer">🔒 Inspector link</button><button id="gl-btn-allergen" style="background:#7c3aed;color:#fff;padding:6px 10px;border:0;border-radius:6px;font:12px system-ui;cursor:pointer">🥜 Allergen decl</button>';
+    document.body.appendChild(bar);
+    document.getElementById('gl-btn-inspector').onclick = window.glGenerateInspectorLink;
+    document.getElementById('gl-btn-allergen').onclick = function(){
+      var cid = prompt('Client ID (UUID) for the allergen declaration:'); if(!cid) return;
+      window.glOpenAllergenDeclForm(cid, '');
+    };
+  }
+
+  function observeForSecondSign(){
+    var mo = new MutationObserver(function(muts){
+      muts.forEach(function(m){
+        Array.prototype.forEach.call(m.addedNodes, function(n){
+          if(n.nodeType !== 1) return;
+          if(n.matches && n.matches('.modal, .dialog, [role="dialog"]')) injectSecondSignButton(n);
+          $$('.modal, .dialog, [role="dialog"]', n).forEach(injectSecondSignButton);
+        });
+      });
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+    // Initial pass
+    $$('.modal, .dialog, [role="dialog"]').forEach(injectSecondSignButton);
+  }
+
+  /* ==========================================================
+     Boot
+     ========================================================== */
+  function boot(){
+    checkInspectorMode().then(function(isInsp){
+      checkAllergenDeclMode().then(function(isAlg){
+        if(isAlg) return; // public allergen decl page: stop here
+        loadFacilities();
+        injectHeaderButtons();
+        observeForSecondSign();
+      });
+    });
+  }
+
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+
+  console.log('[GL] compliance SQL-backed pack — 4 features: multi-PCQI + inspector mode + multi-facility + customer allergens');
+}());
