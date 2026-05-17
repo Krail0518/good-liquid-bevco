@@ -1749,28 +1749,44 @@
       // On INSERT (new invoice) seed status=pending. On UPDATE preserve the
       // existing row's status so editing a paid invoice doesn't accidentally
       // un-mark it as paid.
-      var op;
-      if(editingSupaId){
-        op = sb.from('invoices').update(payload).eq('id', editingSupaId).select().single();
-      } else {
+      if(!editingSupaId){
         payload.status = 'pending';
         payload.notes = '';
-        op = sb.from('invoices').insert(payload).select().single();
       }
-      op.then(function(r){
-        if(r.error){
-          console.error('[GL] Supabase sync failed for '+invId+':', r.error);
-          if(typeof addNotification==='function')addNotification('Cloud sync failed','Invoice '+invId+' saved locally only. '+(r.error.message||''),'warning');
-          return;
+      // Retry on PGRST204 "column not found" by peeling off the offending
+      // column from the payload. Without this, a single schema gap aborts
+      // the entire write and the user's edits silently disappear on refresh.
+      var working = Object.assign({}, payload);
+      var r, retries = 20, droppedCols = [];
+      while(retries-- > 0){
+        if(editingSupaId){
+          r = await sb.from('invoices').update(working).eq('id', editingSupaId).select().single();
+        } else {
+          r = await sb.from('invoices').insert(working).select().single();
         }
-        inv.supaId = r.data && r.data.id;
-        if(r.data && r.data.status) inv.status = r.data.status;
-        console.log('[GL] Invoice synced to Supabase:',invId,inv.supaId||'',editingSupaId?'(updated)':'(inserted)');
-      }).catch(function(err){
-        console.error('[GL] Supabase sync threw for '+invId+':', err);
-        if(typeof addNotification==='function')addNotification('Cloud sync failed','Invoice '+invId+' saved locally only. '+(err.message||''),'warning');
-      });
-    })();
+        if(!r || !r.error) break;
+        if(r.error.code !== 'PGRST204') break;
+        var m = (r.error.message || '').match(/'([^']+)' column/);
+        if(!m || working[m[1]] === undefined) break;
+        droppedCols.push(m[1]);
+        delete working[m[1]];
+      }
+      if(droppedCols.length){
+        console.warn('[GL] Invoice sync: dropped unknown columns to recover save:', droppedCols);
+        if(typeof addNotification==='function')addNotification('Saved (partial)','Run the latest migration. Skipped: '+droppedCols.join(', '),'warning');
+      }
+      if(r && r.error){
+        console.error('[GL] Supabase sync failed for '+invId+':', r.error);
+        if(typeof addNotification==='function')addNotification('Cloud sync failed','Invoice '+invId+' saved locally only. '+(r.error.message||''),'warning');
+        return;
+      }
+      inv.supaId = r && r.data && r.data.id;
+      if(r && r.data && r.data.status) inv.status = r.data.status;
+      console.log('[GL] Invoice synced to Supabase:',invId,inv.supaId||'',editingSupaId?'(updated)':'(inserted)');
+    })().catch(function(err){
+      console.error('[GL] Supabase sync threw for '+invId+':', err);
+      if(typeof addNotification==='function')addNotification('Cloud sync failed','Invoice '+invId+' saved locally only. '+(err.message||''),'warning');
+    });
 
     // Clear edit-mode markers so the next save returns to insert mode.
     if(builderEl){
