@@ -13885,7 +13885,7 @@
       try {
         var ncRow = {
           reported_at: nowISO(),
-          run_ref: opts.run_id || null,
+          run_ref: opts.run_id || '(no-run)',  // defects.run_ref is NOT NULL — placeholder when no run linked
           category: 'Auto-NCR: ' + (opts.form_code || 'compliance'),
           severity: 'high',
           status: 'open',
