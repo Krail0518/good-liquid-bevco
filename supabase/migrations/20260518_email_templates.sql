@@ -68,7 +68,7 @@ Good Liquid Bev Co
 
 Just a quick reminder that Invoice {{invoice_number}} for {{amount}} is now due.
 
-If you''ve already sent payment, please disregard this note. Otherwise, our wire instructions are on the invoice and I''m happy to answer any questions.
+If you''ve already sent payment, please disregard this note. Otherwise, our wire instructions are on the invoice and we''re happy to answer any questions.
 
 Thanks,
 {{my_name}}
