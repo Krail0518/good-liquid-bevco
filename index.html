@@ -3031,6 +3031,14 @@ function viewInvoice(id){
         <div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:1px;color:var(--teal)">Total Due: $${inv.amount.toLocaleString()}</div>
       </div>
       ${inv.notes?`<div style="margin-top:12px;padding:11px;background:rgba(255,255,255,.04);border-radius:7px;font-size:11px;color:var(--muted)">${inv.notes}</div>`:''}
+      <div style="margin-top:18px;padding:14px;background:rgba(0,229,192,.05);border:1px solid rgba(0,229,192,.18);border-radius:8px">
+        <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--teal);margin-bottom:8px;font-weight:700">Payment Instructions — Wire Transfer</div>
+        <div style="display:grid;grid-template-columns:140px 1fr;gap:4px 12px;font-size:12px;color:var(--white)">
+          <div style="color:var(--muted)">Bank Name</div><div>Gulfside Bank</div>
+          <div style="color:var(--muted)">Account Number</div><div style="font-family:var(--ff-mono)">1000007789</div>
+          <div style="color:var(--muted)">Routing (ABA)</div><div style="font-family:var(--ff-mono)">063116902</div>
+        </div>
+      </div>
       <div style="margin-top:16px;font-size:10px;color:var(--muted)">Payment to ${GL.name} · ${GL.email}</div>
     </div>`;
   document.getElementById('btn-paid').style.display=inv.status==='paid'?'none':'';
@@ -4784,6 +4792,14 @@ async function downloadInvoicePDF(invId) {
       <tr class="total-row"><td colspan="3">Total Due</td><td style="text-align:right">${usd(inv.amount)}</td></tr>
     </tbody>
   </table>
+  <div style="margin-top:24px;padding:14px 18px;background:#f4fbf9;border:1px solid #0F6E56;border-radius:8px">
+    <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#0F6E56;margin-bottom:8px;font-weight:700">Payment Instructions — Wire Transfer</div>
+    <table style="width:100%;border-collapse:collapse;margin:0;font-size:13px">
+      <tr><td style="padding:3px 0;color:#555;width:160px;border:0">Bank Name</td><td style="padding:3px 0;color:#1a1a1a;border:0">Gulfside Bank</td></tr>
+      <tr><td style="padding:3px 0;color:#555;border:0">Account Number</td><td style="padding:3px 0;color:#1a1a1a;font-family:monospace;border:0">1000007789</td></tr>
+      <tr><td style="padding:3px 0;color:#555;border:0">Routing (ABA)</td><td style="padding:3px 0;color:#1a1a1a;font-family:monospace;border:0">063116902</td></tr>
+    </table>
+  </div>
   <div class="footer">Payment to Good Liquid Bev Co · Mike@GoodLiquid.com · (803) 493-5065 · goodliquidbevco.com</div>
 </body></html>`;
 
