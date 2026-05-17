@@ -2818,7 +2818,11 @@ function cNav(page,el){
   document.querySelectorAll('.cni').forEach(n=>n.classList.remove('act'));
   if(el)el.classList.add('act');
   document.querySelectorAll('.cpg').forEach(p=>p.classList.remove('act'));
-  document.getElementById('cpg-'+page).classList.add('act');
+  // Some sidebar entries (Reports / Time Tracker / AI Settings) open modals
+  // instead of pages and don't have a #cpg-X container. Guard so a stray
+  // programmatic cNav() with one of those IDs doesn't crash the app.
+  var pageEl=document.getElementById('cpg-'+page);
+  if(pageEl)pageEl.classList.add('act');
   closeDetail();closeRefModal();closeAddReferrer();
 }
 
