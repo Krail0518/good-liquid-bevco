@@ -1799,28 +1799,74 @@
       var discEl = document.getElementById('ginv-disc');
       if(discEl && inv.discount){ discEl.value = inv.discount; if(window.INV) window.INV.discount = inv.discount; }
 
-      // Build editable rows for every existing line item. We use the manual
-      // (Custom) row builder for ALL line types so the user can freely edit
-      // description / qty / unit price regardless of whether the original was
-      // canning / bottling / R&D / hours / custom. Reset to the catalog rate
-      // is not relevant on edit — the user knows what they want.
+      // Build editable rows for every existing line item. We try to use the
+      // SAME row builder that originally created the line (Canning, Bottling,
+      // or Manual) so the user sees the same UI they used to create it —
+      // format dropdown + qty + price + separate Description (optional)
+      // input. Falls back to a manual row if the type can't be detected.
       var tbl = window.glGetTbl && window.glGetTbl();
+      function splitLineDesc(raw){
+        // Format: "<Type> - <Format Label>[ — <User description>]"
+        // The user description (if any) is separated by an em-dash (—).
+        raw = (raw||'').trim();
+        var emIdx = raw.indexOf(' — ');
+        var beforeEm = emIdx >= 0 ? raw.slice(0, emIdx).trim() : raw;
+        var userDesc = emIdx >= 0 ? raw.slice(emIdx + 3).trim() : '';
+        var parts = beforeEm.split(' - ');
+        return {
+          type: parts[0] || '',
+          fmtLabel: parts.length > 1 ? parts.slice(1).join(' - ') : '',
+          userDesc: userDesc,
+          raw: raw
+        };
+      }
+      function findFormatByLabel(formats, label){
+        if(!formats || !label) return null;
+        var hit = formats.find(function(f){ return f.label === label || f.value === label; });
+        return hit ? hit.value : null;
+      }
       if(tbl && Array.isArray(inv.lines)){
         var placeholder = Array.prototype.slice.call(tbl.children).find(function(c){
           return c.textContent && c.textContent.trim() === 'No line items yet. Add one below.';
         });
         if(placeholder) placeholder.remove();
+        // Need rates loaded so the format dropdowns populate properly.
+        if(typeof window.glLoadRates === 'function' && !(window._glR && window._glR.ok)){
+          try { window.glLoadRates(); } catch(e){}
+        }
+        var canFmts = [], canSeen = {};
+        (window._glR && window._glR.c || []).forEach(function(r){ if(!canSeen[r.format]){ canSeen[r.format]=1; canFmts.push({value:r.format,label:r.format_label}); } });
+        if(!canFmts.length) canFmts = [{value:'12oz-standard',label:'12oz Standard'}];
+        var btlFmts = [], btlSeen = {};
+        (window._glR && window._glR.b || []).forEach(function(r){ if(!btlSeen[r.format]){ btlSeen[r.format]=1; btlFmts.push({value:r.format,label:r.format_label}); } });
+        if(!btlFmts.length) btlFmts = [{value:'750ml',label:'750ml Bottle'}];
+
         inv.lines.forEach(function(l, ix){
           var uid = 'gledit' + Date.now() + '_' + ix;
-          // glBuildManualRow signature: (uid, label, descDefault, qty, price)
-          // Strip the "Type - " prefix from desc to keep it readable in the
-          // description input. The label captures the type.
-          var raw = (l.desc || '').trim();
-          var parts = raw.split(' - ');
-          var label = parts.length > 1 ? parts[0] : 'Line';
-          var descBody = parts.length > 1 ? parts.slice(1).join(' - ') : raw;
-          var row = window.glBuildManualRow(uid, label, descBody, l.qty || 0, l.unitPrice || 0);
-          tbl.appendChild(row);
+          var parsed = splitLineDesc(l.desc);
+          var type = parsed.type.toLowerCase();
+          var row = null;
+          if(type === 'canning' && window.glBuildCanRow){
+            var canFmt = findFormatByLabel(canFmts, parsed.fmtLabel) || canFmts[0].value;
+            var perCan = (l.unitPrice || 0) / 24; // unitPrice on canning lines is per-case
+            row = window.glBuildCanRow(uid, l.qty || 0, canFmt, canFmts, perCan, parsed.userDesc);
+            row.setAttribute('data-pu-override','1'); // user's saved price wins over catalog
+            row.setAttribute('data-gl-total', (l.qty||0) * (l.unitPrice||0));
+          } else if(type === 'bottling' && window.glBuildBtlRow){
+            var btlFmt = findFormatByLabel(btlFmts, parsed.fmtLabel) || btlFmts[0].value;
+            row = window.glBuildBtlRow(uid, l.qty || 0, btlFmt, btlFmts, l.unitPrice || 0, parsed.userDesc);
+            row.setAttribute('data-pu-override','1');
+            row.setAttribute('data-gl-total', (l.qty||0) * (l.unitPrice||0));
+          } else {
+            // R&D / Hours / Custom / unknown — use the manual row.
+            // For manual lines we put the FULL "X - Y" (minus the user-desc em-dash
+            // suffix) into the manual desc input, since the label heading is just
+            // a category badge and the manual row only has one description input.
+            var manualLabel = parsed.type || 'Line';
+            var manualDesc = parsed.fmtLabel ? (parsed.fmtLabel + (parsed.userDesc ? ' — ' + parsed.userDesc : '')) : parsed.userDesc;
+            row = window.glBuildManualRow(uid, manualLabel, manualDesc, l.qty || 0, l.unitPrice || 0);
+          }
+          if(row) tbl.appendChild(row);
         });
         if(typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
       }
