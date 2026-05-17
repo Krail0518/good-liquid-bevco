@@ -1520,6 +1520,11 @@
     document.querySelectorAll('[data-gl-total]').forEach(function(el){
       tot+=parseFloat(el.getAttribute('data-gl-total'))||0;
     });
+    // Include manually-entered addon prices in the subtotal so typing into
+    // an add-on row doesn't appear to zero the total.
+    document.querySelectorAll('#gl-inv-body input[oninput*="addons"][placeholder="$0.00"]').forEach(function(el){
+      tot += parseFloat(el.value)||0;
+    });
     var box=document.getElementById('ginv-totals-box');if(!box)return;
     var disc=document.getElementById('ginv-disc');
     var pct=disc?parseFloat(disc.value)||0:0;
@@ -1605,18 +1610,37 @@
     var date=(dateEl&&dateEl.value)?dateEl.value:new Date().toISOString().slice(0,10);
     var discEl=document.getElementById('ginv-disc');
     var pct=discEl?parseFloat(discEl.value)||0:0;
-    var subtotal=lines.reduce(function(s,l){return s+(l.total||0);},0);
+
+    // Read add-on rows from the DOM (description + price pairs).
+    var addons=[];
+    var addonDescEls = document.querySelectorAll('#gl-inv-body input[oninput*="addons"][placeholder*="Add-on"]');
+    var addonPriceEls = document.querySelectorAll('#gl-inv-body input[oninput*="addons"][placeholder="$0.00"]');
+    for(var ai=0; ai<addonDescEls.length; ai++){
+      var d = (addonDescEls[ai].value||'').trim();
+      var p = parseFloat(addonPriceEls[ai] ? addonPriceEls[ai].value : 0)||0;
+      if(d || p) addons.push({ d: d, p: p });
+    }
+    var addonsTotal = addons.reduce(function(s,a){ return s + (parseFloat(a.p)||0); }, 0);
+
+    var subtotal=lines.reduce(function(s,l){return s+(l.total||0);},0) + addonsTotal;
     var discountAmt=subtotal*(pct/100);
     var amount=subtotal-discountAmt;
+
+    // Append addon entries as "line items" so the invoice detail / PDF
+    // renders them in the same table as regular lines.
+    var addonLines = addons.map(function(a){
+      return { desc: a.d || 'Add-on', qty: 1, unitPrice: parseFloat(a.p)||0, total: parseFloat(a.p)||0, unit: '' };
+    });
+    var combinedLines = lines.concat(addonLines);
 
     var inv={
       id:invId,
       client:cid,
       clientName:client.name||'',
       clientEmail:client.email||'',
-      svc:lines.map(function(l){return l.desc;}).join(', '),
-      lines:lines,
-      addons:[],
+      svc:combinedLines.map(function(l){return l.desc;}).join(', '),
+      lines:combinedLines,
+      addons:addons,
       discount:pct,
       subtotal:subtotal,
       discountAmt:discountAmt,
@@ -1668,7 +1692,7 @@
         invoice_date:date,
         due_date:dueIso||null,
         payment_terms: inv.paymentTerms,
-        line_items:lines
+        line_items:combinedLines
       };
       // On INSERT (new invoice) seed status=pending. On UPDATE preserve the
       // existing row's status so editing a paid invoice doesn't accidentally
@@ -1782,6 +1806,12 @@
       }
     }, 80);
   };
+
+  // Override the legacy INV-state recalc so addon inputs and the discount
+  // field route through the DOM-based total (data-gl-total + addon inputs).
+  // The legacy refreshTotals() reads INV.lines which is empty under the
+  // DOM-first save flow, which would zero out the totals box.
+  window.glApplyDiscount = function(){ window.glCalcInvTotal(); };
 
   document.addEventListener('click',function(){
     var disc=document.getElementById('ginv-disc');
