@@ -14790,9 +14790,96 @@
     { n:9, name:'PRE-USE PAA (at run time)',  chem:'Peracetic Acid',                conc:'1 oz / 5 gal',     target_min:20, type:'sanit',  hot:false, verify:'PAA strip 100–300 ppm — DO NOT RINSE' }
   ];
 
+  // CIP equipment list — defaults are seeded once; users can extend or trim
+  // the list via the "+ Add new equipment…" option in the dropdown or the
+  // "✎ Edit list" link next to it. Persisted to localStorage so it survives
+  // page refresh. (Per-device — easy to upgrade to a Supabase table later.)
+  var CIP_EQUIP_KEY = 'gl_cip_equipment';
+  function loadCipEquip(){
+    try {
+      var raw = localStorage.getItem(CIP_EQUIP_KEY);
+      if(raw){
+        var arr = JSON.parse(raw);
+        if(Array.isArray(arr) && arr.length) return arr;
+      }
+    } catch(e){}
+    return ['Filling Line 1','Filling Line 2','Pasteurizer plates','Mix tank','Fermenter 1','Fermenter 2','Carbonator','CIP skid'];
+  }
+  function saveCipEquip(list){
+    try { localStorage.setItem(CIP_EQUIP_KEY, JSON.stringify(list)); } catch(e){}
+  }
+  window.glAddCipEquip = function(name){
+    var list = loadCipEquip();
+    name = (name||'').trim();
+    if(!name) return null;
+    if(list.indexOf(name) >= 0) return name; // already in list, just return it
+    list.push(name);
+    saveCipEquip(list);
+    return name;
+  };
+  window.glOpenCipEquipManager = function(){
+    var list = loadCipEquip();
+    var ex = document.getElementById('gl-cip-equip-mgr'); if(ex) ex.remove();
+    var ov = document.createElement('div');
+    ov.id = 'gl-cip-equip-mgr';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:1200;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:30px';
+    var rowsHtml = list.map(function(n, i){
+      return '<div style="display:grid;grid-template-columns:1fr 30px;gap:6px;align-items:center;padding:4px 0">' +
+        '<input class="gl-cem-name finp" data-idx="'+i+'" value="'+String(n).replace(/"/g,'&quot;')+'" style="font-size:12px">' +
+        '<button class="gl-cem-del" data-idx="'+i+'" style="background:none;border:none;color:rgba(231,76,60,.7);cursor:pointer;font-size:18px;line-height:1">&times;</button>' +
+      '</div>';
+    }).join('');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.25);border-radius:14px;width:100%;max-width:480px;padding:22px 26px;color:#fff">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+          '<div style="font-family:var(--ff-disp);font-size:16px;letter-spacing:2px;color:var(--teal)">🧼 CIP EQUIPMENT LIST</div>' +
+          '<button id="gl-cem-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div id="gl-cem-list" style="display:flex;flex-direction:column;gap:2px;max-height:50vh;overflow-y:auto">' + rowsHtml + '</div>' +
+        '<button id="gl-cem-add" style="margin-top:10px;background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.35);color:var(--teal);font-size:12px;padding:6px 12px;border-radius:6px;cursor:pointer">+ Add another</button>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">' +
+          '<button id="gl-cem-cancel" class="cbtn">Cancel</button>' +
+          '<button id="gl-cem-save" class="cbtn pri">💾 Save</button>' +
+        '</div>' +
+        '<div style="font-size:11px;color:var(--muted);margin-top:8px">Persists to this device. Empty rows are dropped on save.</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-cem-close').onclick = function(){ ov.remove(); };
+    ov.querySelector('#gl-cem-cancel').onclick = function(){ ov.remove(); };
+    ov.querySelector('#gl-cem-add').onclick = function(){
+      var listEl = ov.querySelector('#gl-cem-list');
+      var row = document.createElement('div');
+      row.style.cssText = 'display:grid;grid-template-columns:1fr 30px;gap:6px;align-items:center;padding:4px 0';
+      row.innerHTML = '<input class="gl-cem-name finp" value="" placeholder="e.g. Bottle Filler #2" style="font-size:12px"><button class="gl-cem-del" style="background:none;border:none;color:rgba(231,76,60,.7);cursor:pointer;font-size:18px;line-height:1">&times;</button>';
+      listEl.appendChild(row);
+      row.querySelector('input').focus();
+    };
+    ov.addEventListener('click', function(e){
+      if(e.target.classList && e.target.classList.contains('gl-cem-del')){
+        var row = e.target.closest('div'); if(row) row.remove();
+      }
+    });
+    ov.querySelector('#gl-cem-save').onclick = function(){
+      var newList = Array.prototype.slice.call(ov.querySelectorAll('.gl-cem-name'))
+        .map(function(i){ return (i.value||'').trim(); }).filter(Boolean);
+      saveCipEquip(newList);
+      ov.remove();
+      // If the CIP form is open, refresh its dropdown
+      var sel = document.getElementById('gl-cif-equip');
+      if(sel){
+        var cur = sel.value;
+        var opts = newList.map(function(n){ return '<option value="'+String(n).replace(/"/g,'&quot;')+'">'+n+'</option>'; }).join('');
+        opts += '<option value="__add__" style="color:#00e5c0">+ Add new equipment…</option>';
+        sel.innerHTML = opts;
+        if(newList.indexOf(cur) >= 0) sel.value = cur;
+      }
+    };
+  };
+
   window.glOpenCipForm = function(task){
     task = task || {};
-    var equipOptions = ['Filling Line 1','Filling Line 2','Pasteurizer plates','Mix tank','Fermenter 1','Fermenter 2','Carbonator','CIP skid'];
+    var equipOptions = loadCipEquip().concat([['__add__', '+ Add new equipment…'], ['__edit__', '✎ Edit list…']]);
     var stepsHtml = CIP_STEPS.map(function(s){
       var tempCell = s.hot
         ? '<input id="gl-cip-temp-'+s.n+'" type="number" step="1" value="160" placeholder="160" style="width:60px;padding:5px 6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#fff;font-size:11px;box-sizing:border-box;text-align:center">'
@@ -14828,6 +14915,33 @@
 
     var modal = modalShell('GMP-SAN-002 v2.1 · 9-Step CIP Monitoring', 'Record at the time of the cycle — never reconstruct from memory', body, formFooter());
     modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
+
+    // Equipment dropdown: intercept the "+ Add new…" + "✎ Edit list…" sentinels
+    (function wireEquipDropdown(){
+      var sel = modal.querySelector('#gl-cf-equip');
+      if(!sel) return;
+      sel.addEventListener('change', function(){
+        if(sel.value === '__add__'){
+          var name = prompt('New equipment / circuit name:');
+          var added = window.glAddCipEquip(name);
+          if(added){
+            // Rebuild the dropdown options with the new entry, leave sentinels at end
+            var list = loadCipEquip();
+            var opts = list.map(function(n){ return '<option value="'+String(n).replace(/"/g,'&quot;')+'">'+n+'</option>'; }).join('');
+            opts += '<option value="__add__" style="color:#00e5c0">+ Add new equipment…</option>';
+            opts += '<option value="__edit__" style="color:#c4a4f8">✎ Edit list…</option>';
+            sel.innerHTML = opts;
+            sel.value = added;
+          } else {
+            sel.value = list[0] || '';
+          }
+        } else if(sel.value === '__edit__'){
+          // Remember the prior selection and open the manager
+          sel.value = '';
+          window.glOpenCipEquipManager();
+        }
+      });
+    })();
 
     async function submit(signed){
       var steps = CIP_STEPS.map(function(s){
