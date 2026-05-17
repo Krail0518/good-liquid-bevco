@@ -5987,22 +5987,40 @@ async function generateInvoicePdfBlob(invId){
     if(!inv) return null;
     const html = buildInvoiceEmailHtml(invId, {});
     if(!html) return null;
-    // html2pdf wants a real DOM node, off-screen.
+    // html2canvas can't render elements that are fully off-screen with
+    // negative coordinates (some browsers skip layout for them). Render
+    // visibly in the document flow but with opacity:0 + pointer-events:none
+    // so the user never sees it, and html2canvas captures the full layout.
     const holder = document.createElement('div');
-    holder.style.cssText = 'position:fixed;left:-9999px;top:0;width:720px;background:#fff';
+    holder.style.cssText = 'position:fixed;left:0;top:0;width:720px;background:#ffffff;opacity:0;pointer-events:none;z-index:-1';
     holder.innerHTML = html;
     document.body.appendChild(holder);
+    // Wait one paint frame so the browser commits the new node's layout
+    // before html2canvas measures it.
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
     const blob = await window.html2pdf()
       .from(holder)
       .set({
-        margin: 12,
+        margin: [12, 12, 12, 12],
         filename: invId + '.pdf',
         image: { type: 'jpeg', quality: 0.95 },
-        html2canvas: { scale: 2, backgroundColor: '#ffffff' },
-        jsPDF: { unit: 'pt', format: 'letter', orientation: 'portrait' }
+        html2canvas: {
+          scale: 2,
+          backgroundColor: '#ffffff',
+          useCORS: true,
+          allowTaint: true,
+          windowWidth: 720,
+          width: 720
+        },
+        jsPDF: { unit: 'pt', format: 'letter', orientation: 'portrait' },
+        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
       })
       .outputPdf('blob');
     holder.remove();
+    if(!blob || blob.size < 1500){
+      console.warn('[GL] PDF blob suspiciously small ('+(blob ? blob.size : 0)+' bytes) — likely blank');
+      return null;
+    }
     return { blob: blob, filename: invId + '.pdf' };
   } catch(e){
     console.error('[GL] PDF generation failed', e);
@@ -6119,7 +6137,24 @@ function openFollowUpModal(){
       const subject=subjLine?subjLine.replace('Subject:','').trim():`Follow-up: Invoice ${inv.id} — ${inv.clientName}`;
       const body=lines.filter(l=>!l.startsWith('Subject:')).join('\n').trim();
       
-      document.getElementById('fu-to').value=inv.clientEmail||inv.clientName;
+      // Look up the freshest email from the clients array (covers the case
+      // where the in-memory invoice has stale clientEmail). NEVER fall back
+      // to the client name — that's what caused "Ceres14.com" to land in
+      // the To field and Mailgun reject the send.
+      (function(){
+        var client = (window.clients||[]).find(function(c){ return c.id === inv.client; });
+        var toAddr = (client && client.email) ? client.email : (inv.clientEmail || '');
+        var toEl = document.getElementById('fu-to');
+        toEl.value = toAddr;
+        // Make the field readonly only when we have a valid email; otherwise
+        // let the user type one in inline. The Send button below also
+        // refuses to fire on an empty or non-email value.
+        toEl.removeAttribute('readonly');
+        if(!toAddr || toAddr.indexOf('@') < 0){
+          toEl.style.borderColor = '#ff8579';
+          toEl.placeholder = 'No email on file — type one to send';
+        }
+      })();
       // Surface the client's additional emails as Cc so the user can see
       // who else will be copied before sending.
       (function(){
@@ -6149,9 +6184,15 @@ function openFollowUpModal(){
 function closeFollowupModal(){ document.getElementById('followup-modal').classList.remove('show'); }
 
 async function sendFollowupEmail(){
-  const to=document.getElementById('fu-to').value;
+  const to=document.getElementById('fu-to').value.trim();
   const subject=document.getElementById('fu-subject').value;
   const body=document.getElementById('fu-body').value;
+  // Guard against the "Ceres14.com" class of bug — if there's no '@' in
+  // the To field, Mailgun will reject the send and the user gets no feedback.
+  if(!to || to.indexOf('@') < 0){
+    alert('No email address on file for this client. Type one in the To field, or add it via Edit Client first.');
+    return;
+  }
 
   // Cc the client's additional emails (AP, ops, etc.) so everyone on the
   // account sees the follow-up.
