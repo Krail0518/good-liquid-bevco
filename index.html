@@ -2155,6 +2155,7 @@ select option, .fsel option {
           <button class="cbtn grn" id="btn-paid" onclick="markStatus(&#39;paid&#39;)">✓ Mark paid</button>
           <button class="cbtn amber" id="btn-overdue" onclick="markStatus(&#39;overdue&#39;)">⚠ Mark overdue</button>
           <button class="cbtn" onclick="openFollowUpModal()">✉ AI Follow-Up</button>
+          <button class="cbtn" style="background:rgba(26,111,255,.12);border-color:rgba(26,111,255,.35);color:#6b9fff" onclick="if(currentInvId)openSendInvoiceModal(currentInvId)">📧 Send Invoice</button>
           <button class="cbtn" style="background:rgba(245,200,66,.12);border-color:rgba(245,200,66,.35);color:#f5c842" onclick="if(currentInvId && window.openEditInvoice)window.openEditInvoice(currentInvId)">✏️ Edit</button>
           <button class="cbtn" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)" onclick="if(currentInvId)downloadInvoicePDF(currentInvId)">⬇ PDF</button>
           <button class="cbtn" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)" onclick="if(currentInvId){const i=invoices.find(x=&gt;x.id===currentInvId);if(i)aiDraftEmail(i.clientName,i.id,i.amount,i.status)}">🤖 AI Email</button>
@@ -4824,6 +4825,173 @@ async function downloadInvoicePDF(invId) {
   setTimeout(function(){ try { w.focus(); w.print(); } catch(e){} }, 350);
 }
 
+// ─── SEND INVOICE BY EMAIL ───
+// Builds an HTML email body for the invoice (same data as the PDF but
+// styled for email clients) and opens a composer with editable To / Cc /
+// Bcc / Subject / Message. Sends via Mailgun with the HTML as the body.
+function buildInvoiceEmailHtml(invId){
+  const inv = invoices.find(i => i.id === invId);
+  if(!inv) return '';
+  const c = clients.find(x => x.id === inv.client) || { name: inv.clientName, contact: '', email: '' };
+  const usd = n => '$' + (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  const useBilling = c.billingSame === false && (c.billingStreet || c.billingCity);
+  const bStreet = useBilling ? c.billingStreet : c.street;
+  const bCity   = useBilling ? c.billingCity   : c.city;
+  const bState  = useBilling ? c.billingState  : c.state;
+  const bZip    = useBilling ? c.billingZip    : c.zip;
+  const bLine2  = [bCity, bState].filter(Boolean).join(', ') + (bZip ? ' ' + bZip : '');
+  const terms = inv.paymentTerms || c.paymentTerms || 'Due on receipt';
+  const lines = Array.isArray(inv.lines) && inv.lines.length
+    ? inv.lines
+    : [{ desc: inv.svc, qty: 1, unitPrice: inv.amount, total: inv.amount }];
+  const lineRows = lines.map(l => {
+    const qty = (l.qty != null) ? Number(l.qty).toLocaleString() : '';
+    const up = l.unitPrice != null ? usd(l.unitPrice) + (l.unit ? ' /'+l.unit : '') : '';
+    return `<tr><td style="padding:10px 14px;border-bottom:1px solid #eee">${l.desc||''}</td><td style="padding:10px 14px;text-align:center;border-bottom:1px solid #eee">${qty}</td><td style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee">${up}</td><td style="padding:10px 14px;text-align:right;font-weight:700;border-bottom:1px solid #eee">${usd(l.total||0)}</td></tr>`;
+  }).join('');
+  const discountRow = (inv.discount && inv.discountAmt)
+    ? `<tr><td colspan="3" style="padding:8px 14px;text-align:right;color:#666">Discount (${inv.discount}%)</td><td style="padding:8px 14px;text-align:right;color:#666">−${usd(inv.discountAmt)}</td></tr>` : '';
+
+  return `<div style="max-width:700px;margin:0 auto;font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;font-size:14px">
+    <div style="padding:24px 28px;border-bottom:3px solid #0F6E56;display:flex;justify-content:space-between;align-items:flex-start">
+      <div>
+        <div style="font-size:20px;font-weight:900;color:#0F6E56;letter-spacing:2px">GOOD LIQUID BEV CO</div>
+        <div style="font-size:11px;color:#666;margin-top:4px">2011 51st Ave E, Unit 100 · Palmetto, FL 34221</div>
+        <div style="font-size:11px;color:#666">Mike@GoodLiquid.com · (803) 493-5065</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:24px;font-weight:900">INVOICE</div>
+        <div style="font-size:13px;color:#0F6E56;font-weight:700">${inv.id}</div>
+        <div style="margin-top:6px;font-size:11px"><span style="background:${inv.status==='paid'?'#d1fae5':inv.status==='overdue'?'#fee2e2':'#fef3c7'};color:${inv.status==='paid'?'#065f46':inv.status==='overdue'?'#991b1b':'#92400e'};padding:3px 10px;border-radius:14px;font-weight:700;text-transform:uppercase">${inv.status}</span></div>
+      </div>
+    </div>
+    <div style="padding:18px 28px;display:flex;gap:24px;justify-content:space-between">
+      <div>
+        <div style="font-size:10px;letter-spacing:2px;color:#999;text-transform:uppercase;margin-bottom:4px">Bill To</div>
+        <div style="font-weight:700">${c.legalName||c.name||''}</div>
+        ${c.legalName && c.legalName !== c.name ? `<div style="font-size:11px;color:#666">dba ${c.name}</div>` : ''}
+        ${bStreet ? `<div style="font-size:12px;color:#444">${bStreet}</div>` : ''}
+        ${bLine2.trim() ? `<div style="font-size:12px;color:#444">${bLine2}</div>` : ''}
+        ${c.contact ? `<div style="font-size:11px;color:#666;margin-top:4px">Attn: ${c.contact}</div>` : ''}
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:10px;letter-spacing:2px;color:#999;text-transform:uppercase;margin-bottom:4px">Invoice Details</div>
+        <div style="font-size:12px">Date: ${inv.date}</div>
+        <div style="font-size:12px">Terms: ${terms}</div>
+      </div>
+    </div>
+    <table style="width:100%;border-collapse:collapse;margin:8px 28px 0;width:calc(100% - 56px)">
+      <thead><tr style="background:#0F6E56;color:#fff">
+        <th style="padding:10px 14px;text-align:left;font-size:11px;letter-spacing:1px">Description</th>
+        <th style="padding:10px 14px;text-align:center;font-size:11px;letter-spacing:1px">Qty</th>
+        <th style="padding:10px 14px;text-align:right;font-size:11px;letter-spacing:1px">Unit Price</th>
+        <th style="padding:10px 14px;text-align:right;font-size:11px;letter-spacing:1px">Amount</th>
+      </tr></thead>
+      <tbody>
+        ${lineRows}
+        ${discountRow}
+        ${inv.notes ? `<tr><td colspan="4" style="padding:10px 14px;font-size:12px;color:#666;font-style:italic">${inv.notes}</td></tr>` : ''}
+        <tr style="background:#f4fbf9"><td colspan="3" style="padding:14px;font-weight:900;color:#0F6E56;font-size:16px">Total Due</td><td style="padding:14px;text-align:right;font-weight:900;color:#0F6E56;font-size:18px">${usd(inv.amount)}</td></tr>
+      </tbody>
+    </table>
+    <div style="margin:24px 28px;padding:14px 18px;background:#f4fbf9;border:1px solid #0F6E56;border-radius:8px">
+      <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#0F6E56;font-weight:700;margin-bottom:8px">Payment Instructions — Wire Transfer</div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <tr><td style="padding:3px 0;color:#555;width:160px">Bank Name</td><td>Gulfside Bank</td></tr>
+        <tr><td style="padding:3px 0;color:#555">Account Number</td><td style="font-family:monospace">1000007789</td></tr>
+        <tr><td style="padding:3px 0;color:#555">Routing (ABA)</td><td style="font-family:monospace">063116902</td></tr>
+      </table>
+    </div>
+    <div style="padding:14px 28px;border-top:1px solid #eee;font-size:11px;color:#999;text-align:center">
+      Payment to Good Liquid Bev Co · Mike@GoodLiquid.com · (803) 493-5065 · goodliquidbevco.com
+    </div>
+  </div>`;
+}
+
+function openSendInvoiceModal(invId){
+  const inv = invoices.find(i => i.id === invId);
+  if(!inv){ alert('Invoice not found.'); return; }
+  const c = clients.find(x => x.id === inv.client) || {};
+  const primary = c.email || inv.clientEmail || '';
+  const extras = (Array.isArray(c.additionalEmails) ? c.additionalEmails : [])
+                   .map(e => e.email).filter(Boolean).filter(e => e !== primary);
+
+  const prior = document.getElementById('gl-send-inv-modal');
+  if(prior) prior.remove();
+  const ov = document.createElement('div');
+  ov.id = 'gl-send-inv-modal';
+  ov.setAttribute('style','position:fixed;inset:0;z-index:1100;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:flex-start;justify-content:center;padding:30px;overflow-y:auto');
+
+  const usd = n => '$' + (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  const defaultSubject = `Invoice ${inv.id} from Good Liquid Bev Co — ${usd(inv.amount)}`;
+  const defaultMessage = `Hi ${c.contact || c.name || 'there'},\n\nPlease find Invoice ${inv.id} below for ${usd(inv.amount)}.\n\nPayment is due ${inv.paymentTerms || 'on receipt'}. Wire instructions are included at the bottom of the invoice.\n\nLet me know if you have any questions.\n\nThanks,\nMike Krail\nGood Liquid Bev Co\n(803) 493-5065`;
+
+  ov.innerHTML = `
+    <div style="background:#142238;border:1px solid rgba(26,111,255,.25);border-radius:14px;width:100%;max-width:720px;padding:24px 28px;color:#fff">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+        <div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:#6b9fff">📧 SEND INVOICE ${inv.id}</div>
+        <button id="gl-si-close" style="background:none;border:none;color:#9aa7bd;font-size:22px;cursor:pointer;line-height:1">✕</button>
+      </div>
+      <div style="display:grid;grid-template-columns:80px 1fr;gap:8px 12px;align-items:center;font-size:13px">
+        <label style="color:var(--muted);font-size:11px;letter-spacing:1px">TO</label>
+        <input id="gl-si-to" class="finp" value="${primary}" placeholder="recipient@client.com (comma-separate for multiple)" style="font-size:13px">
+        <label style="color:var(--muted);font-size:11px;letter-spacing:1px">CC</label>
+        <input id="gl-si-cc" class="finp" value="${extras.join(', ')}" placeholder="optional, comma-separated" style="font-size:13px">
+        <label style="color:var(--muted);font-size:11px;letter-spacing:1px">BCC</label>
+        <input id="gl-si-bcc" class="finp" placeholder="optional, comma-separated" style="font-size:13px">
+        <label style="color:var(--muted);font-size:11px;letter-spacing:1px">SUBJECT</label>
+        <input id="gl-si-subject" class="finp" value="${defaultSubject}" style="font-size:13px">
+      </div>
+      <div style="margin-top:14px"><div style="font-size:11px;letter-spacing:1px;color:var(--muted);margin-bottom:4px">MESSAGE (added above the invoice)</div>
+        <textarea id="gl-si-message" class="finp" rows="6" style="resize:vertical;font-size:13px">${defaultMessage}</textarea>
+      </div>
+      <details style="margin-top:14px">
+        <summary style="cursor:pointer;color:#6b9fff;font-size:12px;letter-spacing:1px">📄 PREVIEW EMBEDDED INVOICE</summary>
+        <div id="gl-si-preview" style="margin-top:10px;background:#fff;border-radius:10px;max-height:420px;overflow-y:auto;border:1px solid rgba(255,255,255,.08)">${buildInvoiceEmailHtml(invId)}</div>
+      </details>
+      <div style="display:flex;gap:8px;margin-top:18px;justify-content:flex-end">
+        <button id="gl-si-cancel" class="cbtn" style="font-size:13px">Cancel</button>
+        <button id="gl-si-send" class="cbtn pri" style="font-size:13px">📤 Send via Mailgun</button>
+      </div>
+      <div id="gl-si-status" style="margin-top:10px;font-size:12px;color:var(--muted);min-height:18px"></div>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click', e => { if(e.target === ov) ov.remove(); });
+  ov.querySelector('#gl-si-close').onclick = () => ov.remove();
+  ov.querySelector('#gl-si-cancel').onclick = () => ov.remove();
+  ov.querySelector('#gl-si-send').onclick = async function(){
+    const btn = this;
+    const status = ov.querySelector('#gl-si-status');
+    const toRaw = ov.querySelector('#gl-si-to').value.trim();
+    const ccRaw = ov.querySelector('#gl-si-cc').value.trim();
+    const bccRaw = ov.querySelector('#gl-si-bcc').value.trim();
+    const subject = ov.querySelector('#gl-si-subject').value.trim();
+    const message = ov.querySelector('#gl-si-message').value;
+    if(!toRaw){ status.style.color = '#ff8579'; status.textContent = 'At least one To recipient required.'; return; }
+    if(!subject){ status.style.color = '#ff8579'; status.textContent = 'Subject required.'; return; }
+    if(!localStorage.getItem('gl_mailgun_key')){
+      status.style.color = '#ff8579';
+      status.textContent = 'Mailgun API key not set. Open AI Settings to configure.';
+      return;
+    }
+    btn.disabled = true; btn.textContent = 'Sending…';
+    status.style.color = 'var(--muted)'; status.textContent = '';
+    const html = `<div style="font-family:Arial,sans-serif;color:#1a1a1a;line-height:1.55"><div style="white-space:pre-wrap;padding:0 28px 14px">${message.replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</div>${buildInvoiceEmailHtml(invId)}</div>`;
+    const ok = await sendMailgunEmail(toRaw, subject, message, { cc: ccRaw, bcc: bccRaw, html: html });
+    btn.disabled = false; btn.textContent = '📤 Send via Mailgun';
+    if(ok){
+      status.style.color = '#5fcf9e';
+      const recipients = [toRaw, ccRaw, bccRaw].filter(Boolean).join(' · ');
+      status.textContent = '✓ Sent. ' + recipients;
+      if(typeof addNotification === 'function') addNotification('📧 Invoice sent', inv.id + ' → ' + toRaw + (ccRaw ? ' (+Cc)' : ''), 'email');
+      if(typeof window.glAudit === 'function') window.glAudit('invoice_sent', invId, { to: toRaw, cc: ccRaw, bcc: bccRaw });
+      setTimeout(() => ov.remove(), 1400);
+    } else {
+      status.style.color = '#ff8579';
+      status.textContent = '✗ Mailgun rejected the send. Check the browser console for details.';
+    }
+  };
+}
 
 // ─── CLIENT DETAIL PANEL ───
 function openClientDetail(cid) {
@@ -5761,20 +5929,40 @@ async function sendMailgunEmail(to, subject, body, opts){
   const domain = localStorage.getItem('gl_mailgun_domain') || MAILGUN_DOMAIN_DEFAULT;
   const from   = localStorage.getItem('gl_mailgun_from')   || MAILGUN_FROM_DEFAULT;
   opts = opts || {};
+  function normalizeList(list, primary){
+    if(!list) return [];
+    if(typeof list === 'string'){
+      list = list.split(/[,;]/).map(s => s.trim()).filter(Boolean);
+    } else if(Array.isArray(list)){
+      list = list.map(c => (typeof c === 'string' ? c : (c && c.email))).filter(Boolean);
+    } else {
+      return [];
+    }
+    return list.filter(e => e !== primary);
+  }
   try {
+    // The "to" param itself may be a comma-separated list of addresses.
+    const toList = typeof to === 'string'
+      ? to.split(/[,;]/).map(s => s.trim()).filter(Boolean)
+      : [to].filter(Boolean);
+    if(!toList.length){ console.error('[Mailgun] no To recipients'); return false; }
+    const primary = toList[0];
+
     const formData = new FormData();
     formData.append('from', from);
-    formData.append('to', to);
-    // Optional Cc list — accepts an array of emails (or { label, email }
-    // objects from the client.additionalEmails JSONB column).
-    if(Array.isArray(opts.cc) && opts.cc.length){
-      const ccList = opts.cc.map(c => (typeof c === 'string' ? c : (c && c.email)))
-                            .filter(Boolean)
-                            .filter(e => e !== to);
-      if(ccList.length) formData.append('cc', ccList.join(', '));
-    }
+    formData.append('to', toList.join(', '));
+
+    const ccList = normalizeList(opts.cc, primary);
+    if(ccList.length) formData.append('cc', ccList.join(', '));
+
+    const bccList = normalizeList(opts.bcc, primary);
+    if(bccList.length) formData.append('bcc', bccList.join(', '));
+
     formData.append('subject', subject);
     formData.append('text', body);
+    if(opts.html) formData.append('html', opts.html);
+    if(opts.replyTo) formData.append('h:Reply-To', opts.replyTo);
+
     const resp = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
       method: 'POST',
       headers: { 'Authorization': 'Basic '+btoa('api:'+apiKey) },
