@@ -16665,3 +16665,528 @@
 
   console.log('[GL] admin theme refresh — lighter palette + bold colored section headers');
 }());
+
+
+/* ============================================================
+   COMPLIANCE POLISH PACK
+   A. Photo upload on NCR / Defects form
+   B. Per-product applicability config (hide CCPs you don't use)
+   C. Single-record print button (history row → printable PDF)
+   D. Document version control (LEAN plan files + PCQI ack)
+   E. Retention archival workflow (records >24 months)
+   F. Mobile responsiveness for compliance forms
+   G. Annual FSP review auto-reminder (12 months out)
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function fmtDate(d){ if(!d) return ''; var x = new Date(d); return isNaN(x.getTime()) ? String(d) : x.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
+  function fmtTs(d){ if(!d) return ''; var x = new Date(d); return isNaN(x.getTime()) ? String(d) : x.toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}); }
+  function nowISO(){ return new Date().toISOString(); }
+  function todayISO(){ return new Date().toISOString().slice(0,10); }
+
+  async function uploadCompliancePhoto(file, prefix){
+    if(!file || !window.supa) return null;
+    var ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    var path = (prefix || 'compliance') + '/' + Date.now() + '-' + Math.random().toString(36).slice(2,8) + '.' + ext;
+    try {
+      var r = await window.supa.storage.from('compliance-photos').upload(path, file, { contentType: file.type || 'image/jpeg' });
+      if(r.error){ console.warn('[GL polish] photo upload err', r.error); return null; }
+      var pub = window.supa.storage.from('compliance-photos').getPublicUrl(path);
+      return pub.data && pub.data.publicUrl ? pub.data.publicUrl : null;
+    } catch(e){ console.warn('[GL polish] photo threw', e); return null; }
+  }
+
+  // ============================================================
+  // (A) PHOTO UPLOAD ON DEFECT / NCR MODAL
+  // ============================================================
+  // The defect modal mounts dynamically. We observe DOM for #gl-def-desc
+  // (its description textarea) and inject a photo field underneath.
+  new MutationObserver(function(muts){
+    muts.forEach(function(m){
+      if(!m.addedNodes) return;
+      m.addedNodes.forEach(function(n){
+        if(n.nodeType !== 1) return;
+        var desc = n.id === 'gl-def-desc' ? n : (n.querySelector ? n.querySelector('#gl-def-desc') : null);
+        if(!desc) return;
+        var modal = desc.closest('div[id^="gl-"]') || desc.parentNode.parentNode.parentNode;
+        if(!modal || modal.dataset.glDefectPhotoInjected === '1') return;
+        modal.dataset.glDefectPhotoInjected = '1';
+        var photoWrap = document.createElement('div');
+        photoWrap.className = 'frow';
+        photoWrap.innerHTML =
+          '<div class="flbl">📸 Photo evidence (optional)</div>' +
+          '<input type="file" id="gl-def-photo" accept="image/*" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#fff;font-size:12px;box-sizing:border-box">' +
+          '<div id="gl-def-photo-preview" style="margin-top:6px"></div>';
+        // Insert after description's parent row
+        var descRow = desc.parentNode;
+        descRow.parentNode.insertBefore(photoWrap, descRow.nextSibling);
+        var input = photoWrap.querySelector('#gl-def-photo');
+        var preview = photoWrap.querySelector('#gl-def-photo-preview');
+        input.addEventListener('change', async function(){
+          var f = input.files[0]; if(!f) return;
+          preview.innerHTML = '<div style="font-size:11px;color:#9aa7bd">Uploading…</div>';
+          var url = await uploadCompliancePhoto(f, 'defect');
+          if(url){
+            preview.innerHTML = '<div style="font-size:10px;color:#5fcf9e;margin-bottom:4px">✓ Uploaded</div><img src="' + esc(url) + '" style="max-width:200px;max-height:120px;border-radius:6px;border:1px solid rgba(255,255,255,.1)">';
+            preview.dataset.url = url;
+            window.__glLastDefectPhoto = url;
+          } else {
+            preview.innerHTML = '<div style="font-size:11px;color:#ff8579">Upload failed — create the compliance-photos Storage bucket in Supabase to enable.</div>';
+          }
+        });
+      });
+    });
+  }).observe(document.body, { childList:true, subtree:true });
+
+  // After any defect is saved, patch notes with the photo URL (best-effort)
+  (function watchDefectInserts(){
+    var lastSeen = null;
+    setInterval(async function(){
+      if(!window.supa || !window.__glLastDefectPhoto) return;
+      var photo = window.__glLastDefectPhoto;
+      try {
+        var r = await window.supa.from('defects').select('id,description,corrective_action,created_at').order('created_at',{ascending:false}).limit(1);
+        if(r.data && r.data[0]){
+          var d = r.data[0];
+          if(d.id === lastSeen) return;
+          lastSeen = d.id;
+          if(!(d.description||'').includes('Photo:') && !(d.corrective_action||'').includes('Photo:')){
+            await window.supa.from('defects').update({ description: (d.description||'') + '\nPhoto: ' + photo }).eq('id', d.id);
+            window.__glLastDefectPhoto = null;
+          }
+        }
+      } catch(e){}
+    }, 2500);
+  })();
+
+  // ============================================================
+  // (B) PER-PRODUCT APPLICABILITY CONFIG
+  // ============================================================
+  // Stores a set of hidden task types in localStorage. The compliance
+  // task generator already filters tasks; we layer a second filter via
+  // a MutationObserver that hides "rendered" Today's-Task cards whose
+  // task_type is in the hidden set.
+  var APP_KEY = 'gl_compliance_hidden_task_types';
+  function readApp(){ try { return JSON.parse(localStorage.getItem(APP_KEY) || '[]'); } catch(e){ return []; } }
+  function writeApp(arr){ localStorage.setItem(APP_KEY, JSON.stringify(arr || [])); }
+
+  window.glOpenApplicabilityConfig = function(){
+    var prior = document.getElementById('gl-app-modal'); if(prior) prior.remove();
+    var TASK_TYPES = [
+      ['htst_reading','🌡️ HTST Pasteurization (CCP-1)','Use when you pasteurize juice or RTD beverages'],
+      ['hot_fill_reading','♨️ Hot Fill (CCP-2)','Use when hot-filling jam / syrup / preserves'],
+      ['seam_check','🥫 Can Seam (CCP-4)','Use when canning'],
+      ['uv_reading','💡 UV Water Treatment (CCP-3)','Use when UV is your water disinfection step'],
+      ['ferm_reading','🧫 Fermentation (CCP-A)','Use when brewing beer / cider / hard seltzer / kombucha'],
+      ['cip_cycle','🧼 CIP cycle (post-run)','Auto-generated post-run; turn off if you do CIP only on a different schedule'],
+      ['allergen_swab','⚠️ Allergen Changeover Swab','Auto-detects allergen runs in today\'s schedule'],
+      ['batch_record','📄 Batch Record (co-pack)','Auto-generated for co-pack runs (client linked)']
+    ];
+    var hidden = new Set(readApp());
+    var rows = TASK_TYPES.map(function(t){
+      var on = !hidden.has(t[0]);
+      return '<label style="display:flex;align-items:flex-start;gap:10px;padding:11px 13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:9px;margin-bottom:6px;cursor:pointer">' +
+        '<input type="checkbox" data-tt="' + t[0] + '"' + (on ? ' checked' : '') + ' style="accent-color:var(--teal);width:15px;height:15px;margin-top:1px">' +
+        '<div style="flex:1"><div style="font-size:13px;color:#fff;font-weight:600">' + esc(t[1]) + '</div><div style="font-size:11px;color:#9aa7bd;margin-top:2px">' + esc(t[2]) + '</div></div>' +
+      '</label>';
+    }).join('');
+    var ov = document.createElement('div');
+    ov.id = 'gl-app-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:9000;background:rgba(6,13,26,.85);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto');
+    ov.innerHTML =
+      '<div style="background:#243653;border:1px solid rgba(0,229,192,.22);border-radius:14px;width:100%;max-width:520px;max-height:88vh;overflow-y:auto;color:#cfd9e6;box-shadow:0 20px 60px rgba(0,0,0,.6)">' +
+        '<div style="display:flex;justify-content:space-between;align-items:start;padding:18px 22px;border-bottom:1px solid rgba(255,255,255,.06)">' +
+          '<div>' +
+            '<div style="font-family:var(--ff-disp);font-size:14px;letter-spacing:2px;color:var(--teal);font-weight:700">⚙️ APPLICABILITY</div>' +
+            '<div style="font-size:11px;color:#9aa7bd;margin-top:3px">Toggle off CCPs / forms you don\'t actually use. Hidden ones won\'t auto-generate as tasks.</div>' +
+          '</div>' +
+          '<button id="gl-app-close" style="background:none;border:none;color:#9aa7bd;font-size:18px;cursor:pointer;padding:2px 6px">✕</button>' +
+        '</div>' +
+        '<div style="padding:18px 22px">' + rows + '</div>' +
+        '<div style="padding:14px 22px;border-top:1px solid rgba(255,255,255,.06);display:flex;gap:8px;justify-content:flex-end">' +
+          '<button id="gl-app-cancel" class="cbtn">Cancel</button>' +
+          '<button id="gl-app-save" class="cbtn pri">💾 Save</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    function close(){ ov.remove(); }
+    ov.addEventListener('click', function(e){ if(e.target === ov) close(); });
+    ov.querySelector('#gl-app-close').addEventListener('click', close);
+    ov.querySelector('#gl-app-cancel').addEventListener('click', close);
+    ov.querySelector('#gl-app-save').addEventListener('click', function(){
+      var newHidden = [];
+      ov.querySelectorAll('input[type=checkbox][data-tt]').forEach(function(cb){
+        if(!cb.checked) newHidden.push(cb.getAttribute('data-tt'));
+      });
+      writeApp(newHidden);
+      if(typeof addNotification === 'function') addNotification('⚙️ Applicability saved', newHidden.length + ' task type' + (newHidden.length===1?'':'s') + ' hidden','success');
+      if(typeof window.glAudit === 'function') window.glAudit('compliance_applicability_changed','', { hidden: newHidden });
+      close();
+      // Trigger a refresh of the compliance master
+      if(typeof window.refreshComplianceMaster === 'function') window.refreshComplianceMaster();
+    });
+  };
+
+  // Hide rendered task cards whose task_type is in the hidden set.
+  // Watch comp-body for renders.
+  (function hideHiddenTasks(){
+    var host = document.getElementById('comp-body');
+    if(!host){ setTimeout(hideHiddenTasks, 700); return; }
+    new MutationObserver(function(){
+      var hidden = new Set(readApp());
+      if(!hidden.size) return;
+      host.querySelectorAll('.gl-comp-task').forEach(function(card){
+        // Find the action button to read data-task-type
+        var btn = card.querySelector('button[data-task-type]');
+        if(!btn) return;
+        var tt = btn.getAttribute('data-task-type');
+        if(hidden.has(tt)) card.style.display = 'none';
+        else card.style.display = '';
+      });
+    }).observe(host, { childList:true, subtree:true });
+  })();
+
+  // ============================================================
+  // (C) SINGLE-RECORD PRINT
+  // ============================================================
+  // Add a "🖨️ Print" button to each row of the History tab.
+  // We hook into the existing renderHistory by observing the comp-body.
+  function printSingleRecord(rec){
+    var w = window.open('','_blank');
+    if(!w){ alert('Pop-up blocked — allow pop-ups to print.'); return; }
+    var data = rec.data || {};
+    function row(k, v){ return '<tr><td style="padding:6px 10px;color:#666;width:35%;border-bottom:1px solid #eee">' + esc(k) + '</td><td style="padding:6px 10px;border-bottom:1px solid #eee">' + esc(v == null ? '' : v) + '</td></tr>'; }
+    var dataRowsHtml = '';
+    if(Array.isArray(data.steps)){
+      dataRowsHtml = '<h3 style="margin:14px 0 4px;font-size:13px">9-Step CIP Breakdown</h3>' +
+        '<table style="width:100%;border-collapse:collapse;font-size:11px">' +
+        '<thead><tr style="background:#f5f5f5"><th style="padding:4px 6px;text-align:left">#</th><th style="padding:4px 6px;text-align:left">Step</th><th style="padding:4px 6px">Done</th><th style="padding:4px 6px">Actual min</th><th style="padding:4px 6px">Temp °F</th><th style="padding:4px 6px;text-align:left">Reading</th><th style="padding:4px 6px">P/F</th></tr></thead><tbody>';
+      data.steps.forEach(function(s){
+        dataRowsHtml += '<tr><td style="padding:3px 6px;border-bottom:1px dotted #eee">'+s.n+'</td><td style="padding:3px 6px;border-bottom:1px dotted #eee">'+esc(s.name)+'</td><td style="padding:3px 6px;text-align:center;border-bottom:1px dotted #eee">'+(s.done?'Y':'N')+'</td><td style="padding:3px 6px;text-align:center;border-bottom:1px dotted #eee">'+esc(s.actual_min)+'</td><td style="padding:3px 6px;text-align:center;border-bottom:1px dotted #eee">'+(s.temp_f||'')+'</td><td style="padding:3px 6px;border-bottom:1px dotted #eee">'+esc(s.reading||'')+'</td><td style="padding:3px 6px;text-align:center;border-bottom:1px dotted #eee;font-weight:600;color:'+(s.pf==='fail'?'#c41e3a':'#0a8')+'">'+esc(s.pf||'').toUpperCase()+'</td></tr>';
+      });
+      dataRowsHtml += '</tbody></table>';
+    } else {
+      var kvHtml = '';
+      Object.keys(data).filter(function(k){ return typeof data[k] !== 'object'; }).forEach(function(k){
+        kvHtml += row(k, data[k]);
+      });
+      if(kvHtml) dataRowsHtml = '<table style="width:100%;border-collapse:collapse">' + kvHtml + '</table>';
+    }
+    w.document.write(
+      '<!doctype html><html><head><meta charset="utf-8"><title>' + esc(rec.form_code) + ' — ' + esc(rec.id) + '</title>' +
+      '<style>body{font-family:Helvetica,Arial,sans-serif;color:#0a1628;margin:24px;font-size:12px;line-height:1.5}h1{font-size:18px;margin:0 0 4px}.meta{color:#666;font-size:11px;margin-bottom:14px}.sig{margin-top:14px;padding-top:8px;border-top:2px solid #0a8;font-size:11px}.dev{background:#fef0ef;border-left:3px solid #c41e3a;padding:8px 10px;margin-top:10px;font-size:11px}@media print{.no-print{display:none}body{margin:14px}}</style>' +
+      '</head><body>' +
+      '<h1>' + esc(rec.form_code) + '</h1>' +
+      '<div class="meta">Good Liquid Bev Co · 2011 51st Ave E, Palmetto, FL 34221 · Record ' + esc(rec.id) + '</div>' +
+      '<div class="no-print" style="margin-bottom:14px"><button onclick="window.print()" style="padding:8px 16px;background:#0a8;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:700">🖨️ Print / Save as PDF</button> <button onclick="window.close()" style="margin-left:6px">Close</button></div>' +
+      '<table style="width:100%;border-collapse:collapse;margin-bottom:14px;font-size:11px">' +
+        row('Form', rec.form_code) +
+        row('Record date', fmtDate(rec.record_date)) +
+        row('Recorded at', fmtTs(rec.recorded_at)) +
+        row('Status', rec.status) +
+      '</table>' +
+      dataRowsHtml +
+      (rec.has_deviation ? '<div class="dev"><b>⚠ Deviation:</b> ' + esc(rec.deviation_notes || '') + (rec.corrective_action ? '<br><b>Corrective:</b> ' + esc(rec.corrective_action) : '') + '</div>' : '') +
+      (rec.signature_name ? '<div class="sig"><b>PCQI signature:</b> ' + esc(rec.signature_name) + ' on ' + fmtTs(rec.signed_at) + (rec.signature_meaning ? ' (' + esc(rec.signature_meaning) + ')' : '') + '</div>' : '<div class="sig">Signature: __________________ Date: __________</div>') +
+      '</body></html>'
+    );
+    w.document.close();
+  }
+  // Hook into history rows
+  (function hookHistoryPrint(){
+    var host = document.getElementById('comp-body');
+    if(!host){ setTimeout(hookHistoryPrint, 700); return; }
+    new MutationObserver(function(){
+      host.querySelectorAll('.gl-hist-row').forEach(function(row){
+        if(row.dataset.glPrintInjected === '1') return;
+        row.dataset.glPrintInjected = '1';
+        var detail = row.querySelector('.gl-hist-detail');
+        if(!detail) return;
+        // Add a print button to the bottom of the expanded detail
+        var btn = document.createElement('button');
+        btn.className = 'cbtn';
+        btn.setAttribute('style','font-size:10px;padding:4px 10px;margin-top:8px;background:rgba(127,198,245,.08);border:1px solid rgba(127,198,245,.3);color:#7fc6f5');
+        btn.textContent = '🖨️ Print this record';
+        btn.addEventListener('click', async function(ev){
+          ev.preventDefault(); ev.stopPropagation();
+          // Re-fetch the record by id for fresh data
+          var id = row.getAttribute('data-id');
+          if(!id || !window.supa){ return; }
+          try {
+            var r = await window.supa.from('compliance_records').select('*').eq('id', id).single();
+            if(r.data) printSingleRecord(r.data);
+          } catch(e){ alert('Fetch failed: ' + (e.message||'')); }
+        });
+        detail.appendChild(btn);
+      });
+    }).observe(host, { childList:true, subtree:true });
+  })();
+
+  // ============================================================
+  // (D) DOCUMENT VERSION CONTROL
+  // ============================================================
+  // Stores LEAN plan documents (GMP-001, FSP-001, etc.) as compliance_records
+  // with form_code='DOC-CTRL-001'. Each record has: doc_name, version,
+  // effective_date, file_url, retired_at, ack_required. PCQI signature
+  // counts as acknowledgement.
+  window.glOpenDocumentControl = function(){
+    var prior = document.getElementById('gl-doc-modal'); if(prior) prior.remove();
+    var ov = document.createElement('div');
+    ov.id = 'gl-doc-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:9000;background:rgba(6,13,26,.85);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto');
+    ov.innerHTML =
+      '<div style="background:#243653;border:1px solid rgba(0,229,192,.22);border-radius:14px;width:100%;max-width:760px;max-height:88vh;overflow-y:auto;color:#cfd9e6;box-shadow:0 20px 60px rgba(0,0,0,.6)">' +
+        '<div style="display:flex;justify-content:space-between;align-items:start;padding:18px 22px;border-bottom:1px solid rgba(255,255,255,.06)">' +
+          '<div>' +
+            '<div style="font-family:var(--ff-disp);font-size:14px;letter-spacing:2px;color:var(--teal);font-weight:700">📄 DOCUMENT CONTROL</div>' +
+            '<div style="font-size:11px;color:#9aa7bd;margin-top:3px">GMP, FSP, HACCP plan files — version-tracked with PCQI ack on each release</div>' +
+          '</div>' +
+          '<button id="gl-doc-close" style="background:none;border:none;color:#9aa7bd;font-size:18px;cursor:pointer;padding:2px 6px">✕</button>' +
+        '</div>' +
+        '<div style="padding:18px 22px">' +
+          '<button id="gl-doc-add" class="cbtn pri" style="margin-bottom:12px">📤 Upload new document version</button>' +
+          '<div id="gl-doc-list"></div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    function close(){ ov.remove(); }
+    ov.addEventListener('click', function(e){ if(e.target === ov) close(); });
+    ov.querySelector('#gl-doc-close').addEventListener('click', close);
+    ov.querySelector('#gl-doc-add').addEventListener('click', function(){ openDocUploadModal(function(){ refreshDocList(); }); });
+
+    async function refreshDocList(){
+      var list = ov.querySelector('#gl-doc-list');
+      list.innerHTML = '<div style="padding:20px;text-align:center;color:#9aa7bd">Loading…</div>';
+      if(!window.supa){ list.innerHTML = '<div style="padding:20px;text-align:center;color:#9aa7bd">Supabase not loaded</div>'; return; }
+      var r = await window.supa.from('compliance_records').select('*').eq('form_code','DOC-CTRL-001').order('recorded_at',{ascending:false}).limit(200);
+      var rows = r.data || [];
+      if(!rows.length){
+        list.innerHTML = '<div style="padding:30px;text-align:center;color:#9aa7bd;font-size:13px">No documents uploaded yet. Click "Upload new document version" to add your GMP / FSP / HACCP plan files.</div>';
+        return;
+      }
+      list.innerHTML = rows.map(function(r){
+        var d = r.data || {};
+        var retired = d.retired_at;
+        var ackBadge = r.status === 'signed' ? '<span style="font-size:10px;color:#5fcf9e;background:rgba(95,207,158,.1);border:1px solid rgba(95,207,158,.3);padding:2px 7px;border-radius:10px">✓ PCQI Ack</span>' : '<span style="font-size:10px;color:#f5c842;background:rgba(245,200,66,.08);border:1px solid rgba(245,200,66,.3);padding:2px 7px;border-radius:10px">Awaiting Ack</span>';
+        var retiredBadge = retired ? '<span style="font-size:10px;color:#9aa7bd;background:rgba(255,255,255,.04);padding:2px 7px;border-radius:10px;margin-left:6px">RETIRED ' + fmtDate(retired) + '</span>' : '';
+        return '<div style="padding:13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:9px;margin-bottom:6px;display:flex;align-items:center;gap:10px">' +
+          '<div style="flex:1">' +
+            '<div style="font-size:13px;color:#fff;font-weight:600">📄 ' + esc(d.doc_name || 'Document') + ' · v' + esc(d.version || '1.0') + retiredBadge + '</div>' +
+            '<div style="font-size:11px;color:#9aa7bd;margin-top:3px">' + (d.effective_date ? 'Effective ' + fmtDate(d.effective_date) + ' · ' : '') + 'Uploaded ' + fmtTs(r.recorded_at) + ' · ' + ackBadge + '</div>' +
+          '</div>' +
+          (d.file_url ? '<a href="' + esc(d.file_url) + '" target="_blank" class="cbtn" style="font-size:10px;padding:4px 10px">📥 Open</a>' : '') +
+          (!retired ? '<button class="cbtn gl-doc-retire" data-id="' + r.id + '" style="font-size:10px;padding:4px 10px;background:rgba(231,76,60,.1);border-color:rgba(231,76,60,.3);color:#ff8579">Retire</button>' : '') +
+        '</div>';
+      }).join('');
+      list.querySelectorAll('.gl-doc-retire').forEach(function(btn){
+        btn.addEventListener('click', async function(){
+          if(!confirm('Retire this document version? It stays in the audit trail but is marked as superseded.')) return;
+          var id = btn.getAttribute('data-id');
+          var cur = await window.supa.from('compliance_records').select('data').eq('id', id).single();
+          var d = (cur.data && cur.data.data) || {};
+          d.retired_at = nowISO();
+          await window.supa.from('compliance_records').update({ data: d }).eq('id', id);
+          refreshDocList();
+        });
+      });
+    }
+    refreshDocList();
+  };
+
+  function openDocUploadModal(onSaved){
+    var prior = document.getElementById('gl-doc-up-modal'); if(prior) prior.remove();
+    var ov = document.createElement('div');
+    ov.id = 'gl-doc-up-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:9100;background:rgba(6,13,26,.85);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px');
+    function fld(label, name, type, opts){
+      opts = opts || {};
+      var id = 'gl-docup-' + name;
+      var common = 'width:100%;padding:9px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#fff;font-size:13px;box-sizing:border-box';
+      var ctrl;
+      if(type === 'select') ctrl = '<select id="' + id + '" style="' + common + '">' + (opts.options||[]).map(function(o){ return '<option>' + esc(o) + '</option>'; }).join('') + '</select>';
+      else if(type === 'file') ctrl = '<input id="' + id + '" type="file" style="' + common + '">';
+      else ctrl = '<input id="' + id + '" type="' + (type||'text') + '" value="' + esc(opts.value||'') + '" style="' + common + '">';
+      return '<div style="margin-bottom:11px"><div style="font-size:11px;color:#9aa7bd;margin-bottom:4px">' + esc(label) + '</div>' + ctrl + '</div>';
+    }
+    ov.innerHTML =
+      '<div style="background:#243653;border:1px solid rgba(0,229,192,.25);border-radius:14px;width:100%;max-width:460px;color:#cfd9e6;box-shadow:0 20px 60px rgba(0,0,0,.6)">' +
+        '<div style="padding:18px 22px;border-bottom:1px solid rgba(255,255,255,.06)">' +
+          '<div style="font-family:var(--ff-disp);font-size:14px;letter-spacing:2px;color:var(--teal);font-weight:700">📤 UPLOAD DOCUMENT</div>' +
+        '</div>' +
+        '<div style="padding:18px 22px">' +
+          fld('Document name','name','select',{ options:['GMP-001 — Good Manufacturing Practices','FSP-001 — Food Safety Plan','HACCP-001 — HACCP Plan','REC-001 — Minimum Records','SOP — Standard Operating Procedure','Other'] }) +
+          fld('Custom name (if "Other")','custom','text') +
+          fld('Version','version','text',{ value:'v1.0' }) +
+          fld('Effective date','eff_date','date',{ value: todayISO() }) +
+          fld('File (PDF or DOCX)','file','file') +
+          '<div style="font-size:11px;color:#f5c842;background:rgba(245,200,66,.08);padding:8px 12px;border-radius:6px;margin-top:6px">Will save as PCQI-signed record. Requires the <b>compliance-photos</b> Storage bucket (same one used for evidence photos).</div>' +
+        '</div>' +
+        '<div style="padding:14px 22px;border-top:1px solid rgba(255,255,255,.06);display:flex;gap:8px;justify-content:flex-end">' +
+          '<button id="gl-docup-cancel" class="cbtn">Cancel</button>' +
+          '<button id="gl-docup-save" class="cbtn pri">📤 Upload &amp; sign</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    function close(){ ov.remove(); }
+    ov.addEventListener('click', function(e){ if(e.target === ov) close(); });
+    ov.querySelector('#gl-docup-cancel').addEventListener('click', close);
+    ov.querySelector('#gl-docup-save').addEventListener('click', async function(){
+      var name = ov.querySelector('#gl-docup-name').value;
+      if(name === 'Other'){ name = ov.querySelector('#gl-docup-custom').value.trim() || 'Other'; }
+      var ver = ov.querySelector('#gl-docup-version').value.trim() || 'v1.0';
+      var eff = ov.querySelector('#gl-docup-eff_date').value;
+      var fileInput = ov.querySelector('#gl-docup-file');
+      var file = fileInput.files[0];
+      if(!file){ alert('Pick a file.'); return; }
+      var btn = this; btn.disabled = true; btn.textContent = 'Uploading…';
+      // Upload to compliance-photos bucket (reuse — same RLS, no extra setup)
+      var ext = (file.name.split('.').pop() || 'bin').toLowerCase();
+      var path = 'docs/' + Date.now() + '-' + Math.random().toString(36).slice(2,8) + '.' + ext;
+      var url = null;
+      try {
+        var r = await window.supa.storage.from('compliance-photos').upload(path, file, { contentType: file.type || 'application/pdf' });
+        if(!r.error){
+          var pub = window.supa.storage.from('compliance-photos').getPublicUrl(path);
+          url = pub.data && pub.data.publicUrl;
+        }
+      } catch(e){ console.warn('[GL doc upload] failed', e); }
+      if(!url){ btn.disabled = false; btn.textContent = '📤 Upload & sign'; alert('Upload failed. Create the compliance-photos bucket first if you have not.'); return; }
+      var user = window.currentUser || {};
+      var rec = await window.supa.from('compliance_records').insert([{
+        form_code: 'DOC-CTRL-001',
+        record_date: eff || todayISO(),
+        data: { doc_name: name, version: ver, effective_date: eff, file_url: url, file_name: file.name, file_type: file.type },
+        status: 'signed',
+        signed_by: user.id || null, signed_at: nowISO(),
+        signature_name: user.name || user.email || 'PCQI',
+        signature_meaning: 'PCQI acknowledgement of plan version'
+      }]).select().single();
+      if(typeof window.glAudit === 'function') window.glAudit('document_uploaded', rec.data ? rec.data.id : '', { name: name, version: ver });
+      if(typeof addNotification === 'function') addNotification('📄 ' + name + ' ' + ver + ' uploaded','PCQI signature recorded','success');
+      close();
+      if(typeof onSaved === 'function') onSaved();
+    });
+  }
+
+  // ============================================================
+  // (E) RETENTION ARCHIVAL
+  // ============================================================
+  // Records older than 24 months can be "archived" — marked with
+  // data.archived_at so the History tab hides them by default.
+  // A toggle "Show archived" reveals them when needed.
+  window.glRunRetentionArchive = async function(){
+    if(!window.supa){ alert('Supabase not loaded'); return; }
+    var cutoff = new Date(Date.now() - 24*30.42*86400000).toISOString().slice(0,10);
+    var r = await window.supa.from('compliance_records').select('id,form_code,record_date,data').lt('record_date', cutoff).limit(500);
+    var rows = (r.data || []).filter(function(rec){ return !rec.data || !rec.data.archived_at; });
+    if(!rows.length){ alert('No records older than 24 months awaiting archive.'); return; }
+    if(!confirm('Archive ' + rows.length + ' record' + (rows.length===1?'':'s') + ' older than 24 months?\n\nArchived records stay in the database (and FDA export) but are hidden from the default History view. You can re-show them anytime.')) return;
+    var done = 0;
+    for(var i = 0; i < rows.length; i++){
+      var rec = rows[i];
+      var newData = Object.assign({}, rec.data || {}, { archived_at: nowISO() });
+      try {
+        await window.supa.from('compliance_records').update({ data: newData }).eq('id', rec.id);
+        done++;
+      } catch(e){}
+    }
+    if(typeof addNotification === 'function') addNotification('📦 Records archived', done + ' record' + (done===1?'':'s') + ' archived','success');
+    if(typeof window.glAudit === 'function') window.glAudit('retention_archive_run','', { archived: done, cutoff: cutoff });
+  };
+
+  // ============================================================
+  // (F) MOBILE RESPONSIVENESS for compliance forms
+  // ============================================================
+  var mq = document.createElement('style');
+  mq.id = 'gl-compliance-mobile';
+  mq.textContent = [
+    '@media (max-width: 768px) {',
+      // Compliance modals: full-width, less padding
+      '#gl-comp-modal > div, #gl-mock-modal > div, #gl-doc-modal > div, #gl-app-modal > div, #gl-limits-modal > div, #gl-export-modal > div {',
+        'max-width: 100% !important; max-height: 95vh !important;',
+      '}',
+      // CIP step table — stack vertically on phone
+      '#gl-comp-modal table { font-size: 10px; }',
+      '#gl-comp-modal table th, #gl-comp-modal table td { padding: 5px 3px !important; }',
+      // Grids become single column
+      '#gl-comp-modal [style*="grid-template-columns:1fr 1fr"], #gl-comp-modal [style*="grid-template-columns: 1fr 1fr"] {',
+        'grid-template-columns: 1fr !important;',
+      '}',
+      // History filter row stacks
+      '#comp-body [style*="grid-template-columns:1fr 1fr 1fr 1fr"] {',
+        'grid-template-columns: 1fr 1fr !important; gap: 6px !important;',
+      '}',
+      // Master page header buttons wrap
+      '#comp-body > div:first-child { flex-wrap: wrap !important; }',
+      '#comp-body > div:first-child button { font-size: 10px !important; padding: 4px 8px !important; }',
+    '}'
+  ].join('\n');
+  (document.head || document.documentElement).appendChild(mq);
+
+  // ============================================================
+  // (G) ANNUAL FSP REVIEW AUTO-REMINDER
+  // ============================================================
+  // After saving an FSP-VER-002 record, create a compliance_task
+  // 12 months out reminding the PCQI to do the next review.
+  // We watch compliance_records inserts for FSP-VER-002 and schedule.
+  (function autoFspReminder(){
+    var lastSeen = null;
+    setInterval(async function(){
+      if(!window.supa) return;
+      try {
+        var r = await window.supa.from('compliance_records').select('id,form_code,record_date,recorded_at,data,status').eq('form_code','FSP-VER-002').order('recorded_at',{ascending:false}).limit(1);
+        if(!r.data || !r.data[0]) return;
+        var rec = r.data[0];
+        if(rec.id === lastSeen) return;
+        lastSeen = rec.id;
+        if(rec.status !== 'signed') return;
+        // Schedule next year
+        var d = new Date(rec.recorded_at || rec.record_date);
+        d.setFullYear(d.getFullYear() + 1);
+        var dueDate = d.toISOString().slice(0,10);
+        // Check if a task already exists for this anniversary
+        var existing = await window.supa.from('compliance_tasks').select('id').eq('due_date', dueDate).eq('task_type','annual_fsp').limit(1);
+        if(existing.data && existing.data.length) return;
+        await window.supa.from('compliance_tasks').insert([{
+          due_date: dueDate, task_type: 'annual_fsp',
+          title: 'Annual FSP Review (FSP-VER-002)',
+          description: 'Scheduled 12 months after the previous FSP review on ' + fmtDate(rec.recorded_at),
+          source: 'auto',
+          dedupe_key: 'annual_fsp_' + dueDate
+        }]);
+        if(typeof addNotification === 'function') addNotification('📅 Annual FSP review scheduled', 'Due ' + dueDate,'info');
+      } catch(e){}
+    }, 5000);
+  })();
+
+  // ============================================================
+  // Hook the master-page header — add ⚙️ Applicability + 📄 Documents + 📦 Archive buttons
+  // ============================================================
+  function injectPolishButtons(){
+    var host = document.getElementById('comp-body');
+    if(!host){ setTimeout(injectPolishButtons, 700); return; }
+    new MutationObserver(function(){
+      var holdBtn = host.querySelector('.gl-comp-hold');
+      if(!holdBtn) return;
+      if(holdBtn.parentNode.querySelector('.gl-comp-applic')) return;
+      function btn(cls, text, c, fn){
+        var b = document.createElement('button');
+        b.className = 'cbtn ' + cls;
+        b.setAttribute('style','font-size:11px;padding:5px 11px;margin-right:6px;background:' + c.bg + ';border:1px solid ' + c.bd + ';color:' + c.fg);
+        b.textContent = text;
+        b.addEventListener('click', fn);
+        return b;
+      }
+      var applic   = btn('gl-comp-applic',   '⚙️ Applicability', { bg:'rgba(196,164,248,.08)',  bd:'rgba(196,164,248,.3)',  fg:'#c4a4f8' }, function(){ window.glOpenApplicabilityConfig(); });
+      var docs     = btn('gl-comp-docs',     '📄 Documents',     { bg:'rgba(127,198,245,.08)',  bd:'rgba(127,198,245,.3)',  fg:'#7fc6f5' }, function(){ window.glOpenDocumentControl(); });
+      var archive  = btn('gl-comp-archive',  '📦 Archive old',   { bg:'rgba(154,167,189,.08)',  bd:'rgba(154,167,189,.3)',  fg:'#9aa7bd' }, function(){ window.glRunRetentionArchive(); });
+      holdBtn.parentNode.insertBefore(archive, holdBtn);
+      holdBtn.parentNode.insertBefore(docs, holdBtn);
+      holdBtn.parentNode.insertBefore(applic, holdBtn);
+    }).observe(host, { childList:true, subtree:true });
+  }
+  if(document.readyState !== 'loading') injectPolishButtons();
+  else document.addEventListener('DOMContentLoaded', injectPolishButtons);
+
+  console.log('[GL] compliance polish pack — A photos on NCR · B applicability · C single-print · D doc control · E retention · F mobile · G annual auto-reminder');
+}());
