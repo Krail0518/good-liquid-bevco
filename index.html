@@ -3732,6 +3732,7 @@ async function loadSupabaseData(){
       legalName: c.legal_name||'', ein: c.ein||'', website: c.website||'',
       contact:c.contact_name||'', email:c.email||'', phone:c.phone||'',
       contactType: c.contact_type||'',
+      additionalEmails: Array.isArray(c.additional_emails) ? c.additional_emails : [],
       street:c.street||'', city:c.city||'', state:c.state||'', zip:c.zip||'',
       billingSame: c.billing_same !== false,
       billingStreet: c.billing_street||'', billingCity: c.billing_city||'',
@@ -6608,6 +6609,7 @@ function viewClientEnhanced(clientId) {
         <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:14px;font-size:13px;color:var(--white);line-height:1.9">
           ${client.contact ? `👤 ${client.contact}${client.contactType ? ` <span style="color:var(--muted);font-size:11px">(${({owner:'Owner',executive:'Executive',purchasing:'Purchasing',freight:'Freight / Logistics',sales:'Sales',other:'Other'}[client.contactType]||client.contactType)})</span>` : ''}<br>` : ''}
           ${client.email ? `📧 <a href="mailto:${client.email}" style="color:var(--teal)">${client.email}</a><br>` : ''}
+          ${(Array.isArray(client.additionalEmails) && client.additionalEmails.length) ? client.additionalEmails.map(em => `📧 <a href="mailto:${em.email}" style="color:var(--teal)">${em.email}</a>${em.label ? ` <span style="color:var(--muted);font-size:11px">(${em.label})</span>` : ''}<br>`).join('') : ''}
           ${client.phone ? `📞 <a href="tel:${client.phone}" style="color:var(--teal)">${client.phone}</a><br>` : ''}
           ${(client.street || client.city || client.state || client.zip) ? `📍 ${[client.street, [client.city, client.state].filter(Boolean).join(', '), client.zip].filter(Boolean).join(' · ')}<br>` : ''}
           ${(client.billingSame === false && (client.billingStreet || client.billingCity || client.billingZip)) ? `💳 <span style="color:var(--muted)">Billing:</span> ${[client.billingStreet, [client.billingCity, client.billingState].filter(Boolean).join(', '), client.billingZip].filter(Boolean).join(' · ')}<br>` : ''}

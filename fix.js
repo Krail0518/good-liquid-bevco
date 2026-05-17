@@ -7206,6 +7206,21 @@
               '<select id="gl-ec-contact-type" style="'+INPUT_STYLE+'">'+contactTypeOptions+'</select>' +
             '</div>' +
           '</div>' +
+          '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:12px">' +
+            '<div style="'+LABEL_STYLE+';margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">' +
+              '<span>ADDITIONAL EMAILS</span>' +
+              '<button type="button" id="gl-ec-add-email" style="background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.35);color:var(--teal);font-size:11px;padding:3px 10px;border-radius:4px;cursor:pointer">+ Add email</button>' +
+            '</div>' +
+            '<div id="gl-ec-emails-list" style="display:flex;flex-direction:column;gap:6px">' +
+              ((c.additionalEmails || []).map(function(em, i){
+                return '<div class="gl-ec-email-row" style="display:grid;grid-template-columns:120px 1fr 30px;gap:6px;align-items:center">' +
+                  '<input class="gl-ec-em-label" placeholder="Label (AP, Ops…)" value="'+esc(em.label||'')+'" style="'+INPUT_STYLE+';font-size:11px">' +
+                  '<input class="gl-ec-em-email" type="email" placeholder="email@company.com" value="'+esc(em.email||'')+'" style="'+INPUT_STYLE+';font-size:12px">' +
+                  '<button type="button" class="gl-ec-em-del" title="Remove" style="background:none;border:none;color:rgba(231,76,60,.7);cursor:pointer;font-size:18px;line-height:1">&times;</button>' +
+                '</div>';
+              }).join('') || '<div style="font-size:11px;color:var(--muted);text-align:center;padding:6px">No additional emails. Click + Add email above.</div>') +
+            '</div>' +
+          '</div>' +
           '<div><div style="'+LABEL_STYLE+'">STREET ADDRESS</div><input id="gl-ec-street" value="'+esc(c.street)+'" style="'+INPUT_STYLE+'"></div>' +
           '<div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px">' +
             '<div><div style="'+LABEL_STYLE+'">CITY</div><input id="gl-ec-city" value="'+esc(c.city)+'" style="'+INPUT_STYLE+'"></div>' +
@@ -7380,6 +7395,33 @@
     if(taxLink) taxLink.addEventListener('click', function(e){ e.preventDefault(); openDoc(c.taxExemptFilePath); });
     if(paLink)  paLink.addEventListener('click',  function(e){ e.preventDefault(); openDoc(c.paLetterFilePath); });
 
+    // Additional-emails list: add + remove handlers.
+    var EM_INPUT_STYLE = INPUT_STYLE; // reuse the modal's standard input style
+    function appendEmailRow(label, email){
+      var list = ov.querySelector('#gl-ec-emails-list');
+      if(!list) return;
+      // Clear the empty-state placeholder on first add.
+      var ph = list.querySelector('div[style*="text-align:center"]');
+      if(ph) ph.remove();
+      var row = document.createElement('div');
+      row.className = 'gl-ec-email-row';
+      row.setAttribute('style','display:grid;grid-template-columns:120px 1fr 30px;gap:6px;align-items:center');
+      row.innerHTML =
+        '<input class="gl-ec-em-label" placeholder="Label (AP, Ops…)" value="'+esc(label||'')+'" style="'+EM_INPUT_STYLE+';font-size:11px">' +
+        '<input class="gl-ec-em-email" type="email" placeholder="email@company.com" value="'+esc(email||'')+'" style="'+EM_INPUT_STYLE+';font-size:12px">' +
+        '<button type="button" class="gl-ec-em-del" title="Remove" style="background:none;border:none;color:rgba(231,76,60,.7);cursor:pointer;font-size:18px;line-height:1">&times;</button>';
+      list.appendChild(row);
+    }
+    var addEmailBtn = ov.querySelector('#gl-ec-add-email');
+    if(addEmailBtn) addEmailBtn.addEventListener('click', function(){ appendEmailRow('', ''); });
+    var emailsList = ov.querySelector('#gl-ec-emails-list');
+    if(emailsList) emailsList.addEventListener('click', function(e){
+      if(e.target.classList && e.target.classList.contains('gl-ec-em-del')){
+        var row = e.target.closest('.gl-ec-email-row');
+        if(row) row.remove();
+      }
+    });
+
     ov.querySelector('#gl-ec-save').addEventListener('click', async function(){
       var errEl = ov.querySelector('#gl-ec-err');
       errEl.style.display = 'none';
@@ -7413,6 +7455,17 @@
 
       var dockDaysOut = ['mon','tue','wed','thu','fri','sat','sun']
         .filter(function(d){ return chk('gl-ec-dock-'+d); });
+
+      // Read the additional-emails list. Trim whitespace, drop rows where
+      // the email is blank (label without email is meaningless).
+      var additionalEmailsOut = [];
+      ov.querySelectorAll('.gl-ec-email-row').forEach(function(row){
+        var lEl = row.querySelector('.gl-ec-em-label');
+        var eEl = row.querySelector('.gl-ec-em-email');
+        var label = lEl ? (lEl.value||'').trim() : '';
+        var email = eEl ? (eEl.value||'').trim() : '';
+        if(email) additionalEmailsOut.push({ label: label, email: email });
+      });
 
       var street = val('gl-ec-street');
       var city   = val('gl-ec-city');
@@ -7464,6 +7517,7 @@
         email:          val('gl-ec-email'),
         phone:          val('gl-ec-phone'),
         contactType:    val('gl-ec-contact-type'),
+        additionalEmails: additionalEmailsOut,
         street:         street,
         city:           city,
         state:          state,
@@ -7539,6 +7593,7 @@
           email:           patch.email,
           phone:           patch.phone,
           contact_type:    patch.contactType || null,
+          additional_emails: Array.isArray(patch.additionalEmails) ? patch.additionalEmails : undefined,
           street:          patch.street,
           city:            patch.city,
           state:           patch.state,
