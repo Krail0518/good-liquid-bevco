@@ -1346,14 +1346,16 @@
   };
 
   /* ── Build canning row ── */
-  window.glBuildCanRow=function(uid,cases,fmt,fmts,pc){
+  window.glBuildCanRow=function(uid,cases,fmt,fmts,pc,descPrefill){
     var pcase=pc*CPC,total=pcase*cases,cans=cases*CPC;
     var opts=fmts.map(function(f){return'<option value="'+f.value+'"'+(f.value===fmt?' selected':'')+'>'+f.label+'</option>';}).join('');
     var PSTY='width:84px;background:#1a2a3a;color:#fff;border:1px solid rgba(0,229,192,.25);border-radius:6px;padding:3px 6px;font-size:12px;font-weight:600;text-align:right';
+    var DSTY='width:100%;background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:3px 6px;font-size:11px;margin-top:4px';
     var row=document.createElement('div');row.id=uid;row.setAttribute('style',RS);row.setAttribute('data-gl-total',total);row.setAttribute('data-pu-override','0');
     row.innerHTML=
       '<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Canning</div>'+
-      '<select id="'+uid+'-format" onchange="window.glUpdateCan(\''+uid+'\')" style="'+SS+'">'+opts+'</select></div>'+
+      '<select id="'+uid+'-format" onchange="window.glUpdateCan(\''+uid+'\')" style="'+SS+'">'+opts+'</select>'+
+      '<input id="'+uid+'-desc" type="text" placeholder="Description (optional)" value="'+(descPrefill||'').replace(/"/g,'&quot;')+'" style="'+DSTY+'"/></div>'+
       '<div style="text-align:center"><input id="'+uid+'-cases" type="number" min="1" value="'+cases+'" onchange="window.glUpdateCan(\''+uid+'\')" style="'+SI+'"/>'+
       '<div id="'+uid+'-cans" style="font-size:10px;color:var(--muted);margin-top:3px">'+cans.toLocaleString()+' cans</div></div>'+
       '<div style="text-align:right;padding-right:4px">'+
@@ -1365,14 +1367,16 @@
   };
 
   /* ── Build bottling row ── */
-  window.glBuildBtlRow=function(uid,qty,fmt,fmts,pu){
+  window.glBuildBtlRow=function(uid,qty,fmt,fmts,pu,descPrefill){
     var total=pu*qty;
     var opts=fmts.map(function(f){return'<option value="'+f.value+'"'+(f.value===fmt?' selected':'')+'>'+f.label+'</option>';}).join('');
     var PSTY='width:84px;background:#1a2a3a;color:#fff;border:1px solid rgba(0,229,192,.25);border-radius:6px;padding:3px 6px;font-size:12px;font-weight:600;text-align:right';
+    var DSTY='width:100%;background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:3px 6px;font-size:11px;margin-top:4px';
     var row=document.createElement('div');row.id=uid;row.setAttribute('style',RS);row.setAttribute('data-gl-total',total);row.setAttribute('data-pu-override','0');
     row.innerHTML=
       '<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Bottling</div>'+
-      '<select id="'+uid+'-format" onchange="window.glUpdateBtl(\''+uid+'\')" style="'+SS+'">'+opts+'</select></div>'+
+      '<select id="'+uid+'-format" onchange="window.glUpdateBtl(\''+uid+'\')" style="'+SS+'">'+opts+'</select>'+
+      '<input id="'+uid+'-desc" type="text" placeholder="Description (optional)" value="'+(descPrefill||'').replace(/"/g,'&quot;')+'" style="'+DSTY+'"/></div>'+
       '<div style="text-align:center"><input id="'+uid+'-qty" type="number" min="1" value="'+qty+'" onchange="window.glUpdateBtl(\''+uid+'\')" style="'+SI+'"/>'+
       '<div style="font-size:10px;color:var(--muted);margin-top:3px">bottles</div></div>'+
       '<div style="text-align:right;padding-right:4px">'+
@@ -1558,26 +1562,32 @@
       var descEl=document.getElementById(uid+'-desc');
       var labelEl=row.querySelector('div > div');
       var label=labelEl?labelEl.textContent.trim():'';
+      // Free-text description user typed below the type's format select / qty.
+      // Present on every row builder now (canning, bottling, manual).
+      var userDesc = descEl ? (descEl.value||'').trim() : '';
       if(casesEl){
         var cases=parseInt(casesEl.value)||0;
         var fEl=document.getElementById(uid+'-format');
         var fLbl=(fEl&&fEl.options[fEl.selectedIndex])?fEl.options[fEl.selectedIndex].text:'';
         var perCase=cases>0?total/cases:0;
-        lines.push({desc:'Canning - '+fLbl,qty:cases,unitPrice:perCase,total:total,unit:'case'});
+        var canDesc='Canning - '+fLbl;
+        if(userDesc) canDesc += ' — ' + userDesc;
+        lines.push({desc:canDesc,qty:cases,unitPrice:perCase,total:total,unit:'case'});
       }else if(punitEl){
         var qtyEl=document.getElementById(uid+'-qty');
         var qty=qtyEl?parseInt(qtyEl.value)||0:0;
         var fEl2=document.getElementById(uid+'-format');
         var fLbl2=(fEl2&&fEl2.options[fEl2.selectedIndex])?fEl2.options[fEl2.selectedIndex].text:'';
         var perBtl=qty>0?total/qty:0;
-        lines.push({desc:'Bottling - '+fLbl2,qty:qty,unitPrice:perBtl,total:total,unit:'btl'});
+        var btlDesc='Bottling - '+fLbl2;
+        if(userDesc) btlDesc += ' — ' + userDesc;
+        lines.push({desc:btlDesc,qty:qty,unitPrice:perBtl,total:total,unit:'btl'});
       }else if(descEl){
         var qtyMEl=document.getElementById(uid+'-qty');
         var qtyM=qtyMEl?parseFloat(qtyMEl.value)||0:0;
         var priceMEl=document.getElementById(uid+'-price');
         var priceM=priceMEl?parseFloat(priceMEl.value)||0:0;
-        var typed=(descEl.value||'').trim();
-        var desc=typed?(label?label+' - '+typed:typed):(label||'Line item');
+        var desc=userDesc?(label?label+' - '+userDesc:userDesc):(label||'Line item');
         lines.push({desc:desc,qty:qtyM,unitPrice:priceM,total:total,unit:''});
       }
     });
