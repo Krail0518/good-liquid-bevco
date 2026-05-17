@@ -16653,9 +16653,9 @@
       var key = (el.textContent || '').trim().toLowerCase();
       var t = TONE[key];
       if(t){
-        el.style.color = t.color;
-        el.style.borderLeftColor = t.accent;
-        el.style.background = 'linear-gradient(90deg, ' + t.color + '1f, ' + t.color + '04)';
+        el.style.setProperty("color", t.color, "important");
+        el.style.setProperty("border-left-color", t.accent, "important");
+        el.style.setProperty("background", "linear-gradient(90deg, "+t.color+"1f, "+t.color+"04)", "important");
       }
       el.dataset.glToned = '1';
     });
