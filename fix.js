@@ -14848,7 +14848,9 @@
     var ex = document.getElementById('gl-cip-equip-mgr'); if(ex) ex.remove();
     var ov = document.createElement('div');
     ov.id = 'gl-cip-equip-mgr';
-    ov.style.cssText = 'position:fixed;inset:0;z-index:1200;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:30px';
+    // z-index 9500 so it stacks above the CIP form modal (which uses 9000)
+    // and any other parent that opened it.
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9500;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:30px';
     var rowsHtml = list.map(function(n, i){
       return '<div style="display:grid;grid-template-columns:1fr 30px;gap:6px;align-items:center;padding:4px 0">' +
         '<input class="gl-cem-name finp" data-idx="'+i+'" value="'+String(n).replace(/"/g,'&quot;')+'" style="font-size:12px">' +
