@@ -4427,6 +4427,15 @@
     csv.setAttribute('style','margin-left:8px;background:rgba(0,229,192,.08);border:1px solid rgba(0,229,192,.3);color:var(--teal)');
     csv.textContent = '📊 Export CSV';
     csv.addEventListener('click', function(){ window.glExportInvoicesCsv(); });
+    // Activity button — shows all email_log entries across every invoice
+    var act = document.createElement('button');
+    act.className = 'cbtn gl-activity-btn';
+    act.setAttribute('style','margin-left:8px;background:rgba(26,111,255,.10);border:1px solid rgba(26,111,255,.30);color:#6b9fff');
+    act.textContent = '📊 Activity';
+    act.addEventListener('click', function(){
+      if(typeof window.glOpenEmailActivity === 'function') window.glOpenEmailActivity();
+      else alert('Email Activity not loaded yet.');
+    });
     var rem = document.createElement('button');
     rem.className = 'cbtn gl-overdue-btn';
     rem.setAttribute('style','margin-left:8px;background:rgba(245,200,66,.08);border:1px solid rgba(245,200,66,.3);color:#f5c842');
@@ -4434,9 +4443,11 @@
     rem.addEventListener('click', function(){ window.glSendOverdueReminders(); });
     if(newBtn && newBtn.parentElement){
       newBtn.parentElement.appendChild(csv);
+      newBtn.parentElement.appendChild(act);
       newBtn.parentElement.appendChild(rem);
     } else {
       header.appendChild(csv);
+      header.appendChild(act);
       header.appendChild(rem);
     }
   }
