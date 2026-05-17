@@ -4710,9 +4710,29 @@ async function downloadInvoicePDF(invId) {
   // Prefer the client's payment terms, fall back to whatever's on the invoice.
   const terms = inv.paymentTerms || c.paymentTerms || 'Due on receipt';
 
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  const usd = n => '$' + (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  const lines = Array.isArray(inv.lines) && inv.lines.length
+    ? inv.lines
+    : [{ desc: inv.svc, qty: 1, unitPrice: inv.amount, total: inv.amount }];
+  const lineRowsHtml = lines.map(function(l){
+    const qty = (l.qty != null) ? Number(l.qty).toLocaleString() : '';
+    const unitLbl = l.unit ? '<span style="font-size:10px;color:#888;margin-left:4px">/'+l.unit+'</span>' : '';
+    const up = (l.unitPrice != null) ? usd(l.unitPrice) + unitLbl : '';
+    return '<tr>' +
+      '<td>' + (l.desc || '') + '</td>' +
+      '<td style="text-align:center">' + qty + '</td>' +
+      '<td style="text-align:right">' + up + '</td>' +
+      '<td style="text-align:right;font-weight:700">' + usd(l.total||0) + '</td>' +
+    '</tr>';
+  }).join('');
+  const discountRowHtml = (inv.discount && inv.discountAmt)
+    ? `<tr><td colspan="3" style="text-align:right;color:#666">Discount (${inv.discount}%)</td><td style="text-align:right;color:#666">−${usd(inv.discountAmt)}</td></tr>`
+    : '';
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${inv.id} — Good Liquid Bev Co</title>
   <style>
-    body{font-family:Arial,sans-serif;max-width:700px;margin:40px auto;color:#1a1a1a;font-size:14px}
+    @page { size: letter; margin: 0.5in; }
+    body{font-family:Arial,sans-serif;max-width:700px;margin:24px auto;color:#1a1a1a;font-size:14px}
     .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px;padding-bottom:20px;border-bottom:3px solid #0F6E56}
     .brand{font-size:22px;font-weight:900;color:#0F6E56;letter-spacing:2px}
     .brand-sub{font-size:11px;color:#666;margin-top:2px}
@@ -4729,7 +4749,10 @@ async function downloadInvoicePDF(invId) {
       background:${inv.status==='paid'?'#d1fae5':inv.status==='overdue'?'#fee2e2':'#fef3c7'};
       color:${inv.status==='paid'?'#065f46':inv.status==='overdue'?'#991b1b':'#92400e'}}
     .footer{margin-top:40px;padding-top:16px;border-top:1px solid #eee;font-size:11px;color:#999;text-align:center}
+    .print-hint{position:fixed;top:14px;right:14px;background:#0F6E56;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.2);z-index:9999}
+    @media print { .print-hint { display:none } }
   </style></head><body>
+  <div class="print-hint">In the print dialog, choose <b>Save as PDF</b> as the destination.</div>
   <div class="header">
     <div>
       <div class="brand">GOOD LIQUID BEV CO</div>
@@ -4748,23 +4771,39 @@ async function downloadInvoicePDF(invId) {
       <p>Date: ${inv.date}<br>Terms: ${terms}</p></div>
   </div>
   <table>
-    <thead><tr><th>Description</th><th style="text-align:right">Amount</th></tr></thead>
+    <thead><tr>
+      <th>Description</th>
+      <th style="text-align:center">Qty</th>
+      <th style="text-align:right">Unit Price</th>
+      <th style="text-align:right">Amount</th>
+    </tr></thead>
     <tbody>
-      <tr><td>${inv.svc}</td><td style="text-align:right;font-weight:700">$${inv.amount.toLocaleString()}</td></tr>
-      ${inv.notes?`<tr><td colspan="2" style="font-size:12px;color:#666;font-style:italic">${inv.notes}</td></tr>`:''}
-      <tr class="total-row"><td>Total Due</td><td style="text-align:right">$${inv.amount.toLocaleString()}</td></tr>
+      ${lineRowsHtml}
+      ${discountRowHtml}
+      ${inv.notes?`<tr><td colspan="4" style="font-size:12px;color:#666;font-style:italic">${inv.notes}</td></tr>`:''}
+      <tr class="total-row"><td colspan="3">Total Due</td><td style="text-align:right">${usd(inv.amount)}</td></tr>
     </tbody>
   </table>
   <div class="footer">Payment to Good Liquid Bev Co · Mike@GoodLiquid.com · (803) 493-5065 · goodliquidbevco.com</div>
+  <script>
+    // Auto-open the print dialog so the user can pick "Save as PDF".
+    window.addEventListener('load', function(){
+      setTimeout(function(){ try { window.print(); } catch(e){} }, 300);
+    });
+  </script>
 </body></html>`;
 
-  const blob = new Blob([html], {type:'text/html'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${inv.id}-Good-Liquid.html`;
-  a.click();
-  URL.revokeObjectURL(url);
+  // Open in a new window and let the browser's print-to-PDF generate a real PDF.
+  // This avoids shipping a 200KB+ PDF library client-side. The user picks
+  // "Save as PDF" in the print dialog destination.
+  const w = window.open('', '_blank');
+  if(!w){
+    alert('Popup blocked — allow popups for this site to download invoice PDFs.');
+    return;
+  }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
 }
 
 
