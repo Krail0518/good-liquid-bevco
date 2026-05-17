@@ -17859,3 +17859,533 @@
 
   console.log('[GL] compliance enhancements pack — 9 features: bulk sign + CCP timer + mini-charts + lot QR + invoice-records footer + training CSV + audit scorecard + trend alerts + paid-lock');
 }());
+
+
+/* ============================================================
+   COMPLIANCE FINAL — JS-ONLY ENHANCEMENTS (PR D)
+   Ships 6 features that don't need SQL or new DB tables:
+     6.  Email digest (manual now + cron SQL provided in PR B)
+     8.  Barcode/QR scan for Trace Lot (BarcodeDetector API)
+    13.  OCR receiving COA via Claude Vision
+    15.  PWA install prompt + manifest verification
+    18.  AI root-cause suggester on NCR/Defect modal
+    19.  Monthly trend report (printable PDF)
+   ============================================================ */
+(function(){
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function fmtDate(d){ if(!d) return ''; var x = new Date(d); return isNaN(x.getTime()) ? String(d) : x.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
+  function fmtTs(d){ if(!d) return ''; var x = new Date(d); return isNaN(x.getTime()) ? String(d) : x.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); }
+  function nowISO(){ return new Date().toISOString(); }
+  function todayISO(){ return new Date().toISOString().slice(0,10); }
+  function getMailgunKey(){ return localStorage.getItem('gl_mailgun_key') || ''; }
+  function getMailgunDomain(){ return localStorage.getItem('gl_mailgun_domain') || 'mail.goodliquidbevco.com'; }
+  function getMailgunFrom(){ return localStorage.getItem('gl_mailgun_from') || 'Good Liquid Bev Co <noreply@mail.goodliquidbevco.com>'; }
+  function getAiKey(){ return localStorage.getItem('gl_ai_key') || ''; }
+
+  async function sendMailgun(to, subject, text, html){
+    var key = getMailgunKey();
+    if(!key) return { ok:false, error:'Mailgun key not set (AI toolbar → Mailgun Settings)' };
+    var domain = getMailgunDomain();
+    var fd = new FormData();
+    fd.append('from', getMailgunFrom());
+    fd.append('to', to);
+    fd.append('subject', subject);
+    if(text) fd.append('text', text);
+    if(html) fd.append('html', html);
+    try {
+      var r = await fetch('https://api.mailgun.net/v3/' + domain + '/messages', {
+        method:'POST',
+        headers:{ Authorization: 'Basic ' + btoa('api:' + key) },
+        body: fd
+      });
+      if(!r.ok){ var t = await r.text(); return { ok:false, error:'Mailgun ' + r.status + ': ' + t.slice(0,200) }; }
+      return { ok:true };
+    } catch(e){ return { ok:false, error: e.message || 'send failed' }; }
+  }
+
+  async function askClaude(prompt, opts){
+    opts = opts || {};
+    var key = getAiKey();
+    if(!key) return { ok:false, error:'Anthropic key not set (AI toolbar → AI Settings)' };
+    var content = opts.imageDataUrl
+      ? [{ type:'image', source:{ type:'base64', media_type: opts.imageDataUrl.match(/^data:([^;]+);/)[1], data: opts.imageDataUrl.split(',')[1] } }, { type:'text', text: prompt }]
+      : prompt;
+    try {
+      var r = await fetch('https://api.anthropic.com/v1/messages', {
+        method:'POST',
+        headers:{
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access':'true',
+          'content-type':'application/json'
+        },
+        body: JSON.stringify({
+          model: opts.model || 'claude-sonnet-4-6',
+          max_tokens: opts.max_tokens || 800,
+          messages: [{ role:'user', content: content }]
+        })
+      });
+      if(!r.ok){ var t = await r.text(); return { ok:false, error:'AI ' + r.status + ': ' + t.slice(0,250) }; }
+      var j = await r.json();
+      var txt = (j.content || []).filter(function(c){ return c.type === 'text'; }).map(function(c){ return c.text; }).join('\n');
+      return { ok:true, text: txt, usage: j.usage };
+    } catch(e){ return { ok:false, error: e.message || 'AI call failed' }; }
+  }
+
+  // ============================================================
+  // (6) EMAIL DIGEST — daily compliance brief
+  // ============================================================
+  async function buildDigest(){
+    if(!window.supa) return null;
+    var sevenDaysAgo = new Date(Date.now() - 7*86400000).toISOString();
+    var oneDayAgo = new Date(Date.now() - 86400000).toISOString();
+    var today = todayISO();
+    // Pull data
+    var yesterdaysRecs = await window.supa.from('compliance_records').select('form_code,recorded_at,status,has_deviation,deviation_notes,signature_name').gt('recorded_at', oneDayAgo).order('recorded_at',{ascending:false}).limit(50);
+    var openHolds = await window.supa.from('hold_tags').select('tag_number,product_name,reason,hold_date').eq('status','open').order('hold_date',{ascending:true}).limit(20);
+    var unsignedOld = await window.supa.from('compliance_records').select('form_code,recorded_at').neq('status','signed').neq('status','voided').lt('recorded_at', sevenDaysAgo).limit(20);
+    var todaysTasks = await window.supa.from('compliance_tasks').select('title,task_type,status').eq('due_date', today);
+    var data = {
+      yesterdays_count: (yesterdaysRecs.data || []).length,
+      yesterdays_deviations: (yesterdaysRecs.data || []).filter(function(r){ return r.has_deviation; }),
+      open_holds: openHolds.data || [],
+      unsigned_old: unsignedOld.data || [],
+      todays_open: (todaysTasks.data || []).filter(function(t){ return t.status === 'open'; }),
+      todays_done: (todaysTasks.data || []).filter(function(t){ return t.status === 'done'; })
+    };
+    return data;
+  }
+
+  function digestHtml(data){
+    if(!data) return '';
+    return '<html><body style="font-family:Helvetica,Arial,sans-serif;color:#0a1628;max-width:640px;margin:0 auto;padding:24px">' +
+      '<h1 style="font-size:18px;color:#0a8;margin:0 0 6px">Good Liquid · Compliance Daily Digest</h1>' +
+      '<div style="color:#666;font-size:11px;margin-bottom:18px">' + fmtDate(new Date()) + '</div>' +
+      // Open holds
+      '<div style="margin-bottom:18px"><h2 style="font-size:13px;margin:0 0 6px;color:' + (data.open_holds.length?'#c41e3a':'#0a8') + '">' +
+        '🚫 Open Hold Tags · ' + data.open_holds.length + '</h2>' +
+        (data.open_holds.length ?
+          '<ul style="margin:4px 0;padding-left:20px;font-size:12px;line-height:1.6">' +
+          data.open_holds.map(function(h){ return '<li><b>' + h.tag_number + '</b> — ' + esc(h.product_name) + ' · ' + esc((h.reason||'').slice(0,80)) + '</li>'; }).join('') +
+          '</ul>' : '<div style="font-size:12px;color:#666">All clear — no holds blocking shipment.</div>') +
+      '</div>' +
+      // Today's tasks
+      '<div style="margin-bottom:18px"><h2 style="font-size:13px;margin:0 0 6px">📋 Today\'s Tasks · ' + data.todays_open.length + ' open · ' + data.todays_done.length + ' done</h2>' +
+        (data.todays_open.length ?
+          '<ul style="margin:4px 0;padding-left:20px;font-size:12px;line-height:1.6">' +
+          data.todays_open.map(function(t){ return '<li>' + esc(t.title) + '</li>'; }).join('') +
+          '</ul>' : '<div style="font-size:12px;color:#666">No open tasks.</div>') +
+      '</div>' +
+      // Yesterday's deviations
+      '<div style="margin-bottom:18px"><h2 style="font-size:13px;margin:0 0 6px;color:' + (data.yesterdays_deviations.length?'#c41e3a':'#0a8') + '">' +
+        '⚠ Deviations in last 24h · ' + data.yesterdays_deviations.length + '</h2>' +
+        (data.yesterdays_deviations.length ?
+          '<ul style="margin:4px 0;padding-left:20px;font-size:12px;line-height:1.6">' +
+          data.yesterdays_deviations.map(function(r){ return '<li><b>' + r.form_code + '</b> at ' + fmtTs(r.recorded_at) + ' — ' + esc((r.deviation_notes||'').slice(0,120)) + '</li>'; }).join('') +
+          '</ul>' : '<div style="font-size:12px;color:#666">None.</div>') +
+      '</div>' +
+      // Unsigned >7d
+      (data.unsigned_old.length ? '<div style="margin-bottom:18px;padding:10px 14px;background:#fef0ef;border-left:3px solid #c41e3a;border-radius:0 6px 6px 0">' +
+        '<b style="color:#c41e3a">' + data.unsigned_old.length + ' records older than 7 days awaiting PCQI sign-off.</b>' +
+        '<div style="font-size:11px;color:#666;margin-top:4px">Open the CRM → Compliance → Weekly Review.</div>' +
+      '</div>' : '') +
+      '<div style="font-size:10px;color:#999;margin-top:24px;padding-top:14px;border-top:1px solid #e5e7eb">' +
+        'This digest covers Compliance status. Open the CRM at <a href="https://www.goodliquidbevco.com" style="color:#0a8">goodliquidbevco.com</a> for full audit-ready records.' +
+      '</div>' +
+    '</body></html>';
+  }
+
+  window.glSendComplianceDigest = async function(){
+    var to = prompt('Send compliance digest to (email):', (window.currentUser && window.currentUser.email) || '');
+    if(!to) return;
+    var data = await buildDigest();
+    if(!data){ alert('Supabase not loaded'); return; }
+    var html = digestHtml(data);
+    var subject = '[GLBC Compliance] ' + fmtDate(new Date()) + ' · ' +
+      (data.open_holds.length ? '🚫 ' + data.open_holds.length + ' holds · ' : '') +
+      (data.todays_open.length ? data.todays_open.length + ' open tasks' : 'no open tasks');
+    if(typeof window.glStartBusy === 'function') window.glStartBusy('Sending digest…');
+    var r = await sendMailgun(to, subject, '', html);
+    if(typeof window.glEndBusy === 'function') window.glEndBusy();
+    if(r.ok){
+      if(typeof addNotification === 'function') addNotification('📧 Digest sent', to, 'success');
+      if(typeof window.glAudit === 'function') window.glAudit('compliance_digest_sent','', { to: to });
+    } else {
+      alert('Send failed: ' + r.error);
+    }
+  };
+
+  // ============================================================
+  // (8) BARCODE / QR SCAN for Trace Lot
+  // ============================================================
+  window.glOpenLotScanner = async function(){
+    if(!('BarcodeDetector' in window)){
+      alert('Barcode scanner not supported in this browser. Use Chrome on Android or a desktop Chrome. (You can also paste the lot manually.)');
+      return;
+    }
+    var prior = document.getElementById('gl-scan-modal'); if(prior) prior.remove();
+    var ov = document.createElement('div');
+    ov.id = 'gl-scan-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:9000;background:#000;display:flex;align-items:center;justify-content:center');
+    ov.innerHTML =
+      '<video id="gl-scan-video" autoplay playsinline muted style="max-width:100%;max-height:100%"></video>' +
+      '<div style="position:absolute;top:0;left:0;right:0;padding:14px;background:linear-gradient(180deg,rgba(0,0,0,.7),transparent);color:#fff;font-family:sans-serif;display:flex;justify-content:space-between;align-items:center">' +
+        '<div style="font-size:13px;font-weight:600">📱 Point camera at a lot QR code</div>' +
+        '<button id="gl-scan-close" style="background:rgba(255,255,255,.15);border:none;color:#fff;font-size:14px;padding:6px 14px;border-radius:6px;cursor:pointer">✕ Close</button>' +
+      '</div>' +
+      '<div id="gl-scan-status" style="position:absolute;bottom:30px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.7);color:#fff;padding:10px 18px;border-radius:8px;font-family:sans-serif;font-size:13px">Initializing camera…</div>';
+    document.body.appendChild(ov);
+    var video = ov.querySelector('#gl-scan-video');
+    var status = ov.querySelector('#gl-scan-status');
+    var stream = null, running = true;
+    function close(){
+      running = false;
+      if(stream) stream.getTracks().forEach(function(t){ t.stop(); });
+      ov.remove();
+    }
+    ov.querySelector('#gl-scan-close').addEventListener('click', close);
+
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      video.srcObject = stream;
+      await video.play();
+    } catch(e){
+      status.textContent = 'Camera blocked: ' + (e.message || 'denied');
+      return;
+    }
+    var detector = new window.BarcodeDetector({ formats:['qr_code','code_128','code_39','ean_13','ean_8'] });
+    status.textContent = 'Scanning… hold a lot QR code in frame';
+    async function scanLoop(){
+      if(!running) return;
+      try {
+        var codes = await detector.detect(video);
+        if(codes.length){
+          var raw = codes[0].rawValue;
+          // Try to extract lot from a trace URL (?trace=LOT) or use raw
+          var lot = raw;
+          var m = raw.match(/[?&]trace=([^&]+)/);
+          if(m) lot = decodeURIComponent(m[1]);
+          status.textContent = '✓ Found: ' + lot;
+          setTimeout(function(){
+            close();
+            // Navigate to compliance + open Trace Lot tab
+            if(typeof window.cNav === 'function') window.cNav('compliance');
+            setTimeout(function(){
+              // Click Trace Lot tab
+              var traceTab = document.querySelector('#comp-body .gl-comp-extratab[data-extra-tab="trace"]');
+              if(traceTab) traceTab.click();
+              setTimeout(function(){
+                var input = document.getElementById('gl-trace-q');
+                if(input){ input.value = lot; var go = document.getElementById('gl-trace-go'); if(go) go.click(); }
+              }, 400);
+            }, 300);
+          }, 600);
+          return;
+        }
+      } catch(e){}
+      requestAnimationFrame(scanLoop);
+    }
+    scanLoop();
+  };
+  // Inject "📸 Scan QR" button next to the Trace Lot search input
+  (function injectScanBtn(){
+    var host = document.getElementById('comp-body');
+    if(!host){ setTimeout(injectScanBtn, 700); return; }
+    new MutationObserver(function(){
+      var goBtn = document.getElementById('gl-trace-go');
+      if(!goBtn) return;
+      if(goBtn.parentNode.querySelector('.gl-trace-scan-btn')) return;
+      var b = document.createElement('button');
+      b.className = 'cbtn gl-trace-scan-btn';
+      b.setAttribute('style','padding:9px 14px;background:rgba(95,207,158,.1);border:1px solid rgba(95,207,158,.32);color:#5fcf9e;margin-left:6px');
+      b.textContent = '📸 Scan QR';
+      b.addEventListener('click', function(){ window.glOpenLotScanner(); });
+      goBtn.parentNode.appendChild(b);
+    }).observe(host, { childList:true, subtree:true });
+  })();
+
+  // ============================================================
+  // (13) OCR RECEIVING COA — extract fields from a photo via Claude Vision
+  // ============================================================
+  // Hook into the receiving form: when it opens, add a "📷 Scan COA"
+  // button that uploads an image and auto-fills the form fields.
+  function injectCoaScanIntoReceiving(){
+    var modal = document.getElementById('gl-comp-modal');
+    if(!modal) return;
+    if(modal.dataset.glCoaScanInjected === '1') return;
+    if(!modal.querySelector('#gl-cf-supplier')) return;
+    modal.dataset.glCoaScanInjected = '1';
+    var hint = document.createElement('div');
+    hint.setAttribute('style','margin:6px 0 14px;padding:9px 13px;background:rgba(196,164,248,.08);border:1px solid rgba(196,164,248,.3);border-radius:6px;display:flex;align-items:center;gap:10px;font-size:11px');
+    hint.innerHTML = '<span style="font-size:14px">📷</span>' +
+      '<div style="flex:1">Snap a photo of the COA — AI will read it and auto-fill the form.</div>' +
+      '<input type="file" id="gl-coa-file" accept="image/*" capture="environment" style="display:none">' +
+      '<button class="cbtn gl-coa-trigger" style="font-size:11px;padding:4px 10px">Pick image</button>';
+    var firstField = modal.querySelector('#gl-cf-supplier');
+    if(firstField && firstField.parentNode) firstField.parentNode.parentNode.insertBefore(hint, firstField.parentNode);
+    var fileInput = hint.querySelector('#gl-coa-file');
+    hint.querySelector('.gl-coa-trigger').addEventListener('click', function(){ fileInput.click(); });
+    fileInput.addEventListener('change', async function(){
+      var f = fileInput.files[0]; if(!f) return;
+      if(!getAiKey()){ alert('Add your Anthropic key first (AI toolbar → AI Settings)'); return; }
+      hint.querySelector('.gl-coa-trigger').textContent = 'Reading COA…';
+      hint.querySelector('.gl-coa-trigger').disabled = true;
+      var reader = new FileReader();
+      reader.onload = async function(){
+        var dataUrl = reader.result;
+        var prompt = 'You are extracting fields from a Certificate of Analysis (COA) for a beverage ingredient. ' +
+          'Return ONLY a JSON object with these keys (use empty string if not found): ' +
+          'supplier, ingredient, lot, qty, micro_pass (Y/N or empty if not stated), allergen_declared (Y/N), visual (OK/NG). ' +
+          'No prose. Just the JSON.';
+        var r = await askClaude(prompt, { imageDataUrl: dataUrl, max_tokens: 400 });
+        hint.querySelector('.gl-coa-trigger').disabled = false;
+        hint.querySelector('.gl-coa-trigger').textContent = 'Pick image';
+        if(!r.ok){ alert('COA read failed: ' + r.error); return; }
+        // Parse JSON out of the response (model may wrap in code fences)
+        var jsonMatch = r.text.match(/\{[\s\S]*\}/);
+        if(!jsonMatch){ alert('AI could not extract fields. Raw:\n' + r.text.slice(0,200)); return; }
+        try {
+          var ex = JSON.parse(jsonMatch[0]);
+          // Fill matching fields
+          if(ex.supplier){ var s = modal.querySelector('#gl-cf-supplier'); if(s){ if(s.tagName === 'SELECT'){ for(var i=0;i<s.options.length;i++){ if(s.options[i].value.toLowerCase().indexOf(ex.supplier.toLowerCase()) !== -1){ s.value = s.options[i].value; break; } } } else { s.value = ex.supplier; } } }
+          if(ex.ingredient) modal.querySelector('#gl-cf-ingredient').value = ex.ingredient;
+          if(ex.lot)        modal.querySelector('#gl-cf-lot').value = ex.lot;
+          if(ex.qty)        modal.querySelector('#gl-cf-qty').value = ex.qty;
+          // Yes/No fields rely on hidden inputs set by YN buttons — mark them directly
+          function setHidden(name, val){
+            var h = modal.querySelector('#gl-cf-' + name);
+            if(h) h.value = val;
+            var btns = modal.querySelectorAll('button[data-yn="gl-cf-' + name + '"]');
+            btns.forEach(function(b){
+              var v = b.getAttribute('data-val');
+              if(v === val){ b.style.background = v === 'Y' ? 'rgba(95,207,158,.18)' : 'rgba(231,76,60,.18)'; b.style.color = v === 'Y' ? '#5fcf9e' : '#ff8579'; }
+            });
+          }
+          if(ex.micro_pass === 'Y') setHidden('coa', 'Y');
+          if(ex.allergen_declared) setHidden('allergen', ex.allergen_declared);
+          if(ex.visual === 'OK') setHidden('visual', 'Y');
+          hint.innerHTML = '<span style="font-size:14px;color:#5fcf9e">✓</span><div style="flex:1;color:#5fcf9e;font-weight:600">Fields auto-filled — review + confirm before signing</div>';
+        } catch(e){
+          alert('AI returned invalid JSON: ' + jsonMatch[0].slice(0,200));
+        }
+      };
+      reader.readAsDataURL(f);
+    });
+  }
+  new MutationObserver(function(muts){
+    muts.forEach(function(m){
+      if(!m.addedNodes) return;
+      m.addedNodes.forEach(function(n){
+        if(n.nodeType !== 1) return;
+        var title = n.textContent || '';
+        if(title.indexOf('GMP-REC-001') !== -1) setTimeout(injectCoaScanIntoReceiving, 60);
+      });
+    });
+  }).observe(document.body, { childList:true, subtree:true });
+
+  // ============================================================
+  // (15) PWA INSTALL PROMPT
+  // ============================================================
+  // The manifest.json + sw.js already exist on this site. We add a small
+  // "Install app" badge to the topbar that appears when Chrome's
+  // beforeinstallprompt event fires.
+  (function pwaPrompt(){
+    var deferred = null;
+    window.addEventListener('beforeinstallprompt', function(e){
+      e.preventDefault();
+      deferred = e;
+      var bar = document.createElement('div');
+      bar.id = 'gl-pwa-prompt';
+      bar.setAttribute('style','position:fixed;bottom:90px;left:28px;z-index:540;background:#243653;border:1px solid rgba(0,229,192,.32);border-radius:10px;padding:11px 14px;box-shadow:0 10px 30px rgba(0,0,0,.4);color:#fff;font-size:12px;font-family:sans-serif;display:flex;align-items:center;gap:10px;max-width:300px');
+      bar.innerHTML = '<span style="font-size:18px">📲</span><div style="flex:1">Install Good Liquid CRM on this device for offline + faster access?</div>' +
+        '<button class="cbtn pri" id="gl-pwa-go" style="font-size:11px;padding:5px 11px">Install</button>' +
+        '<button class="cbtn" id="gl-pwa-skip" style="font-size:11px;padding:5px 9px">No</button>';
+      document.body.appendChild(bar);
+      document.getElementById('gl-pwa-go').addEventListener('click', async function(){
+        bar.remove();
+        if(deferred){
+          deferred.prompt();
+          var choice = await deferred.userChoice;
+          if(typeof addNotification === 'function') addNotification('📲 Install ' + (choice.outcome === 'accepted' ? 'accepted' : 'dismissed'),'','info');
+          deferred = null;
+        }
+      });
+      document.getElementById('gl-pwa-skip').addEventListener('click', function(){
+        bar.remove(); deferred = null;
+        localStorage.setItem('gl_pwa_dismissed', String(Date.now()));
+      });
+    });
+    // Suppress if user dismissed in the last 30 days
+    var last = parseInt(localStorage.getItem('gl_pwa_dismissed') || '0', 10);
+    if(last && Date.now() - last < 30*86400000){ /* will skip prompt for 30d */ }
+  })();
+  window.glManifestCheck = async function(){
+    try {
+      var r = await fetch('/manifest.json');
+      var ok = r.ok;
+      var swReady = 'serviceWorker' in navigator;
+      alert('PWA status:\n  manifest.json: ' + (ok ? '✓ found' : '✗ missing') + '\n  Service Worker API: ' + (swReady ? '✓ supported' : '✗ not supported') + '\n  Install: use ⋮ → Install app in Chrome / Edge, or wait for the install prompt.');
+    } catch(e){ alert('manifest check failed: ' + e.message); }
+  };
+
+  // ============================================================
+  // (18) AI ROOT-CAUSE SUGGESTER on NCR / defect modal
+  // ============================================================
+  function injectAiRootCauseIntoDefect(){
+    var modal = document.getElementById('gl-comp-modal');
+    if(!modal) return;
+    if(modal.dataset.glRootCauseInjected === '1') return;
+    var rootField = modal.querySelector('#gl-def-root');
+    if(!rootField) return;
+    modal.dataset.glRootCauseInjected = '1';
+    var btn = document.createElement('button');
+    btn.className = 'cbtn';
+    btn.type = 'button';
+    btn.setAttribute('style','margin-top:6px;font-size:11px;padding:5px 11px;background:rgba(196,164,248,.1);border:1px solid rgba(196,164,248,.32);color:#c4a4f8');
+    btn.textContent = '🤖 Suggest root cause via AI';
+    rootField.parentNode.appendChild(btn);
+    btn.addEventListener('click', async function(){
+      if(!getAiKey()){ alert('Add Anthropic key first (AI toolbar → AI Settings)'); return; }
+      var desc = modal.querySelector('#gl-def-desc').value;
+      var cat = modal.querySelector('#gl-def-cat').value;
+      var sev = modal.querySelector('#gl-def-sev').value;
+      if(!desc){ alert('Fill in the "What was observed" description first.'); return; }
+      btn.disabled = true; btn.textContent = 'Thinking…';
+      // Pull similar past defects to inform the model
+      var similar = await window.supa.from('defects').select('category,severity,description,root_cause,corrective_action').eq('category', cat).neq('root_cause','').order('reported_at',{ascending:false}).limit(5);
+      var hist = (similar.data || []).map(function(d){ return '— ' + d.severity + ': ' + (d.description||'').slice(0,100) + ' → ROOT: ' + (d.root_cause||'').slice(0,150); }).join('\n');
+      var prompt = 'You are a food-safety QA expert helping a beverage co-packer (Good Liquid Bev Co, Palmetto FL) identify root causes for production deviations. ' +
+        'Category: ' + cat + ' · Severity: ' + sev + ' · Observed: ' + desc + '\n\n' +
+        (hist ? 'Past similar NCRs at this facility:\n' + hist + '\n\n' : '') +
+        'Suggest 1-2 most likely root causes, in concise, actionable language. Then suggest a corrective action. ' +
+        'Format:\nROOT CAUSE:\n- ...\nCORRECTIVE ACTION:\n- ...';
+      var r = await askClaude(prompt, { max_tokens: 500 });
+      btn.disabled = false; btn.textContent = '🤖 Suggest root cause via AI';
+      if(!r.ok){ alert('AI failed: ' + r.error); return; }
+      // Parse Claude output
+      var rootMatch = r.text.match(/ROOT CAUSE:?\s*([\s\S]*?)(?:CORRECTIVE ACTION|$)/i);
+      var corrMatch = r.text.match(/CORRECTIVE ACTION:?\s*([\s\S]*)/i);
+      if(rootMatch){ rootField.value = rootMatch[1].trim().replace(/^[-\s]+/m,''); }
+      var corr = modal.querySelector('#gl-def-corr');
+      if(corr && corrMatch){ corr.value = corrMatch[1].trim().replace(/^[-\s]+/m,''); }
+      if(!rootMatch && !corrMatch){ rootField.value = r.text.trim(); }
+      if(typeof addNotification === 'function') addNotification('🤖 AI suggested root cause','Review + edit before saving','info');
+    });
+  }
+  new MutationObserver(function(muts){
+    muts.forEach(function(m){
+      if(!m.addedNodes) return;
+      m.addedNodes.forEach(function(n){
+        if(n.nodeType !== 1) return;
+        // Look for the defect modal — first td/label "Category" is a good signal
+        setTimeout(function(){
+          var modal = document.getElementById('gl-comp-modal');
+          if(modal && modal.querySelector && modal.querySelector('#gl-def-root')) injectAiRootCauseIntoDefect();
+        }, 60);
+      });
+    });
+  }).observe(document.body, { childList:true, subtree:true });
+
+  // ============================================================
+  // (19) MONTHLY TREND REPORT (printable PDF)
+  // ============================================================
+  window.glGenerateMonthlyReport = async function(){
+    if(!window.supa){ alert('Supabase not loaded'); return; }
+    var fromIso = new Date(Date.now() - 30*86400000).toISOString();
+    var rec = await window.supa.from('compliance_records').select('*').gt('recorded_at', fromIso).order('recorded_at',{ascending:false}).limit(2000);
+    var holdR = await window.supa.from('hold_tags').select('*').gt('created_at', fromIso).limit(200);
+    var rows = rec.data || [];
+    var holds = holdR.data || [];
+    // Aggregate
+    var byForm = {};
+    var deviations = [];
+    var byDay = {};
+    rows.forEach(function(r){
+      byForm[r.form_code] = (byForm[r.form_code] || 0) + 1;
+      if(r.has_deviation) deviations.push(r);
+      var day = (r.record_date || '').slice(0,10);
+      byDay[day] = (byDay[day] || 0) + 1;
+    });
+    var formList = Object.keys(byForm).sort(function(a,b){ return byForm[b] - byForm[a]; });
+    // CCP averages
+    var ccps = ['FSP-PC-001','FSP-PC-002','FSP-PC-004','FSP-PC-005'];
+    var ccpStats = {};
+    ccps.forEach(function(code){
+      var matching = rows.filter(function(r){ return r.form_code === code; });
+      if(!matching.length) return;
+      var field = (code === 'FSP-PC-004') ? 'dose' : ((code === 'FSP-PC-005') ? 'ph_final' : 'temp_f');
+      var values = matching.map(function(r){ var v = r.data && r.data[field]; return typeof v === 'number' ? v : parseFloat(v); }).filter(function(v){ return !isNaN(v); });
+      if(!values.length) return;
+      ccpStats[code] = {
+        count: values.length,
+        avg: (values.reduce(function(a,b){return a+b;},0) / values.length).toFixed(2),
+        min: Math.min.apply(null, values).toFixed(2),
+        max: Math.max.apply(null, values).toFixed(2),
+        field: field
+      };
+    });
+
+    var w = window.open('','_blank');
+    if(!w){ alert('Pop-up blocked'); return; }
+    var html = '<!doctype html><html><head><meta charset="utf-8"><title>Monthly QC Report — ' + fmtDate(new Date()) + '</title>' +
+      '<style>body{font-family:Helvetica,Arial,sans-serif;color:#0a1628;margin:24px;font-size:11px;line-height:1.5}h1{font-size:20px;margin:0 0 4px;color:#0a8}.meta{color:#666;font-size:11px;margin-bottom:18px}h2{font-size:14px;border-bottom:2px solid #0a8;padding-bottom:4px;margin-top:18px}.kpi{display:inline-block;margin-right:16px;margin-bottom:8px;padding:8px 12px;background:#f5f5f5;border-radius:6px}.kpi b{font-size:18px;color:#0a8;display:block}.dev{padding:5px 8px;border-bottom:1px solid #eee;font-size:10px}.dev b{color:#c41e3a}@media print{.no-print{display:none}body{margin:12px}}</style>' +
+      '</head><body>' +
+      '<h1>Compliance Monthly Report</h1>' +
+      '<div class="meta">Good Liquid Bev Co · ' + fmtDate(new Date(Date.now()-30*86400000)) + ' to ' + fmtDate(new Date()) + ' · generated ' + fmtTs(new Date()) + '</div>' +
+      '<div class="no-print" style="margin-bottom:18px"><button onclick="window.print()" style="padding:8px 16px;background:#0a8;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:700">🖨️ Print / Save as PDF</button> <button onclick="window.close()" style="margin-left:6px">Close</button></div>' +
+      '<h2>Headline KPIs</h2>' +
+      '<div>' +
+        '<div class="kpi"><b>' + rows.length + '</b>Total records</div>' +
+        '<div class="kpi"><b>' + rows.filter(function(r){return r.status==='signed';}).length + '</b>PCQI-signed</div>' +
+        '<div class="kpi" style="color:' + (deviations.length?'#c41e3a':'#0a8') + '"><b>' + deviations.length + '</b>Deviations</div>' +
+        '<div class="kpi"><b>' + holds.length + '</b>Hold tags</div>' +
+        '<div class="kpi"><b>' + Object.keys(byDay).length + '</b>Active days</div>' +
+      '</div>' +
+      '<h2>Records by form</h2>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:8px">' +
+        '<thead><tr style="background:#f5f5f5"><th style="text-align:left;padding:4px 8px">Form</th><th style="text-align:right;padding:4px 8px">Count</th></tr></thead><tbody>' +
+        formList.map(function(c){ return '<tr><td style="padding:4px 8px;border-bottom:1px solid #eee">' + c + '</td><td style="text-align:right;padding:4px 8px;border-bottom:1px solid #eee">' + byForm[c] + '</td></tr>'; }).join('') +
+      '</tbody></table>' +
+      (Object.keys(ccpStats).length ? '<h2>CCP statistics</h2>' +
+        '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:8px">' +
+          '<thead><tr style="background:#f5f5f5"><th style="text-align:left;padding:4px 8px">CCP</th><th style="padding:4px 8px">n</th><th style="padding:4px 8px">Field</th><th style="padding:4px 8px">Avg</th><th style="padding:4px 8px">Min</th><th style="padding:4px 8px">Max</th></tr></thead><tbody>' +
+          Object.keys(ccpStats).map(function(c){ var s = ccpStats[c]; return '<tr><td style="padding:4px 8px;border-bottom:1px solid #eee">' + c + '</td><td style="text-align:center;padding:4px 8px;border-bottom:1px solid #eee">' + s.count + '</td><td style="padding:4px 8px;border-bottom:1px solid #eee">' + s.field + '</td><td style="text-align:right;padding:4px 8px;border-bottom:1px solid #eee">' + s.avg + '</td><td style="text-align:right;padding:4px 8px;border-bottom:1px solid #eee">' + s.min + '</td><td style="text-align:right;padding:4px 8px;border-bottom:1px solid #eee">' + s.max + '</td></tr>'; }).join('') +
+        '</tbody></table>' : '') +
+      '<h2>Deviations · ' + deviations.length + '</h2>' +
+      (deviations.length ? deviations.map(function(d){ return '<div class="dev"><b>' + d.form_code + '</b> · ' + fmtTs(d.recorded_at) + ' · ' + esc((d.deviation_notes||'').slice(0,200)) + (d.corrective_action ? ' · <i>action:</i> ' + esc(d.corrective_action.slice(0,150)) : '') + '</div>'; }).join('') : '<div style="color:#0a8">No deviations this period.</div>') +
+      '<h2>Hold tags · ' + holds.length + '</h2>' +
+      (holds.length ? '<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#f5f5f5"><th style="text-align:left;padding:4px 8px">Tag</th><th style="text-align:left;padding:4px 8px">Product</th><th style="text-align:left;padding:4px 8px">Status</th><th style="text-align:left;padding:4px 8px">Reason</th></tr></thead><tbody>' + holds.map(function(h){ return '<tr><td style="padding:4px 8px;border-bottom:1px solid #eee">' + esc(h.tag_number) + '</td><td style="padding:4px 8px;border-bottom:1px solid #eee">' + esc(h.product_name) + '</td><td style="padding:4px 8px;border-bottom:1px solid #eee">' + esc(h.status) + '</td><td style="padding:4px 8px;border-bottom:1px solid #eee">' + esc((h.reason||'').slice(0,140)) + '</td></tr>'; }).join('') + '</tbody></table>' : '<div style="color:#0a8">No hold tags this period.</div>') +
+      '<h2>PCQI sign-off</h2>' +
+      '<div>Reviewed and approved by: ' + esc(window.currentUser && (window.currentUser.name || window.currentUser.email) || 'PCQI') + '</div>' +
+      '<div>Signature: _________________________________</div>' +
+      '<div>Date: _________________________________</div>' +
+      '<div style="margin-top:24px;color:#666;font-size:10px">Audit-ready report — for monthly QC review and external auditor packages. Generated from compliance_records table covering the last 30 days.</div>' +
+      '</body></html>';
+    w.document.write(html); w.document.close();
+  };
+
+  // ============================================================
+  // Wire all new buttons onto the Compliance master page header
+  // ============================================================
+  (function injectFinalButtons(){
+    var host = document.getElementById('comp-body');
+    if(!host){ setTimeout(injectFinalButtons, 700); return; }
+    new MutationObserver(function(){
+      var addBtn = host.querySelector('.gl-comp-applic');
+      if(!addBtn) return;
+      if(addBtn.parentNode.querySelector('.gl-comp-digest')) return;
+      function btn(cls, text, c, fn){
+        var b = document.createElement('button'); b.className = 'cbtn ' + cls;
+        b.setAttribute('style','font-size:11px;padding:5px 11px;margin-right:6px;background:' + c.bg + ';border:1px solid ' + c.bd + ';color:' + c.fg);
+        b.textContent = text; b.addEventListener('click', fn);
+        return b;
+      }
+      var report = btn('gl-comp-report', '📊 Monthly report', { bg:'rgba(127,198,245,.08)', bd:'rgba(127,198,245,.3)', fg:'#7fc6f5' }, function(){ window.glGenerateMonthlyReport(); });
+      var digest = btn('gl-comp-digest', '📧 Send digest',    { bg:'rgba(245,200,66,.08)',  bd:'rgba(245,200,66,.3)',  fg:'#f5c842' }, function(){ window.glSendComplianceDigest(); });
+      addBtn.parentNode.insertBefore(digest, addBtn);
+      addBtn.parentNode.insertBefore(report, addBtn);
+    }).observe(host, { childList:true, subtree:true });
+  })();
+
+  console.log('[GL] compliance final JS pack — 6 features: email digest + barcode scan + OCR COA + PWA prompt + AI root-cause + monthly report');
+}());
