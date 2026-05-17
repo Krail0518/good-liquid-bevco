@@ -14790,12 +14790,12 @@
     { n:9, name:'PRE-USE PAA (at run time)',  chem:'Peracetic Acid',                conc:'1 oz / 5 gal',     target_min:20, type:'sanit',  hot:false, verify:'PAA strip 100–300 ppm — DO NOT RINSE' }
   ];
 
-  // CIP equipment list — defaults are seeded once; users can extend or trim
-  // the list via the "+ Add new equipment…" option in the dropdown or the
-  // "✎ Edit list" link next to it. Persisted to localStorage so it survives
-  // page refresh. (Per-device — easy to upgrade to a Supabase table later.)
+  // CIP equipment list — synced via Supabase cip_equipment table; localStorage
+  // is a per-device cache for fast initial render. Manage UI talks to Supabase
+  // directly so adds/renames/deletes propagate to everyone.
   var CIP_EQUIP_KEY = 'gl_cip_equipment';
-  function loadCipEquip(){
+  function getSB(){ return window.supa || null; }
+  function loadCipEquipCache(){
     try {
       var raw = localStorage.getItem(CIP_EQUIP_KEY);
       if(raw){
@@ -14805,16 +14805,42 @@
     } catch(e){}
     return ['Filling Line 1','Filling Line 2','Pasteurizer plates','Mix tank','Fermenter 1','Fermenter 2','Carbonator','CIP skid'];
   }
-  function saveCipEquip(list){
+  function saveCipEquipCache(list){
     try { localStorage.setItem(CIP_EQUIP_KEY, JSON.stringify(list)); } catch(e){}
   }
-  window.glAddCipEquip = function(name){
-    var list = loadCipEquip();
+  // loadCipEquip — sync convenience: returns the cached array immediately so
+  // dropdowns can render without awaiting. Background refreshes the cache
+  // from Supabase so the next open is up-to-date.
+  function loadCipEquip(){
+    refreshCipEquipFromDb(); // fire-and-forget
+    return loadCipEquipCache();
+  }
+  async function refreshCipEquipFromDb(){
+    var sb = getSB(); if(!sb) return null;
+    try {
+      var r = await sb.from('cip_equipment').select('name').eq('active', true).order('sort_order').order('name');
+      if(r.error || !r.data) return null;
+      var list = r.data.map(function(row){ return row.name; });
+      saveCipEquipCache(list);
+      return list;
+    } catch(e){ return null; }
+  }
+  window.glAddCipEquip = async function(name){
     name = (name||'').trim();
     if(!name) return null;
-    if(list.indexOf(name) >= 0) return name; // already in list, just return it
-    list.push(name);
-    saveCipEquip(list);
+    var list = loadCipEquipCache();
+    if(list.indexOf(name) < 0){
+      list.push(name);
+      saveCipEquipCache(list);
+    }
+    // Persist to Supabase. Unique constraint on name handles dup race conditions.
+    var sb = getSB();
+    if(sb){
+      try {
+        var r = await sb.from('cip_equipment').upsert({ name: name, sort_order: 100 }, { onConflict: 'name', ignoreDuplicates: true });
+        if(r && r.error && r.error.code !== '23505') console.warn('[GL] cip_equipment upsert', r.error);
+      } catch(e){ console.warn('[GL] cip_equipment add threw', e); }
+    }
     return name;
   };
   window.glOpenCipEquipManager = function(){
@@ -14860,17 +14886,39 @@
         var row = e.target.closest('div'); if(row) row.remove();
       }
     });
-    ov.querySelector('#gl-cem-save').onclick = function(){
+    ov.querySelector('#gl-cem-save').onclick = async function(){
+      var btn = this; btn.disabled = true; btn.textContent = 'Saving…';
       var newList = Array.prototype.slice.call(ov.querySelectorAll('.gl-cem-name'))
         .map(function(i){ return (i.value||'').trim(); }).filter(Boolean);
-      saveCipEquip(newList);
+      // Persist to Supabase: deactivate everything not in the new list, then
+      // upsert each name with an incrementing sort_order so the dropdown is
+      // ordered the way the user dragged.
+      var sb = getSB();
+      if(sb){
+        try {
+          // Mark missing entries inactive
+          var current = await sb.from('cip_equipment').select('id, name').eq('active', true);
+          if(current.data){
+            var toDeactivate = current.data.filter(function(r){ return newList.indexOf(r.name) < 0; });
+            if(toDeactivate.length){
+              await sb.from('cip_equipment').update({ active: false }).in('id', toDeactivate.map(function(r){return r.id;}));
+            }
+          }
+          // Upsert each name with its position
+          for(var i=0;i<newList.length;i++){
+            await sb.from('cip_equipment').upsert({ name: newList[i], sort_order: (i+1)*10, active: true }, { onConflict: 'name' });
+          }
+        } catch(e){ console.warn('[GL] cip_equipment save threw', e); }
+      }
+      saveCipEquipCache(newList);
       ov.remove();
       // If the CIP form is open, refresh its dropdown
-      var sel = document.getElementById('gl-cif-equip');
+      var sel = document.getElementById('gl-cf-equip');
       if(sel){
         var cur = sel.value;
         var opts = newList.map(function(n){ return '<option value="'+String(n).replace(/"/g,'&quot;')+'">'+n+'</option>'; }).join('');
         opts += '<option value="__add__" style="color:#00e5c0">+ Add new equipment…</option>';
+        opts += '<option value="__edit__" style="color:#c4a4f8">✎ Edit list…</option>';
         sel.innerHTML = opts;
         if(newList.indexOf(cur) >= 0) sel.value = cur;
       }
@@ -14920,23 +14968,22 @@
     (function wireEquipDropdown(){
       var sel = modal.querySelector('#gl-cf-equip');
       if(!sel) return;
-      sel.addEventListener('change', function(){
+      sel.addEventListener('change', async function(){
         if(sel.value === '__add__'){
           var name = prompt('New equipment / circuit name:');
-          var added = window.glAddCipEquip(name);
+          var added = await window.glAddCipEquip(name);
           if(added){
             // Rebuild the dropdown options with the new entry, leave sentinels at end
-            var list = loadCipEquip();
+            var list = loadCipEquipCache();
             var opts = list.map(function(n){ return '<option value="'+String(n).replace(/"/g,'&quot;')+'">'+n+'</option>'; }).join('');
             opts += '<option value="__add__" style="color:#00e5c0">+ Add new equipment…</option>';
             opts += '<option value="__edit__" style="color:#c4a4f8">✎ Edit list…</option>';
             sel.innerHTML = opts;
             sel.value = added;
           } else {
-            sel.value = list[0] || '';
+            sel.value = loadCipEquipCache()[0] || '';
           }
         } else if(sel.value === '__edit__'){
-          // Remember the prior selection and open the manager
           sel.value = '';
           window.glOpenCipEquipManager();
         }
