@@ -8609,6 +8609,14 @@
         notes:          ov.querySelector('#gl-prun-notes').value,
         updated_at:     new Date().toISOString()
       };
+      // Compliance gate — block transition to Ship if there's an open Hold Tag for this run
+      if(data.stage === 'Ship' && run && run.id && typeof window.glCheckRunHoldStatus === 'function'){
+        var blocker = await window.glCheckRunHoldStatus(run.id);
+        if(blocker){
+          alert('🚫 Cannot move to Ship — open Hold Tag ' + blocker.tag_number + ' on this run.\n\nReason: ' + (blocker.reason || '(none)') + '\n\nGo to sidebar → Hold Tags → disposition this hold before shipping.');
+          return;
+        }
+      }
       var btn = this; btn.disabled = true; btn.textContent = 'Saving…';
       if(window.supa){
         try {
@@ -15167,4 +15175,380 @@
   else document.addEventListener('DOMContentLoaded', watch);
 
   console.log('[GL] compliance module loaded — Phase 1 (4 forms, master page, hold tags)');
+}());
+
+
+/* ============================================================
+   COMPLIANCE — CRITICAL PACK
+   Adds three things gating production use of the compliance system:
+   (1) glCheckRunHoldStatus — query open hold tags chained to a run
+   (2) FDA audit export — CSV + print-to-PDF for any form / date range
+   (3) Help docs — new section in the help modal covering Compliance
+   ============================================================ */
+(function(){
+  // ── (1) Hold-tag → run check ──
+  // Hold tags link to compliance_records via source_record_id.
+  // compliance_records link to production_runs via run_id.
+  // Returns the first blocking hold (or null) for a given run.
+  window.glCheckRunHoldStatus = async function(run_id){
+    if(!run_id || !window.supa) return null;
+    try {
+      // Step 1: get the open holds and the record IDs they reference
+      var hr = await window.supa.from('hold_tags').select('id,tag_number,reason,source_record_id,status').eq('status','open');
+      if(hr.error || !hr.data || !hr.data.length) return null;
+      var recIds = hr.data.map(function(h){ return h.source_record_id; }).filter(Boolean);
+      if(!recIds.length) return null;
+      // Step 2: filter to records that match this run
+      var rr = await window.supa.from('compliance_records').select('id,run_id').in('id', recIds).eq('run_id', run_id);
+      if(rr.error || !rr.data || !rr.data.length) return null;
+      var matchRecIds = rr.data.map(function(r){ return r.id; });
+      // Step 3: return the matching hold tag
+      return hr.data.find(function(h){ return matchRecIds.indexOf(h.source_record_id) !== -1; }) || null;
+    } catch(e){
+      console.warn('[GL compliance] glCheckRunHoldStatus failed', e);
+      return null;
+    }
+  };
+
+  // ── (2) FDA audit export — CSV + print-to-PDF ──
+  function escCsv(v){
+    if(v === null || v === undefined) return '';
+    var s = (typeof v === 'object') ? JSON.stringify(v) : String(v);
+    if(/[",\n\r]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
+    return s;
+  }
+  function downloadFile(filename, mime, content){
+    var blob = new Blob([content], { type: mime });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+  }
+  function escHtml(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  // Form catalog — names for the export picker (mirror of FORMS in the compliance IIFE)
+  var EXPORT_FORMS = [
+    { code:'GMP-INSP-001', name:'Daily Pre-Op Inspection' },
+    { code:'GMP-LAB-001',  name:'Label Verification' },
+    { code:'GMP-ALL-001',  name:'Allergen Changeover Swab' },
+    { code:'GMP-SAN-002',  name:'CIP Monitoring (9-step)' },
+    { code:'GMP-REC-001',  name:'Receiving / COA Review' },
+    { code:'GMP-CAL-001',  name:'Equipment Calibration' },
+    { code:'GMP-DIST-001', name:'Distribution / Traceability' },
+    { code:'GMP-HR-001',   name:'Employee Illness Exclusion' },
+    { code:'GMP-TR-001',   name:'Employee Training' },
+    { code:'FSP-PC-001',   name:'HTST Pasteurization (CCP-1)' },
+    { code:'FSP-PC-002',   name:'Hot Fill Temp (CCP-2)' },
+    { code:'FSP-PC-003',   name:'Can Seam (CCP-4)' },
+    { code:'FSP-PC-004',   name:'UV Water (CCP-3)' },
+    { code:'FSP-PC-005',   name:'Fermentation (CCP-A)' },
+    { code:'FSP-SAN-001',  name:'Listeria Environmental' },
+    { code:'FSP-SC-002',   name:'Supplier COA Review' },
+    { code:'FSP-VER-002',  name:'Annual FSP Review' },
+    { code:'QC-BR-001',    name:'Production Batch Record' }
+  ];
+
+  window.glOpenComplianceExport = function(){
+    var prior = document.getElementById('gl-export-modal'); if(prior) prior.remove();
+    var today = new Date().toISOString().slice(0,10);
+    var ninetyDaysAgo = new Date(Date.now() - 90*86400000).toISOString().slice(0,10);
+
+    var formCheckboxes = EXPORT_FORMS.map(function(f){
+      return '<label style="display:flex;align-items:center;gap:7px;padding:5px 0;font-size:12px;color:#cfd9e6;cursor:pointer">' +
+        '<input type="checkbox" class="gl-exp-form" value="' + f.code + '" checked style="accent-color:var(--teal);width:13px;height:13px">' +
+        f.code + ' — ' + escHtml(f.name) +
+      '</label>';
+    }).join('');
+
+    var ov = document.createElement('div');
+    ov.id = 'gl-export-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:9000;background:rgba(6,13,26,.85);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.22);border-radius:14px;width:100%;max-width:600px;max-height:88vh;overflow-y:auto;color:#cfd9e6;box-shadow:0 20px 60px rgba(0,0,0,.6)">' +
+        '<div style="display:flex;justify-content:space-between;align-items:start;padding:18px 22px;border-bottom:1px solid rgba(255,255,255,.06)">' +
+          '<div>' +
+            '<div style="font-family:var(--ff-disp);font-size:14px;letter-spacing:2px;color:var(--teal);font-weight:700">📥 FDA AUDIT EXPORT</div>' +
+            '<div style="font-size:11px;color:#9aa7bd;margin-top:3px">Export compliance records — CSV or print-to-PDF</div>' +
+          '</div>' +
+          '<button id="gl-exp-close" style="background:none;border:none;color:#9aa7bd;font-size:18px;cursor:pointer;padding:2px 6px">✕</button>' +
+        '</div>' +
+        '<div style="padding:18px 22px">' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">' +
+            '<div><div style="font-size:11px;color:#9aa7bd;margin-bottom:4px">From date</div><input id="gl-exp-from" type="date" value="' + ninetyDaysAgo + '" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#fff;font-size:13px;box-sizing:border-box"></div>' +
+            '<div><div style="font-size:11px;color:#9aa7bd;margin-bottom:4px">To date</div><input id="gl-exp-to" type="date" value="' + today + '" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#fff;font-size:13px;box-sizing:border-box"></div>' +
+          '</div>' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+            '<div style="font-size:11px;color:#9aa7bd;letter-spacing:1px;text-transform:uppercase">Forms to include</div>' +
+            '<div><button id="gl-exp-all" style="background:none;border:none;color:#7fc6f5;font-size:11px;cursor:pointer;margin-right:8px">Select all</button><button id="gl-exp-none" style="background:none;border:none;color:#7fc6f5;font-size:11px;cursor:pointer">Clear</button></div>' +
+          '</div>' +
+          '<div style="max-height:200px;overflow-y:auto;padding:8px 10px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px;margin-bottom:14px">' + formCheckboxes + '</div>' +
+          '<label style="display:flex;align-items:center;gap:7px;padding:5px 0;font-size:12px;color:#cfd9e6;cursor:pointer;margin-bottom:14px">' +
+            '<input type="checkbox" id="gl-exp-signed-only" style="accent-color:var(--teal);width:13px;height:13px"> Only include PCQI-signed records (recommended for audit)' +
+          '</label>' +
+          '<div id="gl-exp-preview" style="font-size:11px;color:#9aa7bd;padding:8px 10px;background:rgba(255,255,255,.02);border:1px dashed rgba(255,255,255,.1);border-radius:6px">Loading record count…</div>' +
+        '</div>' +
+        '<div style="padding:14px 22px;border-top:1px solid rgba(255,255,255,.06);display:flex;gap:8px;justify-content:flex-end">' +
+          '<button id="gl-exp-cancel" class="cbtn">Cancel</button>' +
+          '<button id="gl-exp-csv" class="cbtn">📄 Download CSV</button>' +
+          '<button id="gl-exp-pdf" class="cbtn pri">🖨️ Print / PDF</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+
+    function close(){ ov.remove(); }
+    ov.addEventListener('click', function(e){ if(e.target === ov) close(); });
+    ov.querySelector('#gl-exp-close').addEventListener('click', close);
+    ov.querySelector('#gl-exp-cancel').addEventListener('click', close);
+
+    ov.querySelector('#gl-exp-all').addEventListener('click', function(){
+      ov.querySelectorAll('.gl-exp-form').forEach(function(cb){ cb.checked = true; });
+      updatePreview();
+    });
+    ov.querySelector('#gl-exp-none').addEventListener('click', function(){
+      ov.querySelectorAll('.gl-exp-form').forEach(function(cb){ cb.checked = false; });
+      updatePreview();
+    });
+    ov.querySelector('#gl-exp-from').addEventListener('change', updatePreview);
+    ov.querySelector('#gl-exp-to').addEventListener('change', updatePreview);
+    ov.querySelector('#gl-exp-signed-only').addEventListener('change', updatePreview);
+    ov.querySelectorAll('.gl-exp-form').forEach(function(cb){ cb.addEventListener('change', updatePreview); });
+
+    function selectedForms(){
+      return Array.prototype.filter.call(ov.querySelectorAll('.gl-exp-form'), function(cb){ return cb.checked; })
+        .map(function(cb){ return cb.value; });
+    }
+    function dateRange(){
+      return { from: ov.querySelector('#gl-exp-from').value, to: ov.querySelector('#gl-exp-to').value };
+    }
+    function signedOnly(){ return ov.querySelector('#gl-exp-signed-only').checked; }
+
+    async function fetchRecords(){
+      var codes = selectedForms();
+      var dr = dateRange();
+      if(!codes.length) return [];
+      if(!window.supa) return [];
+      var q = window.supa.from('compliance_records').select('*').in('form_code', codes);
+      if(dr.from) q = q.gte('record_date', dr.from);
+      if(dr.to)   q = q.lte('record_date', dr.to);
+      if(signedOnly()) q = q.eq('status','signed');
+      q = q.order('record_date', { ascending: false }).order('recorded_at', { ascending: false }).limit(2000);
+      var r = await q;
+      return r.data || [];
+    }
+
+    async function updatePreview(){
+      var preview = ov.querySelector('#gl-exp-preview');
+      preview.textContent = 'Loading record count…';
+      var rows = await fetchRecords();
+      var byForm = {};
+      rows.forEach(function(r){ byForm[r.form_code] = (byForm[r.form_code] || 0) + 1; });
+      var breakdown = Object.keys(byForm).sort().map(function(k){ return k + ': ' + byForm[k]; }).join(' · ');
+      preview.innerHTML = '<b style="color:#5fcf9e">' + rows.length + ' record' + (rows.length === 1 ? '' : 's') + ' match.</b>' + (breakdown ? ' ' + breakdown : '');
+    }
+    updatePreview();
+
+    ov.querySelector('#gl-exp-csv').addEventListener('click', async function(){
+      var rows = await fetchRecords();
+      if(!rows.length){ alert('No records match.'); return; }
+      // Collect every key seen in data JSONB so each gets a column
+      var dataKeys = {};
+      rows.forEach(function(r){
+        if(r.data && typeof r.data === 'object'){
+          Object.keys(r.data).forEach(function(k){
+            if(typeof r.data[k] !== 'object') dataKeys[k] = true;
+          });
+        }
+      });
+      var dataCols = Object.keys(dataKeys).sort();
+      var header = ['record_id','form_code','record_date','recorded_at','status','signature_name','signed_at','has_deviation','deviation_notes','corrective_action','run_id','client_id','hold_tag_id','nc_report_id'].concat(dataCols);
+      var csv = header.map(escCsv).join(',') + '\r\n';
+      rows.forEach(function(r){
+        var line = [r.id, r.form_code, r.record_date, r.recorded_at, r.status, r.signature_name, r.signed_at, r.has_deviation, r.deviation_notes, r.corrective_action, r.run_id, r.client_id, r.hold_tag_id, r.nc_report_id];
+        dataCols.forEach(function(k){ line.push(r.data ? r.data[k] : ''); });
+        csv += line.map(escCsv).join(',') + '\r\n';
+      });
+      var dr = dateRange();
+      downloadFile('compliance-export-' + dr.from + '-to-' + dr.to + '.csv', 'text/csv;charset=utf-8', csv);
+    });
+
+    ov.querySelector('#gl-exp-pdf').addEventListener('click', async function(){
+      var rows = await fetchRecords();
+      if(!rows.length){ alert('No records match.'); return; }
+      var dr = dateRange();
+      // Build a print-friendly HTML window
+      var w = window.open('', '_blank');
+      if(!w){ alert('Pop-up blocked — allow pop-ups for this site to print/PDF.'); return; }
+      var formatDate = function(d){ if(!d) return ''; var x = new Date(d); return x.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); };
+      var formatTs = function(d){ if(!d) return ''; var x = new Date(d); return x.toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}); };
+      var html =
+        '<!doctype html><html><head><meta charset="utf-8"><title>Good Liquid Bev Co — Compliance Export</title>' +
+        '<style>' +
+          'body{font-family:Helvetica,Arial,sans-serif;color:#0a1628;margin:24px;line-height:1.4;font-size:11px}' +
+          'h1{font-size:18px;letter-spacing:1px;margin:0 0 4px}' +
+          '.meta{color:#555;font-size:10px;margin-bottom:18px}' +
+          '.rec{border:1px solid #ddd;border-radius:6px;padding:10px 12px;margin-bottom:10px;page-break-inside:avoid}' +
+          '.rec h3{margin:0 0 4px;font-size:12px;letter-spacing:1px}' +
+          '.rec .head{color:#888;font-size:10px;margin-bottom:6px}' +
+          '.rec table{width:100%;border-collapse:collapse;font-size:10px;margin-top:4px}' +
+          '.rec table td{padding:3px 6px;border-bottom:1px dotted #eee;vertical-align:top}' +
+          '.rec table td:first-child{color:#888;width:30%}' +
+          '.dev{background:#fef0ef;border-left:3px solid #d34;padding:6px 10px;margin-top:6px}' +
+          '.sig{margin-top:6px;padding-top:6px;border-top:1px solid #eee;font-size:10px;color:#555}' +
+          '.signed-yes{color:#0a8}' +
+          '@media print { .no-print{display:none} body{margin:12px} }' +
+        '</style></head><body>' +
+        '<h1>Good Liquid Bev Co — Compliance Records Export</h1>' +
+        '<div class="meta">2011 51st Ave E, Palmetto, FL 34221 · Date range: ' + escHtml(dr.from) + ' to ' + escHtml(dr.to) +
+        ' · ' + rows.length + ' records · Exported ' + formatTs(new Date()) + (signedOnly() ? ' · PCQI-signed only' : '') + '</div>' +
+        '<div class="no-print" style="margin-bottom:14px"><button onclick="window.print()" style="padding:8px 16px;background:#0a8;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:700">🖨️ Print / Save as PDF</button> <button onclick="window.close()" style="margin-left:6px">Close</button></div>';
+      rows.forEach(function(r){
+        var data = r.data || {};
+        html += '<div class="rec">' +
+          '<h3>' + escHtml(r.form_code) + (r.signature_name ? ' · <span class="signed-yes">✓ SIGNED ' + escHtml(r.signature_name) + '</span>' : ' · ' + escHtml(r.status||'').toUpperCase()) + '</h3>' +
+          '<div class="head">Recorded ' + formatTs(r.recorded_at) + (r.record_date ? ' · for ' + escHtml(r.record_date) : '') + '</div>';
+        // Data table
+        var dataRows = Object.keys(data).filter(function(k){ return typeof data[k] !== 'object'; });
+        if(dataRows.length){
+          html += '<table>';
+          dataRows.forEach(function(k){
+            html += '<tr><td>' + escHtml(k) + '</td><td>' + escHtml(data[k]) + '</td></tr>';
+          });
+          html += '</table>';
+        }
+        // Handle steps array on CIP records
+        if(Array.isArray(data.steps)){
+          html += '<div style="font-size:10px;color:#666;margin-top:4px"><b>CIP Steps:</b></div>';
+          html += '<table style="margin-top:2px"><tr><td>#</td><td>Step</td><td>Done</td><td>Actual min</td><td>Temp °F</td><td>Reading</td><td>P/F</td></tr>';
+          data.steps.forEach(function(s){
+            html += '<tr><td>'+s.n+'</td><td>'+escHtml(s.name)+'</td><td>'+(s.done?'Y':'N')+'</td><td>'+s.actual_min+'</td><td>'+(s.temp_f||'')+'</td><td>'+escHtml(s.reading||'')+'</td><td>'+escHtml(s.pf||'')+'</td></tr>';
+          });
+          html += '</table>';
+        }
+        if(r.has_deviation){
+          html += '<div class="dev"><b>⚠ Deviation:</b> ' + escHtml(r.deviation_notes || '(no notes)') +
+            (r.corrective_action ? '<br><b>Corrective action:</b> ' + escHtml(r.corrective_action) : '') + '</div>';
+        }
+        if(r.signature_name){
+          html += '<div class="sig"><b>PCQI signature:</b> ' + escHtml(r.signature_name) + ' on ' + formatTs(r.signed_at) +
+            (r.signature_meaning ? ' (' + escHtml(r.signature_meaning) + ')' : '') + '</div>';
+        }
+        html += '</div>';
+      });
+      html += '</body></html>';
+      w.document.write(html);
+      w.document.close();
+    });
+  };
+
+  // ── (3) Help docs for Compliance ──
+  var SEC_COMPLIANCE_HTML =
+    '<div style="margin:8px 0 14px;padding:12px 14px;background:rgba(245,200,66,.08);border:1px solid rgba(245,200,66,.25);border-left:3px solid #f5c842;border-radius:0 8px 8px 0;font-size:12.5px;line-height:1.7;color:#cfd9e6">' +
+      '<div style="font-size:10px;letter-spacing:2px;color:#f5c842;font-weight:700;margin-bottom:6px">📍 WHERE THIS LIVES</div>' +
+      '<b>Compliance master page</b> &rarr; sidebar &rarr; <b>Compliance</b> section &rarr; <b>📋 Compliance Tasks</b>.<br>' +
+      '<b>Hold Tags page</b> &rarr; sidebar &rarr; <b>Compliance</b> section &rarr; <b>🚫 Hold Tags</b>.<br>' +
+      '<b>CIP / Sanitation Log</b> (9-step) &rarr; sidebar &rarr; <b>Compliance</b> section &rarr; <b>🧼 CIP / Sanitation Log</b> (or task auto-launches it).' +
+    '</div>' +
+    '<p style="color:#cfd9e6;font-size:13px;line-height:1.7;margin:0 0 12px">FDA-compliant logging built on 21 CFR Part 117 Subpart B. 18 forms work end-to-end with quick-capture, PCQI typed e-signature (Part 11), critical-limit auto-spawn of Hold Tag + NC report, and a master daily checklist that auto-generates tasks based on the day&rsquo;s production runs.</p>' +
+    '<div style="margin:18px 0 4px;padding:8px 12px;background:rgba(0,229,192,.06);border-left:3px solid var(--teal);border-radius:0 6px 6px 0"><b style="color:var(--teal);font-size:13px;letter-spacing:1px">📋 MASTER PAGE — 3 TABS</b></div>' +
+    '<ul style="margin:10px 0 4px;padding-left:20px;color:#cfd9e6;font-size:13px;line-height:1.75">' +
+      '<li><b>Today&rsquo;s Tasks</b> — auto-generated from production runs + recurring rules (daily pre-op, monthly cal/Listeria, per-run CCP logs based on processing method).</li>' +
+      '<li><b>Open Logs</b> — every record awaiting completion or PCQI sign-off. Click ✓ to sign.</li>' +
+      '<li><b>Forms Library</b> — launchers for all 18 forms (use for ad-hoc records not auto-generated).</li>' +
+    '</ul>' +
+    '<div style="margin:18px 0 4px;padding:8px 12px;background:rgba(0,229,192,.06);border-left:3px solid var(--teal);border-radius:0 6px 6px 0"><b style="color:var(--teal);font-size:13px;letter-spacing:1px">🧪 9-STEP CIP (GMP-SAN-002 v2.1)</b></div>' +
+    '<p style="color:#cfd9e6;font-size:13px;line-height:1.7;margin:0 0 12px">Single modal with 9 step rows: Pre-rinse · PBW · Rinse · Caustic · Rinse · Acid · Rinse · POST-CIP PAA · PRE-USE PAA. Each row captures done-checkbox, actual duration, temperature, verification reading (% conc / µS/cm / ppm), pass/fail. Target durations pre-filled per LEAN_01 v2.1 (PBW/caustic/acid 30 min, PAA 20 min).</p>' +
+    '<div style="font-size:11px;color:#ff8579;background:rgba(231,76,60,.1);padding:8px 12px;border-radius:6px;margin-bottom:12px">Critical limits enforced: temp ≥ 160°F steps 1-7 · PAA 100-300 ppm steps 8-9 · DO NOT RINSE after PAA. Any step FAIL or out-of-spec auto-spawns Hold Tag + NC draft.</div>' +
+    '<div style="margin:18px 0 4px;padding:8px 12px;background:rgba(0,229,192,.06);border-left:3px solid var(--teal);border-radius:0 6px 6px 0"><b style="color:var(--teal);font-size:13px;letter-spacing:1px">✓ PCQI SIGN-OFF</b></div>' +
+    '<p style="color:#cfd9e6;font-size:13px;line-height:1.7;margin:0 0 12px">Every form has a <b>Save &amp; sign as PCQI</b> button. Click = your typed name + UTC timestamp + signature meaning are locked into the record. Part 11 compliant for single-PCQI model. Sign-offs can also happen later from the Open Logs tab.</p>' +
+    '<div style="margin:18px 0 4px;padding:8px 12px;background:rgba(0,229,192,.06);border-left:3px solid var(--teal);border-radius:0 6px 6px 0"><b style="color:var(--teal);font-size:13px;letter-spacing:1px">🚫 CRITICAL-LIMIT TRIGGERS</b></div>' +
+    '<p style="color:#cfd9e6;font-size:13px;line-height:1.7;margin:0 0 6px">Any pass/fail field marked FAIL or any CCP reading outside its limit (HTST &lt;165°F, hot fill &lt;185°F, UV dose &lt;40 mJ/cm², PAA outside 100-300 ppm, etc.) auto-creates:</p>' +
+    '<ul style="margin:6px 0 12px;padding-left:20px;color:#cfd9e6;font-size:13px;line-height:1.75">' +
+      '<li>A <b>Hold Tag</b> (HT-YYYY-NNN auto-numbered) on the affected lot, status=open</li>' +
+      '<li>A <b>Non-Conformance Report</b> in the Defects/NCRs page, severity=high, status=open</li>' +
+      '<li>A notification + audit log entry</li>' +
+      '<li><b>The affected production run is blocked from moving to "Ship"</b> until the Hold Tag is dispositioned</li>' +
+    '</ul>' +
+    '<div style="margin:18px 0 4px;padding:8px 12px;background:rgba(0,229,192,.06);border-left:3px solid var(--teal);border-radius:0 6px 6px 0"><b style="color:var(--teal);font-size:13px;letter-spacing:1px">📥 FDA AUDIT EXPORT</b></div>' +
+    '<p style="color:#cfd9e6;font-size:13px;line-height:1.7;margin:0 0 6px">Click <b>📥 Export</b> on the Compliance master page header. Pick form types + date range + optionally "signed only." Get either:</p>' +
+    '<ul style="margin:6px 0 12px;padding-left:20px;color:#cfd9e6;font-size:13px;line-height:1.75">' +
+      '<li><b>CSV</b> — every record as a row, with the form-specific data fields flattened into columns (good for Excel review or external archival).</li>' +
+      '<li><b>Print / PDF</b> — opens a print-styled window with one record per card, signatures shown, deviations highlighted. Use browser <b>"Save as PDF"</b> in the print dialog for an FDA-ready PDF.</li>' +
+    '</ul>' +
+    '<p style="color:#cfd9e6;font-size:13px;line-height:1.7;margin:0 0 12px">Records retain in Supabase for 2 years per §117.180. FDA access within 24 hours = use this export.</p>' +
+    '<div style="margin:18px 0 4px;padding:8px 12px;background:rgba(0,229,192,.06);border-left:3px solid var(--teal);border-radius:0 6px 6px 0"><b style="color:var(--teal);font-size:13px;letter-spacing:1px">📐 18 FORMS BUILT</b></div>' +
+    '<div style="font-size:12px;color:#cfd9e6;line-height:1.8">' +
+      '<b>Daily / per-run:</b> Pre-Op Inspection · Label Verification · Allergen Swab · HTST · Hot Fill · Can Seam · UV Water · Fermentation · 9-step CIP · Batch Record<br>' +
+      '<b>Monthly:</b> Calibration · Environmental Listeria<br>' +
+      '<b>Event-driven:</b> Receiving · Distribution · Illness Exclusion · Hold Tag<br>' +
+      '<b>As-needed:</b> Training · Supplier COA Review<br>' +
+      '<b>Annual:</b> FSP Review' +
+    '</div>';
+
+  function tryAddComplianceHelp(){
+    var orig = window.glOpenHelp;
+    if(typeof orig !== 'function'){ setTimeout(tryAddComplianceHelp, 500); return; }
+    if(window.__glComplianceHelpHooked) return;
+    window.__glComplianceHelpHooked = true;
+
+    var origOpen = orig;
+    window.glOpenHelp = function(scrollTo){
+      origOpen(scrollTo);
+      var tries = 0;
+      var iv = setInterval(function(){
+        var body = document.getElementById('gl-help-body');
+        var toc  = document.getElementById('gl-help-toc');
+        if((body && body.dataset.glComplianceApplied === '1') || ++tries > 12){ clearInterval(iv); return; }
+        if(!body || !toc) return;
+        clearInterval(iv);
+        var sectionHtml = '<section id="help-compliance" style="padding:22px 4px 26px;border-bottom:1px solid rgba(255,255,255,.06);scroll-margin-top:20px">' +
+          '<h3 style="margin:0 0 14px;font-family:var(--ff-disp);font-size:15px;letter-spacing:2px;color:var(--teal)">📋 COMPLIANCE</h3>' +
+          SEC_COMPLIANCE_HTML +
+        '</section>';
+        body.insertAdjacentHTML('beforeend', sectionHtml);
+        // TOC entry
+        toc.insertAdjacentHTML('beforeend',
+          '<a href="#help-compliance" data-anchor="help-compliance" style="display:block;padding:8px 12px;margin:2px 0;border-radius:6px;font-size:12px;color:#9aa7bd;text-decoration:none;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background .12s,color .12s">📋 Compliance</a>');
+        var newAnchor = toc.querySelector('a[data-anchor="help-compliance"]');
+        if(newAnchor){
+          newAnchor.addEventListener('click', function(ev){
+            ev.preventDefault();
+            var t = document.getElementById('help-compliance');
+            if(t) t.scrollIntoView({ behavior:'smooth', block:'start' });
+          });
+        }
+        body.dataset.glComplianceApplied = '1';
+        // Auto-scroll if pressed ? while on Compliance page
+        var activePg = document.querySelector('#crm-panel .cpg.act');
+        if(activePg && (activePg.id === 'cpg-compliance' || activePg.id === 'cpg-holds')){
+          setTimeout(function(){
+            var t = document.getElementById('help-compliance');
+            if(t) t.scrollIntoView({ behavior:'instant', block:'start' });
+          }, 80);
+        }
+      }, 60);
+    };
+  }
+  tryAddComplianceHelp();
+
+  // Wire the FDA Export button into the master page header (next to New Hold Tag).
+  function tryInjectExportButton(){
+    var host = document.getElementById('comp-body');
+    if(!host){ setTimeout(tryInjectExportButton, 700); return; }
+    new MutationObserver(function(){
+      var holdBtn = host.querySelector('.gl-comp-hold');
+      if(!holdBtn) return;
+      if(holdBtn.parentNode.querySelector('.gl-comp-export')) return;
+      var exp = document.createElement('button');
+      exp.className = 'cbtn gl-comp-export';
+      exp.setAttribute('style','font-size:11px;padding:5px 11px;margin-right:6px;background:rgba(127,198,245,.08);border:1px solid rgba(127,198,245,.3);color:#7fc6f5');
+      exp.textContent = '📥 Export';
+      exp.addEventListener('click', function(){ window.glOpenComplianceExport(); });
+      holdBtn.parentNode.insertBefore(exp, holdBtn);
+    }).observe(host, { childList:true, subtree:true });
+  }
+  if(document.readyState !== 'loading') tryInjectExportButton();
+  else document.addEventListener('DOMContentLoaded', tryInjectExportButton);
+
+  console.log('[GL] compliance critical pack loaded — Hold-Tag guard + FDA export + help docs');
 }());
