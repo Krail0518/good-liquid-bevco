@@ -95,7 +95,7 @@
   /* ── PERMISSIONS ──
      Page-name convention matches index.html cNav calls (e.g. 'newinv', not 'new-invoice').
      window.PERMISSIONS is bridged from index.html so both the role-filter UI and can() share one table. */
-  var ALL=['dashboard','clients','pipeline','invoices','invoice-detail','newinv','referrals','referrers','activity','users','customers','calendar','production-cal','production-runs','samples','formulas','yield','content','cip','audit','defects','vendors','tasks','documents','inventory','announcements','time-tracker','reports','ai-settings'];
+  var ALL=['dashboard','clients','pipeline','invoices','invoice-detail','newinv','referrals','referrers','activity','users','customers','calendar','production-cal','production-runs','samples','formulas','yield','content','compliance','holds','cip','audit','defects','vendors','tasks','documents','inventory','announcements','time-tracker','reports','ai-settings'];
   if(window.PERMISSIONS){window.PERMISSIONS.admin=ALL;window.PERMISSIONS.sales=['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','content','cip','defects','vendors','tasks','announcements','reports'];}
   else{window.PERMISSIONS={admin:ALL,sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','content','cip','defects','vendors','tasks','announcements','reports'],viewer:['dashboard','clients','invoices','activity']};}
   window.can=function(page){var u=window.currentUser;if(!u)return false;if(u.role==='admin')return true;return(window.PERMISSIONS[u.role]||[]).includes(page);};
@@ -13584,4 +13584,946 @@
   else document.addEventListener('DOMContentLoaded', start);
 
   console.log('[GL] Stripe 💳 button injected into invoice rows');
+}());
+
+
+/* ============================================================
+   COMPLIANCE MODULE — Phase 1
+   ============================================================
+   Master daily checklist + 4 reference forms (Pre-Op Inspection,
+   Label Verification, Allergen Swab, HTST 30-min Reading) +
+   Hold Tag manager. Backs FDA 21 CFR Part 117 Subpart B records.
+
+   - Auto-generates today's tasks from production_runs + recurring
+     rules (daily / monthly / per-CCP).
+   - Quick-capture forms with critical fields up front, completable
+     later before PCQI sign-off.
+   - Failed pass/fail or out-of-spec critical limit auto-creates a
+     draft Hold Tag + draft NC report (defects table).
+   - Typed e-signature (FDA Part 11 — single PCQI user model).
+   ============================================================ */
+(function(){
+  var DEFAULT_LIMITS = {
+    htst_temp_f: 165,       // CCP-1
+    htst_hold_sec: 15,
+    hot_fill_f: 185,        // CCP-2
+    uv_dose_mj_cm2: 40,     // CCP-3
+    paa_ppm_min: 100,       // CIP step 8/9
+    paa_ppm_max: 300,
+    final_pH_fermented: 4.6 // CCP-A
+  };
+
+  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function fmtDate(d){
+    if(!d) return '';
+    var x = (d instanceof Date) ? d : new Date(d);
+    if(isNaN(x.getTime())) return String(d);
+    return x.toLocaleDateString('en-US',{month:'short', day:'numeric', year:'numeric'});
+  }
+  function fmtTime(d){
+    if(!d) return '';
+    var x = (d instanceof Date) ? d : new Date(d);
+    if(isNaN(x.getTime())) return '';
+    return x.toLocaleTimeString('en-US',{hour:'numeric', minute:'2-digit'});
+  }
+  function todayISO(){ return new Date().toISOString().slice(0,10); }
+  function nowISO(){ return new Date().toISOString(); }
+  function uid(){ return 'tmp_' + Math.random().toString(36).slice(2,10); }
+
+  // ── Form catalog: 20 FDA-required forms scoped to beverage co-packer ──
+  // Phase 1 ships the 4 marked `built:true`; the rest get launchers
+  // in the Forms Library and a "not built yet" placeholder.
+  var FORMS = [
+    { code:'GMP-INSP-001', name:'Daily Pre-Op Sanitation Inspection', icon:'🧽', built:true,
+      desc:'Verify production areas are clean and safe before each run', frequency:'Every production day before startup' },
+    { code:'GMP-LAB-001', name:'Label Verification Checklist', icon:'🏷️', built:true,
+      desc:'Verify label, allergen statement, lot code before run', frequency:'Before every production run' },
+    { code:'GMP-ALL-001', name:'Allergen Changeover Swab', icon:'⚠️', built:true,
+      desc:'Verify full CIP between allergen and allergen-free runs', frequency:'Every allergen changeover' },
+    { code:'FSP-PC-001', name:'HTST Pasteurization Log (CCP-1)', icon:'🌡️', built:true,
+      desc:'Hold-tube temperature reading every 30 min', frequency:'Continuous + spot check every 30 min' },
+    { code:'GMP-SAN-002', name:'CIP Monitoring Log (9-step)', icon:'🧪', built:false,
+      desc:'PBW → caustic → acid → PAA cycle log', frequency:'Every CIP cycle' },
+    { code:'FSP-PC-002', name:'Hot Fill Temperature Log (CCP-2)', icon:'♨️', built:false,
+      desc:'Fill nozzle temperature ≥ 185°F', frequency:'Continuous + spot check every 30 min' },
+    { code:'FSP-PC-003', name:'Can Seam Evaluation Log (CCP-4)', icon:'🥫', built:false,
+      desc:'Seam thickness, body hook, cover hook, overlap', frequency:'Startup + every 4 hr + post-jam + shutdown' },
+    { code:'FSP-PC-004', name:'UV Water Treatment Log (CCP-3)', icon:'💡', built:false,
+      desc:'UV dose ≥ 40 mJ/cm² during production', frequency:'Hourly during production' },
+    { code:'FSP-PC-005', name:'Fermentation Monitoring Log (CCP-A)', icon:'🧫', built:false,
+      desc:'Final pH ≤ 4.6 and ABV ≥ spec', frequency:'Per batch — multiple readings' },
+    { code:'GMP-REC-001', name:'Receiving Inspection & COA Review', icon:'📦', built:false,
+      desc:'Inspection + COA verification at delivery', frequency:'Every incoming delivery' },
+    { code:'GMP-CAL-001', name:'Equipment Calibration Log', icon:'📐', built:false,
+      desc:'Monthly cal for CCP instruments', frequency:'Per calibration schedule (monthly min)' },
+    { code:'GMP-DIST-001', name:'Distribution / Traceability', icon:'🚚', built:false,
+      desc:'Lot, qty, customer, BOL — supports 4-hr recall', frequency:'Every outbound shipment' },
+    { code:'GMP-HR-001', name:'Employee Illness Exclusion', icon:'🤒', built:false,
+      desc:'Document any exclusion event', frequency:'Upon any illness exclusion event' },
+    { code:'GMP-TR-001', name:'Employee Training Record', icon:'🎓', built:false,
+      desc:'Food-safety training events', frequency:'Each training event + annual' },
+    { code:'QC-BR-001', name:'Production Batch Record', icon:'📄', built:false,
+      desc:'Full batch ingredients + process + QC checks', frequency:'Every production batch' },
+    { code:'FSP-SAN-001', name:'Environmental Monitoring — Listeria', icon:'🧬', built:false,
+      desc:'Zone 1-4 swabs for Listeria species', frequency:'Monthly minimum' },
+    { code:'FSP-SC-001', name:'Approved Supplier List', icon:'✅', built:false,
+      desc:'Master list of qualified suppliers', frequency:'Updated upon each approval/removal' },
+    { code:'FSP-SC-002', name:'Supplier COA Review Log', icon:'📋', built:false,
+      desc:'COA verification for high-risk lots', frequency:'Per incoming lot of high-risk ingredients' },
+    { code:'FSP-VER-002', name:'Annual FSP Review', icon:'📅', built:false,
+      desc:'Reanalyze the Food Safety Plan', frequency:'Annually' },
+    { code:'GMP-NC-001', name:'Non-Conformance / Corrective Action', icon:'🚨', built:false,
+      desc:'See sidebar → Defects / NCRs (existing page)', frequency:'Upon any deviation' }
+  ];
+  function getForm(code){ return FORMS.find(function(f){ return f.code === code; }); }
+
+  // ── Data helpers (Supabase first, localStorage fallback) ──
+  function localCacheKey(table){ return 'gl_cache_' + table; }
+  function readLocal(table){
+    try { return JSON.parse(localStorage.getItem(localCacheKey(table)) || '[]'); } catch(e){ return []; }
+  }
+  function writeLocal(table, rows){
+    try { localStorage.setItem(localCacheKey(table), JSON.stringify(rows.slice(0, 200))); } catch(e){}
+  }
+
+  async function dbSelect(table, modifyQuery){
+    if(window.supa){
+      try {
+        var q = window.supa.from(table).select('*');
+        if(typeof modifyQuery === 'function') q = modifyQuery(q);
+        var r = await q;
+        if(r && !r.error && r.data){
+          writeLocal(table, r.data);
+          return r.data;
+        }
+      } catch(e){ console.warn('[GL compliance] dbSelect '+table+' failed', e); }
+    }
+    return readLocal(table);
+  }
+
+  async function dbInsert(table, row){
+    if(window.supa){
+      try {
+        var r = await window.supa.from(table).insert([row]).select().single();
+        if(r && !r.error && r.data) return r.data;
+      } catch(e){ console.warn('[GL compliance] dbInsert '+table+' failed', e); }
+    }
+    // Local fallback
+    var fake = Object.assign({ id: uid(), created_at: nowISO() }, row);
+    var rows = readLocal(table);
+    rows.unshift(fake);
+    writeLocal(table, rows);
+    return fake;
+  }
+
+  async function dbUpdate(table, id, patch){
+    if(window.supa){
+      try {
+        var r = await window.supa.from(table).update(patch).eq('id', id).select().single();
+        if(r && !r.error && r.data) return r.data;
+      } catch(e){ console.warn('[GL compliance] dbUpdate '+table+' failed', e); }
+    }
+    var rows = readLocal(table);
+    var idx = rows.findIndex(function(r){ return r.id === id; });
+    if(idx !== -1){ Object.assign(rows[idx], patch); writeLocal(table, rows); return rows[idx]; }
+    return null;
+  }
+
+  // ── Task auto-generator ──
+  // Rules:
+  //   Daily — pre-op inspection (if any run scheduled today)
+  //   Per-run — label verify (before), allergen swab (if changeover detected), CCP logs based on processing method
+  //   Monthly — calibration + Listeria swab on day 1 of month
+  //   Annual — FSP review on anniversary of effective date
+  function dedupeKey(parts){ return parts.filter(function(x){return x;}).join('::'); }
+
+  function buildTaskCandidates(today){
+    var candidates = [];
+    var todayDate = today || todayISO();
+    var d = new Date(todayDate + 'T12:00:00');
+    var monthDay = d.getDate();
+    var dayOfWeek = d.getDay();
+
+    var runs = (window.glProductionRuns || []).filter(function(r){
+      if(!r.scheduled_date) return false;
+      return r.scheduled_date === todayDate && r.stage !== 'Ship';
+    });
+
+    // Daily pre-op — once per production day (any run scheduled)
+    if(runs.length){
+      candidates.push({
+        due_date: todayDate,
+        task_type: 'preop_inspection',
+        title: 'Daily pre-op sanitation inspection',
+        description: 'Required before any production starts today (' + runs.length + ' run' + (runs.length>1?'s':'') + ' scheduled)',
+        source: 'auto',
+        dedupe_key: dedupeKey(['preop', todayDate])
+      });
+    }
+
+    // Per-run tasks
+    runs.forEach(function(run){
+      candidates.push({
+        due_date: todayDate,
+        task_type: 'label_verify',
+        title: 'Label verification — ' + (run.run_name || run.client_name || run.id),
+        description: 'Verify product, allergen statement, lot code BEFORE run begins',
+        source: 'auto',
+        run_id: run.id,
+        dedupe_key: dedupeKey(['label', run.id])
+      });
+      // HTST per-run if format suggests pasteurized juice / RTD
+      var fmt = (run.format || '').toLowerCase();
+      if(/htst|pasteurize|juice|rtd/.test(fmt) || /pasteurize/.test((run.notes||'').toLowerCase())){
+        candidates.push({
+          due_date: todayDate,
+          task_type: 'htst_reading',
+          title: 'HTST monitoring — ' + (run.run_name || run.id),
+          description: 'Hold-tube temp reading every 30 min during pasteurization',
+          source: 'auto',
+          run_id: run.id,
+          dedupe_key: dedupeKey(['htst', run.id, todayDate])
+        });
+      }
+    });
+
+    // Allergen swab — if any run today has allergens AND any earlier run today does not (or vice versa)
+    if(runs.length >= 2){
+      var withAllergen = runs.filter(function(r){ return /allergen|dairy|nut|soy|egg|gluten|wheat|fish|shellfish/i.test((r.notes||'') + ' ' + (r.format||'')); });
+      var without = runs.filter(function(r){ return !withAllergen.includes(r); });
+      if(withAllergen.length && without.length){
+        candidates.push({
+          due_date: todayDate,
+          task_type: 'allergen_swab',
+          title: 'Allergen changeover swab',
+          description: 'CIP + ELISA swab between allergen and allergen-free runs',
+          source: 'auto',
+          dedupe_key: dedupeKey(['allergen', todayDate])
+        });
+      }
+    }
+
+    // Monthly tasks on day 1
+    if(monthDay === 1){
+      candidates.push({
+        due_date: todayDate, task_type: 'calibration',
+        title: 'Monthly equipment calibration',
+        description: 'pH meters, thermometers, UV sensor, scales, conductivity meters',
+        source: 'auto', dedupe_key: dedupeKey(['cal', todayDate.slice(0,7)])
+      });
+      candidates.push({
+        due_date: todayDate, task_type: 'listeria_swab',
+        title: 'Monthly environmental Listeria swab',
+        description: 'Zone 1-4 surfaces — minimum food-contact zones',
+        source: 'auto', dedupe_key: dedupeKey(['listeria', todayDate.slice(0,7)])
+      });
+    }
+
+    return candidates;
+  }
+
+  async function generateTodaysTasks(){
+    var todayDate = todayISO();
+    var candidates = buildTaskCandidates(todayDate);
+    var existing = await dbSelect('compliance_tasks', function(q){ return q.eq('due_date', todayDate); });
+    var existingKeys = {};
+    existing.forEach(function(t){ if(t.dedupe_key) existingKeys[t.dedupe_key] = true; });
+    var toInsert = candidates.filter(function(c){ return !existingKeys[c.dedupe_key]; });
+    for(var i = 0; i < toInsert.length; i++){
+      await dbInsert('compliance_tasks', toInsert[i]);
+    }
+    return await dbSelect('compliance_tasks', function(q){ return q.eq('due_date', todayDate).order('due_time', { ascending: true, nullsFirst: true }); });
+  }
+
+  // ── Critical-limit trigger: auto-create Hold Tag + NC draft ──
+  async function spawnHoldAndNc(opts){
+    // opts: { form_code, record_id, run_id, lot_number, product_name, reason, hazard_type }
+    var nextTagNo;
+    var existing = await dbSelect('hold_tags');
+    var maxN = 0;
+    existing.forEach(function(h){
+      var m = /HT-\d{4}-(\d+)/.exec(h.tag_number || '');
+      if(m){ var n = parseInt(m[1], 10); if(n > maxN) maxN = n; }
+    });
+    nextTagNo = 'HT-' + (new Date()).getFullYear() + '-' + String(maxN + 1).padStart(3, '0');
+
+    var hold = await dbInsert('hold_tags', {
+      tag_number: nextTagNo,
+      product_name: opts.product_name || (opts.run_id ? 'Run ' + opts.run_id : 'Unknown product'),
+      lot_number: opts.lot_number || null,
+      qty_held: opts.qty_held || null,
+      location: opts.location || 'Production floor',
+      reason: opts.reason || 'Auto-hold: critical limit deviation',
+      hazard_type: opts.hazard_type || 'biological',
+      initiated_by: (window.currentUser && window.currentUser.id) || null,
+      pcqi_notified: true,
+      pcqi_notified_at: nowISO(),
+      source_record_id: opts.record_id || null,
+      status: 'open'
+    });
+
+    // NC report draft in defects table
+    var nc = null;
+    if(window.supa){
+      try {
+        var ncRow = {
+          reported_at: nowISO(),
+          run_ref: opts.run_id || null,
+          category: 'Auto-NCR: ' + (opts.form_code || 'compliance'),
+          severity: 'high',
+          status: 'open',
+          owner: (window.currentUser && window.currentUser.email) || 'system',
+          description: 'Auto-generated from compliance record ' + (opts.record_id || '') + '. ' + (opts.reason || ''),
+          root_cause: '',
+          corrective_action: 'Hold tag ' + nextTagNo + ' created. PCQI to investigate and disposition.'
+        };
+        var r = await window.supa.from('defects').insert([ncRow]).select().single();
+        if(r && !r.error) nc = r.data;
+      } catch(e){ console.warn('[GL compliance] NC auto-create failed', e); }
+    }
+
+    if(typeof addNotification === 'function'){
+      addNotification('🚫 Hold Tag created: ' + nextTagNo, opts.reason || 'Critical limit deviation', 'warning');
+    }
+    if(typeof window.glAudit === 'function'){
+      window.glAudit('compliance_critical_failure', opts.record_id || '', { hold_tag: nextTagNo, form: opts.form_code });
+    }
+
+    return { hold: hold, nc: nc };
+  }
+
+  // ── Form rendering: each form has quick-capture mode ──
+  function modalShell(title, subtitle, bodyHtml, footerHtml){
+    var prior = document.getElementById('gl-comp-modal');
+    if(prior) prior.remove();
+    var ov = document.createElement('div');
+    ov.id = 'gl-comp-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:9000;background:rgba(6,13,26,.85);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto');
+    var card = document.createElement('div');
+    card.setAttribute('style','background:#142238;border:1px solid rgba(0,229,192,.22);border-radius:14px;width:100%;max-width:580px;max-height:88vh;overflow-y:auto;color:#cfd9e6;box-shadow:0 20px 60px rgba(0,0,0,.6)');
+    card.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:start;padding:18px 22px;border-bottom:1px solid rgba(255,255,255,.06)">' +
+        '<div>' +
+          '<div style="font-family:var(--ff-disp,sans-serif);font-size:14px;letter-spacing:2px;color:var(--teal,#00e5c0);font-weight:700">' + esc(title) + '</div>' +
+          (subtitle ? '<div style="font-size:11px;color:#9aa7bd;margin-top:3px">' + esc(subtitle) + '</div>' : '') +
+        '</div>' +
+        '<button class="gl-comp-close" style="background:none;border:none;color:#9aa7bd;font-size:18px;cursor:pointer;padding:2px 6px;line-height:1">✕</button>' +
+      '</div>' +
+      '<div style="padding:18px 22px">' + bodyHtml + '</div>' +
+      (footerHtml ? '<div style="padding:14px 22px;border-top:1px solid rgba(255,255,255,.06);display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">' + footerHtml + '</div>' : '');
+    ov.appendChild(card);
+    document.body.appendChild(ov);
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    card.querySelector('.gl-comp-close').addEventListener('click', function(){ ov.remove(); });
+    return ov;
+  }
+
+  function field(label, name, type, opts){
+    opts = opts || {};
+    var id = 'gl-cf-' + name;
+    var commonStyle = 'width:100%;padding:9px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#fff;font-size:13px;box-sizing:border-box;font-family:inherit';
+    var inputHtml;
+    if(type === 'textarea'){
+      inputHtml = '<textarea id="' + id + '" rows="2" style="' + commonStyle + ';resize:vertical">' + esc(opts.value || '') + '</textarea>';
+    } else if(type === 'select'){
+      inputHtml = '<select id="' + id + '" style="' + commonStyle + '">' +
+        (opts.options || []).map(function(o){
+          var v = Array.isArray(o) ? o[0] : o;
+          var l = Array.isArray(o) ? o[1] : o;
+          return '<option value="' + esc(v) + '"' + (opts.value === v ? ' selected' : '') + '>' + esc(l) + '</option>';
+        }).join('') + '</select>';
+    } else if(type === 'yn'){
+      var v = opts.value;
+      inputHtml = '<div style="display:inline-flex;gap:0;border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,.12)">' +
+        '<button type="button" data-yn="' + id + '" data-val="Y" style="padding:8px 18px;background:' + (v === 'Y' ? 'rgba(95,207,158,.18)' : 'transparent') + ';color:' + (v === 'Y' ? '#5fcf9e' : '#9aa7bd') + ';border:none;cursor:pointer;font-weight:600;font-size:12px">Y</button>' +
+        '<button type="button" data-yn="' + id + '" data-val="N" style="padding:8px 18px;background:' + (v === 'N' ? 'rgba(231,76,60,.18)' : 'transparent') + ';color:' + (v === 'N' ? '#ff8579' : '#9aa7bd') + ';border:none;cursor:pointer;font-weight:600;font-size:12px;border-left:1px solid rgba(255,255,255,.12)">N</button>' +
+        '<input type="hidden" id="' + id + '" value="' + esc(opts.value || '') + '">' +
+      '</div>';
+    } else {
+      inputHtml = '<input id="' + id + '" type="' + (type || 'text') + '"' + (opts.step ? ' step="'+opts.step+'"' : '') + ' value="' + esc(opts.value || '') + '"' + (opts.placeholder ? ' placeholder="'+esc(opts.placeholder)+'"' : '') + ' style="' + commonStyle + '">';
+    }
+    return '<div style="margin-bottom:11px"><div style="font-size:11px;color:#9aa7bd;margin-bottom:4px;font-weight:500">' + esc(label) + (opts.required ? ' <span style="color:#ff8579">*</span>' : '') + '</div>' + inputHtml + '</div>';
+  }
+
+  function wireYn(scope){
+    scope.querySelectorAll('button[data-yn]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var inputId = btn.getAttribute('data-yn');
+        var val = btn.getAttribute('data-val');
+        var input = document.getElementById(inputId);
+        if(input) input.value = val;
+        // Recolour buttons
+        var siblings = btn.parentNode.querySelectorAll('button[data-yn="'+inputId+'"]');
+        siblings.forEach(function(s){
+          var sv = s.getAttribute('data-val');
+          if(sv === 'Y'){ s.style.background = sv === val ? 'rgba(95,207,158,.18)' : 'transparent'; s.style.color = sv === val ? '#5fcf9e' : '#9aa7bd'; }
+          if(sv === 'N'){ s.style.background = sv === val ? 'rgba(231,76,60,.18)' : 'transparent'; s.style.color = sv === val ? '#ff8579' : '#9aa7bd'; }
+        });
+      });
+    });
+  }
+
+  function getVal(scope, name){ var el = scope.querySelector('#gl-cf-' + name); return el ? el.value : ''; }
+
+  function pcqiName(){
+    var u = window.currentUser || {};
+    return u.name || u.email || 'PCQI';
+  }
+
+  // Common footer buttons for forms — Save (draft) / Save & Sign (signed) / Cancel
+  function formFooter(){
+    return '<button type="button" class="cbtn gl-cf-cancel">Cancel</button>' +
+      '<button type="button" class="cbtn gl-cf-draft">Save draft</button>' +
+      '<button type="button" class="cbtn pri gl-cf-sign">✓ Save &amp; sign as PCQI</button>';
+  }
+
+  async function saveRecord(form_code, data, opts){
+    opts = opts || {};
+    var user = window.currentUser || {};
+    var row = {
+      form_code: form_code,
+      record_date: opts.record_date || todayISO(),
+      recorded_at: nowISO(),
+      data: data,
+      status: opts.signed ? 'signed' : (opts.complete ? 'complete' : 'draft'),
+      completed_by: user.id || null,
+      completed_at: opts.complete || opts.signed ? nowISO() : null,
+      signed_by: opts.signed ? (user.id || null) : null,
+      signed_at: opts.signed ? nowISO() : null,
+      signature_name: opts.signed ? pcqiName() : null,
+      signature_meaning: opts.signed ? 'PCQI sign-off — record reviewed and approved' : null,
+      run_id: opts.run_id || null,
+      has_deviation: !!opts.has_deviation,
+      deviation_notes: opts.deviation_notes || null,
+      corrective_action: opts.corrective_action || null
+    };
+    var saved = await dbInsert('compliance_records', row);
+
+    if(opts.task_id){
+      await dbUpdate('compliance_tasks', opts.task_id, {
+        status: 'done',
+        completed_at: nowISO(),
+        completed_by: user.id || null,
+        related_record_id: saved.id
+      });
+    }
+
+    if(opts.has_deviation && opts.spawn_hold){
+      var spawn = await spawnHoldAndNc({
+        form_code: form_code,
+        record_id: saved.id,
+        run_id: opts.run_id || null,
+        product_name: opts.product_name,
+        lot_number: opts.lot_number,
+        reason: opts.deviation_notes || 'Critical-limit deviation on ' + form_code,
+        hazard_type: opts.hazard_type || 'biological'
+      });
+      if(spawn && spawn.hold && spawn.hold.id){
+        await dbUpdate('compliance_records', saved.id, {
+          hold_tag_id: spawn.hold.id,
+          nc_report_id: spawn.nc ? spawn.nc.id : null
+        });
+      }
+    }
+
+    if(typeof window.glAudit === 'function'){
+      window.glAudit('compliance_record_saved', saved.id, { form_code: form_code, status: row.status });
+    }
+    if(typeof addNotification === 'function'){
+      addNotification(
+        (opts.signed ? '✓ Signed: ' : '💾 Draft saved: ') + form_code,
+        opts.summary || '',
+        opts.has_deviation ? 'warning' : 'success'
+      );
+    }
+    return saved;
+  }
+
+  // ── Form: GMP-INSP-001 Daily Pre-Op Sanitation Inspection ──
+  window.glOpenPreOpForm = function(task){
+    task = task || {};
+    var areas = ['Filling Line 1','Filling Line 2','Pasteurizer','Fermentation Tanks','CIP Skid','Floors / Drains','Cooler / Warehouse'];
+    var body =
+      field('Area / equipment inspected', 'area', 'select', { options: areas, required: true }) +
+      field('Visually clean?', 'clean', 'yn', { required: true }) +
+      field('Equipment assembled correctly?', 'assembled', 'yn', { required: true }) +
+      field('Pest evidence?', 'pest', 'yn', { required: true }) +
+      field('Drains clear?', 'drains', 'yn', { required: true }) +
+      field('Lights / shatter covers OK?', 'lights', 'yn', { required: true }) +
+      field('Corrective action (if any failure)', 'correction', 'textarea') +
+      '<div style="font-size:11px;color:#f5c842;background:rgba(245,200,66,.08);padding:8px 12px;border-radius:6px;margin-top:8px">PASS = all Y except pest (N). Any failure auto-creates a Hold Tag and NC draft.</div>';
+    var modal = modalShell('GMP-INSP-001 · Daily Pre-Op Sanitation Inspection', 'Required before any production starts today', body, formFooter());
+    wireYn(modal);
+    modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
+
+    async function submit(signed){
+      var data = {
+        area: getVal(modal, 'area'),
+        visually_clean: getVal(modal, 'clean'),
+        equipment_assembled: getVal(modal, 'assembled'),
+        pest_evidence: getVal(modal, 'pest'),
+        drains_clear: getVal(modal, 'drains'),
+        lights_ok: getVal(modal, 'lights'),
+        corrective_action: getVal(modal, 'correction')
+      };
+      var hasFailure = data.visually_clean !== 'Y' || data.equipment_assembled !== 'Y' ||
+                       data.pest_evidence !== 'N' || data.drains_clear !== 'Y' || data.lights_ok !== 'Y';
+      var saved = await saveRecord('GMP-INSP-001', data, {
+        signed: signed, complete: signed,
+        task_id: task.id, run_id: task.run_id,
+        has_deviation: hasFailure,
+        deviation_notes: hasFailure ? ('Pre-op fail: ' + data.area + ' — ' + (data.corrective_action || 'no detail provided')) : null,
+        corrective_action: data.corrective_action,
+        spawn_hold: hasFailure,
+        product_name: 'Production area: ' + data.area,
+        hazard_type: 'biological',
+        summary: data.area + (hasFailure ? ' · FAILED' : ' · PASS')
+      });
+      modal.remove();
+      refreshMaster();
+    }
+    modal.querySelector('.gl-cf-draft').addEventListener('click', function(){ submit(false); });
+    modal.querySelector('.gl-cf-sign').addEventListener('click', function(){ submit(true); });
+  };
+
+  // ── Form: GMP-LAB-001 Label Verification ──
+  window.glOpenLabelVerifyForm = function(task){
+    task = task || {};
+    var run = task.run_id ? (window.glProductionRuns||[]).find(function(r){ return r.id === task.run_id; }) : null;
+    var checks = [
+      ['name_match',     'Product name on label matches batch record?'],
+      ['weight_correct', 'Net weight / volume correct?'],
+      ['ingredients',    'Ingredient list correct for this formulation?'],
+      ['allergen_stmt',  'Allergen statement correct + complete (all 9 FASTER Act allergens)?'],
+      ['best_by',        'Best-By date coding correct format?'],
+      ['lot_code',       'Lot code correct?'],
+      ['ttb_cola',       'TTB COLA on file (alcohol products only — else N/A)?'],
+      ['copack_spec',    'Co-pack label matches client-approved master spec?']
+    ];
+    var body =
+      field('Product name', 'product', 'text', { value: run ? (run.run_name || run.client_name || '') : '', required: true }) +
+      field('Lot number', 'lot', 'text', { placeholder: 'GLBC-XXXX-YYYYMMDD-L#-###' }) +
+      field('Client (co-pack)', 'client', 'text', { value: run ? (run.client_name || '') : '' }) +
+      checks.map(function(c){ return field(c[1], c[0], 'yn', { required: true }); }).join('') +
+      field('Quantity of labels issued to line', 'labels_issued', 'number', { placeholder: '0' }) +
+      field('Reason for fail (if any)', 'fail_reason', 'textarea');
+    var modal = modalShell('GMP-LAB-001 · Label Verification', 'Complete BEFORE every production run begins', body, formFooter());
+    wireYn(modal);
+    modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
+
+    async function submit(signed){
+      var data = { product: getVal(modal,'product'), lot: getVal(modal,'lot'), client: getVal(modal,'client'), labels_issued: getVal(modal,'labels_issued'), fail_reason: getVal(modal,'fail_reason') };
+      checks.forEach(function(c){ data[c[0]] = getVal(modal, c[0]); });
+      // PASS if every check is Y (or 'N/A' allowed via blank → treat blank as Y for ttb_cola only)
+      var hasFailure = checks.some(function(c){
+        var v = data[c[0]];
+        if(c[0] === 'ttb_cola' || c[0] === 'copack_spec') return v === 'N'; // N/A allowed
+        return v !== 'Y';
+      });
+      var saved = await saveRecord('GMP-LAB-001', data, {
+        signed: signed, complete: signed,
+        task_id: task.id, run_id: task.run_id,
+        has_deviation: hasFailure,
+        deviation_notes: hasFailure ? ('Label verify failed for ' + data.product + ': ' + (data.fail_reason || '(no reason given)')) : null,
+        corrective_action: data.fail_reason,
+        spawn_hold: hasFailure && signed,  // only spawn hold if signed off as failed (avoid drafts triggering)
+        product_name: data.product, lot_number: data.lot,
+        hazard_type: 'allergen',
+        summary: data.product + (hasFailure ? ' · LABEL FAIL' : ' · APPROVED')
+      });
+      modal.remove();
+      refreshMaster();
+    }
+    modal.querySelector('.gl-cf-draft').addEventListener('click', function(){ submit(false); });
+    modal.querySelector('.gl-cf-sign').addEventListener('click', function(){ submit(true); });
+  };
+
+  // ── Form: GMP-ALL-001 Allergen Changeover Swab ──
+  window.glOpenAllergenSwabForm = function(task){
+    task = task || {};
+    var body =
+      field('Product just run (allergen type)', 'just_run', 'text', { required: true, placeholder: 'e.g. Dairy / Almond / Soy' }) +
+      field('Next product (allergen-free)', 'next_product', 'text', { required: true }) +
+      field('Full CIP completed?', 'cip_done', 'yn', { required: true }) +
+      field('Surface swabbed', 'surface', 'select', { options: ['Filler nozzle','Fill bowl','Pasteurizer plates','Mix tank','Lines / hoses','Other'], required: true }) +
+      field('Swab kit / lot #', 'swab_lot', 'text') +
+      field('Swab result', 'result', 'select', { options: [['pass','PASS (below LOD)'],['fail','FAIL (allergen detected)']], required: true }) +
+      field('Corrective action (if fail)', 'corrective', 'textarea') +
+      '<div style="font-size:11px;color:#ff8579;background:rgba(231,76,60,.1);padding:8px 12px;border-radius:6px;margin-top:8px">CRITICAL — failed swab auto-creates Hold Tag + NC. Do NOT run allergen-free product until PASS is signed.</div>';
+    var modal = modalShell('GMP-ALL-001 · Allergen Changeover Swab', 'PCQI sign-off required BEFORE allergen-free run begins', body, formFooter());
+    wireYn(modal);
+    modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
+
+    async function submit(signed){
+      var data = {
+        just_run: getVal(modal,'just_run'), next_product: getVal(modal,'next_product'),
+        cip_done: getVal(modal,'cip_done'), surface: getVal(modal,'surface'),
+        swab_lot: getVal(modal,'swab_lot'), result: getVal(modal,'result'),
+        corrective: getVal(modal,'corrective')
+      };
+      var hasFailure = data.cip_done !== 'Y' || data.result !== 'pass';
+      await saveRecord('GMP-ALL-001', data, {
+        signed: signed, complete: signed,
+        task_id: task.id,
+        has_deviation: hasFailure,
+        deviation_notes: hasFailure ? ('Allergen changeover FAIL — ' + data.just_run + ' → ' + data.next_product + ' on ' + data.surface) : null,
+        corrective_action: data.corrective,
+        spawn_hold: hasFailure,
+        product_name: data.next_product,
+        hazard_type: 'allergen',
+        summary: data.just_run + ' → ' + data.next_product + ' · ' + (hasFailure ? 'FAIL' : 'PASS')
+      });
+      modal.remove();
+      refreshMaster();
+    }
+    modal.querySelector('.gl-cf-draft').addEventListener('click', function(){ submit(false); });
+    modal.querySelector('.gl-cf-sign').addEventListener('click', function(){ submit(true); });
+  };
+
+  // ── Form: FSP-PC-001 HTST 30-min reading ──
+  window.glOpenHtstForm = function(task){
+    task = task || {};
+    var run = task.run_id ? (window.glProductionRuns||[]).find(function(r){ return r.id === task.run_id; }) : null;
+    var body =
+      field('Product / lot', 'product', 'text', { value: run ? (run.run_name || '') : '', required: true }) +
+      field('Reading time', 'time', 'time', { value: (new Date()).toTimeString().slice(0,5), required: true }) +
+      field('Hold-tube temperature (°F)', 'temp_f', 'number', { step: '0.1', required: true }) +
+      field('Holding time (seconds)', 'hold_sec', 'number', { step: '0.1', value: '15' }) +
+      field('Product pressure (PSI)', 'product_psi', 'number', { step: '0.1' }) +
+      field('Media pressure (PSI)', 'media_psi', 'number', { step: '0.1' }) +
+      field('FDD status', 'fdd', 'select', { options: [['ok','OK — forward flow'],['divert','DIVERT — flow diverted']], required: true }) +
+      field('Corrective action (if deviation)', 'corrective', 'textarea') +
+      '<div style="font-size:11px;color:#f5c842;background:rgba(245,200,66,.08);padding:8px 12px;border-radius:6px;margin-top:8px">Critical limit: hold-tube temp ≥ ' + DEFAULT_LIMITS.htst_temp_f + '°F (per LEAN_01 default — confirm your FSP). FDD DIVERT or temp drop = STOP production, hold lot, auto-NC.</div>';
+    var modal = modalShell('FSP-PC-001 · HTST Pasteurization Reading (CCP-1)', 'Log every 30 minutes during pasteurization', body, formFooter());
+    wireYn(modal);
+    modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
+
+    async function submit(signed){
+      var data = {
+        product: getVal(modal,'product'), time: getVal(modal,'time'),
+        temp_f: parseFloat(getVal(modal,'temp_f')) || null,
+        hold_sec: parseFloat(getVal(modal,'hold_sec')) || null,
+        product_psi: parseFloat(getVal(modal,'product_psi')) || null,
+        media_psi: parseFloat(getVal(modal,'media_psi')) || null,
+        fdd: getVal(modal,'fdd'),
+        corrective: getVal(modal,'corrective')
+      };
+      var tempFail = (data.temp_f || 0) < DEFAULT_LIMITS.htst_temp_f;
+      var fddFail = data.fdd === 'divert';
+      var hasFailure = tempFail || fddFail;
+      await saveRecord('FSP-PC-001', data, {
+        signed: signed, complete: signed,
+        task_id: null, run_id: task.run_id,
+        has_deviation: hasFailure,
+        deviation_notes: hasFailure ? (
+          'HTST CCP-1 deviation at ' + data.time + ' — ' +
+          (tempFail ? 'hold-tube ' + data.temp_f + '°F < ' + DEFAULT_LIMITS.htst_temp_f + '°F. ' : '') +
+          (fddFail ? 'FDD DIVERT. ' : '') +
+          (data.corrective || '')
+        ) : null,
+        corrective_action: data.corrective,
+        spawn_hold: hasFailure,
+        product_name: data.product,
+        hazard_type: 'biological',
+        summary: data.time + ' · ' + data.temp_f + '°F · ' + (hasFailure ? 'CCP FAIL' : 'OK')
+      });
+      modal.remove();
+      refreshMaster();
+    }
+    modal.querySelector('.gl-cf-draft').addEventListener('click', function(){ submit(false); });
+    modal.querySelector('.gl-cf-sign').addEventListener('click', function(){ submit(true); });
+  };
+
+  // ── Hold Tag manual create + disposition ──
+  window.glOpenAddHoldTag = function(prefill){
+    prefill = prefill || {};
+    var body =
+      field('Product name', 'product', 'text', { value: prefill.product_name || '', required: true }) +
+      field('Lot number', 'lot', 'text', { value: prefill.lot_number || '' }) +
+      field('Quantity held', 'qty', 'text', { placeholder: 'e.g. 240 cases' }) +
+      field('Location in facility', 'location', 'text', { placeholder: 'e.g. Cooler bay 2' }) +
+      field('Reason for hold', 'reason', 'textarea', { required: true }) +
+      field('Suspected hazard type', 'hazard', 'select', { options: [['biological','Biological'],['chemical','Chemical'],['physical','Physical'],['allergen','Allergen'],['other','Other']], required: true });
+    var modal = modalShell('GMP-QC-001 · New Hold Tag', 'Marks the lot DO NOT SHIP until PCQI disposition', body,
+      '<button type="button" class="cbtn gl-cf-cancel">Cancel</button>' +
+      '<button type="button" class="cbtn pri gl-cf-save">🚫 Create hold tag</button>');
+    modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
+    modal.querySelector('.gl-cf-save').addEventListener('click', async function(){
+      var product = getVal(modal,'product'), lot = getVal(modal,'lot'), reason = getVal(modal,'reason');
+      if(!product || !reason){ alert('Product and reason are required.'); return; }
+      await spawnHoldAndNc({
+        product_name: product, lot_number: lot, qty_held: getVal(modal,'qty'),
+        location: getVal(modal,'location'), reason: reason, hazard_type: getVal(modal,'hazard'),
+        form_code: 'GMP-QC-001 (manual)'
+      });
+      modal.remove();
+      refreshMaster();
+    });
+  };
+
+  // ── Master page renderer (3 tabs) ──
+  var currentTab = 'today';
+
+  async function renderTodayTab(host){
+    var tasks = await generateTodaysTasks();
+    var open = tasks.filter(function(t){ return t.status !== 'done' && t.status !== 'skipped'; });
+    var done = tasks.filter(function(t){ return t.status === 'done'; });
+
+    function taskCard(t){
+      var f = catalog(t.task_type);
+      var doneBadge = (t.status === 'done') ? '<span style="font-size:10px;letter-spacing:1px;color:#5fcf9e;background:rgba(95,207,158,.1);border:1px solid rgba(95,207,158,.3);padding:2px 7px;border-radius:10px;margin-left:8px">DONE ' + fmtTime(t.completed_at) + '</span>' : '';
+      var actionBtn = (t.status === 'done')
+        ? '<button class="cbtn" data-task-id="' + t.id + '" data-task-type="' + t.task_type + '" style="font-size:11px;padding:5px 11px">View record</button>'
+        : '<button class="cbtn pri" data-task-id="' + t.id + '" data-task-type="' + t.task_type + '" data-run="' + (t.run_id||'') + '" style="font-size:11px;padding:5px 11px">▶ Start</button>';
+      var sourceBadge = '<span style="font-size:9px;letter-spacing:1px;color:#9aa7bd;background:rgba(255,255,255,.04);padding:2px 6px;border-radius:8px;text-transform:uppercase">' + (t.source || 'auto') + '</span>';
+      return '<div class="gl-comp-task" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:13px 14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;margin-bottom:7px">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">' +
+            '<span style="font-size:14px;font-weight:600;color:#fff">' + (f.icon || '📋') + ' ' + esc(t.title) + '</span>' + sourceBadge + doneBadge + '</div>' +
+          (t.description ? '<div style="font-size:11px;color:#9aa7bd;margin-top:3px">' + esc(t.description) + '</div>' : '') +
+        '</div>' +
+        '<div style="flex-shrink:0">' + actionBtn + '</div>' +
+      '</div>';
+    }
+
+    host.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+        '<div style="font-size:11px;color:#9aa7bd;letter-spacing:1px;text-transform:uppercase">' + fmtDate(todayISO()) + ' · ' + open.length + ' open · ' + done.length + ' done</div>' +
+        '<button class="cbtn" id="gl-comp-add-manual" style="font-size:11px;padding:5px 11px">+ Add task</button>' +
+      '</div>' +
+      (open.length ? open.map(taskCard).join('') : '<div style="padding:30px;text-align:center;color:#9aa7bd;font-size:12px">No open tasks today. Schedule a production run to auto-generate the day\'s checklist.</div>') +
+      (done.length ? '<div style="margin:18px 0 8px;font-size:10px;letter-spacing:2px;color:#5fcf9e;text-transform:uppercase">✓ Completed today</div>' + done.map(taskCard).join('') : '');
+
+    host.querySelectorAll('.gl-comp-task button[data-task-type]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var type = btn.getAttribute('data-task-type');
+        var taskId = btn.getAttribute('data-task-id');
+        var task = tasks.find(function(t){ return t.id === taskId; }) || {};
+        openFormForTask(type, task);
+      });
+    });
+    var addBtn = host.querySelector('#gl-comp-add-manual');
+    if(addBtn) addBtn.addEventListener('click', openManualTaskPicker);
+  }
+
+  function catalog(task_type){
+    var map = {
+      preop_inspection: getForm('GMP-INSP-001'),
+      label_verify:     getForm('GMP-LAB-001'),
+      allergen_swab:    getForm('GMP-ALL-001'),
+      htst_reading:     getForm('FSP-PC-001'),
+      calibration:      getForm('GMP-CAL-001'),
+      listeria_swab:    getForm('FSP-SAN-001'),
+      cip_cycle:        getForm('GMP-SAN-002')
+    };
+    return map[task_type] || { icon:'📋', code:task_type };
+  }
+
+  function openFormForTask(task_type, task){
+    if(task_type === 'preop_inspection') return window.glOpenPreOpForm(task);
+    if(task_type === 'label_verify')     return window.glOpenLabelVerifyForm(task);
+    if(task_type === 'allergen_swab')    return window.glOpenAllergenSwabForm(task);
+    if(task_type === 'htst_reading')     return window.glOpenHtstForm(task);
+    alert('That form is not built yet. Phase 2 will add: calibration, Listeria swab, receiving, hot fill, can seam, UV, fermentation, batch record, training, illness, supplier COA, distribution, annual FSP, plus the 9-step CIP rebuild.');
+  }
+
+  function openManualTaskPicker(){
+    var body =
+      '<div style="font-size:12px;color:#9aa7bd;margin-bottom:12px">Pick a form to log an ad-hoc record (not auto-generated by today\'s schedule).</div>' +
+      FORMS.filter(function(f){ return f.built; }).map(function(f){
+        return '<button class="cbtn" data-form="' + f.code + '" style="display:block;width:100%;text-align:left;padding:11px 14px;margin-bottom:6px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:9px;color:#fff;cursor:pointer">' +
+          '<div style="font-weight:600;font-size:13px">' + f.icon + ' ' + esc(f.name) + '</div>' +
+          '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">' + esc(f.desc) + '</div>' +
+        '</button>';
+      }).join('');
+    var modal = modalShell('Add manual task', null, body, '<button type="button" class="cbtn gl-cf-cancel">Cancel</button>');
+    modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
+    modal.querySelectorAll('button[data-form]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var code = btn.getAttribute('data-form');
+        modal.remove();
+        if(code === 'GMP-INSP-001') return window.glOpenPreOpForm({});
+        if(code === 'GMP-LAB-001')  return window.glOpenLabelVerifyForm({});
+        if(code === 'GMP-ALL-001')  return window.glOpenAllergenSwabForm({});
+        if(code === 'FSP-PC-001')   return window.glOpenHtstForm({});
+      });
+    });
+  }
+
+  async function renderOpenLogsTab(host){
+    var records = await dbSelect('compliance_records', function(q){ return q.in('status', ['draft','complete']).order('recorded_at', { ascending: false }); });
+    if(!records.length){
+      host.innerHTML = '<div style="padding:40px;text-align:center;color:#9aa7bd;font-size:13px">No logs awaiting completion or sign-off. ✓</div>';
+      return;
+    }
+    host.innerHTML =
+      '<div style="font-size:11px;color:#9aa7bd;letter-spacing:1px;text-transform:uppercase;margin-bottom:14px">' + records.length + ' record' + (records.length === 1 ? '' : 's') + ' awaiting PCQI sign-off or completion</div>' +
+      records.map(function(r){
+        var f = getForm(r.form_code) || { icon:'📋', name: r.form_code };
+        var statusColor = r.status === 'draft' ? '#f5c842' : '#5fcf9e';
+        var devBadge = r.has_deviation ? '<span style="font-size:10px;color:#ff8579;background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.3);padding:2px 7px;border-radius:10px;margin-left:6px">⚠ DEVIATION</span>' : '';
+        return '<div style="padding:13px 14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;margin-bottom:7px;display:flex;justify-content:space-between;align-items:center;gap:10px">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:13px;color:#fff;font-weight:600">' + f.icon + ' ' + esc(f.name) + devBadge + '</div>' +
+            '<div style="font-size:11px;color:#9aa7bd;margin-top:3px">' + esc(r.form_code) + ' · ' + fmtDate(r.recorded_at) + ' ' + fmtTime(r.recorded_at) + ' · status <span style="color:' + statusColor + '">' + esc(r.status) + '</span></div>' +
+          '</div>' +
+          '<button class="cbtn pri gl-comp-sign" data-id="' + r.id + '" style="font-size:11px;padding:5px 11px">✓ Sign off</button>' +
+        '</div>';
+      }).join('');
+    host.querySelectorAll('.gl-comp-sign').forEach(function(btn){
+      btn.addEventListener('click', async function(){
+        var id = btn.getAttribute('data-id');
+        if(!confirm('Sign this record as PCQI? Your name and timestamp will be locked into the record.')) return;
+        var user = window.currentUser || {};
+        await dbUpdate('compliance_records', id, {
+          status: 'signed',
+          signed_by: user.id || null,
+          signed_at: nowISO(),
+          signature_name: pcqiName(),
+          signature_meaning: 'PCQI sign-off — record reviewed and approved'
+        });
+        if(typeof window.glAudit === 'function') window.glAudit('compliance_record_signed', id, {});
+        refreshMaster();
+      });
+    });
+  }
+
+  function renderFormsLibraryTab(host){
+    var built = FORMS.filter(function(f){ return f.built; });
+    var pending = FORMS.filter(function(f){ return !f.built; });
+    function card(f, isBuilt){
+      var disabled = isBuilt ? '' : 'opacity:.55;cursor:not-allowed';
+      var status = isBuilt ? '<span style="font-size:10px;color:#5fcf9e">✓ Built</span>' : '<span style="font-size:10px;color:#f5c842">Phase 2</span>';
+      return '<div class="gl-form-card" data-code="' + f.code + '" data-built="' + (isBuilt?'1':'0') + '" style="padding:14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;' + (isBuilt ? 'cursor:pointer;' : disabled) + 'transition:all .15s">' +
+        '<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:6px">' +
+          '<div style="font-size:13px;font-weight:600;color:#fff">' + f.icon + ' ' + esc(f.name) + '</div>' + status +
+        '</div>' +
+        '<div style="font-size:10px;letter-spacing:1px;color:#9aa7bd;text-transform:uppercase">' + esc(f.code) + '</div>' +
+        '<div style="font-size:12px;color:#cfd9e6;margin:6px 0">' + esc(f.desc) + '</div>' +
+        '<div style="font-size:11px;color:#9aa7bd"><b style="color:#7fc6f5">Frequency:</b> ' + esc(f.frequency) + '</div>' +
+      '</div>';
+    }
+    host.innerHTML =
+      '<div style="margin-bottom:14px;font-size:10px;letter-spacing:2px;color:#5fcf9e;text-transform:uppercase">Built &amp; live — ' + built.length + '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-bottom:18px">' + built.map(function(f){ return card(f, true); }).join('') + '</div>' +
+      '<div style="margin-bottom:14px;font-size:10px;letter-spacing:2px;color:#f5c842;text-transform:uppercase">Phase 2 — coming next — ' + pending.length + '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">' + pending.map(function(f){ return card(f, false); }).join('') + '</div>';
+
+    host.querySelectorAll('.gl-form-card[data-built="1"]').forEach(function(c){
+      c.addEventListener('click', function(){
+        var code = c.getAttribute('data-code');
+        if(code === 'GMP-INSP-001') return window.glOpenPreOpForm({});
+        if(code === 'GMP-LAB-001')  return window.glOpenLabelVerifyForm({});
+        if(code === 'GMP-ALL-001')  return window.glOpenAllergenSwabForm({});
+        if(code === 'FSP-PC-001')   return window.glOpenHtstForm({});
+      });
+    });
+  }
+
+  async function renderMaster(){
+    var host = document.getElementById('comp-body');
+    if(!host) return;
+    host.innerHTML =
+      '<div style="display:flex;gap:6px;margin-bottom:18px;border-bottom:1px solid rgba(255,255,255,.06);padding-bottom:0">' +
+        '<button class="gl-comp-tab" data-tab="today"   style="' + tabStyle('today') + '">📋 Today\'s Tasks</button>' +
+        '<button class="gl-comp-tab" data-tab="open"    style="' + tabStyle('open') + '">📝 Open Logs</button>' +
+        '<button class="gl-comp-tab" data-tab="library" style="' + tabStyle('library') + '">📚 Forms Library</button>' +
+        '<div style="flex:1"></div>' +
+        '<button class="cbtn gl-comp-hold" style="font-size:11px;padding:5px 11px">🚫 New Hold Tag</button>' +
+      '</div>' +
+      '<div id="comp-tab-body"></div>';
+    host.querySelectorAll('.gl-comp-tab').forEach(function(btn){
+      btn.addEventListener('click', function(){ currentTab = btn.getAttribute('data-tab'); renderMaster(); });
+    });
+    host.querySelector('.gl-comp-hold').addEventListener('click', function(){ window.glOpenAddHoldTag(); });
+    var body = host.querySelector('#comp-tab-body');
+    if(currentTab === 'today')   await renderTodayTab(body);
+    if(currentTab === 'open')    await renderOpenLogsTab(body);
+    if(currentTab === 'library') renderFormsLibraryTab(body);
+  }
+  function tabStyle(t){
+    var on = currentTab === t;
+    return 'padding:9px 16px;background:none;border:none;border-bottom:2px solid ' + (on ? 'var(--teal,#00e5c0)' : 'transparent') + ';color:' + (on ? 'var(--teal,#00e5c0)' : '#9aa7bd') + ';font-size:12px;font-weight:600;cursor:pointer;transition:all .12s';
+  }
+  function refreshMaster(){ if(document.getElementById('cpg-compliance') && document.getElementById('cpg-compliance').classList.contains('act')) renderMaster(); renderHoldsList(); }
+  window.refreshComplianceMaster = refreshMaster;
+
+  // ── Hold Tags page renderer ──
+  async function renderHoldsList(){
+    var host = document.getElementById('holds-body');
+    if(!host) return;
+    var rows = await dbSelect('hold_tags', function(q){ return q.order('hold_date', { ascending: false }); });
+    if(!rows.length){
+      host.innerHTML = '<div style="padding:40px;text-align:center;color:#9aa7bd;font-size:13px">No hold tags. ✓ All product is clear to ship.</div>';
+      return;
+    }
+    var open = rows.filter(function(r){ return r.status === 'open'; });
+    host.innerHTML =
+      (open.length ? '<div style="padding:11px 14px;background:rgba(231,76,60,.08);border:1px solid rgba(231,76,60,.25);border-radius:9px;margin-bottom:14px;font-size:12px;color:#ff8579">⚠ ' + open.length + ' open hold tag' + (open.length===1?'':'s') + ' — these lots cannot ship until PCQI signs the disposition.</div>' : '') +
+      '<table class="ctbl" style="width:100%"><thead><tr><th>Tag #</th><th>Product / Lot</th><th>Reason</th><th>Hazard</th><th>Date</th><th>Status</th><th>Actions</th></tr></thead><tbody>' +
+      rows.map(function(r){
+        var statusColor = r.status === 'open' ? '#ff8579' : '#5fcf9e';
+        return '<tr><td style="font-family:var(--ff-mono);color:var(--teal);font-weight:600">' + esc(r.tag_number) + '</td>' +
+          '<td><b>' + esc(r.product_name) + '</b>' + (r.lot_number ? '<br><span style="font-size:11px;color:#9aa7bd">Lot ' + esc(r.lot_number) + '</span>' : '') + '</td>' +
+          '<td style="font-size:12px;color:#cfd9e6;max-width:260px">' + esc(r.reason) + '</td>' +
+          '<td><span style="font-size:11px;color:#9aa7bd">' + esc(r.hazard_type||'—') + '</span></td>' +
+          '<td style="font-size:11px;color:#9aa7bd">' + fmtDate(r.hold_date) + '</td>' +
+          '<td><span style="font-size:11px;color:' + statusColor + ';font-weight:600">' + esc(r.status).toUpperCase() + '</span>' + (r.disposition ? '<br><span style="font-size:10px;color:#9aa7bd">' + esc(r.disposition) + '</span>' : '') + '</td>' +
+          '<td>' + (r.status === 'open'
+            ? '<button class="cbtn pri gl-hold-dispose" data-id="' + r.id + '" style="font-size:10px;padding:3px 8px">Dispose</button>'
+            : '<span style="font-size:10px;color:#9aa7bd">—</span>') +
+          '</td></tr>';
+      }).join('') + '</tbody></table>';
+    host.querySelectorAll('.gl-hold-dispose').forEach(function(btn){
+      btn.addEventListener('click', function(){ openDispositionModal(btn.getAttribute('data-id'), rows); });
+    });
+  }
+
+  function openDispositionModal(id, allRows){
+    var row = allRows.find(function(r){ return r.id === id; });
+    if(!row) return;
+    var body =
+      '<div style="background:rgba(255,255,255,.03);padding:12px;border-radius:8px;margin-bottom:14px;font-size:12px">' +
+        '<div><b>' + esc(row.tag_number) + '</b> · ' + esc(row.product_name) + (row.lot_number ? ' · Lot ' + esc(row.lot_number) : '') + '</div>' +
+        '<div style="color:#9aa7bd;margin-top:4px">' + esc(row.reason) + '</div>' +
+      '</div>' +
+      field('Disposition', 'disp', 'select', { options: [['release','✓ Release — product cleared for shipping'],['reprocess','🔄 Reprocess — rework before release'],['destroy','🗑 Destroy — product cannot be saved']], required: true }) +
+      field('Disposition notes / justification', 'disp_notes', 'textarea', { required: true });
+    var modal = modalShell('PCQI Hold-Tag Disposition', row.tag_number, body,
+      '<button type="button" class="cbtn gl-cf-cancel">Cancel</button>' +
+      '<button type="button" class="cbtn pri gl-cf-sign">✓ Sign disposition as PCQI</button>');
+    modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
+    modal.querySelector('.gl-cf-sign').addEventListener('click', async function(){
+      var disp = getVal(modal,'disp');
+      var notes = getVal(modal,'disp_notes');
+      if(!disp || !notes){ alert('Disposition and notes are required.'); return; }
+      await dbUpdate('hold_tags', id, {
+        disposition: disp,
+        disposition_authorized_by: (window.currentUser && window.currentUser.id) || null,
+        disposition_authorized_name: pcqiName(),
+        disposition_date: nowISO(),
+        status: disp === 'release' ? 'released' : 'disposed',
+        notes: notes
+      });
+      if(typeof window.glAudit === 'function') window.glAudit('hold_tag_disposed', row.tag_number, { disposition: disp });
+      if(typeof addNotification === 'function') addNotification('🚫 Hold ' + row.tag_number + ' → ' + disp, row.product_name, 'success');
+      modal.remove();
+      refreshMaster();
+    });
+  }
+
+  // ── Watch page navigation ──
+  function watch(){
+    var pgC = document.getElementById('cpg-compliance');
+    var pgH = document.getElementById('cpg-holds');
+    if(!pgC || !pgH){ setTimeout(watch, 500); return; }
+    new MutationObserver(function(){ if(pgC.classList.contains('act')) renderMaster(); }).observe(pgC, { attributes:true, attributeFilter:['class'] });
+    new MutationObserver(function(){ if(pgH.classList.contains('act')) renderHoldsList(); }).observe(pgH, { attributes:true, attributeFilter:['class'] });
+    if(pgC.classList.contains('act')) renderMaster();
+    if(pgH.classList.contains('act')) renderHoldsList();
+  }
+  if(document.readyState !== 'loading') watch();
+  else document.addEventListener('DOMContentLoaded', watch);
+
+  console.log('[GL] compliance module loaded — Phase 1 (4 forms, master page, hold tags)');
 }());

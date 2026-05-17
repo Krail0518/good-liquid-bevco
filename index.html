@@ -1467,7 +1467,9 @@ select option, .fsel option {
         <div class="cni-sec">Marketing</div>
         <div class="cni" id="nav-content" onclick="cNav(&#39;content&#39;,this)"><span class="cni-ico">🗓️</span>Content Calendar</div>
         <div class="cni-sec">Compliance</div>
+        <div class="cni" id="nav-compliance" onclick="cNav(&#39;compliance&#39;,this)"><span class="cni-ico">📋</span>Compliance Tasks</div>
         <div class="cni" id="nav-cip" onclick="cNav(&#39;cip&#39;,this)"><span class="cni-ico">🧼</span>CIP / Sanitation Log</div>
+        <div class="cni" id="nav-holds" onclick="cNav(&#39;holds&#39;,this)"><span class="cni-ico">🚫</span>Hold Tags</div>
         <div class="cni" id="nav-audit" onclick="cNav(&#39;audit&#39;,this)" style="display:none"><span class="cni-ico">📜</span>Audit Log</div>
         <div class="cni-sec">Quality &amp; Supply</div>
         <div class="cni" id="nav-defects" onclick="cNav(&#39;defects&#39;,this)"><span class="cni-ico">⚠️</span>Defects / NCRs</div>
@@ -1511,6 +1513,23 @@ select option, .fsel option {
           <div class="ccard"><div class="ccard-t">Referral commissions</div><div id="dash-ref"></div></div>
         </div>
         <div id="dash-low-stock"></div>
+      </div>
+
+      <!-- ═══ COMPLIANCE — master daily checklist + form launcher ═══ -->
+      <div id="cpg-compliance" class="cpg">
+        <div class="cph">
+          <div><div class="cpt">COMPLIANCE</div><div class="cps" id="comp-sub">Master daily checklist — auto-generated from production schedule + recurring rules</div></div>
+        </div>
+        <div id="comp-body"></div>
+      </div>
+
+      <!-- ═══ HOLD TAGS — GMP-QC-001 ═══ -->
+      <div id="cpg-holds" class="cpg">
+        <div class="cph">
+          <div><div class="cpt">HOLD TAGS</div><div class="cps" id="holds-sub">Product holds (GMP-QC-001) — block shipping until PCQI disposition</div></div>
+          <button class="cbtn pri" onclick="window.glOpenAddHoldTag && window.glOpenAddHoldTag()">+ New Hold Tag</button>
+        </div>
+        <div id="holds-body"></div>
       </div>
 
       <!-- ═══ CIP / SANITATION LOG ═══ -->
