@@ -2155,6 +2155,7 @@ select option, .fsel option {
           <button class="cbtn grn" id="btn-paid" onclick="markStatus(&#39;paid&#39;)">✓ Mark paid</button>
           <button class="cbtn amber" id="btn-overdue" onclick="markStatus(&#39;overdue&#39;)">⚠ Mark overdue</button>
           <button class="cbtn" onclick="openFollowUpModal()">✉ AI Follow-Up</button>
+          <button class="cbtn" style="background:rgba(245,200,66,.12);border-color:rgba(245,200,66,.35);color:#f5c842" onclick="if(currentInvId && window.openEditInvoice)window.openEditInvoice(currentInvId)">✏️ Edit</button>
           <button class="cbtn" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)" onclick="if(currentInvId)downloadInvoicePDF(currentInvId)">⬇ PDF</button>
           <button class="cbtn" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)" onclick="if(currentInvId){const i=invoices.find(x=&gt;x.id===currentInvId);if(i)aiDraftEmail(i.clientName,i.id,i.amount,i.status)}">🤖 AI Email</button>
         </div>
