@@ -18758,6 +18758,45 @@
   }
 
   /* ==========================================================
+     Client-detail overlay button: 🥜 Allergen Declaration
+     ========================================================== */
+  function injectAllergenBtnIntoClientOverlay(){
+    var mo = new MutationObserver(function(){
+      var ov = document.getElementById('client-detail-overlay');
+      if(!ov || ov.querySelector('.gl-cd-allergen')) return;
+      // Find the action button row (the one with Edit Client / AI Health Score / etc.)
+      var actionRow = null;
+      var existingBtns = ov.querySelectorAll('button');
+      for(var i=0;i<existingBtns.length;i++){
+        var b = existingBtns[i];
+        if(b.textContent && /Edit Client|AI Health Score|Add Task|Draft Email/.test(b.textContent)){
+          actionRow = b.parentNode; break;
+        }
+      }
+      if(!actionRow) return;
+      // Extract clientId from any sibling button's onclick (matches a UUID)
+      var clientId = null, clientName = '';
+      Array.prototype.some.call(actionRow.querySelectorAll('button'), function(b){
+        var on = b.getAttribute('onclick') || '';
+        var m = on.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+        if(m){ clientId = m[0]; return true; }
+        return false;
+      });
+      if(!clientId) return;
+      // Best-effort client name from the overlay header
+      var h = ov.querySelector('h1, h2, h3, .client-name');
+      if(h) clientName = h.textContent.trim();
+      var btn = document.createElement('button');
+      btn.className = 'cbtn gl-cd-allergen';
+      btn.setAttribute('style','background:rgba(124,58,237,.12);border-color:rgba(124,58,237,.35);color:#c4b5fd');
+      btn.textContent = '🥜 Allergen Declaration';
+      btn.onclick = function(){ window.glOpenAllergenDeclForm(clientId, clientName); };
+      actionRow.appendChild(btn);
+    });
+    mo.observe(document.body, { childList:true, subtree:true });
+  }
+
+  /* ==========================================================
      Boot
      ========================================================== */
   function boot(){
@@ -18766,6 +18805,7 @@
         if(isAlg) return; // public allergen decl page: stop here
         loadFacilities();
         injectCompliancePageButtons();
+        injectAllergenBtnIntoClientOverlay();
         observeForSecondSign();
       });
     });
