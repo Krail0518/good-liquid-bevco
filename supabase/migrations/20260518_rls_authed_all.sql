@@ -43,8 +43,10 @@ begin
       and not (tablename = any(denylist))
   loop
     execute format('alter table public.%I enable row level security', t);
-    execute format('drop policy if exists %L on public.%I', t || ' authed all', t);
-    execute format('create policy %L on public.%I for all to authenticated using (true) with check (true)', t || ' authed all', t);
+    -- Policy names are identifiers in DROP/CREATE POLICY syntax, so use %I (double-quoted)
+    -- not %L (single-quoted string literal).
+    execute format('drop policy if exists %I on public.%I', t || ' authed all', t);
+    execute format('create policy %I on public.%I for all to authenticated using (true) with check (true)', t || ' authed all', t);
   end loop;
 end $$;
 
