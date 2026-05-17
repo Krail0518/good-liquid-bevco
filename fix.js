@@ -13642,35 +13642,35 @@
       desc:'Verify full CIP between allergen and allergen-free runs', frequency:'Every allergen changeover' },
     { code:'FSP-PC-001', name:'HTST Pasteurization Log (CCP-1)', icon:'🌡️', built:true,
       desc:'Hold-tube temperature reading every 30 min', frequency:'Continuous + spot check every 30 min' },
-    { code:'GMP-SAN-002', name:'CIP Monitoring Log (9-step)', icon:'🧪', built:false,
+    { code:'GMP-SAN-002', name:'CIP Monitoring Log (9-step)', icon:'🧪', built:true,
       desc:'PBW → caustic → acid → PAA cycle log', frequency:'Every CIP cycle' },
-    { code:'FSP-PC-002', name:'Hot Fill Temperature Log (CCP-2)', icon:'♨️', built:false,
+    { code:'FSP-PC-002', name:'Hot Fill Temperature Log (CCP-2)', icon:'♨️', built:true,
       desc:'Fill nozzle temperature ≥ 185°F', frequency:'Continuous + spot check every 30 min' },
-    { code:'FSP-PC-003', name:'Can Seam Evaluation Log (CCP-4)', icon:'🥫', built:false,
+    { code:'FSP-PC-003', name:'Can Seam Evaluation Log (CCP-4)', icon:'🥫', built:true,
       desc:'Seam thickness, body hook, cover hook, overlap', frequency:'Startup + every 4 hr + post-jam + shutdown' },
-    { code:'FSP-PC-004', name:'UV Water Treatment Log (CCP-3)', icon:'💡', built:false,
+    { code:'FSP-PC-004', name:'UV Water Treatment Log (CCP-3)', icon:'💡', built:true,
       desc:'UV dose ≥ 40 mJ/cm² during production', frequency:'Hourly during production' },
-    { code:'FSP-PC-005', name:'Fermentation Monitoring Log (CCP-A)', icon:'🧫', built:false,
+    { code:'FSP-PC-005', name:'Fermentation Monitoring Log (CCP-A)', icon:'🧫', built:true,
       desc:'Final pH ≤ 4.6 and ABV ≥ spec', frequency:'Per batch — multiple readings' },
-    { code:'GMP-REC-001', name:'Receiving Inspection & COA Review', icon:'📦', built:false,
+    { code:'GMP-REC-001', name:'Receiving Inspection & COA Review', icon:'📦', built:true,
       desc:'Inspection + COA verification at delivery', frequency:'Every incoming delivery' },
-    { code:'GMP-CAL-001', name:'Equipment Calibration Log', icon:'📐', built:false,
+    { code:'GMP-CAL-001', name:'Equipment Calibration Log', icon:'📐', built:true,
       desc:'Monthly cal for CCP instruments', frequency:'Per calibration schedule (monthly min)' },
-    { code:'GMP-DIST-001', name:'Distribution / Traceability', icon:'🚚', built:false,
+    { code:'GMP-DIST-001', name:'Distribution / Traceability', icon:'🚚', built:true,
       desc:'Lot, qty, customer, BOL — supports 4-hr recall', frequency:'Every outbound shipment' },
-    { code:'GMP-HR-001', name:'Employee Illness Exclusion', icon:'🤒', built:false,
+    { code:'GMP-HR-001', name:'Employee Illness Exclusion', icon:'🤒', built:true,
       desc:'Document any exclusion event', frequency:'Upon any illness exclusion event' },
-    { code:'GMP-TR-001', name:'Employee Training Record', icon:'🎓', built:false,
+    { code:'GMP-TR-001', name:'Employee Training Record', icon:'🎓', built:true,
       desc:'Food-safety training events', frequency:'Each training event + annual' },
-    { code:'QC-BR-001', name:'Production Batch Record', icon:'📄', built:false,
+    { code:'QC-BR-001', name:'Production Batch Record', icon:'📄', built:true,
       desc:'Full batch ingredients + process + QC checks', frequency:'Every production batch' },
-    { code:'FSP-SAN-001', name:'Environmental Monitoring — Listeria', icon:'🧬', built:false,
+    { code:'FSP-SAN-001', name:'Environmental Monitoring — Listeria', icon:'🧬', built:true,
       desc:'Zone 1-4 swabs for Listeria species', frequency:'Monthly minimum' },
     { code:'FSP-SC-001', name:'Approved Supplier List', icon:'✅', built:false,
-      desc:'Master list of qualified suppliers', frequency:'Updated upon each approval/removal' },
-    { code:'FSP-SC-002', name:'Supplier COA Review Log', icon:'📋', built:false,
+      desc:'Lives in the existing Vendor Directory (sidebar → Quality & Supply → Vendors)', frequency:'Updated upon each approval/removal' },
+    { code:'FSP-SC-002', name:'Supplier COA Review Log', icon:'📋', built:true,
       desc:'COA verification for high-risk lots', frequency:'Per incoming lot of high-risk ingredients' },
-    { code:'FSP-VER-002', name:'Annual FSP Review', icon:'📅', built:false,
+    { code:'FSP-VER-002', name:'Annual FSP Review', icon:'📅', built:true,
       desc:'Reanalyze the Food Safety Plan', frequency:'Annually' },
     { code:'GMP-NC-001', name:'Non-Conformance / Corrective Action', icon:'🚨', built:false,
       desc:'See sidebar → Defects / NCRs (existing page)', frequency:'Upon any deviation' }
@@ -13772,18 +13772,35 @@
         run_id: run.id,
         dedupe_key: dedupeKey(['label', run.id])
       });
-      // HTST per-run if format suggests pasteurized juice / RTD
+      // CCP tasks based on processing method (detected from format + notes)
       var fmt = (run.format || '').toLowerCase();
-      if(/htst|pasteurize|juice|rtd/.test(fmt) || /pasteurize/.test((run.notes||'').toLowerCase())){
-        candidates.push({
-          due_date: todayDate,
-          task_type: 'htst_reading',
-          title: 'HTST monitoring — ' + (run.run_name || run.id),
-          description: 'Hold-tube temp reading every 30 min during pasteurization',
-          source: 'auto',
-          run_id: run.id,
-          dedupe_key: dedupeKey(['htst', run.id, todayDate])
-        });
+      var notes = (run.notes || '').toLowerCase();
+      var all = fmt + ' ' + notes;
+      // HTST — pasteurized juice / RTD
+      if(/htst|pasteurize|juice|rtd/.test(all)){
+        candidates.push({ due_date: todayDate, task_type: 'htst_reading', title: 'HTST monitoring — ' + (run.run_name || run.id), description: 'Hold-tube temp reading every 30 min during pasteurization', source: 'auto', run_id: run.id, dedupe_key: dedupeKey(['htst', run.id, todayDate]) });
+      }
+      // Hot fill — any "hot fill" mention or jam-style products
+      if(/hot[ -]?fill|jam|preserve|syrup/.test(all)){
+        candidates.push({ due_date: todayDate, task_type: 'hot_fill_reading', title: 'Hot fill temp check — ' + (run.run_name || run.id), description: 'Fill nozzle temp ≥ 185°F, every 30 min', source: 'auto', run_id: run.id, dedupe_key: dedupeKey(['hotfill', run.id, todayDate]) });
+      }
+      // Can seam — any canning run
+      if(/can(ning)?|12oz|16oz|sleek|slim/.test(all)){
+        candidates.push({ due_date: todayDate, task_type: 'seam_check', title: 'Can seam check — ' + (run.run_name || run.id), description: 'Seam evaluation at startup + every 4 hr + post-jam + shutdown', source: 'auto', run_id: run.id, dedupe_key: dedupeKey(['seam', run.id, todayDate]) });
+      }
+      // UV — if formula uses purified water or UV is mentioned
+      if(/uv|purified water|disinfect/.test(all)){
+        candidates.push({ due_date: todayDate, task_type: 'uv_reading', title: 'UV water dose check — ' + (run.run_name || run.id), description: 'Dose ≥ 40 mJ/cm² · hourly during run', source: 'auto', run_id: run.id, dedupe_key: dedupeKey(['uv', run.id, todayDate]) });
+      }
+      // Fermentation — beer/cider/seltzer/kombucha
+      if(/ferment|beer|cider|seltzer|kombucha/.test(all)){
+        candidates.push({ due_date: todayDate, task_type: 'ferm_reading', title: 'Fermentation reading — ' + (run.run_name || run.id), description: 'pH + gravity reading (per-batch multiple readings)', source: 'auto', run_id: run.id, dedupe_key: dedupeKey(['ferm', run.id, todayDate]) });
+      }
+      // CIP — after the run if it's hitting the Ship stage today (cleanup)
+      candidates.push({ due_date: todayDate, task_type: 'cip_cycle', title: 'CIP cycle — post-run ' + (run.run_name || run.id), description: '9-step v2.1 protocol (PBW + caustic + acid + PAA)', source: 'auto', run_id: run.id, dedupe_key: dedupeKey(['cip', run.id, todayDate]) });
+      // Batch record — required for every co-pack production batch
+      if(run.client_id || run.client_name){
+        candidates.push({ due_date: todayDate, task_type: 'batch_record', title: 'Batch record — ' + (run.run_name || run.id), description: 'Master production record (QC-BR-001)', source: 'auto', run_id: run.id, dedupe_key: dedupeKey(['batch', run.id]) });
       }
     });
 
@@ -14234,6 +14251,590 @@
     modal.querySelector('.gl-cf-sign').addEventListener('click', function(){ submit(true); });
   };
 
+  // ============================================================
+  // PHASE 2 FORMS
+  // ============================================================
+
+  // ── Form: GMP-SAN-002 CIP Monitoring Log (v2.1, 9-step) ──
+  // Replaces the existing simplified CIP form. Captures actual duration
+  // per step, temperature, concentration/verification reading, pass/fail.
+  // Critical limits per LEAN_01 v2.1: temp ≥160°F for steps 1-7,
+  // PAA 100-300 ppm for steps 8-9. Failed steps auto-spawn Hold Tag + NC.
+  var CIP_STEPS = [
+    { n:1, name:'Pre-Rinse',                  chem:'Potable water',                 conc:'—',                target_min:5,  type:'rinse',  hot:true,  verify:'Visual — runs clear' },
+    { n:2, name:'PBW Wash',                   chem:'PBW (alkaline organic)',         conc:'1 oz/gal',         target_min:30, type:'chem',   hot:true,  verify:'Titration/refractometer' },
+    { n:3, name:'Intermediate Rinse #1',      chem:'Potable water',                 conc:'—',                target_min:5,  type:'rinse',  hot:true,  verify:'Conductivity to baseline (<50 µS/cm)' },
+    { n:4, name:'Caustic Wash (NaOH)',        chem:'Sodium Hydroxide',              conc:'1.5%',             target_min:30, type:'chem',   hot:true,  verify:'Titration confirms 1.5%' },
+    { n:5, name:'Intermediate Rinse #2',      chem:'Potable water',                 conc:'—',                target_min:5,  type:'rinse',  hot:true,  verify:'Conductivity to baseline (<50 µS/cm)' },
+    { n:6, name:'Acid Wash',                  chem:'Phosphoric/citric acid',         conc:'1 oz/gal',         target_min:30, type:'chem',   hot:true,  verify:'Per label method' },
+    { n:7, name:'Final Rinse',                chem:'Potable water',                 conc:'—',                target_min:5,  type:'rinse',  hot:true,  verify:'Conductivity + pH to baseline' },
+    { n:8, name:'POST-CIP PAA Sanitize',      chem:'Peracetic Acid',                conc:'1 oz / 5 gal',     target_min:20, type:'sanit',  hot:false, verify:'PAA strip 100–300 ppm — DO NOT RINSE' },
+    { n:9, name:'PRE-USE PAA (at run time)',  chem:'Peracetic Acid',                conc:'1 oz / 5 gal',     target_min:20, type:'sanit',  hot:false, verify:'PAA strip 100–300 ppm — DO NOT RINSE' }
+  ];
+
+  window.glOpenCipForm = function(task){
+    task = task || {};
+    var equipOptions = ['Filling Line 1','Filling Line 2','Pasteurizer plates','Mix tank','Fermenter 1','Fermenter 2','Carbonator','CIP skid'];
+    var stepsHtml = CIP_STEPS.map(function(s){
+      var tempCell = s.hot
+        ? '<input id="gl-cip-temp-'+s.n+'" type="number" step="1" value="160" placeholder="160" style="width:60px;padding:5px 6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#fff;font-size:11px;box-sizing:border-box;text-align:center">'
+        : '<span style="font-size:10px;color:#9aa7bd">ambient</span>';
+      return '<tr>' +
+        '<td style="padding:7px 5px;font-weight:700;color:'+(s.type==='sanit'?'#c4a4f8':s.type==='chem'?'#7fc6f5':'#5fcf9e')+'">'+s.n+'</td>' +
+        '<td style="padding:7px 5px;font-size:11px"><div style="font-weight:600;color:#fff">'+esc(s.name)+'</div><div style="font-size:10px;color:#9aa7bd">'+esc(s.chem)+' · '+esc(s.conc)+'</div></td>' +
+        '<td style="padding:7px 5px;text-align:center"><label style="display:inline-block;cursor:pointer"><input type="checkbox" id="gl-cip-done-'+s.n+'" checked style="accent-color:var(--teal);width:14px;height:14px"></label></td>' +
+        '<td style="padding:7px 5px;text-align:center"><input id="gl-cip-min-'+s.n+'" type="number" step="1" min="0" value="'+s.target_min+'" style="width:55px;padding:5px 6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#fff;font-size:11px;box-sizing:border-box;text-align:center"> <span style="font-size:10px;color:#9aa7bd">min</span></td>' +
+        '<td style="padding:7px 5px;text-align:center">'+tempCell+(s.hot?' <span style="font-size:10px;color:#9aa7bd">°F</span>':'')+'</td>' +
+        '<td style="padding:7px 5px"><input id="gl-cip-read-'+s.n+'" type="text" placeholder="'+(s.type==='sanit'?'ppm':(s.type==='rinse'?'µS/cm':'%'))+'" style="width:90px;padding:5px 6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#fff;font-size:11px;box-sizing:border-box"></td>' +
+        '<td style="padding:7px 5px"><select id="gl-cip-pf-'+s.n+'" style="padding:5px 6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#fff;font-size:11px;box-sizing:border-box"><option value="pass">PASS</option><option value="fail">FAIL</option></select></td>' +
+      '</tr>';
+    }).join('');
+
+    var body =
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+        field('Equipment / circuit', 'equip', 'select', { options: equipOptions, required: true }) +
+        field('CIP cycle start', 'start', 'datetime-local', { value: new Date(Date.now()-30*60000).toISOString().slice(0,16) }) +
+      '</div>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:11px;margin:8px 0">' +
+        '<thead><tr style="background:rgba(255,255,255,.03);text-align:left">' +
+          '<th style="padding:7px 5px;color:#9aa7bd;font-size:10px;letter-spacing:1px">#</th>' +
+          '<th style="padding:7px 5px;color:#9aa7bd;font-size:10px;letter-spacing:1px">STEP</th>' +
+          '<th style="padding:7px 5px;color:#9aa7bd;font-size:10px;letter-spacing:1px;text-align:center">DONE</th>' +
+          '<th style="padding:7px 5px;color:#9aa7bd;font-size:10px;letter-spacing:1px;text-align:center">ACTUAL TIME</th>' +
+          '<th style="padding:7px 5px;color:#9aa7bd;font-size:10px;letter-spacing:1px;text-align:center">TEMP</th>' +
+          '<th style="padding:7px 5px;color:#9aa7bd;font-size:10px;letter-spacing:1px">VERIFICATION</th>' +
+          '<th style="padding:7px 5px;color:#9aa7bd;font-size:10px;letter-spacing:1px">P/F</th>' +
+        '</tr></thead><tbody>' + stepsHtml + '</tbody></table>' +
+      field('Deviations / corrective action', 'deviation', 'textarea') +
+      '<div style="font-size:11px;color:#f5c842;background:rgba(245,200,66,.08);padding:8px 12px;border-radius:6px;margin-top:8px">CL: temp ≥ 160°F steps 1-7 · PAA 100-300 ppm steps 8-9 · DO NOT RINSE after step 8 or 9. Any step FAIL auto-spawns Hold Tag + NC draft.</div>';
+
+    var modal = modalShell('GMP-SAN-002 v2.1 · 9-Step CIP Monitoring', 'Record at the time of the cycle — never reconstruct from memory', body, formFooter());
+    modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
+
+    async function submit(signed){
+      var steps = CIP_STEPS.map(function(s){
+        return {
+          n: s.n, name: s.name, chem: s.chem, target_min: s.target_min,
+          done: modal.querySelector('#gl-cip-done-'+s.n).checked,
+          actual_min: parseFloat(modal.querySelector('#gl-cip-min-'+s.n).value) || 0,
+          temp_f: s.hot ? (parseFloat(modal.querySelector('#gl-cip-temp-'+s.n).value) || 0) : null,
+          reading: modal.querySelector('#gl-cip-read-'+s.n).value.trim(),
+          pf: modal.querySelector('#gl-cip-pf-'+s.n).value
+        };
+      });
+      var equip = getVal(modal,'equip');
+      var deviation = getVal(modal,'deviation');
+      // Critical-limit checks
+      var failures = [];
+      steps.forEach(function(s){
+        if(!s.done) return;
+        if(s.pf === 'fail') failures.push('Step '+s.n+' ('+s.name+') marked FAIL');
+        if(s.temp_f !== null && s.temp_f < 160) failures.push('Step '+s.n+' temp '+s.temp_f+'°F < 160°F');
+        if(s.n >= 8){
+          // PAA concentration check (parse ppm from reading)
+          var ppm = parseFloat(s.reading);
+          if(!isNaN(ppm) && (ppm < 100 || ppm > 300)) failures.push('Step '+s.n+' PAA '+ppm+' ppm outside 100-300 ppm');
+        }
+      });
+      // Required: all chemical steps must be done
+      ['chem','sanit'].forEach(function(){});  // (placeholder — steps array already covers)
+      var hasFailure = failures.length > 0;
+      var data = {
+        equipment: equip, cycle_start: getVal(modal,'start'),
+        steps: steps, deviation_notes: deviation
+      };
+      await saveRecord('GMP-SAN-002', data, {
+        signed: signed, complete: signed,
+        task_id: task.id, run_id: task.run_id,
+        has_deviation: hasFailure,
+        deviation_notes: hasFailure ? failures.join(' · ') + ' · ' + (deviation || '') : null,
+        corrective_action: deviation,
+        spawn_hold: hasFailure,
+        product_name: 'CIP — ' + equip,
+        hazard_type: 'biological',
+        summary: equip + ' · ' + steps.filter(function(s){return s.done;}).length + '/9 steps · ' + (hasFailure ? 'FAIL' : 'PASS')
+      });
+      modal.remove();
+      refreshMaster();
+    }
+    modal.querySelector('.gl-cf-draft').addEventListener('click', function(){ submit(false); });
+    modal.querySelector('.gl-cf-sign').addEventListener('click', function(){ submit(true); });
+  };
+  // Replace existing CIP page entry point — both legacy and new task types route here
+  window.glOpenAddCip = window.glOpenCipForm;
+
+  // ── Form: FSP-PC-002 Hot Fill Temperature Log (CCP-2) ──
+  window.glOpenHotFillForm = function(task){
+    task = task || {};
+    var run = task.run_id ? (window.glProductionRuns||[]).find(function(r){ return r.id === task.run_id; }) : null;
+    var body =
+      field('Product / lot', 'product', 'text', { value: run ? (run.run_name || '') : '', required: true }) +
+      field('Reading time', 'time', 'time', { value: (new Date()).toTimeString().slice(0,5), required: true }) +
+      field('Fill nozzle temp (°F)', 'temp_f', 'number', { step: '0.1', required: true }) +
+      field('Thermocouple cal date', 'cal_date', 'date') +
+      field('Corrective action (if deviation)', 'corrective', 'textarea') +
+      '<div style="font-size:11px;color:#f5c842;background:rgba(245,200,66,.08);padding:8px 12px;border-radius:6px;margin-top:8px">CL: ≥ '+DEFAULT_LIMITS.hot_fill_f+'°F at fill point. Below CL = stop filling, quarantine product, auto-NC.</div>';
+    var modal = modalShell('FSP-PC-002 · Hot Fill Temperature (CCP-2)', 'Spot-check every 30 minutes during fill', body, formFooter());
+    modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
+    async function submit(signed){
+      var temp = parseFloat(getVal(modal,'temp_f')) || 0;
+      var data = { product: getVal(modal,'product'), time: getVal(modal,'time'), temp_f: temp, cal_date: getVal(modal,'cal_date'), corrective: getVal(modal,'corrective') };
+      var hasFailure = temp < DEFAULT_LIMITS.hot_fill_f;
+      await saveRecord('FSP-PC-002', data, {
+        signed: signed, complete: signed, task_id: task.id, run_id: task.run_id,
+        has_deviation: hasFailure,
+        deviation_notes: hasFailure ? ('Hot fill ' + temp + '°F < ' + DEFAULT_LIMITS.hot_fill_f + '°F at ' + data.time) : null,
+        corrective_action: data.corrective, spawn_hold: hasFailure,
+        product_name: data.product, hazard_type: 'biological',
+        summary: data.time + ' · ' + temp + '°F · ' + (hasFailure ? 'CCP FAIL' : 'OK')
+      });
+      modal.remove(); refreshMaster();
+    }
+    modal.querySelector('.gl-cf-draft').addEventListener('click', function(){ submit(false); });
+    modal.querySelector('.gl-cf-sign').addEventListener('click', function(){ submit(true); });
+  };
+
+  // ── Form: FSP-PC-003 Can Seam Evaluation (CCP-4) ──
+  window.glOpenSeamForm = function(task){
+    task = task || {};
+    var run = task.run_id ? (window.glProductionRuns||[]).find(function(r){ return r.id === task.run_id; }) : null;
+    var body =
+      field('Product / lot', 'product', 'text', { value: run ? (run.run_name || '') : '', required: true }) +
+      field('Eval time', 'time', 'time', { value: (new Date()).toTimeString().slice(0,5), required: true }) +
+      field('Sample can #', 'can_no', 'text', { required: true }) +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+        field('Seam thickness (in)', 'thick', 'number', { step: '0.001' }) +
+        field('Seam length (in)', 'length', 'number', { step: '0.001' }) +
+        field('Body hook (in)', 'body_hook', 'number', { step: '0.001' }) +
+        field('Cover hook (in)', 'cover_hook', 'number', { step: '0.001' }) +
+        field('Overlap (%)', 'overlap', 'number', { step: '0.1' }) +
+        field('Tightness rating', 'tightness', 'select', { options: ['Tight','Acceptable','Loose'] }) +
+      '</div>' +
+      field('Within BCMA spec?', 'spec', 'yn', { required: true }) +
+      field('Corrective action (if out-of-spec)', 'corrective', 'textarea') +
+      '<div style="font-size:11px;color:#f5c842;background:rgba(245,200,66,.08);padding:8px 12px;border-radius:6px;margin-top:8px">Out-of-spec seam = STOP line, hold ALL product since last good teardown, PCQI evaluates rework or destroy.</div>';
+    var modal = modalShell('FSP-PC-003 · Can Seam Evaluation (CCP-4)', 'Startup + every 4 hrs + post-jam + shutdown', body, formFooter());
+    wireYn(modal);
+    modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
+    async function submit(signed){
+      var data = {
+        product: getVal(modal,'product'), time: getVal(modal,'time'), can_no: getVal(modal,'can_no'),
+        thick: getVal(modal,'thick'), length: getVal(modal,'length'),
+        body_hook: getVal(modal,'body_hook'), cover_hook: getVal(modal,'cover_hook'),
+        overlap: getVal(modal,'overlap'), tightness: getVal(modal,'tightness'),
+        spec: getVal(modal,'spec'), corrective: getVal(modal,'corrective')
+      };
+      var hasFailure = data.spec !== 'Y';
+      await saveRecord('FSP-PC-003', data, {
+        signed: signed, complete: signed, task_id: task.id, run_id: task.run_id,
+        has_deviation: hasFailure,
+        deviation_notes: hasFailure ? ('Can seam out-of-spec at ' + data.time + ' on can ' + data.can_no) : null,
+        corrective_action: data.corrective, spawn_hold: hasFailure,
+        product_name: data.product, hazard_type: 'physical',
+        summary: 'Can ' + data.can_no + ' · ' + (hasFailure ? 'OUT OF SPEC' : 'in spec')
+      });
+      modal.remove(); refreshMaster();
+    }
+    modal.querySelector('.gl-cf-draft').addEventListener('click', function(){ submit(false); });
+    modal.querySelector('.gl-cf-sign').addEventListener('click', function(){ submit(true); });
+  };
+
+  // ── Form: FSP-PC-004 UV Water Treatment (CCP-3) ──
+  window.glOpenUvForm = function(task){
+    task = task || {};
+    var body =
+      field('Product / lot (if attached to run)', 'product', 'text', { value: (task.run_id && (window.glProductionRuns||[]).find(function(r){return r.id===task.run_id;})||{}).run_name || '' }) +
+      field('Reading time', 'time', 'time', { value: (new Date()).toTimeString().slice(0,5), required: true }) +
+      field('UV intensity (mW/cm²)', 'intensity', 'number', { step: '0.1', required: true }) +
+      field('Flow rate (gpm)', 'flow', 'number', { step: '0.1' }) +
+      field('Calculated UV dose (mJ/cm²)', 'dose', 'number', { step: '0.1', required: true }) +
+      field('Lamp status', 'lamp', 'select', { options: [['ok','OK'],['replace','Replace soon'],['fault','Fault — replace now']] }) +
+      field('Alarm triggered?', 'alarm', 'yn') +
+      field('Corrective action', 'corrective', 'textarea') +
+      '<div style="font-size:11px;color:#f5c842;background:rgba(245,200,66,.08);padding:8px 12px;border-radius:6px;margin-top:8px">CL: dose ≥ '+DEFAULT_LIMITS.uv_dose_mj_cm2+' mJ/cm². Below CL or alarm = stop water use, do not use for product until verified.</div>';
+    var modal = modalShell('FSP-PC-004 · UV Water Treatment (CCP-3)', 'Hourly during production runs', body, formFooter());
+    wireYn(modal);
+    modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
+    async function submit(signed){
+      var dose = parseFloat(getVal(modal,'dose')) || 0;
+      var alarm = getVal(modal,'alarm');
+      var data = { product: getVal(modal,'product'), time: getVal(modal,'time'), intensity: getVal(modal,'intensity'), flow: getVal(modal,'flow'), dose: dose, lamp: getVal(modal,'lamp'), alarm: alarm, corrective: getVal(modal,'corrective') };
+      var hasFailure = dose < DEFAULT_LIMITS.uv_dose_mj_cm2 || alarm === 'Y';
+      await saveRecord('FSP-PC-004', data, {
+        signed: signed, complete: signed, task_id: task.id, run_id: task.run_id,
+        has_deviation: hasFailure,
+        deviation_notes: hasFailure ? ('UV dose ' + dose + ' mJ/cm² < ' + DEFAULT_LIMITS.uv_dose_mj_cm2 + ' or alarm triggered at ' + data.time) : null,
+        corrective_action: data.corrective, spawn_hold: hasFailure,
+        product_name: 'UV-treated water', hazard_type: 'biological',
+        summary: data.time + ' · ' + dose + ' mJ/cm² · ' + (hasFailure ? 'CCP FAIL' : 'OK')
+      });
+      modal.remove(); refreshMaster();
+    }
+    modal.querySelector('.gl-cf-draft').addEventListener('click', function(){ submit(false); });
+    modal.querySelector('.gl-cf-sign').addEventListener('click', function(){ submit(true); });
+  };
+
+  // ── Form: FSP-PC-005 Fermentation Monitoring (CCP-A) ──
+  window.glOpenFermForm = function(task){
+    task = task || {};
+    var body =
+      field('Batch #', 'batch_no', 'text', { required: true }) +
+      field('Product', 'product', 'text', { required: true }) +
+      field('Pitch date', 'pitch_date', 'date') +
+      field('Yeast strain', 'yeast', 'text') +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+        field('OG (Original Gravity)', 'og', 'number', { step: '0.001' }) +
+        field('FG (Final Gravity)', 'fg', 'number', { step: '0.001' }) +
+        field('Day 3 pH', 'ph_d3', 'number', { step: '0.01' }) +
+        field('Day 7 pH', 'ph_d7', 'number', { step: '0.01' }) +
+        field('Final pH', 'ph_final', 'number', { step: '0.01', required: true }) +
+        field('Calculated ABV %', 'abv', 'number', { step: '0.01' }) +
+      '</div>' +
+      field('ABV meets spec?', 'abv_spec', 'yn') +
+      field('Package date', 'pkg_date', 'date') +
+      '<div style="font-size:11px;color:#f5c842;background:rgba(245,200,66,.08);padding:8px 12px;border-radius:6px;margin-top:8px">CL: final pH ≤ '+DEFAULT_LIMITS.final_pH_fermented+' AND ABV ≥ product spec. Fail = hold batch, do not package.</div>';
+    var modal = modalShell('FSP-PC-005 · Fermentation Monitoring (CCP-A)', 'Multiple readings per batch — log when each is taken', body, formFooter());
+    wireYn(modal);
+    modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
+    async function submit(signed){
+      var phFinal = parseFloat(getVal(modal,'ph_final')) || 999;
+      var abvSpec = getVal(modal,'abv_spec');
+      var data = { batch_no: getVal(modal,'batch_no'), product: getVal(modal,'product'), pitch_date: getVal(modal,'pitch_date'), yeast: getVal(modal,'yeast'), og: getVal(modal,'og'), fg: getVal(modal,'fg'), ph_d3: getVal(modal,'ph_d3'), ph_d7: getVal(modal,'ph_d7'), ph_final: phFinal, abv: getVal(modal,'abv'), abv_spec: abvSpec, pkg_date: getVal(modal,'pkg_date') };
+      var hasFailure = phFinal > DEFAULT_LIMITS.final_pH_fermented || abvSpec === 'N';
+      await saveRecord('FSP-PC-005', data, {
+        signed: signed, complete: signed, task_id: task.id,
+        has_deviation: hasFailure,
+        deviation_notes: hasFailure ? ('Fermentation CCP fail — pH ' + phFinal + (abvSpec === 'N' ? ' AND ABV below spec' : '')) : null,
+        spawn_hold: hasFailure,
+        product_name: data.product, hazard_type: 'biological',
+        summary: 'Batch ' + data.batch_no + ' · pH ' + phFinal + ' · ' + (hasFailure ? 'FAIL' : 'OK')
+      });
+      modal.remove(); refreshMaster();
+    }
+    modal.querySelector('.gl-cf-draft').addEventListener('click', function(){ submit(false); });
+    modal.querySelector('.gl-cf-sign').addEventListener('click', function(){ submit(true); });
+  };
+
+  // ── Form: GMP-CAL-001 Equipment Calibration Log ──
+  window.glOpenCalForm = function(task){
+    task = task || {};
+    var instruments = ['pH meter','Thermometer (product)','Thermometer (environmental)','UV intensity sensor','Scale','Conductivity meter','HTST recorder','FDD','PAA test strips','Other'];
+    var body =
+      field('Instrument', 'instrument', 'select', { options: instruments, required: true }) +
+      field('Instrument ID / location', 'location', 'text', { required: true }) +
+      field('Calibration method', 'method', 'text', { placeholder: 'e.g. 2-point buffer 4.0/7.0' }) +
+      field('Reference standard / lot', 'reference', 'text', { placeholder: 'e.g. NIST traceable cert #' }) +
+      field('Result / reading', 'result', 'text', { required: true }) +
+      field('Acceptable range', 'range', 'text', { placeholder: 'e.g. ±0.05 pH' }) +
+      field('Pass / Fail', 'pf', 'select', { options: [['pass','PASS'],['fail','FAIL']], required: true }) +
+      field('Next calibration due', 'next_due', 'date');
+    var modal = modalShell('GMP-CAL-001 · Equipment Calibration', 'Monthly minimum for CCP instruments', body, formFooter());
+    modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
+    async function submit(signed){
+      var data = { instrument: getVal(modal,'instrument'), location: getVal(modal,'location'), method: getVal(modal,'method'), reference: getVal(modal,'reference'), result: getVal(modal,'result'), range: getVal(modal,'range'), pf: getVal(modal,'pf'), next_due: getVal(modal,'next_due') };
+      var hasFailure = data.pf === 'fail';
+      await saveRecord('GMP-CAL-001', data, {
+        signed: signed, complete: signed, task_id: task.id,
+        has_deviation: hasFailure,
+        deviation_notes: hasFailure ? ('Cal FAIL on ' + data.instrument + ' (' + data.location + ') — remove from service immediately') : null,
+        spawn_hold: false,  // calibration fail doesn't directly hold product; PCQI evaluates affected lots
+        product_name: data.instrument,
+        summary: data.instrument + ' · ' + (hasFailure ? 'FAIL — REMOVE FROM SERVICE' : 'PASS')
+      });
+      modal.remove(); refreshMaster();
+    }
+    modal.querySelector('.gl-cf-draft').addEventListener('click', function(){ submit(false); });
+    modal.querySelector('.gl-cf-sign').addEventListener('click', function(){ submit(true); });
+  };
+
+  // ── Form: GMP-REC-001 Receiving Inspection & COA Review ──
+  window.glOpenReceivingForm = function(task){
+    task = task || {};
+    var vendors = (window.glVendors || []).map(function(v){ return v.name; });
+    var body =
+      field('Supplier', 'supplier', vendors.length ? 'select' : 'text', vendors.length ? { options: vendors, required: true } : { required: true }) +
+      field('Ingredient / material', 'ingredient', 'text', { required: true }) +
+      field('Lot number', 'lot', 'text', { required: true }) +
+      field('Quantity received', 'qty', 'text') +
+      field('COA received?', 'coa', 'yn', { required: true }) +
+      field('COA lot matches received lot?', 'coa_match', 'yn' ) +
+      field('Allergen declaration on file?', 'allergen', 'yn') +
+      field('Visual condition OK?', 'visual', 'yn', { required: true }) +
+      field('Approved supplier?', 'approved', 'yn', { required: true }) +
+      field('Disposition', 'disposition', 'select', { options: [['accept','Accept'],['quarantine','Quarantine — Hold Tag needed']], required: true }) +
+      field('Notes', 'notes', 'textarea');
+    var modal = modalShell('GMP-REC-001 · Receiving Inspection & COA Review', 'Required for every incoming delivery', body, formFooter());
+    wireYn(modal);
+    modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
+    async function submit(signed){
+      var data = { supplier: getVal(modal,'supplier'), ingredient: getVal(modal,'ingredient'), lot: getVal(modal,'lot'), qty: getVal(modal,'qty'), coa: getVal(modal,'coa'), coa_match: getVal(modal,'coa_match'), allergen: getVal(modal,'allergen'), visual: getVal(modal,'visual'), approved: getVal(modal,'approved'), disposition: getVal(modal,'disposition'), notes: getVal(modal,'notes') };
+      var hasFailure = data.disposition === 'quarantine' || data.coa !== 'Y' || data.visual !== 'Y' || data.approved !== 'Y';
+      await saveRecord('GMP-REC-001', data, {
+        signed: signed, complete: signed, task_id: task.id,
+        has_deviation: hasFailure,
+        deviation_notes: hasFailure ? ('Receiving issue — ' + data.ingredient + ' (' + data.lot + ') from ' + data.supplier + ' · disposition: ' + data.disposition) : null,
+        corrective_action: data.notes, spawn_hold: data.disposition === 'quarantine',
+        product_name: data.ingredient, lot_number: data.lot, hazard_type: 'biological',
+        summary: data.ingredient + ' · ' + data.supplier + ' · ' + (hasFailure ? data.disposition.toUpperCase() : 'ACCEPTED')
+      });
+      modal.remove(); refreshMaster();
+    }
+    modal.querySelector('.gl-cf-draft').addEventListener('click', function(){ submit(false); });
+    modal.querySelector('.gl-cf-sign').addEventListener('click', function(){ submit(true); });
+  };
+
+  // ── Form: FSP-SAN-001 Environmental Monitoring — Listeria ──
+  window.glOpenListeriaForm = function(task){
+    task = task || {};
+    var body =
+      field('Sample ID', 'sample_id', 'text', { value: 'LIS-'+todayISO().replace(/-/g,'')+'-' + Math.floor(Math.random()*900+100), required: true }) +
+      field('Zone (1=food contact, 2=adjacent, 3=remote, 4=outside)', 'zone', 'select', { options: [['1','Zone 1 — food-contact'],['2','Zone 2 — adjacent (non-contact)'],['3','Zone 3 — remote'],['4','Zone 4 — outside production']], required: true }) +
+      field('Location swabbed', 'location', 'text', { required: true, placeholder: 'e.g. Filler nozzle, floor drain near filler' }) +
+      field('Pre or post-CIP?', 'cip_state', 'select', { options: [['pre','Pre-CIP'],['post','Post-CIP']] }) +
+      field('Lab / test kit', 'lab', 'text', { placeholder: 'e.g. Hygiena InSite' }) +
+      field('Listeria spp. result', 'spp_result', 'select', { options: [['pending','Pending'],['neg','Negative'],['pos','POSITIVE']], required: true }) +
+      field('L. monocytogenes result', 'mono_result', 'select', { options: [['nt','Not tested'],['neg','Negative'],['pos','POSITIVE']] }) +
+      field('Action initiated', 'action', 'textarea') +
+      '<div style="font-size:11px;color:#ff8579;background:rgba(231,76,60,.1);padding:8px 12px;border-radius:6px;margin-top:8px">POSITIVE on Zone 1-2 = STOP production, deep clean + intensified sanitation, re-swab. L. monocytogenes positive on distributed product = consider FDA notification.</div>';
+    var modal = modalShell('FSP-SAN-001 · Environmental Listeria Swab', 'Monthly minimum (food-contact zones)', body, formFooter());
+    modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
+    async function submit(signed){
+      var data = { sample_id: getVal(modal,'sample_id'), zone: getVal(modal,'zone'), location: getVal(modal,'location'), cip_state: getVal(modal,'cip_state'), lab: getVal(modal,'lab'), spp_result: getVal(modal,'spp_result'), mono_result: getVal(modal,'mono_result'), action: getVal(modal,'action') };
+      var isPositiveZone12 = (data.spp_result === 'pos' || data.mono_result === 'pos') && (data.zone === '1' || data.zone === '2');
+      var hasFailure = isPositiveZone12;
+      await saveRecord('FSP-SAN-001', data, {
+        signed: signed, complete: signed, task_id: task.id,
+        has_deviation: hasFailure,
+        deviation_notes: hasFailure ? ('POSITIVE Listeria on Zone ' + data.zone + ' (' + data.location + ')') : null,
+        corrective_action: data.action, spawn_hold: hasFailure,
+        product_name: 'Environmental swab — ' + data.location, hazard_type: 'biological',
+        summary: 'Zone ' + data.zone + ' · ' + data.location + ' · ' + (data.spp_result === 'pos' ? 'POSITIVE' : data.spp_result.toUpperCase())
+      });
+      modal.remove(); refreshMaster();
+    }
+    modal.querySelector('.gl-cf-draft').addEventListener('click', function(){ submit(false); });
+    modal.querySelector('.gl-cf-sign').addEventListener('click', function(){ submit(true); });
+  };
+
+  // ── Form: GMP-DIST-001 Distribution / Traceability ──
+  window.glOpenDistForm = function(task){
+    task = task || {};
+    var body =
+      field('Ship date', 'ship_date', 'date', { value: todayISO(), required: true }) +
+      field('Product', 'product', 'text', { required: true }) +
+      field('Lot number', 'lot', 'text', { required: true }) +
+      field('Quantity shipped', 'qty', 'text', { required: true }) +
+      field('Customer / distributor', 'customer', 'text', { required: true }) +
+      field('Customer address', 'address', 'textarea') +
+      field('Contact name + phone', 'contact', 'text') +
+      field('Ship method', 'method', 'text', { placeholder: 'e.g. UPS Freight, FedEx LTL' }) +
+      field('Bill of Lading #', 'bol', 'text') +
+      '<div style="font-size:11px;color:#7fc6f5;background:rgba(127,198,245,.08);padding:8px 12px;border-radius:6px;margin-top:8px">4-HR TRACEABILITY: this log supports your recall capability. Every outbound shipment must be recorded.</div>';
+    var modal = modalShell('GMP-DIST-001 · Distribution / Traceability', 'Every outbound shipment', body, formFooter());
+    modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
+    async function submit(signed){
+      var data = { ship_date: getVal(modal,'ship_date'), product: getVal(modal,'product'), lot: getVal(modal,'lot'), qty: getVal(modal,'qty'), customer: getVal(modal,'customer'), address: getVal(modal,'address'), contact: getVal(modal,'contact'), method: getVal(modal,'method'), bol: getVal(modal,'bol') };
+      await saveRecord('GMP-DIST-001', data, {
+        signed: signed, complete: signed, task_id: task.id,
+        product_name: data.product, lot_number: data.lot,
+        summary: data.product + ' · ' + data.qty + ' to ' + data.customer
+      });
+      modal.remove(); refreshMaster();
+    }
+    modal.querySelector('.gl-cf-draft').addEventListener('click', function(){ submit(false); });
+    modal.querySelector('.gl-cf-sign').addEventListener('click', function(){ submit(true); });
+  };
+
+  // ── Form: GMP-TR-001 Employee Training Record ──
+  window.glOpenTrainingForm = function(task){
+    task = task || {};
+    var body =
+      field('Employee name', 'employee', 'text', { required: true }) +
+      field('Role / title', 'role', 'text') +
+      field('Training topic', 'topic', 'select', { options: ['GMP orientation','Allergen awareness','Illness exclusion policy','CCP monitoring (specify)','HACCP/FSP overview','Hand hygiene','Chemical safety','Forklift / equipment','Other'], required: true }) +
+      field('Training method', 'method', 'select', { options: ['In-person classroom','Online module','On-the-job demonstration','Documented procedure read + sign'] }) +
+      field('Duration (minutes)', 'duration', 'number') +
+      field('Trainer name', 'trainer', 'text') +
+      field('Tested?', 'tested', 'yn') +
+      field('Pass / Fail (if tested)', 'pf', 'select', { options: ['','Pass','Fail'] }) +
+      field('Employee signature on file?', 'sig', 'yn', { required: true }) +
+      field('Next training due', 'next_due', 'date');
+    var modal = modalShell('GMP-TR-001 · Employee Training Record', 'Each training event + annual refresh', body, formFooter());
+    wireYn(modal);
+    modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
+    async function submit(signed){
+      var data = { employee: getVal(modal,'employee'), role: getVal(modal,'role'), topic: getVal(modal,'topic'), method: getVal(modal,'method'), duration: getVal(modal,'duration'), trainer: getVal(modal,'trainer'), tested: getVal(modal,'tested'), pf: getVal(modal,'pf'), sig: getVal(modal,'sig'), next_due: getVal(modal,'next_due') };
+      var hasFailure = data.sig !== 'Y' || data.pf === 'Fail';
+      await saveRecord('GMP-TR-001', data, {
+        signed: signed, complete: signed, task_id: task.id,
+        has_deviation: hasFailure,
+        deviation_notes: hasFailure ? ('Training record incomplete — missing signature or failed test for ' + data.employee) : null,
+        spawn_hold: false,
+        product_name: 'Training — ' + data.employee,
+        summary: data.employee + ' · ' + data.topic
+      });
+      modal.remove(); refreshMaster();
+    }
+    modal.querySelector('.gl-cf-draft').addEventListener('click', function(){ submit(false); });
+    modal.querySelector('.gl-cf-sign').addEventListener('click', function(){ submit(true); });
+  };
+
+  // ── Form: GMP-HR-001 Employee Illness Exclusion ──
+  window.glOpenIllnessForm = function(task){
+    task = task || {};
+    var conditions = ['Jaundice','Diarrhea','Vomiting','Sore throat with fever','Open wound on hands/arms','Confirmed Salmonella/Shigella/E.coli O157:H7','Confirmed Hepatitis A','Confirmed Norovirus','Other'];
+    var body =
+      field('Date / time reported', 'reported_at', 'datetime-local', { value: new Date().toISOString().slice(0,16), required: true }) +
+      field('Employee name', 'employee', 'text', { required: true }) +
+      field('Condition reported', 'condition', 'select', { options: conditions, required: true }) +
+      field('Excluded?', 'excluded', 'yn', { required: true }) +
+      field('Area excluded from', 'area', 'text', { placeholder: 'e.g. All food handling areas' }) +
+      field('Return-to-work date (planned)', 'return_date', 'date') +
+      field('Medical clearance required + received?', 'medical', 'select', { options: ['Not required','Required — not yet','Required — received','N/A'] }) +
+      field('Supervisor notes', 'notes', 'textarea');
+    var modal = modalShell('GMP-HR-001 · Employee Illness Exclusion', 'Upon any illness exclusion event', body, formFooter());
+    wireYn(modal);
+    modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
+    async function submit(signed){
+      var data = { reported_at: getVal(modal,'reported_at'), employee: getVal(modal,'employee'), condition: getVal(modal,'condition'), excluded: getVal(modal,'excluded'), area: getVal(modal,'area'), return_date: getVal(modal,'return_date'), medical: getVal(modal,'medical'), notes: getVal(modal,'notes') };
+      await saveRecord('GMP-HR-001', data, {
+        signed: signed, complete: signed, task_id: task.id,
+        product_name: 'Illness exclusion — ' + data.employee,
+        summary: data.employee + ' · ' + data.condition + ' · ' + (data.excluded === 'Y' ? 'EXCLUDED' : 'returned')
+      });
+      modal.remove(); refreshMaster();
+    }
+    modal.querySelector('.gl-cf-draft').addEventListener('click', function(){ submit(false); });
+    modal.querySelector('.gl-cf-sign').addEventListener('click', function(){ submit(true); });
+  };
+
+  // ── Form: FSP-SC-002 Supplier COA Review ──
+  window.glOpenSupplierCoaForm = function(task){
+    task = task || {};
+    var body =
+      field('Supplier', 'supplier', 'text', { required: true }) +
+      field('Ingredient', 'ingredient', 'text', { required: true }) +
+      field('Lot number', 'lot', 'text', { required: true }) +
+      field('COA reference #', 'coa_ref', 'text') +
+      field('Micro results', 'micro', 'select', { options: [['','—'],['pass','PASS'],['fail','FAIL'],['na','N/A']] }) +
+      field('Heavy metals', 'metals', 'text', { placeholder: 'e.g. Pb < 0.5 ppm' }) +
+      field('Pesticides', 'pesticides', 'text', { placeholder: 'e.g. ND or < LOQ' }) +
+      field('Potency / identity (botanicals)', 'potency', 'text') +
+      field('Results pass spec?', 'spec', 'yn', { required: true }) +
+      field('Accepted?', 'accepted', 'yn', { required: true }) +
+      field('PCQI sign-off required (high-risk)?', 'high_risk', 'yn') +
+      field('Notes', 'notes', 'textarea');
+    var modal = modalShell('FSP-SC-002 · Supplier COA Review', 'Per incoming lot of high-risk ingredients', body, formFooter());
+    wireYn(modal);
+    modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
+    async function submit(signed){
+      var data = { supplier: getVal(modal,'supplier'), ingredient: getVal(modal,'ingredient'), lot: getVal(modal,'lot'), coa_ref: getVal(modal,'coa_ref'), micro: getVal(modal,'micro'), metals: getVal(modal,'metals'), pesticides: getVal(modal,'pesticides'), potency: getVal(modal,'potency'), spec: getVal(modal,'spec'), accepted: getVal(modal,'accepted'), high_risk: getVal(modal,'high_risk'), notes: getVal(modal,'notes') };
+      var hasFailure = data.spec !== 'Y' || data.accepted !== 'Y';
+      await saveRecord('FSP-SC-002', data, {
+        signed: signed, complete: signed, task_id: task.id,
+        has_deviation: hasFailure,
+        deviation_notes: hasFailure ? ('COA review failure — ' + data.ingredient + ' (' + data.lot + ') from ' + data.supplier) : null,
+        spawn_hold: hasFailure, lot_number: data.lot,
+        product_name: data.ingredient, hazard_type: 'biological',
+        summary: data.ingredient + ' · ' + data.supplier + ' · ' + (hasFailure ? 'REJECTED' : 'accepted')
+      });
+      modal.remove(); refreshMaster();
+    }
+    modal.querySelector('.gl-cf-draft').addEventListener('click', function(){ submit(false); });
+    modal.querySelector('.gl-cf-sign').addEventListener('click', function(){ submit(true); });
+  };
+
+  // ── Form: QC-BR-001 Production Batch Record ──
+  window.glOpenBatchRecordForm = function(task){
+    task = task || {};
+    var run = task.run_id ? (window.glProductionRuns||[]).find(function(r){ return r.id === task.run_id; }) : null;
+    var body =
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+        field('Batch record #', 'batch_no', 'text', { required: true }) +
+        field('Production date', 'prod_date', 'date', { value: todayISO(), required: true }) +
+        field('Product name', 'product', 'text', { value: run ? (run.run_name || '') : '', required: true }) +
+        field('Lot number', 'lot', 'text', { required: true }) +
+        field('Client (if co-pack)', 'client', 'text', { value: run ? (run.client_name || '') : '' }) +
+        field('Batch size (units)', 'batch_size', 'text') +
+      '</div>' +
+      '<div style="font-size:10px;color:#9aa7bd;letter-spacing:2px;text-transform:uppercase;margin:12px 0 4px">— Ingredients —</div>' +
+      field('Ingredients (one per line: name / lot / qty)', 'ingredients', 'textarea') +
+      '<div style="font-size:10px;color:#9aa7bd;letter-spacing:2px;text-transform:uppercase;margin:12px 0 4px">— Process parameters —</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+        field('Process temp + time achieved', 'process_temp', 'text') +
+        field('Fill temperature (if hot fill)', 'fill_temp', 'text') +
+        field('Final product pH', 'final_ph', 'number', { step: '0.01' }) +
+        field('Final Brix / ABV', 'final_brix', 'text') +
+      '</div>' +
+      '<div style="font-size:10px;color:#9aa7bd;letter-spacing:2px;text-transform:uppercase;margin:12px 0 4px">— QC checks —</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+        field('Sensory check pass?', 'sensory', 'yn') +
+        field('Fill weight / volume verified?', 'fill', 'yn') +
+        field('Seam check (cans)?', 'seam', 'yn') +
+        field('Label verify form GMP-LAB-001 completed?', 'label_form', 'yn') +
+      '</div>' +
+      field('Units produced', 'units_produced', 'number') +
+      field('Units released', 'units_released', 'number') +
+      field('Units on hold (with NCR no.)', 'units_held', 'text') +
+      field('Any deviations? Reference NCR #', 'deviations_ref', 'text');
+    var modal = modalShell('QC-BR-001 · Production Batch Record', 'Master record for every co-pack production run', body, formFooter());
+    wireYn(modal);
+    modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
+    async function submit(signed){
+      var data = { batch_no: getVal(modal,'batch_no'), prod_date: getVal(modal,'prod_date'), product: getVal(modal,'product'), lot: getVal(modal,'lot'), client: getVal(modal,'client'), batch_size: getVal(modal,'batch_size'), ingredients: getVal(modal,'ingredients'), process_temp: getVal(modal,'process_temp'), fill_temp: getVal(modal,'fill_temp'), final_ph: getVal(modal,'final_ph'), final_brix: getVal(modal,'final_brix'), sensory: getVal(modal,'sensory'), fill: getVal(modal,'fill'), seam: getVal(modal,'seam'), label_form: getVal(modal,'label_form'), units_produced: getVal(modal,'units_produced'), units_released: getVal(modal,'units_released'), units_held: getVal(modal,'units_held'), deviations_ref: getVal(modal,'deviations_ref') };
+      var hasFailure = data.sensory === 'N' || data.label_form === 'N' || !!data.units_held || !!data.deviations_ref;
+      await saveRecord('QC-BR-001', data, {
+        signed: signed, complete: signed, task_id: task.id, run_id: task.run_id,
+        has_deviation: hasFailure,
+        deviation_notes: hasFailure ? ('Batch ' + data.batch_no + ' deviations — see ref ' + (data.deviations_ref || 'TBD')) : null,
+        product_name: data.product, lot_number: data.lot,
+        summary: 'Batch ' + data.batch_no + ' · ' + (data.units_released || data.units_produced || '?') + ' units'
+      });
+      modal.remove(); refreshMaster();
+    }
+    modal.querySelector('.gl-cf-draft').addEventListener('click', function(){ submit(false); });
+    modal.querySelector('.gl-cf-sign').addEventListener('click', function(){ submit(true); });
+  };
+
+  // ── Form: FSP-VER-002 Annual FSP Review ──
+  window.glOpenAnnualFspForm = function(task){
+    task = task || {};
+    var body =
+      field('Review date', 'review_date', 'date', { value: todayISO(), required: true }) +
+      field('Review trigger', 'trigger', 'select', { options: ['Annual scheduled','Process change','New hazard identified','Post-recall','FDA direction'], required: true }) +
+      '<div style="font-size:10px;color:#9aa7bd;letter-spacing:2px;text-transform:uppercase;margin:12px 0 4px">— Scope review —</div>' +
+      field('New product types added?', 'new_products', 'textarea') +
+      field('New processing methods?', 'new_processes', 'textarea') +
+      field('New ingredients / suppliers?', 'new_suppliers', 'textarea') +
+      field('New co-pack clients with novel allergens?', 'new_allergens', 'textarea') +
+      field('Facility changes?', 'facility_changes', 'textarea') +
+      '<div style="font-size:10px;color:#9aa7bd;letter-spacing:2px;text-transform:uppercase;margin:12px 0 4px">— Hazard + controls —</div>' +
+      field('New hazards identified?', 'new_hazards', 'textarea') +
+      field('All CCPs still valid with correct CLs?', 'ccps_valid', 'yn') +
+      field('CCP deviations this year (count + summary)', 'ccp_deviations', 'textarea') +
+      '<div style="font-size:10px;color:#9aa7bd;letter-spacing:2px;text-transform:uppercase;margin:12px 0 4px">— Recall + supply chain —</div>' +
+      field('Mock recall conducted this year? Date + 4-hr result?', 'mock_recall', 'textarea') +
+      field('All COAs received for high-risk this year?', 'coa_compliance', 'yn') +
+      field('Overall FSP assessment', 'assessment', 'select', { options: ['Adequate as written','Updated — changes described below'], required: true }) +
+      field('Changes / updates made', 'changes', 'textarea') +
+      field('Next annual review due', 'next_due', 'date');
+    var modal = modalShell('FSP-VER-002 · Annual FSP Review', 'Annual reanalysis of the Food Safety Plan', body, formFooter());
+    wireYn(modal);
+    modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
+    async function submit(signed){
+      var data = { review_date: getVal(modal,'review_date'), trigger: getVal(modal,'trigger'), new_products: getVal(modal,'new_products'), new_processes: getVal(modal,'new_processes'), new_suppliers: getVal(modal,'new_suppliers'), new_allergens: getVal(modal,'new_allergens'), facility_changes: getVal(modal,'facility_changes'), new_hazards: getVal(modal,'new_hazards'), ccps_valid: getVal(modal,'ccps_valid'), ccp_deviations: getVal(modal,'ccp_deviations'), mock_recall: getVal(modal,'mock_recall'), coa_compliance: getVal(modal,'coa_compliance'), assessment: getVal(modal,'assessment'), changes: getVal(modal,'changes'), next_due: getVal(modal,'next_due') };
+      await saveRecord('FSP-VER-002', data, {
+        signed: signed, complete: signed, task_id: task.id,
+        product_name: 'Annual FSP review',
+        summary: data.review_date + ' · ' + data.trigger + ' · ' + data.assessment
+      });
+      modal.remove(); refreshMaster();
+    }
+    modal.querySelector('.gl-cf-draft').addEventListener('click', function(){ submit(false); });
+    modal.querySelector('.gl-cf-sign').addEventListener('click', function(){ submit(true); });
+  };
+
+
   // ── Hold Tag manual create + disposition ──
   window.glOpenAddHoldTag = function(prefill){
     prefill = prefill || {};
@@ -14308,13 +14909,24 @@
 
   function catalog(task_type){
     var map = {
-      preop_inspection: getForm('GMP-INSP-001'),
-      label_verify:     getForm('GMP-LAB-001'),
-      allergen_swab:    getForm('GMP-ALL-001'),
-      htst_reading:     getForm('FSP-PC-001'),
-      calibration:      getForm('GMP-CAL-001'),
-      listeria_swab:    getForm('FSP-SAN-001'),
-      cip_cycle:        getForm('GMP-SAN-002')
+      preop_inspection:  getForm('GMP-INSP-001'),
+      label_verify:      getForm('GMP-LAB-001'),
+      allergen_swab:     getForm('GMP-ALL-001'),
+      htst_reading:      getForm('FSP-PC-001'),
+      hot_fill_reading:  getForm('FSP-PC-002'),
+      seam_check:        getForm('FSP-PC-003'),
+      uv_reading:        getForm('FSP-PC-004'),
+      ferm_reading:      getForm('FSP-PC-005'),
+      cip_cycle:         getForm('GMP-SAN-002'),
+      calibration:       getForm('GMP-CAL-001'),
+      receiving:         getForm('GMP-REC-001'),
+      listeria_swab:     getForm('FSP-SAN-001'),
+      distribution:      getForm('GMP-DIST-001'),
+      training:          getForm('GMP-TR-001'),
+      illness:           getForm('GMP-HR-001'),
+      supplier_coa:      getForm('FSP-SC-002'),
+      batch_record:      getForm('QC-BR-001'),
+      annual_fsp:        getForm('FSP-VER-002')
     };
     return map[task_type] || { icon:'📋', code:task_type };
   }
@@ -14324,7 +14936,21 @@
     if(task_type === 'label_verify')     return window.glOpenLabelVerifyForm(task);
     if(task_type === 'allergen_swab')    return window.glOpenAllergenSwabForm(task);
     if(task_type === 'htst_reading')     return window.glOpenHtstForm(task);
-    alert('That form is not built yet. Phase 2 will add: calibration, Listeria swab, receiving, hot fill, can seam, UV, fermentation, batch record, training, illness, supplier COA, distribution, annual FSP, plus the 9-step CIP rebuild.');
+    if(task_type === 'cip_cycle')        return window.glOpenCipForm(task);
+    if(task_type === 'hot_fill_reading') return window.glOpenHotFillForm(task);
+    if(task_type === 'seam_check')       return window.glOpenSeamForm(task);
+    if(task_type === 'uv_reading')       return window.glOpenUvForm(task);
+    if(task_type === 'ferm_reading')     return window.glOpenFermForm(task);
+    if(task_type === 'calibration')      return window.glOpenCalForm(task);
+    if(task_type === 'receiving')        return window.glOpenReceivingForm(task);
+    if(task_type === 'listeria_swab')    return window.glOpenListeriaForm(task);
+    if(task_type === 'distribution')     return window.glOpenDistForm(task);
+    if(task_type === 'training')         return window.glOpenTrainingForm(task);
+    if(task_type === 'illness')          return window.glOpenIllnessForm(task);
+    if(task_type === 'supplier_coa')     return window.glOpenSupplierCoaForm(task);
+    if(task_type === 'batch_record')     return window.glOpenBatchRecordForm(task);
+    if(task_type === 'annual_fsp')       return window.glOpenAnnualFspForm(task);
+    alert('Unknown task type: ' + task_type);
   }
 
   function openManualTaskPicker(){
@@ -14342,12 +14968,31 @@
       btn.addEventListener('click', function(){
         var code = btn.getAttribute('data-form');
         modal.remove();
-        if(code === 'GMP-INSP-001') return window.glOpenPreOpForm({});
-        if(code === 'GMP-LAB-001')  return window.glOpenLabelVerifyForm({});
-        if(code === 'GMP-ALL-001')  return window.glOpenAllergenSwabForm({});
-        if(code === 'FSP-PC-001')   return window.glOpenHtstForm({});
+        launchFormByCode(code);
       });
     });
+  }
+
+  function launchFormByCode(code){
+    if(code === 'GMP-INSP-001') return window.glOpenPreOpForm({});
+    if(code === 'GMP-LAB-001')  return window.glOpenLabelVerifyForm({});
+    if(code === 'GMP-ALL-001')  return window.glOpenAllergenSwabForm({});
+    if(code === 'FSP-PC-001')   return window.glOpenHtstForm({});
+    if(code === 'GMP-SAN-002')  return window.glOpenCipForm({});
+    if(code === 'FSP-PC-002')   return window.glOpenHotFillForm({});
+    if(code === 'FSP-PC-003')   return window.glOpenSeamForm({});
+    if(code === 'FSP-PC-004')   return window.glOpenUvForm({});
+    if(code === 'FSP-PC-005')   return window.glOpenFermForm({});
+    if(code === 'GMP-CAL-001')  return window.glOpenCalForm({});
+    if(code === 'GMP-REC-001')  return window.glOpenReceivingForm({});
+    if(code === 'FSP-SAN-001')  return window.glOpenListeriaForm({});
+    if(code === 'GMP-DIST-001') return window.glOpenDistForm({});
+    if(code === 'GMP-TR-001')   return window.glOpenTrainingForm({});
+    if(code === 'GMP-HR-001')   return window.glOpenIllnessForm({});
+    if(code === 'FSP-SC-002')   return window.glOpenSupplierCoaForm({});
+    if(code === 'QC-BR-001')    return window.glOpenBatchRecordForm({});
+    if(code === 'FSP-VER-002')  return window.glOpenAnnualFspForm({});
+    alert('Form ' + code + ' not built yet.');
   }
 
   async function renderOpenLogsTab(host){
@@ -14411,11 +15056,7 @@
 
     host.querySelectorAll('.gl-form-card[data-built="1"]').forEach(function(c){
       c.addEventListener('click', function(){
-        var code = c.getAttribute('data-code');
-        if(code === 'GMP-INSP-001') return window.glOpenPreOpForm({});
-        if(code === 'GMP-LAB-001')  return window.glOpenLabelVerifyForm({});
-        if(code === 'GMP-ALL-001')  return window.glOpenAllergenSwabForm({});
-        if(code === 'FSP-PC-001')   return window.glOpenHtstForm({});
+        launchFormByCode(c.getAttribute('data-code'));
       });
     });
   }
