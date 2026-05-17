@@ -6798,14 +6798,20 @@
       try {
         var q;
         // Prefer the human-readable invoice_number; fall back to row id when supaId exists.
+        // .select() forces PostgREST to return the deleted rows so we can detect
+        // RLS-silent-rejections (0 rows deleted, no error).
         if(inv.id && /^GL-/i.test(inv.id)){
-          q = await sb.from('invoices').delete().eq('invoice_number', inv.id);
+          q = await sb.from('invoices').delete().eq('invoice_number', inv.id).select();
         } else if(inv.supaId){
-          q = await sb.from('invoices').delete().eq('id', inv.supaId);
+          q = await sb.from('invoices').delete().eq('id', inv.supaId).select();
         }
         if(q && q.error){
           console.warn('[GL] invoice delete: supabase error', q.error);
           if(!confirm('Server reported: ' + q.error.message + '\n\nRemove from this session anyway?')) return false;
+        } else if(q && Array.isArray(q.data) && q.data.length === 0){
+          console.warn('[GL] invoice delete: 0 rows affected (likely RLS DELETE policy missing on invoices)');
+          alert('Could not delete on the server (RLS denied).\n\nRun the migration:\n  supabase/migrations/20260518_invoices_delete_policy.sql\n\nThe invoice has not been removed.');
+          return false;
         }
       } catch(e){
         console.warn('[GL] invoice delete: supabase threw', e);
