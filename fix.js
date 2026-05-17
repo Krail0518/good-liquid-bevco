@@ -7424,11 +7424,28 @@
         // Strip undefined keys so we don't accidentally wipe values not in the patch
         // (file paths are only present when a fresh upload happened).
         Object.keys(supaPatch).forEach(function(k){ if(supaPatch[k] === undefined) delete supaPatch[k]; });
-        var r = await window.supa.from('clients').update(supaPatch).eq('id', clientId);
+        // Retry on PGRST204 "column not found" by peeling off the offending column.
+        // Without this, a schema drift on any single column rejects the entire UPDATE
+        // and the user's edits silently disappear on refresh.
+        var working = Object.assign({}, supaPatch);
+        var r, retries = 30, droppedCols = [];
+        while(retries-- > 0){
+          r = await window.supa.from('clients').update(working).eq('id', clientId);
+          if(!r || !r.error) break;
+          if(r.error.code !== 'PGRST204') break;
+          var m = (r.error.message || '').match(/'([^']+)' column/);
+          if(!m || working[m[1]] === undefined) break;
+          droppedCols.push(m[1]);
+          delete working[m[1]];
+        }
+        if(droppedCols.length){
+          console.warn('[GL] glUpdateClient: dropped unknown columns to recover save:', droppedCols);
+          if(typeof addNotification === 'function') addNotification('Saved (partial)','Run the latest migration: '+droppedCols.join(', '),'warning');
+        }
         if(r && r.error){
           console.warn('[GL] glUpdateClient: supabase error', r.error);
-          // Roll back? We keep the local change but warn.
           if(typeof addNotification === 'function') addNotification('Saved locally','Server error: '+r.error.message,'warning');
+          return false;
         }
       } catch(e){
         console.warn('[GL] glUpdateClient threw', e);
