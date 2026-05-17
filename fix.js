@@ -18465,11 +18465,17 @@
     } catch(e){ /* table not yet migrated */ }
   }
 
+  function isCrmVisible(){
+    var p = document.getElementById('crm-panel');
+    return !!(p && p.classList.contains('show'));
+  }
   function renderFacilityChip(){
-    if(!facilities.length) return;
     var existing = document.getElementById('gl-facility-chip');
+    if(!facilities.length || !isCrmVisible()){
+      if(existing) existing.remove();
+      return;
+    }
     if(existing) existing.remove();
-    var host = document.querySelector('header, .topbar, .app-header') || document.body;
     var chip = document.createElement('div');
     chip.id = 'gl-facility-chip';
     chip.style.cssText = 'position:fixed;top:8px;right:8px;background:#0ea5e9;color:#fff;padding:4px 10px;border-radius:14px;font:12px system-ui;cursor:pointer;z-index:9999;box-shadow:0 2px 4px rgba(0,0,0,.15)';
@@ -18478,6 +18484,12 @@
     chip.onclick = openFacilityPicker;
     document.body.appendChild(chip);
   }
+  // Re-evaluate chip visibility whenever the CRM panel toggles
+  (function watchCrmVisibility(){
+    var panel = document.getElementById('crm-panel');
+    if(!panel){ setTimeout(watchCrmVisibility, 800); return; }
+    new MutationObserver(renderFacilityChip).observe(panel, { attributes:true, attributeFilter:['class'] });
+  })();
 
   function openFacilityPicker(){
     if(facilities.length < 2){
@@ -18695,21 +18707,39 @@
   };
 
   /* ==========================================================
-     Header buttons + MutationObserver wiring
+     Compliance-page buttons (scoped to #comp-body, admin-only)
      ========================================================== */
-  function injectHeaderButtons(){
+  function injectCompliancePageButtons(){
     if(window.__glInspectorMode) return;
-    var host = document.querySelector('header, .topbar, .app-header') || document.body;
-    if(document.getElementById('gl-btn-inspector')) return;
-    var bar = document.createElement('div');
-    bar.style.cssText = 'position:fixed;top:8px;left:50%;transform:translateX(-50%);display:flex;gap:6px;z-index:9998';
-    bar.innerHTML = '<button id="gl-btn-inspector" style="background:#dc2626;color:#fff;padding:6px 10px;border:0;border-radius:6px;font:12px system-ui;cursor:pointer">🔒 Inspector link</button><button id="gl-btn-allergen" style="background:#7c3aed;color:#fff;padding:6px 10px;border:0;border-radius:6px;font:12px system-ui;cursor:pointer">🥜 Allergen decl</button>';
-    document.body.appendChild(bar);
-    document.getElementById('gl-btn-inspector').onclick = window.glGenerateInspectorLink;
-    document.getElementById('gl-btn-allergen').onclick = function(){
-      var cid = prompt('Client ID (UUID) for the allergen declaration:'); if(!cid) return;
-      window.glOpenAllergenDeclForm(cid, '');
-    };
+    var host = document.getElementById('comp-body');
+    if(!host){ setTimeout(injectCompliancePageButtons, 800); return; }
+    new MutationObserver(function(){
+      var anchor = host.querySelector('.gl-comp-applic') || host.querySelector('.gl-comp-digest') || host.querySelector('.gl-comp-report');
+      if(!anchor) return;
+      var parent = anchor.parentNode;
+      if(parent.querySelector('.gl-comp-inspector') && parent.querySelector('.gl-comp-allergen')) return;
+      function btn(cls, text, c, fn){
+        var b = document.createElement('button'); b.className = 'cbtn ' + cls;
+        b.setAttribute('style','font-size:11px;padding:5px 11px;margin-right:6px;background:' + c.bg + ';border:1px solid ' + c.bd + ';color:' + c.fg);
+        b.textContent = text; b.addEventListener('click', fn);
+        return b;
+      }
+      if(!parent.querySelector('.gl-comp-inspector')){
+        var insp = btn('gl-comp-inspector', '🔒 Inspector link',
+          { bg:'rgba(220,38,38,.10)', bd:'rgba(220,38,38,.35)', fg:'#fca5a5' },
+          function(){ window.glGenerateInspectorLink(); });
+        parent.insertBefore(insp, anchor);
+      }
+      if(!parent.querySelector('.gl-comp-allergen')){
+        var alg = btn('gl-comp-allergen', '🥜 Allergen decl',
+          { bg:'rgba(124,58,237,.10)', bd:'rgba(124,58,237,.35)', fg:'#c4b5fd' },
+          function(){
+            var cid = prompt('Client ID (UUID) for the allergen declaration:'); if(!cid) return;
+            window.glOpenAllergenDeclForm(cid, '');
+          });
+        parent.insertBefore(alg, anchor);
+      }
+    }).observe(host, { childList:true, subtree:true });
   }
 
   function observeForSecondSign(){
@@ -18735,7 +18765,7 @@
       checkAllergenDeclMode().then(function(isAlg){
         if(isAlg) return; // public allergen decl page: stop here
         loadFacilities();
-        injectHeaderButtons();
+        injectCompliancePageButtons();
         observeForSecondSign();
       });
     });
