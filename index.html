@@ -4628,7 +4628,7 @@ async function aiDraftEmail(clientName, invoiceNum, amount, status) {
   const text = await callAI(
     'You are an expert business communication writer for Good Liquid Bev Co, a premium beverage co-packer in Palmetto, FL. Write professional, warm, and effective emails.',
     `Write a follow-up email for invoice ${invoiceNum} for ${clientName}. Amount: $$${amount}. Status: ${status}. 
-    Keep it professional but friendly. Sign off as Mike Krail, Good Liquid Bev Co, (803) 493-5065.
+    Keep it professional but friendly. Sign off as Good Liquid Accounting, Good Liquid Bev Co, (803) 493-5065.
     Include subject line. Keep it concise and effective.`
   );
   // Re-render the modal with content + buttons (helper handles teardown of the loading instance).
@@ -4970,7 +4970,7 @@ function openSendInvoiceModal(invId){
 
   const usd = n => '$' + (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
   const defaultSubject = `Invoice ${inv.id} from Good Liquid Bev Co — ${usd(inv.amount)}`;
-  const defaultMessage = `Hi ${c.contact || c.name || 'there'},\n\nPlease find Invoice ${inv.id} below for ${usd(inv.amount)}.\n\nPayment is due ${inv.paymentTerms || 'on receipt'}. Wire instructions are included at the bottom of the invoice.\n\nLet me know if you have any questions.\n\nThanks,\nMike Krail\nGood Liquid Bev Co\n(803) 493-5065`;
+  const defaultMessage = `Hi ${c.contact || c.name || 'there'},\n\nPlease find Invoice ${inv.id} below for ${usd(inv.amount)}.\n\nPayment is due ${inv.paymentTerms || 'on receipt'}. Wire instructions are included at the bottom of the invoice.\n\nLet me know if you have any questions.\n\nThanks,\nGood Liquid Accounting\n(803) 493-5065 · Mike@GoodLiquid.com`;
 
   ov.innerHTML = `
     <div style="background:#142238;border:1px solid rgba(26,111,255,.25);border-radius:14px;width:100%;max-width:720px;padding:24px 28px;color:#fff">
@@ -6180,7 +6180,7 @@ function openFollowUpModal(){
     Days since invoice: ${daysDue}
     Tone: ${tone} (${daysDue>30?'firm but professional, mention possible late fees':daysDue>14?'politely firm':'friendly reminder'})
     
-    Format: Start with Subject: on first line, then blank line, then email body. Sign off as Mike Krail, Good Liquid Bev Co.`)
+    Format: Start with Subject: on first line, then blank line, then email body. Sign off as Good Liquid Accounting (do NOT use a personal name).`)
     .then(text=>{
       const lines=text.split('\n');
       const subjLine=lines.find(l=>l.startsWith('Subject:'));
@@ -6225,7 +6225,7 @@ function openFollowUpModal(){
       document.getElementById('followup-loading').style.display='none';
       document.getElementById('followup-content').style.display='block';
     }).catch(()=>{
-      document.getElementById('fu-body').value=`Dear ${inv.clientName},\n\nThis is a friendly reminder that Invoice ${inv.id} for $${inv.amount.toLocaleString()} remains unpaid.\n\nPlease remit payment at your earliest convenience.\n\nBest regards,\nMike Krail\nGood Liquid Bev Co\nMike@GoodLiquid.com | (803) 493-5065`;
+      document.getElementById('fu-body').value=`Dear ${inv.clientName},\n\nThis is a friendly reminder that Invoice ${inv.id} for $${inv.amount.toLocaleString()} remains unpaid.\n\nPlease remit payment at your earliest convenience.\n\nBest regards,\nGood Liquid Accounting\nMike@GoodLiquid.com | (803) 493-5065`;
       document.getElementById('followup-loading').style.display='none';
       document.getElementById('followup-content').style.display='block';
     });
@@ -6363,7 +6363,7 @@ async function generateAIComm(){
   const text=await callAI('You are writing professional emails for Mike Krail at Good Liquid Bev Co, a beverage co-packer in Palmetto, FL.',
     `${prompts[type]}
 
-Format: Subject: on first line, then blank line, then email body. Sign off as Mike Krail, Good Liquid Bev Co.`);
+Format: Subject: on first line, then blank line, then email body. Sign off as Good Liquid Accounting (do NOT use a personal name).`);
   closeAIModal();
   
   const lines=text.split('\n');

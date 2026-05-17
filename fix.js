@@ -11493,12 +11493,12 @@
     if(typeof window.callAI !== 'function'){
       var subj = 'Invoice ' + inv.id + ' — ' + (daysLate <= 15 ? 'gentle reminder' : daysLate <= 45 ? 'past due notice' : 'collection notice');
       var body = 'Hi ' + contactName + ',\n\nOur records show invoice ' + inv.id + ' for ' + fmt$(inv.amount) + ' is ' + daysLate + ' day' + (daysLate === 1 ? '' : 's') + ' past its due date.\n\n' +
-        (daysLate <= 15 ? 'A quick check that this didn\'t slip through — let me know if you need a fresh copy or a different payment method.\n\nThanks,\nMike\nGood Liquid Bev Co'
-        : daysLate <= 45 ? 'Please remit payment within the next 5 business days. If there\'s an issue with the invoice itself, reply to this email and we\'ll get it sorted.\n\nBest,\nMike Krail\nGood Liquid Bev Co'
-        : 'This account is now significantly past due. We need payment received within 7 business days to avoid further escalation. Please call (803) 493-5065 if you\'d like to discuss a payment plan.\n\nRegards,\nMike Krail\nGood Liquid Bev Co');
+        (daysLate <= 15 ? 'A quick check that this didn\'t slip through — let us know if you need a fresh copy or a different payment method.\n\nThanks,\nGood Liquid Accounting'
+        : daysLate <= 45 ? 'Please remit payment within the next 5 business days. If there\'s an issue with the invoice itself, reply to this email and we\'ll get it sorted.\n\nBest,\nGood Liquid Accounting'
+        : 'This account is now significantly past due. We need payment received within 7 business days to avoid further escalation. Please call (803) 493-5065 if you\'d like to discuss a payment plan.\n\nRegards,\nGood Liquid Accounting');
       return { subject: subj, body: body };
     }
-    var sys = 'You write collection emails for Good Liquid Bev Co (Palmetto FL beverage co-packer). Mike Krail is the sender. Voice matches the tone level. Keep it under 100 words. End with a clear next step. Sign "Mike Krail, Good Liquid Bev Co".';
+    var sys = 'You write collection emails for Good Liquid Bev Co (Palmetto FL beverage co-packer). The sender is the company\'s accounting team — never a personal name. Voice matches the tone level. Keep it under 100 words. End with a clear next step. Sign "Good Liquid Accounting" (do NOT use any personal name).';
     var user = 'Draft a ' + tone + ' collection email for invoice ' + inv.id + '. Owed: ' + fmt$(inv.amount) + '. Days past due: ' + daysLate + '. Contact: ' + contactName + ' (' + (client.name||'') + ').\n\nReturn EXACTLY this format:\nSubject: <subject line>\nBody:\n<email body>';
     var text = await window.callAI(sys, user);
     var m = text && text.match(/Subject:\s*(.+?)\nBody:\n([\s\S]+)/i);
@@ -19786,7 +19786,7 @@
       date: inv.date || '',
       due_date: inv.dueDate || (inv.paymentTerms || 'on receipt'),
       days_late: daysLate,
-      my_name: 'Mike Krail',
+      my_name: 'Good Liquid Accounting',
       my_phone: '(803) 493-5065'
     };
   }
@@ -20143,7 +20143,7 @@
     ov.id = 'gl-sched-modal';
     ov.style.cssText = 'position:fixed;inset:0;z-index:1200;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:flex-start;justify-content:center;padding:30px;overflow-y:auto';
     var defaultSubject = 'Reminder: Invoice ' + invId + ' — Good Liquid Bev Co';
-    var defaultBody = 'Hi ' + (c.contact || c.name || 'there') + ',\n\nJust a quick reminder that Invoice ' + invId + ' for $' + (inv.amount||0).toLocaleString() + ' is due.\n\nThanks,\nMike Krail\nGood Liquid Bev Co\n(803) 493-5065';
+    var defaultBody = 'Hi ' + (c.contact || c.name || 'there') + ',\n\nJust a quick reminder that Invoice ' + invId + ' for $' + (inv.amount||0).toLocaleString() + ' is due.\n\nThanks,\nGood Liquid Accounting\n(803) 493-5065 · Mike@GoodLiquid.com';
     // Default send_at = 7 days from now at 9am
     var dt = new Date(Date.now() + 7*86400000);
     dt.setHours(9,0,0,0);
