@@ -1388,12 +1388,19 @@
   };
 
   /* ── Build manual row (rd / hours / custom) ── */
-  window.glBuildManualRow=function(uid,label,descDefault,qty,price){
+  // descDefault = the "subtype" prefilled in the primary description (e.g.
+  //   "Formulation" for R&D, "Production labor" for Hours, "" for Custom).
+  // descPrefill = the user's free-text optional description carried over
+  //   from a saved invoice when reopening for edit.
+  window.glBuildManualRow=function(uid,label,descDefault,qty,price,descPrefill){
     var total=qty*price;
+    var DSTY='width:100%;background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:3px 6px;font-size:11px;margin-top:4px';
+    var safePrefill = String(descPrefill||'').replace(/"/g,'&quot;');
     var row=document.createElement('div');row.id=uid;row.setAttribute('style',RS);row.setAttribute('data-gl-total',total);
     row.innerHTML=
       '<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">'+label+'</div>'+
-      '<input id="'+uid+'-desc" type="text" value="'+descDefault+'" placeholder="Description" style="'+SIT+'"/></div>'+
+      '<input id="'+uid+'-subtype" type="text" value="'+descDefault+'" placeholder="Service type" style="'+SIT+'"/>'+
+      '<input id="'+uid+'-desc" type="text" placeholder="Description (optional)" value="'+safePrefill+'" style="'+DSTY+'"/></div>'+
       '<div style="text-align:center"><input id="'+uid+'-qty" type="number" min="0" step="any" value="'+qty+'" onchange="window.glUpdateManual(\''+uid+'\')" style="'+SI+'"/>'+
       '<div style="font-size:10px;color:var(--muted);margin-top:3px">qty</div></div>'+
       '<div style="text-align:right;padding-right:4px">'+
@@ -1587,8 +1594,23 @@
         var qtyM=qtyMEl?parseFloat(qtyMEl.value)||0:0;
         var priceMEl=document.getElementById(uid+'-price');
         var priceM=priceMEl?parseFloat(priceMEl.value)||0:0;
-        var desc=userDesc?(label?label+' - '+userDesc:userDesc):(label||'Line item');
-        lines.push({desc:desc,qty:qtyM,unitPrice:priceM,total:total,unit:''});
+        // New layout: -subtype carries the service-type text (e.g.
+        // "Formulation", "Production labor") and -desc carries the user's
+        // optional add-on description. Old rows without -subtype fall back
+        // to the legacy single-input behavior.
+        var subtypeEl = document.getElementById(uid+'-subtype');
+        var subtype = subtypeEl ? (subtypeEl.value||'').trim() : '';
+        var manDesc;
+        if(subtypeEl){
+          // New layout
+          manDesc = label || 'Line item';
+          if(subtype) manDesc += ' - ' + subtype;
+          if(userDesc) manDesc += ' — ' + userDesc;
+        } else {
+          // Legacy fallback
+          manDesc = userDesc?(label?label+' - '+userDesc:userDesc):(label||'Line item');
+        }
+        lines.push({desc:manDesc,qty:qtyM,unitPrice:priceM,total:total,unit:''});
       }
     });
     return lines;
@@ -1858,13 +1880,13 @@
             row.setAttribute('data-pu-override','1');
             row.setAttribute('data-gl-total', (l.qty||0) * (l.unitPrice||0));
           } else {
-            // R&D / Hours / Custom / unknown — use the manual row.
-            // For manual lines we put the FULL "X - Y" (minus the user-desc em-dash
-            // suffix) into the manual desc input, since the label heading is just
-            // a category badge and the manual row only has one description input.
+            // R&D / Hours / Custom / unknown — use the manual row, which now
+            // has separate -subtype (e.g. "Formulation") and -desc (optional)
+            // inputs. Map the parsed parts into those two fields.
             var manualLabel = parsed.type || 'Line';
-            var manualDesc = parsed.fmtLabel ? (parsed.fmtLabel + (parsed.userDesc ? ' — ' + parsed.userDesc : '')) : parsed.userDesc;
-            row = window.glBuildManualRow(uid, manualLabel, manualDesc, l.qty || 0, l.unitPrice || 0);
+            var manualSubtype = parsed.fmtLabel || '';
+            var manualOpt = parsed.userDesc || '';
+            row = window.glBuildManualRow(uid, manualLabel, manualSubtype, l.qty || 0, l.unitPrice || 0, manualOpt);
           }
           if(row) tbl.appendChild(row);
         });
