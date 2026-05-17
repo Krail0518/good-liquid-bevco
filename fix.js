@@ -1274,30 +1274,61 @@
 
   /* ── Update canning row ── */
   window.glUpdateCan=function(uid){
-    var ce=document.getElementById(uid+'-cases'),fe=document.getElementById(uid+'-format');
+    var ce=document.getElementById(uid+'-cases'),fe=document.getElementById(uid+'-format'),pe=document.getElementById(uid+'-pcase');
     if(!ce||!fe)return;
     var cases=Math.max(1,parseInt(ce.value)||150),fmt=fe.value;
-    var pc=window.glGetCanRate(cases,fmt),pcase=pc*CPC,total=pcase*cases;
-    function set(id,v){var e=document.getElementById(id);if(e)e.textContent=v;}
-    set(uid+'-pcase',window.glUsd(pcase)+'/case');
-    set(uid+'-pcan',window.glUsd(pc,4)+'/can');
-    set(uid+'-cans',(cases*CPC).toLocaleString()+' cans');
-    set(uid+'-total',window.glUsd(total));
-    var row=document.getElementById(uid);if(row)row.setAttribute('data-gl-total',total);
+    var row=document.getElementById(uid);
+    var override = row && row.getAttribute('data-pu-override')==='1';
+    var pcase;
+    if(override && pe){ pcase = parseFloat(pe.value)||0; }
+    else { var pcDef = window.glGetCanRate(cases,fmt); pcase = pcDef*CPC; if(pe) pe.value = pcase.toFixed(2); }
+    var pc = CPC ? (pcase/CPC) : 0;
+    var total = pcase*cases;
+    var pcanEl = document.getElementById(uid+'-pcan');
+    if(pcanEl) pcanEl.innerHTML = window.glUsd(pc,4)+'/can <a href="javascript:window.glResetCanPrice(\''+uid+'\')" style="color:var(--teal);text-decoration:none;margin-left:4px" title="Reset to default rate">&#x21BA;</a>';
+    var cansEl = document.getElementById(uid+'-cans');
+    if(cansEl) cansEl.textContent=(cases*CPC).toLocaleString()+' cans';
+    var te=document.getElementById(uid+'-total');
+    if(te) te.textContent=window.glUsd(total);
+    if(row) row.setAttribute('data-gl-total',total);
     window.glCalcInvTotal();
+  };
+  window.glUpdateCanPrice=function(uid){
+    var row=document.getElementById(uid);
+    if(row) row.setAttribute('data-pu-override','1');
+    window.glUpdateCan(uid);
+  };
+  window.glResetCanPrice=function(uid){
+    var row=document.getElementById(uid);
+    if(row) row.setAttribute('data-pu-override','0');
+    window.glUpdateCan(uid);
   };
 
   /* ── Update bottling row ── */
   window.glUpdateBtl=function(uid){
-    var qe=document.getElementById(uid+'-qty'),fe=document.getElementById(uid+'-format');
+    var qe=document.getElementById(uid+'-qty'),fe=document.getElementById(uid+'-format'),pe=document.getElementById(uid+'-punit');
     if(!qe||!fe)return;
     var qty=Math.max(1,parseInt(qe.value)||500),fmt=fe.value;
-    var pu=window.glGetBtlRate(qty,fmt),total=pu*qty;
-    function set(id,v){var e=document.getElementById(id);if(e)e.textContent=v;}
-    set(uid+'-punit',window.glUsd(pu,4)+'/btl');
-    set(uid+'-total',window.glUsd(total));
-    var row=document.getElementById(uid);if(row)row.setAttribute('data-gl-total',total);
+    var row=document.getElementById(uid);
+    var override = row && row.getAttribute('data-pu-override')==='1';
+    var pu;
+    if(override && pe){ pu = parseFloat(pe.value)||0; }
+    else { pu = window.glGetBtlRate(qty,fmt); if(pe) pe.value = pu.toFixed(4); }
+    var total = pu*qty;
+    var te=document.getElementById(uid+'-total');
+    if(te) te.textContent=window.glUsd(total);
+    if(row) row.setAttribute('data-gl-total',total);
     window.glCalcInvTotal();
+  };
+  window.glUpdateBtlPrice=function(uid){
+    var row=document.getElementById(uid);
+    if(row) row.setAttribute('data-pu-override','1');
+    window.glUpdateBtl(uid);
+  };
+  window.glResetBtlPrice=function(uid){
+    var row=document.getElementById(uid);
+    if(row) row.setAttribute('data-pu-override','0');
+    window.glUpdateBtl(uid);
   };
 
   /* ── Update manual row (rd/hours/custom) ── */
@@ -1318,15 +1349,16 @@
   window.glBuildCanRow=function(uid,cases,fmt,fmts,pc){
     var pcase=pc*CPC,total=pcase*cases,cans=cases*CPC;
     var opts=fmts.map(function(f){return'<option value="'+f.value+'"'+(f.value===fmt?' selected':'')+'>'+f.label+'</option>';}).join('');
-    var row=document.createElement('div');row.id=uid;row.setAttribute('style',RS);row.setAttribute('data-gl-total',total);
+    var PSTY='width:84px;background:#1a2a3a;color:#fff;border:1px solid rgba(0,229,192,.25);border-radius:6px;padding:3px 6px;font-size:12px;font-weight:600;text-align:right';
+    var row=document.createElement('div');row.id=uid;row.setAttribute('style',RS);row.setAttribute('data-gl-total',total);row.setAttribute('data-pu-override','0');
     row.innerHTML=
       '<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Canning</div>'+
       '<select id="'+uid+'-format" onchange="window.glUpdateCan(\''+uid+'\')" style="'+SS+'">'+opts+'</select></div>'+
       '<div style="text-align:center"><input id="'+uid+'-cases" type="number" min="1" value="'+cases+'" onchange="window.glUpdateCan(\''+uid+'\')" style="'+SI+'"/>'+
       '<div id="'+uid+'-cans" style="font-size:10px;color:var(--muted);margin-top:3px">'+cans.toLocaleString()+' cans</div></div>'+
       '<div style="text-align:right;padding-right:4px">'+
-      '<div id="'+uid+'-pcase" style="font-size:12px;color:#fff;font-weight:600">'+window.glUsd(pcase)+'/case</div>'+
-      '<div id="'+uid+'-pcan" style="font-size:10px;color:var(--muted);margin-top:3px">'+window.glUsd(pc,4)+'/can</div></div>'+
+      '<input id="'+uid+'-pcase" type="number" step="0.01" min="0" value="'+pcase.toFixed(2)+'" onchange="window.glUpdateCanPrice(\''+uid+'\')" title="$/case — edit to override the default rate" style="'+PSTY+'"/>'+
+      '<div id="'+uid+'-pcan" style="font-size:10px;color:var(--muted);margin-top:3px">'+window.glUsd(pc,4)+'/can <a href="javascript:window.glResetCanPrice(\''+uid+'\')" style="color:var(--teal);text-decoration:none;margin-left:4px" title="Reset to default rate">&#x21BA;</a></div></div>'+
       '<div id="'+uid+'-total" style="text-align:right;font-size:14px;font-weight:700;color:#fff">'+window.glUsd(total)+'</div>'+
       '<div style="text-align:center"><button onclick="window.glRemoveLine(\''+uid+'\')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0;line-height:1">x</button></div>';
     return row;
@@ -1336,14 +1368,16 @@
   window.glBuildBtlRow=function(uid,qty,fmt,fmts,pu){
     var total=pu*qty;
     var opts=fmts.map(function(f){return'<option value="'+f.value+'"'+(f.value===fmt?' selected':'')+'>'+f.label+'</option>';}).join('');
-    var row=document.createElement('div');row.id=uid;row.setAttribute('style',RS);row.setAttribute('data-gl-total',total);
+    var PSTY='width:84px;background:#1a2a3a;color:#fff;border:1px solid rgba(0,229,192,.25);border-radius:6px;padding:3px 6px;font-size:12px;font-weight:600;text-align:right';
+    var row=document.createElement('div');row.id=uid;row.setAttribute('style',RS);row.setAttribute('data-gl-total',total);row.setAttribute('data-pu-override','0');
     row.innerHTML=
       '<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Bottling</div>'+
       '<select id="'+uid+'-format" onchange="window.glUpdateBtl(\''+uid+'\')" style="'+SS+'">'+opts+'</select></div>'+
       '<div style="text-align:center"><input id="'+uid+'-qty" type="number" min="1" value="'+qty+'" onchange="window.glUpdateBtl(\''+uid+'\')" style="'+SI+'"/>'+
       '<div style="font-size:10px;color:var(--muted);margin-top:3px">bottles</div></div>'+
       '<div style="text-align:right;padding-right:4px">'+
-      '<div id="'+uid+'-punit" style="font-size:12px;color:#fff;font-weight:600">'+window.glUsd(pu,4)+'/btl</div></div>'+
+      '<input id="'+uid+'-punit" type="number" step="0.0001" min="0" value="'+pu.toFixed(4)+'" onchange="window.glUpdateBtlPrice(\''+uid+'\')" title="$/bottle — edit to override the default rate" style="'+PSTY+'"/>'+
+      '<div style="font-size:10px;color:var(--muted);margin-top:3px">$/btl <a href="javascript:window.glResetBtlPrice(\''+uid+'\')" style="color:var(--teal);text-decoration:none;margin-left:4px" title="Reset to default rate">&#x21BA;</a></div></div>'+
       '<div id="'+uid+'-total" style="text-align:right;font-size:14px;font-weight:700;color:#fff">'+window.glUsd(total)+'</div>'+
       '<div style="text-align:center"><button onclick="window.glRemoveLine(\''+uid+'\')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0;line-height:1">x</button></div>';
     return row;
