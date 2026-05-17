@@ -1641,10 +1641,18 @@
       else                       addDays = 0;        // "Due on receipt"
       if(addDays !== null) dueIso = new Date(Date.parse(date) + addDays*86400000).toISOString().slice(0,10);
     } catch(e){ dueIso=''; }
-    fetch(SURL+'/invoices',{
-      method:'POST',
-      headers:Object.assign({},SH,{'Prefer':'return=representation'}),
-      body:JSON.stringify({
+    // Use the Supabase JS client so the user's session JWT is sent.
+    // The earlier raw-fetch path used only the anon API key, which RLS
+    // policies that require role=authenticated will reject (PR #61's
+    // blanket RLS migration enforces `to authenticated`).
+    (function syncInvoice(){
+      var sb = window.supa;
+      if(!sb){
+        console.error('[GL] Supabase JS client not ready for invoice sync.');
+        if(typeof addNotification==='function')addNotification('Cloud sync skipped','Saved locally — Supabase client not loaded.','warning');
+        return;
+      }
+      sb.from('invoices').insert({
         invoice_number:invId,
         client_id:(cid&&cid.charAt(0)==='c')?null:cid,
         client_name:client.name||'',
@@ -1656,17 +1664,19 @@
         payment_terms: inv.paymentTerms,
         notes:'',
         line_items:lines
-      })
-    }).then(function(r){
-      if(!r.ok)return r.text().then(function(t){throw new Error('HTTP '+r.status+' '+t);});
-      return r.json();
-    }).then(function(rows){
-      if(Array.isArray(rows)&&rows[0])inv.supaId=rows[0].id;
-      console.log('[GL] Invoice synced to Supabase:',invId,inv.supaId||'');
-    }).catch(function(err){
-      console.error('[GL] Supabase sync failed for '+invId+':',err);
-      if(typeof addNotification==='function')addNotification('Cloud sync failed','Invoice '+invId+' saved locally only. '+(err.message||''),'warning');
-    });
+      }).select().single().then(function(r){
+        if(r.error){
+          console.error('[GL] Supabase sync failed for '+invId+':', r.error);
+          if(typeof addNotification==='function')addNotification('Cloud sync failed','Invoice '+invId+' saved locally only. '+(r.error.message||''),'warning');
+          return;
+        }
+        inv.supaId = r.data && r.data.id;
+        console.log('[GL] Invoice synced to Supabase:',invId,inv.supaId||'');
+      }).catch(function(err){
+        console.error('[GL] Supabase sync threw for '+invId+':', err);
+        if(typeof addNotification==='function')addNotification('Cloud sync failed','Invoice '+invId+' saved locally only. '+(err.message||''),'warning');
+      });
+    })();
 
     return inv;
   };
