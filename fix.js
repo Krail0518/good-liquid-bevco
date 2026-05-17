@@ -5029,10 +5029,12 @@
     bullets([
       '<b>(1) + New invoice</b> — opens the builder modal.',
       '<b>(2) 📊 Export CSV</b> — downloads every non-quote invoice as CSV (drop into QuickBooks or hand to your accountant).',
-      '<b>(3) 📧 Send overdue reminders</b> — confirms, then emails every overdue client at once using Mailgun + your email signature.',
-      '<b>(4) Status filter pills</b> — All / Draft / Pending / Paid / Overdue / Quote.',
-      '<b>(5) Row actions</b> — 💳 opens the Stripe pay link for that invoice; 👁 opens the invoice detail.',
-      '<b>(6) → Invoice button</b> — appears on quote-status rows. One-click conversion from "quote" to billable "pending".'
+      '<b>(3) 📊 Activity</b> — opens the Email Activity view across <i>every</i> invoice (sent / delivered / opened / clicked / bounced). See the <a href="#help-email-activity" style="color:#00e5c0">Email Activity</a> section for details.',
+      '<b>(4) 📧 Send overdue reminders</b> — confirms, then emails every overdue client at once using Mailgun + your email signature.',
+      '<b>(5) Status filter pills</b> — All / Draft / Pending / Paid / Overdue / Quote.',
+      '<b>(6) Row actions</b> — 💳 opens the Stripe pay link for that invoice; 👁 opens the invoice detail.',
+      '<b>(7) → Invoice button</b> — appears on quote-status rows. One-click conversion from "quote" to billable "pending".',
+      '<b>On the invoice detail header</b> you now also have: ✏️ <b>Edit</b> (reopens the builder), 📧 <b>Send Invoice</b> (composer with To/Cc/Bcc + Stripe pay link), 📊 <b>Activity</b> (this invoice\'s sends only), 📅 <b>Schedule</b> (queue a future reminder). See the relevant sections in this guide.'
     ]);
 
   var SEC_NEWINV = MOCK_NEWINV +
@@ -5040,10 +5042,109 @@
     bullets([
       '<b>(1) Client / date / invoice #</b> — client dropdown is required; date defaults to today; invoice # auto-generates.',
       '<b>(2) Add-line buttons</b> — Canning, Bottling, R&D / IP, Production Hours, Custom. Canning & Bottling auto-tier their per-unit rate from Supabase canning_rates / bottling_rates.',
-      '<b>(3) Line rows</b> — change quantity inline; per-case / per-unit price and totals update live. The X on the right removes a line.',
+      '<b>(3) Line rows</b> — change qty inline; per-case / per-unit price + totals update live. Every line type has a <b>Description (optional)</b> input — type free-form notes like "Mango flavor" or "pilot batch" and they\'re appended to the saved line with an em-dash. The ↺ arrow under a Canning/Bottling price resets it to the catalog rate. The X on the right removes a line.',
       '<b>(4) Discount + total</b> — enter a discount percent; subtotal and grand total recompute live.',
-      '<b>(5) Save buttons</b> — 💾 Save Invoice (status=pending), 💾 Save as Quote (status=quote), 📄 Save & Export PDF (real invoice PDF), 📋 Export as Quote (PDF only with 30-day validity, no DB save).'
+      '<b>(5) Save buttons</b> — 💾 Save Invoice (status=pending), 📤 <b>Save & Send</b> (saves then opens the Send Invoice composer pre-filled), 💾 Save as Quote (status=quote), 📄 Save & Export PDF (real invoice PDF), 📋 Export as Quote (PDF only with 30-day validity, no DB save).',
+      '<b>Edit existing invoices</b>: open any saved invoice → click ✏️ <b>Edit</b> on the header. The builder reopens with the client / date / lines / discount / addons / notes all pre-filled. Hitting Save updates the same Supabase row (no duplicate). Status is preserved — editing a paid invoice doesn\'t flip it back to pending.'
     ]);
+
+  // ────────────────────────────────────────────────────────────
+  // Send Invoice composer
+  // ────────────────────────────────────────────────────────────
+  var SEC_SEND_INVOICE = bullets([
+    '<b>Where to find it</b>: open any saved invoice → click the blue <b>📧 Send Invoice</b> button on the header. Also fires automatically when you click <b>📤 Save & Send</b> in the builder.',
+    '<b>To / Cc / Bcc</b> — all three accept comma-separated addresses (e.g. <code>brandon@client.com, ap@client.com</code>). To is pre-filled with the client\'s primary email; Cc is pre-filled with every entry from the Additional Emails section on the client record.',
+    '<b>📝 Apply a template…</b> — drop a saved template into the Subject + Message with one click. Variables like <code>{{client_name}} {{invoice_number}} {{amount}} {{due_date}}</code> are filled in automatically. <b>⚙ Manage</b> opens the template editor.',
+    '<b>Subject + Message</b> — auto-generated defaults but fully editable. The message is added <i>above</i> the invoice in the email body.',
+    '<b>▶ Preview embedded invoice</b> — collapsible pane that shows the invoice exactly as the recipient will see it (header, line items, totals, wire instructions, Pay button).',
+    '<b>🔗 Get public link</b> — copies the customer portal URL to your clipboard without sending an email. Useful for posting the invoice link in Slack / Twilio / a follow-up text message.',
+    '<b>📤 Send via Mailgun</b> — fires the email. Every send is logged to the Email Activity view automatically. The customer receives an HTML invoice with a green <b>💳 View Invoice & Pay Online</b> CTA button at the top and the wire instructions at the bottom.'
+  ]);
+
+  // ────────────────────────────────────────────────────────────
+  // Customer portal
+  // ────────────────────────────────────────────────────────────
+  var SEC_CUSTOMER_PORTAL = bullets([
+    '<b>What it is</b>: a public, read-only page that renders a single invoice for the customer. URL format: <code>https://goodliquidbevco.com/?invoice_view=&lt;token&gt;</code>. No login required.',
+    '<b>How a token is generated</b>: clicking 📧 <b>Send Invoice</b> auto-generates a token on the first send. You can also generate one manually via the <b>🔗 Get public link</b> button in the composer.',
+    '<b>What the customer sees</b>: the styled invoice (header + line items + totals + wire transfer instructions + footer), plus two payment buttons: 💳 <b>Pay with Card</b> (purple, 3% surcharge) and 🏦 <b>Pay with ACH</b> (teal, 0% surcharge). Each opens Stripe Checkout for the exact invoice amount.',
+    '<b>Save as PDF</b> — every portal page has a button that opens the browser print dialog so the customer can save their own PDF copy.',
+    '<b>Paid state</b> — once an invoice\'s status is set to <code>paid</code> in your CRM, the portal hides the Pay buttons and shows a "✓ Paid in full · Thank you" banner instead.',
+    '<b>Revoking access</b> — manually clear the <code>share_token</code> column on the invoice row in Supabase. Anyone hitting the old URL gets "Invoice not found or revoked."'
+  ]);
+
+  // ────────────────────────────────────────────────────────────
+  // Email templates
+  // ────────────────────────────────────────────────────────────
+  var SEC_EMAIL_TEMPLATES = bullets([
+    '<b>What it is</b>: a library of reusable email subjects + bodies. Apply one to any Send Invoice or AI Follow-Up composer with one click — variables fill in automatically.',
+    '<b>Where to open the manager</b>: in any composer, click <b>📝 Apply a template…</b> → ⚙ <b>Manage</b>. Or open the browser console and run <code>glOpenEmailTemplates()</code>.',
+    '<b>Starter templates seeded for you</b>: <i>Invoice send</i>, <i>Follow-up — gentle</i>, <i>Follow-up — firm</i>. You can add / edit / delete or mark inactive.',
+    '<b>Variables you can use in subject + body</b>: <code>{{client_name}}</code> <code>{{invoice_number}}</code> <code>{{amount}}</code> <code>{{date}}</code> <code>{{due_date}}</code> <code>{{days_late}}</code> <code>{{my_name}}</code> <code>{{my_phone}}</code>. Anything else in <code>{{…}}</code> is left as-is.',
+    '<b>Categories</b>: <code>invoice</code>, <code>followup</code>, <code>quote</code>, <code>onboarding</code>, <code>general</code>. The composer picker filters to the matching category + general.',
+    '<b>Active toggle</b>: setting a template to Inactive hides it from the pickers but keeps it in the manager (in case you want to re-enable it later).'
+  ]);
+
+  // ────────────────────────────────────────────────────────────
+  // Schedule follow-ups
+  // ────────────────────────────────────────────────────────────
+  var SEC_EMAIL_SCHEDULE = bullets([
+    '<b>What it is</b>: queue a follow-up email to send automatically on a future date / time. A Supabase Edge Function runs every 15 minutes and dispatches anything due.',
+    '<b>How to schedule</b>: open any saved invoice → click the yellow <b>📅 Schedule</b> button on the header. A modal opens with To (pre-filled with client email), Send At (defaults to T+7 days, 9 AM), Subject, and Message (defaults to a reminder template).',
+    '<b>What happens next</b>: a row is inserted into the <code>email_schedule</code> table with status=pending. The cron job picks it up at the scheduled time, sends via Mailgun, marks it as sent, and logs an entry in Email Activity.',
+    '<b>If a send fails</b>: the worker retries twice before marking the row failed. The failure reason is stored on the row (<code>last_error</code> column).',
+    '<b>To cancel a queued send</b>: open Supabase → <code>email_schedule</code> table → set the row\'s status to <code>cancelled</code>. (A UI for managing the queue is on the roadmap.)'
+  ]);
+
+  // ────────────────────────────────────────────────────────────
+  // Email Activity
+  // ────────────────────────────────────────────────────────────
+  var SEC_EMAIL_ACTIVITY = bullets([
+    '<b>What it is</b>: a list of every email sent from the CRM with real-time status (sent → delivered → opened → clicked → bounced).',
+    '<b>Two ways to open it</b>: <ol style="margin:4px 0 4px 18px;padding:0"><li>From the <b>Invoices</b> list page header: <b>📊 Activity</b> (shows every send across every invoice).</li><li>From a single invoice\'s detail header: <b>📊 Activity</b> (shows only that invoice\'s sends).</li></ol>',
+    '<b>Status meanings</b>: <code>sent</code> (Mailgun accepted) → <code>delivered</code> (recipient mail server accepted) → <code>opened</code> (recipient opened the email) → <code>clicked</code> (recipient clicked a link in the email). <code>bounced</code> = permanent delivery failure; <code>failed</code> = Mailgun rejected the request.',
+    '<b>How tracking works</b>: Mailgun fires webhooks at our <code>mailgun-webhook</code> Edge Function, which updates the matching row in <code>email_log</code>. Status changes are reflected the next time you open the Activity view (or refresh).',
+    '<b>Auto-tagging</b>: when an email subject or body contains <code>GL-####</code>, the log row is automatically linked to that invoice. So sends from the Send Invoice composer show up in their invoice\'s Activity tab.',
+    '<b>What\'s logged</b>: To, Cc, Bcc, subject, body preview (first 280 chars), status, sent timestamp, delivered timestamp, first open timestamp, open count, click count, bounce reason. Stored in the <code>email_log</code> table.'
+  ]);
+
+  // ────────────────────────────────────────────────────────────
+  // Stripe payments
+  // ────────────────────────────────────────────────────────────
+  var SEC_STRIPE_PAY = bullets([
+    '<b>How customers pay</b>: every invoice email includes a green <b>💳 View Invoice & Pay Online</b> CTA button. Clicking it opens the customer portal page. From there the customer sees <b>💳 Pay with Card</b> (3% surcharge added as a separate line on the Stripe receipt) and <b>🏦 Pay with ACH</b> (0% surcharge).',
+    '<b>Card vs ACH</b>: the surcharge only applies to card payments (per Visa / MC rules — that\'s why ACH is shown separately). The customer sees the surcharge broken out on Stripe\'s checkout page, so it\'s never a surprise charge.',
+    '<b>From the admin side</b>: open any unpaid invoice → click <b>💳 Charge via Stripe</b> on the detail header. A picker lets you choose card / ACH / both and per-invoice surcharge override.',
+    '<b>Test mode vs live</b>: currently using <code>sk_test_…</code> keys. To go live, register Visa/MC, swap in <code>sk_live_…</code> in the <code>STRIPE_SECRET_KEY</code> Edge Function secret, and redeploy the function. Stripe\'s test card <code>4242 4242 4242 4242</code> works for any expiry/CVC in test mode.',
+    '<b>Marking the invoice paid</b>: <i>currently manual</i>. When you see a Stripe payout, click <b>✓ Mark paid</b> on the invoice detail header. Auto-marking via Stripe webhook is on the roadmap.',
+    '<b>Receipts</b>: Stripe emails the customer a receipt automatically. They can also save the invoice as PDF from the customer portal.'
+  ]);
+
+  // ────────────────────────────────────────────────────────────
+  // Compliance
+  // ────────────────────────────────────────────────────────────
+  var SEC_COMPLIANCE = bullets([
+    '<b>What it is</b>: a 21 CFR Part 117 + Part 11–compliant logging system built into the CRM. Three database tables back it: <code>compliance_tasks</code>, <code>compliance_records</code>, <code>hold_tags</code>.',
+    '<b>Where to find it</b>: left sidebar → 📋 <b>Compliance Tasks</b> (master daily checklist) · 🚫 <b>Hold Tags</b> · 🧼 <b>CIP / Sanitation Log</b>.',
+    '<b>Header buttons on the Compliance Tasks page</b>: 📤 <b>Export</b> / 🚨 <b>SMS alerts</b> / 🎲 <b>Mock recall</b> / 🪟 <b>Glass break</b> / 🗄 <b>Archive old</b> / 📄 <b>Documents</b> / 🔒 <b>Inspector link</b> (generate read-only token URL) / 🥜 <b>Allergen decl</b> (per-client allergen statement) / 📥 <b>Import training CSV</b> / 📧 <b>Send digest</b> (daily compliance summary via Mailgun) / 📊 <b>Monthly report</b> (printable PDF of last 30d) / ⚙️ <b>Applicability</b> / 🎯 <b>CCP Limits</b> / 🆕 <b>New Hold Tag</b>.',
+    '<b>Multi-PCQI signing</b>: any signed compliance record gets a "✍️ Add second PCQI signature" button on its modal. Captures typed signature + timestamp for dual-PCQI critical records.',
+    '<b>Inspector mode</b>: click <b>🔒 Inspector link</b> → enter the inspector\'s name + agency + token validity hours (default 8). You get a copyable URL. Open that URL in any browser to enter Inspector Mode: a red banner appears, every input/button is disabled, the inspector can only view + print. Tokens auto-expire.',
+    '<b>Allergen declarations</b>: click <b>🥜 Allergen decl</b> on the Compliance page (or on a Client\'s detail panel — pre-fills the client_id). Fill the 9 major US allergens + custom claims. Save + Share generates a public URL the customer can bookmark.',
+    '<b>Multi-facility</b>: a 🏭 chip top-right shows the active facility (default GL-PALMETTO). Every new compliance record / task / hold tag is auto-tagged with that facility. Click the chip to switch facilities (only relevant if you spin up a second location).',
+    '<b>Camera-based scanning</b>: <b>🥫 Scan Lot QR</b> opens the device camera and decodes lot barcodes (native BarcodeDetector — Chrome/Edge). <b>📷 Scan COA</b> appears on the receiving form → snap a Certificate of Analysis → Claude Vision parses lot/vendor/dates/results → fields pre-fill.',
+    '<b>AI root-cause suggester</b>: on any defect / NCR modal, click 🤖 <b>Suggest root cause</b> → sends defect type + description to Claude → returns root cause + corrective + preventive actions you can copy in.'
+  ]);
+
+  // ────────────────────────────────────────────────────────────
+  // Additional emails (per-client)
+  // ────────────────────────────────────────────────────────────
+  var SEC_CLIENT_EMAILS = bullets([
+    '<b>What it is</b>: every client record can have any number of additional emails (AP, ops, sales contacts, etc.) beyond the primary contact email.',
+    '<b>Where to add</b>: open any client → ✏️ <b>Edit Client</b> → scroll to <b>ADDITIONAL EMAILS</b> below the Main Point of Contact section. Click <b>+ Add email</b> to add a row. Each row has an optional label (e.g. "AP", "Ops") and the email address. The × button removes a row.',
+    '<b>How they\'re used in sends</b>:<ol style="margin:4px 0 4px 18px;padding:0"><li><b>Send Invoice composer</b>: primary email pre-fills To; every additional email pre-fills Cc.</li><li><b>AI Follow-Up</b>: primary email is To; additional emails are Cc. A new "Cc" row in the composer shows you who\'ll be copied before you hit Send.</li><li><b>AR Collection</b>: the "📧 Send" button label shows "+Cc N" so you know how many extras will be copied.</li></ol>',
+    '<b>De-dup</b>: if a customer\'s primary email is also in the additional list, it\'s automatically excluded from Cc (you won\'t double-mail anyone).',
+    '<b>Display</b>: every additional email is listed below the primary on the client\'s detail card, with its label in muted text.'
+  ]);
 
   var SEC_USERS = MOCK_USERS +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
@@ -5160,30 +5261,43 @@
   ]);
 
   var HELP_HTML =
-    section('help-overview',     '👋 OVERVIEW',                   SEC_OVERVIEW) +
-    section('help-dashboard',    '📊 DASHBOARD',                  SEC_DASHBOARD) +
-    section('help-clients',      '👥 CLIENTS',                    SEC_CLIENTS) +
-    section('help-pipeline',     '📊 PIPELINE (DEALS)',           SEC_PIPELINE) +
-    section('help-invoices',     '🧾 INVOICES',                   SEC_INVOICES) +
-    section('help-newinv',       '➕ NEW INVOICE BUILDER',         SEC_NEWINV) +
-    section('help-referrals',    '🤝 REFERRALS',                  SEC_REFERRALS) +
-    section('help-referrers',    '👤 REFERRERS',                  SEC_REFERRERS) +
-    section('help-activity',     '📡 ACTIVITY FEED',              SEC_ACTIVITY) +
-    section('help-calendar',     '📅 CALENDAR',                   SEC_CALENDAR) +
-    section('help-production',   '🏭 PRODUCTION SCHEDULE',        SEC_PRODUCTION) +
-    section('help-tasks',        '✅ TASKS',                      SEC_TASKS) +
-    section('help-documents',    '📁 DOCUMENTS',                  SEC_DOCUMENTS) +
-    section('help-inventory',    '📦 INVENTORY',                  SEC_INVENTORY) +
-    section('help-announcements','📣 ANNOUNCEMENTS',              SEC_ANNOUNCEMENTS) +
-    section('help-customers',    '🌐 CUSTOMER LOGINS (ADMIN)',    SEC_CUSTOMERS) +
-    section('help-users',        '🔑 USERS & PERMISSIONS (ADMIN)',SEC_USERS) +
-    section('help-settings',     '⚙️ SETTINGS & INTEGRATIONS',    SEC_SETTINGS) +
-    section('help-shortcuts',    '⌨️ KEYBOARD SHORTCUTS',          SEC_SHORTCUTS);
+    section('help-overview',        '👋 OVERVIEW',                   SEC_OVERVIEW) +
+    section('help-dashboard',       '📊 DASHBOARD',                  SEC_DASHBOARD) +
+    section('help-clients',         '👥 CLIENTS',                    SEC_CLIENTS) +
+    section('help-client-emails',   '📧 ADDITIONAL EMAILS (AP / OPS)', SEC_CLIENT_EMAILS) +
+    section('help-pipeline',        '📊 PIPELINE (DEALS)',           SEC_PIPELINE) +
+    section('help-invoices',        '🧾 INVOICES',                   SEC_INVOICES) +
+    section('help-newinv',          '➕ NEW INVOICE BUILDER',         SEC_NEWINV) +
+    section('help-send-invoice',    '📧 SEND INVOICE (COMPOSER)',    SEC_SEND_INVOICE) +
+    section('help-customer-portal', '🌐 CUSTOMER PORTAL (PUBLIC LINK)', SEC_CUSTOMER_PORTAL) +
+    section('help-email-templates', '📝 EMAIL TEMPLATES',            SEC_EMAIL_TEMPLATES) +
+    section('help-email-schedule',  '📅 SCHEDULED FOLLOW-UPS',       SEC_EMAIL_SCHEDULE) +
+    section('help-email-activity',  '📊 EMAIL ACTIVITY (TRACKING)',  SEC_EMAIL_ACTIVITY) +
+    section('help-stripe-pay',      '💳 STRIPE PAYMENTS',            SEC_STRIPE_PAY) +
+    section('help-compliance',      '📋 COMPLIANCE (FDA / GMP)',     SEC_COMPLIANCE) +
+    section('help-referrals',       '🤝 REFERRALS',                  SEC_REFERRALS) +
+    section('help-referrers',       '👤 REFERRERS',                  SEC_REFERRERS) +
+    section('help-activity',        '📡 ACTIVITY FEED',              SEC_ACTIVITY) +
+    section('help-calendar',        '📅 CALENDAR',                   SEC_CALENDAR) +
+    section('help-production',      '🏭 PRODUCTION SCHEDULE',        SEC_PRODUCTION) +
+    section('help-tasks',           '✅ TASKS',                      SEC_TASKS) +
+    section('help-documents',       '📁 DOCUMENTS',                  SEC_DOCUMENTS) +
+    section('help-inventory',       '📦 INVENTORY',                  SEC_INVENTORY) +
+    section('help-announcements',   '📣 ANNOUNCEMENTS',              SEC_ANNOUNCEMENTS) +
+    section('help-customers',       '🌐 CUSTOMER LOGINS (ADMIN)',    SEC_CUSTOMERS) +
+    section('help-users',           '🔑 USERS & PERMISSIONS (ADMIN)',SEC_USERS) +
+    section('help-settings',        '⚙️ SETTINGS & INTEGRATIONS',    SEC_SETTINGS) +
+    section('help-shortcuts',       '⌨️ KEYBOARD SHORTCUTS',          SEC_SHORTCUTS);
 
   var TOC_ENTRIES = [
     ['help-overview','👋 Overview'],['help-dashboard','📊 Dashboard'],
-    ['help-clients','👥 Clients'],['help-pipeline','📊 Pipeline'],
+    ['help-clients','👥 Clients'],['help-client-emails','📧 Additional Emails'],
+    ['help-pipeline','📊 Pipeline'],
     ['help-invoices','🧾 Invoices'],['help-newinv','➕ New Invoice'],
+    ['help-send-invoice','📧 Send Invoice'],['help-customer-portal','🌐 Customer Portal'],
+    ['help-email-templates','📝 Email Templates'],['help-email-schedule','📅 Scheduled Follow-ups'],
+    ['help-email-activity','📊 Email Activity'],['help-stripe-pay','💳 Stripe Payments'],
+    ['help-compliance','📋 Compliance'],
     ['help-referrals','🤝 Referrals'],['help-referrers','👤 Referrers'],
     ['help-activity','📡 Activity'],['help-calendar','📅 Calendar'],
     ['help-production','🏭 Production'],['help-tasks','✅ Tasks'],
@@ -5198,7 +5312,8 @@
     'cpg-referrals':'help-referrals','cpg-referrers':'help-referrers','cpg-activity':'help-activity',
     'cpg-calendar':'help-calendar','cpg-production-cal':'help-production','cpg-tasks':'help-tasks',
     'cpg-documents':'help-documents','cpg-inventory':'help-inventory','cpg-announcements':'help-announcements',
-    'cpg-customers':'help-customers','cpg-users':'help-users'
+    'cpg-customers':'help-customers','cpg-users':'help-users',
+    'cpg-compliance':'help-compliance','cpg-holds':'help-compliance','cpg-cip':'help-compliance'
   };
   function currentSection(){
     var active = document.querySelector('#crm-panel .cpg.act');
