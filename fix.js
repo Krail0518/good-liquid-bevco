@@ -20085,19 +20085,49 @@
       rows = rall.data || [];
     }
     var STATUS_COLOR = { sent:'#5fcf9e', delivered:'#5fcf9e', opened:'#1a6fff', clicked:'#7c3aed', bounced:'#e74c3c', failed:'#e74c3c', queued:'#f5c842' };
+    function timeAgo(iso){
+      if(!iso) return '';
+      var ms = Date.now() - new Date(iso).getTime();
+      var s = Math.floor(ms/1000);
+      if(s < 60) return 'just now';
+      if(s < 3600) return Math.floor(s/60) + 'm ago';
+      if(s < 86400) return Math.floor(s/3600) + 'h ago';
+      var d = Math.floor(s/86400);
+      return d < 7 ? d + 'd ago' : fmtDate(iso).replace(',', '');
+    }
+    function stepHtml(label, iso, color){
+      var done = !!iso;
+      return '<div style="display:flex;align-items:center;gap:6px;font-size:10px;color:' + (done ? color : '#3d4a63') + ';white-space:nowrap">' +
+        '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:' + (done ? color : '#3d4a63') + '"></span>' +
+        '<span style="text-transform:uppercase;letter-spacing:.5px;font-weight:700">' + label + '</span>' +
+        (done ? '<span style="color:var(--muted);font-weight:400">' + timeAgo(iso) + '</span>' : '') +
+      '</div>';
+    }
     var bodyHtml = rows.length ? rows.map(function(r){
-      var color = STATUS_COLOR[r.status] || '#9aa7bd';
-      return '<div style="display:grid;grid-template-columns:1fr 90px 130px;gap:12px;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.05);align-items:center">' +
-        '<div>' +
-          '<div style="color:#fff;font-size:13px;font-weight:600">' + escHtml(r.subject) + '</div>' +
-          '<div style="font-size:11px;color:var(--muted);margin-top:2px">→ ' + escHtml(r.to_email) +
-            (r.cc_emails && r.cc_emails.length ? ' · cc ' + r.cc_emails.length : '') +
+      var statusColor = STATUS_COLOR[r.status] || '#9aa7bd';
+      // Build a sent → delivered → opened → clicked timeline so the user
+      // can see exactly when each stage happened.
+      var timeline =
+        stepHtml('Sent',      r.sent_at,         '#5fcf9e') +
+        stepHtml('Delivered', r.delivered_at,    '#5fcf9e') +
+        stepHtml('Opened',    r.first_opened_at, '#1a6fff') +
+        (r.click_count > 0 ? stepHtml('Clicked', r.first_opened_at /* approx */, '#7c3aed') : '');
+      var counts = '';
+      if(r.open_count > 0) counts += '<span style="color:#1a6fff">' + r.open_count + ' open' + (r.open_count === 1 ? '' : 's') + '</span>';
+      if(r.click_count > 0) counts += (counts ? ' · ' : '') + '<span style="color:#7c3aed">' + r.click_count + ' click' + (r.click_count === 1 ? '' : 's') + '</span>';
+      return '<div style="padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.05)">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="color:#fff;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(r.subject) + '</div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:2px">→ ' + escHtml(r.to_email) +
+              (r.cc_emails && r.cc_emails.length ? ' · cc ' + r.cc_emails.length : '') +
+            '</div>' +
+          '</div>' +
+          '<div style="text-align:right;flex-shrink:0"><span style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:' + statusColor + ';font-weight:700">' + r.status + '</span>' +
+            (counts ? '<div style="font-size:10px;margin-top:2px">' + counts + '</div>' : '') +
           '</div>' +
         '</div>' +
-        '<div style="text-align:right"><span style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:' + color + ';font-weight:700">' + r.status + '</span>' +
-          (r.open_count ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + r.open_count + ' open' + (r.open_count !== 1 ? 's' : '') + '</div>' : '') +
-        '</div>' +
-        '<div style="font-size:11px;color:var(--muted);text-align:right">' + fmtDate(r.sent_at || r.created_at) + '</div>' +
+        '<div style="display:flex;gap:14px;margin-top:8px;flex-wrap:wrap">' + timeline + '</div>' +
       '</div>';
     }).join('') : '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No sends yet.</div>';
 
