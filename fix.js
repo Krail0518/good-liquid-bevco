@@ -1612,6 +1612,9 @@
     var builderEl = document.getElementById('gl-inv-builder');
     var editingSupaId = builderEl ? builderEl.getAttribute('data-editing-supa-id') : null;
     var editingId     = builderEl ? builderEl.getAttribute('data-editing-id') : null;
+    // Robustness: if we're editing but lost the supa row id (because a
+    // prior save replaced the in-memory inv without preserving supaId),
+    // we'll look it up by invoice_number further down before the update.
 
     var client=(window.clients||[]).find(function(c){return c.id===cid;})||{};
     var invIdEl=document.getElementById('ginv-id');
@@ -1645,6 +1648,13 @@
 
     var inv={
       id:invId,
+      // Preserve the supa row id across saves so subsequent edits still
+      // route through UPDATE (not INSERT that would silently fail on the
+      // unique invoice_number constraint).
+      supaId: editingSupaId || (function(){
+        var prior = (window.invoices||[]).find(function(p){ return p && p.id === invId; });
+        return prior ? prior.supaId : undefined;
+      })(),
       client:cid,
       clientName:client.name||'',
       clientEmail:client.email||'',
@@ -1686,7 +1696,7 @@
     // The earlier raw-fetch path used only the anon API key, which RLS
     // policies that require role=authenticated will reject (PR #61's
     // blanket RLS migration enforces `to authenticated`).
-    (function syncInvoice(){
+    (async function syncInvoice(){
       var sb = window.supa;
       if(!sb){
         console.error('[GL] Supabase JS client not ready for invoice sync.');
@@ -1704,6 +1714,16 @@
         payment_terms: inv.paymentTerms,
         line_items:combinedLines
       };
+      // Fallback: if we're editing but lost the supa row id, look it up by
+      // invoice_number. Prevents the save from silently INSERT-failing on a
+      // unique-constraint violation when the user edits an invoice multiple
+      // times in one session.
+      if(!editingSupaId && editingId){
+        try {
+          var lookup = await sb.from('invoices').select('id').eq('invoice_number', editingId).maybeSingle();
+          if(lookup && lookup.data && lookup.data.id) editingSupaId = lookup.data.id;
+        } catch(e){ /* fall through to insert */ }
+      }
       // On INSERT (new invoice) seed status=pending. On UPDATE preserve the
       // existing row's status so editing a paid invoice doesn't accidentally
       // un-mark it as paid.
