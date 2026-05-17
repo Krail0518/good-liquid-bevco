@@ -19363,9 +19363,18 @@
         payment_method: method,
         surcharge_pct: method === 'card' ? 3 : 0
       };
+      // Supabase function gateway requires an Authorization header even
+      // when the function was deployed with --no-verify-jwt unless the
+      // anon-call path is explicitly enabled. Send the project's anon key
+      // so anonymous customers (no CRM login) can hit the endpoint.
+      var ANON_JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmamtlcW14d3V5aGJxeXVnY2dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNDI2MDksImV4cCI6MjA5MzkxODYwOX0.godgU_jeprCqSzqe0ji_ZA_hwvPF2s7BmzQyAB-c_xE';
       fetch('https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1/stripe-checkout-session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': ANON_JWT,
+          'Authorization': 'Bearer ' + ANON_JWT
+        },
         body: JSON.stringify(body)
       }).then(function(r){
         if(!r.ok) return r.text().then(function(t){ throw new Error('HTTP '+r.status+': '+t.slice(0,200)); });
