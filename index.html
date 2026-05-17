@@ -4833,11 +4833,16 @@ async function downloadInvoicePDF(invId) {
 // Builds an HTML email body for the invoice (same data as the PDF but
 // styled for email clients) and opens a composer with editable To / Cc /
 // Bcc / Subject / Message. Sends via Mailgun with the HTML as the body.
-function buildInvoiceEmailHtml(invId){
+function buildInvoiceEmailHtml(invId, opts){
+  opts = opts || {};
   const inv = invoices.find(i => i.id === invId);
   if(!inv) return '';
   const c = clients.find(x => x.id === inv.client) || { name: inv.clientName, contact: '', email: '' };
   const usd = n => '$' + (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  // Public portal link — drives "View & Pay" CTA. Falls back to wire-only
+  // payment instructions when no token (e.g. caller didn't generate one).
+  const portalUrl = opts.portalUrl || '';
+  const showPay = !!portalUrl;
   const useBilling = c.billingSame === false && (c.billingStreet || c.billingCity);
   const bStreet = useBilling ? c.billingStreet : c.street;
   const bCity   = useBilling ? c.billingCity   : c.city;
@@ -4898,6 +4903,10 @@ function buildInvoiceEmailHtml(invId){
         <tr style="background:#f4fbf9"><td colspan="3" style="padding:14px;font-weight:900;color:#0F6E56;font-size:16px">Total Due</td><td style="padding:14px;text-align:right;font-weight:900;color:#0F6E56;font-size:18px">${usd(inv.amount)}</td></tr>
       </tbody>
     </table>
+    ${showPay ? `<div style="text-align:center;margin:24px 28px 0">
+      <a href="${portalUrl}" style="display:inline-block;background:#0F6E56;color:#fff;padding:14px 32px;border-radius:8px;font-size:15px;font-weight:700;text-decoration:none;letter-spacing:.3px">💳 View Invoice & Pay Online →</a>
+      <div style="font-size:11px;color:#666;margin-top:8px">Pay by card or ACH via Stripe. Or use the wire instructions below.</div>
+    </div>` : ''}
     <div style="margin:24px 28px;padding:14px 18px;background:#f4fbf9;border:1px solid #0F6E56;border-radius:8px">
       <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#0F6E56;font-weight:700;margin-bottom:8px">Payment Instructions — Wire Transfer</div>
       <table style="width:100%;border-collapse:collapse;font-size:13px">
@@ -4980,7 +4989,16 @@ function openSendInvoiceModal(invId){
     }
     btn.disabled = true; btn.textContent = 'Sending…';
     status.style.color = 'var(--muted)'; status.textContent = '';
-    const html = `<div style="font-family:Arial,sans-serif;color:#1a1a1a;line-height:1.55"><div style="white-space:pre-wrap;padding:0 28px 14px">${message.replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</div>${buildInvoiceEmailHtml(invId)}</div>`;
+    // Generate a public share token (if not already set) so the email can
+    // include a "View & Pay Online" CTA. The token grants anon read on
+    // the invoice row + drives the customer portal Pay-via-Stripe flow.
+    let portalUrl = '';
+    try {
+      if(typeof window.glGenerateInvoiceShareLink === 'function'){
+        portalUrl = (await window.glGenerateInvoiceShareLink(inv.id)) || '';
+      }
+    } catch(e){ /* if token gen fails, send without the CTA */ }
+    const html = `<div style="font-family:Arial,sans-serif;color:#1a1a1a;line-height:1.55"><div style="white-space:pre-wrap;padding:0 28px 14px">${message.replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</div>${buildInvoiceEmailHtml(invId, { portalUrl: portalUrl })}</div>`;
     const ok = await sendMailgunEmail(toRaw, subject, message, { cc: ccRaw, bcc: bccRaw, html: html });
     btn.disabled = false; btn.textContent = '📤 Send via Mailgun';
     if(ok){
