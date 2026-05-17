@@ -16553,3 +16553,115 @@
 
   console.log('[GL] compliance phase 3 pack loaded — Mock Recall + Glass-Break + Allergen Warn + Vendor FSP + SMS + Photo Upload');
 }());
+
+
+/* ============================================================
+   ADMIN THEME REFRESH
+   - Lighter background palette (still dark, but less stark — easier
+     on the eyes for long compliance / data-entry sessions).
+   - Bold, clearly-visible sidebar section headers with a left accent
+     bar so you always know which section you're in.
+   Injected via a <style> tag so it can be tuned/disabled cleanly
+   without touching the base index.html stylesheet.
+   ============================================================ */
+(function(){
+  if(document.getElementById('gl-theme-refresh')) return;
+  var s = document.createElement('style');
+  s.id = 'gl-theme-refresh';
+  s.textContent = [
+    // ── Lighter background palette (only inside #crm-panel) ──
+    '#crm-panel { background: #243653 !important; }',
+    '#crm-panel #crm-top { background: #1c2c46 !important; }',
+    '#crm-panel #crm-sidebar { background: #1c2c46 !important; }',
+    '#crm-panel .crm-main { background: #243653 !important; }',
+    '#crm-panel .inv-detail { background: #243653 !important; }',
+    '#crm-panel .inv-preview { background: #1c2c46 !important; }',
+    '#crm-panel .modal-box { background: #243653 !important; }',
+
+    // Card surfaces — lift one more notch so they pop against the lighter bg
+    '#crm-panel .cmc,',
+    '#crm-panel .ccard,',
+    '#crm-panel .kcol,',
+    '#crm-panel .ref-card,',
+    '#crm-panel .rref-card,',
+    '#crm-panel .panel-card,',
+    '#crm-panel .pt-wrap { background: #2e486b !important; border-color: rgba(255,255,255,.1) !important; }',
+    '#crm-panel .kcard { background: #243653 !important; border-color: rgba(255,255,255,.1) !important; }',
+    '#crm-panel .kcard:hover { border-color: rgba(0,229,192,.32) !important; }',
+
+    // Form / input fields — slightly brighter so they read on lifted bg
+    '#crm-panel .fsel,',
+    '#crm-panel .finp { background: rgba(255,255,255,.08) !important; border-color: rgba(255,255,255,.16) !important; }',
+
+    // Subtle row hover lift on tables
+    '#crm-panel .ctbl tr:hover td { background: rgba(255,255,255,.06) !important; }',
+    '#crm-panel .ctbl td { border-bottom-color: rgba(255,255,255,.08) !important; }',
+    '#crm-panel .ctbl th { border-bottom-color: rgba(255,255,255,.12) !important; }',
+
+    // Sidebar nav items — keep look but slightly nudge contrast on lighter bg
+    '#crm-panel .cni { color: #b9c5d6 !important; }',
+    '#crm-panel .cni:hover { background: rgba(255,255,255,.08) !important; color: #fff !important; }',
+    '#crm-panel .cni.act { background: rgba(0,229,192,.12) !important; color: var(--teal) !important; border-color: rgba(0,229,192,.32) !important; font-weight:600; }',
+
+    // ── BOLD SIDEBAR SECTION HEADERS ──
+    // Distinct top divider + left accent bar + larger uppercase label
+    '#crm-panel .cni-sec {',
+      'font-size: 11px !important;',
+      'letter-spacing: 2.5px !important;',
+      'color: #7fc6f5 !important;',
+      'font-weight: 800 !important;',
+      'text-transform: uppercase !important;',
+      'padding: 11px 8px 9px 14px !important;',
+      'margin: 12px 0 4px !important;',
+      'background: linear-gradient(90deg, rgba(127,198,245,.10), rgba(127,198,245,.02)) !important;',
+      'border-left: 3px solid #7fc6f5 !important;',
+      'border-radius: 0 8px 8px 0 !important;',
+    '}',
+    '#crm-panel .cni-sec:first-of-type { margin-top: 4px !important; }',
+
+    // Color-code each section header by what it represents (subtle hue shift)
+    // We can't use :contains() in CSS so we rely on the .cni-sec sibling text via JS — see below.
+
+    // Make the topbar brand a hair brighter against lighter bg
+    '#crm-panel .crm-brand-name { color:#fff !important; }',
+    '#crm-panel .crm-brand-sub { color: rgba(255,255,255,.55) !important; }',
+
+    ''
+  ].join('\n');
+  (document.head || document.documentElement).appendChild(s);
+
+  // ── Optional: tint each section header by name ──
+  // CSS can't match by text, so we add a data-tone attribute via JS once at boot.
+  var TONE = {
+    main:           { color:'#7fc6f5', accent:'#7fc6f5' },
+    billing:        { color:'#f5c842', accent:'#f5c842' },
+    referrals:      { color:'#c4a4f8', accent:'#c4a4f8' },
+    other:          { color:'#9aa7bd', accent:'#9aa7bd' },
+    operations:     { color:'#5fcf9e', accent:'#5fcf9e' },
+    calendars:      { color:'#7fc6f5', accent:'#7fc6f5' },
+    'operations pro':{ color:'#00e5c0', accent:'#00e5c0' },
+    marketing:      { color:'#ff8579', accent:'#ff8579' },
+    compliance:     { color:'#f5c842', accent:'#f5c842' },
+    'quality & supply':{ color:'#c4a4f8', accent:'#c4a4f8' },
+    tools:          { color:'#7fc6f5', accent:'#7fc6f5' }
+  };
+  function tintSectionHeaders(){
+    var nav = document.querySelector('#crm-sidebar .cnav');
+    if(!nav){ setTimeout(tintSectionHeaders, 500); return; }
+    nav.querySelectorAll('.cni-sec').forEach(function(el){
+      if(el.dataset.glToned === '1') return;
+      var key = (el.textContent || '').trim().toLowerCase();
+      var t = TONE[key];
+      if(t){
+        el.style.color = t.color;
+        el.style.borderLeftColor = t.accent;
+        el.style.background = 'linear-gradient(90deg, ' + t.color + '1f, ' + t.color + '04)';
+      }
+      el.dataset.glToned = '1';
+    });
+  }
+  if(document.readyState !== 'loading') tintSectionHeaders();
+  else document.addEventListener('DOMContentLoaded', tintSectionHeaders);
+
+  console.log('[GL] admin theme refresh — lighter palette + bold colored section headers');
+}());
