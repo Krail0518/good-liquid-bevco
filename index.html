@@ -6117,6 +6117,13 @@ async function sendMailgunEmail(to, subject, body, opts){
     formData.append('text', body);
     if(opts.html) formData.append('html', opts.html);
     if(opts.replyTo) formData.append('h:Reply-To', opts.replyTo);
+    // Force open + click tracking on every send so we don't depend on the
+    // Mailgun domain-level toggle. Opens come back as a 1x1 pixel; clicks
+    // are rewritten through Mailgun's tracking redirect. The webhook fires
+    // matching events back to mailgun-webhook → email_log row update.
+    formData.append('o:tracking', 'yes');
+    formData.append('o:tracking-opens', 'yes');
+    formData.append('o:tracking-clicks', 'yes');
     // Optional file attachments: array of { blob, filename }.
     if(Array.isArray(opts.attachments)){
       opts.attachments.forEach(function(a){
