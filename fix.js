@@ -20804,21 +20804,34 @@
     var sb = getSB(); if(!sb){ alert('Supabase not ready'); return; }
     var email = prompt('Customer email to invite for ' + (clientName||'this client') + ':');
     if(!email) return;
-    email = email.trim();
+    email = email.trim().toLowerCase();
     if(email.indexOf('@') < 0){ alert('Not a valid email'); return; }
-    // Generate a temp password — customer should reset via "Forgot password"
-    var tempPw = 'GL!' + Math.random().toString(36).slice(2,10);
-    var r = await sb.auth.signUp({ email: email, password: tempPw, options: { emailRedirectTo: location.origin + location.pathname + '?portal=1' } });
-    if(r.error){ alert('Sign up failed: ' + r.error.message); return; }
-    if(!r.data || !r.data.user){ alert('No user returned'); return; }
-    var ins = await sb.from('customer_users').insert({
-      auth_user_id: r.data.user.id,
-      client_id: clientId,
-      email: email,
-      invited_by: (window.currentUser && window.currentUser.id) || null
-    });
-    if(ins.error){ alert('Customer link failed: ' + ins.error.message); return; }
-    alert('Invited ' + email + '.\n\nThey will get a confirmation email from Supabase.\nAsk them to:\n  1) confirm the email\n  2) visit ' + location.origin + location.pathname + '?portal=1\n  3) click "Forgot password" to set their own password.');
+    var redirectTo = location.origin + location.pathname + '?portal=1';
+    // 1) Create auth user (idempotent — already-exists is fine, means they were invited before).
+    var tempPw = 'GL!' + Math.random().toString(36).slice(2,12) + 'aZ1';
+    var su = await sb.auth.signUp({ email: email, password: tempPw, options: { emailRedirectTo: redirectTo } });
+    var userId = (su.data && su.data.user && su.data.user.id) || null;
+    if(su.error && !/already (registered|exists)|user_already_exists/i.test(su.error.message||'')){
+      alert('Sign up failed: ' + su.error.message); return;
+    }
+    // 2) Link auth user → client (idempotent — duplicate is fine).
+    if(userId){
+      var ins = await sb.from('customer_users').insert({
+        auth_user_id: userId,
+        client_id: clientId,
+        email: email,
+        invited_by: (window.currentUser && window.currentUser.id) || null
+      });
+      if(ins.error && !/duplicate|unique|already exists/i.test(ins.error.message||'')){
+        console.warn('[invite-portal] customer_users insert:', ins.error);
+      }
+    }
+    // 3) Always send a password-reset email — this goes through SMTP reliably,
+    //    works for new users and for re-invites, and gives the customer a usable
+    //    one-click flow to set their password and land on the portal.
+    var pr = await sb.auth.resetPasswordForEmail(email, { redirectTo: redirectTo });
+    if(pr.error){ alert('Email failed to send: ' + pr.error.message); return; }
+    alert('Invite sent to ' + email + '.\n\nThey will receive an email to set their password, then can sign in at ' + redirectTo);
   };
   // Inject the button on the client detail overlay action row
   (function watchClientDetail(){
