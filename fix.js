@@ -20463,3 +20463,134 @@
 
   console.log('[GL] billing quick-wins loaded: glOpenScheduleQueue · glSnoozeInvoice · auto-expire quotes · PWA nudge');
 }());
+
+/* ============================================================
+   ADMIN EXPORT — one-click full-database backup as a ZIP of JSON files
+   Each table → its own .json file inside a date-stamped ZIP.
+   ============================================================ */
+(function(){
+  function getSB(){ return window.supa || null; }
+  function toast(msg, kind){
+    var d = document.createElement('div');
+    d.textContent = msg;
+    d.style.cssText='position:fixed;bottom:20px;right:20px;background:'+(kind==='err'?'#b91c1c':'#0f766e')+';color:#fff;padding:12px 18px;border-radius:8px;z-index:99999;font:14px system-ui;box-shadow:0 4px 12px rgba(0,0,0,.2);max-width:360px';
+    document.body.appendChild(d);
+    setTimeout(function(){ d.remove(); }, 4500);
+  }
+
+  // Lazily load JSZip from CDN
+  var _zipLoading = null;
+  function ensureJsZip(){
+    if(window.JSZip) return Promise.resolve(window.JSZip);
+    if(_zipLoading) return _zipLoading;
+    _zipLoading = new Promise(function(resolve, reject){
+      var s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+      s.async = true;
+      s.onload = function(){ resolve(window.JSZip); };
+      s.onerror = function(){ _zipLoading = null; reject(new Error('jszip load failed')); };
+      document.head.appendChild(s);
+    });
+    return _zipLoading;
+  }
+
+  // Every table we want to back up. Order doesn't matter for export.
+  var EXPORT_TABLES = [
+    'clients','invoices','referrals','referrers','deals','activity',
+    'vendors','formulas','production_runs','yield_logs','cip_logs',
+    'defects','sample_shipments','content_calendar','trade_shows',
+    'capacity','case_studies','nps_responses','resources','audit_log',
+    'compliance_tasks','compliance_records','hold_tags','facilities',
+    'inspector_tokens','client_allergen_declarations',
+    'email_templates','email_log','email_schedule','cip_equipment'
+  ];
+
+  window.glExportEverything = async function(){
+    var sb = getSB();
+    if(!sb){ alert('Supabase not ready.'); return; }
+    if(!confirm('Download a full backup of every CRM table?\n\nThis will pull every row from ' + EXPORT_TABLES.length + ' tables and create a single ZIP file on this device.\n\nCan take 5–20 seconds depending on data volume.')) return;
+    var status = document.createElement('div');
+    status.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#142238;color:#fff;border:1px solid rgba(0,229,192,.35);border-radius:10px;padding:14px 22px;z-index:99999;font:13px system-ui;box-shadow:0 6px 18px rgba(0,0,0,.4)';
+    status.innerHTML = '<div style="font-weight:700;margin-bottom:4px">📦 Building backup…</div><div id="gl-exp-progress" style="font-size:11px;color:#9aa7bd">Loading JSZip…</div>';
+    document.body.appendChild(status);
+
+    try {
+      var JSZip = await ensureJsZip();
+      var zip = new JSZip();
+      var manifest = {
+        exported_at: new Date().toISOString(),
+        exported_by: (window.currentUser && window.currentUser.email) || 'unknown',
+        project: 'goodliquid',
+        tables: {}
+      };
+
+      for(var i=0; i<EXPORT_TABLES.length; i++){
+        var t = EXPORT_TABLES[i];
+        var prog = document.getElementById('gl-exp-progress');
+        if(prog) prog.textContent = (i+1) + ' / ' + EXPORT_TABLES.length + ' · ' + t;
+        try {
+          var r = await sb.from(t).select('*').limit(10000);
+          if(r.error){
+            manifest.tables[t] = { rows: 0, error: r.error.message };
+            zip.file(t + '.json', JSON.stringify({ error: r.error.message }, null, 2));
+          } else {
+            var rows = r.data || [];
+            manifest.tables[t] = { rows: rows.length };
+            zip.file(t + '.json', JSON.stringify(rows, null, 2));
+          }
+        } catch(e){
+          manifest.tables[t] = { rows: 0, error: e.message };
+          zip.file(t + '.json', JSON.stringify({ error: e.message }, null, 2));
+        }
+      }
+      zip.file('_manifest.json', JSON.stringify(manifest, null, 2));
+      zip.file('README.txt',
+        'Good Liquid Bev Co — CRM full backup\n' +
+        'Exported: ' + manifest.exported_at + '\n' +
+        'Exported by: ' + manifest.exported_by + '\n\n' +
+        'Each .json file in this archive is the full dump of one Supabase\n' +
+        'table at the time of export. _manifest.json lists the row counts.\n\n' +
+        'To restore: import each JSON file into the matching table.\n' +
+        'Use the Supabase Dashboard → SQL Editor or psql + INSERT statements.\n'
+      );
+
+      if(document.getElementById('gl-exp-progress')) document.getElementById('gl-exp-progress').textContent = 'Building zip…';
+      var blob = await zip.generateAsync({ type: 'blob', compression:'DEFLATE', compressionOptions:{ level: 6 } });
+
+      var stamp = new Date().toISOString().slice(0,16).replace(':','-').replace('T','_');
+      var fname = 'goodliquid-crm-backup-' + stamp + '.zip';
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = fname;
+      a.click();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+      status.remove();
+      var totalRows = Object.values(manifest.tables).reduce(function(s,t){ return s + (t.rows||0); }, 0);
+      toast('Backup downloaded: ' + fname + ' (' + totalRows.toLocaleString() + ' rows)');
+      if(typeof window.glAudit === 'function') window.glAudit('admin_export_all', null, { total_rows: totalRows, table_count: EXPORT_TABLES.length });
+    } catch(e){
+      status.remove();
+      alert('Backup failed: ' + (e.message || e));
+      console.error('[GL] export failed', e);
+    }
+  };
+
+  // Inject a 💾 Backup button into the Users page header (admin tools live there)
+  (function injectBtn(){
+    var mo = new MutationObserver(function(){
+      var page = document.getElementById('cpg-users');
+      if(!page) return;
+      var header = page.querySelector('.cph');
+      if(!header || header.querySelector('.gl-export-btn')) return;
+      var btn = document.createElement('button');
+      btn.className = 'cbtn gl-export-btn';
+      btn.setAttribute('style','margin-left:8px;background:rgba(0,229,192,.10);border:1px solid rgba(0,229,192,.30);color:#00e5c0');
+      btn.textContent = '💾 Backup all data';
+      btn.onclick = function(){ window.glExportEverything(); };
+      header.appendChild(btn);
+    });
+    mo.observe(document.body, { childList:true, subtree:true });
+  })();
+
+  console.log('[GL] admin export loaded — glExportEverything()');
+}());
