@@ -20594,3 +20594,264 @@
 
   console.log('[GL] admin export loaded — glExportEverything()');
 }());
+
+/* ============================================================
+   CUSTOMER PORTAL — self-service login + dashboard
+   - URL: ?portal=1 (or ?portal=login / ?portal=signin)
+   - Customer signs in with email + password (Supabase Auth)
+   - Lands on a dashboard showing their invoices + allergen decls
+   - Each invoice has a Pay button + a "View" link to the public-token
+     view (which already has the Stripe Pay flow)
+   - Admin invites customers via the Clients page (separate "+ Customer
+     login" button — added below)
+   ============================================================ */
+(function(){
+  function getSB(){ return window.supa || null; }
+  function escHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function usd(n){ return '$' + (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+
+  // ────────────────────────────────────────────────────────────
+  // Portal mode detection
+  // ────────────────────────────────────────────────────────────
+  async function checkPortalMode(){
+    var url = new URL(window.location.href);
+    if(!url.searchParams.has('portal')) return false;
+    var sb = getSB(); if(!sb) return false;
+    // Render the portal shell — login first, then dashboard if signed in
+    document.title = 'Customer Portal — Good Liquid Bev Co';
+    document.body.innerHTML = '<div id="gl-cp" style="min-height:100vh;background:#0a1628;font-family:Arial,Helvetica,sans-serif;color:#eef4ff">Loading…</div>';
+    var sess = await sb.auth.getSession();
+    if(sess.data && sess.data.session){
+      // Verify the user is a customer (has a customer_users row)
+      var u = await sb.from('customer_users')
+        .select('id, client_id, email, display_name, active')
+        .eq('auth_user_id', sess.data.session.user.id)
+        .eq('active', true)
+        .maybeSingle();
+      if(u.data){
+        renderDashboard(u.data);
+      } else {
+        // Authenticated but not a customer — could be a staff member
+        // visiting ?portal=1 by mistake. Show login.
+        renderLogin('Account is not a customer portal account. Sign in with the email your account manager invited.');
+      }
+    } else {
+      renderLogin('');
+    }
+    return true;
+  }
+
+  function shell(inner){
+    return '<div style="max-width:520px;margin:60px auto;padding:30px;background:#142238;border:1px solid rgba(0,229,192,.25);border-radius:14px;color:#eef4ff;font-family:Arial,Helvetica,sans-serif">' + inner + '</div>';
+  }
+  function logoBlock(){
+    return '<div style="text-align:center;margin-bottom:28px">' +
+      '<div style="font-size:22px;font-weight:900;color:#00e5c0;letter-spacing:3px">GOOD LIQUID BEV CO</div>' +
+      '<div style="font-size:11px;color:#6b87ad;margin-top:4px;letter-spacing:1px;text-transform:uppercase">Customer Portal</div>' +
+    '</div>';
+  }
+
+  function renderLogin(msg){
+    document.getElementById('gl-cp').innerHTML = shell(
+      logoBlock() +
+      (msg ? '<div style="background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.35);color:#ff8579;padding:10px 12px;border-radius:6px;font-size:12px;margin-bottom:14px">' + escHtml(msg) + '</div>' : '') +
+      '<div style="font-size:11px;letter-spacing:2px;color:#6b87ad;margin-bottom:6px">EMAIL</div>' +
+      '<input id="cp-email" type="email" autocomplete="username" style="width:100%;padding:11px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eef4ff;font-size:14px;box-sizing:border-box;margin-bottom:12px">' +
+      '<div style="font-size:11px;letter-spacing:2px;color:#6b87ad;margin-bottom:6px">PASSWORD</div>' +
+      '<input id="cp-pw" type="password" autocomplete="current-password" style="width:100%;padding:11px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eef4ff;font-size:14px;box-sizing:border-box;margin-bottom:14px">' +
+      '<button id="cp-signin" style="width:100%;background:#00e5c0;color:#0a1628;border:0;padding:12px;border-radius:8px;font-size:14px;font-weight:800;cursor:pointer;letter-spacing:.3px">Sign in</button>' +
+      '<button id="cp-forgot" style="width:100%;margin-top:10px;background:none;color:#6b87ad;border:0;font-size:11px;cursor:pointer;text-decoration:underline">Forgot password?</button>' +
+      '<div id="cp-status" style="margin-top:12px;font-size:12px;color:#6b87ad;text-align:center;min-height:18px"></div>' +
+      '<div style="margin-top:24px;font-size:11px;color:#6b87ad;text-align:center;line-height:1.5">' +
+        'No account yet? Your Good Liquid account manager will send you an invite email.<br>' +
+        'Questions: <a href="mailto:Mike@GoodLiquid.com" style="color:#00e5c0">Mike@GoodLiquid.com</a> · (803) 493-5065' +
+      '</div>'
+    );
+    var sb = getSB();
+    document.getElementById('cp-signin').onclick = async function(){
+      var btn = this; var status = document.getElementById('cp-status');
+      var email = document.getElementById('cp-email').value.trim();
+      var pw = document.getElementById('cp-pw').value;
+      if(!email || !pw){ status.style.color='#ff8579'; status.textContent='Enter email + password.'; return; }
+      btn.disabled = true; btn.textContent = 'Signing in…';
+      var r = await sb.auth.signInWithPassword({ email: email, password: pw });
+      btn.disabled = false; btn.textContent = 'Sign in';
+      if(r.error){ status.style.color='#ff8579'; status.textContent = r.error.message; return; }
+      // Re-check portal mode after sign-in
+      checkPortalMode();
+    };
+    document.getElementById('cp-forgot').onclick = async function(){
+      var email = document.getElementById('cp-email').value.trim();
+      if(!email){ document.getElementById('cp-status').textContent = 'Enter your email first.'; return; }
+      var r = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname + '?portal=1' });
+      var status = document.getElementById('cp-status');
+      if(r.error){ status.style.color='#ff8579'; status.textContent = r.error.message; }
+      else { status.style.color='#5fcf9e'; status.textContent = 'Check your inbox for a reset link.'; }
+    };
+    // Allow Enter to submit
+    document.getElementById('cp-pw').addEventListener('keydown', function(e){ if(e.key === 'Enter') document.getElementById('cp-signin').click(); });
+  }
+
+  async function renderDashboard(customer){
+    var sb = getSB();
+    // Update last_login (fire-and-forget)
+    try { sb.from('customer_users').update({ last_login: new Date().toISOString() }).eq('id', customer.id); } catch(e){}
+    // Fetch client + invoices + allergen decls
+    var clientRow = await sb.from('clients').select('name, contact_name, email, phone, street, city, state, zip').eq('id', customer.client_id).maybeSingle();
+    var client = clientRow.data || {};
+    var invR = await sb.from('invoices').select('id, invoice_number, amount, status, invoice_date, due_date, line_items, share_token').eq('client_id', customer.client_id).order('invoice_date', { ascending: false });
+    var invs = invR.data || [];
+    var algR = await sb.from('client_allergen_declarations').select('id, product_name, allergens, declared_at, share_token').eq('client_id', customer.client_id).order('declared_at', { ascending: false });
+    var algs = algR.data || [];
+
+    var STATUS_COLOR = { paid:'#5fcf9e', pending:'#f5c842', overdue:'#e74c3c', quote:'#9aa7bd', expired:'#9aa7bd', draft:'#9aa7bd' };
+    var paidTotal = invs.filter(function(i){ return i.status === 'paid'; }).reduce(function(s,i){ return s + (Number(i.amount)||0); }, 0);
+    var pendingTotal = invs.filter(function(i){ return i.status === 'pending' || i.status === 'overdue'; }).reduce(function(s,i){ return s + (Number(i.amount)||0); }, 0);
+    var openInvoiceCount = invs.filter(function(i){ return i.status === 'pending' || i.status === 'overdue'; }).length;
+
+    var invRowsHtml = invs.length ? invs.map(function(i){
+      var color = STATUS_COLOR[i.status] || '#9aa7bd';
+      var viewUrl = i.share_token ? (location.origin + location.pathname + '?invoice_view=' + i.share_token) : '';
+      var canPay = (i.status === 'pending' || i.status === 'overdue') && viewUrl;
+      return '<div style="display:grid;grid-template-columns:1fr 120px 130px;gap:12px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.05);align-items:center">' +
+        '<div>' +
+          '<div style="font-size:13px;color:#fff;font-weight:700">' + escHtml(i.invoice_number) + '</div>' +
+          '<div style="font-size:11px;color:#6b87ad;margin-top:2px">' + escHtml(i.invoice_date||'') + (i.due_date ? ' · Due ' + escHtml(i.due_date) : '') + '</div>' +
+        '</div>' +
+        '<div style="text-align:right">' +
+          '<div style="font-size:14px;color:#00e5c0;font-weight:700">' + usd(i.amount) + '</div>' +
+          '<div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:' + color + ';font-weight:700;margin-top:2px">' + (i.status||'') + '</div>' +
+        '</div>' +
+        '<div style="text-align:right">' +
+          (viewUrl ? '<a href="' + viewUrl + '" target="_blank" style="display:inline-block;background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.35);color:#00e5c0;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;text-decoration:none;cursor:pointer">View' + (canPay ? ' / Pay' : '') + '</a>' : '<span style="font-size:10px;color:#6b87ad">no link</span>') +
+        '</div>' +
+      '</div>';
+    }).join('') : '<div style="padding:30px;text-align:center;color:#6b87ad;font-size:13px">No invoices yet.</div>';
+
+    var algRowsHtml = algs.length ? algs.map(function(a){
+      var url = a.share_token ? (location.origin + location.pathname + '?allergen_decl=' + a.share_token) : '';
+      return '<div style="display:grid;grid-template-columns:1fr 120px;gap:12px;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.05);align-items:center">' +
+        '<div>' +
+          '<div style="font-size:13px;color:#fff;font-weight:600">' + escHtml(a.product_name) + '</div>' +
+          '<div style="font-size:11px;color:#6b87ad;margin-top:2px">Declared ' + new Date(a.declared_at).toLocaleDateString() + '</div>' +
+        '</div>' +
+        '<div style="text-align:right">' + (url ? '<a href="' + url + '" target="_blank" style="display:inline-block;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.35);color:#c4b5fd;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;text-decoration:none">View</a>' : '<span style="font-size:10px;color:#6b87ad">no link</span>') + '</div>' +
+      '</div>';
+    }).join('') : '<div style="padding:20px;text-align:center;color:#6b87ad;font-size:12px">No declarations on file.</div>';
+
+    document.getElementById('gl-cp').innerHTML =
+      '<div style="background:#0a1628;min-height:100vh;color:#eef4ff;font-family:Arial,Helvetica,sans-serif">' +
+        '<div style="background:#142238;border-bottom:3px solid #00e5c0;padding:14px 24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">' +
+          '<div>' +
+            '<div style="font-size:18px;font-weight:900;color:#00e5c0;letter-spacing:2px">GOOD LIQUID BEV CO</div>' +
+            '<div style="font-size:10px;color:#6b87ad;letter-spacing:1px;text-transform:uppercase">Customer Portal</div>' +
+          '</div>' +
+          '<div style="text-align:right">' +
+            '<div style="font-size:13px;color:#fff;font-weight:600">' + escHtml(client.name || customer.email) + '</div>' +
+            '<button id="cp-signout" style="background:none;border:0;color:#6b87ad;font-size:11px;cursor:pointer;text-decoration:underline;margin-top:2px">Sign out</button>' +
+          '</div>' +
+        '</div>' +
+
+        '<div style="max-width:960px;margin:0 auto;padding:24px">' +
+          // KPI tiles
+          '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:24px">' +
+            kpi('Open balance',     usd(pendingTotal), openInvoiceCount + ' invoice' + (openInvoiceCount===1?'':'s') + ' open', '#f5c842') +
+            kpi('Paid to date',     usd(paidTotal),    invs.filter(function(i){return i.status==='paid';}).length + ' paid',     '#5fcf9e') +
+            kpi('Total invoices',   String(invs.length), 'across all time',                                               '#00e5c0') +
+          '</div>' +
+
+          '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
+            '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:#00e5c0;font-weight:700">YOUR INVOICES</div>' +
+            invRowsHtml +
+          '</div>' +
+
+          (algs.length ? '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
+            '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:#c4b5fd;font-weight:700">ALLERGEN DECLARATIONS</div>' +
+            algRowsHtml +
+          '</div>' : '') +
+
+          '<div style="padding:14px 18px;font-size:11px;color:#6b87ad;text-align:center">' +
+            'Questions about your account? Email <a href="mailto:Mike@GoodLiquid.com" style="color:#00e5c0">Mike@GoodLiquid.com</a> or call (803) 493-5065.' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    document.getElementById('cp-signout').onclick = async function(){
+      await sb.auth.signOut();
+      location.reload();
+    };
+  }
+  function kpi(label, value, sub, color){
+    return '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:16px 18px">' +
+      '<div style="font-size:10px;letter-spacing:2px;color:#6b87ad;text-transform:uppercase">' + escHtml(label) + '</div>' +
+      '<div style="font-size:24px;font-weight:900;color:' + color + ';margin-top:4px">' + escHtml(value) + '</div>' +
+      '<div style="font-size:11px;color:#6b87ad;margin-top:2px">' + escHtml(sub) + '</div>' +
+    '</div>';
+  }
+
+  // Boot — only when ?portal is on the URL
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', function(){ checkPortalMode(); });
+  } else {
+    checkPortalMode();
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // ADMIN: + Customer login button on the client detail overlay
+  // ────────────────────────────────────────────────────────────
+  window.glInviteCustomerLogin = async function(clientId, clientName){
+    if(!clientId){ alert('No client id'); return; }
+    var sb = getSB(); if(!sb){ alert('Supabase not ready'); return; }
+    var email = prompt('Customer email to invite for ' + (clientName||'this client') + ':');
+    if(!email) return;
+    email = email.trim();
+    if(email.indexOf('@') < 0){ alert('Not a valid email'); return; }
+    // Generate a temp password — customer should reset via "Forgot password"
+    var tempPw = 'GL!' + Math.random().toString(36).slice(2,10);
+    var r = await sb.auth.signUp({ email: email, password: tempPw, options: { emailRedirectTo: location.origin + location.pathname + '?portal=1' } });
+    if(r.error){ alert('Sign up failed: ' + r.error.message); return; }
+    if(!r.data || !r.data.user){ alert('No user returned'); return; }
+    var ins = await sb.from('customer_users').insert({
+      auth_user_id: r.data.user.id,
+      client_id: clientId,
+      email: email,
+      invited_by: (window.currentUser && window.currentUser.id) || null
+    });
+    if(ins.error){ alert('Customer link failed: ' + ins.error.message); return; }
+    alert('Invited ' + email + '.\n\nThey will get a confirmation email from Supabase.\nAsk them to:\n  1) confirm the email\n  2) visit ' + location.origin + location.pathname + '?portal=1\n  3) click "Forgot password" to set their own password.');
+  };
+  // Inject the button on the client detail overlay action row
+  (function watchClientDetail(){
+    var mo = new MutationObserver(function(){
+      var ov = document.getElementById('client-detail-overlay');
+      if(!ov || ov.querySelector('.gl-cd-portal')) return;
+      var btns = ov.querySelectorAll('button');
+      var actionRow = null;
+      for(var i=0;i<btns.length;i++){
+        if(/Edit Client|AI Health Score|Add Task|Draft Email|Allergen Declaration/.test(btns[i].textContent||'')){
+          actionRow = btns[i].parentNode; break;
+        }
+      }
+      if(!actionRow) return;
+      var cid = null, cname = '';
+      Array.prototype.some.call(actionRow.querySelectorAll('button'), function(b){
+        var on = b.getAttribute('onclick') || '';
+        var m = on.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+        if(m){ cid = m[0]; return true; }
+        return false;
+      });
+      if(!cid) return;
+      var h = ov.querySelector('h1, h2, h3, .client-name');
+      if(h) cname = h.textContent.trim();
+      var btn = document.createElement('button');
+      btn.className = 'cbtn gl-cd-portal';
+      btn.setAttribute('style','background:rgba(26,111,255,.12);border-color:rgba(26,111,255,.35);color:#6b9fff');
+      btn.textContent = '🔑 Invite Portal Login';
+      btn.onclick = function(){ window.glInviteCustomerLogin(cid, cname); };
+      actionRow.appendChild(btn);
+    });
+    mo.observe(document.body, { childList:true, subtree:true });
+  })();
+
+  console.log('[GL] customer portal loaded — ?portal=1');
+}());
