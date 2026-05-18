@@ -2652,8 +2652,18 @@
         // Strip the recovery hash from the URL so a refresh doesn't re-trigger.
         try { history.replaceState(null, '', location.pathname + location.search); } catch(e){}
         ov.remove();
-        // Auto-open CRM via the same path as a normal login.
         var user = r.data && r.data.user;
+        // Portal customer? Re-run portal check so the dashboard renders for them
+        // (skip the CRM-staff loginUser path entirely).
+        if(/[?&]portal=1\b/.test(location.search)){
+          if(typeof window.glCheckPortal === 'function'){
+            try { window.glCheckPortal(); } catch(e){ console.warn('[GL] glCheckPortal threw', e); location.reload(); }
+          } else {
+            location.reload();
+          }
+          return;
+        }
+        // Auto-open CRM via the same path as a normal login.
         if(user && typeof window.loginUser === 'function'){
           // Try to pull profile; if not there, build a minimal one.
           try{
@@ -20617,8 +20627,18 @@
     var url = new URL(window.location.href);
     if(!url.searchParams.has('portal')) return false;
     var sb = getSB(); if(!sb) return false;
-    // Render the portal shell — login first, then dashboard if signed in
     document.title = 'Customer Portal — Good Liquid Bev Co';
+    // If we arrived via a password-recovery link, the global recovery handler
+    // will open a "set new password" modal. Don't wipe the body or render
+    // login/dashboard yet — that would clobber the modal. Show a tiny
+    // placeholder; the recovery handler calls window.glCheckPortal after the
+    // customer saves, which re-enters this function without the recovery hash.
+    var hash = (location.hash || '').replace(/^#/, '');
+    if(hash.indexOf('type=recovery') >= 0){
+      document.body.innerHTML = '<div id="gl-cp" style="min-height:100vh;background:#0a1628;font-family:Arial,Helvetica,sans-serif;color:#6b87ad;display:flex;align-items:center;justify-content:center;font-size:13px;letter-spacing:1px">Loading password reset…</div>';
+      return true;
+    }
+    // Render the portal shell — login first, then dashboard if signed in
     document.body.innerHTML = '<div id="gl-cp" style="min-height:100vh;background:#0a1628;font-family:Arial,Helvetica,sans-serif;color:#eef4ff">Loading…</div>';
     var sess = await sb.auth.getSession();
     if(sess.data && sess.data.session){
@@ -20789,6 +20809,10 @@
     '</div>';
   }
 
+  // Expose so the global password-recovery modal can re-enter the portal
+  // flow after a customer sets their password.
+  window.glCheckPortal = checkPortalMode;
+
   // Boot — only when ?portal is on the URL
   if(document.readyState === 'loading'){
     document.addEventListener('DOMContentLoaded', function(){ checkPortalMode(); });
@@ -20814,21 +20838,22 @@
     if(su.error && !/already (registered|exists)|user_already_exists/i.test(su.error.message||'')){
       alert('Sign up failed: ' + su.error.message); return;
     }
-    // 2) Link auth user → client (idempotent — duplicate is fine).
-    if(userId){
-      var ins = await sb.from('customer_users').insert({
-        auth_user_id: userId,
-        client_id: clientId,
-        email: email,
-        invited_by: (window.currentUser && window.currentUser.id) || null
-      });
-      if(ins.error && !/duplicate|unique|already exists/i.test(ins.error.message||'')){
-        console.warn('[invite-portal] customer_users insert:', ins.error);
-      }
+    // 2) Link auth user → client via SECURITY DEFINER RPC.
+    //    Works for both brand-new signups AND already-existing auth users
+    //    (where signUp returns success without a user object so we can't
+    //    insert customer_users directly from the browser).
+    var linkRes = await sb.rpc('link_customer_user_by_email', { p_client_id: clientId, p_email: email });
+    if(linkRes.error){
+      console.warn('[invite-portal] link RPC:', linkRes.error);
+      alert('Linking failed: ' + linkRes.error.message + '\n\nThe auth user may not be visible yet. Try again in a moment.');
+      return;
     }
-    // 3) Always send a password-reset email — this goes through SMTP reliably,
-    //    works for new users and for re-invites, and gives the customer a usable
-    //    one-click flow to set their password and land on the portal.
+    if(linkRes.data && linkRes.data.ok === false){
+      alert('Linking failed: ' + (linkRes.data.error || 'unknown') + '\n\nThe customer was created but not yet linked to a client — invite again.');
+      return;
+    }
+    // 3) Send a password-reset email — goes through SMTP reliably and gives the
+    //    customer a one-click flow to set their password and land on the portal.
     var pr = await sb.auth.resetPasswordForEmail(email, { redirectTo: redirectTo });
     if(pr.error){ alert('Email failed to send: ' + pr.error.message); return; }
     alert('Invite sent to ' + email + '.\n\nThey will receive an email to set their password, then can sign in at ' + redirectTo);
