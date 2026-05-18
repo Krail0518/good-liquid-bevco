@@ -805,8 +805,62 @@ select option, .fsel option {
 
   /* Notification panel — full width on phones */
   #notif-panel { left: 8px !important; right: 8px !important; width: auto !important; max-width: none !important; }
+
+  /* ── CRM modals — scale to viewport on phones ── */
+  .modal-ov > div { width: 96vw !important; max-width: 96vw !important; max-height: 92vh !important; }
+  /* Most JS-built modals use inline max-width:560/640/720/820 — clamp to the viewport */
+  #gl-send-inv-modal > div, #gl-edit-client-modal > div, #gl-help-modal > div,
+  #gl-email-activity > div, #gl-tpl-modal > div, #gl-sched-modal > div,
+  #gl-sched-queue > div, #gl-comp-modal > div, #gl-stripe-modal > div,
+  #gl-pm > div, #gl-ar-modal > div, #gl-cip-equip-mgr > div,
+  #gl-paylink-modal > div, #gl-sign-modal > div,
+  #gl-alg-modal > div, #gl-tr-modal > div, #gl-insp-modal > div {
+    width: 96vw !important; max-width: 96vw !important; max-height: 92vh !important;
+    margin: 4vh auto !important; padding: 16px 18px !important; overflow-y: auto !important;
+  }
+
+  /* Two-column grids in Edit Client + Send Invoice composer collapse to one column */
+  #gl-edit-client-modal [style*="grid-template-columns:1fr 1fr"],
+  #gl-send-inv-modal [style*="grid-template-columns:80px 1fr"],
+  #gl-edit-client-modal [style*="grid-template-columns:2fr 1fr 1fr"] {
+    grid-template-columns: 1fr !important; gap: 6px !important;
+  }
+
+  /* Help guide TOC stacks above the content instead of side-by-side */
+  #gl-help-modal [style*="grid-template-columns:200px 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Invoice builder line rows — already use display:grid with 36px end col;
+     give qty / price inputs more breathing room on narrow screens */
+  #gl-inv-builder [style*="grid-template-columns:2fr 1fr 1fr 1fr 36px"] {
+    grid-template-columns: 1.6fr 1fr 1fr 1fr 28px !important;
+  }
+  #gl-inv-builder { padding: 12px !important; }
+  #gl-inv-builder > div { max-width: 96vw !important; }
+
+  /* Status pills + filter rows wrap nicely */
+  .invl-filter, .pipeline-filter, .ref-filter { flex-wrap: wrap !important; gap: 6px !important; }
+
+  /* Invoice detail header buttons wrap on narrow screens */
+  #inv-detail > div:first-child { flex-wrap: wrap !important; gap: 6px !important; }
+
+  /* Compliance Tasks header (lots of buttons) wraps */
+  #comp-body .cph + div, #comp-body [style*="display:flex"][style*="gap"] { flex-wrap: wrap !important; }
+
+  /* AI Tools FAB stays visible above mobile system bars */
+  #gl-ai-fab, #gl-chat-bubble { bottom: 80px !important; }
 }
 
+@media (max-width: 480px) {
+  /* Phones — even tighter */
+  .modal-ov > div, #gl-help-modal > div, #gl-send-inv-modal > div, #gl-edit-client-modal > div {
+    border-radius: 8px !important; padding: 12px 14px !important;
+  }
+  .cmc, .ann-item { padding: 10px !important; }
+  /* Sidebar drawer covers more of the screen */
+  #crm-sidebar.show { width: 92vw !important; }
+}
 </style>
 </head>
 <body>
