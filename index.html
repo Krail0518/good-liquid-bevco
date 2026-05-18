@@ -2996,7 +2996,10 @@ function renderClients(list){
       <td><span class="cbdg ${c.status}">${c.status}</span></td>
       <td style="font-weight:600">$${c.billed.toLocaleString()}</td>
       <td style="color:var(--muted)">${ref?`🤝 ${ref.name}`:'-'}</td>
-      <td onclick="event.stopPropagation()"><button class="cbtn" style="font-size:10px;padding:3px 9px" onclick="createForClient('${c.id}')">+ Invoice</button></td>
+      <td onclick="event.stopPropagation()" style="white-space:nowrap">
+        <button class="cbtn" style="font-size:10px;padding:3px 9px" onclick="createForClient('${c.id}')">+ Invoice</button>
+        <button class="cbtn" style="font-size:10px;padding:3px 9px;margin-left:4px;background:rgba(26,111,255,.12);border-color:rgba(26,111,255,.35);color:#6b9fff" data-cname="${(c.name||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}" onclick="if(window.glInviteCustomerLogin){window.glInviteCustomerLogin('${c.id}', this.dataset.cname);}else{alert('Portal module not ready');}">🔑 Invite</button>
+      </td>
     </tr>`;
   }).join('');
 }
