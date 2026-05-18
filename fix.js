@@ -2698,19 +2698,29 @@
       return;
     }
     // 1) Subscribe to future PASSWORD_RECOVERY events (fires when supabase-js
-    //    parses the recovery hash on its own).
+    //    parses the recovery hash or completes the PKCE code exchange).
     sb.auth.onAuthStateChange(function(event){
       if(event === 'PASSWORD_RECOVERY'){
         console.log('[GL] PASSWORD_RECOVERY received → opening reset modal');
         openRecoveryModal();
       }
     });
-    // 2) Defensive: if the page loaded with a recovery hash but the event
-    //    fired before we subscribed, detect it by URL and open the modal.
+    // 2) Defensive: if the page loaded with recovery URL artifacts but the
+    //    event fired before we subscribed (or never fires), open the modal
+    //    by URL inspection. Cover both implicit (#type=recovery) and PKCE
+    //    (?code=… on a ?portal=1 page) styles.
     var hash = (window.location.hash || '').replace(/^#/, '');
-    if(hash.indexOf('type=recovery') >= 0){
-      console.log('[GL] recovery hash detected on load → opening reset modal');
-      setTimeout(openRecoveryModal, 300);
+    var search = window.location.search || '';
+    var hashRecovery = hash.indexOf('type=recovery') >= 0;
+    var pkceRecovery = /[?&]code=/.test(search) && /[?&]portal=1\b/.test(search);
+    var tokenRecovery = /[?&]token_hash=/.test(search) && /[?&]type=recovery/.test(search);
+    if(hashRecovery || pkceRecovery || tokenRecovery){
+      console.log('[GL] recovery URL artifact detected on load → opening reset modal');
+      // Slight delay so supabase-js gets a chance to finalize the session
+      // (so updateUser inside the modal will have credentials).
+      setTimeout(function(){
+        if(!document.getElementById('gl-recovery-modal')) openRecoveryModal();
+      }, pkceRecovery ? 1500 : 300);
     }
   }
   if(document.readyState !== 'loading') attach();
@@ -20621,6 +20631,46 @@
   function usd(n){ return '$' + (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
 
   // ────────────────────────────────────────────────────────────
+  // Recovery-link detection. Captured at script-load time so we still
+  // know we're in a recovery flow even after supabase-js has parsed
+  // and removed the URL fragment. Covers both implicit (#access_token
+  // …type=recovery) and PKCE (?code=…) styles.
+  // ────────────────────────────────────────────────────────────
+  var _initialHash = window.location.hash || '';
+  var _initialSearch = window.location.search || '';
+  var _recoveryHint = (
+    _initialHash.indexOf('type=recovery') >= 0 ||
+    (/[?&]code=/.test(_initialSearch) && /[?&]portal=1\b/.test(_initialSearch)) ||
+    (/[?&]token_hash=/.test(_initialSearch) && /[?&]type=recovery/.test(_initialSearch))
+  );
+  var _recoveryEventSeen = false;
+  (function watchRecoveryEarly(){
+    var sb = window.supa;
+    if(sb && sb.auth && typeof sb.auth.onAuthStateChange === 'function'){
+      try {
+        sb.auth.onAuthStateChange(function(event){
+          if(event === 'PASSWORD_RECOVERY'){
+            _recoveryEventSeen = true;
+            // If checkPortalMode already rendered login/dashboard before the
+            // event fired, swap to the waiting placeholder so the recovery
+            // modal isn't competing with the login form for the user's eye.
+            var cp = document.getElementById('gl-cp');
+            if(cp) cp.innerHTML = _waitingHtml();
+          }
+        });
+      } catch(e){ console.warn('[GL portal] early recovery watcher failed', e); }
+      return;
+    }
+    setTimeout(watchRecoveryEarly, 60);
+  })();
+  function _waitingHtml(){
+    return '<div style="text-align:center;padding:120px 20px;color:#6b87ad;font-family:Arial,Helvetica,sans-serif">' +
+      '<div style="font-size:18px;letter-spacing:2px;color:#00e5c0;margin-bottom:10px">CUSTOMER PORTAL</div>' +
+      '<div style="font-size:13px">Setting up password reset… Please wait.</div>' +
+    '</div>';
+  }
+
+  // ────────────────────────────────────────────────────────────
   // Portal mode detection
   // ────────────────────────────────────────────────────────────
   async function checkPortalMode(){
@@ -20628,14 +20678,12 @@
     if(!url.searchParams.has('portal')) return false;
     var sb = getSB(); if(!sb) return false;
     document.title = 'Customer Portal — Good Liquid Bev Co';
-    // If we arrived via a password-recovery link, the global recovery handler
-    // will open a "set new password" modal. Don't wipe the body or render
-    // login/dashboard yet — that would clobber the modal. Show a tiny
-    // placeholder; the recovery handler calls window.glCheckPortal after the
-    // customer saves, which re-enters this function without the recovery hash.
-    var hash = (location.hash || '').replace(/^#/, '');
-    if(hash.indexOf('type=recovery') >= 0){
-      document.body.innerHTML = '<div id="gl-cp" style="min-height:100vh;background:#0a1628;font-family:Arial,Helvetica,sans-serif;color:#6b87ad;display:flex;align-items:center;justify-content:center;font-size:13px;letter-spacing:1px">Loading password reset…</div>';
+    // Recovery flow? Don't render login/dashboard — show a waiting state and
+    // let the global recovery modal handle it. After the customer saves their
+    // new password, the recovery handler calls window.glCheckPortal which
+    // re-enters this function without any recovery URL artifacts.
+    if(_recoveryHint || _recoveryEventSeen){
+      document.body.innerHTML = '<div id="gl-cp" style="min-height:100vh;background:#0a1628">' + _waitingHtml() + '</div>';
       return true;
     }
     // Render the portal shell — login first, then dashboard if signed in
@@ -20823,12 +20871,12 @@
   // ────────────────────────────────────────────────────────────
   // ADMIN: + Customer login button on the client detail overlay
   // ────────────────────────────────────────────────────────────
-  window.glInviteCustomerLogin = async function(clientId, clientName){
+  window.glInviteCustomerLogin = async function(clientId, clientName, preEmail){
     if(!clientId){ alert('No client id'); return; }
     var sb = getSB(); if(!sb){ alert('Supabase not ready'); return; }
-    var email = prompt('Customer email to invite for ' + (clientName||'this client') + ':');
+    var email = (preEmail && String(preEmail).trim()) || prompt('Customer email to invite for ' + (clientName||'this client') + ':');
     if(!email) return;
-    email = email.trim().toLowerCase();
+    email = String(email).trim().toLowerCase();
     if(email.indexOf('@') < 0){ alert('Not a valid email'); return; }
     var redirectTo = location.origin + location.pathname + '?portal=1';
     // 1) Create auth user (idempotent — already-exists is fine, means they were invited before).
@@ -20890,6 +20938,61 @@
     });
     mo.observe(document.body, { childList:true, subtree:true });
   })();
+
+  // ────────────────────────────────────────────────────────────
+  // ADMIN: top-of-page Invite Customer Login picker (client dropdown + email)
+  // ────────────────────────────────────────────────────────────
+  window.glOpenInvitePicker = function(preselectedClientId){
+    var existing = document.getElementById('gl-invite-picker');
+    if(existing) existing.remove();
+    var clients = (window.clients && Array.isArray(window.clients)) ? window.clients.slice() : [];
+    clients.sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
+    var ov = document.createElement('div');
+    ov.id = 'gl-invite-picker';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:9500;background:rgba(6,13,26,.92);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    var opts = ['<option value="">— Pick a client —</option>'].concat(clients.map(function(c){
+      var sel = (c.id === preselectedClientId) ? ' selected' : '';
+      return '<option value="' + escHtml(c.id) + '"' + sel + '>' + escHtml(c.name || '(no name)') + '</option>';
+    })).join('');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(26,111,255,.35);border-radius:14px;padding:28px;width:100%;max-width:460px">' +
+        '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:#6b9fff;margin-bottom:6px">INVITE CUSTOMER LOGIN</div>' +
+        '<div style="font-size:12px;color:#9ca3af;margin-bottom:20px;line-height:1.5">Pick a client and enter the customer email. They\'ll get an email with a link to set their password and access their invoices.</div>' +
+        '<div style="font-size:11px;letter-spacing:1.5px;color:#6b87ad;margin-bottom:6px">CLIENT</div>' +
+        '<select id="gl-ip-client" style="width:100%;padding:11px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eef4ff;font-size:14px;margin-bottom:14px;box-sizing:border-box">' + opts + '</select>' +
+        '<div style="font-size:11px;letter-spacing:1.5px;color:#6b87ad;margin-bottom:6px">CUSTOMER EMAIL</div>' +
+        '<input id="gl-ip-email" type="email" placeholder="customer@example.com" style="width:100%;padding:11px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eef4ff;font-size:14px;margin-bottom:18px;box-sizing:border-box">' +
+        '<div id="gl-ip-err" style="display:none;color:#ff8579;font-size:12px;margin-bottom:10px"></div>' +
+        '<div style="display:flex;gap:10px;justify-content:flex-end">' +
+          '<button id="gl-ip-cancel" class="cbtn" style="background:rgba(255,255,255,.06)">Cancel</button>' +
+          '<button id="gl-ip-send" class="cbtn pri">Send invite</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    var selEl = ov.querySelector('#gl-ip-client');
+    var emEl  = ov.querySelector('#gl-ip-email');
+    var errEl = ov.querySelector('#gl-ip-err');
+    var sendBtn = ov.querySelector('#gl-ip-send');
+    ov.querySelector('#gl-ip-cancel').onclick = function(){ ov.remove(); };
+    setTimeout(function(){ (preselectedClientId ? emEl : selEl).focus(); }, 30);
+    function showErr(m){ errEl.style.display='block'; errEl.textContent = m; }
+    sendBtn.onclick = async function(){
+      errEl.style.display = 'none';
+      var cid = selEl.value;
+      var em  = (emEl.value||'').trim();
+      if(!cid){ showErr('Pick a client.'); return; }
+      if(!em || em.indexOf('@') < 0){ showErr('Enter a valid email address.'); return; }
+      var cname = (clients.find(function(c){ return c.id === cid; }) || {}).name || '';
+      sendBtn.disabled = true; var orig = sendBtn.textContent; sendBtn.textContent = 'Sending…';
+      try {
+        await window.glInviteCustomerLogin(cid, cname, em);
+        ov.remove();
+      } catch(e){
+        showErr('Failed: ' + (e && e.message ? e.message : 'unknown'));
+        sendBtn.disabled = false; sendBtn.textContent = orig;
+      }
+    };
+  };
 
   console.log('[GL] customer portal loaded — ?portal=1');
 }());

@@ -1899,6 +1899,7 @@ select option, .fsel option {
         <div class="cph">
           <div><div class="cpt">CLIENTS</div><div class="cps" id="client-sub">8 beverage brands</div></div>
           <div style="display:flex;gap:8px">
+            <button class="cbtn" onclick="if(window.glOpenInvitePicker){window.glOpenInvitePicker();}else{alert('Portal module not loaded yet.');}" style="background:rgba(26,111,255,.12);border-color:rgba(26,111,255,.35);color:#6b9fff">🔑 Invite Customer Login</button>
             <button class="cbtn" onclick="openAddClientModal()" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)">+ Add Client</button>
             <button class="cbtn pri" onclick="cNav(&#39;newinv&#39;,document.querySelectorAll(&#39;.cni&#39;)[5])">+ New Invoice</button>
           </div>
