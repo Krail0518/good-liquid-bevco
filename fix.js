@@ -22156,8 +22156,11 @@
   function scanAndHide(root){
     if(!perms.loaded) return;
     if(perms.isAdmin){
-      // Admin: restore any previously hidden ones.
+      // Admin: restore any previously hidden ones AND reveal anything
+      // that was authored with display:none + data-gl-perm (e.g. the
+      // top-toolbar Users & Permissions button).
       (root || document).querySelectorAll('[data-gl-perm-hidden="1"]').forEach(function(el){ hidePoint(el, true); });
+      (root || document).querySelectorAll('[data-gl-perm]').forEach(function(el){ hidePoint(el, true); });
       return;
     }
     // 1) Explicit data-gl-perm attribute
