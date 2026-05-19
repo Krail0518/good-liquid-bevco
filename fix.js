@@ -21704,23 +21704,60 @@
     });
     perms.userPerms = byUser;
 
-    function buildHeader(){
+    function buildHeader(showBack){
+      var backBtn = showBack
+        ? '<button class="cbtn" onclick="window.glShowPermList()" style="font-size:11px;padding:6px 12px;margin-right:10px">← Back to users</button>'
+        : '';
       return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 18px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">' +
         '<div>' +
           '<div style="font-size:13px;font-weight:700;color:var(--teal);letter-spacing:1px">COMPONENT PERMISSIONS</div>' +
-          '<div style="font-size:11px;color:var(--muted);margin-top:3px">Toggle a component for an individual user, or click <b>Edit defaults</b> to change what new users see by default. Admins always see everything.</div>' +
+          '<div style="font-size:11px;color:var(--muted);margin-top:3px">' +
+            (showBack
+              ? 'Toggle a component for this user, or use a preset above to bulk-set everything at once.'
+              : 'Pick a user below to manage their per-component access. Click <b>Edit defaults</b> to change what new users see by default. Admins always see everything.') +
+          '</div>' +
         '</div>' +
-        '<button class="cbtn" onclick="window.glOpenPermDefaults()" style="font-size:11px;padding:6px 12px">Edit defaults</button>' +
+        '<div style="display:flex;align-items:center;gap:8px">' +
+          backBtn +
+          '<button class="cbtn" onclick="window.glOpenPermDefaults()" style="font-size:11px;padding:6px 12px">Edit defaults</button>' +
+        '</div>' +
       '</div>';
     }
 
-    function tabRow(activeUserId){
-      var tabs = staff.map(function(u){
-        var active = (u.id === activeUserId);
-        var dn = u.name || (u.email || '').split('@')[0] || 'user';
-        return '<div onclick="window.glRenderPermMatrixFor(\'' + u.id + '\')" style="padding:8px 14px;cursor:pointer;border-radius:8px 8px 0 0;border:1px solid rgba(255,255,255,.06);border-bottom:0;font-size:12px;font-weight:' + (active?'700':'500') + ';background:' + (active?'rgba(0,229,192,.08)':'transparent') + ';color:' + (active?'var(--teal)':'var(--muted)') + '">' + esc(dn) + (u.role==='admin' ? ' <span style="font-size:9px;color:#f5c842">ADMIN</span>' : '') + '</div>';
+    function userListHtml(){
+      if(!staff.length) return '<div style="color:var(--muted);padding:20px 0">No staff users found.</div>';
+      var rows = staff.map(function(u){
+        var overrideCount = (byUser[u.id] && Object.keys(byUser[u.id]).length) || 0;
+        var roleColor = u.role === 'admin' ? '#f5c842' : u.role === 'sales' ? '#6b9fff' : 'var(--muted)';
+        var overrideLabel = u.role === 'admin'
+          ? '<span style="color:#f5c842;font-size:11px">all access (admin bypass)</span>'
+          : (overrideCount === 0
+              ? '<span style="color:var(--muted);font-size:11px">none — uses defaults</span>'
+              : '<span style="color:#6b9fff;font-size:11px">' + overrideCount + ' override' + (overrideCount===1?'':'s') + '</span>');
+        var nameLabel = u.name || (u.email || '').split('@')[0] || 'user';
+        return '<tr style="cursor:pointer" onclick="window.glRenderPermMatrixFor(\'' + u.id + '\')">' +
+          '<td style="padding:12px 14px;font-weight:700">' + esc(nameLabel) + '</td>' +
+          '<td style="padding:12px 14px;color:var(--muted);font-size:12px">' + esc(u.email||'') + '</td>' +
+          '<td style="padding:12px 14px"><span style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:' + roleColor + ';font-weight:700">' + esc(u.role||'sales') + '</span></td>' +
+          '<td style="padding:12px 14px">' + overrideLabel + '</td>' +
+          '<td style="padding:12px 14px;text-align:right">' +
+            '<button class="cbtn" onclick="event.stopPropagation();window.glRenderPermMatrixFor(\'' + u.id + '\')" style="font-size:11px;padding:5px 14px;background:rgba(0,229,192,.12);border-color:rgba(0,229,192,.35);color:var(--teal)">Manage →</button>' +
+          '</td>' +
+        '</tr>';
       }).join('');
-      return '<div style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:0">' + tabs + '</div>';
+      return '<div style="background:#0d1b2e;border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden">' +
+        '<div style="padding:12px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:11px;letter-spacing:2px;color:var(--teal);font-weight:700">TEAM MEMBERS</div>' +
+        '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+          '<thead><tr style="border-bottom:1px solid rgba(255,255,255,.06)">' +
+            '<th style="padding:8px 14px;text-align:left;color:var(--muted);font-size:10px;letter-spacing:1px">NAME</th>' +
+            '<th style="padding:8px 14px;text-align:left;color:var(--muted);font-size:10px;letter-spacing:1px">EMAIL</th>' +
+            '<th style="padding:8px 14px;text-align:left;color:var(--muted);font-size:10px;letter-spacing:1px">ROLE</th>' +
+            '<th style="padding:8px 14px;text-align:left;color:var(--muted);font-size:10px;letter-spacing:1px">OVERRIDES</th>' +
+            '<th style="padding:8px 14px"></th>' +
+          '</tr></thead>' +
+          '<tbody>' + rows + '</tbody>' +
+        '</table>' +
+      '</div>';
     }
 
     function matrixFor(userId){
@@ -21781,16 +21818,36 @@
       '</div>';
     }
 
-    var initialUserId = (staff[0] && staff[0].id) || null;
-    el.innerHTML = buildHeader() +
-      '<div id="gl-perm-tabs">' + tabRow(initialUserId) + '</div>' +
-      '<div id="gl-perm-matrix">' + (initialUserId ? matrixFor(initialUserId) : '<div style="color:var(--muted);padding:20px 0">No staff users found.</div>') + '</div>' +
+    // Default: show the team list. User clicks a row → drills into matrix.
+    el.innerHTML = buildHeader(false) +
+      '<div id="gl-perm-content">' + userListHtml() + '</div>' +
       '<div id="gl-perm-audit"></div>';
     if(typeof window.glRenderPermAudit === 'function') setTimeout(window.glRenderPermAudit, 100);
 
+    window.glShowPermList = function(){
+      var headerEl = el.querySelector(':scope > div:first-child');
+      if(headerEl){
+        var newHeader = document.createElement('div');
+        newHeader.innerHTML = buildHeader(false);
+        el.replaceChild(newHeader.firstChild, headerEl);
+      }
+      document.getElementById('gl-perm-content').innerHTML = userListHtml();
+      // Re-render audit panel below the list
+      var auditEl = document.getElementById('gl-perm-audit');
+      if(auditEl && typeof window.glRenderPermAudit === 'function') setTimeout(window.glRenderPermAudit, 50);
+    };
+
     window.glRenderPermMatrixFor = function(userId){
-      document.getElementById('gl-perm-tabs').innerHTML = tabRow(userId);
-      document.getElementById('gl-perm-matrix').innerHTML = matrixFor(userId);
+      var headerEl = el.querySelector(':scope > div:first-child');
+      if(headerEl){
+        var newHeader = document.createElement('div');
+        newHeader.innerHTML = buildHeader(true);
+        el.replaceChild(newHeader.firstChild, headerEl);
+      }
+      document.getElementById('gl-perm-content').innerHTML = matrixFor(userId);
+      // Scroll the matrix into view
+      var matrixEl = document.getElementById('gl-perm-content');
+      if(matrixEl) matrixEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
   }
 
@@ -21803,6 +21860,8 @@
     perms.userPerms[userId][componentId] = granted;
     // If toggling self, re-apply gating live.
     if(userId === perms.userId) applyGating();
+    // Re-render the matrix so the "state" label flips correctly (default → overridden).
+    if(typeof window.glRenderPermMatrixFor === 'function') window.glRenderPermMatrixFor(userId);
   };
 
   window.glClearPerm = async function(userId, componentId){
@@ -21812,7 +21871,8 @@
     if(r.error){ alert('Revert failed: ' + r.error.message); return; }
     if(perms.userPerms[userId]) delete perms.userPerms[userId][componentId];
     if(userId === perms.userId) applyGating();
-    renderPermissionsPanel();
+    // Stay on the user's matrix view — don't bounce back to the list.
+    if(typeof window.glRenderPermMatrixFor === 'function') window.glRenderPermMatrixFor(userId);
   };
 
   window.glOpenPermDefaults = function(){
@@ -22005,35 +22065,45 @@
     if(!preset){ alert('Unknown preset: ' + presetKey); return; }
     if(!confirm('Apply "' + preset.label + '" preset to this user? This overwrites their current per-component overrides.')) return;
     var sb = getSB(); if(!sb) return;
-    // Build the full override set
-    var rows = perms.components.map(function(c){
-      var granted;
+    // Compute the preset's intended value for every component, then only
+    // write overrides for components where the preset DIFFERS from the
+    // global default. Components matching the default stay clean (showing
+    // "default" in the matrix instead of "overridden — revert" noise).
+    var overridesToWrite = [];
+    perms.components.forEach(function(c){
+      var presetValue;
       if(Object.prototype.hasOwnProperty.call(preset.overrides, c.id)){
-        granted = preset.overrides[c.id];
+        presetValue = preset.overrides[c.id];
       } else if(c.category === 'action'){
-        granted = !!preset.actionDefaults;
+        presetValue = !!preset.actionDefaults;
       } else {
-        granted = !!preset.pageDefaults;
+        presetValue = !!preset.pageDefaults;
       }
-      return {
-        user_id: userId,
-        component_id: c.id,
-        granted: granted,
-        updated_at: new Date().toISOString(),
-        updated_by: perms.userId
-      };
+      if(presetValue !== !!c.default_on){
+        overridesToWrite.push({
+          user_id: userId,
+          component_id: c.id,
+          granted: presetValue,
+          updated_at: new Date().toISOString(),
+          updated_by: perms.userId
+        });
+      }
     });
-    // Wipe existing overrides then bulk insert — simpler than merge logic
+    // Wipe existing overrides, then insert only the meaningful ones.
     var delR = await sb.from('user_permissions').delete().eq('user_id', userId);
     if(delR.error){ alert('Reset failed: ' + delR.error.message); return; }
-    var upR = await sb.from('user_permissions').insert(rows);
-    if(upR.error){ alert('Apply failed: ' + upR.error.message); return; }
-    if(typeof window.addNotification === 'function'){
-      window.addNotification('Preset applied', preset.label + ' applied. Refreshing matrix.', 'success');
+    if(overridesToWrite.length){
+      var upR = await sb.from('user_permissions').insert(overridesToWrite);
+      if(upR.error){ alert('Apply failed: ' + upR.error.message); return; }
     }
-    // Refresh in-memory state
+    if(typeof window.addNotification === 'function'){
+      window.addNotification('Preset applied',
+        preset.label + ' applied — ' + overridesToWrite.length + ' override' + (overridesToWrite.length===1?'':'s') + ' written. The rest use the global default.',
+        'success');
+    }
+    // Refresh in-memory state to match the new minimal set.
     perms.userPerms[userId] = {};
-    rows.forEach(function(r){ perms.userPerms[userId][r.component_id] = r.granted; });
+    overridesToWrite.forEach(function(r){ perms.userPerms[userId][r.component_id] = r.granted; });
     if(userId === perms.userId) applyGating();
     if(typeof window.glRenderPermMatrixFor === 'function') window.glRenderPermMatrixFor(userId);
   };
