@@ -21549,3 +21549,700 @@
   if(document.readyState !== 'loading') subscribe();
   else document.addEventListener('DOMContentLoaded', subscribe);
 }());
+
+/* ============================================================
+   CRM: Per-user, per-component permissions
+   ============================================================
+   - Loads window.glPermissions = { components: [...], userPerms: {...},
+     defaults: {...}, isAdmin: bool } once the user is logged in.
+   - Gates the sidebar nav items + cNav() routing based on what the
+     logged-in user has permission to see.
+   - Replaces the in-memory "Users & permissions" page with one
+     backed by the permission_components + user_permissions tables.
+   - Admins (profiles.role='admin') bypass all checks.
+   ============================================================ */
+(function(){
+  function getSB(){ return window.supa || null; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+  var perms = {
+    loaded:    false,
+    isAdmin:   false,
+    userId:    null,
+    components: [],            // [{id,label,category,description,default_on,sort_order}]
+    byId:      {},             // id → component row
+    userPerms: {}              // user_id → { component_id → granted }
+  };
+  window.glPermissions = perms;
+
+  // Map sidebar nav `cni` element → page id used in cNav and permission id
+  // (e.g. id="nav-clients" gates the 'page.clients' component for cNav('clients')).
+  function permIdForPage(pageId){
+    if(!pageId) return null;
+    return 'page.' + pageId;
+  }
+
+  async function loadPermissions(){
+    var sb = getSB();
+    if(!sb || !sb.auth){ return; }
+    var sess = await sb.auth.getSession();
+    var user = sess && sess.data && sess.data.session && sess.data.session.user;
+    if(!user){ return; }
+    perms.userId = user.id;
+
+    // Resolve admin flag from profiles.role
+    var prof = await sb.from('profiles').select('id,role').eq('id', user.id).maybeSingle();
+    perms.isAdmin = !!(prof.data && prof.data.role === 'admin');
+
+    // Load catalog
+    var cR = await sb.from('permission_components').select('*').order('sort_order', { ascending: true });
+    if(cR.error){ console.warn('[GL perms] components load failed', cR.error); return; }
+    perms.components = cR.data || [];
+    perms.byId = {};
+    perms.components.forEach(function(c){ perms.byId[c.id] = c; });
+
+    // Load user's own permissions (RLS lets them read their own row only,
+    // except admins who can read all — we'll fetch all for admin so the
+    // matrix UI doesn't need a second roundtrip per user).
+    var query = sb.from('user_permissions').select('user_id, component_id, granted');
+    if(!perms.isAdmin) query = query.eq('user_id', user.id);
+    var pR = await query;
+    perms.userPerms = {};
+    (pR.data || []).forEach(function(row){
+      if(!perms.userPerms[row.user_id]) perms.userPerms[row.user_id] = {};
+      perms.userPerms[row.user_id][row.component_id] = !!row.granted;
+    });
+
+    perms.loaded = true;
+    applyGating();
+    console.log('[GL perms] loaded — admin=' + perms.isAdmin + ', components=' + perms.components.length);
+  }
+
+  // Synchronous permission check using already-loaded state.
+  // If permissions aren't loaded yet, returns true (fail-open) so an
+  // unconfigured site stays usable. Admins always true.
+  window.glCan = function glCan(componentId){
+    if(!perms.loaded) return true;
+    if(perms.isAdmin) return true;
+    var userPerms = perms.userPerms[perms.userId] || {};
+    if(Object.prototype.hasOwnProperty.call(userPerms, componentId)) return userPerms[componentId];
+    var comp = perms.byId[componentId];
+    return comp ? !!comp.default_on : true;
+  };
+
+  // Hide sidebar nav items the user doesn't have access to + show the
+  // Users & permissions nav for admins.
+  function applyGating(){
+    var navs = document.querySelectorAll('.cni');
+    navs.forEach(function(el){
+      var onclick = el.getAttribute('onclick') || '';
+      var m = onclick.match(/cNav\(\s*['"]([^'"]+)['"]/);
+      if(!m) return;
+      var pageId = m[1];
+      var permId = permIdForPage(pageId);
+      var allowed = window.glCan(permId);
+      el.style.display = allowed ? '' : 'none';
+    });
+    // Admin-only nav items: surface them when user is admin.
+    if(perms.isAdmin){
+      var adminOnly = ['nav-users', 'nav-customers', 'nav-audit', 'nav-ai-settings'];
+      adminOnly.forEach(function(id){
+        var el = document.getElementById(id);
+        if(el) el.style.display = '';
+      });
+    }
+  }
+
+  // Intercept cNav so a deep-link or saved nav state can't bypass the gate.
+  function installCNavGuard(){
+    var orig = window.cNav;
+    if(typeof orig !== 'function' || orig.__glPermGuard) return;
+    window.cNav = function guardedCNav(page, el){
+      var permId = permIdForPage(page);
+      if(perms.loaded && permId && !window.glCan(permId)){
+        if(typeof window.addNotification === 'function'){
+          window.addNotification('Access denied', 'You do not have permission for this page. Ask Mike to enable it.', 'warning');
+        } else {
+          alert('Access denied — you do not have permission for this page.');
+        }
+        return;
+      }
+      return orig.apply(this, arguments);
+    };
+    window.cNav.__glPermGuard = true;
+  }
+
+  // ── Users & Permissions page renderer ───────────────────────────────────
+  // Adds a per-user, per-component toggle matrix below the existing Users page
+  // (which still shows the role cards from the original HTML).
+  async function renderPermissionsPanel(){
+    var el = document.getElementById('users-list');
+    if(!el) return;
+    var sb = getSB(); if(!sb) return;
+    if(!perms.isAdmin){
+      el.innerHTML = '<div style="color:var(--muted);padding:20px 0">Only admins can manage permissions.</div>';
+      return;
+    }
+    if(!perms.loaded){
+      el.innerHTML = '<div style="color:var(--muted);padding:20px 0">Loading permissions…</div>';
+      await loadPermissions();
+    }
+    // Pull staff profiles (everyone except portal customers)
+    var profR = await sb.from('profiles').select('id, name, email, role, status').order('name', { ascending: true });
+    var allProfiles = (profR && profR.data) || [];
+    // Exclude profiles whose auth user is in customer_users (portal customers, not staff)
+    var cuR = await sb.from('customer_users').select('auth_user_id, active');
+    var customerIds = {};
+    (cuR && cuR.data || []).forEach(function(r){ if(r.active !== false) customerIds[r.auth_user_id] = true; });
+    var staff = allProfiles.filter(function(p){ return !customerIds[p.id]; });
+    // Refresh full user_permissions snapshot for the matrix
+    var allPerms = await sb.from('user_permissions').select('user_id, component_id, granted');
+    var byUser = {};
+    (allPerms.data || []).forEach(function(row){
+      if(!byUser[row.user_id]) byUser[row.user_id] = {};
+      byUser[row.user_id][row.component_id] = !!row.granted;
+    });
+    perms.userPerms = byUser;
+
+    function buildHeader(){
+      return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 18px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">' +
+        '<div>' +
+          '<div style="font-size:13px;font-weight:700;color:var(--teal);letter-spacing:1px">COMPONENT PERMISSIONS</div>' +
+          '<div style="font-size:11px;color:var(--muted);margin-top:3px">Toggle a component for an individual user, or click <b>Edit defaults</b> to change what new users see by default. Admins always see everything.</div>' +
+        '</div>' +
+        '<button class="cbtn" onclick="window.glOpenPermDefaults()" style="font-size:11px;padding:6px 12px">Edit defaults</button>' +
+      '</div>';
+    }
+
+    function tabRow(activeUserId){
+      var tabs = staff.map(function(u){
+        var active = (u.id === activeUserId);
+        var dn = u.name || (u.email || '').split('@')[0] || 'user';
+        return '<div onclick="window.glRenderPermMatrixFor(\'' + u.id + '\')" style="padding:8px 14px;cursor:pointer;border-radius:8px 8px 0 0;border:1px solid rgba(255,255,255,.06);border-bottom:0;font-size:12px;font-weight:' + (active?'700':'500') + ';background:' + (active?'rgba(0,229,192,.08)':'transparent') + ';color:' + (active?'var(--teal)':'var(--muted)') + '">' + esc(dn) + (u.role==='admin' ? ' <span style="font-size:9px;color:#f5c842">ADMIN</span>' : '') + '</div>';
+      }).join('');
+      return '<div style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:0">' + tabs + '</div>';
+    }
+
+    function matrixFor(userId){
+      var u = staff.find(function(x){ return x.id === userId; });
+      if(!u) return '<div style="color:var(--muted);padding:20px 0">User not found.</div>';
+      var userOverrides = byUser[userId] || {};
+      function rowHtml(c){
+        var hasOverride = Object.prototype.hasOwnProperty.call(userOverrides, c.id);
+        var effective = hasOverride ? userOverrides[c.id] : c.default_on;
+        var note = u.role === 'admin'
+          ? '<span style="font-size:10px;color:#f5c842">admin override</span>'
+          : (hasOverride
+              ? '<span style="font-size:10px;color:#6b9fff;cursor:pointer" onclick="window.glClearPerm(\'' + userId + '\',\'' + c.id + '\')" title="Click to revert to default">overridden — revert</span>'
+              : '<span style="font-size:10px;color:var(--muted)">default (' + (c.default_on ? 'on' : 'off') + ')</span>');
+        return '<tr>' +
+          '<td style="padding:6px 8px;font-weight:600">' + esc(c.label) + '</td>' +
+          '<td style="padding:6px 8px;color:var(--muted);font-size:11px">' + esc(c.description||'') + '</td>' +
+          '<td style="padding:6px 8px;text-align:center"><label style="cursor:pointer"><input type="checkbox"' + (effective?' checked':'') + (u.role==='admin'?' disabled':'') + ' onchange="window.glTogglePerm(\'' + userId + '\',\'' + c.id + '\',this.checked)"></label></td>' +
+          '<td style="padding:6px 8px">' + note + '</td>' +
+        '</tr>';
+      }
+      function sectionTable(title, color, items){
+        if(!items.length) return '';
+        return '<div style="margin-top:14px;padding:6px 0 4px;font-size:11px;letter-spacing:2px;color:' + color + ';font-weight:700">' + title + '</div>' +
+          '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:6px">' +
+            '<thead><tr style="border-bottom:1px solid rgba(255,255,255,.08);text-align:left">' +
+              '<th style="padding:8px;color:var(--muted);font-size:10px;letter-spacing:1px;width:24%">COMPONENT</th>' +
+              '<th style="padding:8px;color:var(--muted);font-size:10px;letter-spacing:1px">DESCRIPTION</th>' +
+              '<th style="padding:8px;color:var(--muted);font-size:10px;letter-spacing:1px;text-align:center;width:80px">ACCESS</th>' +
+              '<th style="padding:8px;color:var(--muted);font-size:10px;letter-spacing:1px;width:160px">STATE</th>' +
+            '</tr></thead>' +
+            '<tbody>' + items.map(rowHtml).join('') + '</tbody>' +
+          '</table>';
+      }
+      var pages   = perms.components.filter(function(c){ return c.category === 'page'   || !c.category; });
+      var actions = perms.components.filter(function(c){ return c.category === 'action'; });
+      var dataC   = perms.components.filter(function(c){ return c.category === 'data'; });
+
+      var presetOpts = Object.keys(window.glPresets || {}).map(function(k){
+        return '<option value="' + k + '">' + esc(window.glPresets[k].label) + '</option>';
+      }).join('');
+      var presetBar = u.role === 'admin'
+        ? '<div style="font-size:11px;color:#f5c842;margin-bottom:10px">Admin role bypasses every gate — presets do not apply.</div>'
+        : '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;background:rgba(26,111,255,.06);border:1px solid rgba(26,111,255,.18);border-radius:8px">' +
+            '<span style="font-size:11px;letter-spacing:1px;color:#6b9fff;font-weight:700">APPLY PRESET</span>' +
+            '<select id="gl-preset-' + userId + '" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);color:#eef4ff;padding:5px 8px;border-radius:6px;font-size:12px"><option value="">Choose a preset…</option>' + presetOpts + '</select>' +
+            '<button onclick="(function(){var v=document.getElementById(\'gl-preset-' + userId + '\').value;if(v)window.glApplyRolePreset(\'' + userId + '\',v);})()" class="cbtn" style="font-size:11px;padding:5px 12px">Apply</button>' +
+            '<span style="font-size:10px;color:var(--muted)">Overwrites all of this user\'s current overrides.</span>' +
+          '</div>';
+
+      return '<div style="background:#0d1b2e;border:1px solid rgba(255,255,255,.08);border-radius:0 8px 8px 8px;padding:16px;margin-bottom:18px">' +
+        '<div style="font-size:13px;color:#fff;font-weight:700;margin-bottom:2px">' + esc(u.name||u.email) + '</div>' +
+        '<div style="font-size:11px;color:var(--muted);margin-bottom:14px">' + esc(u.email||'') + ' · ' + esc(u.role||'') + (u.role==='admin' ? ' <span style="color:#f5c842">(admin bypasses all gates)</span>' : '') + '</div>' +
+        presetBar +
+        sectionTable('PAGES — what they can navigate to',  '#00e5c0', pages) +
+        sectionTable('ACTIONS — what they can do',          '#f5c842', actions) +
+        sectionTable('DATA — what they can see',            '#c4b5fd', dataC) +
+      '</div>';
+    }
+
+    var initialUserId = (staff[0] && staff[0].id) || null;
+    el.innerHTML = buildHeader() +
+      '<div id="gl-perm-tabs">' + tabRow(initialUserId) + '</div>' +
+      '<div id="gl-perm-matrix">' + (initialUserId ? matrixFor(initialUserId) : '<div style="color:var(--muted);padding:20px 0">No staff users found.</div>') + '</div>' +
+      '<div id="gl-perm-audit"></div>';
+    if(typeof window.glRenderPermAudit === 'function') setTimeout(window.glRenderPermAudit, 100);
+
+    window.glRenderPermMatrixFor = function(userId){
+      document.getElementById('gl-perm-tabs').innerHTML = tabRow(userId);
+      document.getElementById('gl-perm-matrix').innerHTML = matrixFor(userId);
+    };
+  }
+
+  window.glTogglePerm = async function(userId, componentId, granted){
+    var sb = getSB(); if(!sb) return;
+    var row = { user_id: userId, component_id: componentId, granted: granted, updated_at: new Date().toISOString(), updated_by: perms.userId };
+    var r = await sb.from('user_permissions').upsert(row, { onConflict: 'user_id,component_id' });
+    if(r.error){ alert('Save failed: ' + r.error.message); return; }
+    if(!perms.userPerms[userId]) perms.userPerms[userId] = {};
+    perms.userPerms[userId][componentId] = granted;
+    // If toggling self, re-apply gating live.
+    if(userId === perms.userId) applyGating();
+  };
+
+  window.glClearPerm = async function(userId, componentId){
+    var sb = getSB(); if(!sb) return;
+    if(!confirm('Revert this component to its default for this user?')) return;
+    var r = await sb.from('user_permissions').delete().eq('user_id', userId).eq('component_id', componentId);
+    if(r.error){ alert('Revert failed: ' + r.error.message); return; }
+    if(perms.userPerms[userId]) delete perms.userPerms[userId][componentId];
+    if(userId === perms.userId) applyGating();
+    renderPermissionsPanel();
+  };
+
+  window.glOpenPermDefaults = function(){
+    var existing = document.getElementById('gl-perm-defaults');
+    if(existing) existing.remove();
+    var ov = document.createElement('div');
+    ov.id = 'gl-perm-defaults';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1100;background:rgba(6,13,26,.94);backdrop-filter:blur(10px);overflow-y:auto;padding:24px');
+    var rows = perms.components.map(function(c){
+      return '<tr>' +
+        '<td style="padding:8px;font-weight:600">' + esc(c.label) + '</td>' +
+        '<td style="padding:8px;color:var(--muted);font-size:11px">' + esc(c.description||'') + '</td>' +
+        '<td style="padding:8px;text-align:center"><label style="cursor:pointer"><input type="checkbox"' + (c.default_on?' checked':'') + ' onchange="window.glSetDefault(\'' + c.id + '\',this.checked)"></label></td>' +
+      '</tr>';
+    }).join('');
+    ov.innerHTML = '<div style="max-width:760px;margin:0 auto;background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:24px;color:#eef4ff;font-family:Arial,Helvetica,sans-serif">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+        '<div style="font-size:18px;font-weight:900;color:#00e5c0;letter-spacing:2px">EDIT DEFAULTS</div>' +
+        '<button onclick="document.getElementById(\'gl-perm-defaults\').remove()" style="background:none;border:0;color:#6b87ad;font-size:22px;cursor:pointer">×</button>' +
+      '</div>' +
+      '<div style="font-size:12px;color:#9ca3af;margin-bottom:16px;line-height:1.5">These are the components a NEW staff user sees by default. Existing per-user overrides keep their explicit setting; users with no override use the default below.</div>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+        '<thead><tr style="border-bottom:1px solid rgba(255,255,255,.08);text-align:left">' +
+          '<th style="padding:8px;color:#6b87ad;font-size:10px;letter-spacing:1px">COMPONENT</th>' +
+          '<th style="padding:8px;color:#6b87ad;font-size:10px;letter-spacing:1px">DESCRIPTION</th>' +
+          '<th style="padding:8px;color:#6b87ad;font-size:10px;letter-spacing:1px;text-align:center">DEFAULT ON</th>' +
+        '</tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table>' +
+    '</div>';
+    document.body.appendChild(ov);
+  };
+
+  window.glSetDefault = async function(componentId, on){
+    var sb = getSB(); if(!sb) return;
+    var r = await sb.from('permission_components').update({ default_on: on }).eq('id', componentId);
+    if(r.error){ alert('Save failed: ' + r.error.message); return; }
+    var c = perms.byId[componentId];
+    if(c) c.default_on = on;
+    applyGating();
+  };
+
+  // Boot: load perms when supa is ready + a user is signed in.
+  function boot(){
+    var sb = window.supa;
+    if(!sb || !sb.auth){ setTimeout(boot, 300); return; }
+    loadPermissions();
+    sb.auth.onAuthStateChange(function(event){
+      if(event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') loadPermissions();
+      if(event === 'SIGNED_OUT'){
+        perms.loaded = false; perms.isAdmin = false; perms.userId = null;
+        perms.userPerms = {};
+      }
+    });
+    // Install cNav guard once
+    var tries = 0;
+    var iv = setInterval(function(){
+      installCNavGuard();
+      if((window.cNav && window.cNav.__glPermGuard) || ++tries > 30) clearInterval(iv);
+    }, 200);
+    // Re-apply gating after the SPA finishes painting the sidebar
+    setTimeout(applyGating, 800);
+    setTimeout(applyGating, 2000);
+  }
+  if(document.readyState !== 'loading') boot();
+  else document.addEventListener('DOMContentLoaded', boot);
+
+  // Hook into cNav so the Users page (re)renders the permissions panel each time.
+  function wireUsersPageRender(){
+    var orig = window.cNav;
+    if(!orig || orig.__glPermPageHook) return;
+    var wrapped = function(page, el){
+      var r = orig.apply(this, arguments);
+      if(page === 'users') setTimeout(renderPermissionsPanel, 60);
+      return r;
+    };
+    wrapped.__glPermPageHook = true;
+    wrapped.__glPermGuard = orig.__glPermGuard; // preserve flag
+    window.cNav = wrapped;
+  }
+  // Wait until cNav has the guard, then layer the renderer hook on top
+  var hookTries = 0;
+  var hookIv = setInterval(function(){
+    if(window.cNav && window.cNav.__glPermGuard){ wireUsersPageRender(); clearInterval(hookIv); }
+    if(++hookTries > 50) clearInterval(hookIv);
+  }, 200);
+
+  // ────────────────────────────────────────────────────────────
+  // Action-level gating — wrap destructive/financial global
+  // functions so they no-op + notify when the user lacks
+  // the relevant permission.
+  // ────────────────────────────────────────────────────────────
+  var ACTION_GATES = {
+    deleteInvoice:           'action.invoice.delete',
+    deleteDeal:              'action.deal.delete',
+    deleteRun:               'action.production_run.delete',
+    deleteProductionRun:     'action.production_run.delete',
+    deleteClient:            'action.client.delete',
+    quickPaid:               'action.invoice.mark_paid',
+    markStatus:              'action.invoice.mark_paid',
+    glExportEverything:      'action.export.bulk',
+    glExportInvoicesCsv:     'action.export.csv',
+    glInviteCustomerLogin:   'action.customer.invite',
+    glOpenInvitePicker:      'action.customer.invite',
+    glCpResendInvite:        'action.customer.invite',
+    glCpSetActive:           'action.customer.deactivate',
+    removeCustomerLogin:     'action.customer.deactivate',
+    openInviteModal:         'action.user.invite',
+    sendInvoiceEmail:        'action.invoice.send',
+    sendFollowupEmail:       'action.invoice.send'
+  };
+  function denyAction(permId){
+    if(typeof window.addNotification === 'function'){
+      window.addNotification('Access denied', 'You do not have permission for this action. Ask Mike to enable it.', 'warning');
+    } else {
+      alert('Access denied — this action is disabled for your account.');
+    }
+    console.warn('[GL perms] action denied:', permId);
+  }
+  function gateFunction(name, permId){
+    var orig = window[name];
+    if(typeof orig !== 'function') return false;
+    if(orig.__glPermGated) return true;
+    var wrapped = function(){
+      if(perms.loaded && !window.glCan(permId)){ denyAction(permId); return; }
+      return orig.apply(this, arguments);
+    };
+    wrapped.__glPermGated = true;
+    wrapped.__glPermOrig = orig;
+    window[name] = wrapped;
+    return true;
+  }
+  function applyActionGates(){
+    Object.keys(ACTION_GATES).forEach(function(name){ gateFunction(name, ACTION_GATES[name]); });
+  }
+  // Retry gating periodically so functions defined later still get wrapped.
+  (function watch(){
+    applyActionGates();
+    setTimeout(watch, 1500);
+  })();
+
+  // ────────────────────────────────────────────────────────────
+  // Role presets — apply a set of overrides to a user in one click.
+  // Admin presets use bulk upsert of user_permissions rows.
+  // ────────────────────────────────────────────────────────────
+  // The shape: { pageDefaults: bool, actionDefaults: bool, overrides: {component_id: bool} }
+  // Effective rule: start with the global default_on of each component,
+  // then layer pageDefaults / actionDefaults (only when not undefined),
+  // then layer overrides (final word).
+  var ROLE_PRESETS = {
+    admin: {
+      label: 'Admin (full access)',
+      description: 'Sets every component ON. Note: profiles.role=admin already bypasses gating; this is mostly cosmetic.',
+      pageDefaults: true,
+      actionDefaults: true,
+      overrides: {}
+    },
+    sales: {
+      label: 'Sales',
+      description: 'Most pages on, no admin-only pages (Audit, Users, AI Settings, Customer Logins). Can mark paid + send invoices; cannot delete or export the full backup.',
+      pageDefaults: true,
+      actionDefaults: false,
+      overrides: {
+        'page.audit':       false,
+        'page.users':       false,
+        'page.customers':   false,
+        'page.ai-settings': false,
+        'action.invoice.mark_paid': true,
+        'action.invoice.send':      true,
+        'action.export.csv':        true,
+        'action.customer.invite':   true
+      }
+    },
+    viewer: {
+      label: 'Viewer (read-only)',
+      description: 'Dashboard, Clients, Invoices, Reports. Everything else hidden. Cannot delete, mark paid, export, or invite.',
+      pageDefaults: false,
+      actionDefaults: false,
+      overrides: {
+        'page.dashboard':  true,
+        'page.clients':    true,
+        'page.invoices':   true,
+        'page.reports':    true
+      }
+    }
+  };
+
+  window.glApplyRolePreset = async function(userId, presetKey){
+    var preset = ROLE_PRESETS[presetKey];
+    if(!preset){ alert('Unknown preset: ' + presetKey); return; }
+    if(!confirm('Apply "' + preset.label + '" preset to this user? This overwrites their current per-component overrides.')) return;
+    var sb = getSB(); if(!sb) return;
+    // Build the full override set
+    var rows = perms.components.map(function(c){
+      var granted;
+      if(Object.prototype.hasOwnProperty.call(preset.overrides, c.id)){
+        granted = preset.overrides[c.id];
+      } else if(c.category === 'action'){
+        granted = !!preset.actionDefaults;
+      } else {
+        granted = !!preset.pageDefaults;
+      }
+      return {
+        user_id: userId,
+        component_id: c.id,
+        granted: granted,
+        updated_at: new Date().toISOString(),
+        updated_by: perms.userId
+      };
+    });
+    // Wipe existing overrides then bulk insert — simpler than merge logic
+    var delR = await sb.from('user_permissions').delete().eq('user_id', userId);
+    if(delR.error){ alert('Reset failed: ' + delR.error.message); return; }
+    var upR = await sb.from('user_permissions').insert(rows);
+    if(upR.error){ alert('Apply failed: ' + upR.error.message); return; }
+    if(typeof window.addNotification === 'function'){
+      window.addNotification('Preset applied', preset.label + ' applied. Refreshing matrix.', 'success');
+    }
+    // Refresh in-memory state
+    perms.userPerms[userId] = {};
+    rows.forEach(function(r){ perms.userPerms[userId][r.component_id] = r.granted; });
+    if(userId === perms.userId) applyGating();
+    if(typeof window.glRenderPermMatrixFor === 'function') window.glRenderPermMatrixFor(userId);
+  };
+
+  window.glPresets = ROLE_PRESETS;
+
+  // ────────────────────────────────────────────────────────────
+  // Visual gating — proactively HIDE buttons the current user
+  // cannot use, instead of just blocking them on click. Matches
+  // by onclick attribute (for legacy inline handlers built as
+  // HTML strings) AND by an explicit `data-gl-perm="<id>"`
+  // attribute (for new code).
+  // ────────────────────────────────────────────────────────────
+  var ONCLICK_PATTERNS = [
+    { re: /deleteInvoice\b/,         perm: 'action.invoice.delete' },
+    { re: /deleteDeal\b/,            perm: 'action.deal.delete' },
+    { re: /deleteRun\b/,             perm: 'action.production_run.delete' },
+    { re: /deleteClient\b/,          perm: 'action.client.delete' },
+    { re: /quickPaid\b/,             perm: 'action.invoice.mark_paid' },
+    { re: /markStatus\(\s*['"]paid['"]/, perm: 'action.invoice.mark_paid' },
+    { re: /glExportEverything\b/,    perm: 'action.export.bulk' },
+    { re: /glExportInvoicesCsv\b/,   perm: 'action.export.csv' },
+    { re: /glInviteCustomerLogin\b/, perm: 'action.customer.invite' },
+    { re: /glOpenInvitePicker\b/,    perm: 'action.customer.invite' },
+    { re: /glCpResendInvite\b/,      perm: 'action.customer.invite' },
+    { re: /glCpSetActive\b/,         perm: 'action.customer.deactivate' },
+    { re: /removeCustomerLogin\b/,   perm: 'action.customer.deactivate' },
+    { re: /openInviteModal\b/,       perm: 'action.user.invite' }
+  ];
+  function hidePoint(el, allowed){
+    if(allowed){
+      if(el.dataset.glPermHidden === '1'){
+        el.style.display = el.dataset.glPermPrevDisplay || '';
+        delete el.dataset.glPermHidden;
+        delete el.dataset.glPermPrevDisplay;
+      }
+    } else {
+      if(el.dataset.glPermHidden !== '1'){
+        el.dataset.glPermPrevDisplay = el.style.display || '';
+        el.dataset.glPermHidden = '1';
+        el.style.display = 'none';
+      }
+    }
+  }
+  function scanAndHide(root){
+    if(!perms.loaded) return;
+    if(perms.isAdmin){
+      // Admin: restore any previously hidden ones.
+      (root || document).querySelectorAll('[data-gl-perm-hidden="1"]').forEach(function(el){ hidePoint(el, true); });
+      return;
+    }
+    // 1) Explicit data-gl-perm attribute
+    (root || document).querySelectorAll('[data-gl-perm]').forEach(function(el){
+      hidePoint(el, window.glCan(el.getAttribute('data-gl-perm')));
+    });
+    // 2) Legacy inline onclick patterns
+    var nodes = (root || document).querySelectorAll('button[onclick],a[onclick],[onclick]');
+    nodes.forEach(function(el){
+      var oc = el.getAttribute('onclick') || '';
+      if(!oc) return;
+      for(var i=0; i<ONCLICK_PATTERNS.length; i++){
+        var spec = ONCLICK_PATTERNS[i];
+        if(spec.re.test(oc)){
+          hidePoint(el, window.glCan(spec.perm));
+          break;
+        }
+      }
+    });
+  }
+  // Debounced full-page scan in response to DOM changes
+  var scanScheduled = false;
+  function scheduleScan(){
+    if(scanScheduled) return;
+    scanScheduled = true;
+    setTimeout(function(){ scanScheduled = false; scanAndHide(); }, 120);
+  }
+  if(typeof MutationObserver !== 'undefined'){
+    new MutationObserver(function(records){
+      // Cheap filter: only scan if at least one record added/removed nodes
+      for(var i=0;i<records.length;i++){
+        if(records[i].addedNodes && records[i].addedNodes.length){ scheduleScan(); return; }
+      }
+    }).observe(document.documentElement, { childList: true, subtree: true });
+  }
+  // Re-scan after route changes too — applyGating already runs after cNav.
+  var origApplyGating = applyGating;
+  applyGating = function(){ origApplyGating(); scanAndHide(); };
+  // Also expose for the user-permissions panel to refresh after a toggle
+  window.glRescanPermissions = function(){ scanAndHide(); };
+
+  // ────────────────────────────────────────────────────────────
+  // Audit log — record every permission change for accountability.
+  // Backed by the permissions_audit table (created in a new migration).
+  // Renders a "Recent permission changes" panel under the matrix.
+  // ────────────────────────────────────────────────────────────
+  async function loadPermissionAudit(){
+    var sb = getSB(); if(!sb) return [];
+    var r = await sb.from('permissions_audit')
+      .select('id, actor_id, target_user_id, component_id, action, old_value, new_value, created_at')
+      .order('created_at', { ascending: false }).limit(40);
+    if(r.error){ console.warn('[GL audit] load failed', r.error); return []; }
+    return r.data || [];
+  }
+  window.glRenderPermAudit = async function(){
+    var el = document.getElementById('gl-perm-audit');
+    if(!el) return;
+    el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px">Loading audit…</div>';
+    var rows = await loadPermissionAudit();
+    if(!rows.length){ el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px">No permission changes recorded yet.</div>'; return; }
+    var sb = getSB();
+    // Resolve actor + target names in one go
+    var ids = {};
+    rows.forEach(function(r){ if(r.actor_id) ids[r.actor_id]=1; if(r.target_user_id) ids[r.target_user_id]=1; });
+    var idList = Object.keys(ids);
+    var nameMap = {};
+    if(idList.length){
+      var pR = await sb.from('profiles').select('id,name,email').in('id', idList);
+      (pR.data || []).forEach(function(p){ nameMap[p.id] = p.name || p.email || p.id.slice(0,8); });
+    }
+    el.innerHTML = '<div style="font-size:11px;letter-spacing:2px;color:var(--muted);font-weight:700;margin:18px 0 8px">RECENT PERMISSION CHANGES</div>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+        '<thead><tr style="border-bottom:1px solid rgba(255,255,255,.08);text-align:left">' +
+          '<th style="padding:6px 8px;color:var(--muted);font-size:10px;letter-spacing:1px">WHEN</th>' +
+          '<th style="padding:6px 8px;color:var(--muted);font-size:10px;letter-spacing:1px">ADMIN</th>' +
+          '<th style="padding:6px 8px;color:var(--muted);font-size:10px;letter-spacing:1px">TARGET</th>' +
+          '<th style="padding:6px 8px;color:var(--muted);font-size:10px;letter-spacing:1px">COMPONENT</th>' +
+          '<th style="padding:6px 8px;color:var(--muted);font-size:10px;letter-spacing:1px">CHANGE</th>' +
+        '</tr></thead><tbody>' +
+        rows.map(function(r){
+          var comp = (perms.byId[r.component_id] && perms.byId[r.component_id].label) || r.component_id;
+          var change;
+          if(r.action === 'INSERT') change = '<span style="color:#5fcf9e">set to ' + (r.new_value ? 'ON' : 'OFF') + '</span>';
+          else if(r.action === 'DELETE') change = '<span style="color:#9aa7bd">reverted to default</span>';
+          else change = '<span style="color:#f5c842">' + (r.old_value?'ON':'OFF') + ' → ' + (r.new_value?'ON':'OFF') + '</span>';
+          return '<tr>' +
+            '<td style="padding:6px 8px;color:var(--muted);font-size:11px">' + new Date(r.created_at).toLocaleString() + '</td>' +
+            '<td style="padding:6px 8px">' + esc(nameMap[r.actor_id] || '—') + '</td>' +
+            '<td style="padding:6px 8px">' + esc(nameMap[r.target_user_id] || '—') + '</td>' +
+            '<td style="padding:6px 8px">' + esc(comp) + '</td>' +
+            '<td style="padding:6px 8px">' + change + '</td>' +
+          '</tr>';
+        }).join('') +
+      '</tbody></table>';
+  };
+
+  // ────────────────────────────────────────────────────────────
+  // Invite-flow integration — when the admin opens the existing
+  // "+ Invite user" modal, inject a preset selector so the new
+  // staff member gets a sensible permission set on day one.
+  //
+  // The legacy invite modal stores into an in-memory `users` array
+  // (it does NOT create a Supabase auth.users row), so applying a
+  // preset at this step is best-effort — it will only take effect
+  // once the new staff member is actually created in Supabase Auth
+  // (separate flow). For now we stash the chosen preset key on
+  // window.glPendingPresetByEmail so a future hook can use it.
+  // ────────────────────────────────────────────────────────────
+  window.glPendingPresetByEmail = window.glPendingPresetByEmail || {};
+
+  function injectPresetSelectorIntoInviteModal(){
+    var modal = document.getElementById('invite-user-modal');
+    if(!modal || modal.querySelector('#inv-preset')) return;
+    var roleRow = null;
+    Array.prototype.forEach.call(modal.querySelectorAll('.flbl'), function(lbl){
+      if((lbl.textContent||'').trim().toLowerCase() === 'role') roleRow = lbl.parentNode;
+    });
+    if(!roleRow) return;
+    var presetOpts = Object.keys(ROLE_PRESETS).map(function(k){
+      return '<option value="' + k + '">' + esc(ROLE_PRESETS[k].label) + '</option>';
+    }).join('');
+    var row = document.createElement('div');
+    row.className = 'frow';
+    row.innerHTML = '<div class="flbl">Permission preset</div>' +
+      '<select class="fsel" id="inv-preset">' +
+        '<option value="">— Use defaults —</option>' + presetOpts +
+      '</select>' +
+      '<div style="font-size:10px;color:var(--muted);margin-top:4px">Applied after the user is created. Overwrites default per-component access.</div>';
+    roleRow.parentNode.insertBefore(row, roleRow.nextSibling);
+
+    // Wrap the Create User button so we can capture the preset choice.
+    var createBtn = modal.querySelector('button.cbtn.pri');
+    if(createBtn && !createBtn.__glPresetHooked){
+      createBtn.__glPresetHooked = true;
+      var origHandler = createBtn.getAttribute('onclick');
+      createBtn.removeAttribute('onclick');
+      createBtn.addEventListener('click', function(){
+        var emailEl = document.getElementById('inv-email');
+        var presetEl = document.getElementById('inv-preset');
+        var email = (emailEl && emailEl.value || '').trim().toLowerCase();
+        var preset = presetEl && presetEl.value || '';
+        if(email && preset) window.glPendingPresetByEmail[email] = preset;
+        try {
+          if(origHandler){
+            // Re-invoke the original inline handler text
+            new Function(origHandler).call(createBtn);
+          } else if(typeof window.createInvitedUser === 'function'){
+            window.createInvitedUser();
+          }
+        } catch(e){ console.warn('[GL preset hook] handler threw', e); }
+      });
+    }
+  }
+
+  // Watch for the invite modal appearing
+  if(typeof MutationObserver !== 'undefined'){
+    new MutationObserver(function(){
+      if(document.getElementById('invite-user-modal')) injectPresetSelectorIntoInviteModal();
+    }).observe(document.body, { childList: true, subtree: true });
+  }
+
+  console.log('[GL] permissions module loaded (page + action gates + visual hiding + audit + invite preset)');
+}());
