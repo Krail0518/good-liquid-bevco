@@ -21461,3 +21461,91 @@
 
   console.log('[GL] portal invoice PDF download ready');
 }());
+
+/* ============================================================
+   CRM: Realtime auto-update for the in-memory invoices array
+   ============================================================
+   Without this, the CRM's `window.invoices` array is populated
+   once at page load. When the Stripe webhook flips an invoice
+   to status='paid' (or any other DB change happens), the user
+   sees nothing until they hard-refresh.
+
+   Subscribes to Postgres changes on public.invoices. On INSERT /
+   UPDATE / DELETE we patch the in-memory array, then re-render
+   any visible invoice-aware UI (list, dashboard KPIs).
+   ============================================================ */
+(function(){
+  var channel = null;
+  function mapRow(i){
+    return {
+      id:           i.invoice_number || i.id,
+      supaId:       i.id,
+      client:       i.client_id || '',
+      clientName:   i.client_name || '',
+      svc:          i.service || '',
+      amount:       i.amount || 0,
+      date:         i.invoice_date || '',
+      status:       i.status || 'draft',
+      notes:        i.notes || '',
+      paymentTerms: i.payment_terms || '',
+      dueDate:      i.due_date || '',
+      lines:        Array.isArray(i.line_items) ? i.line_items : []
+    };
+  }
+  function reRender(){
+    try { if(typeof window.renderInvoices === 'function') window.renderInvoices(); } catch(e){}
+    try { if(typeof window.renderDash     === 'function') window.renderDash();     } catch(e){}
+    try { if(typeof window.renderActivity === 'function') window.renderActivity(); } catch(e){}
+  }
+  function applyChange(eventType, row, oldRow){
+    if(!Array.isArray(window.invoices)) return;
+    if(eventType === 'DELETE'){
+      var supaId = (oldRow && oldRow.id) || (row && row.id);
+      if(!supaId) return;
+      var idx = window.invoices.findIndex(function(x){ return x.supaId === supaId; });
+      if(idx >= 0){ window.invoices.splice(idx, 1); reRender(); }
+      return;
+    }
+    if(!row) return;
+    var mapped = mapRow(row);
+    var existing = window.invoices.findIndex(function(x){
+      return x.supaId === mapped.supaId || (x.id && x.id === mapped.id);
+    });
+    if(existing >= 0){
+      // Mutate in place so any references the UI holds stay live.
+      Object.keys(mapped).forEach(function(k){ window.invoices[existing][k] = mapped[k]; });
+    } else {
+      window.invoices.push(mapped);
+    }
+    reRender();
+    // Subtle notification when the Stripe webhook flips a row to paid.
+    if(eventType === 'UPDATE' && row.status === 'paid' && (!oldRow || oldRow.status !== 'paid')){
+      try {
+        if(typeof window.addNotification === 'function'){
+          window.addNotification('Payment received', 'Invoice ' + (row.invoice_number || row.id) + ' was paid' + (row.paid_amount ? ' (' + new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(row.paid_amount) + ')' : '') + '.', 'success');
+        }
+      } catch(e){}
+    }
+  }
+  function subscribe(){
+    var sb = window.supa;
+    if(!sb || typeof sb.channel !== 'function'){ setTimeout(subscribe, 400); return; }
+    if(channel) return; // already subscribed
+    channel = sb.channel('gl-invoices-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'invoices' }, function(payload){
+        try { applyChange(payload.eventType, payload.new, payload.old); }
+        catch(e){ console.warn('[GL realtime] applyChange threw', e); }
+      })
+      .subscribe(function(status){
+        if(status === 'SUBSCRIBED') console.log('[GL] realtime: subscribed to invoices');
+        else if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED'){
+          console.warn('[GL] realtime channel status:', status, '— will retry in 5s');
+          try { sb.removeChannel(channel); } catch(e){}
+          channel = null;
+          setTimeout(subscribe, 5000);
+        }
+      });
+  }
+  if(document.readyState !== 'loading') subscribe();
+  else document.addEventListener('DOMContentLoaded', subscribe);
+}());
