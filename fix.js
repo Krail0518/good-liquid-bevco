@@ -20793,7 +20793,7 @@
       var color = STATUS_COLOR[i.status] || '#9aa7bd';
       var viewUrl = i.share_token ? (location.origin + location.pathname + '?invoice_view=' + i.share_token) : '';
       var canPay = (i.status === 'pending' || i.status === 'overdue') && viewUrl;
-      return '<div style="display:grid;grid-template-columns:1fr 120px 130px;gap:12px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.05);align-items:center">' +
+      return '<div style="display:grid;grid-template-columns:1fr 120px 200px;gap:12px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.05);align-items:center">' +
         '<div>' +
           '<div style="font-size:13px;color:#fff;font-weight:700">' + escHtml(i.invoice_number) + '</div>' +
           '<div style="font-size:11px;color:#6b87ad;margin-top:2px">' + escHtml(i.invoice_date||'') + (i.due_date ? ' · Due ' + escHtml(i.due_date) : '') + '</div>' +
@@ -20802,7 +20802,8 @@
           '<div style="font-size:14px;color:#00e5c0;font-weight:700">' + usd(i.amount) + '</div>' +
           '<div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:' + color + ';font-weight:700;margin-top:2px">' + (i.status||'') + '</div>' +
         '</div>' +
-        '<div style="text-align:right">' +
+        '<div style="text-align:right;white-space:nowrap">' +
+          '<button onclick="window.glPortalDownloadInvoicePdf(\'' + i.id + '\')" style="display:inline-block;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.35);color:#c4b5fd;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;margin-right:4px">📥 PDF</button>' +
           (viewUrl ? '<a href="' + viewUrl + '" target="_blank" style="display:inline-block;background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.35);color:#00e5c0;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;text-decoration:none;cursor:pointer">View' + (canPay ? ' / Pay' : '') + '</a>' : '<span style="font-size:10px;color:#6b87ad">no link</span>') +
         '</div>' +
       '</div>';
@@ -21258,4 +21259,205 @@
   };
 
   console.log('[GL] customer portal loaded — ?portal=1');
+}());
+
+/* ============================================================
+   CRM: Customer Logins management page — backed by Supabase
+   ============================================================
+   The original renderCustomerLogins (index.html) reads an
+   in-memory `customerLogins` array stored in localStorage —
+   it never knew about Supabase. Now that customer_users is the
+   real source of truth, this override fetches that table, joins
+   to clients for the brand name, and exposes Resend invite /
+   Deactivate / Reactivate actions per row.
+   ============================================================ */
+(function(){
+  function getSB(){ return window.supa || null; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function fmtDate(s){ if(!s) return ''; try { return new Date(s).toLocaleDateString(); } catch(e){ return String(s).split('T')[0]; } }
+  function fmtDateTime(s){ if(!s) return ''; try { return new Date(s).toLocaleString(); } catch(e){ return String(s); } }
+
+  async function renderFromSupabase(){
+    var el = document.getElementById('customer-logins-list');
+    if(!el) return;
+    var sb = getSB();
+    if(!sb){ el.innerHTML = '<div style="color:var(--muted);padding:20px 0">Supabase not ready.</div>'; return; }
+    el.innerHTML = '<div style="color:var(--muted);padding:20px 0">Loading…</div>';
+    var cuR = await sb.from('customer_users')
+      .select('id, auth_user_id, client_id, email, display_name, active, invited_at, last_login, created_at')
+      .order('invited_at', { ascending: false });
+    if(cuR.error){ el.innerHTML = '<div style="color:#ff8579;padding:20px 0">Error: ' + esc(cuR.error.message) + '</div>'; return; }
+    var rows = cuR.data || [];
+    // Resolve client names in one fetch
+    var clientIds = rows.map(function(r){ return r.client_id; }).filter(Boolean);
+    var clientMap = {};
+    if(clientIds.length){
+      var clR = await sb.from('clients').select('id, name').in('id', clientIds);
+      (clR.data || []).forEach(function(c){ clientMap[c.id] = c.name || ''; });
+    }
+    var total = rows.length;
+    var loggedIn = rows.filter(function(r){ return !!r.last_login; }).length;
+    var active = rows.filter(function(r){ return r.active !== false; }).length;
+    var summary =
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:18px">' +
+        kpi('Invited',   String(total),    'total accounts',       '#00e5c0') +
+        kpi('Active',    String(active),   'enabled accounts',     '#5fcf9e') +
+        kpi('Signed in', String(loggedIn), 'have logged in once+', '#6b9fff') +
+      '</div>';
+    if(!rows.length){
+      el.innerHTML = summary + '<div style="color:var(--muted);padding:20px 0">No customer portal accounts yet. Click "🔑 Invite Customer Login" on the Clients page to create one.</div>';
+      return;
+    }
+    var body = rows.map(function(r){
+      var brand = clientMap[r.client_id] || '(no client)';
+      var inactive = r.active === false;
+      var lastLogin = r.last_login ? fmtDateTime(r.last_login) : '<span style="color:var(--muted);font-style:italic">never</span>';
+      return '<tr style="' + (inactive ? 'opacity:.55' : '') + '">' +
+        '<td style="font-weight:600">' + esc(brand) + '</td>' +
+        '<td style="font-family:var(--ff-mono);font-size:11px">' + esc(r.email) + '</td>' +
+        '<td style="font-size:11px;color:var(--muted)">' + fmtDate(r.invited_at) + '</td>' +
+        '<td style="font-size:11px;color:var(--muted)">' + lastLogin + '</td>' +
+        '<td>' + (inactive ? '<span style="font-size:10px;letter-spacing:1px;color:#e74c3c;font-weight:700">DISABLED</span>' : '<span style="font-size:10px;letter-spacing:1px;color:#5fcf9e;font-weight:700">ACTIVE</span>') + '</td>' +
+        '<td>' +
+          '<button class="cbtn" style="font-size:10px;padding:3px 8px" onclick="window.glCpResendInvite(\'' + r.id + '\',\'' + esc(r.email) + '\')">Resend invite</button> ' +
+          (inactive
+            ? '<button class="cbtn" style="font-size:10px;padding:3px 8px;color:#5fcf9e" onclick="window.glCpSetActive(\'' + r.id + '\',true)">Reactivate</button>'
+            : '<button class="cbtn red" style="font-size:10px;padding:3px 8px" onclick="window.glCpSetActive(\'' + r.id + '\',false)">Deactivate</button>') +
+        '</td>' +
+      '</tr>';
+    }).join('');
+    el.innerHTML = summary +
+      '<table class="ctbl"><thead><tr>' +
+        '<th>Brand</th><th>Email</th><th>Invited</th><th>Last login</th><th>Status</th><th>Actions</th>' +
+      '</tr></thead><tbody>' + body + '</tbody></table>';
+  }
+
+  function kpi(label, value, sub, color){
+    return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:12px 14px">' +
+      '<div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase">' + esc(label) + '</div>' +
+      '<div style="font-size:22px;font-weight:900;color:' + color + ';margin-top:2px">' + esc(value) + '</div>' +
+      '<div style="font-size:10px;color:var(--muted)">' + esc(sub) + '</div>' +
+    '</div>';
+  }
+
+  window.glCpResendInvite = async function(rowId, email){
+    var sb = getSB(); if(!sb) return alert('Supabase not ready');
+    if(!confirm('Resend a password-reset email to ' + email + '?')) return;
+    var redirectTo = location.origin + location.pathname + '?portal=1';
+    var r = await sb.auth.resetPasswordForEmail(email, { redirectTo: redirectTo });
+    if(r.error) return alert('Send failed: ' + r.error.message);
+    alert('Reset email sent to ' + email + '.');
+  };
+
+  window.glCpSetActive = async function(rowId, active){
+    var sb = getSB(); if(!sb) return alert('Supabase not ready');
+    var verb = active ? 'reactivate' : 'deactivate';
+    if(!confirm('Are you sure you want to ' + verb + ' this customer portal account?')) return;
+    var r = await sb.from('customer_users').update({ active: active }).eq('id', rowId);
+    if(r.error) return alert('Update failed: ' + r.error.message);
+    renderFromSupabase();
+  };
+
+  // Override the in-memory version once Supabase is ready
+  function install(){
+    if(!window.supa){ setTimeout(install, 200); return; }
+    window.renderCustomerLogins = renderFromSupabase;
+    // If the page is currently visible, refresh now
+    var page = document.getElementById('cpg-customers');
+    if(page && page.classList.contains('act')) renderFromSupabase();
+  }
+  if(document.readyState !== 'loading') install();
+  else document.addEventListener('DOMContentLoaded', install);
+
+  console.log('[GL] customer-login management page → backed by Supabase');
+}());
+
+/* ============================================================
+   PORTAL: Download invoice PDF button
+   ============================================================
+   Reuses the existing window.generateInvoicePdfBlob() from
+   index.html. That function looks up the invoice in the global
+   `invoices` array; in portal mode that array is empty (the
+   portal queries Supabase directly), so this wrapper maps the
+   portal's Supabase invoice + client into the CRM-shaped object
+   the PDF generator expects, pushes them into the globals, and
+   triggers a blob download.
+   ============================================================ */
+(function(){
+  window.glPortalDownloadInvoicePdf = async function(invoiceSupaId){
+    if(typeof window.generateInvoicePdfBlob !== 'function'){
+      alert('PDF generator not loaded. Please refresh and try again.');
+      return;
+    }
+    var sb = window.supa;
+    if(!sb){ alert('Supabase not ready'); return; }
+    var btn = event && event.currentTarget;
+    var origText = btn ? btn.textContent : '';
+    if(btn){ btn.disabled = true; btn.textContent = '…'; }
+    try {
+      var iR = await sb.from('invoices')
+        .select('id, invoice_number, amount, status, invoice_date, due_date, payment_terms, line_items, client_id, notes, service')
+        .eq('id', invoiceSupaId).maybeSingle();
+      if(iR.error || !iR.data){ throw new Error((iR.error && iR.error.message) || 'Invoice not found'); }
+      var inv = iR.data;
+      var cR = await sb.from('clients')
+        .select('id, name, contact_name, email, phone, street, city, state, zip, shipping_same, shipping_street, shipping_city, shipping_state, shipping_zip')
+        .eq('id', inv.client_id).maybeSingle();
+      var client = (cR && cR.data) || { id: inv.client_id, name: '' };
+      // Map → CRM shape expected by generateInvoicePdfBlob
+      var appInv = {
+        id:           inv.invoice_number || inv.id,
+        supaId:       inv.id,
+        client:       client.id,
+        clientName:   client.name || '',
+        svc:          inv.service || '',
+        amount:       inv.amount || 0,
+        date:         inv.invoice_date || '',
+        status:       inv.status || 'pending',
+        notes:        inv.notes || '',
+        paymentTerms: inv.payment_terms || '',
+        dueDate:      inv.due_date || '',
+        lines:        Array.isArray(inv.line_items) ? inv.line_items : []
+      };
+      var appClient = {
+        id:           client.id,
+        name:         client.name || '',
+        contact:      client.contact_name || '',
+        email:        client.email || '',
+        phone:        client.phone || '',
+        street:       client.street || '',
+        city:         client.city || '',
+        state:        client.state || '',
+        zip:          client.zip || '',
+        billingSame:  client.shipping_same !== false,
+        billingStreet: client.shipping_street || '',
+        billingCity:   client.shipping_city || '',
+        billingState:  client.shipping_state || '',
+        billingZip:    client.shipping_zip || ''
+      };
+      if(!Array.isArray(window.invoices)) window.invoices = [];
+      if(!Array.isArray(window.clients))  window.clients  = [];
+      // Push only if not already present so we don't bloat the array
+      if(!window.invoices.find(function(x){ return x.id === appInv.id; })) window.invoices.push(appInv);
+      if(!window.clients.find(function(x){ return x.id === appClient.id; }))  window.clients.push(appClient);
+
+      var blob = await window.generateInvoicePdfBlob(appInv.id);
+      if(!blob) throw new Error('PDF generator returned no blob');
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = (appInv.id || 'invoice') + '.pdf';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+    } catch(e){
+      console.error('[GL portal] PDF download failed', e);
+      alert('Download failed: ' + (e.message || 'unknown'));
+    } finally {
+      if(btn){ btn.disabled = false; btn.textContent = origText; }
+    }
+  };
+
+  console.log('[GL] portal invoice PDF download ready');
 }());
