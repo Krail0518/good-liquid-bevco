@@ -21879,8 +21879,12 @@
     if(typeof window.addNotification === 'function'){
       window.addNotification('Role updated', 'User role changed to ' + newRole + '.', 'success');
     }
-    // Re-render the panel so the team list + matrix reflect the new role
-    if(typeof renderPermissionsPanel === 'function') renderPermissionsPanel();
+    // Re-fetch staff data, then stay on this user's detail view so the
+    // role badge in the header refreshes in place.
+    if(typeof renderPermissionsPanel === 'function'){
+      await renderPermissionsPanel();
+      if(typeof window.glRenderPermMatrixFor === 'function') window.glRenderPermMatrixFor(userId);
+    }
   };
 
   window.glTogglePerm = async function(userId, componentId, granted){
