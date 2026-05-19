@@ -2654,8 +2654,13 @@
         ov.remove();
         var user = r.data && r.data.user;
         // Portal customer? Re-run portal check so the dashboard renders for them
-        // (skip the CRM-staff loginUser path entirely).
+        // (skip the CRM-staff loginUser path entirely). Clear the recovery
+        // flags first so the portal exits its waiting state and renders the
+        // dashboard for the freshly-authenticated session.
         if(/[?&]portal=1\b/.test(location.search)){
+          if(typeof window.glClearRecoveryFlags === 'function'){
+            try { window.glClearRecoveryFlags(); } catch(e){}
+          }
           if(typeof window.glCheckPortal === 'function'){
             try { window.glCheckPortal(); } catch(e){ console.warn('[GL] glCheckPortal threw', e); location.reload(); }
           } else {
@@ -20858,8 +20863,15 @@
   }
 
   // Expose so the global password-recovery modal can re-enter the portal
-  // flow after a customer sets their password.
+  // flow after a customer sets their password. The companion helper clears
+  // the recovery hint/event flags first so checkPortalMode skips its
+  // "Setting up password reset…" branch (the recovery is now done) and
+  // renders the dashboard for the freshly-authenticated session.
   window.glCheckPortal = checkPortalMode;
+  window.glClearRecoveryFlags = function(){
+    _recoveryHint = false;
+    _recoveryEventSeen = false;
+  };
 
   // Boot — only when ?portal is on the URL
   if(document.readyState === 'loading'){
