@@ -20769,13 +20769,20 @@
     var sb = getSB();
     // Update last_login (fire-and-forget)
     try { sb.from('customer_users').update({ last_login: new Date().toISOString() }).eq('id', customer.id); } catch(e){}
-    // Fetch client + invoices + allergen decls
-    var clientRow = await sb.from('clients').select('name, contact_name, email, phone, street, city, state, zip').eq('id', customer.client_id).maybeSingle();
+    // Fetch client + invoices + allergen decls + production runs + samples + formulas
+    var clientRow = await sb.from('clients').select('name, contact_name, contact_type, email, phone, street, city, state, zip, additional_emails, shipping_same, shipping_street, shipping_city, shipping_state, shipping_zip, lift_gate, dock_hours').eq('id', customer.client_id).maybeSingle();
     var client = clientRow.data || {};
     var invR = await sb.from('invoices').select('id, invoice_number, amount, status, invoice_date, due_date, line_items, share_token').eq('client_id', customer.client_id).order('invoice_date', { ascending: false });
     var invs = invR.data || [];
     var algR = await sb.from('client_allergen_declarations').select('id, product_name, allergens, declared_at, share_token').eq('client_id', customer.client_id).order('declared_at', { ascending: false });
     var algs = algR.data || [];
+    var prR = await sb.from('production_runs').select('id, run_name, format, cases, stage, scheduled_date, updated_at').eq('client_id', customer.client_id).order('scheduled_date', { ascending: false, nullsFirst: false });
+    var prs = (prR && prR.data) || [];
+    var shR = await sb.from('sample_shipments').select('id, kind, qty, shipped_date, carrier, tracking, status, updated_at').eq('client_id', customer.client_id).order('shipped_date', { ascending: false, nullsFirst: false });
+    var shs = (shR && shR.data) || [];
+    // Only show non-draft formulas to the customer
+    var fmR = await sb.from('formulas').select('id, name, version, status, batch_size_gal, target_yield_cases, allergens, updated_at').eq('client_id', customer.client_id).neq('status', 'draft').order('updated_at', { ascending: false });
+    var fms = (fmR && fmR.data) || [];
 
     var STATUS_COLOR = { paid:'#5fcf9e', pending:'#f5c842', overdue:'#e74c3c', quote:'#9aa7bd', expired:'#9aa7bd', draft:'#9aa7bd' };
     var paidTotal = invs.filter(function(i){ return i.status === 'paid'; }).reduce(function(s,i){ return s + (Number(i.amount)||0); }, 0);
@@ -20801,6 +20808,77 @@
       '</div>';
     }).join('') : '<div style="padding:30px;text-align:center;color:#6b87ad;font-size:13px">No invoices yet.</div>';
 
+    var PR_STAGE_COLOR = { Discovery:'#9aa7bd', Formulation:'#6b9fff', Sample:'#c4b5fd', COA:'#f5c842', Production:'#00e5c0', Ship:'#5fcf9e' };
+    var prRowsHtml = prs.length ? prs.map(function(p){
+      var color = PR_STAGE_COLOR[p.stage] || '#9aa7bd';
+      var dateLbl = p.scheduled_date ? new Date(p.scheduled_date).toLocaleDateString() : 'TBD';
+      var meta = [];
+      if(p.format) meta.push(escHtml(p.format));
+      if(p.cases) meta.push(escHtml(String(p.cases)) + ' cases');
+      return '<div style="display:grid;grid-template-columns:1fr 130px 120px;gap:12px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.05);align-items:center">' +
+        '<div>' +
+          '<div style="font-size:13px;color:#fff;font-weight:700">' + escHtml(p.run_name || 'Run') + '</div>' +
+          (meta.length ? '<div style="font-size:11px;color:#6b87ad;margin-top:2px">' + meta.join(' · ') + '</div>' : '') +
+        '</div>' +
+        '<div style="text-align:right;font-size:12px;color:#9aa7bd">' + dateLbl + '</div>' +
+        '<div style="text-align:right">' +
+          '<span style="display:inline-block;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:' + color + ';font-weight:700;background:rgba(255,255,255,.04);border:1px solid ' + color + '33;padding:3px 8px;border-radius:4px">' + escHtml(p.stage || '') + '</span>' +
+        '</div>' +
+      '</div>';
+    }).join('') : '<div style="padding:20px;text-align:center;color:#6b87ad;font-size:12px">No production runs scheduled.</div>';
+
+    var SH_STATUS_COLOR = { prepping:'#f5c842', shipped:'#6b9fff', delivered:'#5fcf9e', followup_sent:'#c4b5fd', dead:'#9aa7bd' };
+    function carrierTrackLink(carrier, tracking){
+      if(!tracking) return '';
+      var t = String(tracking).trim();
+      var url = '';
+      var c = (carrier||'').toLowerCase();
+      if(c.indexOf('ups') >= 0) url = 'https://www.ups.com/track?tracknum=' + encodeURIComponent(t);
+      else if(c.indexOf('fedex') >= 0) url = 'https://www.fedex.com/fedextrack/?trknbr=' + encodeURIComponent(t);
+      else if(c.indexOf('usps') >= 0) url = 'https://tools.usps.com/go/TrackConfirmAction?tLabels=' + encodeURIComponent(t);
+      else if(c.indexOf('dhl') >= 0) url = 'https://www.dhl.com/en/express/tracking.html?AWB=' + encodeURIComponent(t);
+      if(!url) return '<span style="font-size:11px;color:#9aa7bd">' + escHtml(t) + '</span>';
+      return '<a href="' + url + '" target="_blank" style="font-size:11px;color:#00e5c0;text-decoration:underline">' + escHtml(t) + '</a>';
+    }
+    var shRowsHtml = shs.length ? shs.map(function(s){
+      var color = SH_STATUS_COLOR[s.status] || '#9aa7bd';
+      var dateLbl = s.shipped_date ? new Date(s.shipped_date).toLocaleDateString() : '—';
+      var meta = [];
+      if(s.kind) meta.push(escHtml(s.kind));
+      if(s.qty) meta.push(escHtml(String(s.qty)) + ' unit' + (s.qty===1?'':'s'));
+      if(s.carrier) meta.push(escHtml(s.carrier));
+      return '<div style="display:grid;grid-template-columns:1fr 130px 110px;gap:12px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.05);align-items:center">' +
+        '<div>' +
+          '<div style="font-size:13px;color:#fff;font-weight:700">' + (meta.length ? meta.join(' · ') : 'Shipment') + '</div>' +
+          (s.tracking ? '<div style="margin-top:3px">' + carrierTrackLink(s.carrier, s.tracking) + '</div>' : '') +
+        '</div>' +
+        '<div style="text-align:right;font-size:12px;color:#9aa7bd">' + dateLbl + '</div>' +
+        '<div style="text-align:right">' +
+          '<span style="display:inline-block;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:' + color + ';font-weight:700;background:rgba(255,255,255,.04);border:1px solid ' + color + '33;padding:3px 8px;border-radius:4px">' + escHtml(s.status || '') + '</span>' +
+        '</div>' +
+      '</div>';
+    }).join('') : '<div style="padding:20px;text-align:center;color:#6b87ad;font-size:12px">No sample shipments yet.</div>';
+
+    var FM_STATUS_COLOR = { benchtop:'#f5c842', approved:'#5fcf9e', archived:'#9aa7bd' };
+    var fmRowsHtml = fms.length ? fms.map(function(f){
+      var color = FM_STATUS_COLOR[f.status] || '#9aa7bd';
+      var meta = [];
+      if(f.batch_size_gal) meta.push(escHtml(String(f.batch_size_gal)) + ' gal batch');
+      if(f.target_yield_cases) meta.push(escHtml(String(f.target_yield_cases)) + ' case target');
+      var allergList = (f.allergens && f.allergens.length) ? f.allergens.join(', ') : '';
+      return '<div style="display:grid;grid-template-columns:1fr 130px 110px;gap:12px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.05);align-items:center">' +
+        '<div>' +
+          '<div style="font-size:13px;color:#fff;font-weight:700">' + escHtml(f.name || 'Formula') + ' <span style="font-size:11px;color:#6b87ad;font-weight:500">v' + escHtml(String(f.version||1)) + '</span></div>' +
+          (meta.length ? '<div style="font-size:11px;color:#6b87ad;margin-top:2px">' + meta.join(' · ') + '</div>' : '') +
+          (allergList ? '<div style="font-size:10px;color:#f5c842;margin-top:2px">Allergens: ' + escHtml(allergList) + '</div>' : '') +
+        '</div>' +
+        '<div style="text-align:right;font-size:11px;color:#9aa7bd">Updated ' + new Date(f.updated_at).toLocaleDateString() + '</div>' +
+        '<div style="text-align:right">' +
+          '<span style="display:inline-block;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:' + color + ';font-weight:700;background:rgba(255,255,255,.04);border:1px solid ' + color + '33;padding:3px 8px;border-radius:4px">' + escHtml(f.status || '') + '</span>' +
+        '</div>' +
+      '</div>';
+    }).join('') : '<div style="padding:20px;text-align:center;color:#6b87ad;font-size:12px">No formulas on file.</div>';
+
     var algRowsHtml = algs.length ? algs.map(function(a){
       var url = a.share_token ? (location.origin + location.pathname + '?allergen_decl=' + a.share_token) : '';
       return '<div style="display:grid;grid-template-columns:1fr 120px;gap:12px;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.05);align-items:center">' +
@@ -20821,7 +20899,10 @@
           '</div>' +
           '<div style="text-align:right">' +
             '<div style="font-size:13px;color:#fff;font-weight:600">' + escHtml(client.name || customer.email) + '</div>' +
-            '<button id="cp-signout" style="background:none;border:0;color:#6b87ad;font-size:11px;cursor:pointer;text-decoration:underline;margin-top:2px">Sign out</button>' +
+            '<div style="margin-top:2px;display:flex;justify-content:flex-end;gap:14px">' +
+              '<button id="cp-account" style="background:none;border:0;color:#6b87ad;font-size:11px;cursor:pointer;text-decoration:underline">Account settings</button>' +
+              '<button id="cp-signout" style="background:none;border:0;color:#6b87ad;font-size:11px;cursor:pointer;text-decoration:underline">Sign out</button>' +
+            '</div>' +
           '</div>' +
         '</div>' +
 
@@ -20838,6 +20919,21 @@
             invRowsHtml +
           '</div>' +
 
+          '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
+            '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:#6b9fff;font-weight:700">PRODUCTION RUNS</div>' +
+            prRowsHtml +
+          '</div>' +
+
+          '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
+            '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:#f5c842;font-weight:700">SAMPLE SHIPMENTS</div>' +
+            shRowsHtml +
+          '</div>' +
+
+          '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
+            '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:#5fcf9e;font-weight:700">FORMULAS</div>' +
+            fmRowsHtml +
+          '</div>' +
+
           (algs.length ? '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
             '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:#c4b5fd;font-weight:700">ALLERGEN DECLARATIONS</div>' +
             algRowsHtml +
@@ -20852,6 +20948,161 @@
     document.getElementById('cp-signout').onclick = async function(){
       await sb.auth.signOut();
       location.reload();
+    };
+    document.getElementById('cp-account').onclick = function(){
+      openAccountSettings(client, customer);
+    };
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // Account Settings overlay — contact info, billing/shipping
+  // address, delivery prefs, change password.
+  // ────────────────────────────────────────────────────────────
+  function openAccountSettings(client, customer){
+    var existing = document.getElementById('gl-account-modal');
+    if(existing) existing.remove();
+    var ov = document.createElement('div');
+    ov.id = 'gl-account-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1100;background:rgba(6,13,26,.94);backdrop-filter:blur(10px);overflow-y:auto;padding:24px;font-family:Arial,Helvetica,sans-serif;color:#eef4ff');
+    var addEmails = '';
+    if(Array.isArray(client.additional_emails)) addEmails = client.additional_emails.join(', ');
+    else if(client.additional_emails && typeof client.additional_emails === 'string'){
+      try { var arr = JSON.parse(client.additional_emails); if(Array.isArray(arr)) addEmails = arr.join(', '); }
+      catch(e){ addEmails = client.additional_emails; }
+    }
+    function fld(id, label, val, type, placeholder){
+      type = type || 'text';
+      return '<div style="margin-bottom:12px">' +
+        '<div style="font-size:10px;letter-spacing:1.5px;color:#6b87ad;margin-bottom:4px;text-transform:uppercase">' + escHtml(label) + '</div>' +
+        '<input id="' + id + '" type="' + type + '" value="' + escHtml(val||'') + '" placeholder="' + escHtml(placeholder||'') + '" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#eef4ff;font-size:13px;box-sizing:border-box">' +
+      '</div>';
+    }
+    function chk(id, label, val){
+      return '<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#eef4ff;cursor:pointer;padding:6px 0">' +
+        '<input id="' + id + '" type="checkbox"' + (val ? ' checked' : '') + ' style="margin:0">' +
+        '<span>' + escHtml(label) + '</span>' +
+      '</label>';
+    }
+    function sectionHdr(text, color){
+      return '<div style="font-size:12px;letter-spacing:2px;color:' + color + ';font-weight:700;margin:18px 0 12px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.08)">' + text + '</div>';
+    }
+    ov.innerHTML =
+      '<div style="max-width:680px;margin:0 auto;background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:28px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+          '<div style="font-size:18px;font-weight:900;color:#00e5c0;letter-spacing:2px">ACCOUNT SETTINGS</div>' +
+          '<button id="acct-close" style="background:none;border:0;color:#6b87ad;font-size:22px;cursor:pointer;line-height:1">×</button>' +
+        '</div>' +
+        '<div style="font-size:12px;color:#6b87ad;margin-bottom:8px">Brand: <span style="color:#fff;font-weight:700">' + escHtml(client.name || '') + '</span> (contact your account manager to change)</div>' +
+
+        sectionHdr('CONTACT INFO', '#00e5c0') +
+        fld('acct-contact-name', 'Contact name',    client.contact_name) +
+        fld('acct-contact-type', 'Role / title',    client.contact_type, 'text', 'e.g. Founder, AP') +
+        fld('acct-email',        'Primary email',   client.email,        'email') +
+        fld('acct-phone',        'Phone',           client.phone,        'tel') +
+        fld('acct-add-emails',   'Additional emails (comma-separated, cc on invoices)', addEmails, 'text', 'billing@..., ap@...') +
+
+        sectionHdr('BILLING ADDRESS', '#6b9fff') +
+        fld('acct-street', 'Street',   client.street) +
+        '<div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px">' +
+          fld('acct-city',  'City',  client.city) +
+          fld('acct-state', 'State', client.state) +
+          fld('acct-zip',   'Zip',   client.zip) +
+        '</div>' +
+
+        sectionHdr('SHIPPING ADDRESS', '#c4b5fd') +
+        chk('acct-ship-same', 'Same as billing address', client.shipping_same !== false) +
+        '<div id="acct-ship-block" style="' + (client.shipping_same === false ? '' : 'display:none') + ';margin-top:10px">' +
+          fld('acct-ship-street', 'Street',   client.shipping_street) +
+          '<div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px">' +
+            fld('acct-ship-city',  'City',  client.shipping_city) +
+            fld('acct-ship-state', 'State', client.shipping_state) +
+            fld('acct-ship-zip',   'Zip',   client.shipping_zip) +
+          '</div>' +
+        '</div>' +
+
+        sectionHdr('DELIVERY PREFERENCES', '#f5c842') +
+        chk('acct-lift-gate', 'Lift gate required for delivery', !!client.lift_gate) +
+        fld('acct-dock-hours', 'Receiving hours', client.dock_hours, 'text', 'e.g. Mon–Fri 8a–4p') +
+
+        sectionHdr('CHANGE PASSWORD', '#5fcf9e') +
+        '<div style="font-size:11px;color:#6b87ad;margin-bottom:8px">Leave blank to keep your current password.</div>' +
+        fld('acct-new-pw',     'New password',     '', 'password', 'Min 6 characters') +
+        fld('acct-confirm-pw', 'Confirm password', '', 'password', '') +
+
+        '<div id="acct-msg" style="display:none;margin:14px 0;padding:10px 12px;border-radius:6px;font-size:12px"></div>' +
+        '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;padding-top:18px;border-top:1px solid rgba(255,255,255,.08)">' +
+          '<button id="acct-cancel" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#eef4ff;padding:10px 18px;border-radius:6px;font-size:13px;cursor:pointer">Cancel</button>' +
+          '<button id="acct-save" style="background:#00e5c0;border:0;color:#0a1628;padding:10px 22px;border-radius:6px;font-size:13px;font-weight:800;cursor:pointer">Save changes</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+
+    var sb = getSB();
+    function msg(text, kind){
+      var el = document.getElementById('acct-msg');
+      el.style.display = 'block';
+      el.textContent = text;
+      if(kind === 'err'){ el.style.background = 'rgba(231,76,60,.12)'; el.style.border = '1px solid rgba(231,76,60,.35)'; el.style.color = '#ff8579'; }
+      else { el.style.background = 'rgba(95,207,158,.12)'; el.style.border = '1px solid rgba(95,207,158,.35)'; el.style.color = '#5fcf9e'; }
+    }
+    function val(id){ var e = document.getElementById(id); return e ? (e.value||'').trim() : ''; }
+    function chkv(id){ var e = document.getElementById(id); return !!(e && e.checked); }
+
+    document.getElementById('acct-close').onclick  = function(){ ov.remove(); };
+    document.getElementById('acct-cancel').onclick = function(){ ov.remove(); };
+    document.getElementById('acct-ship-same').onchange = function(){
+      document.getElementById('acct-ship-block').style.display = this.checked ? 'none' : 'block';
+    };
+
+    document.getElementById('acct-save').onclick = async function(){
+      var btn = this; var orig = btn.textContent;
+      var newPw = val('acct-new-pw');
+      var confirmPw = val('acct-confirm-pw');
+      if(newPw){
+        if(newPw.length < 6){ msg('New password must be at least 6 characters.', 'err'); return; }
+        if(newPw !== confirmPw){ msg('New passwords do not match.', 'err'); return; }
+      }
+      btn.disabled = true; btn.textContent = 'Saving…';
+
+      // 1) Update account fields via RPC (server-side allow-list)
+      var addEmailsArr = val('acct-add-emails')
+        .split(/[\s,;]+/).map(function(s){return s.trim();}).filter(function(s){return s && s.indexOf('@') > 0;});
+      var shipSame = chkv('acct-ship-same');
+      var args = {
+        p_contact_name:      val('acct-contact-name'),
+        p_contact_type:      val('acct-contact-type'),
+        p_email:             val('acct-email'),
+        p_phone:             val('acct-phone'),
+        p_additional_emails: addEmailsArr,
+        p_street:            val('acct-street'),
+        p_city:              val('acct-city'),
+        p_state:             val('acct-state'),
+        p_zip:               val('acct-zip'),
+        p_shipping_same:     shipSame,
+        p_shipping_street:   shipSame ? null : val('acct-ship-street'),
+        p_shipping_city:     shipSame ? null : val('acct-ship-city'),
+        p_shipping_state:    shipSame ? null : val('acct-ship-state'),
+        p_shipping_zip:      shipSame ? null : val('acct-ship-zip'),
+        p_lift_gate:         chkv('acct-lift-gate'),
+        p_dock_hours:        val('acct-dock-hours')
+      };
+      var r = await sb.rpc('update_customer_account', args);
+      if(r.error){ msg('Save failed: ' + r.error.message, 'err'); btn.disabled = false; btn.textContent = orig; return; }
+      if(r.data && r.data.ok === false){ msg('Save failed: ' + (r.data.error||'unknown'), 'err'); btn.disabled = false; btn.textContent = orig; return; }
+
+      // 2) Update password if provided
+      if(newPw){
+        var pwRes = await sb.auth.updateUser({ password: newPw });
+        if(pwRes.error){ msg('Account saved but password update failed: ' + pwRes.error.message, 'err'); btn.disabled = false; btn.textContent = orig; return; }
+      }
+
+      msg(newPw ? 'Account and password updated.' : 'Account updated.', 'ok');
+      btn.textContent = 'Saved ✓';
+      setTimeout(function(){
+        ov.remove();
+        // Re-render dashboard with fresh data
+        if(typeof window.glCheckPortal === 'function') window.glCheckPortal();
+      }, 900);
     };
   }
   function kpi(label, value, sub, color){
