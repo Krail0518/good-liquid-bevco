@@ -22005,35 +22005,45 @@
     if(!preset){ alert('Unknown preset: ' + presetKey); return; }
     if(!confirm('Apply "' + preset.label + '" preset to this user? This overwrites their current per-component overrides.')) return;
     var sb = getSB(); if(!sb) return;
-    // Build the full override set
-    var rows = perms.components.map(function(c){
-      var granted;
+    // Compute the preset's intended value for every component, then only
+    // write overrides for components where the preset DIFFERS from the
+    // global default. Components matching the default stay clean (showing
+    // "default" in the matrix instead of "overridden — revert" noise).
+    var overridesToWrite = [];
+    perms.components.forEach(function(c){
+      var presetValue;
       if(Object.prototype.hasOwnProperty.call(preset.overrides, c.id)){
-        granted = preset.overrides[c.id];
+        presetValue = preset.overrides[c.id];
       } else if(c.category === 'action'){
-        granted = !!preset.actionDefaults;
+        presetValue = !!preset.actionDefaults;
       } else {
-        granted = !!preset.pageDefaults;
+        presetValue = !!preset.pageDefaults;
       }
-      return {
-        user_id: userId,
-        component_id: c.id,
-        granted: granted,
-        updated_at: new Date().toISOString(),
-        updated_by: perms.userId
-      };
+      if(presetValue !== !!c.default_on){
+        overridesToWrite.push({
+          user_id: userId,
+          component_id: c.id,
+          granted: presetValue,
+          updated_at: new Date().toISOString(),
+          updated_by: perms.userId
+        });
+      }
     });
-    // Wipe existing overrides then bulk insert — simpler than merge logic
+    // Wipe existing overrides, then insert only the meaningful ones.
     var delR = await sb.from('user_permissions').delete().eq('user_id', userId);
     if(delR.error){ alert('Reset failed: ' + delR.error.message); return; }
-    var upR = await sb.from('user_permissions').insert(rows);
-    if(upR.error){ alert('Apply failed: ' + upR.error.message); return; }
-    if(typeof window.addNotification === 'function'){
-      window.addNotification('Preset applied', preset.label + ' applied. Refreshing matrix.', 'success');
+    if(overridesToWrite.length){
+      var upR = await sb.from('user_permissions').insert(overridesToWrite);
+      if(upR.error){ alert('Apply failed: ' + upR.error.message); return; }
     }
-    // Refresh in-memory state
+    if(typeof window.addNotification === 'function'){
+      window.addNotification('Preset applied',
+        preset.label + ' applied — ' + overridesToWrite.length + ' override' + (overridesToWrite.length===1?'':'s') + ' written. The rest use the global default.',
+        'success');
+    }
+    // Refresh in-memory state to match the new minimal set.
     perms.userPerms[userId] = {};
-    rows.forEach(function(r){ perms.userPerms[userId][r.component_id] = r.granted; });
+    overridesToWrite.forEach(function(r){ perms.userPerms[userId][r.component_id] = r.granted; });
     if(userId === perms.userId) applyGating();
     if(typeof window.glRenderPermMatrixFor === 'function') window.glRenderPermMatrixFor(userId);
   };
