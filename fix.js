@@ -21615,6 +21615,11 @@
 
     perms.loaded = true;
     applyGating();
+    // Also explicitly run the button/visual scan now that perms are loaded.
+    // Belt-and-suspenders on top of the applyGating wrapper, which we've seen
+    // skip the scan in some load-order scenarios.
+    try { if(typeof scanAndHide === 'function') scanAndHide(); } catch(e){}
+    if(typeof window.glRescanPermissions === 'function') window.glRescanPermissions();
     console.log('[GL perms] loaded — admin=' + perms.isAdmin + ', components=' + perms.components.length);
   }
 
