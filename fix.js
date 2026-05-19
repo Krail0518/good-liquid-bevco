@@ -21784,7 +21784,9 @@
     var initialUserId = (staff[0] && staff[0].id) || null;
     el.innerHTML = buildHeader() +
       '<div id="gl-perm-tabs">' + tabRow(initialUserId) + '</div>' +
-      '<div id="gl-perm-matrix">' + (initialUserId ? matrixFor(initialUserId) : '<div style="color:var(--muted);padding:20px 0">No staff users found.</div>') + '</div>';
+      '<div id="gl-perm-matrix">' + (initialUserId ? matrixFor(initialUserId) : '<div style="color:var(--muted);padding:20px 0">No staff users found.</div>') + '</div>' +
+      '<div id="gl-perm-audit"></div>';
+    if(typeof window.glRenderPermAudit === 'function') setTimeout(window.glRenderPermAudit, 100);
 
     window.glRenderPermMatrixFor = function(userId){
       document.getElementById('gl-perm-tabs').innerHTML = tabRow(userId);
@@ -22038,5 +22040,209 @@
 
   window.glPresets = ROLE_PRESETS;
 
-  console.log('[GL] permissions module loaded (page + action gates)');
+  // ────────────────────────────────────────────────────────────
+  // Visual gating — proactively HIDE buttons the current user
+  // cannot use, instead of just blocking them on click. Matches
+  // by onclick attribute (for legacy inline handlers built as
+  // HTML strings) AND by an explicit `data-gl-perm="<id>"`
+  // attribute (for new code).
+  // ────────────────────────────────────────────────────────────
+  var ONCLICK_PATTERNS = [
+    { re: /deleteInvoice\b/,         perm: 'action.invoice.delete' },
+    { re: /deleteDeal\b/,            perm: 'action.deal.delete' },
+    { re: /deleteRun\b/,             perm: 'action.production_run.delete' },
+    { re: /deleteClient\b/,          perm: 'action.client.delete' },
+    { re: /quickPaid\b/,             perm: 'action.invoice.mark_paid' },
+    { re: /markStatus\(\s*['"]paid['"]/, perm: 'action.invoice.mark_paid' },
+    { re: /glExportEverything\b/,    perm: 'action.export.bulk' },
+    { re: /glExportInvoicesCsv\b/,   perm: 'action.export.csv' },
+    { re: /glInviteCustomerLogin\b/, perm: 'action.customer.invite' },
+    { re: /glOpenInvitePicker\b/,    perm: 'action.customer.invite' },
+    { re: /glCpResendInvite\b/,      perm: 'action.customer.invite' },
+    { re: /glCpSetActive\b/,         perm: 'action.customer.deactivate' },
+    { re: /removeCustomerLogin\b/,   perm: 'action.customer.deactivate' },
+    { re: /openInviteModal\b/,       perm: 'action.user.invite' }
+  ];
+  function hidePoint(el, allowed){
+    if(allowed){
+      if(el.dataset.glPermHidden === '1'){
+        el.style.display = el.dataset.glPermPrevDisplay || '';
+        delete el.dataset.glPermHidden;
+        delete el.dataset.glPermPrevDisplay;
+      }
+    } else {
+      if(el.dataset.glPermHidden !== '1'){
+        el.dataset.glPermPrevDisplay = el.style.display || '';
+        el.dataset.glPermHidden = '1';
+        el.style.display = 'none';
+      }
+    }
+  }
+  function scanAndHide(root){
+    if(!perms.loaded) return;
+    if(perms.isAdmin){
+      // Admin: restore any previously hidden ones.
+      (root || document).querySelectorAll('[data-gl-perm-hidden="1"]').forEach(function(el){ hidePoint(el, true); });
+      return;
+    }
+    // 1) Explicit data-gl-perm attribute
+    (root || document).querySelectorAll('[data-gl-perm]').forEach(function(el){
+      hidePoint(el, window.glCan(el.getAttribute('data-gl-perm')));
+    });
+    // 2) Legacy inline onclick patterns
+    var nodes = (root || document).querySelectorAll('button[onclick],a[onclick],[onclick]');
+    nodes.forEach(function(el){
+      var oc = el.getAttribute('onclick') || '';
+      if(!oc) return;
+      for(var i=0; i<ONCLICK_PATTERNS.length; i++){
+        var spec = ONCLICK_PATTERNS[i];
+        if(spec.re.test(oc)){
+          hidePoint(el, window.glCan(spec.perm));
+          break;
+        }
+      }
+    });
+  }
+  // Debounced full-page scan in response to DOM changes
+  var scanScheduled = false;
+  function scheduleScan(){
+    if(scanScheduled) return;
+    scanScheduled = true;
+    setTimeout(function(){ scanScheduled = false; scanAndHide(); }, 120);
+  }
+  if(typeof MutationObserver !== 'undefined'){
+    new MutationObserver(function(records){
+      // Cheap filter: only scan if at least one record added/removed nodes
+      for(var i=0;i<records.length;i++){
+        if(records[i].addedNodes && records[i].addedNodes.length){ scheduleScan(); return; }
+      }
+    }).observe(document.documentElement, { childList: true, subtree: true });
+  }
+  // Re-scan after route changes too — applyGating already runs after cNav.
+  var origApplyGating = applyGating;
+  applyGating = function(){ origApplyGating(); scanAndHide(); };
+  // Also expose for the user-permissions panel to refresh after a toggle
+  window.glRescanPermissions = function(){ scanAndHide(); };
+
+  // ────────────────────────────────────────────────────────────
+  // Audit log — record every permission change for accountability.
+  // Backed by the permissions_audit table (created in a new migration).
+  // Renders a "Recent permission changes" panel under the matrix.
+  // ────────────────────────────────────────────────────────────
+  async function loadPermissionAudit(){
+    var sb = getSB(); if(!sb) return [];
+    var r = await sb.from('permissions_audit')
+      .select('id, actor_id, target_user_id, component_id, action, old_value, new_value, created_at')
+      .order('created_at', { ascending: false }).limit(40);
+    if(r.error){ console.warn('[GL audit] load failed', r.error); return []; }
+    return r.data || [];
+  }
+  window.glRenderPermAudit = async function(){
+    var el = document.getElementById('gl-perm-audit');
+    if(!el) return;
+    el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px">Loading audit…</div>';
+    var rows = await loadPermissionAudit();
+    if(!rows.length){ el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px">No permission changes recorded yet.</div>'; return; }
+    var sb = getSB();
+    // Resolve actor + target names in one go
+    var ids = {};
+    rows.forEach(function(r){ if(r.actor_id) ids[r.actor_id]=1; if(r.target_user_id) ids[r.target_user_id]=1; });
+    var idList = Object.keys(ids);
+    var nameMap = {};
+    if(idList.length){
+      var pR = await sb.from('profiles').select('id,name,email').in('id', idList);
+      (pR.data || []).forEach(function(p){ nameMap[p.id] = p.name || p.email || p.id.slice(0,8); });
+    }
+    el.innerHTML = '<div style="font-size:11px;letter-spacing:2px;color:var(--muted);font-weight:700;margin:18px 0 8px">RECENT PERMISSION CHANGES</div>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+        '<thead><tr style="border-bottom:1px solid rgba(255,255,255,.08);text-align:left">' +
+          '<th style="padding:6px 8px;color:var(--muted);font-size:10px;letter-spacing:1px">WHEN</th>' +
+          '<th style="padding:6px 8px;color:var(--muted);font-size:10px;letter-spacing:1px">ADMIN</th>' +
+          '<th style="padding:6px 8px;color:var(--muted);font-size:10px;letter-spacing:1px">TARGET</th>' +
+          '<th style="padding:6px 8px;color:var(--muted);font-size:10px;letter-spacing:1px">COMPONENT</th>' +
+          '<th style="padding:6px 8px;color:var(--muted);font-size:10px;letter-spacing:1px">CHANGE</th>' +
+        '</tr></thead><tbody>' +
+        rows.map(function(r){
+          var comp = (perms.byId[r.component_id] && perms.byId[r.component_id].label) || r.component_id;
+          var change;
+          if(r.action === 'INSERT') change = '<span style="color:#5fcf9e">set to ' + (r.new_value ? 'ON' : 'OFF') + '</span>';
+          else if(r.action === 'DELETE') change = '<span style="color:#9aa7bd">reverted to default</span>';
+          else change = '<span style="color:#f5c842">' + (r.old_value?'ON':'OFF') + ' → ' + (r.new_value?'ON':'OFF') + '</span>';
+          return '<tr>' +
+            '<td style="padding:6px 8px;color:var(--muted);font-size:11px">' + new Date(r.created_at).toLocaleString() + '</td>' +
+            '<td style="padding:6px 8px">' + esc(nameMap[r.actor_id] || '—') + '</td>' +
+            '<td style="padding:6px 8px">' + esc(nameMap[r.target_user_id] || '—') + '</td>' +
+            '<td style="padding:6px 8px">' + esc(comp) + '</td>' +
+            '<td style="padding:6px 8px">' + change + '</td>' +
+          '</tr>';
+        }).join('') +
+      '</tbody></table>';
+  };
+
+  // ────────────────────────────────────────────────────────────
+  // Invite-flow integration — when the admin opens the existing
+  // "+ Invite user" modal, inject a preset selector so the new
+  // staff member gets a sensible permission set on day one.
+  //
+  // The legacy invite modal stores into an in-memory `users` array
+  // (it does NOT create a Supabase auth.users row), so applying a
+  // preset at this step is best-effort — it will only take effect
+  // once the new staff member is actually created in Supabase Auth
+  // (separate flow). For now we stash the chosen preset key on
+  // window.glPendingPresetByEmail so a future hook can use it.
+  // ────────────────────────────────────────────────────────────
+  window.glPendingPresetByEmail = window.glPendingPresetByEmail || {};
+
+  function injectPresetSelectorIntoInviteModal(){
+    var modal = document.getElementById('invite-user-modal');
+    if(!modal || modal.querySelector('#inv-preset')) return;
+    var roleRow = null;
+    Array.prototype.forEach.call(modal.querySelectorAll('.flbl'), function(lbl){
+      if((lbl.textContent||'').trim().toLowerCase() === 'role') roleRow = lbl.parentNode;
+    });
+    if(!roleRow) return;
+    var presetOpts = Object.keys(ROLE_PRESETS).map(function(k){
+      return '<option value="' + k + '">' + esc(ROLE_PRESETS[k].label) + '</option>';
+    }).join('');
+    var row = document.createElement('div');
+    row.className = 'frow';
+    row.innerHTML = '<div class="flbl">Permission preset</div>' +
+      '<select class="fsel" id="inv-preset">' +
+        '<option value="">— Use defaults —</option>' + presetOpts +
+      '</select>' +
+      '<div style="font-size:10px;color:var(--muted);margin-top:4px">Applied after the user is created. Overwrites default per-component access.</div>';
+    roleRow.parentNode.insertBefore(row, roleRow.nextSibling);
+
+    // Wrap the Create User button so we can capture the preset choice.
+    var createBtn = modal.querySelector('button.cbtn.pri');
+    if(createBtn && !createBtn.__glPresetHooked){
+      createBtn.__glPresetHooked = true;
+      var origHandler = createBtn.getAttribute('onclick');
+      createBtn.removeAttribute('onclick');
+      createBtn.addEventListener('click', function(){
+        var emailEl = document.getElementById('inv-email');
+        var presetEl = document.getElementById('inv-preset');
+        var email = (emailEl && emailEl.value || '').trim().toLowerCase();
+        var preset = presetEl && presetEl.value || '';
+        if(email && preset) window.glPendingPresetByEmail[email] = preset;
+        try {
+          if(origHandler){
+            // Re-invoke the original inline handler text
+            new Function(origHandler).call(createBtn);
+          } else if(typeof window.createInvitedUser === 'function'){
+            window.createInvitedUser();
+          }
+        } catch(e){ console.warn('[GL preset hook] handler threw', e); }
+      });
+    }
+  }
+
+  // Watch for the invite modal appearing
+  if(typeof MutationObserver !== 'undefined'){
+    new MutationObserver(function(){
+      if(document.getElementById('invite-user-modal')) injectPresetSelectorIntoInviteModal();
+    }).observe(document.body, { childList: true, subtree: true });
+  }
+
+  console.log('[GL] permissions module loaded (page + action gates + visual hiding + audit + invite preset)');
 }());
