@@ -21813,9 +21813,22 @@
             '<span style="font-size:10px;color:var(--muted)">Overwrites all of this user\'s current overrides.</span>' +
           '</div>';
 
+      var roleOpts = ['admin','sales','viewer'].map(function(r){
+        return '<option value="' + r + '"' + (u.role===r?' selected':'') + '>' + r.charAt(0).toUpperCase() + r.slice(1) + '</option>';
+      }).join('');
+      var isSelf = u.id === perms.userId;
+      var roleControl =
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 14px;padding:8px 12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:8px">' +
+          '<span style="font-size:10px;letter-spacing:1.5px;color:var(--muted);font-weight:700">ROLE</span>' +
+          '<select id="gl-role-' + u.id + '" ' + (isSelf?'disabled':'') + ' onchange="window.glChangeUserRole(\'' + u.id + '\',this.value)" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);color:#eef4ff;padding:5px 10px;border-radius:6px;font-size:12px">' + roleOpts + '</select>' +
+          (isSelf
+            ? '<span style="font-size:10px;color:var(--muted)">— you can\'t change your own role (locked out risk)</span>'
+            : '<span style="font-size:10px;color:var(--muted)">Admin role bypasses every gate. Changing to Sales/Viewer makes the per-component overrides apply.</span>') +
+        '</div>';
       return '<div style="background:#0d1b2e;border:1px solid rgba(255,255,255,.08);border-radius:0 8px 8px 8px;padding:16px;margin-bottom:18px">' +
         '<div style="font-size:13px;color:#fff;font-weight:700;margin-bottom:2px">' + esc(u.name||u.email) + '</div>' +
-        '<div style="font-size:11px;color:var(--muted);margin-bottom:14px">' + esc(u.email||'') + ' · ' + esc(u.role||'') + (u.role==='admin' ? ' <span style="color:#f5c842">(admin bypasses all gates)</span>' : '') + '</div>' +
+        '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">' + esc(u.email||'') + (u.role==='admin' ? ' · <span style="color:#f5c842">admin bypasses all gates</span>' : '') + '</div>' +
+        roleControl +
         presetBar +
         sectionTable('PAGES — what they can navigate to',  '#00e5c0', pages) +
         sectionTable('ACTIONS — what they can do',          '#f5c842', actions) +
@@ -21855,6 +21868,20 @@
       if(matrixEl) matrixEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
   }
+
+  window.glChangeUserRole = async function(userId, newRole){
+    if(!['admin','sales','viewer'].includes(newRole)){ alert('Invalid role: ' + newRole); return; }
+    if(userId === perms.userId){ alert('Cannot change your own role — that could lock you out.'); return; }
+    var sb = getSB(); if(!sb) return;
+    if(newRole === 'admin' && !confirm('Make this user an ADMIN? They will bypass every component gate and be able to manage everyone\'s permissions, invite users, etc.')) return;
+    var r = await sb.from('profiles').update({ role: newRole }).eq('id', userId);
+    if(r.error){ alert('Role change failed: ' + r.error.message); return; }
+    if(typeof window.addNotification === 'function'){
+      window.addNotification('Role updated', 'User role changed to ' + newRole + '.', 'success');
+    }
+    // Re-render the panel so the team list + matrix reflect the new role
+    if(typeof renderPermissionsPanel === 'function') renderPermissionsPanel();
+  };
 
   window.glTogglePerm = async function(userId, componentId, granted){
     var sb = getSB(); if(!sb) return;
