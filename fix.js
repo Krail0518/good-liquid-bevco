@@ -20769,13 +20769,20 @@
     var sb = getSB();
     // Update last_login (fire-and-forget)
     try { sb.from('customer_users').update({ last_login: new Date().toISOString() }).eq('id', customer.id); } catch(e){}
-    // Fetch client + invoices + allergen decls
+    // Fetch client + invoices + allergen decls + production runs + samples + formulas
     var clientRow = await sb.from('clients').select('name, contact_name, email, phone, street, city, state, zip').eq('id', customer.client_id).maybeSingle();
     var client = clientRow.data || {};
     var invR = await sb.from('invoices').select('id, invoice_number, amount, status, invoice_date, due_date, line_items, share_token').eq('client_id', customer.client_id).order('invoice_date', { ascending: false });
     var invs = invR.data || [];
     var algR = await sb.from('client_allergen_declarations').select('id, product_name, allergens, declared_at, share_token').eq('client_id', customer.client_id).order('declared_at', { ascending: false });
     var algs = algR.data || [];
+    var prR = await sb.from('production_runs').select('id, run_name, format, cases, stage, scheduled_date, updated_at').eq('client_id', customer.client_id).order('scheduled_date', { ascending: false, nullsFirst: false });
+    var prs = (prR && prR.data) || [];
+    var shR = await sb.from('sample_shipments').select('id, kind, qty, shipped_date, carrier, tracking, status, updated_at').eq('client_id', customer.client_id).order('shipped_date', { ascending: false, nullsFirst: false });
+    var shs = (shR && shR.data) || [];
+    // Only show non-draft formulas to the customer
+    var fmR = await sb.from('formulas').select('id, name, version, status, batch_size_gal, target_yield_cases, allergens, updated_at').eq('client_id', customer.client_id).neq('status', 'draft').order('updated_at', { ascending: false });
+    var fms = (fmR && fmR.data) || [];
 
     var STATUS_COLOR = { paid:'#5fcf9e', pending:'#f5c842', overdue:'#e74c3c', quote:'#9aa7bd', expired:'#9aa7bd', draft:'#9aa7bd' };
     var paidTotal = invs.filter(function(i){ return i.status === 'paid'; }).reduce(function(s,i){ return s + (Number(i.amount)||0); }, 0);
@@ -20800,6 +20807,77 @@
         '</div>' +
       '</div>';
     }).join('') : '<div style="padding:30px;text-align:center;color:#6b87ad;font-size:13px">No invoices yet.</div>';
+
+    var PR_STAGE_COLOR = { Discovery:'#9aa7bd', Formulation:'#6b9fff', Sample:'#c4b5fd', COA:'#f5c842', Production:'#00e5c0', Ship:'#5fcf9e' };
+    var prRowsHtml = prs.length ? prs.map(function(p){
+      var color = PR_STAGE_COLOR[p.stage] || '#9aa7bd';
+      var dateLbl = p.scheduled_date ? new Date(p.scheduled_date).toLocaleDateString() : 'TBD';
+      var meta = [];
+      if(p.format) meta.push(escHtml(p.format));
+      if(p.cases) meta.push(escHtml(String(p.cases)) + ' cases');
+      return '<div style="display:grid;grid-template-columns:1fr 130px 120px;gap:12px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.05);align-items:center">' +
+        '<div>' +
+          '<div style="font-size:13px;color:#fff;font-weight:700">' + escHtml(p.run_name || 'Run') + '</div>' +
+          (meta.length ? '<div style="font-size:11px;color:#6b87ad;margin-top:2px">' + meta.join(' · ') + '</div>' : '') +
+        '</div>' +
+        '<div style="text-align:right;font-size:12px;color:#9aa7bd">' + dateLbl + '</div>' +
+        '<div style="text-align:right">' +
+          '<span style="display:inline-block;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:' + color + ';font-weight:700;background:rgba(255,255,255,.04);border:1px solid ' + color + '33;padding:3px 8px;border-radius:4px">' + escHtml(p.stage || '') + '</span>' +
+        '</div>' +
+      '</div>';
+    }).join('') : '<div style="padding:20px;text-align:center;color:#6b87ad;font-size:12px">No production runs scheduled.</div>';
+
+    var SH_STATUS_COLOR = { prepping:'#f5c842', shipped:'#6b9fff', delivered:'#5fcf9e', followup_sent:'#c4b5fd', dead:'#9aa7bd' };
+    function carrierTrackLink(carrier, tracking){
+      if(!tracking) return '';
+      var t = String(tracking).trim();
+      var url = '';
+      var c = (carrier||'').toLowerCase();
+      if(c.indexOf('ups') >= 0) url = 'https://www.ups.com/track?tracknum=' + encodeURIComponent(t);
+      else if(c.indexOf('fedex') >= 0) url = 'https://www.fedex.com/fedextrack/?trknbr=' + encodeURIComponent(t);
+      else if(c.indexOf('usps') >= 0) url = 'https://tools.usps.com/go/TrackConfirmAction?tLabels=' + encodeURIComponent(t);
+      else if(c.indexOf('dhl') >= 0) url = 'https://www.dhl.com/en/express/tracking.html?AWB=' + encodeURIComponent(t);
+      if(!url) return '<span style="font-size:11px;color:#9aa7bd">' + escHtml(t) + '</span>';
+      return '<a href="' + url + '" target="_blank" style="font-size:11px;color:#00e5c0;text-decoration:underline">' + escHtml(t) + '</a>';
+    }
+    var shRowsHtml = shs.length ? shs.map(function(s){
+      var color = SH_STATUS_COLOR[s.status] || '#9aa7bd';
+      var dateLbl = s.shipped_date ? new Date(s.shipped_date).toLocaleDateString() : '—';
+      var meta = [];
+      if(s.kind) meta.push(escHtml(s.kind));
+      if(s.qty) meta.push(escHtml(String(s.qty)) + ' unit' + (s.qty===1?'':'s'));
+      if(s.carrier) meta.push(escHtml(s.carrier));
+      return '<div style="display:grid;grid-template-columns:1fr 130px 110px;gap:12px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.05);align-items:center">' +
+        '<div>' +
+          '<div style="font-size:13px;color:#fff;font-weight:700">' + (meta.length ? meta.join(' · ') : 'Shipment') + '</div>' +
+          (s.tracking ? '<div style="margin-top:3px">' + carrierTrackLink(s.carrier, s.tracking) + '</div>' : '') +
+        '</div>' +
+        '<div style="text-align:right;font-size:12px;color:#9aa7bd">' + dateLbl + '</div>' +
+        '<div style="text-align:right">' +
+          '<span style="display:inline-block;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:' + color + ';font-weight:700;background:rgba(255,255,255,.04);border:1px solid ' + color + '33;padding:3px 8px;border-radius:4px">' + escHtml(s.status || '') + '</span>' +
+        '</div>' +
+      '</div>';
+    }).join('') : '<div style="padding:20px;text-align:center;color:#6b87ad;font-size:12px">No sample shipments yet.</div>';
+
+    var FM_STATUS_COLOR = { benchtop:'#f5c842', approved:'#5fcf9e', archived:'#9aa7bd' };
+    var fmRowsHtml = fms.length ? fms.map(function(f){
+      var color = FM_STATUS_COLOR[f.status] || '#9aa7bd';
+      var meta = [];
+      if(f.batch_size_gal) meta.push(escHtml(String(f.batch_size_gal)) + ' gal batch');
+      if(f.target_yield_cases) meta.push(escHtml(String(f.target_yield_cases)) + ' case target');
+      var allergList = (f.allergens && f.allergens.length) ? f.allergens.join(', ') : '';
+      return '<div style="display:grid;grid-template-columns:1fr 130px 110px;gap:12px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.05);align-items:center">' +
+        '<div>' +
+          '<div style="font-size:13px;color:#fff;font-weight:700">' + escHtml(f.name || 'Formula') + ' <span style="font-size:11px;color:#6b87ad;font-weight:500">v' + escHtml(String(f.version||1)) + '</span></div>' +
+          (meta.length ? '<div style="font-size:11px;color:#6b87ad;margin-top:2px">' + meta.join(' · ') + '</div>' : '') +
+          (allergList ? '<div style="font-size:10px;color:#f5c842;margin-top:2px">Allergens: ' + escHtml(allergList) + '</div>' : '') +
+        '</div>' +
+        '<div style="text-align:right;font-size:11px;color:#9aa7bd">Updated ' + new Date(f.updated_at).toLocaleDateString() + '</div>' +
+        '<div style="text-align:right">' +
+          '<span style="display:inline-block;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:' + color + ';font-weight:700;background:rgba(255,255,255,.04);border:1px solid ' + color + '33;padding:3px 8px;border-radius:4px">' + escHtml(f.status || '') + '</span>' +
+        '</div>' +
+      '</div>';
+    }).join('') : '<div style="padding:20px;text-align:center;color:#6b87ad;font-size:12px">No formulas on file.</div>';
 
     var algRowsHtml = algs.length ? algs.map(function(a){
       var url = a.share_token ? (location.origin + location.pathname + '?allergen_decl=' + a.share_token) : '';
@@ -20836,6 +20914,21 @@
           '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
             '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:#00e5c0;font-weight:700">YOUR INVOICES</div>' +
             invRowsHtml +
+          '</div>' +
+
+          '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
+            '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:#6b9fff;font-weight:700">PRODUCTION RUNS</div>' +
+            prRowsHtml +
+          '</div>' +
+
+          '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
+            '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:#f5c842;font-weight:700">SAMPLE SHIPMENTS</div>' +
+            shRowsHtml +
+          '</div>' +
+
+          '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
+            '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:#5fcf9e;font-weight:700">FORMULAS</div>' +
+            fmRowsHtml +
           '</div>' +
 
           (algs.length ? '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
