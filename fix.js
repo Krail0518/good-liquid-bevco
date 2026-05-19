@@ -21727,7 +21727,7 @@
       var u = staff.find(function(x){ return x.id === userId; });
       if(!u) return '<div style="color:var(--muted);padding:20px 0">User not found.</div>';
       var userOverrides = byUser[userId] || {};
-      var rows = perms.components.map(function(c){
+      function rowHtml(c){
         var hasOverride = Object.prototype.hasOwnProperty.call(userOverrides, c.id);
         var effective = hasOverride ? userOverrides[c.id] : c.default_on;
         var note = u.role === 'admin'
@@ -21741,19 +21741,43 @@
           '<td style="padding:6px 8px;text-align:center"><label style="cursor:pointer"><input type="checkbox"' + (effective?' checked':'') + (u.role==='admin'?' disabled':'') + ' onchange="window.glTogglePerm(\'' + userId + '\',\'' + c.id + '\',this.checked)"></label></td>' +
           '<td style="padding:6px 8px">' + note + '</td>' +
         '</tr>';
+      }
+      function sectionTable(title, color, items){
+        if(!items.length) return '';
+        return '<div style="margin-top:14px;padding:6px 0 4px;font-size:11px;letter-spacing:2px;color:' + color + ';font-weight:700">' + title + '</div>' +
+          '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:6px">' +
+            '<thead><tr style="border-bottom:1px solid rgba(255,255,255,.08);text-align:left">' +
+              '<th style="padding:8px;color:var(--muted);font-size:10px;letter-spacing:1px;width:24%">COMPONENT</th>' +
+              '<th style="padding:8px;color:var(--muted);font-size:10px;letter-spacing:1px">DESCRIPTION</th>' +
+              '<th style="padding:8px;color:var(--muted);font-size:10px;letter-spacing:1px;text-align:center;width:80px">ACCESS</th>' +
+              '<th style="padding:8px;color:var(--muted);font-size:10px;letter-spacing:1px;width:160px">STATE</th>' +
+            '</tr></thead>' +
+            '<tbody>' + items.map(rowHtml).join('') + '</tbody>' +
+          '</table>';
+      }
+      var pages   = perms.components.filter(function(c){ return c.category === 'page'   || !c.category; });
+      var actions = perms.components.filter(function(c){ return c.category === 'action'; });
+      var dataC   = perms.components.filter(function(c){ return c.category === 'data'; });
+
+      var presetOpts = Object.keys(window.glPresets || {}).map(function(k){
+        return '<option value="' + k + '">' + esc(window.glPresets[k].label) + '</option>';
       }).join('');
+      var presetBar = u.role === 'admin'
+        ? '<div style="font-size:11px;color:#f5c842;margin-bottom:10px">Admin role bypasses every gate — presets do not apply.</div>'
+        : '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;background:rgba(26,111,255,.06);border:1px solid rgba(26,111,255,.18);border-radius:8px">' +
+            '<span style="font-size:11px;letter-spacing:1px;color:#6b9fff;font-weight:700">APPLY PRESET</span>' +
+            '<select id="gl-preset-' + userId + '" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);color:#eef4ff;padding:5px 8px;border-radius:6px;font-size:12px"><option value="">Choose a preset…</option>' + presetOpts + '</select>' +
+            '<button onclick="(function(){var v=document.getElementById(\'gl-preset-' + userId + '\').value;if(v)window.glApplyRolePreset(\'' + userId + '\',v);})()" class="cbtn" style="font-size:11px;padding:5px 12px">Apply</button>' +
+            '<span style="font-size:10px;color:var(--muted)">Overwrites all of this user\'s current overrides.</span>' +
+          '</div>';
+
       return '<div style="background:#0d1b2e;border:1px solid rgba(255,255,255,.08);border-radius:0 8px 8px 8px;padding:16px;margin-bottom:18px">' +
         '<div style="font-size:13px;color:#fff;font-weight:700;margin-bottom:2px">' + esc(u.name||u.email) + '</div>' +
         '<div style="font-size:11px;color:var(--muted);margin-bottom:14px">' + esc(u.email||'') + ' · ' + esc(u.role||'') + (u.role==='admin' ? ' <span style="color:#f5c842">(admin bypasses all gates)</span>' : '') + '</div>' +
-        '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
-          '<thead><tr style="border-bottom:1px solid rgba(255,255,255,.08);text-align:left">' +
-            '<th style="padding:8px;color:var(--muted);font-size:10px;letter-spacing:1px">COMPONENT</th>' +
-            '<th style="padding:8px;color:var(--muted);font-size:10px;letter-spacing:1px">DESCRIPTION</th>' +
-            '<th style="padding:8px;color:var(--muted);font-size:10px;letter-spacing:1px;text-align:center">ACCESS</th>' +
-            '<th style="padding:8px;color:var(--muted);font-size:10px;letter-spacing:1px">STATE</th>' +
-          '</tr></thead>' +
-          '<tbody>' + rows + '</tbody>' +
-        '</table>' +
+        presetBar +
+        sectionTable('PAGES — what they can navigate to',  '#00e5c0', pages) +
+        sectionTable('ACTIONS — what they can do',          '#f5c842', actions) +
+        sectionTable('DATA — what they can see',            '#c4b5fd', dataC) +
       '</div>';
     }
 
@@ -21874,5 +21898,145 @@
     if(++hookTries > 50) clearInterval(hookIv);
   }, 200);
 
-  console.log('[GL] permissions module loaded');
+  // ────────────────────────────────────────────────────────────
+  // Action-level gating — wrap destructive/financial global
+  // functions so they no-op + notify when the user lacks
+  // the relevant permission.
+  // ────────────────────────────────────────────────────────────
+  var ACTION_GATES = {
+    deleteInvoice:           'action.invoice.delete',
+    deleteDeal:              'action.deal.delete',
+    deleteRun:               'action.production_run.delete',
+    deleteProductionRun:     'action.production_run.delete',
+    deleteClient:            'action.client.delete',
+    quickPaid:               'action.invoice.mark_paid',
+    markStatus:              'action.invoice.mark_paid',
+    glExportEverything:      'action.export.bulk',
+    glExportInvoicesCsv:     'action.export.csv',
+    glInviteCustomerLogin:   'action.customer.invite',
+    glOpenInvitePicker:      'action.customer.invite',
+    glCpResendInvite:        'action.customer.invite',
+    glCpSetActive:           'action.customer.deactivate',
+    removeCustomerLogin:     'action.customer.deactivate',
+    openInviteModal:         'action.user.invite',
+    sendInvoiceEmail:        'action.invoice.send',
+    sendFollowupEmail:       'action.invoice.send'
+  };
+  function denyAction(permId){
+    if(typeof window.addNotification === 'function'){
+      window.addNotification('Access denied', 'You do not have permission for this action. Ask Mike to enable it.', 'warning');
+    } else {
+      alert('Access denied — this action is disabled for your account.');
+    }
+    console.warn('[GL perms] action denied:', permId);
+  }
+  function gateFunction(name, permId){
+    var orig = window[name];
+    if(typeof orig !== 'function') return false;
+    if(orig.__glPermGated) return true;
+    var wrapped = function(){
+      if(perms.loaded && !window.glCan(permId)){ denyAction(permId); return; }
+      return orig.apply(this, arguments);
+    };
+    wrapped.__glPermGated = true;
+    wrapped.__glPermOrig = orig;
+    window[name] = wrapped;
+    return true;
+  }
+  function applyActionGates(){
+    Object.keys(ACTION_GATES).forEach(function(name){ gateFunction(name, ACTION_GATES[name]); });
+  }
+  // Retry gating periodically so functions defined later still get wrapped.
+  (function watch(){
+    applyActionGates();
+    setTimeout(watch, 1500);
+  })();
+
+  // ────────────────────────────────────────────────────────────
+  // Role presets — apply a set of overrides to a user in one click.
+  // Admin presets use bulk upsert of user_permissions rows.
+  // ────────────────────────────────────────────────────────────
+  // The shape: { pageDefaults: bool, actionDefaults: bool, overrides: {component_id: bool} }
+  // Effective rule: start with the global default_on of each component,
+  // then layer pageDefaults / actionDefaults (only when not undefined),
+  // then layer overrides (final word).
+  var ROLE_PRESETS = {
+    admin: {
+      label: 'Admin (full access)',
+      description: 'Sets every component ON. Note: profiles.role=admin already bypasses gating; this is mostly cosmetic.',
+      pageDefaults: true,
+      actionDefaults: true,
+      overrides: {}
+    },
+    sales: {
+      label: 'Sales',
+      description: 'Most pages on, no admin-only pages (Audit, Users, AI Settings, Customer Logins). Can mark paid + send invoices; cannot delete or export the full backup.',
+      pageDefaults: true,
+      actionDefaults: false,
+      overrides: {
+        'page.audit':       false,
+        'page.users':       false,
+        'page.customers':   false,
+        'page.ai-settings': false,
+        'action.invoice.mark_paid': true,
+        'action.invoice.send':      true,
+        'action.export.csv':        true,
+        'action.customer.invite':   true
+      }
+    },
+    viewer: {
+      label: 'Viewer (read-only)',
+      description: 'Dashboard, Clients, Invoices, Reports. Everything else hidden. Cannot delete, mark paid, export, or invite.',
+      pageDefaults: false,
+      actionDefaults: false,
+      overrides: {
+        'page.dashboard':  true,
+        'page.clients':    true,
+        'page.invoices':   true,
+        'page.reports':    true
+      }
+    }
+  };
+
+  window.glApplyRolePreset = async function(userId, presetKey){
+    var preset = ROLE_PRESETS[presetKey];
+    if(!preset){ alert('Unknown preset: ' + presetKey); return; }
+    if(!confirm('Apply "' + preset.label + '" preset to this user? This overwrites their current per-component overrides.')) return;
+    var sb = getSB(); if(!sb) return;
+    // Build the full override set
+    var rows = perms.components.map(function(c){
+      var granted;
+      if(Object.prototype.hasOwnProperty.call(preset.overrides, c.id)){
+        granted = preset.overrides[c.id];
+      } else if(c.category === 'action'){
+        granted = !!preset.actionDefaults;
+      } else {
+        granted = !!preset.pageDefaults;
+      }
+      return {
+        user_id: userId,
+        component_id: c.id,
+        granted: granted,
+        updated_at: new Date().toISOString(),
+        updated_by: perms.userId
+      };
+    });
+    // Wipe existing overrides then bulk insert — simpler than merge logic
+    var delR = await sb.from('user_permissions').delete().eq('user_id', userId);
+    if(delR.error){ alert('Reset failed: ' + delR.error.message); return; }
+    var upR = await sb.from('user_permissions').insert(rows);
+    if(upR.error){ alert('Apply failed: ' + upR.error.message); return; }
+    if(typeof window.addNotification === 'function'){
+      window.addNotification('Preset applied', preset.label + ' applied. Refreshing matrix.', 'success');
+    }
+    // Refresh in-memory state
+    perms.userPerms[userId] = {};
+    rows.forEach(function(r){ perms.userPerms[userId][r.component_id] = r.granted; });
+    if(userId === perms.userId) applyGating();
+    if(typeof window.glRenderPermMatrixFor === 'function') window.glRenderPermMatrixFor(userId);
+  };
+
+  window.glPresets = ROLE_PRESETS;
+
+  console.log('[GL] permissions module loaded (page + action gates)');
 }());
