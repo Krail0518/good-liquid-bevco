@@ -22139,6 +22139,11 @@
         el.style.display = el.dataset.glPermPrevDisplay || '';
         delete el.dataset.glPermHidden;
         delete el.dataset.glPermPrevDisplay;
+      } else if(el.hasAttribute('data-gl-perm') && el.style.display === 'none'){
+        // Element was authored with display:none expecting permissions to
+        // reveal it (e.g. admin-only buttons). Unhide it now that we know
+        // the current user is allowed.
+        el.style.display = '';
       }
     } else {
       if(el.dataset.glPermHidden !== '1'){
