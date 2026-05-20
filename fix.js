@@ -20803,7 +20803,7 @@
           '<div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:' + color + ';font-weight:700;margin-top:2px">' + (i.status||'') + '</div>' +
         '</div>' +
         '<div style="text-align:right;white-space:nowrap">' +
-          '<button onclick="window.glPortalDownloadInvoicePdf(\'' + i.id + '\')" style="display:inline-block;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.35);color:#c4b5fd;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;margin-right:4px">📥 PDF</button>' +
+          '<button onclick="window.glPortalDownloadInvoicePdf(\'' + i.id + '\', event)" style="display:inline-block;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.35);color:#c4b5fd;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;margin-right:4px">📥 PDF</button>' +
           (viewUrl ? '<a href="' + viewUrl + '" target="_blank" style="display:inline-block;background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.35);color:#00e5c0;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;text-decoration:none;cursor:pointer">View' + (canPay ? ' / Pay' : '') + '</a>' : '<span style="font-size:10px;color:#6b87ad">no link</span>') +
         '</div>' +
       '</div>';
@@ -21384,14 +21384,16 @@
    triggers a blob download.
    ============================================================ */
 (function(){
-  window.glPortalDownloadInvoicePdf = async function(invoiceSupaId){
+  window.glPortalDownloadInvoicePdf = async function(invoiceSupaId, evt){
     if(typeof window.generateInvoicePdfBlob !== 'function'){
       alert('PDF generator not loaded. Please refresh and try again.');
       return;
     }
     var sb = window.supa;
     if(!sb){ alert('Supabase not ready'); return; }
-    var btn = event && event.currentTarget;
+    // Accept event from second arg (when called via inline onclick with explicit pass)
+    // OR fall back to global event for legacy inline onclicks.
+    var btn = (evt && evt.currentTarget) || (typeof event !== 'undefined' && event && event.currentTarget) || null;
     var origText = btn ? btn.textContent : '';
     if(btn){ btn.disabled = true; btn.textContent = '…'; }
     try {
@@ -22167,7 +22169,9 @@
     { re: /glCpResendInvite\b/,      perm: 'action.customer.invite' },
     { re: /glCpSetActive\b/,         perm: 'action.customer.deactivate' },
     { re: /removeCustomerLogin\b/,   perm: 'action.customer.deactivate' },
-    { re: /openInviteModal\b/,       perm: 'action.user.invite' }
+    { re: /openInviteModal\b/,       perm: 'action.user.invite' },
+    { re: /sendInvoiceEmail\b/,      perm: 'action.invoice.send' },
+    { re: /sendFollowupEmail\b/,     perm: 'action.invoice.send' }
   ];
   function hidePoint(el, allowed){
     if(allowed){
