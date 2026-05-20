@@ -5457,6 +5457,15 @@
       '<b>(1) 📧 Send Onboarding Email</b> — prompts for name + email, creates a portal login with a temp password, emails the customer the login link via Mailgun. Requires Mailgun key (🤖 toolbar → 📧 Mailgun Settings).',
       '<b>(2) Row actions</b> — <span style="color:#f5c842">reset</span> sends a Supabase password recovery email; <span style="color:#e74c3c">remove</span> deletes the portal login.',
       'Customers who log in see invoices addressed to them, 💳 Pay Now buttons (using Stripe links you saved per-invoice), ✓ Accept Quote buttons (emails Mike on click), and a contact form to message you.'
+    ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#7fc6f5">👥 MULTI-USER PORTAL ACCOUNTS (NEW)</h4>' +
+    bullets([
+      '<b>Two roles per brand</b>: <span style="color:#00e5c0;font-weight:700">OWNER</span> can invite/remove teammates and edit account settings. <span style="color:#7fc6f5;font-weight:700">MEMBER</span> is view-only — sees the same invoices/runs/samples but can\'t change billing info or invite others.',
+      '<b>The first invite is owner</b>: when a CRM admin clicks "🔑 Invite Customer Login" on a client, that first user becomes the owner. Every subsequent invite (from CRM or from the portal itself) becomes a member.',
+      '<b>Portal-side invites</b>: the customer\'s owner can add their AP/ops/buyer themselves — Customer Portal → <b>Account settings</b> → <b>TEAMMATES</b> section → enter email + display name → <b>+ Invite</b>. The new user gets a password-reset email; once they set a password they\'re in the portal under the same brand.',
+      '<b>CRM-side controls</b>: the Customer Logins table now shows a <b>Role</b> column. Click <b>Make owner</b> on a member row to promote them (e.g. if the original owner left and you need to hand off the account). Deactivate works the same as before.',
+      '<b>What members CAN\'T do</b>: invite teammates, remove teammates, edit account settings (the Teammates section says "Only the brand owner can invite teammates" instead of showing the invite form). They CAN see everything an owner sees on the portal.',
+      '<b>Behind the scenes</b>: a single Postgres RPC (<code>portal_invite_teammate</code>) runs as SECURITY DEFINER so the portal user — who has no insert privileges on customer_users — can still create the row. The RPC refuses if the caller isn\'t an owner. A companion RPC (<code>portal_remove_teammate</code>) deactivates teammates with the same gating.'
     ]);
 
   var SEC_SETTINGS = MOCK_SETTINGS +
@@ -20939,7 +20948,7 @@
     if(sess.data && sess.data.session){
       // Verify the user is a customer (has a customer_users row)
       var u = await sb.from('customer_users')
-        .select('id, client_id, email, display_name, active')
+        .select('id, client_id, email, display_name, active, role')
         .eq('auth_user_id', sess.data.session.user.id)
         .eq('active', true)
         .maybeSingle();
@@ -21362,6 +21371,24 @@
         chk('acct-lift-gate', 'Lift gate required for delivery', !!client.lift_gate) +
         fld('acct-dock-hours', 'Receiving hours', client.dock_hours, 'text', 'e.g. Mon–Fri 8a–4p') +
 
+        sectionHdr('TEAMMATES', '#7fc6f5') +
+        '<div style="font-size:11px;color:#6b87ad;margin-bottom:10px;line-height:1.5">' +
+          (customer.role === 'owner'
+            ? 'Add your AP, ops, or buyer so they can sign into the same portal. They\'ll get a password-reset email at the address you enter.'
+            : '<i>Only the brand owner can invite teammates. Ask them to add you instead.</i>') +
+        '</div>' +
+        '<div id="acct-teammates-list" style="font-size:12px;color:#9aa7bd;margin-bottom:10px">Loading…</div>' +
+        (customer.role === 'owner' ? (
+          '<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end">' +
+            '<div><div style="font-size:10px;letter-spacing:1.5px;color:#6b87ad;margin-bottom:4px;text-transform:uppercase">Email</div>' +
+              '<input id="acct-mate-email" type="email" placeholder="ap@brand.com" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#eef4ff;font-size:13px;box-sizing:border-box"></div>' +
+            '<div><div style="font-size:10px;letter-spacing:1.5px;color:#6b87ad;margin-bottom:4px;text-transform:uppercase">Display name <span style="opacity:.6;text-transform:none">(optional)</span></div>' +
+              '<input id="acct-mate-name" type="text" placeholder="Jordan Lee" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#eef4ff;font-size:13px;box-sizing:border-box"></div>' +
+            '<button id="acct-mate-invite" style="background:#00e5c0;border:0;color:#0a1628;padding:9px 16px;border-radius:6px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap">+ Invite</button>' +
+          '</div>'
+        ) : '') +
+        '<div id="acct-mate-msg" style="display:none;margin-top:10px;padding:9px 11px;border-radius:6px;font-size:12px"></div>' +
+
         sectionHdr('CHANGE PASSWORD', '#5fcf9e') +
         '<div style="font-size:11px;color:#6b87ad;margin-bottom:8px">Leave blank to keep your current password.</div>' +
         fld('acct-new-pw',     'New password',     '', 'password', 'Min 6 characters') +
@@ -21391,6 +21418,103 @@
     document.getElementById('acct-ship-same').onchange = function(){
       document.getElementById('acct-ship-block').style.display = this.checked ? 'none' : 'block';
     };
+
+    // ── Teammates: load + invite + remove ──────────────────────────
+    function mateMsg(text, kind){
+      var el = document.getElementById('acct-mate-msg'); if(!el) return;
+      el.style.display = 'block'; el.textContent = text;
+      if(kind === 'err'){ el.style.background='rgba(231,76,60,.12)'; el.style.border='1px solid rgba(231,76,60,.35)'; el.style.color='#ff8579'; }
+      else { el.style.background='rgba(95,207,158,.12)'; el.style.border='1px solid rgba(95,207,158,.35)'; el.style.color='#5fcf9e'; }
+    }
+    async function loadTeammates(){
+      var listEl = document.getElementById('acct-teammates-list'); if(!listEl) return;
+      listEl.innerHTML = 'Loading…';
+      var r = await sb.from('customer_users')
+        .select('id, email, display_name, role, active, last_login, invited_at, auth_user_id')
+        .eq('client_id', customer.client_id)
+        .order('invited_at', { ascending: true });
+      if(r.error){ listEl.innerHTML = '<span style="color:#ff8579">Failed to load teammates: ' + escHtml(r.error.message) + '</span>'; return; }
+      var rows = (r.data || []).filter(function(x){ return x.active !== false; });
+      if(!rows.length){ listEl.innerHTML = '<span style="color:#6b87ad;font-style:italic">No teammates yet — you\'re the only one with portal access.</span>'; return; }
+      listEl.innerHTML = rows.map(function(u){
+        var isYou  = u.auth_user_id && (u.id === customer.id);
+        var isOwn  = (u.role === 'owner');
+        var lastIn = u.last_login ? new Date(u.last_login).toLocaleDateString() : 'never';
+        var canRm  = (customer.role === 'owner') && !isYou && !isOwn;
+        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:6px;margin-bottom:6px">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="color:#fff;font-size:13px;font-weight:600">' + escHtml(u.display_name || u.email) +
+              (isYou ? ' <span style="color:#00e5c0;font-size:10px;letter-spacing:1px;margin-left:6px">YOU</span>' : '') +
+              '<span style="margin-left:8px;font-size:9px;letter-spacing:1.5px;padding:2px 6px;border-radius:3px;background:' + (isOwn?'rgba(0,229,192,.14)':'rgba(127,198,245,.14)') + ';color:' + (isOwn?'#00e5c0':'#7fc6f5') + '">' + (isOwn?'OWNER':'MEMBER') + '</span>' +
+            '</div>' +
+            (u.display_name ? '<div style="color:#6b87ad;font-size:11px;margin-top:2px">' + escHtml(u.email) + '</div>' : '') +
+            '<div style="color:#6b87ad;font-size:10px;margin-top:2px">Last sign-in: ' + escHtml(lastIn) + '</div>' +
+          '</div>' +
+          (canRm
+            ? '<button data-mate-rm="' + escHtml(u.id) + '" style="background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.35);color:#ff8579;font-size:11px;padding:5px 10px;border-radius:4px;cursor:pointer">Remove</button>'
+            : '') +
+        '</div>';
+      }).join('');
+      // Wire remove buttons
+      Array.prototype.forEach.call(listEl.querySelectorAll('[data-mate-rm]'), function(btn){
+        btn.onclick = async function(){
+          var id = btn.getAttribute('data-mate-rm');
+          if(!confirm('Remove this teammate? They will lose portal access immediately.')) return;
+          btn.disabled = true; btn.textContent = '…';
+          var rr = await sb.rpc('portal_remove_teammate', { p_customer_user_id: id });
+          if(rr.error){ mateMsg('Remove failed: ' + rr.error.message, 'err'); btn.disabled = false; btn.textContent = 'Remove'; return; }
+          if(rr.data && rr.data.ok === false){ mateMsg('Remove failed: ' + (rr.data.error||'unknown'), 'err'); btn.disabled = false; btn.textContent = 'Remove'; return; }
+          mateMsg('Teammate removed.', 'ok');
+          loadTeammates();
+        };
+      });
+    }
+    loadTeammates();
+
+    var inviteBtn = document.getElementById('acct-mate-invite');
+    if(inviteBtn){
+      inviteBtn.onclick = async function(){
+        var email = (val('acct-mate-email') || '').toLowerCase();
+        var name  = val('acct-mate-name');
+        if(!email || email.indexOf('@') < 0){ mateMsg('Enter a valid email.', 'err'); return; }
+        var btn = this; var origTxt = btn.textContent;
+        btn.disabled = true; btn.textContent = 'Inviting…';
+        try {
+          // Try the RPC first (handles the case where the auth user already exists).
+          var first = await sb.rpc('portal_invite_teammate', { p_email: email, p_display_name: name || null });
+          if(first.error){ mateMsg('Invite failed: ' + first.error.message, 'err'); return; }
+          if(first.data && first.data.ok){
+            mateMsg('✓ ' + (first.data.action === 'reactivated' ? 'Teammate reactivated.' : 'Teammate added.') + ' Sending sign-in email…', 'ok');
+            await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname + '?portal=1' });
+            document.getElementById('acct-mate-email').value = '';
+            document.getElementById('acct-mate-name').value = '';
+            loadTeammates();
+            return;
+          }
+          // Need to create the auth user first, then re-call the RPC.
+          if(first.data && first.data.error === 'auth_user_not_found'){
+            var tempPw = 'GL!' + Math.random().toString(36).slice(2,12) + 'aZ1';
+            var su = await sb.auth.signUp({ email: email, password: tempPw, options: { emailRedirectTo: location.origin + location.pathname + '?portal=1' } });
+            if(su.error && !/already (registered|exists)|user_already_exists/i.test(su.error.message||'')){
+              mateMsg('Sign-up failed: ' + su.error.message, 'err'); return;
+            }
+            var second = await sb.rpc('portal_invite_teammate', { p_email: email, p_display_name: name || null });
+            if(second.error || (second.data && second.data.ok === false)){
+              mateMsg('Invite failed: ' + (second.error ? second.error.message : second.data.error), 'err'); return;
+            }
+            mateMsg('✓ Teammate added. Sending sign-in email…', 'ok');
+            await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname + '?portal=1' });
+            document.getElementById('acct-mate-email').value = '';
+            document.getElementById('acct-mate-name').value = '';
+            loadTeammates();
+            return;
+          }
+          mateMsg('Invite failed: ' + (first.data && first.data.error || 'unknown'), 'err');
+        } finally {
+          btn.disabled = false; btn.textContent = origTxt;
+        }
+      };
+    }
 
     document.getElementById('acct-save').onclick = async function(){
       var btn = this; var orig = btn.textContent;
@@ -21621,7 +21745,7 @@
     if(!sb){ el.innerHTML = '<div style="color:var(--muted);padding:20px 0">Supabase not ready.</div>'; return; }
     el.innerHTML = '<div style="color:var(--muted);padding:20px 0">Loading…</div>';
     var cuR = await sb.from('customer_users')
-      .select('id, auth_user_id, client_id, email, display_name, active, invited_at, last_login, created_at')
+      .select('id, auth_user_id, client_id, email, display_name, active, invited_at, last_login, created_at, role')
       .order('invited_at', { ascending: false });
     if(cuR.error){ el.innerHTML = '<div style="color:#ff8579;padding:20px 0">Error: ' + esc(cuR.error.message) + '</div>'; return; }
     var rows = cuR.data || [];
@@ -21649,14 +21773,20 @@
       var brand = clientMap[r.client_id] || '(no client)';
       var inactive = r.active === false;
       var lastLogin = r.last_login ? fmtDateTime(r.last_login) : '<span style="color:var(--muted);font-style:italic">never</span>';
+      var role = (r.role || 'owner').toLowerCase();
+      var roleBadge = '<span style="font-size:9px;letter-spacing:1.5px;padding:2px 7px;border-radius:3px;background:' + (role==='owner'?'rgba(0,229,192,.14)':'rgba(127,198,245,.14)') + ';color:' + (role==='owner'?'#00e5c0':'#7fc6f5') + ';font-weight:700">' + role.toUpperCase() + '</span>';
       return '<tr style="' + (inactive ? 'opacity:.55' : '') + '">' +
         '<td style="font-weight:600">' + esc(brand) + '</td>' +
         '<td style="font-family:var(--ff-mono);font-size:11px">' + esc(r.email) + '</td>' +
+        '<td>' + roleBadge + '</td>' +
         '<td style="font-size:11px;color:var(--muted)">' + fmtDate(r.invited_at) + '</td>' +
         '<td style="font-size:11px;color:var(--muted)">' + lastLogin + '</td>' +
         '<td>' + (inactive ? '<span style="font-size:10px;letter-spacing:1px;color:#e74c3c;font-weight:700">DISABLED</span>' : '<span style="font-size:10px;letter-spacing:1px;color:#5fcf9e;font-weight:700">ACTIVE</span>') + '</td>' +
         '<td>' +
           '<button class="cbtn" style="font-size:10px;padding:3px 8px" onclick="window.glCpResendInvite(\'' + r.id + '\',\'' + esc(r.email) + '\')">Resend invite</button> ' +
+          (role === 'member'
+            ? '<button class="cbtn" style="font-size:10px;padding:3px 8px;color:#00e5c0;border-color:rgba(0,229,192,.35)" onclick="window.glCpSetRole(\'' + r.id + '\',\'owner\')">Make owner</button> '
+            : '') +
           (inactive
             ? '<button class="cbtn" style="font-size:10px;padding:3px 8px;color:#5fcf9e" onclick="window.glCpSetActive(\'' + r.id + '\',true)">Reactivate</button>'
             : '<button class="cbtn red" style="font-size:10px;padding:3px 8px" onclick="window.glCpSetActive(\'' + r.id + '\',false)">Deactivate</button>') +
@@ -21665,7 +21795,7 @@
     }).join('');
     el.innerHTML = summary +
       '<table class="ctbl"><thead><tr>' +
-        '<th>Brand</th><th>Email</th><th>Invited</th><th>Last login</th><th>Status</th><th>Actions</th>' +
+        '<th>Brand</th><th>Email</th><th>Role</th><th>Invited</th><th>Last login</th><th>Status</th><th>Actions</th>' +
       '</tr></thead><tbody>' + body + '</tbody></table>';
   }
 
@@ -21692,6 +21822,16 @@
     if(!confirm('Are you sure you want to ' + verb + ' this customer portal account?')) return;
     var r = await sb.from('customer_users').update({ active: active }).eq('id', rowId);
     if(r.error) return alert('Update failed: ' + r.error.message);
+    renderFromSupabase();
+  };
+
+  window.glCpSetRole = async function(rowId, role){
+    var sb = getSB(); if(!sb) return alert('Supabase not ready');
+    if(role !== 'owner' && role !== 'member'){ alert('Invalid role'); return; }
+    if(!confirm('Set this portal user as ' + role + '? ' + (role === 'owner' ? 'They will be able to invite/remove teammates and edit account settings.' : 'They will lose invite + edit privileges.'))) return;
+    var r = await sb.from('customer_users').update({ role: role }).eq('id', rowId);
+    if(r.error) return alert('Update failed: ' + r.error.message);
+    if(typeof window.glAudit === 'function') window.glAudit('portal_role_changed', rowId, { role: role });
     renderFromSupabase();
   };
 
