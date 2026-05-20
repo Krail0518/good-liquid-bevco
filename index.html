@@ -2094,7 +2094,19 @@ select option, .fsel option {
 
       <!-- ACTIVITY -->
       <div id="cpg-activity" class="cpg">
-        <div class="cph"><div><div class="cpt">ACTIVITY FEED</div><div class="cps">All team activity</div></div></div>
+        <div class="cph"><div><div class="cpt">ACTIVITY FEED</div><div class="cps" id="act-sub">All team activity</div></div></div>
+        <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap" id="act-filters">
+          <span class="cpill act" onclick="setActivityFilter(this,'all')">All</span>
+          <span class="cpill" onclick="setActivityFilter(this,'call')">📞 Calls</span>
+          <span class="cpill" onclick="setActivityFilter(this,'email')">✉️ Emails</span>
+          <span class="cpill" onclick="setActivityFilter(this,'note')">📝 Notes</span>
+          <span class="cpill" onclick="setActivityFilter(this,'deal')">⭐ Deals</span>
+          <span class="cpill" onclick="setActivityFilter(this,'invoice')">🧾 Invoices</span>
+          <span class="cpill" onclick="setActivityFilter(this,'ref')">🤝 Referrals</span>
+        </div>
+        <div style="margin-bottom:12px">
+          <input type="text" placeholder="🔍 Search activity by name or detail…" oninput="setActivitySearch(this.value)" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:13px;box-sizing:border-box">
+        </div>
         <div class="ccard" id="full-activity"></div>
       </div>
 
@@ -3143,13 +3155,39 @@ function viewInvoice(id){
 function closeDetail(){document.getElementById('inv-detail').classList.remove('show')}
 function markStatus(s){if(currentInvId){const i=invoices.find(x=>x.id===currentInvId);if(i){i.status=s;viewInvoice(currentInvId);renderInvoices();renderDash()}}}
 
-/* Activity */
+/* Activity feed — filterable by type + free-text search. */
+window.activityFilter = window.activityFilter || 'all';
+window.activitySearch = window.activitySearch || '';
+function setActivityFilter(el, t){
+  document.querySelectorAll('#act-filters .cpill').forEach(p=>p.classList.remove('act'));
+  if(el) el.classList.add('act');
+  window.activityFilter = t || 'all';
+  renderActivity();
+}
+function setActivitySearch(q){
+  window.activitySearch = (q || '').trim().toLowerCase();
+  renderActivity();
+}
 function renderActivity(){
-  document.getElementById('full-activity').innerHTML='<div style="padding:4px">'+activities.map(a=>`<div class="act-item" onclick="actNav(${JSON.stringify(a).replace(/"/g,'&quot;')})" style="cursor:pointer;border-radius:8px;padding:9px 8px;margin:0 -8px;transition:background 0.2s" onmouseenter="this.style.background='rgba(255,255,255,.04)'" onmouseleave="this.style.background='transparent'">
-    <div class="act-ico ${a.type}">${a.icon}</div>
-    <div style="flex:1"><div class="act-name">${a.name}</div><div class="act-detail">${a.detail}</div><div class="act-time">${a.time}</div></div>
-    <div style="color:var(--teal);font-size:11px;opacity:0.6;flex-shrink:0">→</div>
-  </div>`).join('')+'</div>';
+  let list = activities;
+  if(window.activityFilter && window.activityFilter !== 'all'){
+    list = list.filter(a => a.type === window.activityFilter);
+  }
+  if(window.activitySearch){
+    const q = window.activitySearch;
+    list = list.filter(a => (a.name||'').toLowerCase().includes(q) || (a.detail||'').toLowerCase().includes(q));
+  }
+  const sub = document.getElementById('act-sub');
+  if(sub) sub.textContent = list.length + ' of ' + activities.length + ' events';
+  document.getElementById('full-activity').innerHTML = '<div style="padding:4px">' +
+    (list.length === 0
+      ? '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No activity matches the filter.</div>'
+      : list.map(a=>`<div class="act-item" onclick="actNav(${JSON.stringify(a).replace(/"/g,'&quot;')})" style="cursor:pointer;border-radius:8px;padding:9px 8px;margin:0 -8px;transition:background 0.2s" onmouseenter="this.style.background='rgba(255,255,255,.04)'" onmouseleave="this.style.background='transparent'">
+        <div class="act-ico ${a.type}">${a.icon}</div>
+        <div style="flex:1"><div class="act-name">${a.name}</div><div class="act-detail">${a.detail}</div><div class="act-time">${a.time}</div></div>
+        <div style="color:var(--teal);font-size:11px;opacity:0.6;flex-shrink:0">→</div>
+      </div>`).join('')
+    ) + '</div>';
 }
 
 /* ═══ REFERRAL PROGRAM ═══ */
