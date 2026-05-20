@@ -76,13 +76,12 @@
     }
   }, true);
 
-  /* ── CORE USERS (profile only; passwords live in Supabase crm_users) ── */
-  var coreUsers = [
-    {id:'u1',name:'Mike Krail',email:'mike@goodliquid.com',role:'admin',status:'active',initials:'MK',color:'#f5c842',tc:'#0a1628',lastLogin:'Never'},
-    {id:'u2',name:'Sandra Krail',email:'sandra@goodliquid.com',role:'sales',status:'active',initials:'SK',color:'#1a6fff',tc:'#fff',lastLogin:'Never'}
-  ];
-  if(!window.users||window.users.length===0){window.users=coreUsers;}
-  else{coreUsers.forEach(function(cu){var ex=window.users.find(function(u){return u.email===cu.email;});if(ex)ex.role=cu.role;else window.users.unshift(cu);});}
+  /* Staff users are loaded from Supabase `profiles` via loadSupabaseData()
+     on login. Removed the hardcoded coreUsers seed — having it here used
+     to force-overwrite the role from the database (e.g. promoting Sandra
+     to admin in profiles got reverted to 'sales' on every page load).
+     Source of truth is now exclusively the profiles table. */
+  window.users = window.users || [];
 
   /* ── CORE CLIENTS ──
      Production state: no demo clients. Real clients come from Supabase via
