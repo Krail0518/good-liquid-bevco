@@ -5053,6 +5053,15 @@
       '<b>(5) System Health widget</b> (admin only) — ✓ or ✗ for Supabase Auth, Mailgun key, AI key, audit_log table, client-docs bucket. Each ✗ has a one-click fix button.'
     ]);
 
+  var SEC_DAILY_DIGEST = bullets([
+    '<b>What it is</b>: a single morning email that summarizes the past 24 hours of CRM activity so you start the day knowing where things stand without opening the app.',
+    '<b>Schedule</b>: fires automatically at <b>7:00 AM ET / 11:00 UTC</b> via pg_cron + the deployed <code>daily-digest</code> Edge Function. If nothing happened in the last 24 hours, the email is suppressed (no daily "nothing happened" spam).',
+    '<b>Recipients</b>: every <code>profiles</code> row where <code>role</code> is <code>admin</code> or <code>staff</code> AND <code>notify_daily_digest = true</code> (the column is default-true; flip a user to false to opt them out).',
+    '<b>What\'s in it</b>: 4 KPI tiles up top — Collected (24h), New invoices, Open customer requests, A/R outstanding (with overdue $). Then expandable sections for: payments received, new invoices, customer requests, production-run stage changes, new clients.',
+    '<b>📨 Send digest button</b> (admin top-right) — bypasses the cron schedule and fires the digest right now. Useful for testing after a big day or before a board meeting. Shows the recipient/sent/failed counts in an alert.',
+    '<b>Audit trail</b>: every send (manual or scheduled) inserts a <code>daily_digest_sent</code> row into <code>audit_log</code> with full counts, so you can verify the morning email actually went out.'
+  ]);
+
   var SEC_INVOICES = MOCK_INVOICES +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
@@ -5471,6 +5480,7 @@
   var HELP_HTML =
     section('help-overview',        '👋 OVERVIEW',                   SEC_OVERVIEW) +
     section('help-dashboard',       '📊 DASHBOARD',                  SEC_DASHBOARD) +
+    section('help-daily-digest',    '📨 DAILY DIGEST EMAIL',         SEC_DAILY_DIGEST) +
     section('help-clients',         '👥 CLIENTS',                    SEC_CLIENTS) +
     section('help-client-emails',   '📧 ADDITIONAL EMAILS (AP / OPS)', SEC_CLIENT_EMAILS) +
     section('help-pipeline',        '📊 PIPELINE (DEALS)',           SEC_PIPELINE) +
@@ -5500,6 +5510,7 @@
 
   var TOC_ENTRIES = [
     ['help-overview','👋 Overview'],['help-dashboard','📊 Dashboard'],
+    ['help-daily-digest','📨 Daily Digest'],
     ['help-clients','👥 Clients'],['help-client-emails','📧 Additional Emails'],
     ['help-pipeline','📊 Pipeline'],
     ['help-invoices','🧾 Invoices'],['help-newinv','➕ New Invoice'],

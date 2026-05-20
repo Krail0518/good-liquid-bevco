@@ -1481,6 +1481,7 @@ select option, .fsel option {
         </div>
       </div>
       <button class="cbtn" data-gl-perm="page.users" style="font-size:10px;padding:4px 10px;margin-left:4px;display:none" onclick="cNav('users',null)">🔑 Users &amp; permissions</button>
+      <button class="cbtn" data-gl-perm="page.users" style="font-size:10px;padding:4px 10px;margin-left:4px;display:none" onclick="runDailyDigestNow()" title="Send today's activity digest to all opted-in staff users right now (bypasses the 7am cron).">📨 Send digest</button>
       <button class="cbtn" style="font-size:10px;padding:4px 10px;margin-left:4px" onclick="openChangePwModal()">🔑 Password</button>
       <button class="cbtn" style="font-size:10px;padding:4px 10px;margin-left:4px" onclick="logoutCRM()">Sign out</button>
     </div>
@@ -4492,6 +4493,35 @@ async function sendInvoiceSmsReminder(invoiceId){
   }
 }
 window.sendInvoiceSmsReminder = sendInvoiceSmsReminder;
+
+/* Manually fire the daily-digest Edge Function. Bound to the "📨 Send
+   digest" admin button so Mike can test before waiting for the 11 UTC
+   cron. Returns the function's JSON report so DevTools shows the
+   recipient + send counts. */
+async function runDailyDigestNow(){
+  if(!supa){ alert('Supabase client not ready.'); return; }
+  if(!confirm('Send today\'s activity digest to every opted-in staff user RIGHT NOW?\n\n(This bypasses the daily 7am schedule. Useful for testing or when a major event just happened.)')) return;
+  if(typeof window.glStartBusy === 'function') window.glStartBusy('Building digest…');
+  let report = null;
+  try {
+    const r = await supa.functions.invoke('daily-digest', { body: { source: 'manual' } });
+    if(r.error){ alert('Digest failed: ' + r.error.message); return; }
+    report = r.data;
+  } catch(e){
+    alert('Digest threw: ' + (e.message || e));
+    return;
+  } finally {
+    if(typeof window.glEndBusy === 'function') window.glEndBusy();
+  }
+  if(report && report.skipped){
+    alert('⏭ ' + report.skipped + (report.recipients ? '\n(' + report.recipients + ' recipients on file)' : ''));
+  } else if(report){
+    alert('📨 Digest fired.\n\nRecipients: ' + (report.recipients||0) + '\nSent: ' + (report.sent||0) + '\nFailed: ' + (report.failed||0) + (report.errors && report.errors.length ? '\n\nErrors:\n' + report.errors.join('\n') : ''));
+  } else {
+    alert('📨 Digest fired (no report returned).');
+  }
+}
+window.runDailyDigestNow = runDailyDigestNow;
 
 // Move deal between stages (on kanban cards)
 async function moveDeal(dealId, fromStage, toStage, fallbackIdx){
