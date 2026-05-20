@@ -899,10 +899,21 @@
       if(document.getElementById(uid+'-qty')   && typeof window.glUpdateBtl === 'function') window.glUpdateBtl(uid);
     });
     // Refresh the small chip showing whether this client has overrides.
+    // Only count rows whose effective_from/until window includes today —
+    // expired or not-yet-active overrides shouldn't show as "applied."
     var badge = document.getElementById('gl-inv-pricing-badge');
     if(badge){
       var cache = window._glRates.overrides && window._glRates.overrides[clientId];
-      var count = cache ? Object.keys(cache).length : 0;
+      var today = new Date().toISOString().slice(0,10);
+      var count = 0;
+      if(cache){
+        Object.keys(cache).forEach(function(k){
+          var r = cache[k];
+          if(r.effective_from   && today < r.effective_from)   return;
+          if(r.effective_until  && today > r.effective_until)  return;
+          count++;
+        });
+      }
       if(count){
         badge.style.display = 'inline-block';
         badge.textContent = '💵 ' + count + ' custom rate' + (count===1?'':'s') + ' applied';
@@ -9638,14 +9649,16 @@
     });
   }
 
-  function runModal(existing){
+  async function runModal(existing){
     var prior = document.getElementById('gl-prun-modal'); if(prior) prior.remove();
     var host = document.getElementById('crm-panel') || document.body;
     var isEdit = !!existing;
     var run = existing || { run_name:'', client_id:'', client_name:'', format:'', cases:'', stage:'Discovery', scheduled_date:'', scheduled_start_date:'', scheduled_end_date:'', production_line_id:'', notes:'' };
-    // Make sure the line list is in cache so the dropdown renders.
+    // Make sure the line list is in cache BEFORE we build the dropdown HTML —
+    // otherwise the dropdown opens with only "— No line assigned —" if the
+    // user clicks "+ Add Run" before refreshRuns() finishes loading lines.
     if(window.supa && !(window.glProductionLines && window.glProductionLines.length)){
-      loadProductionLines();
+      await loadProductionLines();
     }
     var lineOptions = '<option value="">— No line assigned —</option>' +
       (window.glProductionLines||[]).map(function(l){
