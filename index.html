@@ -2599,10 +2599,10 @@ select option, .fsel option {
 /* ═══ DATA ═══ */
 /* All arrays are bridged to window so fix.js and index.html share the same identity.
    Never reassign window.X via .filter()/etc — mutate in place (splice/push/unshift). */
-let users=window.users=[
-  {id:'u1',name:'Mike Krail',email:'mike@goodliquid.com',role:'admin',status:'active',lastLogin:'Today',initials:'MK',color:'#0F6E56',tc:'#E1F5EE'},
-  {id:'u2',name:'Sandra Krail',email:'sandra@goodliquid.com',role:'sales',status:'active',lastLogin:'Yesterday',initials:'SK',color:'#1a3a6e',tc:'#9FE1CB'},
-];
+/* Staff users: empty seed. Real users come from Supabase `profiles` via
+   loadSupabaseData() on login. Hardcoded names were removed so editing a
+   role/name in the database is the single source of truth. */
+let users=window.users=[];
 let currentUser=null;
 /* Bridged to window so fix.js can override/extend and index.html's filter
    (renderUsers area) reads the same merged table. fix.js mutates this in place. */
@@ -6278,11 +6278,10 @@ async function generateInvoicePdfBlob(invId){
   }
 }
 
+/* Mailgun send — routes through the `mailgun-send` Edge Function so the
+   API key stays in Supabase secrets and is never exposed to the browser.
+   Attachments are base64-encoded for JSON transport and decoded server-side. */
 async function sendMailgunEmail(to, subject, body, opts){
-  const apiKey = localStorage.getItem('gl_mailgun_key');
-  if(!apiKey){ console.log('[Mailgun] No API key set. Open Mailgun Settings.'); return false; }
-  const domain = localStorage.getItem('gl_mailgun_domain') || MAILGUN_DOMAIN_DEFAULT;
-  const from   = localStorage.getItem('gl_mailgun_from')   || MAILGUN_FROM_DEFAULT;
   opts = opts || {};
   function normalizeList(list, primary){
     if(!list) return [];
@@ -6295,50 +6294,61 @@ async function sendMailgunEmail(to, subject, body, opts){
     }
     return list.filter(e => e !== primary);
   }
+  function blobToBase64(blob){
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result || '';
+        const comma = result.indexOf(',');
+        resolve(comma >= 0 ? result.slice(comma + 1) : result);
+      };
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+  }
   try {
-    // The "to" param itself may be a comma-separated list of addresses.
     const toList = typeof to === 'string'
       ? to.split(/[,;]/).map(s => s.trim()).filter(Boolean)
       : [to].filter(Boolean);
     if(!toList.length){ console.error('[Mailgun] no To recipients'); return false; }
     const primary = toList[0];
 
-    const formData = new FormData();
-    formData.append('from', from);
-    formData.append('to', toList.join(', '));
-
+    const payload = {
+      to: toList,
+      subject: subject,
+      text: body,
+    };
     const ccList = normalizeList(opts.cc, primary);
-    if(ccList.length) formData.append('cc', ccList.join(', '));
-
+    if(ccList.length) payload.cc = ccList;
     const bccList = normalizeList(opts.bcc, primary);
-    if(bccList.length) formData.append('bcc', bccList.join(', '));
+    if(bccList.length) payload.bcc = bccList;
+    if(opts.html) payload.html = opts.html;
+    if(opts.replyTo) payload.replyTo = opts.replyTo;
 
-    formData.append('subject', subject);
-    formData.append('text', body);
-    if(opts.html) formData.append('html', opts.html);
-    if(opts.replyTo) formData.append('h:Reply-To', opts.replyTo);
-    // Force open + click tracking on every send so we don't depend on the
-    // Mailgun domain-level toggle. Opens come back as a 1x1 pixel; clicks
-    // are rewritten through Mailgun's tracking redirect. The webhook fires
-    // matching events back to mailgun-webhook → email_log row update.
-    formData.append('o:tracking', 'yes');
-    formData.append('o:tracking-opens', 'yes');
-    formData.append('o:tracking-clicks', 'yes');
-    // Optional file attachments: array of { blob, filename }.
-    if(Array.isArray(opts.attachments)){
-      opts.attachments.forEach(function(a){
-        if(a && a.blob && a.filename) formData.append('attachment', a.blob, a.filename);
-      });
+    if(Array.isArray(opts.attachments) && opts.attachments.length){
+      payload.attachments = [];
+      for(const a of opts.attachments){
+        if(!a || !a.blob || !a.filename) continue;
+        try {
+          const b64 = await blobToBase64(a.blob);
+          payload.attachments.push({
+            filename: a.filename,
+            contentBase64: b64,
+            contentType: a.blob.type || 'application/octet-stream',
+          });
+        } catch(e){ console.warn('[Mailgun] attachment encode failed', a.filename, e); }
+      }
     }
 
-    const resp = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
-      method: 'POST',
-      headers: { 'Authorization': 'Basic '+btoa('api:'+apiKey) },
-      body: formData
-    });
-    if(!resp.ok){
-      const errText = await resp.text().catch(()=>'<no body>');
-      console.error('[Mailgun] send failed', resp.status, errText, 'domain='+domain+' from='+from);
+    // Call the Edge Function via the Supabase client so the user's JWT is
+    // attached automatically (the function checks auth before sending).
+    const resp = await supa.functions.invoke('mailgun-send', { body: payload });
+    if(resp.error){
+      console.error('[Mailgun] edge function error', resp.error);
+      return false;
+    }
+    if(resp.data && resp.data.ok === false){
+      console.error('[Mailgun] send rejected', resp.data.error);
       return false;
     }
     return true;

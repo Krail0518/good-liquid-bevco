@@ -76,13 +76,12 @@
     }
   }, true);
 
-  /* ── CORE USERS (profile only; passwords live in Supabase crm_users) ── */
-  var coreUsers = [
-    {id:'u1',name:'Mike Krail',email:'mike@goodliquid.com',role:'admin',status:'active',initials:'MK',color:'#f5c842',tc:'#0a1628',lastLogin:'Never'},
-    {id:'u2',name:'Sandra Krail',email:'sandra@goodliquid.com',role:'sales',status:'active',initials:'SK',color:'#1a6fff',tc:'#fff',lastLogin:'Never'}
-  ];
-  if(!window.users||window.users.length===0){window.users=coreUsers;}
-  else{coreUsers.forEach(function(cu){var ex=window.users.find(function(u){return u.email===cu.email;});if(ex)ex.role=cu.role;else window.users.unshift(cu);});}
+  /* Staff users are loaded from Supabase `profiles` via loadSupabaseData()
+     on login. Removed the hardcoded coreUsers seed — having it here used
+     to force-overwrite the role from the database (e.g. promoting Sandra
+     to admin in profiles got reverted to 'sales' on every page load).
+     Source of truth is now exclusively the profiles table. */
+  window.users = window.users || [];
 
   /* ── CORE CLIENTS ──
      Production state: no demo clients. Real clients come from Supabase via
@@ -20803,7 +20802,7 @@
           '<div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:' + color + ';font-weight:700;margin-top:2px">' + (i.status||'') + '</div>' +
         '</div>' +
         '<div style="text-align:right;white-space:nowrap">' +
-          '<button onclick="window.glPortalDownloadInvoicePdf(\'' + i.id + '\')" style="display:inline-block;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.35);color:#c4b5fd;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;margin-right:4px">📥 PDF</button>' +
+          '<button onclick="window.glPortalDownloadInvoicePdf(\'' + i.id + '\', event)" style="display:inline-block;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.35);color:#c4b5fd;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;margin-right:4px">📥 PDF</button>' +
           (viewUrl ? '<a href="' + viewUrl + '" target="_blank" style="display:inline-block;background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.35);color:#00e5c0;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;text-decoration:none;cursor:pointer">View' + (canPay ? ' / Pay' : '') + '</a>' : '<span style="font-size:10px;color:#6b87ad">no link</span>') +
         '</div>' +
       '</div>';
@@ -21384,14 +21383,16 @@
    triggers a blob download.
    ============================================================ */
 (function(){
-  window.glPortalDownloadInvoicePdf = async function(invoiceSupaId){
+  window.glPortalDownloadInvoicePdf = async function(invoiceSupaId, evt){
     if(typeof window.generateInvoicePdfBlob !== 'function'){
       alert('PDF generator not loaded. Please refresh and try again.');
       return;
     }
     var sb = window.supa;
     if(!sb){ alert('Supabase not ready'); return; }
-    var btn = event && event.currentTarget;
+    // Accept event from second arg (when called via inline onclick with explicit pass)
+    // OR fall back to global event for legacy inline onclicks.
+    var btn = (evt && evt.currentTarget) || (typeof event !== 'undefined' && event && event.currentTarget) || null;
     var origText = btn ? btn.textContent : '';
     if(btn){ btn.disabled = true; btn.textContent = '…'; }
     try {
@@ -21879,8 +21880,12 @@
     if(typeof window.addNotification === 'function'){
       window.addNotification('Role updated', 'User role changed to ' + newRole + '.', 'success');
     }
-    // Re-render the panel so the team list + matrix reflect the new role
-    if(typeof renderPermissionsPanel === 'function') renderPermissionsPanel();
+    // Re-fetch staff data, then stay on this user's detail view so the
+    // role badge in the header refreshes in place.
+    if(typeof renderPermissionsPanel === 'function'){
+      await renderPermissionsPanel();
+      if(typeof window.glRenderPermMatrixFor === 'function') window.glRenderPermMatrixFor(userId);
+    }
   };
 
   window.glTogglePerm = async function(userId, componentId, granted){
@@ -22163,7 +22168,9 @@
     { re: /glCpResendInvite\b/,      perm: 'action.customer.invite' },
     { re: /glCpSetActive\b/,         perm: 'action.customer.deactivate' },
     { re: /removeCustomerLogin\b/,   perm: 'action.customer.deactivate' },
-    { re: /openInviteModal\b/,       perm: 'action.user.invite' }
+    { re: /openInviteModal\b/,       perm: 'action.user.invite' },
+    { re: /sendInvoiceEmail\b/,      perm: 'action.invoice.send' },
+    { re: /sendFollowupEmail\b/,     perm: 'action.invoice.send' }
   ];
   function hidePoint(el, allowed){
     if(allowed){
