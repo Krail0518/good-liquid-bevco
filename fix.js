@@ -4130,10 +4130,13 @@
     if(existing) existing.remove();
 
     var inv = (window.invoices||[]);
+    // Use effective status so a pending invoice past its due_date counts
+    // as overdue here too (matches the dashboard tallies).
+    var eff = function(i){ return (typeof window.effectiveInvoiceStatus === 'function') ? window.effectiveInvoiceStatus(i) : (i && i.status); };
     var billable = inv.filter(function(i){ return i.status !== 'quote'; });
-    var paid = inv.filter(function(i){ return i.status === 'paid'; });
-    var pending = inv.filter(function(i){ return i.status === 'pending'; });
-    var overdue = inv.filter(function(i){ return i.status === 'overdue'; });
+    var paid = inv.filter(function(i){ return eff(i) === 'paid'; });
+    var pending = inv.filter(function(i){ return eff(i) === 'pending'; });
+    var overdue = inv.filter(function(i){ return eff(i) === 'overdue'; });
     var quotes = inv.filter(function(i){ return i.status === 'quote'; });
 
     var avgVal = avg(billable.map(function(i){ return Number(i.amount||0); }));
@@ -4396,7 +4399,9 @@
   };
 
   window.glSendOverdueReminders = async function(){
-    var overdue = (window.invoices||[]).filter(function(i){ return i.status === 'overdue'; });
+    // Effective status — past-due pending invoices also get reminders.
+    var eff = function(i){ return (typeof window.effectiveInvoiceStatus === 'function') ? window.effectiveInvoiceStatus(i) : (i && i.status); };
+    var overdue = (window.invoices||[]).filter(function(i){ return eff(i) === 'overdue'; });
     if(!overdue.length){ alert('No overdue invoices.'); return; }
     if(!localStorage.getItem('gl_mailgun_key')){
       if(typeof window.openMailgunSettings === 'function') window.openMailgunSettings();
