@@ -13779,13 +13779,30 @@
   // ── Config ──
   var DEFAULT_SURCHARGE_PCT = 3;
 
-  // Per-invoice "waive surcharge" override, stored in localStorage so the
-  // admin's choice persists if they reopen the picker for the same invoice.
-  function waiveKey(invId){ return 'gl_waive_surcharge_' + invId; }
-  function isWaived(invId){ return localStorage.getItem(waiveKey(invId)) === '1'; }
+  // Per-invoice "waive surcharge" override, stored on the invoices row
+  // (invoices.waive_card_surcharge boolean). Source of truth is the DB —
+  // the in-memory invoices array mirrors it via the waiveCardSurcharge
+  // field set by loadSupabaseData. Mutations write to both.
+  function findInv(invId){
+    return (window.invoices || []).find(function(x){ return x.id === invId; });
+  }
+  function isWaived(invId){
+    var inv = findInv(invId);
+    return !!(inv && inv.waiveCardSurcharge);
+  }
   function setWaived(invId, on){
-    if(on) localStorage.setItem(waiveKey(invId), '1');
-    else   localStorage.removeItem(waiveKey(invId));
+    var inv = findInv(invId);
+    if(inv) inv.waiveCardSurcharge = !!on;
+    if(!window.supa) return;
+    // Update by invoice_number — works whether the row was loaded via UUID
+    // (supaId) or by the human-readable number.
+    var supaId = inv && inv.supaId;
+    var q = supaId
+      ? window.supa.from('invoices').update({ waive_card_surcharge: !!on }).eq('id', supaId)
+      : window.supa.from('invoices').update({ waive_card_surcharge: !!on }).eq('invoice_number', invId);
+    q.then(function(r){
+      if(r.error) console.warn('[GL] waive_card_surcharge update', r.error);
+    });
   }
 
   function fmt$(n){
@@ -16533,13 +16550,35 @@
 
   // ── (5) Weekly Review ──
   // Shows signed records from the last 7 days. Lets the PCQI bulk-acknowledge them.
-  // Acks are stored locally (gl_weekly_ack JSON map of record_id → timestamp)
-  // since they're for Mike's tracking, not an FDA record.
-  function readWeeklyAcks(){
-    try { return JSON.parse(localStorage.getItem('gl_weekly_ack') || '{}'); }
-    catch(e){ return {}; }
+  // Acks are stored in Supabase `compliance_acks` table — single source of
+  // truth across devices, plus actor + timestamp for audit defense.
+  var _weeklyAckCache = {};   // record_id → acked_at ISO string (server cache)
+  async function loadWeeklyAcksFor(recordIds){
+    if(!window.supa || !recordIds || !recordIds.length) return {};
+    try {
+      var r = await window.supa.from('compliance_acks').select('record_id, acked_at').in('record_id', recordIds);
+      var out = {};
+      (r.data || []).forEach(function(row){ out[row.record_id] = row.acked_at; });
+      // Hydrate cache so subsequent sync readers see the latest.
+      Object.keys(out).forEach(function(k){ _weeklyAckCache[k] = out[k]; });
+      return out;
+    } catch(e){ console.warn('[GL] compliance_acks load', e); return {}; }
   }
-  function writeWeeklyAcks(o){ localStorage.setItem('gl_weekly_ack', JSON.stringify(o)); }
+  function readWeeklyAcks(){ return _weeklyAckCache; }
+  async function setWeeklyAck(recordId, acked){
+    if(!window.supa) return;
+    try {
+      if(acked){
+        var sess = await window.supa.auth.getSession();
+        var uid = sess && sess.data && sess.data.session && sess.data.session.user && sess.data.session.user.id;
+        await window.supa.from('compliance_acks').upsert({ record_id: recordId, acked_at: new Date().toISOString(), acked_by: uid || null }, { onConflict: 'record_id' });
+        _weeklyAckCache[recordId] = new Date().toISOString();
+      } else {
+        await window.supa.from('compliance_acks').delete().eq('record_id', recordId);
+        delete _weeklyAckCache[recordId];
+      }
+    } catch(e){ console.warn('[GL] compliance_ack write', e); }
+  }
 
   async function renderWeeklyReview(host){
     host.innerHTML = '<div style="padding:30px;text-align:center;color:#9aa7bd">Loading…</div>';
@@ -16547,7 +16586,9 @@
     var sevenDaysAgo = new Date(Date.now() - 7*86400000).toISOString();
     var r = await window.supa.from('compliance_records').select('*').eq('status','signed').gte('signed_at', sevenDaysAgo).order('signed_at',{ ascending: false }).limit(500);
     var rows = r.data || [];
-    var acks = readWeeklyAcks();
+    // Pull all acks for these records in one shot (replaces the old
+    // gl_weekly_ack localStorage store — see migration 20260519_followup_acks_waivers.sql).
+    var acks = await loadWeeklyAcksFor(rows.map(function(rec){ return rec.id; }));
     var unacked = rows.filter(function(rec){ return !acks[rec.id]; });
     var acked   = rows.filter(function(rec){ return !!acks[rec.id]; });
     function rowHtml(rec, isAcked){
@@ -16573,20 +16614,15 @@
         '<div><div style="font-size:10px;color:#5fcf9e;letter-spacing:2px;margin-bottom:6px">✓ REVIEWED</div>' +
         acked.map(function(rec){ return rowHtml(rec, true); }).join('') + '</div>' : '');
     host.querySelectorAll('.gl-wk-ack').forEach(function(cb){
-      cb.addEventListener('change', function(){
-        var acks2 = readWeeklyAcks();
+      cb.addEventListener('change', async function(){
         var id = cb.getAttribute('data-id');
-        if(cb.checked) acks2[id] = nowISO();
-        else delete acks2[id];
-        writeWeeklyAcks(acks2);
+        await setWeeklyAck(id, cb.checked);
         renderWeeklyReview(host);
       });
     });
     var allBtn = host.querySelector('#gl-wk-ack-all');
-    if(allBtn) allBtn.addEventListener('click', function(){
-      var acks2 = readWeeklyAcks();
-      unacked.forEach(function(rec){ acks2[rec.id] = nowISO(); });
-      writeWeeklyAcks(acks2);
+    if(allBtn) allBtn.addEventListener('click', async function(){
+      for(var i=0; i<unacked.length; i++) await setWeeklyAck(unacked[i].id, true);
       if(typeof window.glAudit === 'function') window.glAudit('weekly_review_bulk_ack','', { count: unacked.length });
       renderWeeklyReview(host);
     });
@@ -16617,7 +16653,16 @@
   async function doTrace(query, outEl){
     outEl.innerHTML = '<div style="padding:25px;text-align:center;color:#9aa7bd">Searching…</div>';
     if(!window.supa){ outEl.innerHTML = '<div style="padding:25px;text-align:center;color:#ff8579">Supabase not loaded</div>'; return; }
-    var like = '%' + query + '%';
+    // Sanitize the user-supplied query before interpolating into PostgREST .or()
+    // filter strings. Commas, parens, single-quotes, and asterisks can break
+    // out of the intended filter clause; restrict to alphanumeric + a small
+    // set of safe punctuation actually used in lot numbers and run names.
+    var safe = (query || '').replace(/[^A-Za-z0-9 _\-./]/g, '').slice(0, 80);
+    if(!safe){
+      outEl.innerHTML = '<div style="padding:25px;text-align:center;color:#9aa7bd">Enter a lot or run name (alphanumeric + dashes/dots/spaces).</div>';
+      return;
+    }
+    var like = '%' + safe + '%';
     try {
       // Find matching production runs by run_name or lot mentions in notes
       var runsR = await window.supa.from('production_runs').select('id,run_name,client_name,format,cases,stage,scheduled_date,notes').or('run_name.ilike.' + like + ',notes.ilike.' + like + ',client_name.ilike.' + like).limit(20);
@@ -18580,52 +18625,40 @@
   function getAiKey(){ return localStorage.getItem('gl_ai_key') || ''; }
 
   async function sendMailgun(to, subject, text, html){
-    var key = getMailgunKey();
-    if(!key) return { ok:false, error:'Mailgun key not set (AI toolbar → Mailgun Settings)' };
-    var domain = getMailgunDomain();
-    var fd = new FormData();
-    fd.append('from', getMailgunFrom());
-    fd.append('to', to);
-    fd.append('subject', subject);
-    if(text) fd.append('text', text);
-    if(html) fd.append('html', html);
+    if(!window.supa || !window.supa.functions){
+      return { ok:false, error:'Supabase client not ready' };
+    }
     try {
-      var r = await fetch('https://api.mailgun.net/v3/' + domain + '/messages', {
-        method:'POST',
-        headers:{ Authorization: 'Basic ' + btoa('api:' + key) },
-        body: fd
+      var resp = await window.supa.functions.invoke('mailgun-send', {
+        body: { to: to, subject: subject, text: text || '', html: html || undefined }
       });
-      if(!r.ok){ var t = await r.text(); return { ok:false, error:'Mailgun ' + r.status + ': ' + t.slice(0,200) }; }
+      if(resp.error){ return { ok:false, error: resp.error.message || 'Mailgun call failed' }; }
+      if(resp.data && resp.data.ok === false){ return { ok:false, error: resp.data.error || 'Mailgun rejected' }; }
       return { ok:true };
     } catch(e){ return { ok:false, error: e.message || 'send failed' }; }
   }
 
   async function askClaude(prompt, opts){
     opts = opts || {};
-    var key = getAiKey();
-    if(!key) return { ok:false, error:'Anthropic key not set (AI toolbar → AI Settings)' };
+    if(!window.supa || !window.supa.functions){
+      return { ok:false, error:'Supabase client not ready' };
+    }
+    // Build the messages array. For Vision (imageDataUrl), wrap into the
+    // multi-part content shape Anthropic expects.
     var content = opts.imageDataUrl
       ? [{ type:'image', source:{ type:'base64', media_type: opts.imageDataUrl.match(/^data:([^;]+);/)[1], data: opts.imageDataUrl.split(',')[1] } }, { type:'text', text: prompt }]
       : prompt;
     try {
-      var r = await fetch('https://api.anthropic.com/v1/messages', {
-        method:'POST',
-        headers:{
-          'x-api-key': key,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access':'true',
-          'content-type':'application/json'
-        },
-        body: JSON.stringify({
+      var resp = await window.supa.functions.invoke('ai-proxy', {
+        body: {
           model: opts.model || 'claude-sonnet-4-6',
-          max_tokens: opts.max_tokens || 800,
+          maxTokens: opts.max_tokens || 800,
           messages: [{ role:'user', content: content }]
-        })
+        }
       });
-      if(!r.ok){ var t = await r.text(); return { ok:false, error:'AI ' + r.status + ': ' + t.slice(0,250) }; }
-      var j = await r.json();
-      var txt = (j.content || []).filter(function(c){ return c.type === 'text'; }).map(function(c){ return c.text; }).join('\n');
-      return { ok:true, text: txt, usage: j.usage };
+      if(resp.error){ return { ok:false, error: resp.error.message || 'AI request failed' }; }
+      if(resp.data && resp.data.ok === false){ return { ok:false, error: resp.data.error || 'AI rejected' }; }
+      return { ok:true, text: (resp.data && resp.data.text) || '' };
     } catch(e){ return { ok:false, error: e.message || 'AI call failed' }; }
   }
 
