@@ -5403,7 +5403,8 @@
   var SEC_PRODUCTION = bullets([
     'Same calendar mechanics as the General Calendar, but focused on <b>production runs</b>: which client, what format, how many cases, what stage (scheduled / in production / quality check / completed / shipped).',
     'Customers see their own scheduled runs in the Customer Portal automatically.',
-    'Stored in localStorage (gl_prod_pipeline).'
+    '<b>Auto stage-change emails</b> — whenever you move a run between kanban stages (Discovery → Formulation → Sample → COA → Production → Ship), the portal customer for that client gets an email with the new status, run name, format, case count, and target ship date. Skipped if the client has no active portal user, or if they\'ve opted out (customer_users.notify_run_stage_changes = false).',
+    'Stored in Supabase <b>production_runs</b> (falls back to localStorage if the table is missing).'
   ]);
 
   var SEC_TASKS = MOCK_TASKS +
@@ -9180,6 +9181,75 @@
   function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   window.glProductionRuns = window.glProductionRuns || [];
 
+  // ──────────────────────────────────────────────────────────
+  // Stage-change email: notify the portal customer when their run
+  // advances a stage. Looks up customer_users by client_id, respects
+  // active + notify_run_stage_changes flags, and routes through the
+  // existing mailgun-send Edge Function so the API key stays server-side.
+  // ──────────────────────────────────────────────────────────
+  var STAGE_COPY = {
+    Discovery:   { headline: 'We\'re starting your run',           body: 'We\'ve picked up your project and are kicking off the discovery work — confirming ingredients, format, and target launch.' },
+    Formulation: { headline: 'Formulation in progress',            body: 'Your formula is in development. Our team is bench-testing flavor, pH, stability, and cost.' },
+    Sample:      { headline: 'Samples are being prepared',         body: 'We\'re producing your samples so you can taste and approve before the full run.' },
+    COA:         { headline: 'Lab testing for COA',                body: 'Your batch is at the lab for Certificate of Analysis (COA) testing — pH, brix, micro, allergens.' },
+    Production:  { headline: 'Production has started',             body: 'Your run is on the production floor. We\'ll keep you posted on cases completed and any QC events.' },
+    Ship:        { headline: 'Your order is ready to ship',        body: 'Production is complete and your run is being prepared for shipment. We\'ll send tracking when it leaves the dock.' }
+  };
+  async function sendRunStageEmail(run, oldStage, newStage){
+    if(!run || !run.client_id) return;
+    if(!newStage || newStage === oldStage) return;
+    var sb = window.supa; if(!sb) return;
+    try {
+      var cu = await sb.from('customer_users')
+        .select('email, display_name, active, notify_run_stage_changes')
+        .eq('client_id', run.client_id)
+        .eq('active', true)
+        .maybeSingle();
+      if(cu.error){ console.warn('[GL run-email] customer_users lookup failed:', cu.error.message); return; }
+      if(!cu.data || !cu.data.email) return; // no portal user — nothing to do
+      if(cu.data.notify_run_stage_changes === false) return; // opted out
+      var copy = STAGE_COPY[newStage] || { headline: 'Production update', body: 'Your production run has advanced to the ' + newStage + ' stage.' };
+      var clientName = run.client_name || ((window.clients||[]).find(function(c){ return c.id === run.client_id; })||{}).name || '';
+      var runLabel   = run.run_name || '(untitled run)';
+      var greeting   = cu.data.display_name ? ('Hi ' + cu.data.display_name + ',') : 'Hi,';
+      var subject    = '[Good Liquid] ' + runLabel + ' — ' + copy.headline;
+      var lines = [
+        greeting,
+        '',
+        copy.body,
+        '',
+        'Run details:',
+        '  • Run name: ' + runLabel,
+        '  • Stage:    ' + (oldStage ? (oldStage + ' → ' + newStage) : newStage),
+        (run.format ? '  • Format:   ' + run.format : ''),
+        (run.cases  ? '  • Cases:    ' + Number(run.cases).toLocaleString() : ''),
+        (run.scheduled_date ? '  • Target:   ' + new Date(run.scheduled_date).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : ''),
+        '',
+        'You can see live status anytime in your customer portal:',
+        '  ' + (window.location && window.location.origin ? window.location.origin : 'https://goodliquidbevco.com') + '/?portal=1',
+        '',
+        'Questions? Reply to this email and the Good Liquid team will get back to you.',
+        '',
+        '— Good Liquid Bev Co'
+      ].filter(Boolean).join('\n');
+      var sender = (typeof window.sendMailgunEmail === 'function') ? window.sendMailgunEmail
+                 : (typeof sendMailgunEmail === 'function')        ? sendMailgunEmail
+                 : null;
+      if(!sender){ console.warn('[GL run-email] sendMailgunEmail not loaded — skipping'); return; }
+      var ok = await sender(cu.data.email, subject, lines);
+      if(typeof window.glAudit === 'function'){
+        window.glAudit('run_stage_email_sent', run.id, {
+          to: cu.data.email, run_name: runLabel, client: clientName,
+          from_stage: oldStage || null, to_stage: newStage, ok: !!ok
+        });
+      }
+      if(ok && typeof addNotification === 'function'){
+        addNotification('📧 Customer notified', clientName + ' · ' + newStage, 'success');
+      }
+    } catch(e){ console.warn('[GL run-email] threw', e); }
+  }
+  window.glSendRunStageEmail = sendRunStageEmail;
+
   async function loadFromSupabase(){
     if(!window.supa) return null;
     try {
@@ -9329,6 +9399,7 @@
         }
       }
       var btn = this; btn.disabled = true; btn.textContent = 'Saving…';
+      var priorStage = isEdit ? (run.stage || null) : null;
       if(window.supa){
         try {
           if(isEdit){
@@ -9354,6 +9425,10 @@
       renderBoard();
       if(typeof addNotification === 'function') addNotification(isEdit ? '🏭 Run updated' : '🏭 Run added', name, 'success');
       if(typeof window.glAudit === 'function') window.glAudit(isEdit ? 'production_run_edited' : 'production_run_added', data.run_name, { stage: data.stage });
+      // Notify portal customer if the stage actually changed on an edit.
+      if(isEdit && priorStage && data.stage && data.stage !== priorStage){
+        sendRunStageEmail(run, priorStage, data.stage);
+      }
     });
     host.appendChild(ov);
   }
