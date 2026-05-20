@@ -20754,6 +20754,93 @@
   function shell(inner){
     return '<div style="max-width:520px;margin:60px auto;padding:30px;background:#142238;border:1px solid rgba(0,229,192,.25);border-radius:14px;color:#eef4ff;font-family:Arial,Helvetica,sans-serif">' + inner + '</div>';
   }
+
+  function requestTile(emoji, kind, title, subtitle){
+    return '<div onclick="window.glOpenCustomerRequest(\'' + kind + '\')" style="background:#142238;border:1px solid rgba(0,229,192,.18);border-radius:12px;padding:16px 18px;cursor:pointer;transition:background .15s,border-color .15s" onmouseover="this.style.background=\'#1a2c48\';this.style.borderColor=\'rgba(0,229,192,.4)\'" onmouseout="this.style.background=\'#142238\';this.style.borderColor=\'rgba(0,229,192,.18)\'">' +
+      '<div style="font-size:22px">' + emoji + '</div>' +
+      '<div style="font-size:14px;font-weight:700;color:#fff;margin-top:6px">' + escHtml(title) + '</div>' +
+      '<div style="font-size:11px;color:#6b87ad;margin-top:2px">' + escHtml(subtitle) + '</div>' +
+    '</div>';
+  }
+
+  window.glOpenCustomerRequest = function(kind){
+    var sb = getSB(); if(!sb){ alert('Supabase not ready'); return; }
+    var existing = document.getElementById('gl-cust-req');
+    if(existing) existing.remove();
+    var labels = { sample:'Request samples', reorder:'Place an order', quote:'Request a quote', question:'Ask a question', other:'Submit a request' };
+    var placeholders = {
+      sample:   'Which products? Any flavor or pack-size variants? Where should we ship to?',
+      reorder:  'Which previous run are you reordering? Quantity? Target ship date?',
+      quote:    'Describe the new project — formulation, format, target volume, timeline.',
+      question: 'What\'s your question?',
+      other:    'How can we help?'
+    };
+    var ov = document.createElement('div');
+    ov.id = 'gl-cust-req';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1100;background:rgba(6,13,26,.94);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;padding:24px;font-family:Arial,Helvetica,sans-serif');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.25);border-radius:14px;padding:28px;width:100%;max-width:520px;color:#eef4ff">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
+          '<div style="font-size:18px;font-weight:900;color:#00e5c0;letter-spacing:2px">' + escHtml((labels[kind]||labels.other).toUpperCase()) + '</div>' +
+          '<button onclick="document.getElementById(\'gl-cust-req\').remove()" style="background:none;border:0;color:#6b87ad;font-size:22px;cursor:pointer">×</button>' +
+        '</div>' +
+        '<div style="font-size:12px;color:#9ca3af;margin-bottom:18px;line-height:1.5">Mike will reply by email within 1 business day.</div>' +
+        '<div style="font-size:11px;letter-spacing:1.5px;color:#6b87ad;margin-bottom:6px">SUBJECT (OPTIONAL)</div>' +
+        '<input id="gl-cr-subject" type="text" placeholder="Brief one-line summary" style="width:100%;padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eef4ff;font-size:13px;margin-bottom:14px;box-sizing:border-box">' +
+        '<div style="font-size:11px;letter-spacing:1.5px;color:#6b87ad;margin-bottom:6px">DETAILS</div>' +
+        '<textarea id="gl-cr-body" rows="6" placeholder="' + escHtml(placeholders[kind] || placeholders.other) + '" style="width:100%;padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eef4ff;font-size:13px;margin-bottom:14px;box-sizing:border-box;font-family:inherit;resize:vertical"></textarea>' +
+        '<div id="gl-cr-msg" style="display:none;margin-bottom:10px;padding:8px 12px;border-radius:6px;font-size:12px"></div>' +
+        '<div style="display:flex;gap:10px;justify-content:flex-end">' +
+          '<button onclick="document.getElementById(\'gl-cust-req\').remove()" class="cbtn" style="background:rgba(255,255,255,.06);color:#eef4ff;border:1px solid rgba(255,255,255,.12);padding:9px 16px;border-radius:6px;font-size:13px;cursor:pointer">Cancel</button>' +
+          '<button id="gl-cr-send" class="cbtn pri" style="background:#00e5c0;color:#0a1628;border:0;padding:9px 20px;border-radius:6px;font-size:13px;font-weight:800;cursor:pointer">Submit</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    document.getElementById('gl-cr-send').onclick = async function(){
+      var btn = this;
+      var msg = document.getElementById('gl-cr-msg');
+      msg.style.display = 'none';
+      var subject = (document.getElementById('gl-cr-subject').value||'').trim();
+      var body    = (document.getElementById('gl-cr-body').value||'').trim();
+      if(!body){
+        msg.style.display='block';
+        msg.style.background='rgba(231,76,60,.12)';
+        msg.style.border='1px solid rgba(231,76,60,.35)';
+        msg.style.color='#ff8579';
+        msg.textContent='Please add some details before submitting.';
+        return;
+      }
+      btn.disabled = true; var origText = btn.textContent; btn.textContent='Submitting…';
+      // Find the customer's auth user id + client_id via the existing customer_users link.
+      try {
+        var sess = await sb.auth.getSession();
+        var uid = sess && sess.data && sess.data.session && sess.data.session.user && sess.data.session.user.id;
+        var cu = await sb.from('customer_users').select('client_id').eq('auth_user_id', uid).maybeSingle();
+        var clientId = cu && cu.data && cu.data.client_id;
+        if(!clientId) throw new Error('Account not linked to a client. Contact Mike.');
+        var ins = await sb.from('customer_requests').insert({
+          client_id: clientId, submitted_by: uid,
+          kind: kind, subject: subject || null, body: body, status: 'new'
+        });
+        if(ins.error) throw ins.error;
+        msg.style.display='block';
+        msg.style.background='rgba(95,207,158,.12)';
+        msg.style.border='1px solid rgba(95,207,158,.35)';
+        msg.style.color='#5fcf9e';
+        msg.textContent='✓ Submitted. Mike will reply by email within 1 business day.';
+        btn.textContent='Sent ✓';
+        setTimeout(function(){ ov.remove(); }, 1400);
+      } catch(e){
+        console.error('[GL portal] request submit failed', e);
+        msg.style.display='block';
+        msg.style.background='rgba(231,76,60,.12)';
+        msg.style.border='1px solid rgba(231,76,60,.35)';
+        msg.style.color='#ff8579';
+        msg.textContent='Submission failed: ' + (e.message || 'unknown');
+        btn.disabled = false; btn.textContent = origText;
+      }
+    };
+  };
   function logoBlock(){
     return '<div style="text-align:center;margin-bottom:28px">' +
       '<div style="font-size:22px;font-weight:900;color:#00e5c0;letter-spacing:3px">GOOD LIQUID BEV CO</div>' +
@@ -20950,6 +21037,14 @@
             kpi('Open balance',     usd(pendingTotal), openInvoiceCount + ' invoice' + (openInvoiceCount===1?'':'s') + ' open', '#f5c842') +
             kpi('Paid to date',     usd(paidTotal),    invs.filter(function(i){return i.status==='paid';}).length + ' paid',     '#5fcf9e') +
             kpi('Total invoices',   String(invs.length), 'across all time',                                               '#00e5c0') +
+          '</div>' +
+
+          // Quick-action tiles for portal-submitted requests.
+          '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:24px">' +
+            requestTile('🧪', 'sample',   'Request samples',    'Ask for new product samples') +
+            requestTile('📦', 'reorder',  'Place an order',     'Reorder a previous run') +
+            requestTile('💬', 'quote',    'Request a quote',    'Pricing on a new project') +
+            requestTile('❓', 'question', 'Ask a question',     'General question for Mike') +
           '</div>' +
 
           '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
@@ -22400,4 +22495,181 @@
   }
 
   console.log('[GL] permissions module loaded (page + action gates + visual hiding + audit + invite preset)');
+}());
+
+/* ============================================================
+   CRM: Customer Requests inbox
+   ============================================================
+   Customers submit requests (sample / reorder / quote / question)
+   from the portal. Mike triages here. Adds:
+   - A dashboard banner showing the count of NEW requests
+   - A full inbox modal: list, drill into one, resolve/dismiss
+   - Realtime subscription so new requests pop in without refresh
+   ============================================================ */
+(function(){
+  function getSB(){ return window.supa || null; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function fmtTs(d){ if(!d) return ''; try { return new Date(d).toLocaleString(); } catch(e){ return String(d); } }
+
+  var KIND_LABEL = { sample:'🧪 Sample request', reorder:'📦 Reorder', quote:'💬 Quote request', question:'❓ Question', other:'📩 Other' };
+  var KIND_COLOR = { sample:'#c4b5fd', reorder:'#6b9fff', quote:'#f5c842', question:'#00e5c0', other:'#9aa7bd' };
+  var STATUS_LABEL = { new:'NEW', in_progress:'IN PROGRESS', resolved:'RESOLVED', dismissed:'DISMISSED' };
+  var STATUS_COLOR = { new:'#f5c842', in_progress:'#6b9fff', resolved:'#5fcf9e', dismissed:'#9aa7bd' };
+
+  async function fetchRequests(status){
+    var sb = getSB(); if(!sb) return [];
+    var q = sb.from('customer_requests').select('id, client_id, kind, subject, body, status, resolved_at, resolution_notes, created_at').order('created_at', { ascending: false }).limit(200);
+    if(status) q = q.eq('status', status);
+    var r = await q;
+    if(r.error){ console.warn('[GL] customer_requests load', r.error); return []; }
+    return r.data || [];
+  }
+  async function fetchClientMap(){
+    var sb = getSB(); if(!sb) return {};
+    var r = await sb.from('clients').select('id, name, email');
+    var map = {};
+    (r.data || []).forEach(function(c){ map[c.id] = c; });
+    return map;
+  }
+
+  // ── Dashboard banner: "N new customer requests" ────────────────────────
+  async function refreshDashboardBanner(){
+    var dash = document.getElementById('cpg-dashboard');
+    if(!dash) return;
+    var existing = document.getElementById('gl-cust-req-banner');
+    if(existing) existing.remove();
+    var newOnes = await fetchRequests('new');
+    if(!newOnes.length) return;
+    var banner = document.createElement('div');
+    banner.id = 'gl-cust-req-banner';
+    banner.style.cssText = 'background:rgba(245,200,66,.08);border:1px solid rgba(245,200,66,.3);border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px;cursor:pointer';
+    banner.onclick = function(){ window.glOpenCustomerRequestsInbox(); };
+    banner.innerHTML = '<div style="font-size:18px">📩</div>' +
+      '<div style="flex:1"><div style="font-size:13px;font-weight:700;color:#f5c842">' + newOnes.length + ' new customer request' + (newOnes.length===1?'':'s') + '</div>' +
+      '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">Click to triage</div></div>' +
+      '<div style="font-size:11px;color:#f5c842">Open inbox →</div>';
+    var firstChild = dash.firstElementChild;
+    if(firstChild) dash.insertBefore(banner, firstChild); else dash.appendChild(banner);
+  }
+
+  // ── Inbox modal ────────────────────────────────────────────────────────
+  window.glOpenCustomerRequestsInbox = async function(){
+    var existing = document.getElementById('gl-cri-modal');
+    if(existing) existing.remove();
+    var ov = document.createElement('div');
+    ov.id = 'gl-cri-modal';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:720;background:rgba(6,13,26,.95);backdrop-filter:blur(16px);display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto';
+    ov.innerHTML = '<div style="background:#142238;border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:24px;width:100%;max-width:920px;max-height:90vh;overflow-y:auto;color:#eef4ff;font-family:Arial,Helvetica,sans-serif">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+        '<div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:#f5c842">📩 CUSTOMER REQUESTS</div>' +
+        '<button onclick="document.getElementById(\'gl-cri-modal\').remove()" style="background:none;border:0;color:#9aa7bd;font-size:22px;cursor:pointer">×</button>' +
+      '</div>' +
+      '<div style="display:flex;gap:6px;margin-bottom:14px" id="gl-cri-filters">' +
+        '<button data-status="new" class="gl-cri-pill act">New</button>' +
+        '<button data-status="in_progress" class="gl-cri-pill">In progress</button>' +
+        '<button data-status="resolved" class="gl-cri-pill">Resolved</button>' +
+        '<button data-status="dismissed" class="gl-cri-pill">Dismissed</button>' +
+        '<button data-status="" class="gl-cri-pill">All</button>' +
+      '</div>' +
+      '<div id="gl-cri-list"><div style="padding:30px;text-align:center;color:#9aa7bd">Loading…</div></div>' +
+    '</div>';
+    document.body.appendChild(ov);
+    var style = document.createElement('style');
+    style.textContent = '.gl-cri-pill{padding:6px 14px;border-radius:6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:#9aa7bd;font-size:11px;letter-spacing:1px;text-transform:uppercase;cursor:pointer}.gl-cri-pill.act{background:rgba(245,200,66,.15);border-color:rgba(245,200,66,.4);color:#f5c842}';
+    ov.appendChild(style);
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+
+    var currentStatus = 'new';
+    async function renderList(){
+      var listEl = document.getElementById('gl-cri-list');
+      listEl.innerHTML = '<div style="padding:30px;text-align:center;color:#9aa7bd">Loading…</div>';
+      var rows = await fetchRequests(currentStatus || null);
+      var clientMap = await fetchClientMap();
+      if(!rows.length){
+        listEl.innerHTML = '<div style="padding:60px;text-align:center;color:#9aa7bd;font-size:13px">No ' + (currentStatus || '') + ' requests.</div>';
+        return;
+      }
+      listEl.innerHTML = rows.map(function(r){
+        var client = clientMap[r.client_id] || {};
+        var kindLabel = KIND_LABEL[r.kind] || ('📩 ' + r.kind);
+        var kindColor = KIND_COLOR[r.kind] || '#9aa7bd';
+        var statusColor = STATUS_COLOR[r.status] || '#9aa7bd';
+        return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-left:3px solid ' + kindColor + ';border-radius:8px;padding:14px 16px;margin-bottom:10px">' +
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:6px">' +
+            '<div style="flex:1">' +
+              '<div style="font-size:12px;color:' + kindColor + ';font-weight:700;letter-spacing:1px">' + kindLabel + '</div>' +
+              '<div style="font-size:14px;color:#fff;font-weight:700;margin-top:3px">' + esc(client.name || '(unknown client)') + (r.subject ? ' — ' + esc(r.subject) : '') + '</div>' +
+              '<div style="font-size:11px;color:#6b87ad;margin-top:2px">' + fmtTs(r.created_at) + (client.email ? ' · ' + esc(client.email) : '') + '</div>' +
+            '</div>' +
+            '<span style="font-size:9px;letter-spacing:1.5px;font-weight:700;color:' + statusColor + ';border:1px solid ' + statusColor + '55;padding:3px 8px;border-radius:10px;white-space:nowrap">' + (STATUS_LABEL[r.status] || r.status) + '</span>' +
+          '</div>' +
+          (r.body ? '<div style="font-size:13px;color:#eef4ff;line-height:1.6;margin-top:10px;padding:10px 12px;background:rgba(255,255,255,.03);border-radius:6px;white-space:pre-wrap">' + esc(r.body) + '</div>' : '') +
+          (r.resolution_notes ? '<div style="font-size:12px;color:#9aa7bd;margin-top:8px;padding:8px 12px;background:rgba(95,207,158,.06);border-left:2px solid #5fcf9e;border-radius:4px"><b style="color:#5fcf9e">Resolution:</b> ' + esc(r.resolution_notes) + '</div>' : '') +
+          (r.status === 'new' || r.status === 'in_progress' ? '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">' +
+            (r.status === 'new' ? '<button onclick="window.glCustReqSetStatus(\'' + r.id + '\',\'in_progress\')" style="background:rgba(107,159,255,.12);border:1px solid rgba(107,159,255,.4);color:#6b9fff;padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-weight:700">Mark in progress</button>' : '') +
+            '<button onclick="window.glCustReqResolve(\'' + r.id + '\')" style="background:rgba(95,207,158,.12);border:1px solid rgba(95,207,158,.4);color:#5fcf9e;padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-weight:700">✓ Resolve</button>' +
+            '<button onclick="window.glCustReqSetStatus(\'' + r.id + '\',\'dismissed\')" style="background:rgba(154,167,189,.1);border:1px solid rgba(154,167,189,.3);color:#9aa7bd;padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer">Dismiss</button>' +
+            (client.email ? '<a href="mailto:' + esc(client.email) + '?subject=' + encodeURIComponent('Re: ' + (r.subject || kindLabel)) + '" style="background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.4);color:#00e5c0;padding:5px 12px;border-radius:6px;font-size:11px;text-decoration:none;font-weight:700">↩ Reply via email</a>' : '') +
+          '</div>' : '') +
+        '</div>';
+      }).join('');
+    }
+    ov.querySelectorAll('.gl-cri-pill').forEach(function(btn){
+      btn.onclick = function(){
+        ov.querySelectorAll('.gl-cri-pill').forEach(function(b){ b.classList.remove('act'); });
+        btn.classList.add('act');
+        currentStatus = btn.getAttribute('data-status');
+        renderList();
+      };
+    });
+    renderList();
+  };
+
+  window.glCustReqSetStatus = async function(id, status){
+    var sb = getSB(); if(!sb) return;
+    var sess = await sb.auth.getSession();
+    var uid = sess && sess.data && sess.data.session && sess.data.session.user && sess.data.session.user.id;
+    var payload = { status: status };
+    if(status === 'resolved') { payload.resolved_at = new Date().toISOString(); payload.resolved_by = uid; }
+    var r = await sb.from('customer_requests').update(payload).eq('id', id);
+    if(r.error){ alert('Update failed: ' + r.error.message); return; }
+    if(typeof window.glOpenCustomerRequestsInbox === 'function'){
+      // Re-render by re-clicking the active filter button
+      var ov = document.getElementById('gl-cri-modal');
+      if(ov){ var active = ov.querySelector('.gl-cri-pill.act'); if(active) active.click(); }
+    }
+    refreshDashboardBanner();
+  };
+
+  window.glCustReqResolve = async function(id){
+    var notes = prompt('Resolution notes (optional — what did you do?):');
+    if(notes === null) return;
+    var sb = getSB(); if(!sb) return;
+    var sess = await sb.auth.getSession();
+    var uid = sess && sess.data && sess.data.session && sess.data.session.user && sess.data.session.user.id;
+    var r = await sb.from('customer_requests').update({
+      status:'resolved', resolved_at: new Date().toISOString(), resolved_by: uid,
+      resolution_notes: notes || null
+    }).eq('id', id);
+    if(r.error){ alert('Update failed: ' + r.error.message); return; }
+    var ov = document.getElementById('gl-cri-modal');
+    if(ov){ var active = ov.querySelector('.gl-cri-pill.act'); if(active) active.click(); }
+    refreshDashboardBanner();
+  };
+
+  // Boot: render banner once dashboard is visible, and subscribe to changes.
+  function watchDash(){
+    if(!window.supa){ setTimeout(watchDash, 500); return; }
+    refreshDashboardBanner();
+    setInterval(refreshDashboardBanner, 60000); // poll every 60s as a fallback
+    try {
+      window.supa.channel('gl-cust-req').on('postgres_changes', { event:'*', schema:'public', table:'customer_requests' }, function(){
+        refreshDashboardBanner();
+      }).subscribe();
+    } catch(e){ console.warn('[GL] customer_requests realtime failed', e); }
+  }
+  if(document.readyState !== 'loading') watchDash();
+  else document.addEventListener('DOMContentLoaded', watchDash);
+
+  console.log('[GL] customer requests inbox loaded');
 }());
