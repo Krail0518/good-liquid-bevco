@@ -39,11 +39,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
   catch { return errorResponse('Invalid JSON body', 400); }
 
   const systemPrompt = String(payload.systemPrompt || '').trim();
-  const userPrompt   = String(payload.userPrompt   || '').trim();
-  if (!userPrompt) return errorResponse('userPrompt required', 400);
-
   const model     = String(payload.model     || 'claude-haiku-4-5-20251001');
   const maxTokens = Math.max(1, Math.min(4096, Number(payload.maxTokens) || 1024));
+
+  // Two input shapes:
+  //   1) { userPrompt: 'text' }            — simple text turn (most callers)
+  //   2) { messages: [{role, content}] }   — full message array (Vision, multi-turn)
+  let messages: Array<{ role: string; content: unknown }>;
+  if (Array.isArray(payload.messages) && payload.messages.length) {
+    messages = payload.messages as Array<{ role: string; content: unknown }>;
+  } else {
+    const userPrompt = String(payload.userPrompt || '').trim();
+    if (!userPrompt) return errorResponse('userPrompt or messages required', 400);
+    messages = [{ role: 'user', content: userPrompt }];
+  }
 
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -55,7 +64,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     body: JSON.stringify({
       model,
       max_tokens: maxTokens,
-      messages: [{ role: 'user', content: userPrompt }],
+      messages,
       system: systemPrompt || undefined,
     }),
   });
