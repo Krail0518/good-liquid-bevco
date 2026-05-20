@@ -2883,15 +2883,41 @@ function cNav(page,el){
 }
 
 /* Dashboard */
+/* Effective invoice status — flips a `pending` invoice to `overdue` when
+   its due_date is in the past. The DB column doesn't auto-update; this
+   keeps the dashboard tallies honest without a cron job.
+   Exposed on window so fix.js IIFEs can share the same logic. */
+function effectiveInvoiceStatus(inv){
+  if(!inv) return 'draft';
+  if(inv.status === 'paid' || inv.status === 'overdue' || inv.status === 'draft') return inv.status;
+  if(inv.status === 'pending' && inv.dueDate){
+    const due = new Date(inv.dueDate);
+    if(!isNaN(due.getTime()) && due < new Date()){ return 'overdue'; }
+  }
+  return inv.status || 'draft';
+}
+window.effectiveInvoiceStatus = effectiveInvoiceStatus;
+/* Money formatter that keeps precision: full $ under $1K, 1-decimal K
+   from $1K to $1M, 2-decimal M above. Avoids $2,312.50 → "$2K". */
+function fmtMoneyShort(n){
+  const v = Number(n) || 0;
+  if(v < 1000) return '$' + Math.round(v).toLocaleString();
+  if(v < 1000000) return '$' + (v/1000).toFixed(1) + 'K';
+  return '$' + (v/1000000).toFixed(2) + 'M';
+}
+
 function renderDash(){
-  const paid=invoices.filter(i=>i.status==='paid').reduce((a,i)=>a+i.amount,0);
-  const pend=invoices.filter(i=>i.status==='pending').reduce((a,i)=>a+i.amount,0);
-  const over=invoices.filter(i=>i.status==='overdue').reduce((a,i)=>a+i.amount,0);
-  const act=clients.filter(c=>c.status==='active').length;
+  const effective = invoices.map(i => ({ inv: i, eff: effectiveInvoiceStatus(i) }));
+  const paid    = effective.filter(x => x.eff === 'paid'   ).reduce((a,x) => a + (Number(x.inv.amount)||0), 0);
+  const pend    = effective.filter(x => x.eff === 'pending').reduce((a,x) => a + (Number(x.inv.amount)||0), 0);
+  const over    = effective.filter(x => x.eff === 'overdue').reduce((a,x) => a + (Number(x.inv.amount)||0), 0);
+  const pendCt  = effective.filter(x => x.eff === 'pending').length;
+  const overCt  = effective.filter(x => x.eff === 'overdue').length;
+  const act     = clients.filter(c=>c.status==='active').length;
   document.getElementById('dash-metrics').innerHTML=`
-    <div class="cmc"><div class="cml">Total collected</div><div class="cmv">$${Math.round(paid/1000)}K</div><div class="cmd up">↑ YTD 2026</div></div>
-    <div class="cmc"><div class="cml">Pending</div><div class="cmv">$${Math.round(pend/1000)}K</div><div class="cmd" style="color:var(--muted)">${invoices.filter(i=>i.status==='pending').length} open</div></div>
-    <div class="cmc"><div class="cml">Overdue</div><div class="cmv" style="color:#e74c3c">$${Math.round(over/1000)}K</div><div class="cmd dn">${invoices.filter(i=>i.status==='overdue').length} invoice(s)</div></div>
+    <div class="cmc"><div class="cml">Total collected</div><div class="cmv">${fmtMoneyShort(paid)}</div><div class="cmd up">↑ YTD 2026</div></div>
+    <div class="cmc"><div class="cml">Pending</div><div class="cmv">${fmtMoneyShort(pend)}</div><div class="cmd" style="color:var(--muted)">${pendCt} open</div></div>
+    <div class="cmc"><div class="cml">Overdue</div><div class="cmv" style="color:#e74c3c">${fmtMoneyShort(over)}</div><div class="cmd dn">${overCt} invoice(s)</div></div>
     <div class="cmc"><div class="cml">Active brands</div><div class="cmv">${act}</div><div class="cmd up">+${clients.filter(c=>c.status==='lead').length} leads</div></div>`;
   document.getElementById('dash-act').innerHTML=activities.slice(0,5).map(a=>`<div class="act-item" onclick="actNav(${JSON.stringify(a).replace(/"/g,'&quot;')})" style="cursor:pointer;border-radius:8px;padding:9px 8px;margin:0 -8px;transition:background 0.2s" onmouseenter="this.style.background='rgba(255,255,255,.04)'" onmouseleave="this.style.background='transparent'">
     <div class="act-ico ${a.type}">${a.icon}</div>
@@ -5260,9 +5286,11 @@ function openReports() {
     months[m].count++;
   });
   const sortedMonths = Object.keys(months).sort();
-  const totalPaid = invoices.filter(i=>i.status==='paid').reduce((s,i)=>s+i.amount,0);
-  const totalPending = invoices.filter(i=>i.status==='pending').reduce((s,i)=>s+i.amount,0);
-  const totalOverdue = invoices.filter(i=>i.status==='overdue').reduce((s,i)=>s+i.amount,0);
+  /* Use effective status so a pending invoice past its due_date counts as
+     overdue here too (matches the dashboard tallies). */
+  const totalPaid    = invoices.filter(i=>effectiveInvoiceStatus(i)==='paid'   ).reduce((s,i)=>s+(Number(i.amount)||0),0);
+  const totalPending = invoices.filter(i=>effectiveInvoiceStatus(i)==='pending').reduce((s,i)=>s+(Number(i.amount)||0),0);
+  const totalOverdue = invoices.filter(i=>effectiveInvoiceStatus(i)==='overdue').reduce((s,i)=>s+(Number(i.amount)||0),0);
   const topClients = [...clients].sort((a,b)=>(b.billed||0)-(a.billed||0)).slice(0,5);
 
   const ov = document.createElement('div');
@@ -6610,8 +6638,8 @@ async function sendAIComm(){
 ═══════════════════════════════════════════ */
 async function aiGenerateForecast(){
   showAIModal('Revenue Forecast','',true);
-  const paid=invoices.filter(i=>i.status==='paid').reduce((a,i)=>a+i.amount,0);
-  const pend=invoices.filter(i=>i.status==='pending').reduce((a,i)=>a+i.amount,0);
+  const paid=invoices.filter(i=>effectiveInvoiceStatus(i)==='paid'   ).reduce((a,i)=>a+(Number(i.amount)||0),0);
+  const pend=invoices.filter(i=>effectiveInvoiceStatus(i)==='pending').reduce((a,i)=>a+(Number(i.amount)||0),0);
   const pipeVal=Object.values(deals).flat().reduce((s,d)=>s+parseInt((d.val||'$0').replace(/[$,]/g,'')),0);
   
   const text=await callAI('You are a revenue analyst for Good Liquid Bev Co.',
