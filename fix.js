@@ -5421,7 +5421,10 @@
   var SEC_PRODUCTION = bullets([
     'Same calendar mechanics as the General Calendar, but focused on <b>production runs</b>: which client, what format, how many cases, what stage (scheduled / in production / quality check / completed / shipped).',
     'Customers see their own scheduled runs in the Customer Portal automatically.',
-    'Stored in localStorage (gl_prod_pipeline).'
+    '<b>Auto stage-change emails</b> — when you advance a run between kanban stages, the brand\'s portal customer gets an email with the new status. Skipped for clients with no portal user, or for users with <code>notify_run_stage_changes = false</code>.',
+    '<b>📎 Lot Documents (NEW)</b> — every run now carries a <i>Lot number</i> field + an inline "📎 LOT DOCUMENTS" section. Click <b>+ Attach</b> on an existing run to upload a COA, spec sheet, allergen statement, kosher/organic cert, or NFP — anything the customer would otherwise email you for. The file lands in the <code>client-docs</code> Storage bucket under <code>&lt;client_id&gt;/lots/&lt;lot&gt;/</code> and a metadata row goes into <code>lot_documents</code>. Each row has 🗑 (delete) and ⬇ (download) buttons.',
+    '<b>What the customer sees</b>: a new "📎 COAs & DOCUMENTS" section on their portal dashboard with type badges (COA / Spec sheet / Allergen / Kosher / Organic / Nutrition / Other) and a one-click <b>⬇ Download</b> that hits a 60-second signed URL. RLS gates this to <code>client_id = current_customer_client_id()</code> — no risk of one brand seeing another brand\'s files.',
+    'Stored in Supabase <b>production_runs</b> + <b>lot_documents</b>.'
   ]);
 
   var SEC_TASKS = MOCK_TASKS +
@@ -9327,7 +9330,18 @@
           '<div class="frow"><div class="flbl">Stage</div><select class="fsel" id="gl-prun-stage">' + stageOptions + '</select></div>' +
           '<div class="frow"><div class="flbl">Scheduled date</div><input class="finp" id="gl-prun-date" type="date" value="' + esc(run.scheduled_date || '') + '"></div>' +
         '</div>' +
+        '<div class="frow"><div class="flbl">Lot number <span style="opacity:.6">(stamped on cans for traceability)</span></div><input class="finp" id="gl-prun-lot" value="' + esc(run.lot_number || '') + '" placeholder="e.g. L26140-A"></div>' +
         '<div class="frow"><div class="flbl">Notes</div><textarea class="finp" id="gl-prun-notes" rows="3" placeholder="QC notes, allergen flags, anything the line lead should know…">' + esc(run.notes) + '</textarea></div>' +
+        (isEdit ? (
+          '<div style="border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:12px;margin:10px 0;background:rgba(255,255,255,.02)">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+              '<div style="font-family:var(--ff-disp);font-size:11px;letter-spacing:2px;color:#7fc6f5">📎 LOT DOCUMENTS</div>' +
+              '<button id="gl-prun-doc-add" class="cbtn" style="font-size:11px;padding:4px 10px">+ Attach</button>' +
+            '</div>' +
+            '<div id="gl-prun-doc-list" style="font-size:11px;color:#9aa7bd">Loading…</div>' +
+            '<div style="font-size:10px;color:#6b87ad;margin-top:6px;line-height:1.5">Files attached here are visible to the brand\'s portal customer. Use for COAs, spec sheets, allergen declarations, etc.</div>' +
+          '</div>'
+        ) : '') +
         '<div style="display:flex;gap:8px;margin-top:6px">' +
           '<button id="gl-prun-save" class="cbtn pri" style="flex:1">💾 Save</button>' +
           (isEdit ? '<button id="gl-prun-del" class="cbtn" style="background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#ff8579">Delete</button>' : '') +
@@ -9351,6 +9365,7 @@
       if(!name){ alert('Run name is required.'); return; }
       var cid = ov.querySelector('#gl-prun-client').value;
       var c   = (window.clients||[]).find(function(x){ return x.id === cid; });
+      var lotEl = ov.querySelector('#gl-prun-lot');
       var data = {
         run_name:       name,
         client_id:      cid || null,
@@ -9359,6 +9374,7 @@
         cases:          parseInt(ov.querySelector('#gl-prun-cases').value, 10) || 0,
         stage:          ov.querySelector('#gl-prun-stage').value,
         scheduled_date: ov.querySelector('#gl-prun-date').value || null,
+        lot_number:     lotEl ? (lotEl.value || '').trim() || null : (run.lot_number || null),
         notes:          ov.querySelector('#gl-prun-notes').value,
         updated_at:     new Date().toISOString()
       };
@@ -9398,6 +9414,181 @@
       if(typeof window.glAudit === 'function') window.glAudit(isEdit ? 'production_run_edited' : 'production_run_added', data.run_name, { stage: data.stage });
     });
     host.appendChild(ov);
+
+    // ──────────────────────────────────────────────────────────
+    // Lot documents section — staff attach COAs / spec sheets /
+    // allergen statements to this production run. Visible to the
+    // brand's portal customer via lot_documents RLS.
+    // ──────────────────────────────────────────────────────────
+    if(isEdit){
+      var listEl = ov.querySelector('#gl-prun-doc-list');
+      var addBtn = ov.querySelector('#gl-prun-doc-add');
+      var DOC_TYPES = [
+        ['coa', 'Certificate of Analysis (COA)'],
+        ['spec_sheet', 'Spec sheet'],
+        ['allergen', 'Allergen statement'],
+        ['kosher', 'Kosher certificate'],
+        ['organic', 'Organic certificate'],
+        ['nutrition', 'Nutrition / NFP'],
+        ['other', 'Other']
+      ];
+      function fmtBytes(n){
+        if(!n) return '';
+        if(n < 1024) return n + ' B';
+        if(n < 1024*1024) return (n/1024).toFixed(0) + ' KB';
+        return (n/1024/1024).toFixed(1) + ' MB';
+      }
+      async function loadDocs(){
+        if(!listEl) return;
+        if(!window.supa){ listEl.innerHTML = '<span style="color:#ff8579">Supabase not ready.</span>'; return; }
+        listEl.innerHTML = 'Loading…';
+        var r = await window.supa.from('lot_documents')
+          .select('id, document_type, title, lot_number, file_name, file_size, file_path, uploaded_at')
+          .eq('production_run_id', run.id)
+          .order('uploaded_at', { ascending: false });
+        if(r.error){ listEl.innerHTML = '<span style="color:#ff8579">Failed to load: ' + esc(r.error.message) + '</span>'; return; }
+        var rows = r.data || [];
+        if(!rows.length){
+          listEl.innerHTML = '<div style="font-style:italic;color:#6b87ad;padding:6px 0">No documents attached yet. Click <b>+ Attach</b> to upload a COA, spec sheet, or other PDF.</div>';
+          return;
+        }
+        listEl.innerHTML = rows.map(function(d){
+          var typeLabel = (DOC_TYPES.find(function(t){ return t[0] === d.document_type; }) || [d.document_type, d.document_type])[1];
+          var when = d.uploaded_at ? new Date(d.uploaded_at).toLocaleDateString() : '';
+          return '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);border-radius:6px;margin-bottom:5px">' +
+            '<div style="flex:1;min-width:0">' +
+              '<div style="color:#fff;font-size:12px;font-weight:600">' + esc(d.title || d.file_name || 'Document') + '</div>' +
+              '<div style="color:#6b87ad;font-size:10px;margin-top:2px">' + esc(typeLabel) + (d.lot_number ? ' · Lot ' + esc(d.lot_number) : '') + (d.file_size ? ' · ' + fmtBytes(d.file_size) : '') + ' · ' + esc(when) + '</div>' +
+            '</div>' +
+            '<button data-doc-dl="' + esc(d.id) + '" class="cbtn" style="font-size:10px;padding:3px 8px">⬇</button>' +
+            '<button data-doc-rm="' + esc(d.id) + '" data-doc-path="' + esc(d.file_path) + '" class="cbtn" style="font-size:10px;padding:3px 8px;background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#ff8579">🗑</button>' +
+          '</div>';
+        }).join('');
+        // Wire row buttons
+        Array.prototype.forEach.call(listEl.querySelectorAll('[data-doc-dl]'), function(b){
+          b.onclick = async function(){
+            var id = b.getAttribute('data-doc-dl');
+            var row = rows.find(function(x){ return x.id === id; });
+            if(!row) return;
+            var su = await window.supa.storage.from('client-docs').createSignedUrl(row.file_path, 60);
+            if(su.error || !su.data){ alert('Signed URL failed: ' + (su.error && su.error.message || 'unknown')); return; }
+            window.open(su.data.signedUrl, '_blank', 'noopener');
+          };
+        });
+        Array.prototype.forEach.call(listEl.querySelectorAll('[data-doc-rm]'), function(b){
+          b.onclick = async function(){
+            var id = b.getAttribute('data-doc-rm');
+            var p  = b.getAttribute('data-doc-path');
+            if(!confirm('Delete this document? The customer will no longer be able to see it.')) return;
+            b.disabled = true; b.textContent = '…';
+            try { if(p) await window.supa.storage.from('client-docs').remove([p]); } catch(e){}
+            var rr = await window.supa.from('lot_documents').delete().eq('id', id);
+            if(rr.error){ alert('Delete failed: ' + rr.error.message); b.disabled = false; b.textContent = '🗑'; return; }
+            if(typeof window.glAudit === 'function') window.glAudit('lot_document_deleted', id, { run: run.id });
+            loadDocs();
+          };
+        });
+      }
+      loadDocs();
+
+      if(addBtn) addBtn.onclick = function(){
+        if(!run.client_id){ alert('This run has no client linked. Pick a client + save the run first.'); return; }
+        openAttachDocModal(run, loadDocs);
+      };
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // Attach-document sub-modal
+  // ──────────────────────────────────────────────────────────
+  function openAttachDocModal(run, onSaved){
+    var prior = document.getElementById('gl-doc-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var DOC_TYPES = [
+      ['coa', 'Certificate of Analysis (COA)'],
+      ['spec_sheet', 'Spec sheet'],
+      ['allergen', 'Allergen statement'],
+      ['kosher', 'Kosher certificate'],
+      ['organic', 'Organic certificate'],
+      ['nutrition', 'Nutrition / NFP'],
+      ['other', 'Other']
+    ];
+    var typeOpts = DOC_TYPES.map(function(t){ return '<option value="' + t[0] + '">' + esc(t[1]) + '</option>'; }).join('');
+    var ov = document.createElement('div');
+    ov.id = 'gl-doc-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1100;background:rgba(6,13,26,.92);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(127,198,245,.3);border-radius:14px;padding:24px;width:100%;max-width:460px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+          '<div style="font-family:var(--ff-disp);font-size:16px;letter-spacing:2px;color:#7fc6f5">📎 ATTACH DOCUMENT</div>' +
+          '<button id="gl-doc-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="font-size:11px;color:#6b87ad;margin-bottom:14px">Brand: <b style="color:#fff">' + esc(run.client_name || '') + '</b>' + (run.run_name ? ' · Run <b style="color:#fff">' + esc(run.run_name) + '</b>' : '') + '</div>' +
+        '<div class="frow"><div class="flbl">File *</div><input class="finp" id="gl-doc-file" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"></div>' +
+        '<div class="frow"><div class="flbl">Document type *</div><select class="fsel" id="gl-doc-type">' + typeOpts + '</select></div>' +
+        '<div class="frow"><div class="flbl">Title *</div><input class="finp" id="gl-doc-title" placeholder="e.g. COA — Mango pilot — Lot L26140-A"></div>' +
+        '<div class="frow"><div class="flbl">Lot number <span style="opacity:.6">(optional)</span></div><input class="finp" id="gl-doc-lot" value="' + esc(run.lot_number || '') + '"></div>' +
+        '<div class="frow"><div class="flbl">Notes <span style="opacity:.6">(optional)</span></div><textarea class="finp" id="gl-doc-notes" rows="2"></textarea></div>' +
+        '<div id="gl-doc-msg" style="display:none;margin:10px 0;padding:8px 10px;border-radius:6px;font-size:12px"></div>' +
+        '<div style="display:flex;gap:8px;margin-top:8px">' +
+          '<button id="gl-doc-save" class="cbtn pri" style="flex:1">📤 Upload</button>' +
+          '<button id="gl-doc-cancel" class="cbtn">Cancel</button>' +
+        '</div>' +
+      '</div>';
+    host.appendChild(ov);
+    function msg(text, kind){
+      var el = ov.querySelector('#gl-doc-msg'); el.style.display='block'; el.textContent = text;
+      if(kind === 'err'){ el.style.background='rgba(231,76,60,.12)'; el.style.border='1px solid rgba(231,76,60,.35)'; el.style.color='#ff8579'; }
+      else { el.style.background='rgba(95,207,158,.12)'; el.style.border='1px solid rgba(95,207,158,.35)'; el.style.color='#5fcf9e'; }
+    }
+    ov.querySelector('#gl-doc-close').onclick  = function(){ ov.remove(); };
+    ov.querySelector('#gl-doc-cancel').onclick = function(){ ov.remove(); };
+    ov.querySelector('#gl-doc-save').onclick = async function(){
+      var fileEl = ov.querySelector('#gl-doc-file');
+      var f = fileEl && fileEl.files && fileEl.files[0];
+      if(!f){ msg('Pick a file first.', 'err'); return; }
+      var title = (ov.querySelector('#gl-doc-title').value||'').trim();
+      if(!title){ msg('Title is required.', 'err'); return; }
+      if(f.size > 25 * 1024 * 1024){ msg('File too large (max 25MB).', 'err'); return; }
+      var docType = ov.querySelector('#gl-doc-type').value || 'other';
+      var lot     = (ov.querySelector('#gl-doc-lot').value||'').trim() || run.lot_number || null;
+      var notes   = (ov.querySelector('#gl-doc-notes').value||'').trim() || null;
+      var btn = this; var orig = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Uploading…';
+      try {
+        var safeName = (f.name || 'file').replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 120);
+        var stamp = Date.now();
+        var path = run.client_id + '/lots/' + (lot || 'unlabeled') + '/' + stamp + '_' + safeName;
+        var up = await window.supa.storage.from('client-docs').upload(path, f, { contentType: f.type || 'application/octet-stream', upsert: false });
+        if(up.error){ msg('Upload failed: ' + up.error.message, 'err'); btn.disabled = false; btn.textContent = orig; return; }
+        var ins = await window.supa.from('lot_documents').insert({
+          client_id:         run.client_id,
+          production_run_id: run.id,
+          lot_number:        lot,
+          document_type:     docType,
+          title:             title,
+          notes:             notes,
+          file_path:         path,
+          file_name:         f.name,
+          file_size:         f.size,
+          mime_type:         f.type || null
+        });
+        if(ins.error){
+          // Clean up the orphaned storage file so we don't accumulate garbage.
+          try { await window.supa.storage.from('client-docs').remove([path]); } catch(e){}
+          msg('Save metadata failed: ' + ins.error.message, 'err');
+          btn.disabled = false; btn.textContent = orig;
+          return;
+        }
+        if(typeof window.glAudit === 'function') window.glAudit('lot_document_uploaded', run.id, { type: docType, title: title, lot: lot });
+        if(typeof addNotification === 'function') addNotification('📎 Document attached', title, 'success');
+        ov.remove();
+        if(typeof onSaved === 'function') onSaved();
+      } catch(e){
+        msg('Threw: ' + (e.message || e), 'err');
+        btn.disabled = false; btn.textContent = orig;
+      }
+    };
   }
 
   window.glOpenAddProductionRun  = function(){ runModal(null); };
@@ -21121,6 +21312,8 @@
     // Only show non-draft formulas to the customer
     var fmR = await sb.from('formulas').select('id, name, version, status, batch_size_gal, target_yield_cases, allergens, updated_at').eq('client_id', customer.client_id).neq('status', 'draft').order('updated_at', { ascending: false });
     var fms = (fmR && fmR.data) || [];
+    var ldR = await sb.from('lot_documents').select('id, document_type, title, lot_number, file_name, file_size, file_path, mime_type, uploaded_at, production_run_id').eq('client_id', customer.client_id).order('uploaded_at', { ascending: false });
+    var lds = (ldR && ldR.data) || [];
 
     var STATUS_COLOR = { paid:'#5fcf9e', pending:'#f5c842', overdue:'#e74c3c', quote:'#9aa7bd', expired:'#9aa7bd', draft:'#9aa7bd' };
     var paidTotal = invs.filter(function(i){ return i.status === 'paid'; }).reduce(function(s,i){ return s + (Number(i.amount)||0); }, 0);
@@ -21218,6 +21411,42 @@
       '</div>';
     }).join('') : '<div style="padding:20px;text-align:center;color:#6b87ad;font-size:12px">No formulas on file.</div>';
 
+    var DOC_TYPE_LBL = { coa:'COA', spec_sheet:'Spec sheet', allergen:'Allergen statement', kosher:'Kosher cert', organic:'Organic cert', nutrition:'Nutrition / NFP', other:'Document' };
+    var DOC_TYPE_COLOR = { coa:'#5fcf9e', spec_sheet:'#6b9fff', allergen:'#c4b5fd', kosher:'#f5c842', organic:'#5fcf9e', nutrition:'#7fc6f5', other:'#9aa7bd' };
+    function fmtBytesPortal(n){ if(!n) return ''; if(n<1024) return n+' B'; if(n<1024*1024) return (n/1024).toFixed(0)+' KB'; return (n/1024/1024).toFixed(1)+' MB'; }
+    var ldRowsHtml = lds.length ? lds.map(function(d){
+      var color = DOC_TYPE_COLOR[d.document_type] || '#9aa7bd';
+      var typeLbl = DOC_TYPE_LBL[d.document_type] || 'Document';
+      var meta = [];
+      if(d.lot_number) meta.push('Lot ' + escHtml(d.lot_number));
+      if(d.file_size)  meta.push(fmtBytesPortal(d.file_size));
+      if(d.uploaded_at) meta.push(new Date(d.uploaded_at).toLocaleDateString());
+      return '<div style="display:grid;grid-template-columns:1fr 120px 100px;gap:12px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.05);align-items:center">' +
+        '<div>' +
+          '<div style="font-size:13px;color:#fff;font-weight:600">' + escHtml(d.title || d.file_name || 'Document') + '</div>' +
+          (meta.length ? '<div style="font-size:11px;color:#6b87ad;margin-top:2px">' + meta.join(' · ') + '</div>' : '') +
+        '</div>' +
+        '<div style="text-align:right">' +
+          '<span style="display:inline-block;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:' + color + ';font-weight:700;background:rgba(255,255,255,.04);border:1px solid ' + color + '33;padding:3px 8px;border-radius:4px">' + escHtml(typeLbl) + '</span>' +
+        '</div>' +
+        '<div style="text-align:right">' +
+          '<button onclick="window.glPortalDownloadLotDoc(\'' + d.id + '\', event)" style="background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.35);color:#c4b5fd;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">⬇ Download</button>' +
+        '</div>' +
+      '</div>';
+    }).join('') : '<div style="padding:20px;text-align:center;color:#6b87ad;font-size:12px">No documents on file yet. Your account manager will upload COAs and spec sheets here as they\'re produced.</div>';
+
+    // Cache the file paths keyed by doc id so the download handler can use them
+    window._glPortalLotDocs = {};
+    lds.forEach(function(d){ window._glPortalLotDocs[d.id] = d; });
+    window.glPortalDownloadLotDoc = async function(docId, ev){
+      if(ev && ev.preventDefault) ev.preventDefault();
+      var doc = window._glPortalLotDocs && window._glPortalLotDocs[docId];
+      if(!doc){ alert('Document not found'); return; }
+      var su = await sb.storage.from('client-docs').createSignedUrl(doc.file_path, 60);
+      if(su.error || !su.data){ alert('Download link failed: ' + (su.error && su.error.message || 'unknown')); return; }
+      window.open(su.data.signedUrl, '_blank', 'noopener');
+    };
+
     var algRowsHtml = algs.length ? algs.map(function(a){
       var url = a.share_token ? (location.origin + location.pathname + '?allergen_decl=' + a.share_token) : '';
       return '<div style="display:grid;grid-template-columns:1fr 120px;gap:12px;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.05);align-items:center">' +
@@ -21279,6 +21508,11 @@
           '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
             '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:#5fcf9e;font-weight:700">FORMULAS</div>' +
             fmRowsHtml +
+          '</div>' +
+
+          '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
+            '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:#7fc6f5;font-weight:700">📎 COAs & DOCUMENTS</div>' +
+            ldRowsHtml +
           '</div>' +
 
           (algs.length ? '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
