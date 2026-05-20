@@ -3841,7 +3841,9 @@ async function loadSupabaseData(){
       paymentTerms: i.payment_terms || '',
       dueDate: i.due_date || '',
       // Also hydrate line items so the dashboard chart can categorize per-line.
-      lines: Array.isArray(i.line_items) ? i.line_items : []
+      lines: Array.isArray(i.line_items) ? i.line_items : [],
+      // Per-invoice card-surcharge waiver (was gl_waive_surcharge_* localStorage).
+      waiveCardSurcharge: !!i.waive_card_surcharge
     }));
   }
   if(rrR.data && rrR.data.length>0){
@@ -3884,6 +3886,9 @@ async function loadSupabaseData(){
       time:new Date(a.created_at).toLocaleDateString()
     }));
   }
+  // Hydrate the follow-up log from Supabase (replaces the old gl_followup_log
+  // localStorage store — see migration 20260519_followup_acks_waivers.sql).
+  try { await loadFollowupLog(); } catch(e){ console.warn('[GL] loadFollowupLog failed', e); }
 }
 
 // Override saveInvoice to also write to Supabase
@@ -4574,15 +4579,9 @@ document.getElementById('deal-detail-panel').addEventListener('click', function(
    AI + ENHANCED FEATURES — Good Liquid CRM
    ═══════════════════════════════════════════════ */
 
-// AI key stored in browser localStorage
-let AI_KEY = localStorage.getItem('gl_ai_key') || '';
-
-function getAIKey(){
-  if(AI_KEY) return AI_KEY;
-  // Show settings if no key
-  openAISettings();
-  return null;
-}
+/* AI calls now route through the `ai-proxy` Edge Function. The Anthropic
+   API key lives in Supabase secrets only — never exposed to the browser. */
+const AI_MODEL = 'claude-haiku-4-5-20251001';
 
 function openAISettings(){
   const existing = document.getElementById('ai-settings-overlay');
@@ -4590,69 +4589,39 @@ function openAISettings(){
   const ov = document.createElement('div');
   ov.id = 'ai-settings-overlay';
   ov.style.cssText = 'position:fixed;inset:0;z-index:900;background:rgba(6,13,26,.95);backdrop-filter:blur(16px);display:flex;align-items:center;justify-content:center;padding:20px';
-  const saved = localStorage.getItem('gl_ai_key') || '';
   ov.innerHTML = `
     <div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:36px;width:100%;max-width:500px">
       <div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:2px;color:var(--teal);margin-bottom:8px">🤖 AI SETTINGS</div>
-      <div style="font-size:13px;color:var(--muted);margin-bottom:24px;line-height:1.6">Enter your Anthropic API key to enable AI features. It's saved securely in your browser — you only need to do this once.</div>
-      ${saved ? '<div style="background:rgba(29,158,117,.1);border:1px solid rgba(29,158,117,.3);border-radius:8px;padding:10px 14px;font-size:13px;color:#1D9E75;margin-bottom:16px">✅ API key is saved and active</div>' : ''}
-      <div style="margin-bottom:16px">
-        <div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">ANTHROPIC API KEY</div>
-        <input id="ai-key-input" type="password" value="${saved}" placeholder="sk-ant-api03-..." 
-          style="width:100%;padding:13px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-mono);box-sizing:border-box">
-      </div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:20px">Get your key at <span style="color:var(--teal)">console.anthropic.com</span> → API Keys</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.6">AI calls now route through a server-side proxy. The Anthropic API key is stored in Supabase secrets, never in your browser.</div>
+      <div style="background:rgba(29,158,117,.1);border:1px solid rgba(29,158,117,.3);border-radius:8px;padding:12px 14px;font-size:13px;color:#1D9E75;margin-bottom:18px">✅ AI features are active. Model: <code style="font-family:var(--ff-mono);font-size:12px">${AI_MODEL}</code></div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:20px;line-height:1.5">To rotate the key: run <code style="font-family:var(--ff-mono);font-size:11px;color:#9ca3af">supabase secrets set ANTHROPIC_API_KEY=sk-ant-...</code> in PowerShell. No frontend change needed.</div>
       <div style="display:flex;gap:10px">
-        <button onclick="saveAIKey()" style="flex:1;padding:13px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:800;cursor:pointer;font-size:14px">Save Key</button>
-        <button onclick="document.getElementById('ai-settings-overlay').remove()" style="padding:13px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer">Cancel</button>
+        <button onclick="document.getElementById('ai-settings-overlay').remove()" style="flex:1;padding:13px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:800;cursor:pointer;font-size:14px">Close</button>
       </div>
     </div>`;
   document.body.appendChild(ov);
 }
 
-function saveAIKey(){
-  const k = document.getElementById('ai-key-input').value.trim();
-  if(!k){ alert('Please enter an API key.'); return; }
-  AI_KEY = k;
-  localStorage.setItem('gl_ai_key', k);
-  document.getElementById('ai-settings-overlay').remove();
-  alert('✅ API key saved! AI features are now active.');
-}
-
-function clearAIKey(){
-  AI_KEY = '';
-  localStorage.removeItem('gl_ai_key');
-  alert('API key cleared.');
-}
-const AI_MODEL = 'claude-haiku-4-5-20251001';
-
 async function callAI(systemPrompt, userPrompt) {
-  // Pre-flight: if no key, dismiss any pending loading modal so it doesn't
-  // stack with the Settings modal, then open Settings (handled by getAIKey).
-  if(!AI_KEY){
-    document.getElementById('ai-modal')?.remove();
-    if(typeof addNotification==='function') addNotification('AI key required','Paste your Anthropic API key in AI Settings.','warning');
-    openAISettings();
+  try {
+    const resp = await supa.functions.invoke('ai-proxy', {
+      body: { systemPrompt, userPrompt, model: AI_MODEL, maxTokens: 1024 }
+    });
+    if(resp.error){
+      console.error('[ai-proxy] error', resp.error);
+      if(typeof addNotification==='function') addNotification('AI request failed', resp.error.message || 'See console', 'warning');
+      return '';
+    }
+    if(resp.data && resp.data.ok === false){
+      console.error('[ai-proxy] rejected', resp.data.error);
+      if(typeof addNotification==='function') addNotification('AI request failed', resp.data.error || 'See console', 'warning');
+      return '';
+    }
+    return (resp.data && resp.data.text) || 'AI response unavailable.';
+  } catch(e){
+    console.error('[ai-proxy] threw', e);
     return '';
   }
-  const key = AI_KEY;
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
-    body: JSON.stringify({
-      model: AI_MODEL,
-      max_tokens: 1024,
-      messages: [{ role: 'user', content: userPrompt }],
-      system: systemPrompt
-    })
-  });
-  const data = await res.json();
-  return data.content?.[0]?.text || 'AI response unavailable.';
 }
 
 // ─── AI MODAL HELPER ───
@@ -6358,7 +6327,30 @@ async function sendMailgunEmail(to, subject, body, opts){
 /* ═══════════════════════════════════════════
    INVOICE FOLLOW-UP
 ═══════════════════════════════════════════ */
-let followupLog = JSON.parse(localStorage.getItem('gl_followup_log')||'{}');
+/* Follow-up log: backed by Supabase `followup_log` table. The in-memory
+   `followupLog` keyed by invoice_number is hydrated from Supabase on
+   login (see loadSupabaseData) and updated after each send. Reads are
+   sync (cache lookups); writes go to both the cache and the DB. */
+let followupLog = {};
+window.followupLog = followupLog;
+async function loadFollowupLog(){
+  try {
+    const r = await supa.from('followup_log').select('invoice_number, sent_at, kind, notes, sent').order('sent_at', { ascending: true });
+    if(r.error) { console.warn('[GL] followup_log load:', r.error); return; }
+    followupLog = {};
+    (r.data || []).forEach(row => {
+      const k = row.invoice_number || '';
+      if(!k) return;
+      if(!followupLog[k]) followupLog[k] = [];
+      followupLog[k].push({
+        date: new Date(row.sent_at).toLocaleDateString(),
+        subject: row.notes || row.kind || 'Follow-up',
+        sent: row.sent !== false
+      });
+    });
+    window.followupLog = followupLog;
+  } catch(e){ console.warn('[GL] followup_log load threw', e); }
+}
 let currentFollowupInvId = null;
 
 function openFollowUpModal(){
@@ -6469,10 +6461,20 @@ async function sendFollowupEmail(){
 
   const sent=await sendMailgunEmail(to,subject,body,{cc:cc});
 
-  // Log the follow-up
+  // Log the follow-up — write to Supabase followup_log + mirror in cache.
+  try {
+    const supaInv = inv && inv.supaId ? inv.supaId : null;
+    await supa.from('followup_log').insert({
+      invoice_id:     supaInv,
+      invoice_number: currentFollowupInvId,
+      kind:           'manual',
+      sent:           !!sent,
+      cc_count:       cc.length,
+      notes:          subject
+    });
+  } catch(e){ console.warn('[GL] followup_log insert failed', e); }
   if(!followupLog[currentFollowupInvId]) followupLog[currentFollowupInvId]=[];
   followupLog[currentFollowupInvId].push({date:new Date().toLocaleDateString(),subject,sent,ccCount:cc.length});
-  localStorage.setItem('gl_followup_log',JSON.stringify(followupLog));
 
   const ccNote = cc.length ? ' (+' + cc.length + ' Cc)' : '';
   addNotification('📧 Follow-up sent','Invoice '+currentFollowupInvId+' — '+to+ccNote,'email');
