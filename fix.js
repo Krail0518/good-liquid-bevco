@@ -5064,6 +5064,44 @@
       '<b>(6) Row actions</b> — 💳 opens the Stripe pay link for that invoice; 👁 opens the invoice detail.',
       '<b>(7) → Invoice button</b> — appears on quote-status rows. One-click conversion from "quote" to billable "pending".',
       '<b>On the invoice detail header</b> you now also have: ✏️ <b>Edit</b> (reopens the builder), 📧 <b>Send Invoice</b> (composer with To/Cc/Bcc + Stripe pay link), 📊 <b>Activity</b> (this invoice\'s sends only), 📅 <b>Schedule</b> (queue a future reminder). See the relevant sections in this guide.'
+    ]) +
+    /* ── A/R aging + bulk + auto-overdue (PR 1 of 2026-05-20 enhancement series) ── */
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#f5c842">📋 A/R AGING REPORT (NEW)</h4>' +
+    wf(620, 200,
+      box(0,0,620,200,'#142238','rgba(255,255,255,.05)') +
+      txt(20,28,'📋 A/R Aging',13,'#f5c842') +
+      txt(20,46,'Total outstanding: $2.3K',10,'#9aa7bd') +
+      box(20,60,110,80,'#1a2c48','rgba(95,207,158,.3)') + txt(30,82,'CURRENT',9,'#5fcf9e') + txt(30,108,'$0',16,'#fff') + txt(30,128,'0 invoices',9,'#9aa7bd') +
+      box(140,60,110,80,'#1a2c48','rgba(107,159,255,.3)') + txt(150,82,'1–30 d',9,'#6b9fff') + txt(150,108,'$813',14,'#fff') + txt(150,128,'1 invoice',9,'#9aa7bd') +
+      box(260,60,110,80,'#1a2c48','rgba(245,200,66,.3)') + txt(270,82,'31–60 d',9,'#f5c842') + txt(270,108,'$1.5K',14,'#fff') + txt(270,128,'1 invoice',9,'#9aa7bd') +
+      box(380,60,110,80,'#1a2c48','rgba(255,154,60,.3)') + txt(390,82,'61–90 d',9,'#ff9a3c') + txt(390,108,'$0',16,'#fff') + txt(390,128,'0 invoices',9,'#9aa7bd') +
+      box(500,60,100,80,'#1a2c48','rgba(231,76,60,.3)') + txt(510,82,'90+ d',9,'#e74c3c') + txt(510,108,'$0',16,'#fff') + txt(510,128,'0 invoices',9,'#9aa7bd') +
+      box(20,160,580,28,'#243a56','rgba(245,200,66,.3)') + txt(30,178,'📋 A/R Aging — Full Drill-Down (per-client roll-up, sorted worst-aged first)',10,'#f5c842')
+    ) +
+    bullets([
+      '<b>Where to find it</b>: open <b>Reports</b> (sidebar or top toolbar). The aging strip is at the bottom of the modal, above the Insights/Close buttons.',
+      '<b>The 5 buckets</b>: Current (not yet due), 1–30, 31–60, 61–90, 90+ days past due. Each tile shows total $ outstanding + invoice count.',
+      '<b>Drill-down</b>: click <b>📋 A/R Aging — Full Drill-Down</b> to open a per-client roll-up. Every client with at least one unpaid invoice shows on its own row with bucket breakdown + worst-aged days. Sorted worst-first. Click a row to open that client\'s detail.',
+      '<b>How "overdue" is decided</b>: a nightly pg_cron job (2 AM UTC) flips any <code>status=pending</code> invoice with <code>due_date &lt; today</code> to <code>status=overdue</code> in the database. No manual marking needed. The dashboard, aging report, and overdue-reminder blast all read the same column.'
+    ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">✓ BULK MARK PAID (NEW)</h4>' +
+    wf(620, 180,
+      box(0,0,620,180,'#142238','rgba(255,255,255,.05)') +
+      txt(20,28,'INVOICES',13,'#fff') +
+      box(20,46,580,40,'#243a56','rgba(0,229,192,.3)') +
+      txt(30,68,'☐  2 selected  ·  Total: $2.3K',11,'#00e5c0') +
+      box(440,54,90,24,'#5fcf9e','none') + txt(485,71,'✓ Mark 2 paid',10,'#0a1628','middle') +
+      box(540,54,55,24,'#1a2c48','rgba(255,255,255,.1)') + txt(568,71,'Clear',10,'#9aa7bd','middle') +
+      box(20,100,580,28,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(40,118,'☑',11,'#00e5c0') + txt(80,118,'GL-1002  ·  Lotus nutra  ·  $1,500',10,'#fff') + box(540,108,55,18,'#e74c3c','none') + txt(568,121,'overdue',9,'#fff','middle') +
+      box(20,138,580,28,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(40,156,'☑',11,'#00e5c0') + txt(80,156,'GL-1003  ·  Lotus nutra  ·  $812.50',10,'#fff') + box(540,146,55,18,'#e74c3c','none') + txt(568,159,'overdue',9,'#fff','middle')
+    ) +
+    bullets([
+      '<b>How it works</b>: a checkbox column on the Invoices table. Tick rows → bulk-action bar appears showing "N selected · Total: $X" with a <b>✓ Mark N paid</b> button.',
+      '<b>Select all</b>: tick the header checkbox to select every visible (filtered) row at once.',
+      '<b>Confirm dialog</b> warns "use only for offline payments — won\'t charge Stripe." Stripe-paid invoices flip automatically via the webhook; this button is for cash/check/wire receipts you book manually.',
+      '<b>What it sets</b>: <code>status=paid</code>, <code>paid_at=now()</code>, <code>paid_method=manual</code>. The dashboard and A/R aging report update instantly.'
     ]);
 
   var SEC_NEWINV = MOCK_NEWINV +
@@ -5093,14 +5131,49 @@
   // ────────────────────────────────────────────────────────────
   // Customer portal
   // ────────────────────────────────────────────────────────────
-  var SEC_CUSTOMER_PORTAL = bullets([
-    '<b>What it is</b>: a public, read-only page that renders a single invoice for the customer. URL format: <code>https://goodliquidbevco.com/?invoice_view=&lt;token&gt;</code>. No login required.',
-    '<b>How a token is generated</b>: clicking 📧 <b>Send Invoice</b> auto-generates a token on the first send. You can also generate one manually via the <b>🔗 Get public link</b> button in the composer.',
-    '<b>What the customer sees</b>: the styled invoice (header + line items + totals + wire transfer instructions + footer), plus two payment buttons: 💳 <b>Pay with Card</b> (purple, 3% surcharge) and 🏦 <b>Pay with ACH</b> (teal, 0% surcharge). Each opens Stripe Checkout for the exact invoice amount.',
-    '<b>Save as PDF</b> — every portal page has a button that opens the browser print dialog so the customer can save their own PDF copy.',
-    '<b>Paid state</b> — once an invoice\'s status is set to <code>paid</code> in your CRM, the portal hides the Pay buttons and shows a "✓ Paid in full · Thank you" banner instead.',
-    '<b>Revoking access</b> — manually clear the <code>share_token</code> column on the invoice row in Supabase. Anyone hitting the old URL gets "Invoice not found or revoked."'
-  ]);
+  var SEC_CUSTOMER_PORTAL =
+    '<h4 style="margin:4px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">🌐 FULL CUSTOMER PORTAL (LOGIN)</h4>' +
+    wf(620, 360,
+      box(0,0,620,360,'#0a1628','rgba(255,255,255,.05)') +
+      box(0,0,620,40,'#142238','rgba(0,229,192,.3)') +
+      txt(20,26,'GOOD LIQUID BEV CO  ·  Customer Portal',12,'#00e5c0') +
+      txt(575,26,'⚙ Sign out',10,'#9aa7bd','end') +
+      box(20,55,140,55,'#142238','rgba(245,200,66,.3)') + txt(28,72,'OPEN BALANCE',9,'#9aa7bd') + txt(28,95,'$1,500',14,'#f5c842') +
+      box(170,55,140,55,'#142238','rgba(95,207,158,.3)') + txt(178,72,'PAID TO DATE',9,'#9aa7bd') + txt(178,95,'$3,125',14,'#5fcf9e') +
+      box(320,55,140,55,'#142238','rgba(0,229,192,.3)') + txt(328,72,'TOTAL INVOICES',9,'#9aa7bd') + txt(328,95,'3',14,'#00e5c0') +
+      box(20,125,140,52,'#142238','rgba(0,229,192,.18)') + txt(28,148,'🧪',16,'#fff') + txt(28,167,'Request samples',9,'#fff') +
+      box(170,125,140,52,'#142238','rgba(0,229,192,.18)') + txt(178,148,'📦',16,'#fff') + txt(178,167,'Place an order',9,'#fff') +
+      box(320,125,140,52,'#142238','rgba(0,229,192,.18)') + txt(328,148,'💬',16,'#fff') + txt(328,167,'Request a quote',9,'#fff') +
+      box(470,125,140,52,'#142238','rgba(0,229,192,.18)') + txt(478,148,'❓',16,'#fff') + txt(478,167,'Ask a question',9,'#fff') +
+      box(20,190,590,40,'#142238','rgba(0,229,192,.18)') + txt(30,210,'YOUR INVOICES',10,'#00e5c0') + txt(30,224,'GL-1004 · $3,125 · paid',10,'#fff') + box(470,200,55,20,'#2a1a3c','rgba(124,58,237,.5)') + txt(497,213,'📥 PDF',9,'#c4b5fd','middle') + box(530,200,75,20,'#1a3c30','rgba(0,229,192,.5)') + txt(567,213,'View',9,'#00e5c0','middle') +
+      box(20,240,590,40,'#142238','rgba(107,159,255,.18)') + txt(30,260,'PRODUCTION RUNS',10,'#6b9fff') + txt(30,274,'Mango pilot · 100 cases · Sample stage',9,'#fff') +
+      box(20,290,590,30,'#142238','rgba(245,200,66,.18)') + txt(30,309,'SAMPLE SHIPMENTS · 2 shipped · 1 delivered (trackable)',10,'#f5c842') +
+      box(20,330,590,22,'#142238','rgba(95,207,158,.18)') + txt(30,346,'FORMULAS · 3 approved · view IDs, batch sizes, allergens',10,'#5fcf9e')
+    ) +
+    bullets([
+      '<b>What it is</b>: a logged-in self-service portal for customers. URL: <code>https://goodliquidbevco.com/?portal=1</code>. Each customer gets their own login (Supabase Auth).',
+      '<b>How a customer gets access</b>: open Clients → click <b>🔑 Invite Customer Login</b> on the client row (or via the global "🔑 Invite Customer Login" button on the Clients page). Pick the client, type their email, send. The customer gets an email with a link to set their own password and land on the portal.',
+      '<b>What the customer sees</b>:',
+      '&nbsp;&nbsp;<b>KPI tiles</b> — Open balance, Paid to date, Total invoices.',
+      '&nbsp;&nbsp;<b>Quick-action tiles</b> (NEW) — 🧪 Request samples / 📦 Place an order / 💬 Request a quote / ❓ Ask a question. See the Customer Requests section for the inbox side.',
+      '&nbsp;&nbsp;<b>Your Invoices</b> — every invoice on their account, with a 📥 PDF download button and a View/Pay button (opens the same Stripe Checkout flow as the public link).',
+      '&nbsp;&nbsp;<b>Production Runs</b> — every batch tied to their <code>client_id</code> with stage badge (Discovery → Formulation → Sample → COA → Production → Ship) + format + case count + scheduled date.',
+      '&nbsp;&nbsp;<b>Sample Shipments</b> — kind / qty / carrier / status + clickable tracking links to UPS/FedEx/USPS/DHL.',
+      '&nbsp;&nbsp;<b>Formulas</b> — every formula on their account (drafts hidden) with name, version, batch size, target yield, allergens, status.',
+      '&nbsp;&nbsp;<b>Allergen Declarations</b> — every signed declaration with View link.',
+      '&nbsp;&nbsp;<b>Account Settings</b> — top-right link. Customer can update their own contact info, billing/shipping address, lift-gate flag, receiving hours, and change their password.',
+      '<b>Security</b>: RLS scopes every read to <code>client_id = current_customer_client_id()</code>. A portal customer can never see another client\'s invoices, runs, formulas, samples, allergens, or requests — enforced by Postgres, not just the JS.',
+      '<b>Multi-device</b>: portal customers can log in from phone, laptop, anywhere. Account-settings changes sync across devices instantly.'
+    ]) +
+    '<h4 style="margin:22px 0 8px;font-size:13px;letter-spacing:1.5px;color:#c4b5fd">🔗 PUBLIC INVOICE LINK (NO LOGIN)</h4>' +
+    bullets([
+      '<b>What it is</b>: a public, read-only page that renders a <i>single</i> invoice for a one-off send. URL format: <code>https://goodliquidbevco.com/?invoice_view=&lt;token&gt;</code>. No login required. Useful for first-time clients who don\'t have a portal account yet.',
+      '<b>How a token is generated</b>: clicking 📧 <b>Send Invoice</b> auto-generates a token on the first send. Also accessible via the <b>🔗 Get public link</b> button in the composer.',
+      '<b>What the customer sees</b>: the styled invoice + two payment buttons: 💳 Pay with Card (purple, 3% surcharge) and 🏦 Pay with ACH (teal, 0% surcharge). Each opens Stripe Checkout.',
+      '<b>Save as PDF</b> — button on the page opens the browser print dialog.',
+      '<b>Paid state</b> — once status flips to paid (auto via Stripe webhook OR manually via bulk-paid), the Pay buttons disappear and a "✓ Paid in full · Thank you" banner appears.',
+      '<b>Revoking access</b> — clear the <code>share_token</code> column on the invoice row in Supabase. Anyone hitting the old URL sees "Invoice not found or revoked."'
+    ]);
 
   // ────────────────────────────────────────────────────────────
   // Email templates
@@ -5183,6 +5256,39 @@
       '<b>(3) Role legend</b> — Admin (full access), Sales (CRM only), Viewer (read-only).',
       '<b>(4) Role dropdown per row</b> — change role inline. Persists to profiles immediately.',
       '<b>(5) Row actions</b> — Set password (masked-input modal → admin_set_user_password RPC, no email), Email reset (Supabase recovery email), Remove (soft-delete via profile.status = inactive). Owner row is locked.'
+    ]) +
+    /* ── Permission system (component-level gates) ── */
+    '<h4 style="margin:22px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">🔑 PER-USER, PER-COMPONENT PERMISSIONS</h4>' +
+    wf(620, 320,
+      box(0,0,620,320,'#142238','rgba(255,255,255,.05)') +
+      txt(20,28,'USERS & PERMISSIONS  (in the top toolbar)',12,'#fff') +
+      txt(20,46,'Step 1 — team members table',10,'#00e5c0') +
+      box(20,58,580,28,'#1a2c48','rgba(255,255,255,.1)') +
+      txt(35,76,'NAME',9,'#9aa7bd') + txt(180,76,'EMAIL',9,'#9aa7bd') + txt(380,76,'ROLE',9,'#9aa7bd') + txt(460,76,'OVERRIDES',9,'#9aa7bd') + txt(560,76,'MANAGE',9,'#9aa7bd') +
+      box(20,90,580,28,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(35,108,'Mike Krail',11,'#fff') + txt(180,108,'mike@goodliquid.com',10,'#9aa7bd') + txt(380,108,'ADMIN',10,'#f5c842') + txt(460,108,'all access',10,'#f5c842') + box(550,98,55,18,'#1a3c30','rgba(0,229,192,.3)') + txt(577,111,'Manage →',9,'#00e5c0','middle') +
+      box(20,124,580,28,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(35,142,'Sandra Krail',11,'#fff') + txt(180,142,'sandra@goodliquid.com',10,'#9aa7bd') + txt(380,142,'SALES',10,'#6b9fff') + txt(460,142,'4 overrides',10,'#6b9fff') + box(550,132,55,18,'#1a3c30','rgba(0,229,192,.3)') + txt(577,145,'Manage →',9,'#00e5c0','middle') +
+      txt(20,176,'Step 2 — click Manage → drill into matrix',10,'#00e5c0') +
+      box(20,188,580,32,'#1a2c48','rgba(107,159,255,.3)') +
+      txt(35,208,'APPLY PRESET:  [ Sales ▼ ]  [ Apply ]  · overwrites all overrides',10,'#6b9fff') +
+      txt(20,236,'Pages section',10,'#00e5c0') +
+      box(20,248,580,28,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(35,266,'Dashboard',11,'#fff') + txt(220,266,'KPI dashboard',10,'#9aa7bd') + txt(440,266,'☑',11,'#5fcf9e') + txt(490,266,'default (on)',10,'#9aa7bd') +
+      box(20,282,580,28,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(35,300,'Audit Log',11,'#fff') + txt(220,300,'All admin actions',10,'#9aa7bd') + txt(440,300,'☐',11,'#9aa7bd') + txt(490,300,'overridden — revert',10,'#6b9fff')
+    ) +
+    bullets([
+      '<b>Where to find it</b>: top toolbar (admin-only) — <b>🔑 Users & permissions</b> button between the user badge and Password.',
+      '<b>Two layers of access control</b>:',
+      '&nbsp;&nbsp;<b>Role</b> (admin / sales / viewer) — sets the wide-open default. <b>Admins bypass every gate</b>.',
+      '&nbsp;&nbsp;<b>Component overrides</b> — per-user, per-feature toggles that flip a single page or action on or off for that user only.',
+      '<b>The team members table</b> (default view): one row per staff user. Shows name, email, role pill, override count, Manage button. Click any row to drill into their matrix.',
+      '<b>The matrix view</b>: three sections — <b style="color:#00e5c0">Pages</b> (which CRM pages they can navigate to), <b style="color:#f5c842">Actions</b> (Delete invoices / Mark paid / Send emails / Export backup / Invite customers / etc.), <b style="color:#c4b5fd">Data</b> (placeholder for future row-level scoping). Each component shows a checkbox and a state label: "default (on)" or "overridden — revert".',
+      '<b>Apply preset (bulk toggle)</b>: pick <b>Admin</b> / <b>Sales</b> / <b>Viewer</b> from the dropdown → Apply. Only writes overrides where the preset differs from the default, so the matrix stays clean instead of showing 42 redundant "overridden" rows.',
+      '<b>Visual hiding (proactive)</b>: components a user can\'t access are <b>hidden</b> from their UI — not greyed out, not error-on-click. Sidebar nav items disappear. Destructive buttons (delete invoice, export backup, etc.) disappear. Admins see everything.',
+      '<b>Audit log</b>: every permission change is recorded in <code>permissions_audit</code> with actor + target + component + old/new value + timestamp. Shown at the bottom of the Users & Permissions page as "Recent permission changes."',
+      '<b>Role change UI</b>: drill into a user → ROLE row at the top has a dropdown (Admin / Sales / Viewer). Confirm dialog before promoting to Admin. Your own dropdown is disabled — preventing accidental self-lockout.'
     ]);
 
   var SEC_CLIENTS = MOCK_CLIENTS +
@@ -5217,11 +5323,75 @@
       '<b>(1) + Add referrer</b> — name, relationship (broker / industry contact / business partner), email, phone, default commission rate %.',
       '<b>(2) Referrer card</b> — avatar, name, relationship, contact info, rate %, count of referrals, and current owed / paid YTD badge. Mirrors what appears on the dashboard.'
     ]);
-  var SEC_ACTIVITY = bullets([
-    'Chronological log of CRM events: calls, emails, referrals, deal moves, notes, commissions.',
-    'Stored in localStorage (gl_activities). <b>Per device</b>, capped at 100.',
-    'Distinct from the <b>audit_log</b> (security-relevant admin actions) — see Users → 📋 Activity log for that.'
-  ]);
+  // ────────────────────────────────────────────────────────────
+  // Customer Requests inbox (PR 2 of 2026-05-20 enhancement series)
+  // ────────────────────────────────────────────────────────────
+  var MOCK_CUST_REQ = wf(620, 320,
+    box(0,0,620,320,'#142238','rgba(255,255,255,.05)') +
+    txt(20,28,'PORTAL DASHBOARD — quick-action tiles',12,'#00e5c0') +
+    box(20,44,140,70,'#1a2c48','rgba(0,229,192,.2)') + txt(30,68,'🧪',18,'#fff') + txt(30,90,'Request samples',10,'#fff') + txt(30,104,'Ask for new product samples',8,'#9aa7bd') +
+    box(170,44,140,70,'#1a2c48','rgba(0,229,192,.2)') + txt(180,68,'📦',18,'#fff') + txt(180,90,'Place an order',10,'#fff') + txt(180,104,'Reorder a previous run',8,'#9aa7bd') +
+    box(320,44,140,70,'#1a2c48','rgba(0,229,192,.2)') + txt(330,68,'💬',18,'#fff') + txt(330,90,'Request a quote',10,'#fff') + txt(330,104,'Pricing on a new project',8,'#9aa7bd') +
+    box(470,44,140,70,'#1a2c48','rgba(0,229,192,.2)') + txt(480,68,'❓',18,'#fff') + txt(480,90,'Ask a question',10,'#fff') + txt(480,104,'General question for Mike',8,'#9aa7bd') +
+    txt(20,150,'CRM DASHBOARD — incoming banner',12,'#f5c842') +
+    box(20,166,580,46,'#1a2c48','rgba(245,200,66,.3)') +
+    txt(36,194,'📩  3 new customer requests',12,'#f5c842') +
+    txt(36,208,'Click to triage',9,'#9aa7bd') +
+    txt(570,194,'Open inbox →',10,'#f5c842','end') +
+    txt(20,240,'INBOX MODAL — filter pills + cards',12,'#fff') +
+    box(20,256,80,22,'#3d2f0a','rgba(245,200,66,.4)') + txt(60,272,'New (3)',10,'#f5c842','middle') +
+    box(105,256,90,22,'#1a2c48','rgba(255,255,255,.1)') + txt(150,272,'In progress',10,'#9aa7bd','middle') +
+    box(200,256,80,22,'#1a2c48','rgba(255,255,255,.1)') + txt(240,272,'Resolved',10,'#9aa7bd','middle') +
+    box(285,256,80,22,'#1a2c48','rgba(255,255,255,.1)') + txt(325,272,'Dismissed',10,'#9aa7bd','middle') +
+    box(20,290,580,22,'#1a2c48','rgba(196,181,253,.4)') +
+    txt(30,306,'🧪 Sample request — Lotus nutra — "Pilot run of mango seltzer"',10,'#c4b5fd')
+  );
+
+  var SEC_CUSTOMER_REQUESTS =
+    '<div style="font-size:13px;color:#cfd9e6;line-height:1.7;margin-bottom:10px">Customers can submit four types of requests from their portal dashboard. Each lands in your CRM inbox so nothing falls through the cracks of email threads.</div>' +
+    MOCK_CUST_REQ +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">PORTAL SIDE — what customers see</h4>' +
+    bullets([
+      '<b>Four quick-action tiles</b> on the customer portal dashboard, above their invoices:',
+      '&nbsp;&nbsp;<b>🧪 Request samples</b> — placeholder: "Which products? Any flavor or pack-size variants? Where should we ship to?"',
+      '&nbsp;&nbsp;<b>📦 Place an order</b> — placeholder: "Which previous run? Quantity? Target ship date?"',
+      '&nbsp;&nbsp;<b>💬 Request a quote</b> — placeholder: "Describe the new project — formulation, format, target volume, timeline."',
+      '&nbsp;&nbsp;<b>❓ Ask a question</b> — free-form general inquiry.',
+      'Customer fills in subject (optional) + details, hits Submit. Confirmation: "Mike will reply by email within 1 business day."'
+    ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#f5c842">CRM SIDE — your triage inbox</h4>' +
+    bullets([
+      '<b>Dashboard banner</b>: as soon as a customer submits, a gold "📩 N new customer requests · Click to triage" banner appears at the top of your dashboard. Realtime — no refresh needed. The banner only shows when at least one row is in <code>status=new</code>.',
+      '<b>Click → inbox modal</b>: status filter pills (New / In progress / Resolved / Dismissed / All). Each card shows kind badge (color-coded by type), client + subject + body, and creation timestamp.',
+      '<b>Per-card actions</b>: <span style="color:#6b9fff">Mark in progress</span>, <span style="color:#5fcf9e">✓ Resolve</span> (prompts for resolution notes), <span style="color:#9aa7bd">Dismiss</span>, <span style="color:#00e5c0">↩ Reply via email</span> (opens your mail client with To + Subject pre-filled).',
+      '<b>Permissions</b>: portal customers can only see/insert rows tied to their own <code>client_id</code> (enforced by Postgres RLS). Staff can see and manage everything.'
+    ]);
+
+  var SEC_ACTIVITY =
+    wf(620, 200,
+      box(0,0,620,200,'#142238','rgba(255,255,255,.05)') +
+      txt(20,28,'ACTIVITY FEED · 12 of 47 events',12,'#fff') +
+      box(20,46,55,22,'#1a3c30','rgba(0,229,192,.4)') + txt(47,62,'All',10,'#00e5c0','middle') +
+      box(80,46,80,22,'#1a2c48','rgba(255,255,255,.1)') + txt(120,62,'📞 Calls',10,'#9aa7bd','middle') +
+      box(165,46,85,22,'#1a2c48','rgba(255,255,255,.1)') + txt(207,62,'✉️ Emails',10,'#9aa7bd','middle') +
+      box(255,46,75,22,'#1a2c48','rgba(255,255,255,.1)') + txt(292,62,'📝 Notes',10,'#9aa7bd','middle') +
+      box(335,46,75,22,'#1a2c48','rgba(255,255,255,.1)') + txt(372,62,'⭐ Deals',10,'#9aa7bd','middle') +
+      box(415,46,85,22,'#1a2c48','rgba(255,255,255,.1)') + txt(457,62,'🧾 Invoices',10,'#9aa7bd','middle') +
+      box(505,46,90,22,'#1a2c48','rgba(255,255,255,.1)') + txt(550,62,'🤝 Referrals',10,'#9aa7bd','middle') +
+      box(20,80,580,32,'#1a2c48','rgba(255,255,255,.1)') + txt(35,100,'🔍 Search activity by name or detail…',11,'#6b87ad') +
+      box(20,124,580,28,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(40,142,'✉️',12,'#5fcf9e') + txt(80,142,'Invoice GL-1004 sent · Lotus nutra',11,'#fff') + txt(580,142,'2h ago',10,'#9aa7bd','end') +
+      box(20,158,580,28,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(40,176,'📞',12,'#6b9fff') + txt(80,176,'Call: Ceres 14 about Q3 production',11,'#fff') + txt(580,176,'5h ago',10,'#9aa7bd','end')
+    ) +
+    bullets([
+      'Chronological log of CRM events: calls, emails, referrals, deal moves, notes, commissions.',
+      '<b>Type filter pills (NEW)</b>: All / 📞 Calls / ✉️ Emails / 📝 Notes / ⭐ Deals / 🧾 Invoices / 🤝 Referrals. Click to narrow the feed by event type.',
+      '<b>Free-text search (NEW)</b>: type into the search box to filter by event name or detail (case-insensitive). Composes with the type filter — pick "Emails" + search "Lotus" to see only Lotus-related emails.',
+      '<b>Live count</b>: subtitle shows "12 of 47 events" so you know how much the filter is hiding.',
+      'Stored in localStorage (gl_activities). <b>Per device</b>, capped at 100.',
+      'Distinct from the <b>audit_log</b> (security-relevant admin actions) — see Users → 📋 Activity log for that.'
+    ]);
   var SEC_CALENDAR = MOCK_CALENDAR +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
@@ -5313,6 +5483,7 @@
     section('help-documents',       '📁 DOCUMENTS',                  SEC_DOCUMENTS) +
     section('help-inventory',       '📦 INVENTORY',                  SEC_INVENTORY) +
     section('help-announcements',   '📣 ANNOUNCEMENTS',              SEC_ANNOUNCEMENTS) +
+    section('help-customer-requests', '📩 CUSTOMER REQUESTS (INBOX)',  SEC_CUSTOMER_REQUESTS) +
     section('help-customers',       '🌐 CUSTOMER LOGINS (ADMIN)',    SEC_CUSTOMERS) +
     section('help-users',           '🔑 USERS & PERMISSIONS (ADMIN)',SEC_USERS) +
     section('help-settings',        '⚙️ SETTINGS & INTEGRATIONS',    SEC_SETTINGS) +
@@ -5331,7 +5502,8 @@
     ['help-activity','📡 Activity'],['help-calendar','📅 Calendar'],
     ['help-production','🏭 Production'],['help-tasks','✅ Tasks'],
     ['help-documents','📁 Documents'],['help-inventory','📦 Inventory'],
-    ['help-announcements','📣 Announcements'],['help-customers','🌐 Customer Logins'],
+    ['help-announcements','📣 Announcements'],
+    ['help-customer-requests','📩 Customer Requests'],['help-customers','🌐 Customer Logins'],
     ['help-users','🔑 Users'],['help-settings','⚙️ Settings'],
     ['help-shortcuts','⌨️ Shortcuts']
   ];
