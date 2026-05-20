@@ -3130,6 +3130,7 @@ function renderInvoices(){
     <td><span class="cbdg ${i.status}">${i.status}</span></td>
     <td onclick="event.stopPropagation()"><div style="display:flex;gap:3px">
       ${i.status!=='paid'?`<button class="cbtn grn" style="font-size:10px;padding:3px 7px" onclick="event.stopPropagation();quickPaid('${i.id}')">Paid</button>`:''}
+      ${effectiveInvoiceStatus(i)==='overdue'?`<button class="cbtn" style="font-size:10px;padding:3px 7px;background:rgba(245,200,66,.12);border-color:rgba(245,200,66,.35);color:#f5c842" onclick="event.stopPropagation();sendInvoiceSmsReminder('${i.id}')" title="Send SMS reminder">📱</button>`:''}
       <button class="cbtn" style="font-size:10px;padding:3px 7px" onclick="event.stopPropagation();viewInvoice('${i.id}')">👁</button>
       <button class="cbtn" style="font-size:10px;padding:3px 7px;background:rgba(231,76,60,.1);border-color:rgba(231,76,60,.35);color:#ff8579" onclick="event.stopPropagation();deleteInvoice('${i.id}')" title="Delete invoice">🗑</button>
     </div></td>
@@ -3959,6 +3960,7 @@ async function loadSupabaseData(){
       stripeCustomerId: c.stripe_customer_id||'',
       qboCustomerId:    c.qbo_customer_id||'',
       billed:c.total_billed||0,
+      notify_overdue_sms: !!c.notify_overdue_sms,
       referredBy:c.referred_by||'', color:c.color||'#1a3a6e', tc:c.tc||'#9FE1CB',
       init:c.initials||(c.name||'').slice(0,2).toUpperCase(), notes:c.notes||''
     }));
@@ -4416,6 +4418,80 @@ async function quickPaid(id){
     renderInvoices();renderDash();
   }
 }
+
+/* ──────────────────────────────────────────────────────────
+   SMS overdue reminder — sends a single short SMS to the
+   client's phone via the send-sms Edge Function. Gated by
+   client.notify_overdue_sms (opt-in only) so we don't spam
+   customers who haven't consented. Logs to followup_log with
+   channel='sms' so the invoice's follow-up history stays
+   accurate.
+   ────────────────────────────────────────────────────────── */
+function normalizePhoneE164(raw){
+  if(!raw) return '';
+  const digits = String(raw).replace(/\D+/g, '');
+  if(!digits) return '';
+  if(digits.length === 10) return '+1' + digits;             // US default
+  if(digits.length === 11 && digits[0] === '1') return '+' + digits;
+  if(String(raw).trim().startsWith('+')) return '+' + digits; // already had a +, just rebuild
+  return '';
+}
+async function sendInvoiceSmsReminder(invoiceId){
+  const inv = (window.invoices||[]).find(i => i.id === invoiceId);
+  if(!inv){ alert('Invoice not found.'); return; }
+  const client = (window.clients||[]).find(c => c.id === inv.client);
+  if(!client){ alert('No client on this invoice — add one first.'); return; }
+  if(!client.notify_overdue_sms){
+    alert('Client has NOT opted in to SMS reminders.\n\nOpen the Edit Client modal for "' + client.name + '" and check "SMS overdue reminders" first. SMS opt-in must be explicit.');
+    return;
+  }
+  const phone = normalizePhoneE164(client.phone);
+  if(!phone){
+    alert('No valid phone number on file for ' + client.name + '. Add one via Edit Client (10-digit US or E.164 international).');
+    return;
+  }
+  const eff = (typeof effectiveInvoiceStatus === 'function') ? effectiveInvoiceStatus(inv) : inv.status;
+  if(eff !== 'overdue'){
+    if(!confirm('This invoice is "' + eff + '", not overdue. Send SMS anyway?')) return;
+  }
+  const amt = Number(inv.amount) || 0;
+  const due = inv.dueDate ? new Date(inv.dueDate).toLocaleDateString('en-US', {month:'short', day:'numeric'}) : 'recently';
+  const body = 'Good Liquid Bev Co: friendly reminder — invoice ' + inv.id +
+    ' for $' + amt.toLocaleString() + ' was due ' + due +
+    '. Pay online: ' + (window.location.origin || 'https://goodliquidbevco.com') + '/?inv=' + inv.id +
+    ' — Reply STOP to opt out.';
+  const sender = (typeof window.sendSMS === 'function') ? window.sendSMS : null;
+  if(!sender){
+    alert('SMS infrastructure not loaded yet. Reload the page and try again.');
+    return;
+  }
+  if(typeof window.glStartBusy === 'function') window.glStartBusy('Sending SMS reminder…');
+  let ok = false;
+  try { ok = await sender(body, { to: phone }); }
+  finally { if(typeof window.glEndBusy === 'function') window.glEndBusy(); }
+  // Log every attempt (success or failure)
+  try {
+    await supa.from('followup_log').insert({
+      invoice_id:     inv.supaId || null,
+      invoice_number: inv.id,
+      kind:           'manual',
+      channel:        'sms',
+      sent:           !!ok,
+      cc_count:       0,
+      notes:          'SMS reminder to ' + phone
+    });
+  } catch(e){ console.warn('[GL] followup_log SMS insert failed', e); }
+  if(typeof window.glAudit === 'function'){
+    window.glAudit('invoice_sms_reminder', inv.id, { to: phone, amount: amt, ok: ok });
+  }
+  if(ok){
+    if(typeof addNotification === 'function') addNotification('📱 SMS reminder sent', inv.id + ' → ' + client.name, 'success');
+    alert('✓ SMS reminder dispatched to ' + phone + '.');
+  } else {
+    alert('✗ SMS send failed. Open the SMS Alerts modal (top toolbar) and run a test send to confirm Twilio credentials are configured.');
+  }
+}
+window.sendInvoiceSmsReminder = sendInvoiceSmsReminder;
 
 // Move deal between stages (on kanban cards)
 async function moveDeal(dealId, fromStage, toStage, fallbackIdx){

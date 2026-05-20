@@ -5102,6 +5102,15 @@
       '<b>Select all</b>: tick the header checkbox to select every visible (filtered) row at once.',
       '<b>Confirm dialog</b> warns "use only for offline payments — won\'t charge Stripe." Stripe-paid invoices flip automatically via the webhook; this button is for cash/check/wire receipts you book manually.',
       '<b>What it sets</b>: <code>status=paid</code>, <code>paid_at=now()</code>, <code>paid_method=manual</code>. The dashboard and A/R aging report update instantly.'
+    ]) +
+    /* ── SMS overdue reminders ── */
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#f5c842">📱 SMS OVERDUE REMINDERS (NEW)</h4>' +
+    bullets([
+      '<b>Where to find it</b>: when an invoice is past due, a yellow <b>📱</b> button appears on its row (next to <b>Paid</b> / <b>👁</b> / <b>🗑</b>). Click it to text the client a short reminder.',
+      '<b>What gets sent</b>: a single SMS reading "Good Liquid Bev Co: friendly reminder — invoice GL-XXXX for $X was due [date]. Pay online: [link] — Reply STOP to opt out." Routes through the deployed <code>send-sms</code> Edge Function so the Twilio credentials never touch the browser.',
+      '<b>Opt-in gating</b> (legally required): the button only fires for clients who have explicitly opted in. Open the <b>✏️ Edit Client</b> modal → check <b>📱 SMS overdue reminders</b> under MAIN POINT OF CONTACT before sending. Without that flag, clicking 📱 shows an alert and does nothing.',
+      '<b>Phone normalization</b>: bare 10-digit US numbers get auto-prefixed with <code>+1</code>; any other format must be valid E.164 (e.g. <code>+44…</code>) or the send is refused.',
+      '<b>Logging</b>: every SMS attempt (success or failure) inserts a <code>followup_log</code> row with <code>channel=\'sms\'</code> so the invoice\'s follow-up history shows email + SMS interleaved. Also logged through the audit trail as <code>invoice_sms_reminder</code>.'
     ]);
 
   var SEC_NEWINV = MOCK_NEWINV +
@@ -6125,7 +6134,14 @@
    https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1/twilio-sms
    ============================================================ */
 (function(){
-  var DEFAULT_FN_URL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1/twilio-sms';
+  var DEFAULT_FN_URL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1/send-sms';
+  var LEGACY_FN_URL  = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1/twilio-sms';
+  // One-time migration: if a stored URL points at the legacy (never-deployed)
+  // twilio-sms endpoint, silently re-point it at the real send-sms function.
+  try {
+    var stored = localStorage.getItem('gl_sms_fn_url');
+    if(stored && stored.trim() === LEGACY_FN_URL) localStorage.setItem('gl_sms_fn_url', DEFAULT_FN_URL);
+  } catch(e){}
   var EVENT_KEYS = [
     { key:'gl_sms_paid',    label:'An invoice is marked paid' },
     { key:'gl_sms_won',     label:'A deal is moved to Closed Won' },
@@ -7651,6 +7667,10 @@
                 '<input id="gl-ec-phone" placeholder="Phone" value="'+esc(c.phone)+'" style="'+INPUT_STYLE+'">' +
               '</div>' +
               '<select id="gl-ec-contact-type" style="'+INPUT_STYLE+'">'+contactTypeOptions+'</select>' +
+              '<label style="display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--white);cursor:pointer;padding:8px 10px;background:rgba(245,200,66,.05);border:1px solid rgba(245,200,66,.18);border-radius:6px;line-height:1.45">' +
+                '<input type="checkbox" id="gl-ec-notify-sms"'+(c.notify_overdue_sms?' checked':'')+' style="accent-color:#f5c842;width:15px;height:15px;cursor:pointer;margin-top:1px;flex-shrink:0">' +
+                '<span>📱 <b>SMS overdue reminders</b> — customer has agreed to receive past-due invoice reminders by text. <span style="color:var(--muted);font-size:11px">Required by TCPA — check only with explicit opt-in.</span></span>' +
+              '</label>' +
             '</div>' +
           '</div>' +
           '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:12px">' +
@@ -7980,6 +8000,7 @@
         shippingState:  sSame ? bState  : val('gl-ec-shipping-state').toUpperCase(),
         shippingZip:    sSame ? bZip    : val('gl-ec-shipping-zip'),
         liftGate:       chk('gl-ec-lift-gate'),
+        notify_overdue_sms: chk('gl-ec-notify-sms'),
         dockDays:       dockDaysOut,
         dockHours:      val('gl-ec-dock-hours'),
         commPrefs:      commPrefsOut,
@@ -8056,6 +8077,7 @@
           shipping_state:  patch.shippingState,
           shipping_zip:    patch.shippingZip,
           lift_gate:       !!patch.liftGate,
+          notify_overdue_sms: typeof patch.notify_overdue_sms === 'boolean' ? patch.notify_overdue_sms : undefined,
           dock_days:       patch.dockDays,
           dock_hours:      patch.dockHours,
           comm_prefs:      patch.commPrefs,
