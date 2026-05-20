@@ -707,7 +707,7 @@
     body.innerHTML=
       '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px">'+
         '<div><div class="flbl">Client *</div>'+
-          '<select class="fsel" id="ginv-client" onchange="if(window.INV)window.INV.clientId=this.value" style="width:100%">'+
+          '<select class="fsel" id="ginv-client" onchange="if(window.INV)window.INV.clientId=this.value;if(typeof window.glOnInvClientChange===&quot;function&quot;)window.glOnInvClientChange(this.value)" style="width:100%">'+
             '<option value="">Select client\u2026</option>'+
             clients.map(function(c){return '<option value="'+c.id+'"'+(INV.clientId===c.id?' selected':'')+'>'+c.name+'</option>';}).join('')+
           '</select></div>'+
@@ -776,7 +776,7 @@
       ov.style.cssText='align-items:flex-start;padding:20px;overflow-y:auto';
       ov.innerHTML='<div style="background:#0a1628;border:1px solid rgba(0,229,192,.18);border-radius:18px;width:100%;max-width:820px;margin:0 auto;overflow:hidden">'+
         '<div style="background:#142238;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.07)">'+
-          '<div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:var(--white)">NEW INVOICE</div>'+
+          '<div style="display:flex;align-items:center;gap:10px"><div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:var(--white)">NEW INVOICE</div><span id="gl-inv-pricing-badge" style="display:none;font-size:10px;letter-spacing:1.5px;padding:3px 8px;border-radius:4px;background:rgba(245,200,66,.14);color:#f5c842;font-weight:700"></span></div>'+
           '<button onclick="document.getElementById(\'gl-inv-builder\').classList.remove(\'show\')" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer">&#x2715;</button>'+
         '</div>'+
         '<div style="padding:24px" id="gl-inv-body"></div>'+
@@ -786,6 +786,13 @@
       existing.classList.add('show');
     }
     glRenderBuilder();
+    // Pre-load client rate overrides if the builder opened with a client
+    // already pre-set (e.g. "Create invoice for this client" from the
+    // client detail page). Triggers the same re-render hook the dropdown
+    // onchange uses so the badge + row rates are correct on first paint.
+    if(INV && INV.clientId && typeof window.glOnInvClientChange === 'function'){
+      window.glOnInvClientChange(INV.clientId);
+    }
   };
 
   /* Legacy glSaveInvoice (INV-model) removed — overridden later by the
@@ -841,7 +848,7 @@
   var CANS_PER_CASE = 24;
 
   /* ── Rate cache ────────────────────────────────────────── */
-  window._glRates = { canning: [], bottling: [], loaded: false };
+  window._glRates = { canning: [], bottling: [], loaded: false, overrides: {} };
 
   window.glLoadRates = async function() {
     if (window._glRates.loaded) return window._glRates;
@@ -857,7 +864,77 @@
     return window._glRates;
   };
 
-  function getCanRate(cases, format) {
+  // Per-client negotiated rates. Cached in memory keyed by client_id so the
+  // builder reads them synchronously when rendering line rows. Refreshed on
+  // demand by glLoadClientOverrides(clientId).
+  window.glLoadClientOverrides = async function(clientId){
+    if(!clientId) return null;
+    try {
+      var rows = await fetch(SURL + '/client_rate_overrides?client_id=eq.' + clientId, {headers: SH}).then(function(r){ return r.json(); });
+      if(Array.isArray(rows)){
+        var byKey = {};
+        rows.forEach(function(r){
+          var k = (r.service||'') + '|' + (r.format||'');
+          byKey[k] = r;
+        });
+        window._glRates.overrides[clientId] = byKey;
+        return byKey;
+      }
+    } catch(e){ console.warn('[GL] client override load failed', e); }
+    return null;
+  };
+  // Re-renders any existing canning/bottling rows after a new client is
+  // picked so the override rate is applied immediately. Used by the
+  // invoice builder's client dropdown onchange handler.
+  window.glOnInvClientChange = async function(clientId){
+    if(!clientId) return;
+    await window.glLoadClientOverrides(clientId);
+    document.querySelectorAll('[id$="-format"]').forEach(function(fe){
+      var uid = fe.id.replace(/-format$/, '');
+      var row = document.getElementById(uid);
+      if(!row) return;
+      // Reset any manual price override so the new client's rate takes effect.
+      if(row.hasAttribute('data-pu-override')) row.removeAttribute('data-pu-override');
+      if(document.getElementById(uid+'-cases') && typeof window.glUpdateCan === 'function') window.glUpdateCan(uid);
+      if(document.getElementById(uid+'-qty')   && typeof window.glUpdateBtl === 'function') window.glUpdateBtl(uid);
+    });
+    // Refresh the small chip showing whether this client has overrides.
+    var badge = document.getElementById('gl-inv-pricing-badge');
+    if(badge){
+      var cache = window._glRates.overrides && window._glRates.overrides[clientId];
+      var count = cache ? Object.keys(cache).length : 0;
+      if(count){
+        badge.style.display = 'inline-block';
+        badge.textContent = '💵 ' + count + ' custom rate' + (count===1?'':'s') + ' applied';
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+  };
+  function getClientOverride(clientId, service, format){
+    if(!clientId) return null;
+    var byKey = window._glRates.overrides && window._glRates.overrides[clientId];
+    if(!byKey) return null;
+    // Honor effective_from / effective_until if set.
+    function active(r){
+      if(!r) return false;
+      var today = new Date().toISOString().slice(0,10);
+      if(r.effective_from   && today < r.effective_from)   return false;
+      if(r.effective_until  && today > r.effective_until)  return false;
+      return true;
+    }
+    // Exact format match first; fall back to format-agnostic for hour services.
+    var exact = byKey[service + '|' + (format||'')];
+    if(active(exact)) return parseFloat(exact.override_rate);
+    var anyFmt = byKey[service + '|'];
+    if(active(anyFmt)) return parseFloat(anyFmt.override_rate);
+    return null;
+  }
+  window.glGetClientOverride = getClientOverride;
+
+  function getCanRate(cases, format, clientId) {
+    var ovr = getClientOverride(clientId, 'canning', format);
+    if(ovr != null) return ovr;
     var tiers = window._glRates.canning
       .filter(function(r){ return r.format === format; })
       .sort(function(a,b){ return a.min_cases - b.min_cases; });
@@ -869,7 +946,9 @@
     return rate;
   }
 
-  function getBottleRate(units, format) {
+  function getBottleRate(units, format, clientId) {
+    var ovr = getClientOverride(clientId, 'bottling', format);
+    if(ovr != null) return ovr;
     var tiers = window._glRates.bottling
       .filter(function(r){ return r.format === format; })
       .sort(function(a,b){ return a.min_units - b.min_units; });
@@ -900,7 +979,8 @@
     if (!ce || !fe) return;
     var cases   = Math.max(1, parseInt(ce.value) || 150);
     var format  = fe.value;
-    var perCan  = getCanRate(cases, format);
+    var cid     = (window.INV && window.INV.clientId) || null;
+    var perCan  = getCanRate(cases, format, cid);
     var perCase = perCan * CANS_PER_CASE;
     var total   = perCase * cases;
     function s(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; }
@@ -1079,14 +1159,24 @@
     window._glR.b=Array.isArray(res[1])?res[1]:[];
     window._glR.ok=true;
   };
-  window.glGetCanRate=function(cases,fmt){
+  window.glGetCanRate=function(cases,fmt,clientId){
+    clientId = clientId || (window.INV && window.INV.clientId) || null;
+    if(typeof window.glGetClientOverride === 'function'){
+      var ovr = window.glGetClientOverride(clientId,'canning',fmt);
+      if(ovr != null) return ovr;
+    }
     var t=window._glR.c.filter(function(r){return r.format===fmt;}).sort(function(a,b){return a.min_cases-b.min_cases;});
     if(!t.length)return 0;
     var v=parseFloat(t[0].price_per_can);
     for(var i=0;i<t.length;i++)if(cases>=t[i].min_cases)v=parseFloat(t[i].price_per_can);
     return v;
   };
-  window.glGetBtlRate=function(qty,fmt){
+  window.glGetBtlRate=function(qty,fmt,clientId){
+    clientId = clientId || (window.INV && window.INV.clientId) || null;
+    if(typeof window.glGetClientOverride === 'function'){
+      var ovr = window.glGetClientOverride(clientId,'bottling',fmt);
+      if(ovr != null) return ovr;
+    }
     var t=window._glR.b.filter(function(r){return r.format===fmt;}).sort(function(a,b){return a.min_units-b.min_units;});
     if(!t.length)return 0;
     var v=parseFloat(t[0].price_per_unit);
@@ -1217,14 +1307,24 @@
     window._glR.b=Array.isArray(res[1])?res[1]:[];
     window._glR.ok=true;
   };
-  window.glGetCanRate=function(cases,fmt){
+  window.glGetCanRate=function(cases,fmt,clientId){
+    clientId = clientId || (window.INV && window.INV.clientId) || null;
+    if(typeof window.glGetClientOverride === 'function'){
+      var ovr = window.glGetClientOverride(clientId,'canning',fmt);
+      if(ovr != null) return ovr;
+    }
     var t=window._glR.c.filter(function(r){return r.format===fmt;}).sort(function(a,b){return a.min_cases-b.min_cases;});
     if(!t.length)return 0;
     var v=parseFloat(t[0].price_per_can);
     for(var i=0;i<t.length;i++)if(cases>=t[i].min_cases)v=parseFloat(t[i].price_per_can);
     return v;
   };
-  window.glGetBtlRate=function(qty,fmt){
+  window.glGetBtlRate=function(qty,fmt,clientId){
+    clientId = clientId || (window.INV && window.INV.clientId) || null;
+    if(typeof window.glGetClientOverride === 'function'){
+      var ovr = window.glGetClientOverride(clientId,'bottling',fmt);
+      if(ovr != null) return ovr;
+    }
     var t=window._glR.b.filter(function(r){return r.format===fmt;}).sort(function(a,b){return a.min_units-b.min_units;});
     if(!t.length)return 0;
     var v=parseFloat(t[0].price_per_unit);
@@ -5126,7 +5226,7 @@
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
       '<b>(1) Client / date / invoice #</b> — client dropdown is required; date defaults to today; invoice # auto-generates.',
-      '<b>(2) Add-line buttons</b> — Canning, Bottling, R&D / IP, Production Hours, Custom. Canning & Bottling auto-tier their per-unit rate from Supabase canning_rates / bottling_rates.',
+      '<b>(2) Add-line buttons</b> — Canning, Bottling, R&D / IP, Production Hours, Custom. Canning & Bottling auto-tier their per-unit rate from Supabase canning_rates / bottling_rates. <b>Per-client overrides win</b> — if a client has a negotiated rate in <code>client_rate_overrides</code>, the builder uses that flat rate instead of the public tier ladder (a yellow "💵 N custom rates applied" badge appears next to "NEW INVOICE" so staff can see they\'re in effect).',
       '<b>(3) Line rows</b> — change qty inline; per-case / per-unit price + totals update live. Every line type has a <b>Description (optional)</b> input — type free-form notes like "Mango flavor" or "pilot batch" and they\'re appended to the saved line with an em-dash. The ↺ arrow under a Canning/Bottling price resets it to the catalog rate. The X on the right removes a line.',
       '<b>(4) Discount + total</b> — enter a discount percent; subtotal and grand total recompute live.',
       '<b>(5) Save buttons</b> — 💾 Save Invoice (status=pending), 📤 <b>Save & Send</b> (saves then opens the Send Invoice composer pre-filled), 💾 Save as Quote (status=quote), 📄 Save & Export PDF (real invoice PDF), 📋 Export as Quote (PDF only with 30-day validity, no DB save).',
@@ -5316,6 +5416,15 @@
       '<b>(2) Search bar</b> — filters the list as you type (matches across name / contact / email).',
       '<b>(3) Row click</b> — opens the client detail panel: billed-to-date, recent invoices, deals, notes, 🤖 AI Summary button.',
       '<b>(4) Status badge</b> — green = active, blue = lead. Active clients count toward the dashboard "Active brands" metric. New clients persist to Supabase.'
+    ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#f5c842">💵 PRICING OVERRIDES (NEW)</h4>' +
+    bullets([
+      '<b>Where</b>: open <b>✏️ Edit Client</b> → scroll near the bottom to the yellow "💵 PRICING OVERRIDES" panel.',
+      '<b>What it does</b>: lets you lock in a flat negotiated rate that overrides the public tier ladder for that specific client. Use it for pilots, incubator deals, bulk pre-quotes, or anyone you\'ve hand-shaken on a number outside the published canning_rates / bottling_rates ladder.',
+      '<b>Five services supported</b>: Canning (per can), Bottling (per unit), R&D / formulation (per hour), Production hours (per hour), Consulting (per hour). Canning + Bottling require a format; the three hour-based services apply to all formats.',
+      '<b>Optional date range</b>: <i>Effective from</i> + <i>Effective until</i> let you queue up a future rate change or expire an old one without deleting it.',
+      '<b>How the builder uses it</b>: when you open a new invoice for that client, the canning + bottling lines compute totals using the override rate. A yellow "💵 N custom rates applied" badge appears next to "NEW INVOICE" so you can\'t accidentally invoice the wrong number. R&D / Production / Consulting lines still need their rates set manually for now, but the override is logged in the audit trail.',
+      '<b>Removing an override</b> reverts that service back to the public tier ladder on the next invoice.'
     ]);
 
   var SEC_PIPELINE = MOCK_PIPELINE +
@@ -7850,6 +7959,14 @@
               (c.qboCustomerId ?    '<div style="font-size:12px;color:var(--white)"><span style="color:var(--muted)">QuickBooks:</span> <code style="font-family:var(--ff-mono);font-size:11px">'+esc(c.qboCustomerId)+'</code></div>' : '') +
             '</div>' : '') +
           '<div><div style="'+LABEL_STYLE+'">NOTES</div><textarea id="gl-ec-notes" rows="3" style="'+INPUT_STYLE+';resize:vertical">'+esc(c.notes)+'</textarea></div>' +
+          '<div style="background:rgba(245,200,66,.04);border:1px solid rgba(245,200,66,.18);border-radius:8px;padding:14px;margin-top:6px">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+              '<div style="'+LABEL_STYLE+'">💵 PRICING OVERRIDES</div>' +
+              '<button type="button" id="gl-ec-rate-add" style="background:rgba(245,200,66,.14);border:1px solid rgba(245,200,66,.4);color:#f5c842;font-size:11px;padding:4px 10px;border-radius:4px;cursor:pointer">+ Add rate</button>' +
+            '</div>' +
+            '<div id="gl-ec-rates-list" style="font-size:11px;color:#9aa7bd">Loading…</div>' +
+            '<div style="font-size:10px;color:#6b87ad;margin-top:8px;line-height:1.5">Negotiated rates for this client. Used by the invoice builder INSTEAD OF the global tier ladder when present. Leave format blank for hour-based services (R&D / Production / Consulting).</div>' +
+          '</div>' +
           '<div id="gl-ec-err" style="display:none;color:#e74c3c;font-size:12px"></div>' +
           '<div style="display:flex;gap:8px;margin-top:6px">' +
             '<button id="gl-ec-save" class="cbtn pri" style="flex:1;padding:13px;font-weight:800">💾 Save changes</button>' +
@@ -7861,6 +7978,131 @@
     ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
     ov.querySelector('#gl-ec-close').addEventListener('click', function(){ ov.remove(); });
     ov.querySelector('#gl-ec-cancel').addEventListener('click', function(){ ov.remove(); });
+
+    // ── Pricing overrides ──────────────────────────────────────
+    var RATE_SERVICES = [
+      { value:'canning',    label:'Canning (per can)',         needsFmt:true,  formats:['12oz Standard can','12oz Sleek can','16oz Standard can'] },
+      { value:'bottling',   label:'Bottling (per unit)',       needsFmt:true,  formats:['750ml bottle','355ml bottle','12oz bottle'] },
+      { value:'rd',         label:'R&D / formulation (per hr)',needsFmt:false },
+      { value:'production', label:'Production hours (per hr)', needsFmt:false },
+      { value:'consulting', label:'Consulting (per hr)',       needsFmt:false }
+    ];
+    async function loadOverrides(){
+      var listEl = ov.querySelector('#gl-ec-rates-list'); if(!listEl) return;
+      if(!window.supa){ listEl.innerHTML = '<span style="color:#ff8579">Supabase not ready</span>'; return; }
+      listEl.innerHTML = 'Loading…';
+      var r = await window.supa.from('client_rate_overrides')
+        .select('id, service, format, override_rate, notes, effective_from, effective_until')
+        .eq('client_id', clientId)
+        .order('service', { ascending: true });
+      if(r.error){ listEl.innerHTML = '<span style="color:#ff8579">Failed: '+esc(r.error.message)+'</span>'; return; }
+      var rows = r.data || [];
+      if(!rows.length){
+        listEl.innerHTML = '<span style="font-style:italic;color:#6b87ad">No custom rates — this client pays the standard tier ladder.</span>';
+        return;
+      }
+      listEl.innerHTML = rows.map(function(o){
+        var svc = (RATE_SERVICES.find(function(s){ return s.value === o.service; })||{label:o.service}).label;
+        var fmtBit = o.format ? ' · <span style="color:#7fc6f5">' + esc(o.format) + '</span>' : '';
+        var dateBit = '';
+        if(o.effective_from) dateBit += ' · from ' + esc(o.effective_from);
+        if(o.effective_until) dateBit += ' · until ' + esc(o.effective_until);
+        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(255,255,255,.03);border-radius:5px;margin-bottom:5px">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="color:#fff;font-size:12px;font-weight:600">' + esc(svc) + fmtBit + '</div>' +
+            '<div style="color:#f5c842;font-size:13px;font-weight:700;margin-top:2px">$' + (parseFloat(o.override_rate)||0).toFixed(4) + '</div>' +
+            (o.notes ? '<div style="color:#9aa7bd;font-size:10px;margin-top:2px;font-style:italic">' + esc(o.notes) + '</div>' : '') +
+            (dateBit ? '<div style="color:#6b87ad;font-size:10px;margin-top:2px">' + dateBit.slice(3) + '</div>' : '') +
+          '</div>' +
+          '<button type="button" data-rate-rm="' + esc(o.id) + '" style="background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.35);color:#ff8579;font-size:10px;padding:4px 8px;border-radius:4px;cursor:pointer">Remove</button>' +
+        '</div>';
+      }).join('');
+      Array.prototype.forEach.call(listEl.querySelectorAll('[data-rate-rm]'), function(b){
+        b.onclick = async function(){
+          var id = b.getAttribute('data-rate-rm');
+          if(!confirm('Remove this rate override? The client will go back to the standard tier ladder for this service.')) return;
+          b.disabled = true; b.textContent = '…';
+          var rr = await window.supa.from('client_rate_overrides').delete().eq('id', id);
+          if(rr.error){ alert('Delete failed: ' + rr.error.message); b.disabled = false; b.textContent = 'Remove'; return; }
+          if(typeof window.glAudit === 'function') window.glAudit('rate_override_removed', clientId, { id: id });
+          // Invalidate cache so next invoice builder load fetches fresh.
+          if(window._glRates && window._glRates.overrides) delete window._glRates.overrides[clientId];
+          loadOverrides();
+        };
+      });
+    }
+    function openAddRateModal(){
+      var prior = document.getElementById('gl-rate-modal'); if(prior) prior.remove();
+      var svcOpts = RATE_SERVICES.map(function(s){ return '<option value="'+s.value+'">'+esc(s.label)+'</option>'; }).join('');
+      var mov = document.createElement('div');
+      mov.id = 'gl-rate-modal';
+      mov.setAttribute('style','position:fixed;inset:0;z-index:1200;background:rgba(6,13,26,.92);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+      mov.innerHTML =
+        '<div style="background:#142238;border:1px solid rgba(245,200,66,.35);border-radius:14px;padding:24px;width:100%;max-width:440px">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+            '<div style="font-family:var(--ff-disp);font-size:16px;letter-spacing:2px;color:#f5c842">💵 ADD RATE OVERRIDE</div>' +
+            '<button id="gl-rate-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+          '</div>' +
+          '<div class="frow"><div class="flbl">Service *</div><select class="fsel" id="gl-rate-service">' + svcOpts + '</select></div>' +
+          '<div class="frow" id="gl-rate-fmt-row"><div class="flbl">Format <span style="opacity:.6">(leave blank to apply to all formats)</span></div><input class="finp" id="gl-rate-format" placeholder="e.g. 12oz Standard can"></div>' +
+          '<div class="frow"><div class="flbl">Override rate * <span style="opacity:.6">(per can / per unit / per hour, USD)</span></div><input class="finp" id="gl-rate-amt" type="number" step="0.0001" min="0" placeholder="0.42"></div>' +
+          '<div class="frow"><div class="flbl">Notes <span style="opacity:.6">(why this rate exists)</span></div><textarea class="finp" id="gl-rate-notes" rows="2" placeholder="e.g. Locked in Mar 2026 pilot rate"></textarea></div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+            '<div class="frow"><div class="flbl">Effective from <span style="opacity:.6">(optional)</span></div><input class="finp" id="gl-rate-from" type="date"></div>' +
+            '<div class="frow"><div class="flbl">Effective until <span style="opacity:.6">(optional)</span></div><input class="finp" id="gl-rate-until" type="date"></div>' +
+          '</div>' +
+          '<div id="gl-rate-msg" style="display:none;margin:10px 0;padding:8px 10px;border-radius:6px;font-size:12px"></div>' +
+          '<div style="display:flex;gap:8px;margin-top:8px">' +
+            '<button id="gl-rate-save" class="cbtn pri" style="flex:1">💾 Save rate</button>' +
+            '<button id="gl-rate-cancel" class="cbtn">Cancel</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(mov);
+      function rateMsg(text, kind){
+        var el = mov.querySelector('#gl-rate-msg'); el.style.display='block'; el.textContent = text;
+        if(kind==='err'){ el.style.background='rgba(231,76,60,.12)'; el.style.border='1px solid rgba(231,76,60,.35)'; el.style.color='#ff8579'; }
+        else { el.style.background='rgba(95,207,158,.12)'; el.style.border='1px solid rgba(95,207,158,.35)'; el.style.color='#5fcf9e'; }
+      }
+      function toggleFmtRow(){
+        var svc = mov.querySelector('#gl-rate-service').value;
+        var meta = RATE_SERVICES.find(function(s){ return s.value === svc; });
+        mov.querySelector('#gl-rate-fmt-row').style.display = (meta && meta.needsFmt) ? 'block' : 'none';
+      }
+      toggleFmtRow();
+      mov.querySelector('#gl-rate-service').onchange = toggleFmtRow;
+      mov.querySelector('#gl-rate-close').onclick  = function(){ mov.remove(); };
+      mov.querySelector('#gl-rate-cancel').onclick = function(){ mov.remove(); };
+      mov.querySelector('#gl-rate-save').onclick = async function(){
+        var svc = mov.querySelector('#gl-rate-service').value;
+        var fmt = (mov.querySelector('#gl-rate-format').value||'').trim() || null;
+        var amt = parseFloat(mov.querySelector('#gl-rate-amt').value);
+        if(!(amt >= 0)){ rateMsg('Enter a non-negative rate.', 'err'); return; }
+        var notes = (mov.querySelector('#gl-rate-notes').value||'').trim() || null;
+        var dFrom = mov.querySelector('#gl-rate-from').value || null;
+        var dTo   = mov.querySelector('#gl-rate-until').value || null;
+        var btn = this; btn.disabled = true; btn.textContent = 'Saving…';
+        var ins = await window.supa.from('client_rate_overrides').insert({
+          client_id: clientId, service: svc, format: fmt,
+          override_rate: amt, notes: notes,
+          effective_from: dFrom, effective_until: dTo
+        });
+        if(ins.error){
+          // 23505 = unique violation (already exists for this svc+fmt)
+          var dup = /duplicate key|23505|unique constraint/i.test(ins.error.message);
+          rateMsg(dup ? 'A rate for this service + format already exists. Remove it first.' : 'Save failed: ' + ins.error.message, 'err');
+          btn.disabled = false; btn.textContent = '💾 Save rate';
+          return;
+        }
+        if(typeof window.glAudit === 'function') window.glAudit('rate_override_added', clientId, { service: svc, format: fmt, rate: amt });
+        if(window._glRates && window._glRates.overrides) delete window._glRates.overrides[clientId];
+        mov.remove();
+        loadOverrides();
+      };
+    }
+    var rateAddBtn = ov.querySelector('#gl-ec-rate-add');
+    if(rateAddBtn) rateAddBtn.onclick = openAddRateModal;
+    loadOverrides();
+
     // Toggle billing block based on "same as physical" checkbox.
     var bsame = ov.querySelector('#gl-ec-billing-same');
     var bblock = ov.querySelector('#gl-ec-billing-block');
