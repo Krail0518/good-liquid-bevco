@@ -5530,6 +5530,8 @@
   var SEC_PRODUCTION = bullets([
     'Same calendar mechanics as the General Calendar, but focused on <b>production runs</b>: which client, what format, how many cases, what stage (scheduled / in production / quality check / completed / shipped).',
     'Customers see their own scheduled runs in the Customer Portal automatically.',
+    '<b>Capacity-aware scheduling (NEW)</b> — every run is assigned to a <b>Production Line</b> (Canning Line 1, Bottling Line 1, R&D Bench, etc.) with its own cases-per-day or hours-per-day capacity. The schedule widget above the kanban shows this-week and next-week utilization per line (green &lt; 70%, yellow 70-100%, red &gt; 100%). Click <b>⚙ Production lines</b> on the toolbar to add/edit/deactivate lines.',
+    '<b>Date range + conflict warning (NEW)</b> — runs now have a Start date + End date (blank end = single day). When the dates overlap another run already booked on the same line, a red banner appears inside the modal listing the conflicting runs. Saving still works — this is a warning, not a hard block, so you can choose to double-book intentionally.',
     '<b>Auto stage-change emails</b> — when you advance a run between kanban stages, the brand\'s portal customer gets an email with the new status. Skipped for clients with no portal user, or for users with <code>notify_run_stage_changes = false</code>.',
     '<b>📎 Lot Documents (NEW)</b> — every run now carries a <i>Lot number</i> field + an inline "📎 LOT DOCUMENTS" section. Click <b>+ Attach</b> on an existing run to upload a COA, spec sheet, allergen statement, kosher/organic cert, or NFP — anything the customer would otherwise email you for. The file lands in the <code>client-docs</code> Storage bucket under <code>&lt;client_id&gt;/lots/&lt;lot&gt;/</code> and a metadata row goes into <code>lot_documents</code>. Each row has 🗑 (delete) and ⬇ (download) buttons.',
     '<b>What the customer sees</b>: a new "📎 COAs & DOCUMENTS" section on their portal dashboard with type badges (COA / Spec sheet / Allergen / Kosher / Organic / Nutrition / Other) and a one-click <b>⬇ Download</b> that hits a 60-second signed URL. RLS gates this to <code>client_id = current_customer_client_id()</code> — no risk of one brand seeing another brand\'s files.',
@@ -9466,11 +9468,43 @@
   };
   function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   window.glProductionRuns = window.glProductionRuns || [];
+  window.glProductionLines = window.glProductionLines || [];
+
+  // Loads production_lines into the in-memory cache. Called from the
+  // run modal + the schedule page. No-op if the table is missing.
+  async function loadProductionLines(){
+    if(!window.supa) return [];
+    try {
+      var r = await window.supa.from('production_lines').select('*').eq('active', true).order('kind').order('name');
+      if(r && r.data){ window.glProductionLines = r.data; return r.data; }
+    } catch(e){ console.warn('[GL] production_lines load failed', e); }
+    return window.glProductionLines || [];
+  }
+  window.glLoadProductionLines = loadProductionLines;
+
+  // Detect whether `run` overlaps any OTHER run on the same line. Both
+  // sides treat a missing end_date as a single-day occupation. Returns
+  // the conflicting rows (excluding `selfId` if provided) sorted by date.
+  function findConflicts(lineId, startStr, endStr, selfId){
+    if(!lineId || !startStr) return [];
+    var s1 = startStr;
+    var e1 = endStr || startStr;
+    return (window.glProductionRuns || []).filter(function(other){
+      if(!other || other.id === selfId) return false;
+      if(other.production_line_id !== lineId) return false;
+      var s2 = other.scheduled_start_date || other.scheduled_date;
+      var e2 = other.scheduled_end_date   || s2;
+      if(!s2) return false;
+      // Overlap rule: s1 <= e2 && s2 <= e1
+      return s1 <= e2 && s2 <= e1;
+    });
+  }
+  window.glFindRunConflicts = findConflicts;
 
   async function loadFromSupabase(){
     if(!window.supa) return null;
     try {
-      var r = await window.supa.from('production_runs').select('*').order('scheduled_date',{ascending:true,nullsFirst:false});
+      var r = await window.supa.from('production_runs').select('*').order('scheduled_start_date',{ascending:true,nullsFirst:false});
       if(r && r.data) return r.data;
     } catch(e){ console.warn('[GL] production_runs load failed', e); }
     return null;
@@ -9487,12 +9521,81 @@
     var rows = await loadFromSupabase();
     if(rows) window.glProductionRuns = rows;
     else      window.glProductionRuns = loadFromLocal();
+    // Pull lines in parallel so the kanban + capacity widgets render together.
+    await loadProductionLines();
     renderBoard();
   }
+
+  // ──────────────────────────────────────────────────────────
+  // Capacity summary widget — sits above the kanban. Computes
+  // this week + next week utilization per active line.
+  // ──────────────────────────────────────────────────────────
+  function renderCapacityWidget(){
+    var host = document.getElementById('prun-capacity'); if(!host) return;
+    var lines = (window.glProductionLines || []).filter(function(l){ return l.active !== false; });
+    if(!lines.length){
+      host.innerHTML = '<div style="font-size:11px;color:#6b87ad;font-style:italic;padding:6px 12px">No production lines configured. <button onclick="window.glOpenProductionLines()" style="background:none;border:0;color:#00e5c0;cursor:pointer;text-decoration:underline;font-size:11px">Set them up →</button></div>';
+      return;
+    }
+    function weekRange(offset){
+      var d = new Date();
+      var day = d.getDay(); // 0 = Sun
+      var monday = new Date(d); monday.setDate(d.getDate() - ((day+6)%7) + offset*7);
+      var sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+      function iso(x){ return x.toISOString().slice(0,10); }
+      return { start: iso(monday), end: iso(sunday), label: (offset===0?'This week':(offset===1?'Next week':('Week +'+offset))) };
+    }
+    function utilization(lineId, wkStart, wkEnd){
+      var runs = (window.glProductionRuns || []).filter(function(r){
+        if(r.production_line_id !== lineId) return false;
+        var s = r.scheduled_start_date || r.scheduled_date;
+        var e = r.scheduled_end_date || s;
+        if(!s) return false;
+        return s <= wkEnd && e >= wkStart;
+      });
+      var totalCases = runs.reduce(function(a,r){ return a + (Number(r.cases)||0); }, 0);
+      return { runs: runs.length, cases: totalCases };
+    }
+    var cards = [weekRange(0), weekRange(1)].map(function(wk){
+      var rows = lines.map(function(l){
+        var u = utilization(l.id, wk.start, wk.end);
+        var cap = Number(l.capacity_per_day) || 0;
+        // Estimate: capacity_per_day × 5 weekdays in the week. Rough but
+        // gives staff a sense of how booked the line is at a glance.
+        var capWeek = cap * 5;
+        var pct = capWeek ? Math.min(999, Math.round((u.cases / capWeek) * 100)) : 0;
+        var color = pct >= 100 ? '#e74c3c' : pct >= 70 ? '#f5c842' : '#5fcf9e';
+        return '<div style="display:grid;grid-template-columns:1fr 70px 60px 90px;gap:10px;align-items:center;padding:6px 10px;font-size:12px">' +
+          '<div style="color:#fff;font-weight:600">' + esc(l.name) + ' <span style="color:#6b87ad;font-weight:400;font-size:10px;text-transform:uppercase;letter-spacing:1px">' + esc(l.kind||'') + '</span></div>' +
+          '<div style="color:#9aa7bd;text-align:right">' + u.runs + ' run' + (u.runs===1?'':'s') + '</div>' +
+          '<div style="color:#9aa7bd;text-align:right;font-family:var(--ff-mono)">' + u.cases.toLocaleString() + '</div>' +
+          '<div style="text-align:right"><span style="color:' + color + ';font-weight:700">' + (capWeek ? pct + '%' : '—') + '</span>' + (capWeek ? '<span style="color:#6b87ad;font-size:10px"> / ' + capWeek.toLocaleString() + '</span>' : '') + '</div>' +
+        '</div>';
+      }).join('');
+      return '<div style="flex:1;min-width:280px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:10px;margin-right:10px">' +
+        '<div style="font-family:var(--ff-disp);font-size:11px;letter-spacing:2px;color:#7fc6f5;margin-bottom:6px;padding:0 10px">' + esc(wk.label) + ' · ' + esc(wk.start) + ' → ' + esc(wk.end) + '</div>' +
+        rows +
+      '</div>';
+    }).join('');
+    host.innerHTML = '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">' + cards + '</div>';
+  }
+  window.glRenderCapacityWidget = renderCapacityWidget;
 
   function renderBoard(){
     var host = document.getElementById('prun-board');
     if(!host) return;
+    // Make sure a capacity widget host exists right above the kanban.
+    if(!document.getElementById('prun-capacity')){
+      var cap = document.createElement('div'); cap.id = 'prun-capacity';
+      host.parentNode.insertBefore(cap, host);
+      // Toolbar with "⚙ Lines" admin button.
+      var bar = document.createElement('div');
+      bar.id = 'prun-toolbar';
+      bar.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-bottom:8px';
+      bar.innerHTML = '<button class="cbtn" style="font-size:11px;padding:5px 10px" onclick="window.glOpenProductionLines()">⚙ Production lines</button>';
+      host.parentNode.insertBefore(bar, host.parentNode.firstChild.nextSibling);
+    }
+    renderCapacityWidget();
     var sub = document.getElementById('prun-sub');
     var byStage = {};
     STAGES.forEach(function(s){ byStage[s] = []; });
@@ -9539,7 +9642,17 @@
     var prior = document.getElementById('gl-prun-modal'); if(prior) prior.remove();
     var host = document.getElementById('crm-panel') || document.body;
     var isEdit = !!existing;
-    var run = existing || { run_name:'', client_id:'', client_name:'', format:'', cases:'', stage:'Discovery', scheduled_date:'', notes:'' };
+    var run = existing || { run_name:'', client_id:'', client_name:'', format:'', cases:'', stage:'Discovery', scheduled_date:'', scheduled_start_date:'', scheduled_end_date:'', production_line_id:'', notes:'' };
+    // Make sure the line list is in cache so the dropdown renders.
+    if(window.supa && !(window.glProductionLines && window.glProductionLines.length)){
+      loadProductionLines();
+    }
+    var lineOptions = '<option value="">— No line assigned —</option>' +
+      (window.glProductionLines||[]).map(function(l){
+        var sel = (l.id === run.production_line_id) ? ' selected' : '';
+        var capBit = l.capacity_per_day ? ' (' + l.capacity_per_day + ' ' + (l.capacity_unit||'cases') + '/day)' : '';
+        return '<option value="' + esc(l.id) + '"'+sel+'>' + esc(l.name) + capBit + '</option>';
+      }).join('');
     var clientOptions = '<option value="">— Pick client —</option>' +
       (window.clients||[]).map(function(c){
         var sel = (c.id === run.client_id) ? ' selected' : '';
@@ -9553,6 +9666,8 @@
       var sel = (f === run.format) ? ' selected' : '';
       return '<option value="' + esc(f) + '"'+sel+'>' + esc(f || 'Select format…') + '</option>';
     }).join('');
+    var startVal = run.scheduled_start_date || run.scheduled_date || '';
+    var endVal   = run.scheduled_end_date || '';
     var ov = document.createElement('div');
     ov.id = 'gl-prun-modal';
     ov.setAttribute('style','position:fixed;inset:0;z-index:1000;background:rgba(6,13,26,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
@@ -9568,10 +9683,13 @@
           '<div class="frow"><div class="flbl">Format</div><select class="fsel" id="gl-prun-format">' + formatOptions + '</select></div>' +
           '<div class="frow"><div class="flbl">Cases planned</div><input class="finp" id="gl-prun-cases" type="number" min="0" value="' + (run.cases || '') + '"></div>' +
         '</div>' +
+        '<div class="frow"><div class="flbl">Stage</div><select class="fsel" id="gl-prun-stage">' + stageOptions + '</select></div>' +
+        '<div class="frow"><div class="flbl">Production line</div><select class="fsel" id="gl-prun-line">' + lineOptions + '</select></div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
-          '<div class="frow"><div class="flbl">Stage</div><select class="fsel" id="gl-prun-stage">' + stageOptions + '</select></div>' +
-          '<div class="frow"><div class="flbl">Scheduled date</div><input class="finp" id="gl-prun-date" type="date" value="' + esc(run.scheduled_date || '') + '"></div>' +
+          '<div class="frow"><div class="flbl">Start date</div><input class="finp" id="gl-prun-start" type="date" value="' + esc(startVal) + '"></div>' +
+          '<div class="frow"><div class="flbl">End date <span style="opacity:.6">(blank = single day)</span></div><input class="finp" id="gl-prun-end" type="date" value="' + esc(endVal) + '"></div>' +
         '</div>' +
+        '<div id="gl-prun-conflict" style="display:none;font-size:11px;background:rgba(231,76,60,.08);border:1px solid rgba(231,76,60,.3);color:#ff8579;border-radius:6px;padding:8px 10px;margin-bottom:8px;line-height:1.5"></div>' +
         '<div class="frow"><div class="flbl">Lot number <span style="opacity:.6">(stamped on cans for traceability)</span></div><input class="finp" id="gl-prun-lot" value="' + esc(run.lot_number || '') + '" placeholder="e.g. L26140-A"></div>' +
         '<div class="frow"><div class="flbl">Notes</div><textarea class="finp" id="gl-prun-notes" rows="3" placeholder="QC notes, allergen flags, anything the line lead should know…">' + esc(run.notes) + '</textarea></div>' +
         (isEdit ? (
@@ -9602,24 +9720,69 @@
       if(typeof addNotification === 'function') addNotification('🏭 Run deleted', run.run_name, 'warning');
       if(typeof window.glAudit === 'function') window.glAudit('production_run_deleted', run.id, {});
     });
+    // Live conflict banner — refresh whenever line / start / end change.
+    function refreshConflictBanner(){
+      var banner = ov.querySelector('#gl-prun-conflict'); if(!banner) return;
+      var lid   = ov.querySelector('#gl-prun-line').value;
+      var start = ov.querySelector('#gl-prun-start').value;
+      var end   = ov.querySelector('#gl-prun-end').value;
+      if(!lid || !start){ banner.style.display = 'none'; return; }
+      var conflicts = findConflicts(lid, start, end, run.id);
+      if(!conflicts.length){ banner.style.display = 'none'; return; }
+      banner.style.display = 'block';
+      var lineName = ((window.glProductionLines||[]).find(function(l){ return l.id === lid; })||{}).name || 'this line';
+      banner.innerHTML = '⚠ <b>Schedule conflict</b> — ' + esc(lineName) + ' already has ' + conflicts.length + ' run' + (conflicts.length===1?'':'s') + ' overlapping these dates:<br>' +
+        conflicts.slice(0,3).map(function(o){
+          var s = o.scheduled_start_date || o.scheduled_date;
+          var e = o.scheduled_end_date   || s;
+          return '· <b>' + esc(o.run_name || '(unnamed)') + '</b> · ' + esc(o.client_name || '') + ' · ' + esc(s) + (e && e !== s ? ' → ' + esc(e) : '');
+        }).join('<br>') +
+        (conflicts.length > 3 ? '<br>… and ' + (conflicts.length - 3) + ' more' : '') +
+        '<br><span style="color:#9aa7bd;font-size:10px">You can still save — this is a warning, not a block.</span>';
+    }
+    ['gl-prun-line','gl-prun-start','gl-prun-end'].forEach(function(id){
+      var el = ov.querySelector('#' + id);
+      if(el) el.addEventListener('change', refreshConflictBanner);
+    });
+    refreshConflictBanner();
+
     ov.querySelector('#gl-prun-save').addEventListener('click', async function(){
       var name = ov.querySelector('#gl-prun-name').value.trim();
       if(!name){ alert('Run name is required.'); return; }
       var cid = ov.querySelector('#gl-prun-client').value;
       var c   = (window.clients||[]).find(function(x){ return x.id === cid; });
       var lotEl = ov.querySelector('#gl-prun-lot');
+      var startVal = ov.querySelector('#gl-prun-start').value || null;
+      var endVal   = ov.querySelector('#gl-prun-end').value || null;
+      var lineId   = ov.querySelector('#gl-prun-line').value || null;
       var data = {
-        run_name:       name,
-        client_id:      cid || null,
-        client_name:    c ? c.name : '',
-        format:         ov.querySelector('#gl-prun-format').value,
-        cases:          parseInt(ov.querySelector('#gl-prun-cases').value, 10) || 0,
-        stage:          ov.querySelector('#gl-prun-stage').value,
-        scheduled_date: ov.querySelector('#gl-prun-date').value || null,
-        lot_number:     lotEl ? (lotEl.value || '').trim() || null : (run.lot_number || null),
-        notes:          ov.querySelector('#gl-prun-notes').value,
-        updated_at:     new Date().toISOString()
+        run_name:             name,
+        client_id:            cid || null,
+        client_name:          c ? c.name : '',
+        format:               ov.querySelector('#gl-prun-format').value,
+        cases:                parseInt(ov.querySelector('#gl-prun-cases').value, 10) || 0,
+        stage:                ov.querySelector('#gl-prun-stage').value,
+        scheduled_date:       startVal,
+        scheduled_start_date: startVal,
+        scheduled_end_date:   endVal,
+        production_line_id:   lineId,
+        lot_number:           lotEl ? (lotEl.value || '').trim() || null : (run.lot_number || null),
+        notes:                ov.querySelector('#gl-prun-notes').value,
+        updated_at:           new Date().toISOString()
       };
+      // Final conflict check at save — warn but allow override.
+      if(lineId && startVal){
+        var conflicts = findConflicts(lineId, startVal, endVal, run.id);
+        if(conflicts.length){
+          var lineName = ((window.glProductionLines||[]).find(function(l){ return l.id === lineId; })||{}).name || 'this line';
+          var msg = 'Schedule conflict on ' + lineName + ':\n\n' +
+            conflicts.slice(0, 5).map(function(o){
+              return '· ' + (o.run_name || '(unnamed)') + ' — ' + (o.client_name || '') + ' (' + (o.scheduled_start_date || o.scheduled_date) + (o.scheduled_end_date && o.scheduled_end_date !== (o.scheduled_start_date||o.scheduled_date) ? ' → ' + o.scheduled_end_date : '') + ')';
+            }).join('\n') +
+            '\n\nSave anyway?';
+          if(!confirm(msg)) return;
+        }
+      }
       // Compliance gate — block transition to Ship if there's an open Hold Tag for this run
       if(data.stage === 'Ship' && run && run.id && typeof window.glCheckRunHoldStatus === 'function'){
         var blocker = await window.glCheckRunHoldStatus(run.id);
@@ -9832,6 +9995,112 @@
       }
     };
   }
+
+  // ──────────────────────────────────────────────────────────
+  // Production-line management modal (admin CRUD)
+  // ──────────────────────────────────────────────────────────
+  window.glOpenProductionLines = async function(){
+    var prior = document.getElementById('gl-lines-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    await loadProductionLines();
+    var ov = document.createElement('div');
+    ov.id = 'gl-lines-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1100;background:rgba(6,13,26,.92);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;padding:20px');
+    function rowHtml(l){
+      var checked = l.active === false ? '' : ' checked';
+      return '<tr data-line-id="' + esc(l.id) + '" style="border-top:1px solid rgba(255,255,255,.05)">' +
+        '<td style="padding:8px 6px"><input class="finp gl-ln-name" value="' + esc(l.name) + '" style="width:100%"></td>' +
+        '<td style="padding:8px 6px"><select class="fsel gl-ln-kind">' +
+          ['canning','bottling','rd','blending','other'].map(function(k){ return '<option value="'+k+'"'+(l.kind===k?' selected':'')+'>'+k+'</option>'; }).join('') +
+        '</select></td>' +
+        '<td style="padding:8px 6px"><input class="finp gl-ln-cap" type="number" step="0.01" min="0" value="' + (l.capacity_per_day != null ? l.capacity_per_day : '') + '" style="width:90px"></td>' +
+        '<td style="padding:8px 6px"><select class="fsel gl-ln-unit"><option value="cases"'+(l.capacity_unit==='cases'?' selected':'')+'>cases</option><option value="hours"'+(l.capacity_unit==='hours'?' selected':'')+'>hours</option></select></td>' +
+        '<td style="padding:8px 6px;text-align:center"><input type="checkbox" class="gl-ln-active"'+checked+'></td>' +
+        '<td style="padding:8px 6px;text-align:right;white-space:nowrap">' +
+          '<button class="cbtn gl-ln-save" style="font-size:11px;padding:4px 9px">💾</button> ' +
+          '<button class="cbtn gl-ln-rm" style="font-size:11px;padding:4px 9px;background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#ff8579">🗑</button>' +
+        '</td>' +
+      '</tr>';
+    }
+    var rowsHtml = (window.glProductionLines||[]).map(rowHtml).join('');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(127,198,245,.3);border-radius:14px;padding:24px;width:100%;max-width:780px;max-height:88vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:#7fc6f5">⚙ PRODUCTION LINES</div>' +
+          '<button id="gl-lines-close" style="background:none;border:none;color:#9aa7bd;font-size:22px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="font-size:11px;color:#6b87ad;margin-bottom:14px;line-height:1.5">A line is a piece of equipment (or bench) you schedule runs on. Capacity is per <i>operating day</i>; the schedule widget multiplies by 5 weekdays for a weekly utilization estimate. Deactivate a line instead of deleting if you ever bring it back online.</div>' +
+        '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="font-size:10px;letter-spacing:1.5px;color:#9aa7bd">' +
+          '<th style="text-align:left;padding:6px">NAME</th>' +
+          '<th style="text-align:left;padding:6px">KIND</th>' +
+          '<th style="text-align:left;padding:6px">CAP/DAY</th>' +
+          '<th style="text-align:left;padding:6px">UNIT</th>' +
+          '<th style="text-align:center;padding:6px">ACTIVE</th>' +
+          '<th style="padding:6px"></th>' +
+        '</tr></thead><tbody id="gl-lines-tbody">' + rowsHtml + '</tbody></table>' +
+        '<div style="display:flex;gap:8px;margin-top:14px">' +
+          '<button id="gl-lines-add" class="cbtn pri" style="flex:1">+ Add line</button>' +
+          '<button id="gl-lines-done" class="cbtn">Done</button>' +
+        '</div>' +
+      '</div>';
+    host.appendChild(ov);
+    function refresh(){
+      var tb = ov.querySelector('#gl-lines-tbody');
+      tb.innerHTML = (window.glProductionLines||[]).map(rowHtml).join('');
+      wireRows();
+    }
+    function rowToPatch(tr){
+      return {
+        name:             tr.querySelector('.gl-ln-name').value.trim(),
+        kind:             tr.querySelector('.gl-ln-kind').value,
+        capacity_per_day: parseFloat(tr.querySelector('.gl-ln-cap').value) || null,
+        capacity_unit:    tr.querySelector('.gl-ln-unit').value,
+        active:           tr.querySelector('.gl-ln-active').checked
+      };
+    }
+    function wireRows(){
+      ov.querySelectorAll('tr[data-line-id]').forEach(function(tr){
+        var id = tr.getAttribute('data-line-id');
+        tr.querySelector('.gl-ln-save').onclick = async function(){
+          var patch = rowToPatch(tr);
+          if(!patch.name){ alert('Name is required.'); return; }
+          if(window.supa){
+            var r = await window.supa.from('production_lines').update(patch).eq('id', id);
+            if(r.error){ alert('Save failed: ' + r.error.message); return; }
+          }
+          await loadProductionLines();
+          renderCapacityWidget();
+          if(typeof window.glAudit === 'function') window.glAudit('production_line_updated', id, patch);
+          this.textContent = '✓';
+          setTimeout(function(){ try { tr.querySelector('.gl-ln-save').textContent = '💾'; } catch(e){} }, 1200);
+        };
+        tr.querySelector('.gl-ln-rm').onclick = async function(){
+          if(!confirm('Delete this line? Existing runs assigned to it will be unassigned (line_id set to NULL).')) return;
+          if(window.supa){
+            var r = await window.supa.from('production_lines').delete().eq('id', id);
+            if(r.error){ alert('Delete failed: ' + r.error.message); return; }
+          }
+          await loadProductionLines();
+          await refreshRuns();
+          if(typeof window.glAudit === 'function') window.glAudit('production_line_deleted', id, {});
+          refresh();
+        };
+      });
+    }
+    wireRows();
+    ov.querySelector('#gl-lines-close').onclick = function(){ ov.remove(); };
+    ov.querySelector('#gl-lines-done').onclick  = function(){ ov.remove(); };
+    ov.querySelector('#gl-lines-add').onclick = async function(){
+      if(!window.supa){ alert('Supabase not ready.'); return; }
+      var ins = await window.supa.from('production_lines').insert({
+        name: 'New line', kind: 'canning', capacity_per_day: null, capacity_unit: 'cases', active: true
+      }).select().single();
+      if(ins.error){ alert('Add failed: ' + ins.error.message); return; }
+      await loadProductionLines();
+      if(typeof window.glAudit === 'function') window.glAudit('production_line_added', ins.data && ins.data.id, {});
+      refresh();
+    };
+  };
 
   window.glOpenAddProductionRun  = function(){ runModal(null); };
   window.glOpenEditProductionRun = function(id){
