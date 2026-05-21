@@ -22097,7 +22097,10 @@
     var algs = algR.data || [];
     var prR = await sb.from('production_runs').select('id, run_name, format, cases, stage, scheduled_date, scheduled_start_date, scheduled_end_date, lot_number, updated_at').eq('client_id', customer.client_id).order('scheduled_start_date', { ascending: false, nullsFirst: false });
     var prs = (prR && prR.data) || [];
-    var shR = await sb.from('sample_shipments').select('id, kind, qty, shipped_date, carrier, tracking, status, updated_at').eq('client_id', customer.client_id).order('shipped_date', { ascending: false, nullsFirst: false });
+    // Note: updated_at omitted because some prod schemas have drifted and
+    // it's not actually rendered downstream. Migration 20260521 restores
+    // the column server-side; this SELECT stays defensive either way.
+    var shR = await sb.from('sample_shipments').select('id, kind, qty, shipped_date, carrier, tracking, status').eq('client_id', customer.client_id).order('shipped_date', { ascending: false, nullsFirst: false });
     var shs = (shR && shR.data) || [];
     // Only show non-draft formulas to the customer
     var fmR = await sb.from('formulas').select('id, name, version, status, batch_size_gal, target_yield_cases, allergens, updated_at').eq('client_id', customer.client_id).neq('status', 'draft').order('updated_at', { ascending: false });
