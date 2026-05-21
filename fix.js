@@ -2315,58 +2315,21 @@
     else alert('✗ Test failed. Check the API key and the browser console for the Mailgun response.');
   };
 
-  /* Replace sendOnboardingEmail with a version that pre-flights the Mailgun
-     key, awaits the send, and only reports success when the send actually
-     succeeded. */
-  window.sendOnboardingEmail = async function(){
-    if(!localStorage.getItem('gl_mailgun_key')){
-      if(typeof addNotification==='function') addNotification('Mailgun key required','Paste your Mailgun API key in Settings before sending onboarding emails.','warning');
-      window.openMailgunSettings();
-      return;
-    }
-    var email = prompt('Customer email address to send onboarding link:');
-    if(!email) return;
-    email = email.trim();
-    if(!email || email.indexOf('@')<0){ alert('Invalid email.'); return; }
-    var name = prompt('Customer name:');
-    if(!name) return;
-    name = name.trim();
-    if(!name){ alert('Name required.'); return; }
+  /* sendOnboardingEmail (called by the "📧 Send Onboarding Email" button on
+     the Customer Logins page) is now a thin wrapper that opens the modern
+     invite picker. The picker handles client selection, creates a real
+     auth user via signUp, links it to the client via link_customer_user_by_email,
+     and fires the Supabase password-reset email so the customer can set
+     their own password — no more locally-generated "temp passwords" that
+     don't actually work because no real auth user existed.
 
-    var tempPw = 'GL' + Math.random().toString(36).substring(2,8).toUpperCase();
-    var list = window.customerLogins || [];
-    list.push({id:'cust-'+Date.now(),name:name,email:email,password:tempPw,createdAt:new Date().toISOString()});
-    window.customerLogins = list;
-    if(typeof saveCustomerLogins==='function') saveCustomerLogins();
-    if(typeof renderCustomerLogins==='function') renderCustomerLogins();
-
-    var body =
-      'Hi ' + name + ',\n\n' +
-      'Welcome to Good Liquid Bev Co! Your client portal is ready.\n\n' +
-      'Login at: https://www.goodliquidbevco.com\n' +
-      'Email: ' + email + '\n' +
-      'Temporary password: ' + tempPw + '\n\n' +
-      'Please change your password after first login.\n\n' +
-      'Best,\nMike Krail\nGood Liquid Bev Co\nMike@GoodLiquid.com | (803) 493-5065';
-
-    var ok = false;
-    try{ ok = await window.sendMailgunEmail(email, 'Welcome to Good Liquid Bev Co — Your Portal Access', body); }
-    catch(e){ console.error('[GL] onboarding mailgun threw', e); ok = false; }
-
-    if(ok){
-      if(typeof addNotification==='function') addNotification('📧 Onboarding email sent to '+name,email,'success');
-      window.glRevealCredential({
-        title: 'Onboarding email sent',
-        message: 'The welcome email is on its way to <b>'+name+'</b>. The temporary password is shown below — share it via a separate channel.',
-        email: email, password: tempPw, status: 'ok'
-      });
+     This replaces the previous local-only flow that wrote to the dead
+     customerLogins localStorage array and minted unusable temp passwords. */
+  window.sendOnboardingEmail = function(){
+    if(typeof window.glOpenInvitePicker === 'function'){
+      window.glOpenInvitePicker();
     } else {
-      if(typeof addNotification==='function') addNotification('Email send failed',email+' — see console for details','warning');
-      window.glRevealCredential({
-        title: 'Email send failed',
-        message: 'Mailgun rejected the message but the account was created locally. Share the password manually and check Mailgun Settings (API key valid? Domain authorized?).',
-        email: email, password: tempPw, status: 'warn'
-      });
+      alert('Invite UI not ready yet — reload the page and try again.');
     }
   };
 
@@ -4514,11 +4477,9 @@
     var eff = function(i){ return (typeof window.effectiveInvoiceStatus === 'function') ? window.effectiveInvoiceStatus(i) : (i && i.status); };
     var overdue = (window.invoices||[]).filter(function(i){ return eff(i) === 'overdue'; });
     if(!overdue.length){ alert('No overdue invoices.'); return; }
-    if(!localStorage.getItem('gl_mailgun_key')){
-      if(typeof window.openMailgunSettings === 'function') window.openMailgunSettings();
-      alert('Mailgun key required first.');
-      return;
-    }
+    // Mailgun lives server-side in the mailgun-send Edge Function — the
+    // send itself returns a clear error if the secret isn't set, so no
+    // need to gate on a stale localStorage flag here.
     if(!confirm('Send a reminder email to ' + overdue.length + ' overdue invoice client(s)?\n\nEach email will include the invoice id, amount, days overdue, and your Stripe pay link (if set).')) return;
 
     var sent = 0, skipped = 0, failed = 0;
@@ -5579,7 +5540,7 @@
   var SEC_CUSTOMERS = MOCK_CUSTOMERS +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
-      '<b>(1) 📧 Send Onboarding Email</b> — prompts for name + email, creates a portal login with a temp password, emails the customer the login link via Mailgun. Requires Mailgun key (🤖 toolbar → 📧 Mailgun Settings).',
+      '<b>(1) 📧 Send Onboarding Email</b> — opens the invite picker (client dropdown + email field). Behind the scenes it calls Supabase to create a real auth user, links them to the picked client, and fires a password-reset email so the customer sets their own password. Mailgun is configured server-side in the <code>mailgun-send</code> Edge Function — no per-browser API key needed anymore.',
       '<b>(2) Row actions</b> — <span style="color:#f5c842">reset</span> sends a Supabase password recovery email; <span style="color:#e74c3c">remove</span> deletes the portal login.',
       'Customers who log in see invoices addressed to them, 💳 Pay Now buttons (using Stripe links you saved per-invoice), ✓ Accept Quote buttons (emails Mike on click), and a contact form to message you.'
     ]) +
@@ -10824,7 +10785,7 @@
       if(inv && inv.data) out.invoices = inv.data;
     } catch(e){}
     try {
-      var rn = await window.supa.from('production_runs').select('*').eq('client_id', cid).order('scheduled_date',{ascending:true,nullsFirst:false}).limit(20);
+      var rn = await window.supa.from('production_runs').select('*').eq('client_id', cid).order('scheduled_start_date',{ascending:true,nullsFirst:false}).limit(20);
       if(rn && rn.data) out.runs = rn.data;
     } catch(e){}
     try {
@@ -21829,7 +21790,7 @@
     var invs = invR.data || [];
     var algR = await sb.from('client_allergen_declarations').select('id, product_name, allergens, declared_at, share_token').eq('client_id', customer.client_id).order('declared_at', { ascending: false });
     var algs = algR.data || [];
-    var prR = await sb.from('production_runs').select('id, run_name, format, cases, stage, scheduled_date, updated_at').eq('client_id', customer.client_id).order('scheduled_date', { ascending: false, nullsFirst: false });
+    var prR = await sb.from('production_runs').select('id, run_name, format, cases, stage, scheduled_date, scheduled_start_date, scheduled_end_date, lot_number, updated_at').eq('client_id', customer.client_id).order('scheduled_start_date', { ascending: false, nullsFirst: false });
     var prs = (prR && prR.data) || [];
     var shR = await sb.from('sample_shipments').select('id, kind, qty, shipped_date, carrier, tracking, status, updated_at').eq('client_id', customer.client_id).order('shipped_date', { ascending: false, nullsFirst: false });
     var shs = (shR && shR.data) || [];
@@ -21867,10 +21828,22 @@
     var PR_STAGE_COLOR = { Discovery:'#9aa7bd', Formulation:'#6b9fff', Sample:'#c4b5fd', COA:'#f5c842', Production:'#00e5c0', Ship:'#5fcf9e' };
     var prRowsHtml = prs.length ? prs.map(function(p){
       var color = PR_STAGE_COLOR[p.stage] || '#9aa7bd';
-      var dateLbl = p.scheduled_date ? new Date(p.scheduled_date).toLocaleDateString() : 'TBD';
+      // Prefer the new start/end columns; fall back to legacy scheduled_date.
+      var startDate = p.scheduled_start_date || p.scheduled_date;
+      var endDate   = p.scheduled_end_date;
+      var dateLbl   = 'TBD';
+      if(startDate){
+        var s = new Date(startDate).toLocaleDateString();
+        if(endDate && endDate !== startDate){
+          dateLbl = s + ' → ' + new Date(endDate).toLocaleDateString();
+        } else {
+          dateLbl = s;
+        }
+      }
       var meta = [];
       if(p.format) meta.push(escHtml(p.format));
       if(p.cases) meta.push(escHtml(String(p.cases)) + ' cases');
+      if(p.lot_number) meta.push('Lot ' + escHtml(p.lot_number));
       return '<div style="display:grid;grid-template-columns:1fr 130px 120px;gap:12px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.05);align-items:center">' +
         '<div>' +
           '<div style="font-size:13px;color:#fff;font-weight:700">' + escHtml(p.run_name || 'Run') + '</div>' +
