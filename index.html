@@ -3204,7 +3204,16 @@ function viewInvoice(id){
         </tr></thead>
         <tbody>${(function(){
           const usd = n => '$' + (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
-          const lines = Array.isArray(inv.lines) && inv.lines.length ? inv.lines : [{ desc: inv.svc, qty: 1, unitPrice: inv.amount, total: inv.amount }];
+          // Filter out "junk" line items — historical invoices have rows
+          // like { desc: "0", qty: 1, total: 0 } that come from accidentally
+          // clicking + Add Line and not filling it in. Rendering them makes
+          // the invoice look unprofessional. A row is junk if its total is 0
+          // AND its description is empty or just "0". Real $0 line items
+          // (waived fees, comped service) keep a real description so they
+          // still render.
+          const isJunk = l => (Number(l.total)||0) === 0 && (!l.desc || String(l.desc).trim() === '' || String(l.desc).trim() === '0');
+          const rawLines = Array.isArray(inv.lines) && inv.lines.length ? inv.lines : [{ desc: inv.svc, qty: 1, unitPrice: inv.amount, total: inv.amount }];
+          const lines = rawLines.filter(l => !isJunk(l));
           return lines.map(function(l){
             const qty = (l.qty != null) ? Number(l.qty).toLocaleString() : '';
             const unitLbl = l.unit ? '<span style="font-size:10px;color:var(--muted);margin-left:4px">/'+l.unit+'</span>' : '';
