@@ -18676,15 +18676,64 @@
   // below also calls it so newly-rendered tasks get hidden too. Re-shows
   // (display:'') cards that are no longer in the hidden set, so unchecking
   // a previously-hidden type reveals its tasks again.
+  // Also renders a visible "🙈 Hiding N types" banner above the task list
+  // so the operator can see the effect of the picker (previously the picker
+  // appeared to do nothing because the visual change happened off-screen).
+  var TASK_TYPE_LABELS = {
+    htst_reading:     'HTST Pasteurization',
+    hot_fill_reading: 'Hot Fill',
+    seam_check:       'Can Seam',
+    uv_reading:       'UV Water Treatment',
+    ferm_reading:     'Fermentation',
+    cip_cycle:        'CIP cycle',
+    allergen_swab:    'Allergen Swab',
+    batch_record:     'Batch Record',
+    preop_inspection: 'Pre-op Inspection',
+    label_verify:     'Label Verification',
+    calibration:      'Calibration',
+    listeria_swab:    'Listeria Swab'
+  };
   function applyApplicability(){
     var host = document.getElementById('comp-body'); if(!host) return;
     var hidden = new Set(readApp());
+    var hiddenCount = 0;
+    var totalCards = 0;
     host.querySelectorAll('.gl-comp-task').forEach(function(card){
+      totalCards++;
       var btn = card.querySelector('button[data-task-type]');
       if(!btn) return;
       var tt = btn.getAttribute('data-task-type');
-      card.style.display = hidden.has(tt) ? 'none' : '';
+      var willHide = hidden.has(tt);
+      card.style.display = willHide ? 'none' : '';
+      if(willHide) hiddenCount++;
     });
+    // Render the status banner. Pin it just above #comp-tab-body so it
+    // appears at the top of the task list view, on every tab.
+    var tabBody = host.querySelector('#comp-tab-body');
+    var existingBanner = host.querySelector('#gl-applic-banner');
+    if(existingBanner) existingBanner.remove();
+    if(hidden.size && tabBody){
+      var hiddenLabels = Array.from(hidden).map(function(k){ return TASK_TYPE_LABELS[k] || k; }).join(', ');
+      var banner = document.createElement('div');
+      banner.id = 'gl-applic-banner';
+      banner.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 14px;margin-bottom:10px;background:rgba(196,164,248,.08);border:1px solid rgba(196,164,248,.3);border-radius:8px;font-size:12px;color:#c4a4f8';
+      banner.innerHTML =
+        '<span style="font-size:16px">🙈</span>' +
+        '<div style="flex:1"><b>Applicability filter active</b> — hiding ' + hidden.size + ' task type' + (hidden.size===1?'':'s') +
+          (hiddenCount ? ' (' + hiddenCount + ' card' + (hiddenCount===1?'':'s') + ' hidden today)' : ' (no matching tasks today)') +
+          '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">Hidden: ' + escHtml(hiddenLabels) + '</div>' +
+        '</div>' +
+        '<button id="gl-applic-banner-edit" style="background:rgba(196,164,248,.14);border:1px solid rgba(196,164,248,.4);color:#c4a4f8;font-size:11px;padding:5px 11px;border-radius:5px;cursor:pointer">Edit</button>' +
+        '<button id="gl-applic-banner-clear" style="background:none;border:1px solid rgba(255,255,255,.12);color:#9aa7bd;font-size:11px;padding:5px 11px;border-radius:5px;cursor:pointer">Show all</button>';
+      tabBody.parentNode.insertBefore(banner, tabBody);
+      banner.querySelector('#gl-applic-banner-edit').onclick = function(){ window.glOpenApplicabilityConfig(); };
+      banner.querySelector('#gl-applic-banner-clear').onclick = function(){
+        writeApp([]);
+        applyApplicability();
+        if(typeof addNotification === 'function') addNotification('🙈 Filter cleared', 'All compliance task types are visible again', 'success');
+        if(typeof window.glAudit === 'function') window.glAudit('compliance_applicability_cleared','',{});
+      };
+    }
   }
   window.glApplyApplicability = applyApplicability;
 
@@ -20441,6 +20490,7 @@
         '</div>' +
         '<div id="gl-insp-step1">' +
           '<div class="frow"><div class="flbl">Inspector name *</div><input class="finp" id="gl-insp-name" placeholder="e.g. Jane Smith"></div>' +
+          '<div class="frow"><div class="flbl">📧 Inspector email <span style="opacity:.6">(link will be emailed on Generate)</span></div><input class="finp" id="gl-insp-email" type="email" placeholder="inspector@fda.hhs.gov"></div>' +
           '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
             '<div class="frow"><div class="flbl">Agency</div><input class="finp" id="gl-insp-agency" placeholder="FDA / FDACS / state" list="gl-insp-agencies"><datalist id="gl-insp-agencies"><option value="FDA"><option value="FDACS"><option value="USDA"></datalist></div>' +
             '<div class="frow"><div class="flbl">Valid for (hours)</div><input class="finp" id="gl-insp-hours" type="number" min="1" max="168" value="8"></div>' +
@@ -20449,7 +20499,7 @@
           '<div id="gl-insp-err" style="display:none;color:#ff8579;font-size:12px;margin-bottom:8px"></div>' +
           '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">' +
             '<button id="gl-insp-cancel" class="cbtn">Cancel</button>' +
-            '<button id="gl-insp-gen" class="cbtn pri">🔒 Generate link</button>' +
+            '<button id="gl-insp-gen" class="cbtn pri">🔒 Generate & email link</button>' +
           '</div>' +
         '</div>' +
         '<div id="gl-insp-step2" style="display:none"></div>' +
@@ -20463,14 +20513,16 @@
     ov.querySelector('#gl-insp-gen').onclick = async function(){
       var btn = this;
       var inspector = ov.querySelector('#gl-insp-name').value.trim();
+      var email     = ov.querySelector('#gl-insp-email').value.trim();
       var agency    = ov.querySelector('#gl-insp-agency').value.trim();
       var purpose   = ov.querySelector('#gl-insp-purpose').value.trim();
       var hours     = parseInt(ov.querySelector('#gl-insp-hours').value, 10) || 8;
       var err = ov.querySelector('#gl-insp-err');
       err.style.display = 'none';
       if(!inspector){ err.textContent = 'Inspector name is required.'; err.style.display='block'; return; }
+      if(email && email.indexOf('@') < 0){ err.textContent = 'Email looks invalid — fix it or clear the field to skip email.'; err.style.display='block'; return; }
       if(hours < 1 || hours > 168){ err.textContent = 'Valid hours must be 1–168 (max 1 week).'; err.style.display='block'; return; }
-      btn.disabled = true; btn.textContent = 'Generating…';
+      btn.disabled = true; btn.textContent = email ? 'Generating + emailing…' : 'Generating…';
       var token = randToken();
       var validUntil = new Date(Date.now() + hours * 3600 * 1000).toISOString();
       var row = { token: token, inspector: inspector, agency: agency || null, purpose: purpose || null, valid_until: validUntil, created_by: getCurrentUserId() };
@@ -20478,21 +20530,42 @@
       if(r.error){
         err.textContent = 'Save failed: ' + r.error.message + (r.error.code ? ' (' + r.error.code + ')' : '');
         err.style.display = 'block';
-        btn.disabled = false; btn.textContent = '🔒 Generate link';
+        btn.disabled = false; btn.textContent = '🔒 Generate & email link';
         return;
       }
       var link = window.location.origin + window.location.pathname + '?inspector=' + token;
       var expires = new Date(validUntil).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+      if(typeof window.glAudit === 'function') window.glAudit('inspector_link_generated', inspector, { agency: agency, hours: hours, expires: validUntil });
+
+      // Fire the email NOW if a recipient was provided — single-step UX.
+      var emailStatus = '';
+      if(email){
+        var subj = 'Good Liquid Bev Co — read-only audit access for ' + (agency || 'your visit');
+        var body = 'Hi ' + inspector + ',\n\n' +
+          'Per our scheduled ' + (purpose || 'inspection') + ', here is your read-only access link for Good Liquid Bev Co\'s compliance records:\n\n' +
+          link + '\n\n' +
+          'The link is valid through ' + expires + '. No login required.\n\n' +
+          'You\'ll have read-only access to compliance records (CIP cycles, batch records, hold tags, allergen declarations, etc.), audit log, and signed FDA forms. You will NOT be able to edit, sign, export, or delete anything.\n\n' +
+          'Questions: Mike@GoodLiquid.com · (803) 493-5065.\n\n' +
+          '— Good Liquid Bev Co';
+        var sender = (typeof window.sendMailgunEmail === 'function') ? window.sendMailgunEmail : null;
+        var ok = false;
+        if(sender){ try { ok = await sender(email, subj, body); } catch(e){} }
+        if(ok){
+          emailStatus = '<div style="padding:10px 12px;background:rgba(95,207,158,.08);border:1px solid rgba(95,207,158,.3);border-radius:8px;margin-bottom:10px;font-size:12px;color:#5fcf9e">📧 Link emailed to <b>' + escHtml(email) + '</b></div>';
+          if(typeof window.glAudit === 'function') window.glAudit('inspector_link_emailed', email, { inspector: inspector, agency: agency, hours: hours });
+        } else {
+          emailStatus = '<div style="padding:10px 12px;background:rgba(245,200,66,.08);border:1px solid rgba(245,200,66,.3);border-radius:8px;margin-bottom:10px;font-size:12px;color:#f5c842">⚠ Email send failed — use Copy link below to send manually.</div>';
+        }
+      }
+
       ov.querySelector('#gl-insp-step1').style.display = 'none';
       var step2 = ov.querySelector('#gl-insp-step2');
       step2.style.display = 'block';
       step2.innerHTML =
         '<div style="padding:12px 14px;background:rgba(95,207,158,.08);border:1px solid rgba(95,207,158,.3);border-radius:8px;margin-bottom:14px;font-size:12px;color:#5fcf9e">✓ Link generated for <b>' + escHtml(inspector) + '</b>' + (agency?' ('+escHtml(agency)+')':'') + ' — valid until ' + expires + '</div>' +
-        '<div class="frow"><div class="flbl">Access URL</div><textarea class="finp" id="gl-insp-link-out" readonly rows="3" style="font-family:var(--ff-mono);font-size:11px;resize:none">' + escHtml(link) + '</textarea></div>' +
-        '<div class="frow"><div class="flbl">📧 Email it to the inspector <span style="opacity:.6">(optional)</span></div>' +
-          '<div style="display:flex;gap:6px"><input class="finp" id="gl-insp-email-to" type="email" placeholder="inspector@fda.hhs.gov" style="flex:1"><button id="gl-insp-email-send" class="cbtn pri" style="white-space:nowrap">📤 Send</button></div>' +
-        '</div>' +
-        '<div id="gl-insp-email-msg" style="display:none;margin-bottom:10px;padding:8px 10px;border-radius:6px;font-size:12px"></div>' +
+        emailStatus +
+        '<div class="frow"><div class="flbl">Access URL <span style="opacity:.6">(also useful for SMS or printing)</span></div><textarea class="finp" id="gl-insp-link-out" readonly rows="3" style="font-family:var(--ff-mono);font-size:11px;resize:none">' + escHtml(link) + '</textarea></div>' +
         '<div style="display:flex;gap:8px;justify-content:flex-end">' +
           '<button id="gl-insp-copy" class="cbtn pri">📋 Copy link</button>' +
           '<button id="gl-insp-done" class="cbtn">Done</button>' +
@@ -20505,35 +20578,6 @@
         setTimeout(function(){ self.textContent = '📋 Copy link'; }, 1400);
       };
       step2.querySelector('#gl-insp-done').onclick = close;
-      step2.querySelector('#gl-insp-email-send').onclick = async function(){
-        var to = step2.querySelector('#gl-insp-email-to').value.trim();
-        var msg = step2.querySelector('#gl-insp-email-msg');
-        msg.style.display = 'none';
-        if(!to || to.indexOf('@') < 0){ msg.style.display='block'; msg.style.background='rgba(231,76,60,.12)'; msg.style.border='1px solid rgba(231,76,60,.35)'; msg.style.color='#ff8579'; msg.textContent='Enter a valid email.'; return; }
-        var b = this; b.disabled = true; b.textContent = 'Sending…';
-        var subj = 'Good Liquid Bev Co — read-only audit access for ' + (agency || 'your visit');
-        var body = 'Hi ' + inspector + ',\n\n' +
-          'Per our scheduled ' + (purpose || 'inspection') + ', here is your read-only access link for Good Liquid Bev Co\'s compliance records:\n\n' +
-          link + '\n\n' +
-          'The link is valid through ' + expires + '. No login required.\n\n' +
-          'You\'ll have read-only access to compliance records (CIP cycles, batch records, hold tags, allergen declarations, etc.), audit log, and signed FDA forms. You will NOT be able to edit, sign, export, or delete anything.\n\n' +
-          'Questions: Mike@GoodLiquid.com · (803) 493-5065.\n\n' +
-          '— Good Liquid Bev Co';
-        var sender = (typeof window.sendMailgunEmail === 'function') ? window.sendMailgunEmail : null;
-        var ok = false;
-        if(sender){ try { ok = await sender(to, subj, body); } catch(e){} }
-        if(ok){
-          msg.style.display='block'; msg.style.background='rgba(95,207,158,.12)'; msg.style.border='1px solid rgba(95,207,158,.35)'; msg.style.color='#5fcf9e';
-          msg.textContent = '✓ Link emailed to ' + to;
-          b.textContent = '✓ Sent';
-          if(typeof window.glAudit === 'function') window.glAudit('inspector_link_emailed', to, { inspector: inspector, agency: agency, hours: hours });
-        } else {
-          msg.style.display='block'; msg.style.background='rgba(231,76,60,.12)'; msg.style.border='1px solid rgba(231,76,60,.35)'; msg.style.color='#ff8579';
-          msg.textContent = 'Email send failed — use Copy link and paste it manually.';
-          b.disabled = false; b.textContent = '📤 Send';
-        }
-      };
-      if(typeof window.glAudit === 'function') window.glAudit('inspector_link_generated', inspector, { agency: agency, hours: hours, expires: validUntil });
     };
   };
 
