@@ -3039,14 +3039,25 @@ function buildCharts(){
 function renderClients(list){
   const rows=list||clients;
   document.getElementById('client-sub').textContent=rows.length+' beverage brands';
+  // Compute total billed from invoices on the fly. The clients.total_billed
+  // DB column is never maintained (no trigger / cron updates it), so reading
+  // c.billed showed $0 for every client even when invoices existed. Caught
+  // during Playwright runtime audit on 2026-05-21 — Mike's $2,313 of
+  // overdue Lotus invoices showed as $0 total billed.
+  const billedByClient = {};
+  (window.invoices||[]).forEach(i => {
+    if(!i.client) return;
+    billedByClient[i.client] = (billedByClient[i.client] || 0) + (Number(i.amount) || 0);
+  });
   document.getElementById('client-body').innerHTML=rows.map(c=>{
     const ref=referrers.find(r=>r.id===c.referredBy);
+    const billed = billedByClient[c.id] != null ? billedByClient[c.id] : (c.billed || 0);
     return`<tr style="cursor:pointer" onclick="openClientDetail('${c.id}')">
       <td><div style="display:flex;align-items:center;gap:7px"><div class="cavt" style="background:${c.color};color:${c.tc}">${c.init}</div><span style="font-weight:600">${c.name}</span></div></td>
       <td style="color:var(--muted)">${c.contact}</td>
       <td style="color:var(--muted)">${c.service}</td>
       <td><span class="cbdg ${c.status}">${c.status}</span></td>
-      <td style="font-weight:600">$${c.billed.toLocaleString()}</td>
+      <td style="font-weight:600">$${billed.toLocaleString()}</td>
       <td style="color:var(--muted)">${ref?`🤝 ${ref.name}`:'-'}</td>
       <td onclick="event.stopPropagation()" style="white-space:nowrap">
         <button class="cbtn" style="font-size:10px;padding:3px 9px" onclick="createForClient('${c.id}')">+ Invoice</button>
