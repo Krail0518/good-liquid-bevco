@@ -5128,7 +5128,7 @@
   var SEC_DAILY_DIGEST = bullets([
     '<b>What it is</b>: a single morning email that summarizes the past 24 hours of CRM activity so you start the day knowing where things stand without opening the app.',
     '<b>Schedule</b>: fires automatically at <b>7:00 AM ET / 11:00 UTC</b> via pg_cron + the deployed <code>daily-digest</code> Edge Function. If nothing happened in the last 24 hours, the email is suppressed (no daily "nothing happened" spam).',
-    '<b>Recipients</b>: every <code>profiles</code> row where <code>role</code> is <code>admin</code> or <code>staff</code> AND <code>notify_daily_digest = true</code> (the column is default-true; flip a user to false to opt them out).',
+    '<b>Recipients</b>: every <code>profiles</code> row where <code>role</code> is <code>admin</code> or <code>staff</code> AND <code>notify_daily_digest = true</code> (the column is default-true). To opt a staff user out, open <b>🔑 Users & permissions</b> → click their row → uncheck "📨 Send Daily Digest email at 7am" in the purple <b>NOTIFICATIONS</b> panel.',
     '<b>What\'s in it</b>: 4 KPI tiles up top — Collected (24h), New invoices, Open customer requests, A/R outstanding (with overdue $). Then expandable sections for: payments received, new invoices, customer requests, production-run stage changes, new clients.',
     '<b>📨 Send digest button</b> (admin top-right) — bypasses the cron schedule and fires the digest right now. Useful for testing after a big day or before a board meeting. Shows the recipient/sent/failed counts in an alert.',
     '<b>Audit trail</b>: every send (manual or scheduled) inserts a <code>daily_digest_sent</code> row into <code>audit_log</code> with full counts, so you can verify the morning email actually went out.'
@@ -5504,7 +5504,7 @@
     'Customers see their own scheduled runs in the Customer Portal automatically.',
     '<b>Capacity-aware scheduling (NEW)</b> — every run is assigned to a <b>Production Line</b> (Canning Line 1, Bottling Line 1, R&D Bench, etc.) with its own cases-per-day or hours-per-day capacity. The schedule widget above the kanban shows this-week and next-week utilization per line (green &lt; 70%, yellow 70-100%, red &gt; 100%). Click <b>⚙ Production lines</b> on the toolbar to add/edit/deactivate lines.',
     '<b>Date range + conflict warning (NEW)</b> — runs now have a Start date + End date (blank end = single day). When the dates overlap another run already booked on the same line, a red banner appears inside the modal listing the conflicting runs. Saving still works — this is a warning, not a hard block, so you can choose to double-book intentionally.',
-    '<b>Auto stage-change emails</b> — when you advance a run between kanban stages, the brand\'s portal customer gets an email with the new status. Skipped for clients with no portal user, or for users with <code>notify_run_stage_changes = false</code>.',
+    '<b>Auto stage-change emails</b> — when you advance a run between kanban stages, the brand\'s portal customer gets an email with the new status. Skipped for clients with no portal user, or for users who opted out (Portal → Account Settings → <b>NOTIFICATIONS</b> → uncheck "Production stage emails").',
     '<b>📎 Lot Documents (NEW)</b> — every run now carries a <i>Lot number</i> field + an inline "📎 LOT DOCUMENTS" section. Click <b>+ Attach</b> on an existing run to upload a COA, spec sheet, allergen statement, kosher/organic cert, or NFP — anything the customer would otherwise email you for. The file lands in the <code>client-docs</code> Storage bucket under <code>&lt;client_id&gt;/lots/&lt;lot&gt;/</code> and a metadata row goes into <code>lot_documents</code>. Each row has 🗑 (delete) and ⬇ (download) buttons.',
     '<b>What the customer sees</b>: a new "📎 COAs & DOCUMENTS" section on their portal dashboard with type badges (COA / Spec sheet / Allergen / Kosher / Organic / Nutrition / Other) and a one-click <b>⬇ Download</b> that hits a 60-second signed URL. RLS gates this to <code>client_id = current_customer_client_id()</code> — no risk of one brand seeing another brand\'s files.',
     'Stored in Supabase <b>production_runs</b> + <b>lot_documents</b>.'
@@ -21624,7 +21624,7 @@
     if(sess.data && sess.data.session){
       // Verify the user is a customer (has a customer_users row)
       var u = await sb.from('customer_users')
-        .select('id, client_id, email, display_name, active, role')
+        .select('id, client_id, email, display_name, active, role, notify_run_stage_changes')
         .eq('auth_user_id', sess.data.session.user.id)
         .eq('active', true)
         .maybeSingle();
@@ -22102,6 +22102,12 @@
         chk('acct-lift-gate', 'Lift gate required for delivery', !!client.lift_gate) +
         fld('acct-dock-hours', 'Receiving hours', client.dock_hours, 'text', 'e.g. Mon–Fri 8a–4p') +
 
+        sectionHdr('NOTIFICATIONS', '#c4b5fd') +
+        '<label style="display:flex;align-items:flex-start;gap:10px;font-size:13px;color:#eef4ff;cursor:pointer;padding:8px 10px;background:rgba(124,58,237,.05);border:1px solid rgba(124,58,237,.2);border-radius:6px;line-height:1.45">' +
+          '<input type="checkbox" id="acct-notify-stage"' + (customer.notify_run_stage_changes === false ? '' : ' checked') + ' style="margin-top:1px;width:15px;height:15px;cursor:pointer;flex-shrink:0;accent-color:#c4b5fd">' +
+          '<span>🏭 <b>Production stage emails</b> — get an email each time my run advances between kanban stages (Discovery → Formulation → Sample → COA → Production → Ship). <span style="color:#6b87ad;font-size:11px">Uncheck to opt out.</span></span>' +
+        '</label>' +
+
         sectionHdr('TEAMMATES', '#7fc6f5') +
         '<div style="font-size:11px;color:#6b87ad;margin-bottom:10px;line-height:1.5">' +
           (customer.role === 'owner'
@@ -22282,6 +22288,13 @@
       var r = await sb.rpc('update_customer_account', args);
       if(r.error){ msg('Save failed: ' + r.error.message, 'err'); btn.disabled = false; btn.textContent = orig; return; }
       if(r.data && r.data.ok === false){ msg('Save failed: ' + (r.data.error||'unknown'), 'err'); btn.disabled = false; btn.textContent = orig; return; }
+
+      // 1b) Notification preferences — flips customer_users.notify_run_stage_changes
+      // via a dedicated SECURITY DEFINER RPC since the customer can't update
+      // their own customer_users row directly under the current RLS policies.
+      var notifyOn = chkv('acct-notify-stage');
+      var nr = await sb.rpc('portal_update_my_notify', { p_notify_run_stage_changes: notifyOn });
+      if(nr.error){ console.warn('[GL portal] notify update failed', nr.error); }
 
       // 2) Update password if provided
       if(newPw){
@@ -22903,7 +22916,7 @@
       await loadPermissions();
     }
     // Pull staff profiles (everyone except portal customers)
-    var profR = await sb.from('profiles').select('id, name, email, role, status').order('name', { ascending: true });
+    var profR = await sb.from('profiles').select('id, name, email, role, status, notify_daily_digest').order('name', { ascending: true });
     var allProfiles = (profR && profR.data) || [];
     // Exclude profiles whose auth user is in customer_users (portal customers, not staff)
     var cuR = await sb.from('customer_users').select('auth_user_id, active');
@@ -23028,17 +23041,28 @@
       }).join('');
       var isSelf = u.id === perms.userId;
       var roleControl =
-        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 14px;padding:8px 12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:8px">' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 10px;padding:8px 12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:8px">' +
           '<span style="font-size:10px;letter-spacing:1.5px;color:var(--muted);font-weight:700">ROLE</span>' +
           '<select id="gl-role-' + u.id + '" ' + (isSelf?'disabled':'') + ' onchange="window.glChangeUserRole(\'' + u.id + '\',this.value)" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);color:#eef4ff;padding:5px 10px;border-radius:6px;font-size:12px">' + roleOpts + '</select>' +
           (isSelf
             ? '<span style="font-size:10px;color:var(--muted)">— you can\'t change your own role (locked out risk)</span>'
             : '<span style="font-size:10px;color:var(--muted)">Admin role bypasses every gate. Changing to Sales/Viewer makes the per-component overrides apply.</span>') +
         '</div>';
+      var digestOn = u.notify_daily_digest !== false;
+      var notifyControl =
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 14px;padding:8px 12px;background:rgba(124,58,237,.06);border:1px solid rgba(124,58,237,.2);border-radius:8px">' +
+          '<span style="font-size:10px;letter-spacing:1.5px;color:#c4b5fd;font-weight:700">NOTIFICATIONS</span>' +
+          '<label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#eef4ff;cursor:pointer">' +
+            '<input type="checkbox"' + (digestOn?' checked':'') + ' onchange="window.glToggleUserNotify(\'' + u.id + '\',\'notify_daily_digest\',this.checked)" style="width:14px;height:14px;cursor:pointer;accent-color:#c4b5fd">' +
+            '<span>📨 Send Daily Digest email at 7am</span>' +
+          '</label>' +
+          '<span style="font-size:10px;color:var(--muted)">Uncheck to opt this user out of the morning digest.</span>' +
+        '</div>';
       return '<div style="background:#0d1b2e;border:1px solid rgba(255,255,255,.08);border-radius:0 8px 8px 8px;padding:16px;margin-bottom:18px">' +
         '<div style="font-size:13px;color:#fff;font-weight:700;margin-bottom:2px">' + esc(u.name||u.email) + '</div>' +
         '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">' + esc(u.email||'') + (u.role==='admin' ? ' · <span style="color:#f5c842">admin bypasses all gates</span>' : '') + '</div>' +
         roleControl +
+        notifyControl +
         presetBar +
         sectionTable('PAGES — what they can navigate to',  '#00e5c0', pages) +
         sectionTable('ACTIONS — what they can do',          '#f5c842', actions) +
@@ -23094,6 +23118,28 @@
     if(typeof renderPermissionsPanel === 'function'){
       await renderPermissionsPanel();
       if(typeof window.glRenderPermMatrixFor === 'function') window.glRenderPermMatrixFor(userId);
+    }
+  };
+
+  // Flip a notification preference column on a user's profiles row. Used
+  // by the NOTIFICATIONS block in the Users & Permissions matrix to
+  // opt-staff in/out of the morning Daily Digest. Whitelisted set of
+  // columns to prevent arbitrary profile updates from this UI.
+  window.glToggleUserNotify = async function(userId, field, on){
+    var ALLOWED = ['notify_daily_digest'];
+    if(ALLOWED.indexOf(field) < 0){ alert('Unsupported field: ' + field); return; }
+    var sb = getSB(); if(!sb) return;
+    var patch = {}; patch[field] = !!on;
+    var r = await sb.from('profiles').update(patch).eq('id', userId);
+    if(r.error){ alert('Save failed: ' + r.error.message); return; }
+    if(typeof window.addNotification === 'function'){
+      window.addNotification('Notification preference saved', field + ' = ' + (on?'on':'off'), 'success');
+    }
+    if(typeof window.glAudit === 'function') window.glAudit('user_notify_changed', userId, { field: field, value: !!on });
+    // Update local cache so re-renders reflect the new value without a refetch.
+    if(typeof perms === 'object' && Array.isArray(perms.staff)){
+      var u = perms.staff.find(function(x){ return x.id === userId; });
+      if(u) u[field] = !!on;
     }
   };
 
