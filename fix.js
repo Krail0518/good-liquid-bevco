@@ -21303,19 +21303,27 @@
     setTimeout(function(){ d.remove(); }, 4500);
   }
 
-  // Wrap sendMailgunEmail to log every send.
-  // Mailgun returns { id: '<message-id>' } in the JSON body — we'd need to
-  // parse the response to capture it. For now, log basic metadata; the
-  // mailgun_id can be backfilled if/when the wrapper is upgraded to parse
-  // the response body. The webhook Edge Function correlates by subject
-  // + recipient + timestamp as a fallback.
+  // Wrap sendMailgunEmail to log every send to email_log.
+  // The underlying sendMailgunEmail (index.html) now stashes the Mailgun
+  // message id on `sendMailgunEmail._lastMailgunId` after each successful
+  // send. We grab it here and write it as `mailgun_id` on the email_log
+  // row so the mailgun-webhook Edge Function can match incoming
+  // delivered/opened/clicked events back to the right row. Without that
+  // link, every email got stuck on "sent" status forever even when the
+  // webhook fired correctly (caught via Playwright runtime audit
+  // 2026-05-21 — GL-1003 send was 1d old with no Delivered/Opened state).
   (function wrapSend(){
     var orig = window.sendMailgunEmail;
     if(typeof orig !== 'function') { setTimeout(wrapSend, 500); return; }
     if(orig.__glLogged) return;
     window.sendMailgunEmail = async function(to, subject, body, opts){
       var sb = getSB();
+      // Clear any stale id before the call so a failed send doesn't
+      // accidentally re-use the previous send's id.
+      try { orig._lastMailgunId = null; } catch(e){}
       var ok = await orig.apply(this, arguments);
+      var mailgunId = null;
+      try { mailgunId = orig._lastMailgunId || null; } catch(e){}
       // Best-effort log — don't block on errors
       try {
         var ccArr = [];
@@ -21341,6 +21349,7 @@
             if(matched && matched.supaId) invSupaId = matched.supaId;
           }
           await sb.from('email_log').insert({
+            mailgun_id: mailgunId,
             to_email: Array.isArray(to) ? to.join(', ') : (to||''),
             cc_emails: ccArr.length ? ccArr : null,
             bcc_emails: bccArr.length ? bccArr : null,

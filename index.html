@@ -6693,6 +6693,16 @@ async function sendMailgunEmail(to, subject, body, opts){
       console.error('[Mailgun] send rejected', resp.data.error);
       return false;
     }
+    // Stash the Mailgun message id on the function itself so the email_log
+    // wrapper (fix.js wrapSend IIFE) can pull it for the row insert. Without
+    // this, every email_log row has mailgun_id = null and the
+    // mailgun-webhook function can't match incoming delivered/opened/clicked
+    // events back to the row — so emails sit stuck on "sent" forever
+    // despite the webhook firing correctly. The id arrives in resp.data.id
+    // from the mailgun-send Edge Function. Caught via Playwright runtime
+    // audit on 2026-05-21.
+    var mailgunId = resp.data && resp.data.id ? String(resp.data.id) : null;
+    try { sendMailgunEmail._lastMailgunId = mailgunId; } catch(e){}
     return true;
   } catch(e){ console.error('[Mailgun] threw',e); return false; }
 }
