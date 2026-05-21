@@ -22358,9 +22358,23 @@
     }
     function fld(id, label, val, type, placeholder){
       type = type || 'text';
+      // Force autocomplete="new-password" on any password input rendered by
+      // this helper. The Account Settings modal uses it ONLY for the
+      // "change password" + "confirm password" fields (no sign-in form
+      // routes through here). Without this hint, Chrome / 1Password /
+      // Edge silently autofill the user's SAVED LOGIN password into the
+      // "New password" field — caught during the Playwright runtime
+      // audit on 2026-05-21, where the modal opened with a 9-character
+      // password already in place. If the user clicked Save without
+      // noticing, they would have silently set their password to
+      // whatever the browser had remembered. autocomplete="new-password"
+      // tells autofill systems "this is a brand-new password being
+      // created" and they leave it alone.
+      var extra = '';
+      if(type === 'password') extra = ' autocomplete="new-password"';
       return '<div style="margin-bottom:12px">' +
         '<div style="font-size:10px;letter-spacing:1.5px;color:#6b87ad;margin-bottom:4px;text-transform:uppercase">' + escHtml(label) + '</div>' +
-        '<input id="' + id + '" type="' + type + '" value="' + escHtml(val||'') + '" placeholder="' + escHtml(placeholder||'') + '" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#eef4ff;font-size:13px;box-sizing:border-box">' +
+        '<input id="' + id + '" type="' + type + '"' + extra + ' value="' + escHtml(val||'') + '" placeholder="' + escHtml(placeholder||'') + '" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#eef4ff;font-size:13px;box-sizing:border-box">' +
       '</div>';
     }
     function chk(id, label, val){
