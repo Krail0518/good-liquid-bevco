@@ -22134,6 +22134,17 @@
     }).join('') : '<div style="padding:30px;text-align:center;color:#6b87ad;font-size:13px">No invoices yet.</div>';
 
     var PR_STAGE_COLOR = { Discovery:'#9aa7bd', Formulation:'#6b9fff', Sample:'#c4b5fd', COA:'#f5c842', Production:'#00e5c0', Ship:'#5fcf9e' };
+    // Parse a Postgres `date` column (YYYY-MM-DD) as a LOCAL date — not UTC.
+    // `new Date("2026-05-20")` interprets the string as UTC midnight, which
+    // then renders as the PREVIOUS DAY in any timezone west of UTC (caught
+    // during Playwright runtime audit — Mike in FL saw a 2026-05-20 run
+    // displayed as "5/19/2026"). Forcing the timezone-naive parse here.
+    function fmtLocalDate(s){
+      if(!s) return '';
+      var m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if(m) return new Date(+m[1], +m[2]-1, +m[3]).toLocaleDateString();
+      return new Date(s).toLocaleDateString();
+    }
     var prRowsHtml = prs.length ? prs.map(function(p){
       var color = PR_STAGE_COLOR[p.stage] || '#9aa7bd';
       // Prefer the new start/end columns; fall back to legacy scheduled_date.
@@ -22141,9 +22152,9 @@
       var endDate   = p.scheduled_end_date;
       var dateLbl   = 'TBD';
       if(startDate){
-        var s = new Date(startDate).toLocaleDateString();
+        var s = fmtLocalDate(startDate);
         if(endDate && endDate !== startDate){
-          dateLbl = s + ' → ' + new Date(endDate).toLocaleDateString();
+          dateLbl = s + ' → ' + fmtLocalDate(endDate);
         } else {
           dateLbl = s;
         }
@@ -22179,7 +22190,7 @@
     }
     var shRowsHtml = shs.length ? shs.map(function(s){
       var color = SH_STATUS_COLOR[s.status] || '#9aa7bd';
-      var dateLbl = s.shipped_date ? new Date(s.shipped_date).toLocaleDateString() : '—';
+      var dateLbl = s.shipped_date ? fmtLocalDate(s.shipped_date) : '—';
       var meta = [];
       if(s.kind) meta.push(escHtml(s.kind));
       if(s.qty) meta.push(escHtml(String(s.qty)) + ' unit' + (s.qty===1?'':'s'));
