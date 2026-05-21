@@ -12015,8 +12015,11 @@
 
   async function loadFromSupabase(){
     if(!window.supa) return null;
-    try { var r = await window.supa.from('cip_logs').select('*').order('cycle_at',{ascending:false}); if(r && r.data) return r.data; }
-    catch(e){}
+    try {
+      var r = await window.supa.from('cip_logs').select('*').order('cycle_at',{ascending:false});
+      if(r && r.error){ console.warn('[GL cip] load error:', r.error.message); return null; }
+      if(r && Array.isArray(r.data)) return r.data;
+    } catch(e){ console.warn('[GL cip] load threw', e); }
     return null;
   }
   function loadLocal(){ try { return JSON.parse(localStorage.getItem('gl_cip_logs') || '[]'); } catch(e){ return []; } }
@@ -12024,7 +12027,20 @@
 
   async function refresh(){
     var rows = await loadFromSupabase();
-    window.glCipLogs = rows || loadLocal();
+    var local = loadLocal();
+    if(rows === null){
+      // DB unreachable or threw — show whatever's in localStorage.
+      window.glCipLogs = local;
+    } else if(rows.length === 0 && local.length > 0){
+      // DB returned 0 but localStorage has cycles — probably means a save
+      // got rejected (likely RLS) and the operator's work is sitting in
+      // localStorage only. Merge so we still show their entries instead
+      // of silently wiping them, and surface the gap to the admin.
+      window.glCipLogs = local;
+      console.warn('[GL cip] DB returned 0 rows but localStorage has ' + local.length + ' — DB save likely rejected. Check RLS on public.cip_logs.');
+    } else {
+      window.glCipLogs = rows;
+    }
     render();
   }
 
@@ -12134,19 +12150,38 @@
         result:      ov.querySelector('#gl-cip-result').value,
         notes:       ov.querySelector('#gl-cip-notes').value
       };
+      var savedToDb = false;
+      var saveErr = null;
       if(window.supa){
         try {
-          if(isEdit){ await window.supa.from('cip_logs').update(data).eq('id', c.id); Object.assign(c, data); }
-          else { var r = await window.supa.from('cip_logs').insert([data]).select().single(); if(r && r.data){ window.glCipLogs.unshift(r.data); } else { data.id = 'local_' + Date.now(); window.glCipLogs.unshift(data); } }
-        } catch(e){
-          if(isEdit) Object.assign(c, data);
-          else { data.id = 'local_' + Date.now(); window.glCipLogs.unshift(data); }
-        }
-      } else {
+          if(isEdit){
+            var ru = await window.supa.from('cip_logs').update(data).eq('id', c.id);
+            if(ru && ru.error){ saveErr = ru.error; }
+            else { Object.assign(c, data); savedToDb = true; }
+          } else {
+            var ri = await window.supa.from('cip_logs').insert([data]).select().single();
+            if(ri && ri.error){ saveErr = ri.error; }
+            else if(ri && ri.data){ window.glCipLogs.unshift(ri.data); savedToDb = true; }
+          }
+        } catch(e){ saveErr = e; }
+      }
+      // Keep a local-only copy so the operator's work isn't lost even when
+      // the DB rejects the row — but flag the failure LOUDLY below. Silent
+      // failures are how FDA-required records vanish.
+      if(!savedToDb){
         if(isEdit) Object.assign(c, data);
         else { data.id = 'local_' + Date.now(); window.glCipLogs.unshift(data); }
       }
       saveLocal(); ov.remove(); render();
+
+      if(saveErr){
+        var msg = (saveErr && saveErr.message) ? saveErr.message : String(saveErr);
+        var code = (saveErr && saveErr.code) ? ' (code ' + saveErr.code + ')' : '';
+        alert('⚠ CIP cycle was NOT saved to the database.\n\nReason: ' + msg + code + '\n\nThe entry is kept locally in this browser so you can retry, but until the database accepts it the FDA-required record retention is at risk.\n\nMost common cause: row-level security is blocking the insert. Send this exact message to your admin.');
+        if(typeof addNotification === 'function') addNotification('⚠ CIP save FAILED — DB rejected the row', msg.slice(0,140), 'warning');
+        if(typeof window.glAudit === 'function') window.glAudit('cip_cycle_save_failed', data.line_area, { error: msg, code: saveErr && saveErr.code, result: data.result });
+        return;
+      }
       if(typeof addNotification === 'function') addNotification('🧼 CIP cycle ' + (isEdit ? 'updated' : 'logged'), data.line_area + ' — ' + data.result.toUpperCase(), data.result === 'fail' ? 'warning' : 'success');
       if(typeof window.glAudit === 'function') window.glAudit(isEdit ? 'cip_cycle_edited' : 'cip_cycle_logged', data.line_area, { result: data.result });
     });
