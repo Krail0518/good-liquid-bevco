@@ -3731,12 +3731,9 @@ let currentTone = 'friendly';
 
 function openFollowUp(){
   if(!currentInvId)return;
-  // Pre-flight: don't open the composer if Mailgun isn't configured.
-  if(!localStorage.getItem('gl_mailgun_key')){
-    if(typeof addNotification==='function') addNotification('Mailgun key required','Configure the Mailgun API key (gl_mailgun_key) before sending follow-ups.','warning');
-    else alert('Configure your Mailgun API key before sending follow-up emails.');
-    return;
-  }
+  // Mailgun is configured server-side in the mailgun-send Edge Function;
+  // legacy gl_mailgun_key localStorage check removed. The send itself
+  // returns a clear error if the secret is unset.
   const inv = invoices.find(i=>i.id===currentInvId);
   if(!inv)return;
   const c = clients.find(x=>x.id===inv.client)||{name:inv.clientName,email:''};
@@ -5279,11 +5276,7 @@ function openSendInvoiceModal(invId){
     const message = ov.querySelector('#gl-si-message').value;
     if(!toRaw){ status.style.color = '#ff8579'; status.textContent = 'At least one To recipient required.'; return; }
     if(!subject){ status.style.color = '#ff8579'; status.textContent = 'Subject required.'; return; }
-    if(!localStorage.getItem('gl_mailgun_key')){
-      status.style.color = '#ff8579';
-      status.textContent = 'Mailgun API key not set. Open AI Settings to configure.';
-      return;
-    }
+    // Mailgun key lives server-side in the mailgun-send Edge Function.
     btn.disabled = true; btn.textContent = 'Preparing PDF…';
     status.style.color = 'var(--muted)'; status.textContent = '';
     // Generate a public share token (if not already set) so the email can
@@ -6713,11 +6706,7 @@ function openFollowUpModal(){
     openAISettings();
     return;
   }
-  if(!localStorage.getItem('gl_mailgun_key')){
-    if(typeof addNotification==='function') addNotification('Mailgun key required','Configure the Mailgun API key before sending follow-ups.','warning');
-    else alert('Configure your Mailgun API key before sending follow-up emails.');
-    return;
-  }
+  // Mailgun key lives server-side in the mailgun-send Edge Function.
   const inv=invoices.find(i=>i.id===currentInvId);
   if(!inv) return;
   currentFollowupInvId=currentInvId;
