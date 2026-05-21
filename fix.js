@@ -12013,12 +12013,51 @@
   var METHODS = ['CIP (closed-loop)','Manual scrub','CIP + manual'];
   var CHEMICALS = ['Caustic (NaOH)','Acid (phosphoric)','Sanitizer (peracetic)','Sanitizer (chlorine)','Sanitizer (quat)','Other'];
 
+  // Maps a compliance_records row (form_code='GMP-SAN-002' — the canonical
+  // 9-step CIP form) into the legacy cip_logs row shape so the existing
+  // render() can display them. The "+ Log Cycle" button on this page was
+  // long ago re-bound to glOpenCipForm (compliance_records); the loader
+  // was still pointing at the legacy cip_logs table, so the table on this
+  // page stayed empty no matter how many cycles got logged. This unifies
+  // them by reading from the canonical store.
+  function mapComplianceCipRow(row){
+    var fd = (row && row.form_data) || {};
+    var steps = Array.isArray(fd.steps) ? fd.steps : [];
+    var doneSteps = steps.filter(function(s){ return s && s.done; });
+    var chemicals = [];
+    doneSteps.forEach(function(s){
+      if(s.chem && s.chem !== '—' && s.chem !== 'Potable water' && chemicals.indexOf(s.chem) < 0){
+        chemicals.push(s.chem);
+      }
+    });
+    // ATP reading lives on the PAA sanitize steps (8/9 — PAA strip ppm).
+    var paa = doneSteps.find(function(s){ return s && s.n >= 8 && s.reading; });
+    var result = row.has_deviation ? 'fail' : (row.complete || row.signed ? 'pass' : 'pending');
+    return {
+      id: row.id,
+      cycle_at: fd.cycle_start || row.recorded_at,
+      line_area: fd.equipment || row.product_name || '—',
+      method: 'CIP (9-step) — ' + doneSteps.length + '/9 steps',
+      chemicals: chemicals,
+      water_temp_f: null,
+      contact_min: null,
+      operator: row.signed_by || row.recorded_by || '',
+      atp_reading: paa ? paa.reading : '',
+      result: result,
+      notes: row.deviation_notes || fd.deviation_notes || '',
+      _source: 'compliance_records',
+      _form_code: row.form_code
+    };
+  }
   async function loadFromSupabase(){
     if(!window.supa) return null;
     try {
-      var r = await window.supa.from('cip_logs').select('*').order('cycle_at',{ascending:false});
+      var r = await window.supa.from('compliance_records')
+        .select('*').eq('form_code','GMP-SAN-002')
+        .order('recorded_at',{ascending:false})
+        .limit(200);
       if(r && r.error){ console.warn('[GL cip] load error:', r.error.message); return null; }
-      if(r && Array.isArray(r.data)) return r.data;
+      if(r && Array.isArray(r.data)) return r.data.map(mapComplianceCipRow);
     } catch(e){ console.warn('[GL cip] load threw', e); }
     return null;
   }
@@ -12053,18 +12092,19 @@
     if(sub) sub.textContent = rows.length + ' cycle' + (rows.length === 1 ? '' : 's') + ' logged' + (fails ? ' · ' + fails + ' fail' + (fails === 1 ? '' : 's') + ' on record' : '');
 
     if(!rows.length){
-      host.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No cycles logged yet. Click "Log Cycle" after every sanitation between runs. FDA-required.</div>';
+      host.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No cycles logged yet. Click "+ Log Cycle" above to open the canonical 9-step FDA form. FDA-required between every run.</div>';
       return;
     }
-    host.innerHTML = '<table class="ctbl"><thead><tr><th>When</th><th>Line / area</th><th>Method</th><th>Chemicals</th><th>Operator</th><th>ATP swab</th><th>Result</th></tr></thead><tbody>' +
+    var hint = '<div style="font-size:11px;color:var(--muted);padding:8px 14px 12px;line-height:1.5">Showing canonical 9-step CIP records (form GMP-SAN-002). To log a new cycle, click <b>+ Log Cycle</b> above. To view full step-by-step detail of any cycle, open <b>Compliance → Compliance Records</b> and filter by form GMP-SAN-002.</div>';
+    host.innerHTML = hint + '<table class="ctbl"><thead><tr><th>When</th><th>Equipment</th><th>Steps done</th><th>Chemicals</th><th>Operator</th><th>PAA ppm</th><th>Result</th></tr></thead><tbody>' +
       rows.map(function(r){
         var when = r.cycle_at ? new Date(r.cycle_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '—';
         var resColor = r.result === 'pass' ? '#5fcf9e' : r.result === 'fail' ? '#ff8579' : '#9aa7bd';
         var resLabel = (r.result || 'pending').toUpperCase();
-        return '<tr style="cursor:pointer" onclick="window.glOpenEditCip(\'' + esc(r.id) + '\')">' +
+        return '<tr>' +
           '<td style="padding:11px;color:var(--white);font-weight:600">' + when + '</td>' +
           '<td style="padding:11px;color:var(--muted)">' + esc(r.line_area || '—') + '</td>' +
-          '<td style="padding:11px;color:var(--muted)">' + esc(r.method || '—') + '</td>' +
+          '<td style="padding:11px;color:var(--muted);font-size:11px">' + esc(r.method || '—') + '</td>' +
           '<td style="padding:11px;color:var(--muted);font-size:11px">' + esc((r.chemicals||[]).join(', ') || '—') + '</td>' +
           '<td style="padding:11px;color:var(--muted)">' + esc(r.operator || '—') + '</td>' +
           '<td style="padding:11px;color:var(--muted);font-family:var(--ff-mono);font-size:11px">' + esc(r.atp_reading || '—') + '</td>' +
