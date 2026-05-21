@@ -15831,13 +15831,14 @@
     var body =
       field('Product / lot', 'product', 'text', { value: run ? (run.run_name || '') : '', required: true }) +
       field('Reading time', 'time', 'time', { value: (new Date()).toTimeString().slice(0,5), required: true }) +
-      field('Hold-tube temperature (°F)', 'temp_f', 'number', { step: '0.1', required: true }) +
+      field('Hold-tube temperature (°F) — hot side', 'temp_f', 'number', { step: '0.1', required: true }) +
+      field('Cold-side / outlet temperature (°F) — post-cooler', 'cold_temp_f', 'number', { step: '0.1' }) +
       field('Holding time (seconds)', 'hold_sec', 'number', { step: '0.1', value: '15' }) +
       field('Product pressure (PSI)', 'product_psi', 'number', { step: '0.1' }) +
       field('Media pressure (PSI)', 'media_psi', 'number', { step: '0.1' }) +
       field('FDD status', 'fdd', 'select', { options: [['ok','OK — forward flow'],['divert','DIVERT — flow diverted']], required: true }) +
       field('Corrective action (if deviation)', 'corrective', 'textarea') +
-      '<div style="font-size:11px;color:#f5c842;background:rgba(245,200,66,.08);padding:8px 12px;border-radius:6px;margin-top:8px">Critical limit: hold-tube temp ≥ ' + DEFAULT_LIMITS.htst_temp_f + '°F (per LEAN_01 default — confirm your FSP). FDD DIVERT or temp drop = STOP production, hold lot, auto-NC.</div>';
+      '<div style="font-size:11px;color:#f5c842;background:rgba(245,200,66,.08);padding:8px 12px;border-radius:6px;margin-top:8px">Critical limit (hot side): hold-tube temp ≥ ' + DEFAULT_LIMITS.htst_temp_f + '°F. Cold side typically ≤ 40°F for refrigerated storage (confirm your FSP). FDD DIVERT or hot-side temp drop = STOP production, hold lot, auto-NC.</div>';
     var modal = modalShell('FSP-PC-001 · HTST Pasteurization Reading (CCP-1)', 'Log every 30 minutes during pasteurization', body, formFooter());
     wireYn(modal);
     modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
@@ -15846,6 +15847,7 @@
       var data = {
         product: getVal(modal,'product'), time: getVal(modal,'time'),
         temp_f: parseFloat(getVal(modal,'temp_f')) || null,
+        cold_temp_f: parseFloat(getVal(modal,'cold_temp_f')) || null,
         hold_sec: parseFloat(getVal(modal,'hold_sec')) || null,
         product_psi: parseFloat(getVal(modal,'product_psi')) || null,
         media_psi: parseFloat(getVal(modal,'media_psi')) || null,
@@ -15854,7 +15856,12 @@
       };
       var tempFail = (data.temp_f || 0) < DEFAULT_LIMITS.htst_temp_f;
       var fddFail = data.fdd === 'divert';
+      // Cold-side check is informational unless explicitly above 40°F — FSP
+      // confirmation needed to escalate this to a hard CCP failure. For now
+      // we capture the reading and flag a soft warning in the summary.
+      var coldWarn = data.cold_temp_f != null && data.cold_temp_f > 40;
       var hasFailure = tempFail || fddFail;
+      var coldBit = data.cold_temp_f != null ? ' · cold ' + data.cold_temp_f + '°F' + (coldWarn ? ' ⚠' : '') : '';
       await saveRecord('FSP-PC-001', data, {
         signed: signed, complete: signed,
         task_id: null, run_id: task.run_id,
@@ -15863,13 +15870,14 @@
           'HTST CCP-1 deviation at ' + data.time + ' — ' +
           (tempFail ? 'hold-tube ' + data.temp_f + '°F < ' + DEFAULT_LIMITS.htst_temp_f + '°F. ' : '') +
           (fddFail ? 'FDD DIVERT. ' : '') +
+          (coldWarn ? 'Cold-side ' + data.cold_temp_f + '°F > 40°F (chill verification needed). ' : '') +
           (data.corrective || '')
         ) : null,
         corrective_action: data.corrective,
         spawn_hold: hasFailure,
         product_name: data.product,
         hazard_type: 'biological',
-        summary: data.time + ' · ' + data.temp_f + '°F · ' + (hasFailure ? 'CCP FAIL' : 'OK')
+        summary: data.time + ' · hot ' + data.temp_f + '°F' + coldBit + ' · ' + (hasFailure ? 'CCP FAIL' : 'OK')
       });
       modal.remove();
       refreshMaster();
@@ -17877,13 +17885,29 @@
   // SMS settings. We don't override the existing openSmsSettings; we just save to the same key.
   window.glSetSmsAlertPhone = function(){
     var cur = localStorage.getItem('gl_sms_alert_phone') || '';
-    var v = prompt('Phone number for compliance critical-failure SMS (E.164, e.g. +18135550100). Leave blank to disable.', cur);
-    if(v === null) return;
-    v = v.trim();
-    if(!v){ localStorage.removeItem('gl_sms_alert_phone'); alert('SMS alerts disabled.'); return; }
-    if(!/^\+\d{8,15}$/.test(v)){ alert('Invalid E.164 format. Use +<country><number>, e.g. +18135550100'); return; }
-    localStorage.setItem('gl_sms_alert_phone', v);
-    alert('Compliance SMS alerts will go to ' + v + '. (Requires deployed send-sms Edge Function + Twilio creds.)');
+    // Strip the +1 if present so the prompt shows the cleaner 10-digit format
+    var curDisplay = cur.replace(/^\+1/, '').replace(/\D+/g, '');
+    var raw = prompt('Phone number for compliance critical-failure SMS\n(10-digit US, e.g. 8135550100 — or full international like +447700900123).\nLeave blank to disable.', curDisplay);
+    if(raw === null) return;
+    raw = raw.trim();
+    if(!raw){ localStorage.removeItem('gl_sms_alert_phone'); alert('SMS alerts disabled.'); return; }
+    // Normalize: 10-digit US gets +1 auto-prefixed; 11-digit starting with 1 gets +;
+    // anything already prefixed with + is treated as international E.164.
+    var digits = raw.replace(/\D+/g, '');
+    var e164;
+    if(raw.charAt(0) === '+'){
+      if(!/^\+\d{8,15}$/.test('+'+digits)){ alert('Invalid international number. Expected + followed by 8–15 digits.'); return; }
+      e164 = '+' + digits;
+    } else if(digits.length === 10){
+      e164 = '+1' + digits;
+    } else if(digits.length === 11 && digits.charAt(0) === '1'){
+      e164 = '+' + digits;
+    } else {
+      alert('Enter a 10-digit US number (e.g. 8135550100) or an international number starting with + (e.g. +447700900123).');
+      return;
+    }
+    localStorage.setItem('gl_sms_alert_phone', e164);
+    alert('Compliance SMS alerts will go to ' + e164 + '. (Requires deployed send-sms Edge Function + Twilio creds.)');
   };
 
   // ── (9) Photo upload helper ──
