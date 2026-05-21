@@ -20078,38 +20078,16 @@
   // ============================================================
   // (15) PWA INSTALL PROMPT
   // ============================================================
-  // The manifest.json + sw.js already exist on this site. We add a small
-  // "Install app" badge to the topbar that appears when Chrome's
-  // beforeinstallprompt event fires.
-  (function pwaPrompt(){
-    var deferred = null;
-    window.addEventListener('beforeinstallprompt', function(e){
-      e.preventDefault();
-      deferred = e;
-      var bar = document.createElement('div');
-      bar.id = 'gl-pwa-prompt';
-      bar.setAttribute('style','position:fixed;bottom:90px;left:28px;z-index:540;background:#243653;border:1px solid rgba(0,229,192,.32);border-radius:10px;padding:11px 14px;box-shadow:0 10px 30px rgba(0,0,0,.4);color:#fff;font-size:12px;font-family:sans-serif;display:flex;align-items:center;gap:10px;max-width:300px');
-      bar.innerHTML = '<span style="font-size:18px">📲</span><div style="flex:1">Install Good Liquid CRM on this device for offline + faster access?</div>' +
-        '<button class="cbtn pri" id="gl-pwa-go" style="font-size:11px;padding:5px 11px">Install</button>' +
-        '<button class="cbtn" id="gl-pwa-skip" style="font-size:11px;padding:5px 9px">No</button>';
-      document.body.appendChild(bar);
-      document.getElementById('gl-pwa-go').addEventListener('click', async function(){
-        bar.remove();
-        if(deferred){
-          deferred.prompt();
-          var choice = await deferred.userChoice;
-          if(typeof addNotification === 'function') addNotification('📲 Install ' + (choice.outcome === 'accepted' ? 'accepted' : 'dismissed'),'','info');
-          deferred = null;
-        }
-      });
-      document.getElementById('gl-pwa-skip').addEventListener('click', function(){
-        bar.remove(); deferred = null;
-        localStorage.setItem('gl_pwa_dismissed', String(Date.now()));
-      });
-    });
-    // Suppress if user dismissed in the last 30 days
-    var last = parseInt(localStorage.getItem('gl_pwa_dismissed') || '0', 10);
-    if(last && Date.now() - last < 30*86400000){ /* will skip prompt for 30d */ }
+  // PWA install prompt — DISABLED here.
+  // There were three independent beforeinstallprompt listeners across
+  // the codebase (two in fix.js, one in index.html), each appending its
+  // own banner. A fresh load on the marketing site showed three
+  // "Install Good Liquid CRM" prompts simultaneously. The canonical
+  // handler now lives only in index.html (showInstallBanner + installPWA).
+  // This stub stays so any future grep finds it but it never mounts UI.
+  // Caught during the Playwright runtime audit on 2026-05-21.
+  (function pwaPromptDisabled(){
+    /* no-op */
   })();
   window.glManifestCheck = async function(){
     try {
@@ -21712,40 +21690,10 @@
   setInterval(expireOldQuotes, 3600000);
 
   // ────────────────────────────────────────────────────────────
-  // PWA INSTALL NUDGE — surface the browser's install prompt
-  // ────────────────────────────────────────────────────────────
-  var deferredPrompt = null;
-  window.addEventListener('beforeinstallprompt', function(e){
-    e.preventDefault();
-    deferredPrompt = e;
-    // Show a small banner top-right after the CRM is up
-    if(document.getElementById('gl-pwa-banner')) return;
-    setTimeout(function(){
-      var dismissed = localStorage.getItem('gl_pwa_install_dismissed') === '1';
-      if(dismissed) return;
-      var b = document.createElement('div');
-      b.id = 'gl-pwa-banner';
-      b.style.cssText = 'position:fixed;top:60px;right:16px;background:#0a1628;color:#fff;border:1px solid rgba(0,229,192,.35);border-radius:10px;padding:12px 16px;z-index:9999;box-shadow:0 6px 18px rgba(0,0,0,.4);max-width:300px;font:13px system-ui';
-      b.innerHTML =
-        '<div style="font-weight:600;margin-bottom:6px">📱 Install Good Liquid CRM</div>' +
-        '<div style="font-size:11px;color:#9aa7bd;margin-bottom:10px;line-height:1.4">Add to your home screen for one-tap launch. Works offline for cached views.</div>' +
-        '<div style="display:flex;gap:6px"><button id="gl-pwa-yes" style="flex:1;background:#00e5c0;color:#0a1628;border:0;padding:7px 12px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">Install</button>' +
-        '<button id="gl-pwa-no" style="flex:1;background:transparent;color:#9aa7bd;border:1px solid rgba(255,255,255,.1);padding:7px 12px;border-radius:6px;font-size:12px;cursor:pointer">Not now</button></div>';
-      document.body.appendChild(b);
-      b.querySelector('#gl-pwa-yes').onclick = async function(){
-        if(!deferredPrompt) { b.remove(); return; }
-        deferredPrompt.prompt();
-        var choice = await deferredPrompt.userChoice;
-        deferredPrompt = null;
-        b.remove();
-        if(choice && choice.outcome === 'accepted') toast('Installing ✓');
-      };
-      b.querySelector('#gl-pwa-no').onclick = function(){
-        localStorage.setItem('gl_pwa_install_dismissed', '1');
-        b.remove();
-      };
-    }, 4000);
-  });
+  // PWA INSTALL NUDGE — DISABLED here.
+  // See sibling note above the pwaPromptDisabled stub: three independent
+  // beforeinstallprompt listeners produced three install banners on
+  // every page load. The canonical handler lives only in index.html now.
 
   // ────────────────────────────────────────────────────────────
   // Add a 📅 Queue button to the Invoices page toolbar
