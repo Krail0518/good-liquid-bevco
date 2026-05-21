@@ -5375,15 +5375,15 @@ function openClientDetail(cid) {
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">
         <div style="background:rgba(255,255,255,.04);border-radius:10px;padding:14px;text-align:center">
           <div style="font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:4px">TOTAL BILLED</div>
-          <div style="font-family:var(--ff-disp);font-size:22px;color:var(--teal)">$${(c.billed||0).toLocaleString()}</div>
+          <div style="font-family:var(--ff-disp);font-size:22px;color:var(--teal)">$${Number(c.billed||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
         </div>
         <div style="background:rgba(255,255,255,.04);border-radius:10px;padding:14px;text-align:center">
           <div style="font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:4px">PAID</div>
-          <div style="font-family:var(--ff-disp);font-size:22px;color:#1D9E75">$${paid.toLocaleString()}</div>
+          <div style="font-family:var(--ff-disp);font-size:22px;color:#1D9E75">$${Number(paid||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
         </div>
         <div style="background:rgba(255,255,255,.04);border-radius:10px;padding:14px;text-align:center">
           <div style="font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:4px">OUTSTANDING</div>
-          <div style="font-family:var(--ff-disp);font-size:22px;color:${pending>0?'#e74c3c':'var(--white)'}">$${pending.toLocaleString()}</div>
+          <div style="font-family:var(--ff-disp);font-size:22px;color:${pending>0?'#e74c3c':'var(--white)'}">$${Number(pending||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
         </div>
       </div>
 
@@ -5523,6 +5523,9 @@ function openReports() {
   const totalPending = invoices.filter(i=>effectiveInvoiceStatus(i)==='pending').reduce((s,i)=>s+(Number(i.amount)||0),0);
   const totalOverdue = invoices.filter(i=>effectiveInvoiceStatus(i)==='overdue').reduce((s,i)=>s+(Number(i.amount)||0),0);
   const topClients = [...clients].sort((a,b)=>(b.billed||0)-(a.billed||0)).slice(0,5);
+  /* Always render currency with two decimals so $2,312.50 doesn't lose its trailing
+     zero (toLocaleString() alone drops it). Used throughout this modal. */
+  const fmtUsd = n => Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 
   const ov = document.createElement('div');
   ov.id = 'reports-overlay';
@@ -5537,15 +5540,15 @@ function openReports() {
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:28px">
         <div style="background:rgba(0,229,192,.08);border:1px solid rgba(0,229,192,.2);border-radius:12px;padding:20px;text-align:center">
           <div style="font-size:11px;color:var(--muted);letter-spacing:2px;margin-bottom:6px">TOTAL COLLECTED</div>
-          <div style="font-family:var(--ff-disp);font-size:32px;color:var(--teal)">$${totalPaid.toLocaleString()}</div>
+          <div style="font-family:var(--ff-disp);font-size:32px;color:var(--teal)">$${fmtUsd(totalPaid)}</div>
         </div>
         <div style="background:rgba(245,200,66,.08);border:1px solid rgba(245,200,66,.2);border-radius:12px;padding:20px;text-align:center">
           <div style="font-size:11px;color:var(--muted);letter-spacing:2px;margin-bottom:6px">PENDING</div>
-          <div style="font-family:var(--ff-disp);font-size:32px;color:#f5c842">$${totalPending.toLocaleString()}</div>
+          <div style="font-family:var(--ff-disp);font-size:32px;color:#f5c842">$${fmtUsd(totalPending)}</div>
         </div>
         <div style="background:rgba(231,76,60,.08);border:1px solid rgba(231,76,60,.2);border-radius:12px;padding:20px;text-align:center">
           <div style="font-size:11px;color:var(--muted);letter-spacing:2px;margin-bottom:6px">OVERDUE</div>
-          <div style="font-family:var(--ff-disp);font-size:32px;color:#e74c3c">$${totalOverdue.toLocaleString()}</div>
+          <div style="font-family:var(--ff-disp);font-size:32px;color:#e74c3c">$${fmtUsd(totalOverdue)}</div>
         </div>
       </div>
 
@@ -5560,15 +5563,15 @@ function openReports() {
             return`<div style="margin-bottom:12px">
               <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
                 <span style="color:var(--white);font-weight:600">${m}</span>
-                <span style="color:var(--teal);font-weight:700">$${total.toLocaleString()} (${d.count} invoices)</span>
+                <span style="color:var(--teal);font-weight:700">$${fmtUsd(total)} (${d.count} invoices)</span>
               </div>
               <div style="background:rgba(255,255,255,.06);border-radius:4px;height:8px;overflow:hidden">
                 <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--teal),#1a6fff);border-radius:4px;transition:width .5s"></div>
               </div>
               <div style="display:flex;gap:12px;margin-top:4px;font-size:10px;color:var(--muted)">
-                ${d.paid?`<span style="color:#1D9E75">✓ Paid: $${(d.paid).toLocaleString()}</span>`:''}
-                ${d.pending?`<span style="color:#f5c842">⏳ Pending: $${(d.pending).toLocaleString()}</span>`:''}
-                ${d.overdue?`<span style="color:#e74c3c">⚠ Overdue: $${(d.overdue).toLocaleString()}</span>`:''}
+                ${d.paid?`<span style="color:#1D9E75">✓ Paid: $${fmtUsd(d.paid)}</span>`:''}
+                ${d.pending?`<span style="color:#f5c842">⏳ Pending: $${fmtUsd(d.pending)}</span>`:''}
+                ${d.overdue?`<span style="color:#e74c3c">⚠ Overdue: $${fmtUsd(d.overdue)}</span>`:''}
               </div>
             </div>`;
           }).join('')
@@ -5581,14 +5584,14 @@ function openReports() {
           <div style="font-family:var(--ff-disp);font-size:20px;color:var(--muted);min-width:24px">#${i+1}</div>
           <div style="width:36px;height:36px;border-radius:50%;background:${c.color};color:${c.tc};display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px;flex-shrink:0">${c.init}</div>
           <div style="flex:1"><div style="font-weight:700;color:var(--white);font-size:13px">${c.name}</div><div style="font-size:11px;color:var(--muted)">${c.service}</div></div>
-          <div style="font-family:var(--ff-disp);font-size:20px;color:var(--teal)">$${(c.billed||0).toLocaleString()}</div>
+          <div style="font-family:var(--ff-disp);font-size:20px;color:var(--teal)">$${fmtUsd(c.billed||0)}</div>
         </div>`).join('')}
       </div>
 
       ${renderArAgingSection()}
 
       <div style="display:flex;gap:10px;margin-top:24px">
-        <button onclick="openArAging()" style="flex:1;padding:12px;background:rgba(245,200,66,.1);border:1px solid rgba(245,200,66,.3);border-radius:8px;color:#f5c842;font-weight:700;cursor:pointer;font-size:13px">📋 A/R Aging — Full Drill-Down</button>
+        <button onclick="openArAging()" style="flex:1;padding:12px;background:rgba(245,200,66,.1);border:1px solid rgba(245,200,66,.3);border-radius:8px;color:#f5c842;font-weight:700;cursor:pointer;font-size:13px">📋 Accounts Receivable (A/R) Aging — Full Drill-Down</button>
         <button onclick="aiGenerateInsights()" style="flex:1;padding:12px;background:rgba(0,229,192,.1);border:1px solid rgba(0,229,192,.3);border-radius:8px;color:var(--teal);font-weight:700;cursor:pointer;font-size:13px">🤖 AI Business Insights</button>
         <button onclick="document.getElementById('reports-overlay').remove()" style="padding:12px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer">Close</button>
       </div>
@@ -5632,7 +5635,7 @@ function renderArAgingSection(){
   return `
     <div style="margin-top:28px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-        <div style="font-size:11px;letter-spacing:2px;color:var(--muted)">A/R AGING</div>
+        <div style="font-size:11px;letter-spacing:2px;color:var(--muted)">ACCOUNTS RECEIVABLE (A/R) AGING</div>
         <div style="font-size:11px;color:#fff">Total outstanding: <b style="color:#f5c842">${fmtMoneyShort(total)}</b></div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px">
@@ -5674,7 +5677,7 @@ function openArAging(){
   ov.innerHTML = `
     <div style="background:#142238;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:28px;width:100%;max-width:1100px;max-height:90vh;overflow-y:auto">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
-        <div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:2px;color:#f5c842">📋 A/R AGING REPORT</div>
+        <div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:2px;color:#f5c842">📋 ACCOUNTS RECEIVABLE (A/R) AGING REPORT</div>
         <button onclick="document.getElementById('ar-aging-overlay').remove()" style="background:none;border:none;color:var(--muted);font-size:24px;cursor:pointer">✕</button>
       </div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:18px">Customers with unpaid invoices, sorted by worst-aged first. Click a row to drill into that client.</div>
@@ -7594,7 +7597,7 @@ function viewClientEnhanced(clientId) {
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-bottom:20px">
         <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:13px;text-align:center">
           <div style="font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:4px">TOTAL BILLED</div>
-          <div style="font-family:var(--ff-disp);font-size:22px;color:var(--teal)">$${totalBilled.toLocaleString()}</div>
+          <div style="font-family:var(--ff-disp);font-size:22px;color:var(--teal)">$${Number(totalBilled||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
         </div>
         <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:13px;text-align:center">
           <div style="font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:4px">INVOICES</div>
