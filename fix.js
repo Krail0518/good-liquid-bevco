@@ -4248,9 +4248,17 @@
   }
   function kpiCard(label, value, sub, color){
     color = color || 'var(--teal)';
+    // Empty-state values (— em-dash, "0", null-rendered "—") should render
+    // in the muted color so they read as "no data" instead of looking like
+    // a colored progress bar (caught on the dashboard "AVG DAYS TO PAID"
+    // tile during the Playwright runtime audit — the teal em-dash at 24px
+    // looked exactly like a progress indicator).
+    var v = String(value == null ? '—' : value);
+    var isEmpty = v === '—' || v === 'n/a' || v === '0' || v === '0d';
+    var valColor = isEmpty ? 'var(--muted)' : color;
     return '<div style="background:#243a56;border:1px solid rgba(255,255,255,.06);border-radius:11px;padding:14px 16px">' +
       '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">' + label.toUpperCase() + '</div>' +
-      '<div style="font-family:var(--ff-disp);font-size:24px;font-weight:700;color:' + color + ';line-height:1">' + value + '</div>' +
+      '<div style="font-family:var(--ff-disp);font-size:24px;font-weight:700;color:' + valColor + ';line-height:1">' + v + '</div>' +
       '<div style="font-size:10px;color:var(--muted);margin-top:4px">' + sub + '</div>' +
     '</div>';
   }
