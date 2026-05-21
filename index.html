@@ -2681,7 +2681,15 @@ document.querySelectorAll('a,button,.sv,.phc,.sc,.adbox,.pni,.tc,.fac-card').for
   el.addEventListener('mouseenter',()=>cursor.classList.add('big'));
   el.addEventListener('mouseleave',()=>cursor.classList.remove('big'));
 });
-window.addEventListener('scroll',()=>document.getElementById('main-nav').classList.toggle('scrolled',window.scrollY>60));
+window.addEventListener('scroll',()=>{
+  // Null guard — portal mode (?portal=1) replaces document.body.innerHTML,
+  // removing #main-nav. Without this check, every scroll event throws
+  // "Cannot read properties of null (reading 'classList')" — Mike saw
+  // 28 of these in a 1.5s portal session during the Playwright runtime
+  // audit. The listener stays attached because we never tear it down.
+  const nav = document.getElementById('main-nav');
+  if(nav) nav.classList.toggle('scrolled', window.scrollY > 60);
+});
 
 const cv=document.getElementById('hero-canvas');
 const ctx=cv.getContext('2d');
