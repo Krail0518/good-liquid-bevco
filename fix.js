@@ -23356,12 +23356,29 @@
               ? '<span style="color:var(--muted);font-size:11px">none — uses defaults</span>'
               : '<span style="color:#6b9fff;font-size:11px">' + overrideCount + ' override' + (overrideCount===1?'':'s') + '</span>');
         var nameLabel = u.name || (u.email || '').split('@')[0] || 'user';
-        return '<tr style="cursor:pointer" onclick="window.glRenderPermMatrixFor(\'' + u.id + '\')">' +
-          '<td style="padding:12px 14px;font-weight:700">' + esc(nameLabel) + '</td>' +
+        var isOwner = (u.email||'').toLowerCase() === 'mike@goodliquid.com';
+        var isSelf  = window.currentUser && u.id === window.currentUser.id;
+        var inactive = u.status === 'inactive';
+        var nameCellExtra = inactive ? '<span style="font-size:10px;color:#ff8579;margin-left:8px">(inactive)</span>' : '';
+        // Action cluster: Manage + Deactivate/Reactivate + Remove. The
+        // workspace owner (mike@goodliquid.com) can't be removed from
+        // here — Mike has to delete his own profile from the Supabase
+        // dashboard if he really wants to. Self-removal is also blocked
+        // so an admin can't lock themselves out by accident.
+        var deactivateBtn = (isOwner || isSelf)
+          ? ''
+          : '<button class="cbtn" onclick="event.stopPropagation();window.glToggleUserActive(\'' + u.id + '\')" style="font-size:11px;padding:5px 11px;background:' + (inactive ? 'rgba(29,158,117,.14);border-color:rgba(29,158,117,.4);color:#5fcf9e' : 'rgba(245,200,66,.12);border-color:rgba(245,200,66,.35);color:#f5c842') + ';margin-right:6px">' + (inactive ? 'Reactivate' : 'Deactivate') + '</button>';
+        var removeBtn = (isOwner || isSelf)
+          ? '<span style="font-size:10px;color:var(--muted);margin-left:6px">' + (isOwner ? 'Owner' : 'You') + '</span>'
+          : '<button class="cbtn" onclick="event.stopPropagation();window.removeUser(\'' + u.id + '\')" style="font-size:11px;padding:5px 11px;background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#ff8579;margin-right:6px">Remove</button>';
+        return '<tr style="cursor:pointer' + (inactive ? ';opacity:.55' : '') + '" onclick="window.glRenderPermMatrixFor(\'' + u.id + '\')">' +
+          '<td style="padding:12px 14px;font-weight:700">' + esc(nameLabel) + nameCellExtra + '</td>' +
           '<td style="padding:12px 14px;color:var(--muted);font-size:12px">' + esc(u.email||'') + '</td>' +
           '<td style="padding:12px 14px"><span style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:' + roleColor + ';font-weight:700">' + esc(u.role||'sales') + '</span></td>' +
           '<td style="padding:12px 14px">' + overrideLabel + '</td>' +
-          '<td style="padding:12px 14px;text-align:right">' +
+          '<td style="padding:12px 14px;text-align:right;white-space:nowrap">' +
+            removeBtn +
+            deactivateBtn +
             '<button class="cbtn" onclick="event.stopPropagation();window.glRenderPermMatrixFor(\'' + u.id + '\')" style="font-size:11px;padding:5px 14px;background:rgba(0,229,192,.12);border-color:rgba(0,229,192,.35);color:var(--teal)">Manage →</button>' +
           '</td>' +
         '</tr>';
@@ -23512,6 +23529,82 @@
       await renderPermissionsPanel();
       if(typeof window.glRenderPermMatrixFor === 'function') window.glRenderPermMatrixFor(userId);
     }
+  };
+
+  /* ── glToggleUserActive — flip profiles.status between active / inactive ──
+     Powers the Deactivate/Reactivate button in the new Users & Permissions
+     team-members table. An inactive profile keeps its row in the DB (so
+     audit history stays intact) but the user can no longer use the CRM —
+     RLS policies + the in-app `can()` gate both check status. To FULLY
+     delete the user (including the Supabase auth row), go to the Supabase
+     dashboard → Authentication → Users. That step has to happen there
+     because the JS client can't admin-delete auth users (anon key has no
+     service-role privilege). */
+  window.glToggleUserActive = async function(userId){
+    var sb = getSB(); if(!sb) return;
+    if(window.currentUser && userId === window.currentUser.id){
+      alert('You can\'t deactivate yourself — that would lock you out.');
+      return;
+    }
+    // Fetch the current status from the DB (don't trust the in-memory cache,
+    // which may be stale or missing the row entirely for profiles created via
+    // auth signup).
+    var cur = await sb.from('profiles').select('id, email, name, status').eq('id', userId).maybeSingle();
+    if(cur.error || !cur.data){ alert('User lookup failed: ' + ((cur.error && cur.error.message) || 'not found')); return; }
+    var u = cur.data;
+    var nextStatus = (u.status === 'inactive') ? 'active' : 'inactive';
+    var verb = nextStatus === 'inactive' ? 'Deactivate' : 'Reactivate';
+    if(!confirm(verb + ' ' + (u.name || u.email) + '? ' +
+      (nextStatus === 'inactive'
+        ? 'They will lose CRM access immediately, but their audit history stays. You can reactivate them any time.'
+        : 'They\'ll regain CRM access at their current role.'))) return;
+    var r = await sb.from('profiles').update({ status: nextStatus, updated_at: new Date().toISOString() }).eq('id', userId);
+    if(r.error){ alert('Status change failed: ' + r.error.message); return; }
+    if(typeof window.addNotification === 'function'){
+      window.addNotification('👤 User ' + nextStatus, u.email || u.name, nextStatus === 'inactive' ? 'warning' : 'success');
+    }
+    if(typeof window.glAudit === 'function') window.glAudit('user_' + nextStatus, u.email || userId, null);
+    // Re-render the panel so the row reflects the new state.
+    if(typeof renderPermissionsPanel === 'function') renderPermissionsPanel();
+  };
+
+  /* ── removeUser fallback — original lives at the top of this IIFE but
+     bails out when `window.users` doesn't have the row (which is every
+     profile that came in via auth signup). Re-bind it so the team-members
+     table in the new panel can soft-delete those too. We keep the same
+     `window.removeUser` name so existing call sites in the old renderer
+     still work. */
+  var _origRemoveUser = window.removeUser;
+  window.removeUser = async function(id){
+    var sb = getSB(); if(!sb){ if(_origRemoveUser) return _origRemoveUser(id); return; }
+    if(window.currentUser && id === window.currentUser.id){
+      alert('You can\'t remove yourself — that would lock you out.');
+      return;
+    }
+    var cur = await sb.from('profiles').select('id, email, name').eq('id', id).maybeSingle();
+    if(cur.error || !cur.data){
+      // Fall back to the original behavior (works against window.users cache).
+      if(_origRemoveUser) return _origRemoveUser(id);
+      alert('User not found.');
+      return;
+    }
+    var u = cur.data;
+    if((u.email||'').toLowerCase() === 'mike@goodliquid.com'){
+      alert('The workspace owner can\'t be removed from here. Use the Supabase dashboard → Authentication → Users if you really need to.');
+      return;
+    }
+    if(!confirm('Remove ' + (u.name || u.email) + '?\n\n' +
+      'This soft-deletes them (status=inactive) so they immediately lose CRM access.\n\n' +
+      'Their Supabase Auth account is NOT deleted by this action — to fully purge the login, go to Supabase dashboard → Authentication → Users.')) return;
+    var r = await sb.from('profiles').update({ status: 'inactive', updated_at: new Date().toISOString() }).eq('id', id);
+    if(r.error){ alert('Remove failed: ' + r.error.message); return; }
+    if(typeof window.addNotification === 'function'){
+      window.addNotification('👤 User removed', u.email || u.name, 'warning');
+    }
+    if(typeof window.glAudit === 'function') window.glAudit('user_removed', u.email || id, null);
+    if(window.users) window.users = window.users.filter(function(x){ return x.id !== id; });
+    if(typeof renderPermissionsPanel === 'function') renderPermissionsPanel();
+    if(typeof window.renderUsers === 'function') window.renderUsers();
   };
 
   // Flip a notification preference column on a user's profiles row. Used
