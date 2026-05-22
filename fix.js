@@ -6145,9 +6145,22 @@
 
   async function postError(payload){
     try {
+      // Use the user's session JWT when available so the row passes RLS
+      // (the `error_log insert anyone authed` policy is scoped `to authenticated`).
+      // Anonymous visitors fall through to the anon key — those inserts get
+      // rejected with 401, which is fine since they wouldn't have anything
+      // useful to log anyway.
+      var token = null;
+      try {
+        if(window.supa && window.supa.auth && typeof window.supa.auth.getSession === 'function'){
+          var s = await window.supa.auth.getSession();
+          token = s && s.data && s.data.session && s.data.session.access_token;
+        }
+      } catch(_e){}
+      var headers = { apikey: SKEY, Authorization: 'Bearer ' + (token || SKEY), 'Content-Type': 'application/json', 'Prefer': 'return=minimal' };
       await fetch(SURL + '/error_log', {
         method: 'POST',
-        headers: { apikey: SKEY, Authorization: 'Bearer ' + SKEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        headers: headers,
         body: JSON.stringify(payload),
         keepalive: true
       });
@@ -18753,7 +18766,7 @@
         '<span style="font-size:16px">🙈</span>' +
         '<div style="flex:1"><b>Applicability filter active</b> — hiding ' + hidden.size + ' task type' + (hidden.size===1?'':'s') +
           (hiddenCount ? ' (' + hiddenCount + ' card' + (hiddenCount===1?'':'s') + ' hidden today)' : ' (no matching tasks today)') +
-          '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">Hidden: ' + escHtml(hiddenLabels) + '</div>' +
+          '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">Hidden: ' + String(hiddenLabels).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }) + '</div>' +
         '</div>' +
         '<button id="gl-applic-banner-edit" style="background:rgba(196,164,248,.14);border:1px solid rgba(196,164,248,.4);color:#c4a4f8;font-size:11px;padding:5px 11px;border-radius:5px;cursor:pointer">Edit</button>' +
         '<button id="gl-applic-banner-clear" style="background:none;border:1px solid rgba(255,255,255,.12);color:#9aa7bd;font-size:11px;padding:5px 11px;border-radius:5px;cursor:pointer">Show all</button>';
