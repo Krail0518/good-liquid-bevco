@@ -12414,7 +12414,7 @@
         var details = r.details ? '<code style="font-family:var(--ff-mono);font-size:11px;color:var(--muted);max-width:240px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(JSON.stringify(r.details)) + '</code>' : '<span style="color:rgba(255,255,255,.2)">—</span>';
         return '<tr>' +
           '<td style="padding:11px;color:var(--muted);font-size:11px;white-space:nowrap">' + when + '</td>' +
-          '<td style="padding:11px;color:var(--white);font-size:12px">' + esc(r.actor || 'system') + '</td>' +
+          '<td style="padding:11px;color:var(--white);font-size:12px">' + esc(r.actor_email || r.actor || 'system') + '</td>' +
           '<td style="padding:11px;color:var(--teal);font-family:var(--ff-mono);font-size:11px">' + esc(r.action) + '</td>' +
           '<td style="padding:11px;color:var(--muted);font-size:12px">' + esc(r.target || '—') + '</td>' +
           '<td style="padding:11px">' + details + '</td>' +
