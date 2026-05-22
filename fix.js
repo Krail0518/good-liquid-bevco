@@ -76,6 +76,16 @@
     return d.toLocaleDateString('en-US', opts);
   };
 
+  /* ── USD currency formatter with enforced two-decimal precision ──
+     Plain `.toLocaleString()` on a number drops trailing fractional zeros
+     ($2,312.50 → "$2,312.5") which looks like a glitch on every invoice,
+     KPI tile, and total line. Use window.fmtUsd(n) anywhere a dollar
+     amount is shown to a user. Returns the bare numeric string — caller
+     prepends the '$'. */
+  window.fmtUsd = window.fmtUsd || function(n){
+    return Number(n||0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
   /* ── INTERCEPT ALL NEW INVOICE ENTRY POINTS ──
        The original cNav lives in index.html. We only need to wrap it once;
        the perm-gate is added below in the same wrap. */

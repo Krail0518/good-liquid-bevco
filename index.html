@@ -2809,7 +2809,7 @@ function openCustomerPortal(customer){
     clientInvoices.map(i=>`<tr>
       <td style="font-family:var(--ff-mono);font-size:11px">${i.id}</td>
       <td>${i.svc.substring(0,30)}…</td>
-      <td style="font-weight:700">$${i.amount.toLocaleString()}</td>
+      <td style="font-weight:700">$${(window.fmtUsd?window.fmtUsd(i.amount):Number(i.amount||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))}</td>
       <td>${i.date}</td>
       <td><span class="cbdg ${i.status}">${i.status}</span></td>
     </tr>`).join('') :
@@ -3057,7 +3057,7 @@ function renderClients(list){
       <td style="color:var(--muted)">${c.contact}</td>
       <td style="color:var(--muted)">${c.service}</td>
       <td><span class="cbdg ${c.status}">${c.status}</span></td>
-      <td style="font-weight:600">$${billed.toLocaleString()}</td>
+      <td style="font-weight:600">$${Number(billed||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
       <td style="color:var(--muted)">${ref?`🤝 ${ref.name}`:'-'}</td>
       <td onclick="event.stopPropagation()" style="white-space:nowrap">
         <button class="cbtn" style="font-size:10px;padding:3px 9px" onclick="createForClient('${c.id}')">+ Invoice</button>
@@ -3145,7 +3145,7 @@ function renderInvoices(){
     <td style="font-weight:600;color:var(--teal)">${i.id}</td>
     <td>${i.clientName}</td>
     <td style="color:var(--muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.svc}</td>
-    <td style="font-weight:600">$${i.amount.toLocaleString()}</td>
+    <td style="font-weight:600">$${(window.fmtUsd?window.fmtUsd(i.amount):Number(i.amount||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))}</td>
     <td style="color:var(--muted)">${i.date}</td>
     <td><span class="cbdg ${i.status}">${i.status}</span></td>
     <td onclick="event.stopPropagation()"><div style="display:flex;gap:3px">
@@ -3231,7 +3231,7 @@ function viewInvoice(id){
         })()}</tbody>
       </table>
       <div style="text-align:right;padding:10px 0">
-        <div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:1px;color:var(--teal)">Total Due: $${inv.amount.toLocaleString()}</div>
+        <div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:1px;color:var(--teal)">Total Due: $${(window.fmtUsd?window.fmtUsd(inv.amount):Number(inv.amount||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))}</div>
       </div>
       ${inv.notes?`<div style="margin-top:12px;padding:11px;background:rgba(255,255,255,.04);border-radius:7px;font-size:11px;color:var(--muted)">${inv.notes}</div>`:''}
       <div style="margin-top:18px;padding:14px;background:rgba(0,229,192,.05);border:1px solid rgba(0,229,192,.18);border-radius:8px">
@@ -3318,12 +3318,12 @@ function renderReferrals(){
         <div><div style="font-size:12px;font-weight:600;color:var(--white)">${ref.name}</div><div style="font-size:10px;color:var(--muted)">${ref.rel||''}</div></div>
       </div></td>
       <td style="font-weight:600">${r.clientName}</td>
-      <td style="color:var(--muted)">$${r.dealValue.toLocaleString()}</td>
+      <td style="color:var(--muted)">$${(window.fmtUsd?window.fmtUsd(r.dealValue):Number(r.dealValue||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))}</td>
       <td style="color:var(--muted)">${r.rate}%</td>
-      <td style="font-weight:600;color:var(--teal)">$${r.commAmount.toLocaleString()}</td>
+      <td style="font-weight:600;color:var(--teal)">$${(window.fmtUsd?window.fmtUsd(r.commAmount):Number(r.commAmount||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))}</td>
       <td><span class="cbdg ${r.status==='won'?'earned':r.status}">${r.status==='won'?'Comm. earned':r.status==='paid'?'Paid out':r.status==='presented'?'Presented':r.status==='lead'?'Lead ref.':'Lost'}</span></td>
       <td><div style="display:flex;gap:3px">
-        ${r.status==='won'?`<button class="cbtn grn" style="font-size:10px;padding:3px 8px" onclick="payComm('${r.id}')">Pay $${r.commAmount.toLocaleString()}</button>`:''}
+        ${r.status==='won'?`<button class="cbtn grn" style="font-size:10px;padding:3px 8px" onclick="payComm('${r.id}')">Pay $${(window.fmtUsd?window.fmtUsd(r.commAmount):Number(r.commAmount||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))}</button>`:''}
         ${r.status==='lead'?`<button class="cbtn amber" style="font-size:10px;padding:3px 8px" onclick="updateRefStatus('${r.id}','presented')">→ Presented</button>`:''}
         ${r.status==='presented'?`<button class="cbtn grn" style="font-size:10px;padding:3px 8px" onclick="updateRefStatus('${r.id}','won')">Won ✓</button><button class="cbtn red" style="font-size:10px;padding:3px 8px" onclick="updateRefStatus('${r.id}','lost')">Lost</button>`:''}
         ${r.status==='paid'?`<span class="paid-tag">✓ Paid ${r.datePaid||''}</span>`:''}
@@ -3546,9 +3546,10 @@ function updatePreview(){
     const c=clients.find(x=>x.id===cid);
     const date=document.getElementById('inv-date').value||new Date().toISOString().split('T')[0];
     const num='GL-'+new Date().getFullYear()+'-'+(invoices.length+1).toString().padStart(3,'0');
+    const fmtUsd = n => (window.fmtUsd ? window.fmtUsd(n) : Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}));
     document.getElementById('live-total').innerHTML=
-      lines.map(l=>`<div class="tot-line"><span>${l.d}</span><span>$${l.a.toLocaleString()}</span></div>`).join('')+
-      `<div class="tot-final"><span>Total</span><span>$${total.toLocaleString()}</span></div>`;
+      lines.map(l=>`<div class="tot-line"><span>${l.d}</span><span>$${fmtUsd(l.a)}</span></div>`).join('')+
+      `<div class="tot-final"><span>Total</span><span>$${fmtUsd(total)}</span></div>`;
     document.getElementById('inv-preview-box').innerHTML=`
       <div class="inv-top">
         <div><div class="inv-co" style="font-size:11px">${GL.name}</div><div style="font-size:10px;color:var(--muted)">${GL.addr}</div></div>
@@ -3557,9 +3558,9 @@ function updatePreview(){
       <div style="margin-bottom:10px"><div style="font-size:9px;color:var(--muted);margin-bottom:2px">BILL TO</div><div style="font-weight:600;font-size:12px;color:var(--white)">${c?c.name:'[Select client]'}</div></div>
       <table style="width:100%;border-collapse:collapse;font-size:10px">
         <thead><tr><th style="text-align:left;padding:4px;background:rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.07);color:var(--muted)">Description</th><th style="text-align:right;padding:4px;background:rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.07);color:var(--muted)">Amount</th></tr></thead>
-        <tbody>${lines.map(l=>`<tr><td style="padding:5px;border-bottom:1px solid rgba(255,255,255,.05);color:var(--white)">${l.d}</td><td style="padding:5px;text-align:right;border-bottom:1px solid rgba(255,255,255,.05);color:var(--white)">$${l.a.toLocaleString()}</td></tr>`).join('')}</tbody>
+        <tbody>${lines.map(l=>`<tr><td style="padding:5px;border-bottom:1px solid rgba(255,255,255,.05);color:var(--white)">${l.d}</td><td style="padding:5px;text-align:right;border-bottom:1px solid rgba(255,255,255,.05);color:var(--white)">$${fmtUsd(l.a)}</td></tr>`).join('')}</tbody>
       </table>
-      <div style="text-align:right;margin-top:8px;font-family:var(--ff-disp);font-size:16px;color:var(--teal)">$${total.toLocaleString()}</div>`;
+      <div style="text-align:right;margin-top:8px;font-family:var(--ff-disp);font-size:16px;color:var(--teal)">$${fmtUsd(total)}</div>`;
   }catch(e){}
 }
 
