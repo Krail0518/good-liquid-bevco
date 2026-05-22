@@ -23310,6 +23310,12 @@
     var customerIds = {};
     (cuR && cuR.data || []).forEach(function(r){ if(r.active !== false) customerIds[r.auth_user_id] = true; });
     var staff = allProfiles.filter(function(p){ return !customerIds[p.id]; });
+    // Keep the page header count honest — the legacy renderUsers() in
+    // index.html writes "N team members" from a stale in-memory list
+    // that doesn't include profiles created via auth signup. The real
+    // staff list is the one we just queried above.
+    var hdr = document.getElementById('users-sub');
+    if(hdr) hdr.textContent = staff.length + ' team member' + (staff.length === 1 ? '' : 's');
     // Refresh full user_permissions snapshot for the matrix
     var allPerms = await sb.from('user_permissions').select('user_id, component_id, granted');
     var byUser = {};
