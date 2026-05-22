@@ -452,8 +452,15 @@
     var uuidRe=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if(sb&&uuidRe.test(u.id||'')){
       try{
-        var r=await sb.from('profiles').update({status:'inactive',updated_at:new Date().toISOString()}).eq('id',u.id);
-        if(r.error)console.warn('[GL] profile status update failed',r.error);
+        // updated_at is bumped automatically by the trg_profiles_updated_at
+        // trigger (see 20260522_profiles_updated_at.sql) — don't send it
+        // here or the UPDATE 400's against deployments that haven't run
+        // the migration yet.
+        var r=await sb.from('profiles').update({status:'inactive'}).eq('id',u.id);
+        if(r.error){
+          console.warn('[GL] profile status update failed',r.error);
+          if(typeof addNotification==='function') addNotification('Remove failed', r.error.message, 'error');
+        }
       }catch(e){console.error('[GL] removeUser profile update threw',e);}
     }
     if(window.users)window.users=window.users.filter(function(x){return x.id!==id;});
@@ -23558,7 +23565,12 @@
       (nextStatus === 'inactive'
         ? 'They will lose CRM access immediately, but their audit history stays. You can reactivate them any time.'
         : 'They\'ll regain CRM access at their current role.'))) return;
-    var r = await sb.from('profiles').update({ status: nextStatus, updated_at: new Date().toISOString() }).eq('id', userId);
+    // updated_at is bumped automatically by trg_profiles_updated_at; sending
+    // it explicitly would 400 against deployments that haven't run the
+    // 20260522_profiles_updated_at migration yet (originally caught when
+    // Mike clicked Deactivate on Danny and got "Could not find the
+    // 'updated_at' column" — the click silently bounced).
+    var r = await sb.from('profiles').update({ status: nextStatus }).eq('id', userId);
     if(r.error){ alert('Status change failed: ' + r.error.message); return; }
     if(typeof window.addNotification === 'function'){
       window.addNotification('👤 User ' + nextStatus, u.email || u.name, nextStatus === 'inactive' ? 'warning' : 'success');
@@ -23596,7 +23608,9 @@
     if(!confirm('Remove ' + (u.name || u.email) + '?\n\n' +
       'This soft-deletes them (status=inactive) so they immediately lose CRM access.\n\n' +
       'Their Supabase Auth account is NOT deleted by this action — to fully purge the login, go to Supabase dashboard → Authentication → Users.')) return;
-    var r = await sb.from('profiles').update({ status: 'inactive', updated_at: new Date().toISOString() }).eq('id', id);
+    // updated_at is bumped by trg_profiles_updated_at — see comment in
+    // glToggleUserActive above for context.
+    var r = await sb.from('profiles').update({ status: 'inactive' }).eq('id', id);
     if(r.error){ alert('Remove failed: ' + r.error.message); return; }
     if(typeof window.addNotification === 'function'){
       window.addNotification('👤 User removed', u.email || u.name, 'warning');
