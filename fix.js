@@ -76,6 +76,16 @@
     return d.toLocaleDateString('en-US', opts);
   };
 
+  /* ── USD currency formatter with enforced two-decimal precision ──
+     Plain `.toLocaleString()` on a number drops trailing fractional zeros
+     ($2,312.50 → "$2,312.5") which looks like a glitch on every invoice,
+     KPI tile, and total line. Use window.fmtUsd(n) anywhere a dollar
+     amount is shown to a user. Returns the bare numeric string — caller
+     prepends the '$'. */
+  window.fmtUsd = window.fmtUsd || function(n){
+    return Number(n||0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
   /* ── INTERCEPT ALL NEW INVOICE ENTRY POINTS ──
        The original cNav lives in index.html. We only need to wrap it once;
        the perm-gate is added below in the same wrap. */
@@ -6135,9 +6145,22 @@
 
   async function postError(payload){
     try {
+      // Use the user's session JWT when available so the row passes RLS
+      // (the `error_log insert anyone authed` policy is scoped `to authenticated`).
+      // Anonymous visitors fall through to the anon key — those inserts get
+      // rejected with 401, which is fine since they wouldn't have anything
+      // useful to log anyway.
+      var token = null;
+      try {
+        if(window.supa && window.supa.auth && typeof window.supa.auth.getSession === 'function'){
+          var s = await window.supa.auth.getSession();
+          token = s && s.data && s.data.session && s.data.session.access_token;
+        }
+      } catch(_e){}
+      var headers = { apikey: SKEY, Authorization: 'Bearer ' + (token || SKEY), 'Content-Type': 'application/json', 'Prefer': 'return=minimal' };
       await fetch(SURL + '/error_log', {
         method: 'POST',
-        headers: { apikey: SKEY, Authorization: 'Bearer ' + SKEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        headers: headers,
         body: JSON.stringify(payload),
         keepalive: true
       });
@@ -12391,7 +12414,7 @@
         var details = r.details ? '<code style="font-family:var(--ff-mono);font-size:11px;color:var(--muted);max-width:240px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(JSON.stringify(r.details)) + '</code>' : '<span style="color:rgba(255,255,255,.2)">—</span>';
         return '<tr>' +
           '<td style="padding:11px;color:var(--muted);font-size:11px;white-space:nowrap">' + when + '</td>' +
-          '<td style="padding:11px;color:var(--white);font-size:12px">' + esc(r.actor || 'system') + '</td>' +
+          '<td style="padding:11px;color:var(--white);font-size:12px">' + esc(r.actor_email || r.actor || 'system') + '</td>' +
           '<td style="padding:11px;color:var(--teal);font-family:var(--ff-mono);font-size:11px">' + esc(r.action) + '</td>' +
           '<td style="padding:11px;color:var(--muted);font-size:12px">' + esc(r.target || '—') + '</td>' +
           '<td style="padding:11px">' + details + '</td>' +
@@ -18743,7 +18766,7 @@
         '<span style="font-size:16px">🙈</span>' +
         '<div style="flex:1"><b>Applicability filter active</b> — hiding ' + hidden.size + ' task type' + (hidden.size===1?'':'s') +
           (hiddenCount ? ' (' + hiddenCount + ' card' + (hiddenCount===1?'':'s') + ' hidden today)' : ' (no matching tasks today)') +
-          '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">Hidden: ' + escHtml(hiddenLabels) + '</div>' +
+          '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">Hidden: ' + String(hiddenLabels).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }) + '</div>' +
         '</div>' +
         '<button id="gl-applic-banner-edit" style="background:rgba(196,164,248,.14);border:1px solid rgba(196,164,248,.4);color:#c4a4f8;font-size:11px;padding:5px 11px;border-radius:5px;cursor:pointer">Edit</button>' +
         '<button id="gl-applic-banner-clear" style="background:none;border:1px solid rgba(255,255,255,.12);color:#9aa7bd;font-size:11px;padding:5px 11px;border-radius:5px;cursor:pointer">Show all</button>';
@@ -23287,6 +23310,12 @@
     var customerIds = {};
     (cuR && cuR.data || []).forEach(function(r){ if(r.active !== false) customerIds[r.auth_user_id] = true; });
     var staff = allProfiles.filter(function(p){ return !customerIds[p.id]; });
+    // Keep the page header count honest — the legacy renderUsers() in
+    // index.html writes "N team members" from a stale in-memory list
+    // that doesn't include profiles created via auth signup. The real
+    // staff list is the one we just queried above.
+    var hdr = document.getElementById('users-sub');
+    if(hdr) hdr.textContent = staff.length + ' team member' + (staff.length === 1 ? '' : 's');
     // Refresh full user_permissions snapshot for the matrix
     var allPerms = await sb.from('user_permissions').select('user_id, component_id, granted');
     var byUser = {};
