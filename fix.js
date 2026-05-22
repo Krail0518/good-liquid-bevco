@@ -62,6 +62,20 @@
     setTimeout(attach, 500); // run again after dynamic content loads
   })();
 
+  /* ── Timezone-naive date formatter ──
+     `new Date("2026-05-20")` parses YYYY-MM-DD as UTC midnight, so any timezone
+     west of UTC renders the PREVIOUS day. Caught when a Florida-scheduled
+     2026-05-20 run displayed "May 19" in the kanban + clients page + run sheet.
+     Use window.fmtLocalDate(s, opts) for any date column persisted as a bare
+     ISO date string. Accepts the same options object as toLocaleDateString. */
+  window.fmtLocalDate = window.fmtLocalDate || function(s, opts){
+    if(!s) return '';
+    var str = String(s);
+    var m = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    var d = m ? new Date(+m[1], +m[2]-1, +m[3]) : new Date(str);
+    return d.toLocaleDateString('en-US', opts);
+  };
+
   /* ── INTERCEPT ALL NEW INVOICE ENTRY POINTS ──
        The original cNav lives in index.html. We only need to wrap it once;
        the perm-gate is added below in the same wrap. */
@@ -4248,9 +4262,17 @@
   }
   function kpiCard(label, value, sub, color){
     color = color || 'var(--teal)';
+    // Empty-state values (— em-dash, "0", null-rendered "—") should render
+    // in the muted color so they read as "no data" instead of looking like
+    // a colored progress bar (caught on the dashboard "AVG DAYS TO PAID"
+    // tile during the Playwright runtime audit — the teal em-dash at 24px
+    // looked exactly like a progress indicator).
+    var v = String(value == null ? '—' : value);
+    var isEmpty = v === '—' || v === 'n/a' || v === '0' || v === '0d';
+    var valColor = isEmpty ? 'var(--muted)' : color;
     return '<div style="background:#243a56;border:1px solid rgba(255,255,255,.06);border-radius:11px;padding:14px 16px">' +
       '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">' + label.toUpperCase() + '</div>' +
-      '<div style="font-family:var(--ff-disp);font-size:24px;font-weight:700;color:' + color + ';line-height:1">' + value + '</div>' +
+      '<div style="font-family:var(--ff-disp);font-size:24px;font-weight:700;color:' + valColor + ';line-height:1">' + v + '</div>' +
       '<div style="font-size:10px;color:var(--muted);margin-top:4px">' + sub + '</div>' +
     '</div>';
   }
@@ -9583,7 +9605,7 @@
       var color = STAGE_COLOR[stage];
       var cards = byStage[stage].map(function(r){
         var clientName = r.client_name || ((window.clients||[]).find(function(c){ return c.id === r.client_id; })||{}).name || '—';
-        var sched = r.scheduled_date ? new Date(r.scheduled_date).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—';
+        var sched = r.scheduled_date ? window.fmtLocalDate(r.scheduled_date, {month:'short',day:'numeric'}) : '—';
         var cases = r.cases ? Number(r.cases).toLocaleString() + ' cs' : '';
         return '<div class="gl-prun-card" data-id="' + esc(r.id) + '" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:11px 13px;margin-bottom:9px;cursor:pointer;transition:border-color .15s" onmouseover="this.style.borderColor=\'rgba(0,229,192,.35)\'" onmouseout="this.style.borderColor=\'rgba(255,255,255,.08)\'">' +
           '<div style="font-size:13px;color:var(--white);font-weight:600;margin-bottom:4px">' + esc(r.run_name || '(untitled)') + '</div>' +
@@ -10144,7 +10166,7 @@
     }
     var rowsHtml = rows.map(function(s){
       var clientName = s.client_name || ((window.clients||[]).find(function(c){ return c.id === s.client_id; })||{}).name || '—';
-      var shipDate = s.shipped_date ? new Date(s.shipped_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+      var shipDate = s.shipped_date ? window.fmtLocalDate(s.shipped_date, {month:'short',day:'numeric',year:'numeric'}) : '—';
       var followBadge = '';
       if(s.status === 'responded'){
         followBadge = '<span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(29,158,117,.15);color:#5fcf9e;border:1px solid rgba(29,158,117,.35)">✓ Responded</span>';
@@ -10847,7 +10869,7 @@
         (data.runs.length
           ? '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden">' +
               data.runs.map(function(r, i){
-                var sched = r.scheduled_date ? new Date(r.scheduled_date).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—';
+                var sched = r.scheduled_date ? window.fmtLocalDate(r.scheduled_date, {month:'short',day:'numeric'}) : '—';
                 return '<div style="padding:14px 18px;display:flex;justify-content:space-between;align-items:center' + (i < data.runs.length - 1 ? ';border-bottom:1px solid rgba(255,255,255,.05)' : '') + '">' +
                   '<div><div style="font-size:13px;color:#fff;font-weight:600">' + esc(r.run_name || '(run)') + '</div>' +
                   '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">' + esc(r.format || '—') + (r.cases ? ' · ' + Number(r.cases).toLocaleString() + ' cases' : '') + ' · 📅 ' + sched + '</div></div>' +
@@ -10863,7 +10885,7 @@
         (data.samples.length
           ? '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden">' +
               data.samples.map(function(s, i){
-                var shipDate = s.shipped_date ? new Date(s.shipped_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+                var shipDate = s.shipped_date ? window.fmtLocalDate(s.shipped_date, {month:'short',day:'numeric',year:'numeric'}) : '—';
                 return '<div style="padding:14px 18px;display:flex;justify-content:space-between;align-items:center' + (i < data.samples.length - 1 ? ';border-bottom:1px solid rgba(255,255,255,.05)' : '') + '">' +
                   '<div><div style="font-size:13px;color:#fff;font-weight:600">' + esc(s.kind || 'Sample') + (s.qty ? ' · ' + s.qty + ' unit' + (s.qty === 1 ? '' : 's') : '') + '</div>' +
                   '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">Shipped ' + shipDate + (s.carrier ? ' via ' + esc(s.carrier) : '') + (s.tracking ? ' · ' + esc(s.tracking) : '') + '</div></div>' +
@@ -10879,7 +10901,7 @@
         (data.invoices.length
           ? '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden">' +
               data.invoices.map(function(inv, i){
-                var d = inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+                var d = inv.invoice_date ? window.fmtLocalDate(inv.invoice_date, {month:'short',day:'numeric',year:'numeric'}) : '—';
                 return '<div style="padding:14px 18px;display:flex;justify-content:space-between;align-items:center' + (i < data.invoices.length - 1 ? ';border-bottom:1px solid rgba(255,255,255,.05)' : '') + '">' +
                   '<div><div style="font-size:13px;color:#fff;font-weight:600">' + esc(inv.invoice_number || inv.id) + ' · ' + fmt$(inv.amount) + '</div>' +
                   '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">' + esc(inv.service || '') + ' · ' + d + '</div></div>' +
@@ -10929,7 +10951,7 @@
     var allergenList = allergens.length
       ? allergens.map(function(a){ return allergenMap[a] || a; }).join(' · ')
       : '<span style="color:#666">None declared</span>';
-    var sched = run.scheduled_date ? new Date(run.scheduled_date).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}) : '—';
+    var sched = run.scheduled_date ? window.fmtLocalDate(run.scheduled_date, {weekday:'long',month:'long',day:'numeric',year:'numeric'}) : '—';
 
     return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Run Sheet · ' + esc(run.run_name||'') + '</title>' +
       '<style>' +
@@ -11064,7 +11086,7 @@
     var totalRev  = rows.reduce(function(s,r){ return s + (Number(r.revenue)||0); }, 0);
     var totalROI  = roi({ cost: totalCost, revenue: totalRev });
     var rowsHtml = rows.map(function(r){
-      var d = r.show_date ? new Date(r.show_date).toLocaleDateString('en-US',{month:'short',year:'numeric'}) : '—';
+      var d = r.show_date ? window.fmtLocalDate(r.show_date, {month:'short',year:'numeric'}) : '—';
       var p = roi(r);
       return '<tr style="cursor:pointer" onclick="window.glEditTradeShow(\'' + esc(r.id) + '\')">' +
         '<td style="padding:11px;font-weight:600;color:var(--white)">' + esc(r.name || '(untitled)') + '</td>' +
@@ -13581,11 +13603,11 @@
         '</div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
           '<div class="frow"><div class="flbl">Lead time (days)</div><input class="finp" id="gl-ven-lead" type="number" min="0" value="' + esc(v.lead_time_days) + '"></div>' +
-          '<div class="frow"><div class="flbl">MOQ</div><input class="finp" id="gl-ven-moq" value="' + esc(v.moq) + '" placeholder="e.g. 50,000 cans"></div>' +
+          '<div class="frow"><div class="flbl">Minimum Order Quantity (MOQ)</div><input class="finp" id="gl-ven-moq" value="' + esc(v.moq) + '" placeholder="e.g. 50,000 cans"></div>' +
         '</div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
           '<div class="frow"><div class="flbl">Payment terms</div><input class="finp" id="gl-ven-terms" value="' + esc(v.payment_terms) + '" placeholder="e.g. Net 30"></div>' +
-          '<div class="frow"><div class="flbl">COI expires</div><input class="finp" id="gl-ven-coi" type="date" value="' + esc(v.coi_expires) + '"></div>' +
+          '<div class="frow"><div class="flbl">Certificate of Insurance (COI) expires</div><input class="finp" id="gl-ven-coi" type="date" value="' + esc(v.coi_expires) + '"></div>' +
         '</div>' +
         '<div class="frow"><div class="flbl">Notes</div><textarea class="finp" id="gl-ven-notes" rows="3">' + esc(v.notes) + '</textarea></div>' +
         '<div style="display:flex;gap:8px;margin-top:6px">' +
@@ -21295,19 +21317,27 @@
     setTimeout(function(){ d.remove(); }, 4500);
   }
 
-  // Wrap sendMailgunEmail to log every send.
-  // Mailgun returns { id: '<message-id>' } in the JSON body — we'd need to
-  // parse the response to capture it. For now, log basic metadata; the
-  // mailgun_id can be backfilled if/when the wrapper is upgraded to parse
-  // the response body. The webhook Edge Function correlates by subject
-  // + recipient + timestamp as a fallback.
+  // Wrap sendMailgunEmail to log every send to email_log.
+  // The underlying sendMailgunEmail (index.html) now stashes the Mailgun
+  // message id on `sendMailgunEmail._lastMailgunId` after each successful
+  // send. We grab it here and write it as `mailgun_id` on the email_log
+  // row so the mailgun-webhook Edge Function can match incoming
+  // delivered/opened/clicked events back to the right row. Without that
+  // link, every email got stuck on "sent" status forever even when the
+  // webhook fired correctly (caught via Playwright runtime audit
+  // 2026-05-21 — GL-1003 send was 1d old with no Delivered/Opened state).
   (function wrapSend(){
     var orig = window.sendMailgunEmail;
     if(typeof orig !== 'function') { setTimeout(wrapSend, 500); return; }
     if(orig.__glLogged) return;
     window.sendMailgunEmail = async function(to, subject, body, opts){
       var sb = getSB();
+      // Clear any stale id before the call so a failed send doesn't
+      // accidentally re-use the previous send's id.
+      try { orig._lastMailgunId = null; } catch(e){}
       var ok = await orig.apply(this, arguments);
+      var mailgunId = null;
+      try { mailgunId = orig._lastMailgunId || null; } catch(e){}
       // Best-effort log — don't block on errors
       try {
         var ccArr = [];
@@ -21333,6 +21363,7 @@
             if(matched && matched.supaId) invSupaId = matched.supaId;
           }
           await sb.from('email_log').insert({
+            mailgun_id: mailgunId,
             to_email: Array.isArray(to) ? to.join(', ') : (to||''),
             cc_emails: ccArr.length ? ccArr : null,
             bcc_emails: bccArr.length ? bccArr : null,
@@ -22134,6 +22165,17 @@
     }).join('') : '<div style="padding:30px;text-align:center;color:#6b87ad;font-size:13px">No invoices yet.</div>';
 
     var PR_STAGE_COLOR = { Discovery:'#9aa7bd', Formulation:'#6b9fff', Sample:'#c4b5fd', COA:'#f5c842', Production:'#00e5c0', Ship:'#5fcf9e' };
+    // Parse a Postgres `date` column (YYYY-MM-DD) as a LOCAL date — not UTC.
+    // `new Date("2026-05-20")` interprets the string as UTC midnight, which
+    // then renders as the PREVIOUS DAY in any timezone west of UTC (caught
+    // during Playwright runtime audit — Mike in FL saw a 2026-05-20 run
+    // displayed as "5/19/2026"). Forcing the timezone-naive parse here.
+    function fmtLocalDate(s){
+      if(!s) return '';
+      var m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if(m) return new Date(+m[1], +m[2]-1, +m[3]).toLocaleDateString();
+      return new Date(s).toLocaleDateString();
+    }
     var prRowsHtml = prs.length ? prs.map(function(p){
       var color = PR_STAGE_COLOR[p.stage] || '#9aa7bd';
       // Prefer the new start/end columns; fall back to legacy scheduled_date.
@@ -22141,9 +22183,9 @@
       var endDate   = p.scheduled_end_date;
       var dateLbl   = 'TBD';
       if(startDate){
-        var s = new Date(startDate).toLocaleDateString();
+        var s = fmtLocalDate(startDate);
         if(endDate && endDate !== startDate){
-          dateLbl = s + ' → ' + new Date(endDate).toLocaleDateString();
+          dateLbl = s + ' → ' + fmtLocalDate(endDate);
         } else {
           dateLbl = s;
         }
@@ -22179,7 +22221,7 @@
     }
     var shRowsHtml = shs.length ? shs.map(function(s){
       var color = SH_STATUS_COLOR[s.status] || '#9aa7bd';
-      var dateLbl = s.shipped_date ? new Date(s.shipped_date).toLocaleDateString() : '—';
+      var dateLbl = s.shipped_date ? fmtLocalDate(s.shipped_date) : '—';
       var meta = [];
       if(s.kind) meta.push(escHtml(s.kind));
       if(s.qty) meta.push(escHtml(String(s.qty)) + ' unit' + (s.qty===1?'':'s'));
@@ -22358,9 +22400,23 @@
     }
     function fld(id, label, val, type, placeholder){
       type = type || 'text';
+      // Force autocomplete="new-password" on any password input rendered by
+      // this helper. The Account Settings modal uses it ONLY for the
+      // "change password" + "confirm password" fields (no sign-in form
+      // routes through here). Without this hint, Chrome / 1Password /
+      // Edge silently autofill the user's SAVED LOGIN password into the
+      // "New password" field — caught during the Playwright runtime
+      // audit on 2026-05-21, where the modal opened with a 9-character
+      // password already in place. If the user clicked Save without
+      // noticing, they would have silently set their password to
+      // whatever the browser had remembered. autocomplete="new-password"
+      // tells autofill systems "this is a brand-new password being
+      // created" and they leave it alone.
+      var extra = '';
+      if(type === 'password') extra = ' autocomplete="new-password"';
       return '<div style="margin-bottom:12px">' +
         '<div style="font-size:10px;letter-spacing:1.5px;color:#6b87ad;margin-bottom:4px;text-transform:uppercase">' + escHtml(label) + '</div>' +
-        '<input id="' + id + '" type="' + type + '" value="' + escHtml(val||'') + '" placeholder="' + escHtml(placeholder||'') + '" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#eef4ff;font-size:13px;box-sizing:border-box">' +
+        '<input id="' + id + '" type="' + type + '"' + extra + ' value="' + escHtml(val||'') + '" placeholder="' + escHtml(placeholder||'') + '" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#eef4ff;font-size:13px;box-sizing:border-box">' +
       '</div>';
     }
     function chk(id, label, val){
