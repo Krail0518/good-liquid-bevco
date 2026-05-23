@@ -23321,8 +23321,17 @@
     // index.html writes "N team members" from a stale in-memory list
     // that doesn't include profiles created via auth signup. The real
     // staff list is the one we just queried above.
+    var activeStaffCount = staff.filter(function(p){ return p.status !== 'inactive'; }).length;
+    var inactiveStaffCount = staff.length - activeStaffCount;
     var hdr = document.getElementById('users-sub');
-    if(hdr) hdr.textContent = staff.length + ' team member' + (staff.length === 1 ? '' : 's');
+    if(hdr){
+      // Show "N active" by default since the table itself hides inactive
+      // rows. If there are inactive members, note them so admins know
+      // they exist (a click on the toggle link in TEAM MEMBERS header
+      // brings them back into view).
+      hdr.textContent = activeStaffCount + ' active team member' + (activeStaffCount === 1 ? '' : 's') +
+        (inactiveStaffCount ? ' (+ ' + inactiveStaffCount + ' inactive)' : '');
+    }
     // Refresh full user_permissions snapshot for the matrix
     var allPerms = await sb.from('user_permissions').select('user_id, component_id, granted');
     var byUser = {};
@@ -23354,7 +23363,23 @@
 
     function userListHtml(){
       if(!staff.length) return '<div style="color:var(--muted);padding:20px 0">No staff users found.</div>';
-      var rows = staff.map(function(u){
+      // Inactive users are hidden by default so Remove / Deactivate actually
+      // makes the row go away — that was Mike's call-out after fix #18
+      // shipped. The header gets a toggle link to show them again. Toggle
+      // state lives on the perms object so it survives the re-render that
+      // glToggleUserActive / window.removeUser kick off.
+      if(typeof perms.showInactive === 'undefined') perms.showInactive = false;
+      var inactiveStaff = staff.filter(function(u){ return u.status === 'inactive'; });
+      var visibleStaff = perms.showInactive ? staff : staff.filter(function(u){ return u.status !== 'inactive'; });
+      if(!visibleStaff.length){
+        // Edge case: every staff row is inactive AND we're filtering them
+        // out — show an empty state that explains how to bring them back.
+        var emptyToggle = inactiveStaff.length
+          ? ' <a href="#" onclick="event.preventDefault();window.glToggleInactiveVisibility();" style="color:var(--teal);text-decoration:none">Show ' + inactiveStaff.length + ' inactive</a>'
+          : '';
+        return '<div style="color:var(--muted);padding:20px 0">No active staff to show.' + emptyToggle + '</div>';
+      }
+      var rows = visibleStaff.map(function(u){
         var overrideCount = (byUser[u.id] && Object.keys(byUser[u.id]).length) || 0;
         var roleColor = u.role === 'admin' ? '#f5c842' : u.role === 'sales' ? '#6b9fff' : 'var(--muted)';
         var overrideLabel = u.role === 'admin'
@@ -23390,8 +23415,15 @@
           '</td>' +
         '</tr>';
       }).join('');
+      var toggleLink = inactiveStaff.length === 0 ? '' :
+        '<a href="#" onclick="event.preventDefault();window.glToggleInactiveVisibility();" ' +
+          'style="font-size:11px;letter-spacing:1px;color:var(--muted);text-decoration:none;font-weight:500;text-transform:none">' +
+          (perms.showInactive
+            ? '(showing ' + inactiveStaff.length + ' inactive · click to hide)'
+            : '(' + inactiveStaff.length + ' inactive hidden · click to show)') +
+        '</a>';
       return '<div style="background:#0d1b2e;border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden">' +
-        '<div style="padding:12px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:11px;letter-spacing:2px;color:var(--teal);font-weight:700">TEAM MEMBERS</div>' +
+        '<div style="padding:12px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:11px;letter-spacing:2px;color:var(--teal);font-weight:700;display:flex;justify-content:space-between;align-items:center"><span>TEAM MEMBERS</span>' + toggleLink + '</div>' +
         '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
           '<thead><tr style="border-bottom:1px solid rgba(255,255,255,.06)">' +
             '<th style="padding:8px 14px;text-align:left;color:var(--muted);font-size:10px;letter-spacing:1px">NAME</th>' +
@@ -23536,6 +23568,16 @@
       await renderPermissionsPanel();
       if(typeof window.glRenderPermMatrixFor === 'function') window.glRenderPermMatrixFor(userId);
     }
+  };
+
+  /* ── glToggleInactiveVisibility — show/hide inactive rows in the team
+     members table. Default-hidden so Remove / Deactivate visually take
+     effect (Mike's call-out after fix #18 shipped: "I clicked Remove and
+     nothing happened"). The state lives on the perms object so it survives
+     re-renders. */
+  window.glToggleInactiveVisibility = function(){
+    perms.showInactive = !perms.showInactive;
+    if(typeof renderPermissionsPanel === 'function') renderPermissionsPanel();
   };
 
   /* ── glToggleUserActive — flip profiles.status between active / inactive ──
