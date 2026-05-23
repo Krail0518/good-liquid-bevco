@@ -13946,9 +13946,11 @@
     txt(15,28,'OPERATIONS PRO',9,'#9aa7bd') +
     txt(15,52,'• Formula Vault',11,'#00e5c0') +
     txt(15,72,'• Yield Tracker',11,'#9aa7bd') +
-    txt(15,92,'• Production Runs',11,'#9aa7bd') +
-    txt(15,112,'• Sample Shipments',11,'#9aa7bd') +
-    txt(15,132,'• CIP / Sanitation',11,'#9aa7bd') +
+    txt(15,98,'OPERATIONS',9,'#9aa7bd') +
+    txt(15,118,'• Production Runs',11,'#9aa7bd') +
+    txt(15,138,'• Sample Shipments',11,'#9aa7bd') +
+    txt(15,164,'COMPLIANCE',9,'#9aa7bd') +
+    txt(15,184,'• CIP / Sanitation Log',11,'#9aa7bd') +
     txt(160,28,'FORMULA VAULT',13,'#fff') +
     txt(160,46,'Versioned recipes per client',10,'#9aa7bd') +
     box(160,60,440,30) + txt(170,79,'+ New Formula',11,'#00e5c0') + tag(580,75,1) +
@@ -13963,7 +13965,7 @@
     locator(
       '<b>Formula Vault, Yield Tracker</b> &rarr; sidebar &rarr; <b>Operations Pro</b> section.<br>' +
       '<b>Production Runs, Sample Shipments</b> &rarr; sidebar &rarr; <b>Operations</b> section.<br>' +
-      '<b>CIP / Sanitation Log</b> &rarr; sidebar &rarr; <b>Compliance</b> section.'
+      '<b>CIP / Sanitation Log, Hold Tags, Audit Log, Compliance Tasks</b> &rarr; sidebar &rarr; <b>Compliance</b> section.'
     ) +
     intro('Your production-line + compliance tooling. Spread across three sidebar sections (Operations, Operations Pro, Compliance) because they map to different parts of your day. Everything here writes to Supabase (with localStorage fallback) and creates an audit log entry on every action.') +
     subhead('🧪', 'FORMULA VAULT') +
@@ -13996,7 +13998,7 @@
       'Save. The row colour-codes itself; trend updates live.'
     ]) +
     whereToFind('Sidebar → Operations Pro → Yield Tracker') +
-    subhead('🏭', 'PRODUCTION RUNS — KANBAN') +
+    subhead('🏭', 'PRODUCTION RUNS') +
     intro('Operations kanban for every run in flight. Six columns map your real-world stages.') +
     bullets([
       '<b>Columns:</b> Discovery → Formulation → Sample → COA → Production → Ship.',
@@ -14005,12 +14007,12 @@
       'Backed by Supabase <code>production_runs</code> table; falls back to localStorage if the table is missing.'
     ]) +
     steps([
-      'Sidebar → <b>Operations Pro → Production Runs</b>.',
+      'Sidebar → <b>Operations → Production Runs</b>.',
       'Click <b>+ Add Run</b>. Pick client, name the run (e.g. "SunBurst Mar batch"), set format + cases + scheduled date.',
       'As work progresses, click the stage dropdown on the card to advance it.',
       'When it hits Ship, file it off — appears in the activity feed as "shipped".'
     ]) +
-    whereToFind('Sidebar → Operations Pro → Production Runs') +
+    whereToFind('Sidebar → Operations → Production Runs') +
     subhead('📬', 'SAMPLE SHIPMENTS') +
     intro('Track every sample that leaves the facility so nothing falls into the prospect-followup void.') +
     bullets([
@@ -14018,11 +14020,11 @@
       '<b>Followup nudge:</b> any sample marked "delivered" more than 7 days ago surfaces a yellow "send followup?" badge.'
     ]) +
     steps([
-      'Sidebar → <b>Operations Pro → Sample Shipments</b>.',
+      'Sidebar → <b>Operations → Sample Shipments</b>.',
       '<b>+ New Sample</b> when you pack one out. Paste tracking when you have it.',
       'Update status as it moves. Mark "followup-sent" once you reach out — the nudge clears.'
     ]) +
-    whereToFind('Sidebar → Operations Pro → Sample Shipments') +
+    whereToFind('Sidebar → Operations → Sample Shipments') +
     subhead('🧽', 'CIP / SANITATION LOG (compliance)') +
     intro('FDA-defensible record of every cleaning cycle between runs. If an auditor walks in, this is the page you open first.') +
     bullets([
@@ -14031,12 +14033,12 @@
       'Every entry hits the <b>Audit Log</b> automatically so changes are tracked too.'
     ]) +
     steps([
-      'Sidebar → <b>Operations Pro → CIP / Sanitation</b>.',
+      'Sidebar → <b>Compliance → CIP / Sanitation Log</b>.',
       '<b>+ Log Cleaning</b> immediately after a CIP cycle. Pick method, chemicals, concentration.',
       'Enter ATP swab result (the number from your luminometer).',
       'Pass/fail auto-flags red if the ATP exceeds your threshold.'
     ]) +
-    whereToFind('Sidebar → Operations Pro → CIP / Sanitation Log');
+    whereToFind('Sidebar → Compliance → CIP / Sanitation Log');
 
   /* SECTION 2 — QUALITY & SUPPLY */
   var MOCK_QS = wf(620, 250,
@@ -14084,12 +14086,12 @@
       '<b>Filter bar</b> at the top lets you scope to one user or action type — useful for auditing.'
     ]) +
     steps([
-      'Sidebar → <b>Quality & Supply → Audit Log</b> (callout 2).',
+      'Sidebar → <b>Compliance → Audit Log</b> (admin only; the link is hidden for non-admins).',
       'Filter by actor to see what one user did this week.',
       'Filter by action to find e.g. every <code>invoice_deleted</code> event.',
       'Click any row to expand the JSON details payload.'
     ]) +
-    whereToFind('Sidebar → Quality & Supply → Audit Log') +
+    whereToFind('Sidebar → Compliance → Audit Log (admin only)') +
     subhead('🏢', 'VENDOR DIRECTORY') +
     intro('Searchable directory of every ingredient/can/label/equipment supplier you work with. Like a Rolodex with COIs.') +
     bullets([
@@ -14326,11 +14328,11 @@
     subhead('🔄', 'RUN → INVOICE') +
     intro('Convert a completed Production Run into a draft invoice in one click. Pulls client, formula, cases, and pricing.') +
     steps([
-      'Sidebar → Operations Pro → Production Runs.',
+      'Sidebar → Operations → Production Runs.',
       'Find the run in the <b>Ship</b> column. Click the <b>"→ Invoice"</b> button on the card.',
       'A pre-filled invoice opens in the New Invoice builder. Tweak line items if needed and send.'
     ]) +
-    whereToFind('Production Runs kanban → "Ship" column → card action button') +
+    whereToFind('Sidebar → Operations → Production Runs → "Ship" column → card action button') +
     subhead('📈', 'WEIGHTED PIPELINE FORECAST') +
     intro('Shows total deal value weighted by stage probability (Prospecting 20% / Proposal 50% / Negotiation 70% / Closing 80%). Updates when you move deals between stages.') +
     bullets([
@@ -14436,11 +14438,11 @@
     subhead('📄', 'RUN SHEET PDF') +
     intro('Generates a printable production run sheet for the floor. One page per run with formula, allergens, target yield, batch size, operator sign-off lines.') +
     steps([
-      'Sidebar → Operations Pro → Production Runs.',
+      'Sidebar → Operations → Production Runs.',
       'Find the run. Click the <b>"Print sheet"</b> button on the card.',
       'PDF opens in a new tab. Print it for the floor. Operator signs at bottom.'
     ]) +
-    whereToFind('Production Runs kanban → any card → "Print sheet" button');
+    whereToFind('Sidebar → Operations → Production Runs → any card → "Print sheet" button');
 
   /* SECTION 7 — PUBLIC WEBSITE */
   var MOCK_PUBLIC = wf(620, 220,
@@ -14509,7 +14511,10 @@
      PATCH: wrap glOpenHelp to inject new sections + TOC entries
      ────────────────────────────────────────────────────────── */
   var NEW_SECTIONS = [
-    { id:'help-ops-pro',   icon:'🏭', label:'Operations Pro',     html:SEC_OPS_PRO },
+    // Label spans three sidebar sections (Operations, Operations Pro, Compliance)
+    // because production workflow crosses them — see the locator block at the top
+    // of SEC_OPS_PRO for the exact mapping.
+    { id:'help-ops-pro',   icon:'🏭', label:'Production & Operations', html:SEC_OPS_PRO },
     { id:'help-qs',        icon:'✅',       label:'Quality & Supply',   html:SEC_QS },
     { id:'help-marketing', icon:'📣', label:'Marketing & Content',html:SEC_MARKETING },
     { id:'help-growth',    icon:'🚀', label:'Growth Tools',       html:SEC_GROWTH },
