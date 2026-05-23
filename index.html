@@ -3134,11 +3134,60 @@ function renderClients(list){
       <td onclick="event.stopPropagation()" style="white-space:nowrap">
         <button class="cbtn" style="font-size:10px;padding:3px 9px" onclick="createForClient('${c.id}')">+ Invoice</button>
         <button class="cbtn" style="font-size:10px;padding:3px 9px;margin-left:4px;background:rgba(26,111,255,.12);border-color:rgba(26,111,255,.35);color:#6b9fff" data-cname="${(c.name||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}" onclick="if(window.glInviteCustomerLogin){window.glInviteCustomerLogin('${c.id}', this.dataset.cname);}else{alert('Portal module not ready');}">🔑 Invite</button>
+        ${(window.glIsSuperUser && window.glIsSuperUser()) ? `<button class="cbtn red" style="font-size:10px;padding:3px 9px;margin-left:4px" data-cname="${(c.name||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}" onclick="deleteClient('${c.id}', this.dataset.cname)">Delete</button>` : ''}
       </td>
     </tr>`;
   }).join('');
 }
 function filterClients(q){renderClients(clients.filter(c=>!q||c.name.toLowerCase().includes(q.toLowerCase())||c.contact.toLowerCase().includes(q.toLowerCase())))}
+
+/* Delete client — super-user only (gated by the row button visibility, but
+   re-checked here in case of a stale UI). Shows a real cascade-impact
+   preview before destroying: how many invoices, production runs, samples,
+   notes, etc. would be wiped. Most child rows are set to ON DELETE CASCADE
+   (or set null) so the DB cleanup is one DELETE — but the warning is
+   honest about what's about to disappear. */
+async function deleteClient(cid, cname){
+  if(!window.glIsSuperUser || !window.glIsSuperUser()){
+    alert('Only the workspace owner can delete clients.');
+    return;
+  }
+  if(!window.supa){ alert('Cloud sync unavailable — try reloading.'); return; }
+
+  // Pull impact preview in parallel.
+  const [inv, runs, samps, notes, tags] = await Promise.all([
+    window.supa.from('invoices').select('id', { head: true, count: 'exact' }).eq('client_id', cid),
+    window.supa.from('production_runs').select('id', { head: true, count: 'exact' }).eq('client_id', cid),
+    window.supa.from('sample_shipments').select('id', { head: true, count: 'exact' }).eq('client_id', cid),
+    window.supa.from('client_notes').select('id', { head: true, count: 'exact' }).eq('client_id', cid),
+    window.supa.from('client_tags').select('tag', { head: true, count: 'exact' }).eq('client_id', cid)
+  ]);
+  const counts = {
+    invoices:     inv.count    || 0,
+    runs:         runs.count   || 0,
+    samples:      samps.count  || 0,
+    notes:        notes.count  || 0,
+    tags:         tags.count   || 0
+  };
+  const cascadeLines = Object.entries(counts).filter(([_,v]) => v>0).map(([k,v]) => `  • ${v} ${k}`).join('\n');
+  const msg = `Permanently delete "${cname}"?\n\n` +
+    (cascadeLines ? `This will also cascade-delete:\n${cascadeLines}\n\n` : 'No linked records.\n\n') +
+    'This cannot be undone.\n\nType the client name exactly to confirm:';
+  const typed = prompt(msg);
+  if(typed === null) return;
+  if(typed !== cname){
+    alert('Name did not match — delete cancelled. (Type "' + cname + '" exactly.)');
+    return;
+  }
+  const r = await window.supa.from('clients').delete().eq('id', cid);
+  if(r.error){ alert('Delete failed: ' + r.error.message); return; }
+  // Local cache + UI refresh
+  if(Array.isArray(window.clients)) window.clients = window.clients.filter(c => c.id !== cid);
+  if(typeof renderClients === 'function') renderClients();
+  if(typeof renderDash === 'function') renderDash();
+  addNotification('🗑️ Client deleted', cname, 'warning');
+  if(typeof glAudit === 'function') glAudit('client_deleted', cname, counts);
+}
 function createForClient(cid){cNav('newinv',document.querySelectorAll('.cni')[5]);setTimeout(()=>{document.getElementById('inv-client').value=cid;updatePreview()},100)}
 
 /* Kanban */
@@ -5875,9 +5924,15 @@ async function glNotificationsBackfill(){
 async function loadNotifications(){
   if(!window.supa || !window.currentUser){ notifications = []; return; }
   await glNotificationsBackfill();
+  // 48-hour drop-off: anything older than 2 days is hidden from the bell
+  // (Mike's call-out 2026-05-23). The DB row sticks around for audit; we
+  // just stop showing it. A follow-up cron can hard-delete >30d rows if
+  // the table gets noisy.
+  const cutoff = new Date(Date.now() - 48*60*60*1000).toISOString();
   const r = await window.supa.from('notifications')
     .select('id, title, sub, type, read, created_at')
     .eq('user_id', window.currentUser.id)
+    .gt('created_at', cutoff)
     .order('created_at', { ascending: false })
     .limit(50);
   if(r.error){ console.warn('[GL] loadNotifications failed', r.error.message); notifications = []; return; }
@@ -5925,9 +5980,16 @@ async function addNotification(title, sub, type='info'){
   }
 }
 
+// 48h cutoff for the bell — anything older drops off the badge + list.
+const NOTIF_TTL_MS = 48 * 60 * 60 * 1000;
+function notifIsFresh(n){
+  if(!n || !n.createdAt) return true; // optimistic toasts have no createdAt yet
+  return (Date.now() - Number(n.createdAt)) <= NOTIF_TTL_MS;
+}
+
 function addNotifBadge(){
   const badge=document.getElementById('notif-badge');
-  const unread=notifications.filter(n=>!n.read).length;
+  const unread=notifications.filter(n=>!n.read && notifIsFresh(n)).length;
   if(unread>0){badge.style.display='flex';badge.textContent=unread>9?'9+':unread;}
   else badge.style.display='none';
 }
@@ -5953,8 +6015,9 @@ function renderNotifList(){
   if(!el) return;
   const icons={'info':'ℹ️','success':'✅','warning':'⚠️','stale':'🔔','reminder':'📅','email':'📧'};
   const colors={'info':'rgba(26,111,255,.15)','success':'rgba(29,158,117,.15)','warning':'rgba(231,76,60,.15)','stale':'rgba(245,200,66,.15)','reminder':'rgba(0,229,192,.15)','email':'rgba(26,111,255,.15)'};
-  if(!notifications.length){el.innerHTML='<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">No notifications yet.</div>';return;}
-  el.innerHTML=notifications.map(n=>`<div class="notif-item ${n.read?'':'unread'}" onclick="markNotifRead('${n.id}')">
+  const fresh = notifications.filter(notifIsFresh);
+  if(!fresh.length){el.innerHTML='<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">No notifications in the last 48 hours.</div>';return;}
+  el.innerHTML=fresh.map(n=>`<div class="notif-item ${n.read?'':'unread'}" onclick="markNotifRead('${n.id}')">
     <div class="notif-ico" style="background:${colors[n.type]||colors.info}">${icons[n.type]||'🔔'}</div>
     <div style="flex:1"><div class="notif-title">${n.title}</div><div class="notif-sub">${n.sub}</div><div class="notif-time">${n.time}</div></div>
   </div>`).join('');
