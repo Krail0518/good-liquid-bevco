@@ -2652,12 +2652,74 @@ let invoices=window.invoices=[];
    or from "Add Deal" / contact form. Bridged to window so fix.js can share. */
 let deals=window.deals={'Prospecting':[],'Proposal':[],'Negotiation':[],'Closed Won':[],'Closed Lost':[]};
 
-/* Activities: localStorage-persisted (per-device). Capped at 100 entries to
-   avoid bloat. Bridged to window. */
-let activities=window.activities=JSON.parse(localStorage.getItem('gl_activities')||'[]');
+/* Activities: source of truth is public.activity_feed in Supabase.
+   The in-memory array is the cached recent slice for the dashboard
+   renderer. Every `activities.unshift({...}); saveActivities()` site
+   in the legacy code now writes through to the DB via the override
+   below — the local array is kept warm for renderers that read
+   synchronously. */
+let activities = window.activities = [];
+
+async function glActivitiesBackfill(){
+  try {
+    if(localStorage.getItem('gl_activities_migrated') === '1') return;
+    if(!window.supa || !window.currentUser) return;
+    const blob = localStorage.getItem('gl_activities');
+    if(!blob){ localStorage.setItem('gl_activities_migrated','1'); return; }
+    let legacy = []; try { legacy = JSON.parse(blob) || []; } catch(_e){ return; }
+    if(!legacy.length){ localStorage.setItem('gl_activities_migrated','1'); return; }
+    const nowMs = Date.now();
+    const rows = legacy.slice(0, 100).map((a, i) => ({
+      kind:        a.type || 'note',
+      icon:        a.icon || null,
+      name:        String(a.name || '').slice(0, 300),
+      detail:      a.detail || null,
+      actor_email: (window.currentUser && window.currentUser.email) || null,
+      client_id:   /^[0-9a-f-]{36}$/i.test(a.clientId||'') ? a.clientId : null,
+      created_at:  new Date(nowMs - i*1000).toISOString()
+    }));
+    const r = await window.supa.from('activity_feed').insert(rows);
+    if(r.error){ console.warn('[GL] activities backfill failed', r.error.message); return; }
+    localStorage.setItem('gl_activities_migrated','1');
+  } catch(e){ console.warn('[GL] activities backfill threw', e); }
+}
+
+async function loadActivities(){
+  if(!window.supa){ activities = window.activities = []; return; }
+  await glActivitiesBackfill();
+  const r = await window.supa.from('activity_feed')
+    .select('id, kind, icon, name, detail, client_id, created_at')
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if(r.error){ console.warn('[GL] loadActivities failed', r.error.message); return; }
+  activities = window.activities = (r.data || []).map(a => ({
+    type:   a.kind,
+    icon:   a.icon,
+    name:   a.name,
+    detail: a.detail,
+    time:   timeAgo(new Date(a.created_at)),
+    clientId: a.client_id
+  }));
+}
+
+// saveActivities is now a thin write-through: the legacy code calls
+// activities.unshift({...}); saveActivities() — the unshift updates
+// the in-memory cache; this fires off a single INSERT for the new
+// head item. Keeps the array capped at 100.
 function saveActivities(){
-  try{localStorage.setItem('gl_activities',JSON.stringify(activities.slice(0,100)));}
-  catch(e){console.warn('[GL] activities save failed',e);}
+  if(activities.length > 100) activities = activities.slice(0, 100);
+  if(!window.supa || !window.currentUser) return;
+  const head = activities[0];
+  if(!head || head._persisted) return;
+  head._persisted = true;
+  window.supa.from('activity_feed').insert([{
+    kind:        head.type || 'note',
+    icon:        head.icon || null,
+    name:        String(head.name || '').slice(0, 300),
+    detail:      head.detail || null,
+    actor_email: (window.currentUser && window.currentUser.email) || null,
+    client_id:   /^[0-9a-f-]{36}$/i.test(head.clientId||'') ? head.clientId : null
+  }]).then(r => { if(r.error) console.warn('[GL] activity write failed', r.error.message); });
 }
 
 const PRICING={
@@ -5911,7 +5973,40 @@ async function markNotifRead(id){
 /* ═══════════════════════════════════════════
    STALE DEAL DETECTION
 ═══════════════════════════════════════════ */
-let dealLastActivity = JSON.parse(localStorage.getItem('gl_deal_activity')||'{}');
+/* Deal staleness tracker: { dealName: lastActivityMs }. Source of
+   truth is public.deal_activity. Loaded async on dashboard render;
+   the local map is kept hot for the synchronous checkStaleDeals
+   loop. Writes through to the DB on every touch. */
+let dealLastActivity = {};
+
+async function glDealActivityBackfill(){
+  try {
+    if(localStorage.getItem('gl_deal_activity_migrated') === '1') return;
+    if(!window.supa) return;
+    const blob = localStorage.getItem('gl_deal_activity');
+    if(!blob){ localStorage.setItem('gl_deal_activity_migrated','1'); return; }
+    let legacy = {}; try { legacy = JSON.parse(blob) || {}; } catch(_e){ return; }
+    const rows = Object.keys(legacy).map(name => ({
+      deal_name:     String(name).slice(0, 300),
+      last_activity: new Date(legacy[name]).toISOString()
+    })).filter(r => r.deal_name);
+    if(!rows.length){ localStorage.setItem('gl_deal_activity_migrated','1'); return; }
+    const r = await window.supa.from('deal_activity').upsert(rows, { onConflict: 'deal_name' });
+    if(r.error){ console.warn('[GL] deal_activity backfill failed', r.error.message); return; }
+    localStorage.setItem('gl_deal_activity_migrated','1');
+  } catch(e){ console.warn('[GL] deal_activity backfill threw', e); }
+}
+
+async function loadDealActivity(){
+  if(!window.supa) return;
+  await glDealActivityBackfill();
+  const r = await window.supa.from('deal_activity').select('deal_name, last_activity');
+  if(r.error){ console.warn('[GL] loadDealActivity failed', r.error.message); return; }
+  dealLastActivity = {};
+  (r.data || []).forEach(row => {
+    dealLastActivity[row.deal_name] = new Date(row.last_activity).getTime();
+  });
+}
 
 function checkStaleDeals(){
   const STALE_DAYS=7;
@@ -5935,18 +6030,75 @@ function checkStaleDeals(){
 }
 
 function touchDeal(dealName){
-  dealLastActivity[dealName]=Date.now();
-  localStorage.setItem('gl_deal_activity',JSON.stringify(dealLastActivity));
+  const nowMs = Date.now();
+  dealLastActivity[dealName] = nowMs;
+  if(window.supa){
+    window.supa.from('deal_activity').upsert([{
+      deal_name: dealName, last_activity: new Date(nowMs).toISOString()
+    }], { onConflict: 'deal_name' }).then(r => {
+      if(r.error) console.warn('[GL] deal_activity upsert failed', r.error.message);
+    });
+  }
 }
 
 /* ═══════════════════════════════════════════
    CALENDAR SYSTEM
 ═══════════════════════════════════════════ */
-let calEvents = JSON.parse(localStorage.getItem('gl_cal_events')||'[]');
+/* Calendar events: source of truth is public.cal_events. In-memory
+   cache rebuilt from DB on every page open + after each mutation. */
+let calEvents = [];
 let calCurrentDate = { general: new Date(), production: new Date() };
 let calViewMode = 'month';
 
-function saveCalEvents(){ localStorage.setItem('gl_cal_events', JSON.stringify(calEvents)); }
+async function glCalEventsBackfill(){
+  try {
+    if(localStorage.getItem('gl_cal_events_migrated') === '1') return;
+    if(!window.supa) return;
+    const blob = localStorage.getItem('gl_cal_events');
+    if(!blob){ localStorage.setItem('gl_cal_events_migrated','1'); return; }
+    let legacy = []; try { legacy = JSON.parse(blob) || []; } catch(_e){ return; }
+    if(!legacy.length){ localStorage.setItem('gl_cal_events_migrated','1'); return; }
+    const rows = legacy.map(e => ({
+      event_type:  e.type || 'general',
+      title:       String(e.title || '(untitled)').slice(0, 500),
+      event_date:  e.date,
+      event_time:  e.time || null,
+      notes:       e.notes || null,
+      remind:      e.remind || null,
+      client_id:   /^[0-9a-f-]{36}$/i.test(e.clientId||'') ? e.clientId : null,
+      format:      e.format || null,
+      qty:         e.qty || null,
+      due_date:    e.dueDate || null,
+      prod_status: e.prodStatus || null,
+      created_at:  e.createdAt || new Date().toISOString()
+    })).filter(r => r.event_date);
+    if(!rows.length){ localStorage.setItem('gl_cal_events_migrated','1'); return; }
+    const r = await window.supa.from('cal_events').insert(rows);
+    if(r.error){ console.warn('[GL] cal_events backfill failed', r.error.message); return; }
+    localStorage.setItem('gl_cal_events_migrated','1');
+    if(typeof addNotification === 'function'){
+      addNotification('📅 Calendar migrated', rows.length + ' event' + (rows.length===1?'':'s') + ' moved to the cloud.', 'success');
+    }
+  } catch(e){ console.warn('[GL] cal_events backfill threw', e); }
+}
+
+async function loadCalEvents(){
+  if(!window.supa){ calEvents = []; return; }
+  await glCalEventsBackfill();
+  const r = await window.supa.from('cal_events')
+    .select('id, event_type, title, event_date, event_time, notes, remind, client_id, format, qty, due_date, prod_status, created_at')
+    .order('event_date', { ascending: true })
+    .limit(2000);
+  if(r.error){ console.warn('[GL] loadCalEvents failed', r.error.message); calEvents = []; return; }
+  calEvents = (r.data || []).map(e => ({
+    id: e.id, type: e.event_type, title: e.title, date: e.event_date,
+    time: e.event_time, notes: e.notes, remind: e.remind, clientId: e.client_id,
+    format: e.format, qty: e.qty, dueDate: e.due_date, prodStatus: e.prod_status,
+    createdAt: e.created_at
+  }));
+}
+
+function saveCalEvents(){ /* DEPRECATED no-op — calendar events persist via Supabase INSERT/UPDATE/DELETE now */ }
 
 function openCalEventModal(type){
   document.getElementById('cal-event-type').value=type;
@@ -5960,7 +6112,7 @@ function openCalEventModal(type){
 
 function closeCalEventModal(){ document.getElementById('cal-event-modal').classList.remove('show'); }
 
-function saveCalEvent(){
+async function saveCalEvent(){
   const type=document.getElementById('cal-event-type').value;
   const title=document.getElementById('cal-ev-title').value.trim();
   const date=document.getElementById('cal-ev-date').value;
@@ -5969,16 +6121,34 @@ function saveCalEvent(){
   const remind=document.getElementById('cal-ev-remind').value;
   if(!title||!date){alert('Title and date are required');return;}
   
-  const ev={id:'ev'+Date.now(),type,title,date,time,notes,remind,createdAt:new Date().toISOString()};
-  if(type==='production'){
-    ev.clientId=document.getElementById('cal-ev-client').value;
-    ev.format=document.getElementById('cal-ev-format').value;
-    ev.qty=document.getElementById('cal-ev-qty').value;
-    ev.dueDate=document.getElementById('cal-ev-due').value;
-    ev.prodStatus='scheduled';
+  // Build the DB row. type=production carries the prod-specific extras.
+  const dbRow = {
+    event_type: type,
+    title,
+    event_date: date,
+    event_time: time || null,
+    notes:      notes || null,
+    remind:     remind || null
+  };
+  if(type === 'production'){
+    const cid = document.getElementById('cal-ev-client').value || null;
+    dbRow.client_id   = /^[0-9a-f-]{36}$/i.test(cid||'') ? cid : null;
+    dbRow.format      = document.getElementById('cal-ev-format').value || null;
+    dbRow.qty         = document.getElementById('cal-ev-qty').value || null;
+    dbRow.due_date    = document.getElementById('cal-ev-due').value || null;
+    dbRow.prod_status = 'scheduled';
+  }
+  if(!window.supa){ alert('Cloud sync unavailable — try reloading.'); return; }
+  const ins = await window.supa.from('cal_events').insert([dbRow]).select('id').single();
+  if(ins.error){ alert('Save event failed: ' + ins.error.message); return; }
+  // Mirror into the in-memory cache (so renderers that read synchronously
+  // see the new event before the next loadCalEvents()).
+  const ev = { id: ins.data.id, type, title, date, time, notes, remind, createdAt: new Date().toISOString() };
+  if(type === 'production'){
+    ev.clientId = dbRow.client_id; ev.format = dbRow.format; ev.qty = dbRow.qty;
+    ev.dueDate = dbRow.due_date; ev.prodStatus = dbRow.prod_status;
   }
   calEvents.push(ev);
-  saveCalEvents();
   
   if(remind){
     addNotification('📅 Reminder set: '+title,'Reminder for '+date+' at '+time,'reminder');
@@ -6071,14 +6241,23 @@ function renderProductionRuns(){
   }).join('');
 }
 
-function updateProdStatus(id,status){
+async function updateProdStatus(id,status){
   const ev=calEvents.find(e=>e.id===id);
-  if(ev){ ev.prodStatus=status; saveCalEvents(); renderProductionRuns(); }
+  if(!ev) return;
+  ev.prodStatus = status;
+  if(window.supa){
+    const r = await window.supa.from('cal_events').update({ prod_status: status }).eq('id', id);
+    if(r.error){ alert('Status update failed: ' + r.error.message); return; }
+  }
+  renderProductionRuns();
 }
-function deleteProdRun(id){
+async function deleteProdRun(id){
   if(!confirm('Delete this production run?')) return;
+  if(window.supa){
+    const r = await window.supa.from('cal_events').delete().eq('id', id);
+    if(r.error){ alert('Delete failed: ' + r.error.message); return; }
+  }
   calEvents=calEvents.filter(e=>e.id!==id);
-  saveCalEvents();
   renderProductionRuns();
   renderCal('production');
 }
@@ -6086,20 +6265,66 @@ function deleteProdRun(id){
 /* ═══════════════════════════════════════════
    MULTI-PIPELINE
 ═══════════════════════════════════════════ */
-let productionDeals = JSON.parse(localStorage.getItem('gl_prod_pipeline')||JSON.stringify({
+/* Production pipeline kanban: source of truth is public.production_pipeline.
+   The in-memory map { stage: [deals...] } is rebuilt from the DB on every
+   tab switch. Distinct from public.production_runs (which is the
+   operations runs table). */
+let productionDeals = {
   'Scheduled':[],
   'In Production':[],
   'Quality Check':[],
   'Completed':[],
   'Shipped':[]
-}));
+};
 
-function switchPipeline(type,el){
+async function glProdPipelineBackfill(){
+  try {
+    if(localStorage.getItem('gl_prod_pipeline_migrated') === '1') return;
+    if(!window.supa) return;
+    const blob = localStorage.getItem('gl_prod_pipeline');
+    if(!blob){ localStorage.setItem('gl_prod_pipeline_migrated','1'); return; }
+    let legacy = {}; try { legacy = JSON.parse(blob) || {}; } catch(_e){ return; }
+    const rows = [];
+    Object.keys(legacy).forEach(stage => {
+      (legacy[stage]||[]).forEach(d => {
+        rows.push({
+          name:    String(d.name||'').slice(0,300),
+          company: d.co || null,
+          stage:   ['Scheduled','In Production','Quality Check','Completed','Shipped'].includes(stage) ? stage : 'Scheduled',
+          notes:   d.notes || null
+        });
+      });
+    });
+    if(!rows.length){ localStorage.setItem('gl_prod_pipeline_migrated','1'); return; }
+    const r = await window.supa.from('production_pipeline').insert(rows);
+    if(r.error){ console.warn('[GL] production_pipeline backfill failed', r.error.message); return; }
+    localStorage.setItem('gl_prod_pipeline_migrated','1');
+  } catch(e){ console.warn('[GL] production_pipeline backfill threw', e); }
+}
+
+async function loadProductionPipeline(){
+  if(!window.supa) return;
+  await glProdPipelineBackfill();
+  const r = await window.supa.from('production_pipeline')
+    .select('id, name, company, stage, notes, client_id, created_at')
+    .order('created_at', { ascending: false });
+  if(r.error){ console.warn('[GL] loadProductionPipeline failed', r.error.message); return; }
+  productionDeals = { 'Scheduled':[], 'In Production':[], 'Quality Check':[], 'Completed':[], 'Shipped':[] };
+  (r.data || []).forEach(d => {
+    const stage = productionDeals[d.stage] ? d.stage : 'Scheduled';
+    productionDeals[stage].push({ id: d.id, name: d.name, co: d.company, notes: d.notes, clientId: d.client_id });
+  });
+}
+
+async function switchPipeline(type,el){
   document.querySelectorAll('.pipe-tab').forEach(t=>t.classList.remove('act'));
   el.classList.add('act');
   document.getElementById('pipeline-sales').style.display=type==='sales'?'block':'none';
   document.getElementById('pipeline-production').style.display=type==='production'?'block':'none';
-  if(type==='production') renderProductionKanban();
+  if(type==='production'){
+    await loadProductionPipeline();
+    renderProductionKanban();
+  }
 }
 
 function renderProductionKanban(){
@@ -7611,8 +7836,8 @@ renderClients=function(){
 const origCNav=cNav;
 cNav=function(page,el){
   origCNav(page,el);
-  if(page==='calendar') renderCal('general');
-  if(page==='production-cal'){ renderCal('production'); renderProductionRuns(); }
+  if(page==='calendar'){ loadCalEvents().then(() => renderCal('general')); }
+  if(page==='production-cal'){ loadCalEvents().then(() => { renderCal('production'); renderProductionRuns(); }); }
   if(page==='tasks'){ loadTasks().then(renderTasks); }
   if(page==='documents'){ loadDocs().then(renderDocs); }
   if(page==='inventory'){ loadInventory().then(renderInventory); }

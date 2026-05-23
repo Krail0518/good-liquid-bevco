@@ -2312,38 +2312,43 @@
      reporting success, opens Settings when key is missing.
    ============================================================ */
 (function(){
+  /* Wipe any legacy gl_mailgun_key on load. Per the security audit
+     in PR #141, the Mailgun API key has lived in Supabase secrets
+     (read by the mailgun-send Edge Function) for a while now. The
+     localStorage copy was a hold-over that gave anyone with access
+     to the browser a way to read the key. Remove on every load so
+     we don't have stale credentials sitting in DevTools. */
+  try { if(localStorage.getItem('gl_mailgun_key')) localStorage.removeItem('gl_mailgun_key'); } catch(_e){}
+
   window.openMailgunSettings = function(){
     var existing = document.getElementById('mg-settings-overlay');
     if(existing) existing.remove();
     var ov = document.createElement('div');
     ov.id = 'mg-settings-overlay';
     ov.setAttribute('style','position:fixed;inset:0;z-index:900;background:rgba(6,13,26,.95);backdrop-filter:blur(16px);display:flex;align-items:center;justify-content:center;padding:20px');
-    var saved = localStorage.getItem('gl_mailgun_key') || '';
     ov.innerHTML =
-      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:36px;width:100%;max-width:520px">' +
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:36px;width:100%;max-width:560px">' +
         '<div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:2px;color:var(--teal);margin-bottom:8px">📧 MAILGUN SETTINGS</div>' +
-        '<div style="font-size:13px;color:var(--muted);margin-bottom:24px;line-height:1.6">Mailgun sends onboarding emails, follow-ups, and tour confirmations. Paste your private API key — it stays in this browser only.</div>' +
-        (saved ? '<div style="background:rgba(29,158,117,.1);border:1px solid rgba(29,158,117,.3);border-radius:8px;padding:10px 14px;font-size:13px;color:#1D9E75;margin-bottom:16px">✅ API key is saved and active</div>' : '') +
-        '<div style="margin-bottom:16px"><div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">MAILGUN PRIVATE API KEY</div>' +
-          '<input id="mg-key-input" type="password" value="' + saved.replace(/"/g,'&quot;') + '" placeholder="key-..." style="width:100%;padding:13px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#fff;font-size:13px;font-family:var(--ff-mono);box-sizing:border-box"></div>' +
-        '<div style="font-size:11px;color:var(--muted);margin-bottom:20px">Find it at <span style="color:var(--teal)">app.mailgun.com → Send → Sending → Domain settings → API Keys</span></div>' +
+        '<div style="font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.6">Mailgun sends onboarding emails, follow-ups, and tour confirmations. The API key lives <b>server-side in Supabase secrets</b> — the browser never sees it.</div>' +
+        '<div style="background:rgba(29,158,117,.1);border:1px solid rgba(29,158,117,.3);border-radius:8px;padding:12px 16px;font-size:13px;color:#5fcf9e;margin-bottom:20px;line-height:1.6">✅ Sends route through the <code>mailgun-send</code> Edge Function. The function reads <code>MAILGUN_API_KEY</code> from Supabase secrets at run time.</div>' +
+        '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">TO ROTATE THE KEY</div>' +
+        '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:12px;margin-bottom:18px;font-size:12px;color:#cfd9e6;line-height:1.7">' +
+          'Run in PowerShell: <code style="background:#0a1628;padding:2px 6px;border-radius:4px;color:var(--teal);font-family:var(--ff-mono);font-size:11px">supabase secrets set MAILGUN_API_KEY=key-...</code><br>' +
+          'Then redeploy the function (or it will pick up the new value on next cold start). No frontend change needed.' +
+        '</div>' +
         '<div style="display:flex;gap:10px">' +
-          '<button onclick="window.glSaveMailgunKey()" style="flex:1;padding:13px;background:var(--teal);color:#0a1628;border:none;border-radius:8px;font-weight:800;cursor:pointer;font-size:14px">Save Key</button>' +
-          (saved ? '<button onclick="window.glTestMailgun()" style="padding:13px 18px;background:rgba(245,200,66,.08);color:#f5c842;border:1px solid rgba(245,200,66,.3);border-radius:8px;cursor:pointer;font-size:13px">Test send</button>' : '') +
-          '<button onclick="document.getElementById(\'mg-settings-overlay\').remove()" style="padding:13px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer">Cancel</button>' +
+          '<button onclick="window.glTestMailgun()" style="flex:1;padding:13px;background:rgba(245,200,66,.08);color:#f5c842;border:1px solid rgba(245,200,66,.3);border-radius:8px;cursor:pointer;font-size:13px">Test send</button>' +
+          '<button onclick="document.getElementById(\'mg-settings-overlay\').remove()" style="padding:13px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer">Close</button>' +
         '</div>' +
       '</div>';
     document.body.appendChild(ov);
   };
 
+  // Kept for backwards compatibility with any UI button bindings — but
+  // it now just bounces the operator to the (read-only) settings panel
+  // instead of writing the key client-side.
   window.glSaveMailgunKey = function(){
-    var k = (document.getElementById('mg-key-input')||{}).value || '';
-    k = k.trim();
-    if(!k){ alert('Please paste a Mailgun API key.'); return; }
-    localStorage.setItem('gl_mailgun_key', k);
-    document.getElementById('mg-settings-overlay').remove();
-    if(typeof addNotification==='function') addNotification('Mailgun key saved','Onboarding + follow-up emails will now send.','success');
-    else alert('✅ Mailgun key saved.');
+    alert('The Mailgun API key lives in Supabase secrets now. Run\n\n  supabase secrets set MAILGUN_API_KEY=key-...\n\nin PowerShell to rotate it. The CRM picks it up automatically.');
   };
 
   /* Reusable masked-credential reveal modal — used by onboarding to surface
@@ -2391,12 +2396,10 @@
   };
 
   window.glTestMailgun = async function(){
-    var key = localStorage.getItem('gl_mailgun_key');
-    if(!key){ alert('Save a key first.'); return; }
     if(typeof window.sendMailgunEmail !== 'function'){ alert('sendMailgunEmail unavailable.'); return; }
     var ok = await window.sendMailgunEmail('mike@goodliquid.com','Mailgun test from Good Liquid CRM','This is a test email confirming Mailgun is wired up. — Good Liquid CRM');
     if(ok) alert('✓ Test email sent to mike@goodliquid.com');
-    else alert('✗ Test failed. Check the API key and the browser console for the Mailgun response.');
+    else alert('✗ Test failed. Check that MAILGUN_API_KEY is set in Supabase secrets (run `supabase secrets list`) and that the mailgun-send Edge Function is deployed.');
   };
 
   /* sendOnboardingEmail (called by the "📧 Send Onboarding Email" button on
@@ -3460,10 +3463,41 @@
      real Checkout Session creator using the Stripe secret key.
    ============================================================ */
 (function(){
+  /* Pay link storage: source of truth is the
+     invoices.stripe_payment_link column added by
+     20260523_activities_calendar_pipeline_paylinks.sql. The
+     legacy gl_invoice_paylinks {invId: url} blob is preserved
+     ONLY as a fallback for renderers that need a sync read
+     before the DB has loaded — every write goes to the DB. */
   function getLinks(){ try { return JSON.parse(localStorage.getItem('gl_invoice_paylinks')||'{}'); } catch(e){ return {}; } }
   function saveLinks(m){ try { localStorage.setItem('gl_invoice_paylinks', JSON.stringify(m)); } catch(e){} }
 
+  // One-shot backfill: every legacy LS entry becomes an UPDATE on
+  // the invoices row.
+  (async function backfillPaylinks(){
+    try {
+      if(localStorage.getItem('gl_invoice_paylinks_migrated') === '1') return;
+      if(!window.supa) return;
+      var blob = localStorage.getItem('gl_invoice_paylinks');
+      if(!blob){ localStorage.setItem('gl_invoice_paylinks_migrated','1'); return; }
+      var legacy = {}; try { legacy = JSON.parse(blob) || {}; } catch(_e){ return; }
+      var ids = Object.keys(legacy);
+      if(!ids.length){ localStorage.setItem('gl_invoice_paylinks_migrated','1'); return; }
+      for(var i=0;i<ids.length;i++){
+        var invId = ids[i]; var url = legacy[invId];
+        if(!url) continue;
+        // Match by invoice_number since the legacy keys are GL-2026-XYZ strings.
+        await window.supa.from('invoices').update({ stripe_payment_link: url }).eq('invoice_number', invId);
+      }
+      localStorage.setItem('gl_invoice_paylinks_migrated','1');
+    } catch(e){ console.warn('[GL] invoice_paylinks backfill threw', e); }
+  })();
+
   window.glGetPayLink = function(invId){
+    // Prefer the invoices column when available (canonical), fall
+    // back to the LS map for callers that haven't refetched yet.
+    var inv = (window.invoices||[]).find(function(i){ return i.id === invId || i.invoice_number === invId; });
+    if(inv && inv.stripe_payment_link) return inv.stripe_payment_link;
     var m = getLinks();
     return m[invId] || '';
   };
@@ -3472,6 +3506,12 @@
     var m = getLinks();
     if(url) m[invId] = url; else delete m[invId];
     saveLinks(m);
+    // Persist to the canonical column too.
+    if(window.supa){
+      window.supa.from('invoices').update({ stripe_payment_link: url || null }).eq('invoice_number', invId).then(function(r){
+        if(r.error) console.warn('[GL] pay link DB update failed', r.error.message);
+      });
+    }
   };
 
   // Override the legacy generatePayLink with a Stripe-aware version.
@@ -3882,9 +3922,11 @@
     } catch(e){ return { ok:false, msg:e.message||'storage check threw' }; }
   }
   function checkMailgun(){
-    var k = localStorage.getItem('gl_mailgun_key');
-    if(k && k.length > 10) return { ok:true, msg:'Key set ('+ k.slice(0,8) +'…)' };
-    return { ok:false, msg:'Click to add your Mailgun key', action:'mailgun_settings' };
+    // Mailgun key lives in Supabase secrets — the browser has no way
+    // to inspect the secret directly, so we surface the status of the
+    // Edge Function instead. Status panel is informational; the real
+    // test is the "Test send" button in Mailgun Settings.
+    return { ok:true, msg:'Managed via Supabase secrets' };
   }
   function checkAIKey(){
     var k = localStorage.getItem('gl_ai_key');
@@ -6703,7 +6745,10 @@
   function isDone(){ return localStorage.getItem('gl_wizard_done') === '1'; }
   function markDone(){ localStorage.setItem('gl_wizard_done', '1'); }
 
-  function statusMailgun(){ return (localStorage.getItem('gl_mailgun_key')||'').length > 10; }
+  // Mailgun key lives in Supabase secrets; assume it's set when the
+  // first-run wizard runs. (Operators can still re-run the wizard
+  // manually if they want a checklist.)
+  function statusMailgun(){ return true; }
   function statusAI(){ return (localStorage.getItem('gl_ai_key')||'').length > 10; }
   function statusSignature(){ var s = localStorage.getItem('gl_email_signature'); return s !== null && (s || '').trim().length > 0; }
   function statusGA(){ return (localStorage.getItem('gl_ga_id')||'').length > 5; }
@@ -19892,10 +19937,16 @@
   function fmtTs(d){ if(!d) return ''; var x = new Date(d); return isNaN(x.getTime()) ? String(d) : x.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); }
   function nowISO(){ return new Date().toISOString(); }
   function todayISO(){ return new Date().toISOString().slice(0,10); }
-  function getMailgunKey(){ return localStorage.getItem('gl_mailgun_key') || ''; }
-  function getMailgunDomain(){ return localStorage.getItem('gl_mailgun_domain') || 'mail.goodliquidbevco.com'; }
-  function getMailgunFrom(){ return localStorage.getItem('gl_mailgun_from') || 'Good Liquid Bev Co <noreply@mail.goodliquidbevco.com>'; }
-  function getAiKey(){ return localStorage.getItem('gl_ai_key') || ''; }
+  // DEPRECATED: these getters used to read API credentials out of
+  // localStorage. The Mailgun key + AI key now live in Supabase secrets,
+  // and the from-address is set inside the mailgun-send Edge Function.
+  // The stubs are kept only because legacy callers reference them; they
+  // return empty strings so any leftover client-side send paths fail
+  // closed instead of leaking credentials.
+  function getMailgunKey(){ return ''; }
+  function getMailgunDomain(){ return 'mail.goodliquidbevco.com'; }
+  function getMailgunFrom(){ return 'Good Liquid Bev Co <noreply@mail.goodliquidbevco.com>'; }
+  function getAiKey(){ return ''; }
 
   async function sendMailgun(to, subject, text, html){
     if(!window.supa || !window.supa.functions){
