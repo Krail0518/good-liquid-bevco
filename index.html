@@ -2763,10 +2763,17 @@ window.loginUser = function loginUser(u){
 /* ═══════════════════════════════════════
    CUSTOMER PORTAL
 ═══════════════════════════════════════ */
-let customerLogins = JSON.parse(localStorage.getItem('gl_customer_logins')||'[]');
+/* DEPRECATED: the canonical Customer Logins list now lives in
+   public.customer_users (read by the fix.js admin renderer that
+   binds to #cpg-customers). The legacy gl_customer_logins blob
+   was insecure — it stored plaintext temp passwords in
+   localStorage — so this is hardcoded to empty and any old
+   blob is wiped on first load. */
+let customerLogins = [];
+try { if(localStorage.getItem('gl_customer_logins')) localStorage.removeItem('gl_customer_logins'); } catch(_e){}
 let currentPortalUser = null;
 
-function saveCustomerLogins(){ localStorage.setItem('gl_customer_logins', JSON.stringify(customerLogins)); }
+function saveCustomerLogins(){ /* DEPRECATED no-op — see customerLogins declaration above */ }
 
 function openCustomerPortal(customer){
   const portal = document.getElementById('customer-portal');
@@ -2828,13 +2835,15 @@ function sendOnboardingEmail(){
   const name = prompt('Customer name:');
   if(!name) return;
   
-  // Generate temp password
-  const tempPw = 'GL' + Math.random().toString(36).substring(2,8).toUpperCase();
-  
-  // Add to customer logins
-  customerLogins.push({id:'cust-'+Date.now(),name,email,password:tempPw,createdAt:new Date().toISOString()});
-  saveCustomerLogins();
-  renderCustomerLogins();
+  // Generate a policy-compliant temp password (12 chars, uppercase + digit + special).
+  const tempPw = (window.glGenerateTempPassword ? window.glGenerateTempPassword() : ('GL' + Math.random().toString(36).substring(2,8).toUpperCase() + '!1'));
+  // NOTE: This legacy sendOnboardingEmail flow doesn't write the password
+  // to localStorage anymore (was a security hole — plaintext creds on
+  // every device the admin opened the CRM on). The canonical invite
+  // flow is window.glInviteCustomerLogin which provisions a real
+  // Supabase auth user with this temp password and creates the
+  // customer_users row. This function is preserved only so any
+  // existing UI buttons that call it keep firing.
   
   // Send via Mailgun
   sendMailgunEmail(email, 'Welcome to Good Liquid Bev Co — Your Portal Access',
@@ -8595,11 +8604,49 @@ async function deleteClientNote(clientId, noteId){
    EMAIL TEMPLATES
    Save & reuse email templates via Mailgun
 ═══════════════════════════════════════════ */
-let emailTemplates = JSON.parse(localStorage.getItem('gl_email_templates') || '[]');
+/* Email templates source of truth: public.email_templates
+   (migration shipped 2026-05-18). The JS used to dual-write to
+   localStorage; now it just reads + writes the table. */
+let emailTemplates = [];
 
-function saveEmailTemplates(){ localStorage.setItem('gl_email_templates', JSON.stringify(emailTemplates)); }
+async function glEmailTemplatesBackfill(){
+  try {
+    if(localStorage.getItem('gl_email_templates_migrated') === '1') return;
+    if(!window.supa) return;
+    const blob = localStorage.getItem('gl_email_templates');
+    if(!blob){ localStorage.setItem('gl_email_templates_migrated','1'); return; }
+    let legacy = []; try { legacy = JSON.parse(blob) || []; } catch(_e){ return; }
+    if(!legacy.length){ localStorage.setItem('gl_email_templates_migrated','1'); return; }
+    const rows = legacy.map(t => ({
+      name:     String(t.name || 'Untitled').slice(0, 200),
+      category: 'general',
+      subject:  String(t.subject || '').slice(0, 500),
+      body:     String(t.body || ''),
+      active:   true
+    })).filter(r => r.subject && r.body);
+    if(!rows.length){ localStorage.setItem('gl_email_templates_migrated','1'); return; }
+    const r = await window.supa.from('email_templates').insert(rows);
+    if(r.error){ console.warn('[GL] email_templates backfill failed', r.error.message); return; }
+    localStorage.setItem('gl_email_templates_migrated','1');
+    if(typeof addNotification === 'function'){
+      addNotification('📧 Templates migrated', rows.length + ' email template' + (rows.length===1?'':'s') + ' moved to the cloud.', 'success');
+    }
+  } catch(e){ console.warn('[GL] email_templates backfill threw', e); }
+}
 
-function openEmailTemplates(){
+async function loadEmailTemplates(){
+  if(!window.supa){ emailTemplates = []; return; }
+  await glEmailTemplatesBackfill();
+  const r = await window.supa.from('email_templates')
+    .select('id, name, subject, body, category, active')
+    .eq('active', true)
+    .order('name', { ascending: true });
+  if(r.error){ console.warn('[GL] loadEmailTemplates failed', r.error.message); emailTemplates = []; return; }
+  emailTemplates = r.data || [];
+}
+
+async function openEmailTemplates(){
+  await loadEmailTemplates();
   const existing = document.getElementById('email-templates-modal');
   if(existing){ existing.classList.add('show'); renderEmailTemplates(); return; }
 
@@ -8625,37 +8672,45 @@ function openEmailTemplates(){
 function renderEmailTemplates(){
   const el = document.getElementById('et-list');
   if(!el) return;
+  const esc = s => String(s||'').replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
+  if(!emailTemplates.length){ el.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:10px 0">No templates yet. Save one below.</div>'; return; }
   el.innerHTML = emailTemplates.map(t => `
     <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:13px;margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <div style="font-weight:700;font-size:13px;color:var(--white)">${t.name}</div>
+        <div style="font-weight:700;font-size:13px;color:var(--white)">${esc(t.name)}</div>
         <div style="display:flex;gap:6px">
           <button class="cbtn" style="font-size:10px;padding:3px 8px" onclick="useTemplate('${t.id}')">Use</button>
           <button class="cbtn red" style="font-size:10px;padding:3px 8px" onclick="deleteTemplate('${t.id}')">✕</button>
         </div>
       </div>
-      <div style="font-size:11px;color:var(--teal);margin-bottom:3px">${t.subject}</div>
-      <div style="font-size:11px;color:var(--muted);white-space:pre-wrap">${t.body.substring(0,100)}${t.body.length>100?'…':''}</div>
+      <div style="font-size:11px;color:var(--teal);margin-bottom:3px">${esc(t.subject)}</div>
+      <div style="font-size:11px;color:var(--muted);white-space:pre-wrap">${esc(t.body.substring(0,100))}${t.body.length>100?'…':''}</div>
     </div>`).join('');
 }
 
-function saveNewTemplate(){
+async function saveNewTemplate(){
   const name = document.getElementById('et-name')?.value.trim();
   const subject = document.getElementById('et-subject')?.value.trim();
   const body = document.getElementById('et-body')?.value.trim();
   if(!name || !subject || !body){ alert('All fields required'); return; }
-  emailTemplates.unshift({id:'t'+Date.now(), name, subject, body});
-  saveEmailTemplates();
+  if(!window.supa){ alert('Cloud sync unavailable — try reloading.'); return; }
+  const r = await window.supa.from('email_templates').insert([{ name, subject, body, category: 'general', active: true }]);
+  if(r.error){ alert('Save failed: ' + r.error.message); return; }
+  await loadEmailTemplates();
   renderEmailTemplates();
   document.getElementById('et-name').value='';
   document.getElementById('et-subject').value='';
   document.getElementById('et-body').value='';
+  if(typeof glAudit === 'function') glAudit('email_template_saved', null, { name: name.slice(0,80) });
 }
 
-function deleteTemplate(id){
+async function deleteTemplate(id){
   if(!confirm('Delete this template?')) return;
-  emailTemplates = emailTemplates.filter(t => t.id !== id);
-  saveEmailTemplates();
+  if(!window.supa){ return; }
+  // Soft-delete via active=false so any historical references survive.
+  const r = await window.supa.from('email_templates').update({ active: false }).eq('id', id);
+  if(r.error){ alert('Delete failed: ' + r.error.message); return; }
+  await loadEmailTemplates();
   renderEmailTemplates();
 }
 
