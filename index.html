@@ -6273,13 +6273,54 @@ async function deleteTask(id){
 }
 
 /* ═══════════════════════════════════════════
-   DOCUMENT STORAGE
+   DOCUMENT STORAGE (metadata only — file contents live in
+   Supabase Storage when uploaded; this table is the index)
 ═══════════════════════════════════════════ */
-let documents = JSON.parse(localStorage.getItem('gl_documents')||'[]');
+let documents = [];
 let docSearch='', docClientFilter='';
 const typeIcons={'NDA':'📜','Formula':'🧪','Label Artwork':'🎨','COA':'🔬','Contract':'📋','Invoice':'🧾','Other':'📄'};
 
-function saveDocs(){ localStorage.setItem('gl_documents', JSON.stringify(documents)); }
+async function glDocumentsBackfill(){
+  try {
+    if(localStorage.getItem('gl_documents_migrated') === '1') return;
+    if(!window.supa || !window.currentUser) return;
+    const blob = localStorage.getItem('gl_documents');
+    if(!blob){ localStorage.setItem('gl_documents_migrated','1'); return; }
+    let legacy = []; try { legacy = JSON.parse(blob) || []; } catch(_e){ return; }
+    if(!legacy.length){ localStorage.setItem('gl_documents_migrated','1'); return; }
+    const rows = legacy.map(d => ({
+      client_id:   /^[0-9a-f-]{36}$/i.test(d.clientId||'') ? d.clientId : null,
+      client_name: d.clientName || null,
+      name:        String(d.name || '').slice(0, 500),
+      doc_type:    d.type || 'Other',
+      notes:       d.notes || null,
+      uploaded_by: d.uploadedBy || null,
+      uploaded_at: d.uploadedAt || new Date().toISOString()
+    }));
+    const r = await window.supa.from('documents').insert(rows);
+    if(r.error){ console.warn('[GL] documents backfill failed', r.error.message); return; }
+    localStorage.setItem('gl_documents_migrated','1');
+    if(typeof addNotification === 'function'){
+      addNotification('📁 Documents migrated', rows.length + ' moved from device storage to the cloud.', 'success');
+    }
+  } catch(e){ console.warn('[GL] documents backfill threw', e); }
+}
+
+async function loadDocs(){
+  if(!window.supa){ documents = []; return; }
+  await glDocumentsBackfill();
+  const r = await window.supa.from('documents')
+    .select('id, client_id, client_name, name, doc_type, notes, uploaded_by, uploaded_at')
+    .order('uploaded_at', { ascending: false })
+    .limit(500);
+  if(r.error){ console.warn('[GL] loadDocs failed', r.error.message); documents = []; return; }
+  documents = (r.data || []).map(d => ({
+    id: d.id, clientId: d.client_id,
+    clientName: d.client_name || ((clients.find(c => c.id === d.client_id)||{}).name) || 'General',
+    name: d.name, type: d.doc_type, notes: d.notes,
+    uploadedAt: d.uploaded_at, uploadedBy: d.uploaded_by || 'Admin'
+  }));
+}
 
 function openDocUploadModal(){
   const sel=document.getElementById('doc-client-sel');
@@ -6288,18 +6329,28 @@ function openDocUploadModal(){
 }
 function closeDocUploadModal(){ document.getElementById('doc-upload-modal').classList.remove('show'); }
 
-function saveDocument(){
+async function saveDocument(){
   const clientId=document.getElementById('doc-client-sel').value;
   const name=document.getElementById('doc-name').value.trim();
   const type=document.getElementById('doc-type').value;
   if(!name){alert('Document name required');return;}
+  if(!window.supa){ alert('Cloud sync unavailable — try reloading.'); return; }
   const client=clients.find(c=>c.id===clientId);
-  documents.unshift({id:'d'+Date.now(),clientId,clientName:client?client.name:'General',name,type,notes:document.getElementById('doc-notes').value,uploadedAt:new Date().toISOString(),uploadedBy:currentUser?currentUser.name:'Admin'});
-  saveDocs();
+  const r = await window.supa.from('documents').insert([{
+    client_id:   /^[0-9a-f-]{36}$/i.test(clientId||'') ? clientId : null,
+    client_name: client ? client.name : 'General',
+    name:        name,
+    doc_type:    type,
+    notes:       document.getElementById('doc-notes').value || null,
+    uploaded_by: (window.currentUser && window.currentUser.name) || 'Admin'
+  }]);
+  if(r.error){ alert('Save failed: ' + r.error.message); return; }
+  await loadDocs();
   renderDocs();
   closeDocUploadModal();
   document.getElementById('doc-name').value='';
   addNotification('📁 Document saved: '+name,client?client.name:'General','success');
+  if(typeof glAudit === 'function') glAudit('document_saved', clientId || null, { name: name.slice(0,80) });
 }
 
 function filterDocs(v){ docSearch=v; renderDocs(); }
@@ -6307,56 +6358,93 @@ function filterDocs(v){ docSearch=v; renderDocs(); }
 function renderDocs(){
   const el=document.getElementById('doc-list');
   if(!el) return;
-  
-  // Populate client filter
   const cf=document.getElementById('doc-client-filter');
   if(cf && cf.children.length<=1){
     cf.innerHTML='<option value="">All clients</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
   }
   docClientFilter = cf ? cf.value : '';
-  
   let filtered=documents;
-  if(docSearch) filtered=filtered.filter(d=>d.name.toLowerCase().includes(docSearch.toLowerCase())||d.type.toLowerCase().includes(docSearch.toLowerCase())||d.clientName.toLowerCase().includes(docSearch.toLowerCase()));
+  if(docSearch) filtered=filtered.filter(d=>(d.name||'').toLowerCase().includes(docSearch.toLowerCase())||(d.type||'').toLowerCase().includes(docSearch.toLowerCase())||(d.clientName||'').toLowerCase().includes(docSearch.toLowerCase()));
   if(docClientFilter) filtered=filtered.filter(d=>d.clientId===docClientFilter);
-  
   if(!filtered.length){el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:20px 0">No documents found.</div>';return;}
-  
+  const esc = s => String(s||'').replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
   el.innerHTML=filtered.map(d=>`<div class="doc-item">
     <div class="doc-icon">${typeIcons[d.type]||'📄'}</div>
     <div style="flex:1">
-      <div class="doc-name">${d.name}</div>
-      <div class="doc-meta">${d.type} &nbsp;·&nbsp; ${d.clientName} &nbsp;·&nbsp; ${d.uploadedAt?d.uploadedAt.split('T')[0]:''} &nbsp;·&nbsp; by ${d.uploadedBy||'Admin'}</div>
-      ${d.notes?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${d.notes}</div>`:''}
+      <div class="doc-name">${esc(d.name)}</div>
+      <div class="doc-meta">${esc(d.type)} &nbsp;·&nbsp; ${esc(d.clientName)} &nbsp;·&nbsp; ${d.uploadedAt?d.uploadedAt.split('T')[0]:''} &nbsp;·&nbsp; by ${esc(d.uploadedBy||'Admin')}</div>
+      ${d.notes?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(d.notes)}</div>`:''}
     </div>
     <button class="cbtn red" style="font-size:10px;padding:3px 7px" onclick="deleteDoc('${d.id}')">✕</button>
   </div>`).join('');
 }
 
-function deleteDoc(id){
+async function deleteDoc(id){
   if(!confirm('Delete this document record?')) return;
+  if(!window.supa){ return; }
+  const r = await window.supa.from('documents').delete().eq('id', id);
+  if(r.error){ alert('Delete failed: ' + r.error.message); return; }
   documents=documents.filter(d=>d.id!==id);
-  saveDocs();
   renderDocs();
+  if(typeof glAudit === 'function') glAudit('document_deleted', null, { document_id: id });
 }
 
 /* ═══════════════════════════════════════════
-   INVENTORY TRACKER
+   INVENTORY TRACKER (cloud-backed)
 ═══════════════════════════════════════════ */
-let inventory = JSON.parse(localStorage.getItem('gl_inventory')||'[]');
+let inventory = [];
 
-function saveInventory(){ localStorage.setItem('gl_inventory', JSON.stringify(inventory)); }
+async function glInventoryBackfill(){
+  try {
+    if(localStorage.getItem('gl_inventory_migrated') === '1') return;
+    if(!window.supa) return;
+    const blob = localStorage.getItem('gl_inventory');
+    if(!blob){ localStorage.setItem('gl_inventory_migrated','1'); return; }
+    let legacy = []; try { legacy = JSON.parse(blob) || []; } catch(_e){ return; }
+    if(!legacy.length){ localStorage.setItem('gl_inventory_migrated','1'); return; }
+    const rows = legacy.map(i => ({
+      name:   String(i.name || '').slice(0, 200),
+      qty:    parseInt(i.qty) || 0,
+      unit:   i.unit || 'units',
+      low_at: parseInt(i.lowAt) || 10
+    })).filter(r => r.name);
+    if(!rows.length){ localStorage.setItem('gl_inventory_migrated','1'); return; }
+    const r = await window.supa.from('inventory').insert(rows);
+    if(r.error){ console.warn('[GL] inventory backfill failed', r.error.message); return; }
+    localStorage.setItem('gl_inventory_migrated','1');
+    if(typeof addNotification === 'function'){
+      addNotification('📦 Inventory migrated', rows.length + ' item' + (rows.length===1?'':'s') + ' moved from device storage to the cloud.', 'success');
+    }
+  } catch(e){ console.warn('[GL] inventory backfill threw', e); }
+}
+
+async function loadInventory(){
+  if(!window.supa){ inventory = []; return; }
+  await glInventoryBackfill();
+  const r = await window.supa.from('inventory').select('id, name, qty, unit, low_at').order('name', { ascending: true });
+  if(r.error){ console.warn('[GL] loadInventory failed', r.error.message); inventory = []; return; }
+  inventory = (r.data || []).map(i => ({ id: i.id, name: i.name, qty: i.qty, unit: i.unit, lowAt: i.low_at }));
+}
 
 function openInventoryModal(){ document.getElementById('inventory-modal').classList.add('show'); }
 function closeInventoryModal(){ document.getElementById('inventory-modal').classList.remove('show'); }
 
-function saveInventoryItem(){
+async function saveInventoryItem(){
   const name=document.getElementById('inv-item-name').value.trim();
   if(!name){alert('Item name required');return;}
-  inventory.push({id:'inv'+Date.now(),name,qty:parseInt(document.getElementById('inv-item-qty').value)||0,unit:document.getElementById('inv-item-unit').value||'units',lowAt:parseInt(document.getElementById('inv-item-low').value)||10});
-  saveInventory();
+  if(!window.supa){ alert('Cloud sync unavailable — try reloading.'); return; }
+  const r = await window.supa.from('inventory').insert([{
+    name:   name,
+    qty:    parseInt(document.getElementById('inv-item-qty').value) || 0,
+    unit:   document.getElementById('inv-item-unit').value || 'units',
+    low_at: parseInt(document.getElementById('inv-item-low').value) || 10
+  }]);
+  if(r.error){ alert('Save failed: ' + r.error.message); return; }
+  await loadInventory();
   renderInventory();
   closeInventoryModal();
   document.getElementById('inv-item-name').value='';
+  if(typeof glAudit === 'function') glAudit('inventory_added', null, { name: name.slice(0,80) });
 }
 
 function renderInventory(){
@@ -6387,9 +6475,15 @@ function renderInventory(){
   }).join('');
 }
 
-function adjustInventory(id,delta){
+async function adjustInventory(id,delta){
   const item=inventory.find(i=>i.id===id);
-  if(item){ item.qty=Math.max(0,item.qty+delta); saveInventory(); renderInventory(); }
+  if(!item) return;
+  const newQty = Math.max(0, item.qty + delta);
+  if(!window.supa){ item.qty = newQty; renderInventory(); return; }
+  const r = await window.supa.from('inventory').update({ qty: newQty }).eq('id', id);
+  if(r.error){ alert('Update failed: ' + r.error.message); return; }
+  item.qty = newQty;
+  renderInventory();
 }
 
 /* ═══════════════════════════════════════════
@@ -6489,33 +6583,80 @@ function getClientHealth(client){
 /* ═══════════════════════════════════════════
    TAGS SYSTEM
 ═══════════════════════════════════════════ */
-let clientTags = JSON.parse(localStorage.getItem('gl_client_tags')||'{}');
+/* Client tags: { clientId: [tag, tag, ...] } populated from
+   public.client_tags. Local cache rebuilt on every loadClientTags()
+   call. Each add/remove writes through to Supabase. */
+let clientTags = {};
 
-function saveClientTags(){ localStorage.setItem('gl_client_tags', JSON.stringify(clientTags)); }
+async function glClientTagsBackfill(){
+  try {
+    if(localStorage.getItem('gl_client_tags_migrated') === '1') return;
+    if(!window.supa || !window.currentUser) return;
+    const blob = localStorage.getItem('gl_client_tags');
+    if(!blob){ localStorage.setItem('gl_client_tags_migrated','1'); return; }
+    let legacy = {}; try { legacy = JSON.parse(blob) || {}; } catch(_e){ return; }
+    const rows = [];
+    Object.keys(legacy).forEach(cid => {
+      if(!/^[0-9a-f-]{36}$/i.test(cid)) return;
+      (legacy[cid]||[]).forEach(t => {
+        if(t && typeof t === 'string') rows.push({ client_id: cid, tag: t.toLowerCase().slice(0,80), created_by: (window.currentUser.name||null) });
+      });
+    });
+    if(!rows.length){ localStorage.setItem('gl_client_tags_migrated','1'); return; }
+    const r = await window.supa.from('client_tags').upsert(rows, { onConflict: 'client_id,tag', ignoreDuplicates: true });
+    if(r.error){ console.warn('[GL] client_tags backfill failed', r.error.message); return; }
+    localStorage.setItem('gl_client_tags_migrated','1');
+  } catch(e){ console.warn('[GL] client_tags backfill threw', e); }
+}
+
+async function loadClientTags(){
+  if(!window.supa){ return; }
+  await glClientTagsBackfill();
+  const r = await window.supa.from('client_tags').select('client_id, tag');
+  if(r.error){ console.warn('[GL] loadClientTags failed', r.error.message); return; }
+  clientTags = {};
+  (r.data || []).forEach(row => {
+    if(!clientTags[row.client_id]) clientTags[row.client_id] = [];
+    clientTags[row.client_id].push(row.tag);
+  });
+}
 
 function getClientTagsEl(clientId,editable=false){
   const tags=clientTags[clientId]||[];
-  if(!editable) return tags.map(t=>`<span class="tag-chip">${t}</span>`).join('');
+  const esc = s => String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[m]));
+  if(!editable) return tags.map(t=>`<span class="tag-chip">${esc(t)}</span>`).join('');
   return `<div class="tag-input-wrap" id="tag-wrap-${clientId}">
-    ${tags.map(t=>`<span class="tag-chip">${t}<span class="tag-rm" onclick="removeTag('${clientId}','${t}')">✕</span></span>`).join('')}
+    ${tags.map(t=>`<span class="tag-chip">${esc(t)}<span class="tag-rm" onclick="removeTag('${clientId}','${esc(t)}')">✕</span></span>`).join('')}
     <input placeholder="Add tag, press Enter" onkeydown="if(event.key==='Enter'){addTag('${clientId}',this.value);this.value=''}">
   </div>`;
 }
 
-function addTag(clientId,tag){
-  tag=tag.trim().toLowerCase();
+async function addTag(clientId,tag){
+  tag=String(tag||'').trim().toLowerCase().slice(0,80);
   if(!tag) return;
   if(!clientTags[clientId]) clientTags[clientId]=[];
-  if(!clientTags[clientId].includes(tag)) clientTags[clientId].push(tag);
-  saveClientTags();
+  if(clientTags[clientId].includes(tag)){ renderClientDetail(clientId); return; }
+  // Optimistic
+  clientTags[clientId].push(tag);
   renderClientDetail(clientId);
+  if(window.supa){
+    const r = await window.supa.from('client_tags').insert([{ client_id: clientId, tag, created_by: (window.currentUser && window.currentUser.name) || null }]);
+    if(r.error && !/duplicate|unique/i.test(r.error.message||'')){
+      // Rollback on real error
+      clientTags[clientId] = clientTags[clientId].filter(t => t !== tag);
+      renderClientDetail(clientId);
+      alert('Save failed: ' + r.error.message);
+    }
+  }
 }
 
-function removeTag(clientId,tag){
+async function removeTag(clientId,tag){
   if(!clientTags[clientId]) return;
   clientTags[clientId]=clientTags[clientId].filter(t=>t!==tag);
-  saveClientTags();
   renderClientDetail(clientId);
+  if(window.supa){
+    await window.supa.from('client_tags').delete().eq('client_id', clientId).eq('tag', tag);
+  }
 }
 
 function renderClientDetail(clientId){
@@ -7464,8 +7605,8 @@ cNav=function(page,el){
   if(page==='calendar') renderCal('general');
   if(page==='production-cal'){ renderCal('production'); renderProductionRuns(); }
   if(page==='tasks'){ loadTasks().then(renderTasks); }
-  if(page==='documents') renderDocs();
-  if(page==='inventory') renderInventory();
+  if(page==='documents'){ loadDocs().then(renderDocs); }
+  if(page==='inventory'){ loadInventory().then(renderInventory); }
   if(page==='announcements'){ loadAnnouncements().then(renderAnnouncements); }
   if(page==='customers') renderCustomerLogins();
 };
