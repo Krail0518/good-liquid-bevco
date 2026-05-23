@@ -4008,8 +4008,28 @@ function copyEmail(){
    ═══════════════════════════════════════════════ */
 const SUPA_URL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co';
 const SUPA_KEY = 'sb_publishable_-37mkPw8uLzEJM21T9jJOA_YQRQ7ikB';
-const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
+
+/* If the URL carries ?inspector=TOKEN, inject the X-Inspector-Token
+   header on every supabase-js request. The new RLS policies on the
+   six core compliance tables (compliance_records, production_runs,
+   defects, hold_tags, audit_log, cip_logs) check this header via
+   public.is_valid_inspector_token() and grant anon SELECT when the
+   token is live (unrevoked + within valid_from..valid_until). Other
+   tables stay locked — the header is no master key. This makes the
+   FDA-inspector emailed-link flow actually work end-to-end instead
+   of landing on an empty page. See 20260523_inspector_mode_server_side.sql. */
+const _glInspectorToken = (function(){
+  try {
+    const t = new URL(window.location.href).searchParams.get('inspector');
+    return (t && t.trim()) || null;
+  } catch(e){ return null; }
+})();
+const _glClientOpts = _glInspectorToken
+  ? { global: { headers: { 'X-Inspector-Token': _glInspectorToken } } }
+  : {};
+const supa = supabase.createClient(SUPA_URL, SUPA_KEY, _glClientOpts);
 window.supa = supa;  // expose to fix.js (which needs supa.auth for login)
+window.__glInspectorTokenInUrl = _glInspectorToken; // read by fix.js's mode-activation
 
 // Override checkPw — tries Supabase first, falls back to local auth
 window.checkPw = async function checkPw(){

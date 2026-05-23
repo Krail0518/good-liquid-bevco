@@ -137,18 +137,26 @@
   };
 
   /* ── Super-user check ──
-     Mike's request 2026-05-23: there's one super user (the workspace
-     owner). Other admins keep full read/edit access but can't perform
-     destructive operations — delete client, hard-remove user, delete
-     invoice, etc. This is enforced JS-side (gating UI buttons) until
-     we move it server-side via a profiles.is_super_user column +
-     policy checks. Hardcoded to mike@goodliquid.com for now since
-     there's only one. */
+     UI gate that hides destructive buttons (Delete client, Remove
+     user, etc.) for non-super admins. The server-side enforcement
+     lives in 20260523_super_user_rls_enforcement.sql — RLS policies
+     consult public.is_super_user() which reads profiles.is_super_user
+     for the calling user, so a DevTools call bypassing this UI
+     check still bounces at the database. This JS function is
+     purely cosmetic now; the security boundary is the DB.
+
+     Reads profiles.is_super_user from currentUser when available
+     (post-migration). Falls back to the hardcoded owner email so
+     the gate works against deployments that haven't applied the
+     migration yet. */
   window.GL_SUPER_USER_EMAIL = 'mike@goodliquid.com';
   window.glIsSuperUser = window.glIsSuperUser || function(){
     var u = window.currentUser;
-    if(!u || !u.email) return false;
-    return String(u.email).toLowerCase() === window.GL_SUPER_USER_EMAIL;
+    if(!u) return false;
+    if(u.is_super_user === true) return true;            // canonical
+    if(u.is_super_user === false) return false;          // explicitly not super
+    // Field absent (migration not applied yet) — fall back to email.
+    return String(u.email||'').toLowerCase() === window.GL_SUPER_USER_EMAIL;
   };
 
   /* ── INTERCEPT ALL NEW INVOICE ENTRY POINTS ──
@@ -287,6 +295,11 @@
         id:p.id, email:p.email||authUser.email,
         name:p.name||(authUser.email||'').split('@')[0],
         role:p.role||'sales', status:p.status||'active',
+        // is_super_user: read from the profile column when it exists
+        // (after 20260523_super_user_rls_enforcement.sql is applied).
+        // glIsSuperUser() falls back to the owner-email check when this
+        // is undefined so the UI gate works either way.
+        is_super_user: typeof p.is_super_user === 'boolean' ? p.is_super_user : undefined,
         initials:p.initials||(authUser.email||'?').slice(0,2).toUpperCase(),
         color:p.color||'#1a6fff', tc:p.tc||'#fff',
         lastLogin:'Just now'
