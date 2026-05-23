@@ -2518,8 +2518,9 @@ select option, .fsel option {
             <select class="fsel" id="change-pw-user-sel" style="width:100%"></select>
           </div>
           <div class="frow"><div class="flbl">Current password</div><input class="finp" type="password" id="change-pw-old" placeholder="Current password"></div>
-          <div class="frow"><div class="flbl">New password</div><input class="finp" type="password" id="change-pw-new" placeholder="New password (min 8 chars)"></div>
-          <div class="frow"><div class="flbl">Confirm new password</div><input class="finp" type="password" id="change-pw-confirm" placeholder="Confirm new password"></div>
+          <div class="frow"><div class="flbl">New password</div><input class="finp" type="password" id="change-pw-new" placeholder="New password" autocomplete="new-password"></div>
+          <div class="frow"><div class="flbl">Confirm new password</div><input class="finp" type="password" id="change-pw-confirm" placeholder="Confirm new password" autocomplete="new-password"></div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.5">Must be at least 8 characters and include at least one capital letter and one special character (e.g. <code style="background:rgba(255,255,255,.06);padding:1px 4px;border-radius:3px">!@#$%^&amp;*</code>).</div>
           <div id="change-pw-err" style="color:#e74c3c;font-size:12px;margin-bottom:10px;display:none"></div>
           <div id="change-pw-ok" style="color:var(--teal);font-size:12px;margin-bottom:10px;display:none">✓ Password changed successfully!</div>
           <div style="display:flex;gap:8px">
@@ -3659,9 +3660,11 @@ function openInviteModal(){
 function closeInviteModal(){document.getElementById('invite-modal').classList.remove('show');document.getElementById('invite-copied').style.display='none'}
 
 function genTempPw(){
-  const chars='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#';
-  let pw='GL';
-  for(let i=0;i<6;i++)pw+=chars[Math.floor(Math.random()*chars.length)];
+  // Use the policy-compliant generator (8+ chars, uppercase, digit, special).
+  const pw = (window.glGenerateTempPassword ? window.glGenerateTempPassword() : (function(){
+    const chars='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#';
+    let s='GL';for(let i=0;i<10;i++)s+=chars[Math.floor(Math.random()*chars.length)];return s;
+  })());
   document.getElementById('inv-u-pw').value=pw;
   refreshInvitePreview();
 }
@@ -3738,8 +3741,12 @@ function deactivateUser(uid){
 
 function resetPw(uid){
   const u=users.find(x=>x.id===uid);if(!u)return;
-  const chars='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#';
-  let pw='GL';for(let i=0;i<6;i++)pw+=chars[Math.floor(Math.random()*chars.length)];
+  // Use the policy-compliant generator (guarantees uppercase + digit + special, 12 chars).
+  // Falls back to a local impl if fix.js hasn't loaded yet.
+  const pw = (window.glGenerateTempPassword ? window.glGenerateTempPassword() : (function(){
+    const chars='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#';
+    let s='GL';for(let i=0;i<10;i++)s+=chars[Math.floor(Math.random()*chars.length)];return s;
+  })());
   u.password=pw;
   const msg=`New password for ${u.name}:\n\nEmail: ${u.email}\nNew password: ${pw}\n\nShare this with them securely.`;
   if(navigator.clipboard){navigator.clipboard.writeText(msg).then(()=>alert('New password copied to clipboard!\n\nPassword: '+pw+'\n\nPaste it somewhere safe before closing.'));}
@@ -6344,7 +6351,8 @@ function doChangePassword(){
   
   err.style.display='none'; ok.style.display='none';
   
-  if(newPw.length<8){err.textContent='Password must be at least 8 characters.';err.style.display='block';return;}
+  const _pwErr = (window.glValidatePassword ? window.glValidatePassword(newPw) : (newPw.length < 8 ? 'Password must be at least 8 characters.' : null));
+  if(_pwErr){ err.textContent = _pwErr; err.style.display='block'; return; }
   if(newPw!==confirmPw){err.textContent='Passwords do not match.';err.style.display='block';return;}
   
   const isAdmin=currentUser&&currentUser.role==='admin';
@@ -7826,7 +7834,8 @@ async function createInvitedUser(){
 
   if(!name){ err.textContent='Name is required'; err.style.display='block'; return; }
   if(!email || !email.includes('@')){ err.textContent='Valid email is required'; err.style.display='block'; return; }
-  if(password.length < 8){ err.textContent='Password must be at least 8 characters'; err.style.display='block'; return; }
+  const _invPwErr = (window.glValidatePassword ? window.glValidatePassword(password) : (password.length < 8 ? 'Password must be at least 8 characters' : null));
+  if(_invPwErr){ err.textContent = _invPwErr; err.style.display='block'; return; }
   if(users.find(u => u.email.toLowerCase() === email)){ err.textContent='A user with that email already exists'; err.style.display='block'; return; }
 
   // Generate initials and color

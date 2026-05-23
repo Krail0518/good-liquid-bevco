@@ -76,6 +76,56 @@
     return d.toLocaleDateString('en-US', opts);
   };
 
+  /* ── Password policy helper ──
+     Org-wide rule (set by Mike on 2026-05-22): minimum 8 characters,
+     at least one uppercase letter, at least one special character.
+     Returns null when the password is acceptable, otherwise an English
+     error message ready to display.
+     The error message is intentionally specific so users can see which
+     rule they tripped — vague "password is invalid" messages just lead
+     to support tickets. */
+  window.GL_PW_MIN_LEN = 8;
+  window.GL_PW_SPECIAL_RE = /[^A-Za-z0-9]/;
+  window.GL_PW_UPPER_RE = /[A-Z]/;
+  window.glValidatePassword = window.glValidatePassword || function(pw){
+    pw = String(pw == null ? '' : pw);
+    if(pw.length < window.GL_PW_MIN_LEN){
+      return 'Password must be at least ' + window.GL_PW_MIN_LEN + ' characters.';
+    }
+    if(!window.GL_PW_UPPER_RE.test(pw)){
+      return 'Password must include at least one capital letter (A–Z).';
+    }
+    if(!window.GL_PW_SPECIAL_RE.test(pw)){
+      return 'Password must include at least one special character (e.g. !@#$%^&*).';
+    }
+    return null;
+  };
+
+  /* ── Compliant temporary password generator ──
+     Produces a passphrase that satisfies window.glValidatePassword() by
+     construction (always 12 chars, at least one uppercase, one lowercase,
+     one digit, one special). Used when an admin invites a new staff or
+     customer user and the system needs to seed a password they'll
+     immediately reset. The old GL+6-random generator only sometimes hit
+     the policy. */
+  window.glGenerateTempPassword = window.glGenerateTempPassword || function(){
+    var UP = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    var LO = 'abcdefghjkmnpqrstuvwxyz';
+    var DG = '23456789';
+    var SP = '!@#$%^&*';
+    function pick(s){ return s[Math.floor(Math.random()*s.length)]; }
+    // Guarantee one of each class so policy is always met.
+    var out = [pick(UP), pick(LO), pick(DG), pick(SP)];
+    var pool = UP + LO + DG + SP;
+    while(out.length < 12) out.push(pick(pool));
+    // Shuffle so the guaranteed chars aren't always in positions 0..3.
+    for(var i = out.length - 1; i > 0; i--){
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = out[i]; out[i] = out[j]; out[j] = t;
+    }
+    return out.join('');
+  };
+
   /* ── USD currency formatter with enforced two-decimal precision ──
      Plain `.toLocaleString()` on a number drops trailing fractional zeros
      ($2,312.50 → "$2,312.5") which looks like a glitch on every invoice,
@@ -314,7 +364,8 @@
     function setErr(m){if(err){err.textContent=m;err.style.display='block';}}
     if(!name){setErr('Name is required');return;}
     if(!email||email.indexOf('@')<0){setErr('Valid email is required');return;}
-    if(password.length<8){setErr('Password must be at least 8 characters');return;}
+    var _pwErr = (window.glValidatePassword ? window.glValidatePassword(password) : (password.length < 8 ? 'Password must be at least 8 characters.' : null));
+    if(_pwErr){ setErr(_pwErr); return; }
     if((window.users||[]).find(function(u){return u.email.toLowerCase()===email;})){setErr('A user with that email already exists');return;}
 
     var sb=getSupa();
@@ -403,7 +454,8 @@
     if(ok)ok.style.display='none';
     function setErr(m){if(err){err.textContent=m;err.style.display='block';}}
     function setOk(m){if(ok){ok.textContent=m;ok.style.display='block';}}
-    if(newPw.length<8){setErr('Password must be at least 8 characters.');return;}
+    var _pwErr = (window.glValidatePassword ? window.glValidatePassword(newPw) : (newPw.length < 8 ? 'Password must be at least 8 characters.' : null));
+    if(_pwErr){ setErr(_pwErr); return; }
     if(newPw!==confirmPw){setErr('Passwords do not match.');return;}
 
     var sb=getSupa();
@@ -2209,7 +2261,8 @@
       clearErr();
       var pw = newEl.value;
       var c  = conEl.value;
-      if(pw.length < 6){ showErr('Password must be at least 6 characters.'); return; }
+      var _pwErr = (window.glValidatePassword ? window.glValidatePassword(pw) : (pw.length < 8 ? 'Password must be at least 8 characters.' : null));
+      if(_pwErr){ showErr(_pwErr); return; }
       if(pw !== c){ showErr('Passwords do not match.'); return; }
       var sb = window.supa;
       if(!sb){ showErr('Auth service unavailable.'); return; }
@@ -2745,7 +2798,8 @@
     btn.addEventListener('click', async function(){
       errEl.style.display='none';
       var pw = newEl.value;
-      if(pw.length < 6){ showErr('Password must be at least 6 characters.'); return; }
+      var _pwErr = (window.glValidatePassword ? window.glValidatePassword(pw) : (pw.length < 8 ? 'Password must be at least 8 characters.' : null));
+      if(_pwErr){ showErr(_pwErr); return; }
       if(pw !== conEl.value){ showErr('Passwords do not match.'); return; }
       var sb = window.supa;
       if(!sb){ showErr('Auth service unavailable.'); return; }
@@ -22652,7 +22706,8 @@
       var newPw = val('acct-new-pw');
       var confirmPw = val('acct-confirm-pw');
       if(newPw){
-        if(newPw.length < 6){ msg('New password must be at least 6 characters.', 'err'); return; }
+        var _pwErr = (window.glValidatePassword ? window.glValidatePassword(newPw) : (newPw.length < 8 ? 'New password must be at least 8 characters.' : null));
+        if(_pwErr){ msg(_pwErr, 'err'); return; }
         if(newPw !== confirmPw){ msg('New passwords do not match.', 'err'); return; }
       }
       btn.disabled = true; btn.textContent = 'Saving…';
