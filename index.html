@@ -2652,12 +2652,74 @@ let invoices=window.invoices=[];
    or from "Add Deal" / contact form. Bridged to window so fix.js can share. */
 let deals=window.deals={'Prospecting':[],'Proposal':[],'Negotiation':[],'Closed Won':[],'Closed Lost':[]};
 
-/* Activities: localStorage-persisted (per-device). Capped at 100 entries to
-   avoid bloat. Bridged to window. */
-let activities=window.activities=JSON.parse(localStorage.getItem('gl_activities')||'[]');
+/* Activities: source of truth is public.activity_feed in Supabase.
+   The in-memory array is the cached recent slice for the dashboard
+   renderer. Every `activities.unshift({...}); saveActivities()` site
+   in the legacy code now writes through to the DB via the override
+   below — the local array is kept warm for renderers that read
+   synchronously. */
+let activities = window.activities = [];
+
+async function glActivitiesBackfill(){
+  try {
+    if(localStorage.getItem('gl_activities_migrated') === '1') return;
+    if(!window.supa || !window.currentUser) return;
+    const blob = localStorage.getItem('gl_activities');
+    if(!blob){ localStorage.setItem('gl_activities_migrated','1'); return; }
+    let legacy = []; try { legacy = JSON.parse(blob) || []; } catch(_e){ return; }
+    if(!legacy.length){ localStorage.setItem('gl_activities_migrated','1'); return; }
+    const nowMs = Date.now();
+    const rows = legacy.slice(0, 100).map((a, i) => ({
+      kind:        a.type || 'note',
+      icon:        a.icon || null,
+      name:        String(a.name || '').slice(0, 300),
+      detail:      a.detail || null,
+      actor_email: (window.currentUser && window.currentUser.email) || null,
+      client_id:   /^[0-9a-f-]{36}$/i.test(a.clientId||'') ? a.clientId : null,
+      created_at:  new Date(nowMs - i*1000).toISOString()
+    }));
+    const r = await window.supa.from('activity_feed').insert(rows);
+    if(r.error){ console.warn('[GL] activities backfill failed', r.error.message); return; }
+    localStorage.setItem('gl_activities_migrated','1');
+  } catch(e){ console.warn('[GL] activities backfill threw', e); }
+}
+
+async function loadActivities(){
+  if(!window.supa){ activities = window.activities = []; return; }
+  await glActivitiesBackfill();
+  const r = await window.supa.from('activity_feed')
+    .select('id, kind, icon, name, detail, client_id, created_at')
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if(r.error){ console.warn('[GL] loadActivities failed', r.error.message); return; }
+  activities = window.activities = (r.data || []).map(a => ({
+    type:   a.kind,
+    icon:   a.icon,
+    name:   a.name,
+    detail: a.detail,
+    time:   timeAgo(new Date(a.created_at)),
+    clientId: a.client_id
+  }));
+}
+
+// saveActivities is now a thin write-through: the legacy code calls
+// activities.unshift({...}); saveActivities() — the unshift updates
+// the in-memory cache; this fires off a single INSERT for the new
+// head item. Keeps the array capped at 100.
 function saveActivities(){
-  try{localStorage.setItem('gl_activities',JSON.stringify(activities.slice(0,100)));}
-  catch(e){console.warn('[GL] activities save failed',e);}
+  if(activities.length > 100) activities = activities.slice(0, 100);
+  if(!window.supa || !window.currentUser) return;
+  const head = activities[0];
+  if(!head || head._persisted) return;
+  head._persisted = true;
+  window.supa.from('activity_feed').insert([{
+    kind:        head.type || 'note',
+    icon:        head.icon || null,
+    name:        String(head.name || '').slice(0, 300),
+    detail:      head.detail || null,
+    actor_email: (window.currentUser && window.currentUser.email) || null,
+    client_id:   /^[0-9a-f-]{36}$/i.test(head.clientId||'') ? head.clientId : null
+  }]).then(r => { if(r.error) console.warn('[GL] activity write failed', r.error.message); });
 }
 
 const PRICING={
@@ -2763,10 +2825,17 @@ window.loginUser = function loginUser(u){
 /* ═══════════════════════════════════════
    CUSTOMER PORTAL
 ═══════════════════════════════════════ */
-let customerLogins = JSON.parse(localStorage.getItem('gl_customer_logins')||'[]');
+/* DEPRECATED: the canonical Customer Logins list now lives in
+   public.customer_users (read by the fix.js admin renderer that
+   binds to #cpg-customers). The legacy gl_customer_logins blob
+   was insecure — it stored plaintext temp passwords in
+   localStorage — so this is hardcoded to empty and any old
+   blob is wiped on first load. */
+let customerLogins = [];
+try { if(localStorage.getItem('gl_customer_logins')) localStorage.removeItem('gl_customer_logins'); } catch(_e){}
 let currentPortalUser = null;
 
-function saveCustomerLogins(){ localStorage.setItem('gl_customer_logins', JSON.stringify(customerLogins)); }
+function saveCustomerLogins(){ /* DEPRECATED no-op — see customerLogins declaration above */ }
 
 function openCustomerPortal(customer){
   const portal = document.getElementById('customer-portal');
@@ -2828,13 +2897,15 @@ function sendOnboardingEmail(){
   const name = prompt('Customer name:');
   if(!name) return;
   
-  // Generate temp password
-  const tempPw = 'GL' + Math.random().toString(36).substring(2,8).toUpperCase();
-  
-  // Add to customer logins
-  customerLogins.push({id:'cust-'+Date.now(),name,email,password:tempPw,createdAt:new Date().toISOString()});
-  saveCustomerLogins();
-  renderCustomerLogins();
+  // Generate a policy-compliant temp password (12 chars, uppercase + digit + special).
+  const tempPw = (window.glGenerateTempPassword ? window.glGenerateTempPassword() : ('GL' + Math.random().toString(36).substring(2,8).toUpperCase() + '!1'));
+  // NOTE: This legacy sendOnboardingEmail flow doesn't write the password
+  // to localStorage anymore (was a security hole — plaintext creds on
+  // every device the admin opened the CRM on). The canonical invite
+  // flow is window.glInviteCustomerLogin which provisions a real
+  // Supabase auth user with this temp password and creates the
+  // customer_users row. This function is preserved only so any
+  // existing UI buttons that call it keep firing.
   
   // Send via Mailgun
   sendMailgunEmail(email, 'Welcome to Good Liquid Bev Co — Your Portal Access',
@@ -5772,16 +5843,86 @@ function addAIToolbar() {
 /* ═══════════════════════════════════════════
    NOTIFICATIONS SYSTEM
 ═══════════════════════════════════════════ */
-let notifications = JSON.parse(localStorage.getItem('gl_notifications')||'[]');
+/* Notifications: per-user inbox. Source of truth is public.notifications
+   in Supabase. In-memory cache populated from DB on every panel open,
+   plus optimistic update on addNotification so toasts feel instant. */
+let notifications = [];
 
-function saveNotifications(){ localStorage.setItem('gl_notifications', JSON.stringify(notifications.slice(0,50))); }
+async function glNotificationsBackfill(){
+  try {
+    if(localStorage.getItem('gl_notifications_migrated') === '1') return;
+    if(!window.supa || !window.currentUser) return;
+    const blob = localStorage.getItem('gl_notifications');
+    if(!blob){ localStorage.setItem('gl_notifications_migrated','1'); return; }
+    let legacy = [];
+    try { legacy = JSON.parse(blob) || []; } catch(_e){ return; }
+    if(!legacy.length){ localStorage.setItem('gl_notifications_migrated','1'); return; }
+    const rows = legacy.slice(0, 50).map(n => ({
+      user_id: window.currentUser.id,
+      title:   String(n.title || '').slice(0, 200),
+      sub:     n.sub || null,
+      type:    ['info','success','warning','stale','reminder','email'].includes(n.type) ? n.type : 'info',
+      read:    !!n.read,
+      read_at: n.read ? new Date().toISOString() : null,
+      created_at: n.createdAt ? new Date(n.createdAt).toISOString() : new Date().toISOString()
+    }));
+    const r = await window.supa.from('notifications').insert(rows);
+    if(r.error){ console.warn('[GL] notifications backfill failed', r.error.message); return; }
+    localStorage.setItem('gl_notifications_migrated','1');
+  } catch(e){ console.warn('[GL] notifications backfill threw', e); }
+}
 
-function addNotification(title, sub, type='info'){
-  const n={id:'n'+Date.now(),title,sub,type,time:'Just now',read:false,createdAt:Date.now()};
-  notifications.unshift(n);
-  saveNotifications();
+async function loadNotifications(){
+  if(!window.supa || !window.currentUser){ notifications = []; return; }
+  await glNotificationsBackfill();
+  const r = await window.supa.from('notifications')
+    .select('id, title, sub, type, read, created_at')
+    .eq('user_id', window.currentUser.id)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if(r.error){ console.warn('[GL] loadNotifications failed', r.error.message); notifications = []; return; }
+  notifications = (r.data || []).map(n => ({
+    id: n.id, title: n.title, sub: n.sub, type: n.type,
+    read: !!n.read,
+    time: timeAgo(new Date(n.created_at)),
+    createdAt: new Date(n.created_at).getTime()
+  }));
   updateNotifBadge();
   renderNotifList();
+}
+
+function timeAgo(d){
+  const sec = Math.floor((Date.now() - d.getTime())/1000);
+  if(sec < 60) return 'Just now';
+  if(sec < 3600) return Math.floor(sec/60) + 'm ago';
+  if(sec < 86400) return Math.floor(sec/3600) + 'h ago';
+  return Math.floor(sec/86400) + 'd ago';
+}
+
+async function addNotification(title, sub, type='info'){
+  // Optimistic insert into local cache so the toast fires immediately.
+  const localN = { id: 'tmp'+Date.now(), title, sub, type, time:'Just now', read:false, createdAt:Date.now() };
+  notifications.unshift(localN);
+  if(notifications.length > 50) notifications = notifications.slice(0,50);
+  updateNotifBadge();
+  renderNotifList();
+  // Then write through to the DB. Fire-and-forget — if it fails we keep
+  // the local copy so the user still sees it.
+  if(window.supa && window.currentUser){
+    try {
+      const r = await window.supa.from('notifications').insert([{
+        user_id: window.currentUser.id,
+        title:   String(title || '').slice(0, 200),
+        sub:     sub || null,
+        type:    ['info','success','warning','stale','reminder','email'].includes(type) ? type : 'info'
+      }]).select('id').single();
+      if(!r.error && r.data){
+        // Swap the temp id for the real one so future read/delete by id
+        // hits the right row.
+        localN.id = r.data.id;
+      }
+    } catch(_e){}
+  }
 }
 
 function addNotifBadge(){
@@ -5798,14 +5939,14 @@ function toggleNotifPanel(){
   renderNotifList();
 }
 
-function markAllNotifRead(){
+async function markAllNotifRead(){
+  if(window.supa && window.currentUser){
+    await window.supa.from('notifications').update({ read: true, read_at: new Date().toISOString() }).eq('user_id', window.currentUser.id).eq('read', false);
+  }
   notifications.forEach(n=>n.read=true);
-  saveNotifications();
   updateNotifBadge();
   renderNotifList();
 }
-
-function loadNotifications(){ updateNotifBadge(); renderNotifList(); }
 
 function renderNotifList(){
   const el=document.getElementById('notif-list');
@@ -5819,18 +5960,53 @@ function renderNotifList(){
   </div>`).join('');
 }
 
-function markNotifRead(id){
+async function markNotifRead(id){
   const n=notifications.find(x=>x.id===id);
-  if(n)n.read=true;
-  saveNotifications();
+  if(n) n.read = true;
   updateNotifBadge();
   renderNotifList();
+  if(window.supa && id && !String(id).startsWith('tmp')){
+    await window.supa.from('notifications').update({ read: true, read_at: new Date().toISOString() }).eq('id', id);
+  }
 }
 
 /* ═══════════════════════════════════════════
    STALE DEAL DETECTION
 ═══════════════════════════════════════════ */
-let dealLastActivity = JSON.parse(localStorage.getItem('gl_deal_activity')||'{}');
+/* Deal staleness tracker: { dealName: lastActivityMs }. Source of
+   truth is public.deal_activity. Loaded async on dashboard render;
+   the local map is kept hot for the synchronous checkStaleDeals
+   loop. Writes through to the DB on every touch. */
+let dealLastActivity = {};
+
+async function glDealActivityBackfill(){
+  try {
+    if(localStorage.getItem('gl_deal_activity_migrated') === '1') return;
+    if(!window.supa) return;
+    const blob = localStorage.getItem('gl_deal_activity');
+    if(!blob){ localStorage.setItem('gl_deal_activity_migrated','1'); return; }
+    let legacy = {}; try { legacy = JSON.parse(blob) || {}; } catch(_e){ return; }
+    const rows = Object.keys(legacy).map(name => ({
+      deal_name:     String(name).slice(0, 300),
+      last_activity: new Date(legacy[name]).toISOString()
+    })).filter(r => r.deal_name);
+    if(!rows.length){ localStorage.setItem('gl_deal_activity_migrated','1'); return; }
+    const r = await window.supa.from('deal_activity').upsert(rows, { onConflict: 'deal_name' });
+    if(r.error){ console.warn('[GL] deal_activity backfill failed', r.error.message); return; }
+    localStorage.setItem('gl_deal_activity_migrated','1');
+  } catch(e){ console.warn('[GL] deal_activity backfill threw', e); }
+}
+
+async function loadDealActivity(){
+  if(!window.supa) return;
+  await glDealActivityBackfill();
+  const r = await window.supa.from('deal_activity').select('deal_name, last_activity');
+  if(r.error){ console.warn('[GL] loadDealActivity failed', r.error.message); return; }
+  dealLastActivity = {};
+  (r.data || []).forEach(row => {
+    dealLastActivity[row.deal_name] = new Date(row.last_activity).getTime();
+  });
+}
 
 function checkStaleDeals(){
   const STALE_DAYS=7;
@@ -5854,18 +6030,75 @@ function checkStaleDeals(){
 }
 
 function touchDeal(dealName){
-  dealLastActivity[dealName]=Date.now();
-  localStorage.setItem('gl_deal_activity',JSON.stringify(dealLastActivity));
+  const nowMs = Date.now();
+  dealLastActivity[dealName] = nowMs;
+  if(window.supa){
+    window.supa.from('deal_activity').upsert([{
+      deal_name: dealName, last_activity: new Date(nowMs).toISOString()
+    }], { onConflict: 'deal_name' }).then(r => {
+      if(r.error) console.warn('[GL] deal_activity upsert failed', r.error.message);
+    });
+  }
 }
 
 /* ═══════════════════════════════════════════
    CALENDAR SYSTEM
 ═══════════════════════════════════════════ */
-let calEvents = JSON.parse(localStorage.getItem('gl_cal_events')||'[]');
+/* Calendar events: source of truth is public.cal_events. In-memory
+   cache rebuilt from DB on every page open + after each mutation. */
+let calEvents = [];
 let calCurrentDate = { general: new Date(), production: new Date() };
 let calViewMode = 'month';
 
-function saveCalEvents(){ localStorage.setItem('gl_cal_events', JSON.stringify(calEvents)); }
+async function glCalEventsBackfill(){
+  try {
+    if(localStorage.getItem('gl_cal_events_migrated') === '1') return;
+    if(!window.supa) return;
+    const blob = localStorage.getItem('gl_cal_events');
+    if(!blob){ localStorage.setItem('gl_cal_events_migrated','1'); return; }
+    let legacy = []; try { legacy = JSON.parse(blob) || []; } catch(_e){ return; }
+    if(!legacy.length){ localStorage.setItem('gl_cal_events_migrated','1'); return; }
+    const rows = legacy.map(e => ({
+      event_type:  e.type || 'general',
+      title:       String(e.title || '(untitled)').slice(0, 500),
+      event_date:  e.date,
+      event_time:  e.time || null,
+      notes:       e.notes || null,
+      remind:      e.remind || null,
+      client_id:   /^[0-9a-f-]{36}$/i.test(e.clientId||'') ? e.clientId : null,
+      format:      e.format || null,
+      qty:         e.qty || null,
+      due_date:    e.dueDate || null,
+      prod_status: e.prodStatus || null,
+      created_at:  e.createdAt || new Date().toISOString()
+    })).filter(r => r.event_date);
+    if(!rows.length){ localStorage.setItem('gl_cal_events_migrated','1'); return; }
+    const r = await window.supa.from('cal_events').insert(rows);
+    if(r.error){ console.warn('[GL] cal_events backfill failed', r.error.message); return; }
+    localStorage.setItem('gl_cal_events_migrated','1');
+    if(typeof addNotification === 'function'){
+      addNotification('📅 Calendar migrated', rows.length + ' event' + (rows.length===1?'':'s') + ' moved to the cloud.', 'success');
+    }
+  } catch(e){ console.warn('[GL] cal_events backfill threw', e); }
+}
+
+async function loadCalEvents(){
+  if(!window.supa){ calEvents = []; return; }
+  await glCalEventsBackfill();
+  const r = await window.supa.from('cal_events')
+    .select('id, event_type, title, event_date, event_time, notes, remind, client_id, format, qty, due_date, prod_status, created_at')
+    .order('event_date', { ascending: true })
+    .limit(2000);
+  if(r.error){ console.warn('[GL] loadCalEvents failed', r.error.message); calEvents = []; return; }
+  calEvents = (r.data || []).map(e => ({
+    id: e.id, type: e.event_type, title: e.title, date: e.event_date,
+    time: e.event_time, notes: e.notes, remind: e.remind, clientId: e.client_id,
+    format: e.format, qty: e.qty, dueDate: e.due_date, prodStatus: e.prod_status,
+    createdAt: e.created_at
+  }));
+}
+
+function saveCalEvents(){ /* DEPRECATED no-op — calendar events persist via Supabase INSERT/UPDATE/DELETE now */ }
 
 function openCalEventModal(type){
   document.getElementById('cal-event-type').value=type;
@@ -5879,7 +6112,7 @@ function openCalEventModal(type){
 
 function closeCalEventModal(){ document.getElementById('cal-event-modal').classList.remove('show'); }
 
-function saveCalEvent(){
+async function saveCalEvent(){
   const type=document.getElementById('cal-event-type').value;
   const title=document.getElementById('cal-ev-title').value.trim();
   const date=document.getElementById('cal-ev-date').value;
@@ -5888,16 +6121,34 @@ function saveCalEvent(){
   const remind=document.getElementById('cal-ev-remind').value;
   if(!title||!date){alert('Title and date are required');return;}
   
-  const ev={id:'ev'+Date.now(),type,title,date,time,notes,remind,createdAt:new Date().toISOString()};
-  if(type==='production'){
-    ev.clientId=document.getElementById('cal-ev-client').value;
-    ev.format=document.getElementById('cal-ev-format').value;
-    ev.qty=document.getElementById('cal-ev-qty').value;
-    ev.dueDate=document.getElementById('cal-ev-due').value;
-    ev.prodStatus='scheduled';
+  // Build the DB row. type=production carries the prod-specific extras.
+  const dbRow = {
+    event_type: type,
+    title,
+    event_date: date,
+    event_time: time || null,
+    notes:      notes || null,
+    remind:     remind || null
+  };
+  if(type === 'production'){
+    const cid = document.getElementById('cal-ev-client').value || null;
+    dbRow.client_id   = /^[0-9a-f-]{36}$/i.test(cid||'') ? cid : null;
+    dbRow.format      = document.getElementById('cal-ev-format').value || null;
+    dbRow.qty         = document.getElementById('cal-ev-qty').value || null;
+    dbRow.due_date    = document.getElementById('cal-ev-due').value || null;
+    dbRow.prod_status = 'scheduled';
+  }
+  if(!window.supa){ alert('Cloud sync unavailable — try reloading.'); return; }
+  const ins = await window.supa.from('cal_events').insert([dbRow]).select('id').single();
+  if(ins.error){ alert('Save event failed: ' + ins.error.message); return; }
+  // Mirror into the in-memory cache (so renderers that read synchronously
+  // see the new event before the next loadCalEvents()).
+  const ev = { id: ins.data.id, type, title, date, time, notes, remind, createdAt: new Date().toISOString() };
+  if(type === 'production'){
+    ev.clientId = dbRow.client_id; ev.format = dbRow.format; ev.qty = dbRow.qty;
+    ev.dueDate = dbRow.due_date; ev.prodStatus = dbRow.prod_status;
   }
   calEvents.push(ev);
-  saveCalEvents();
   
   if(remind){
     addNotification('📅 Reminder set: '+title,'Reminder for '+date+' at '+time,'reminder');
@@ -5990,14 +6241,23 @@ function renderProductionRuns(){
   }).join('');
 }
 
-function updateProdStatus(id,status){
+async function updateProdStatus(id,status){
   const ev=calEvents.find(e=>e.id===id);
-  if(ev){ ev.prodStatus=status; saveCalEvents(); renderProductionRuns(); }
+  if(!ev) return;
+  ev.prodStatus = status;
+  if(window.supa){
+    const r = await window.supa.from('cal_events').update({ prod_status: status }).eq('id', id);
+    if(r.error){ alert('Status update failed: ' + r.error.message); return; }
+  }
+  renderProductionRuns();
 }
-function deleteProdRun(id){
+async function deleteProdRun(id){
   if(!confirm('Delete this production run?')) return;
+  if(window.supa){
+    const r = await window.supa.from('cal_events').delete().eq('id', id);
+    if(r.error){ alert('Delete failed: ' + r.error.message); return; }
+  }
   calEvents=calEvents.filter(e=>e.id!==id);
-  saveCalEvents();
   renderProductionRuns();
   renderCal('production');
 }
@@ -6005,20 +6265,66 @@ function deleteProdRun(id){
 /* ═══════════════════════════════════════════
    MULTI-PIPELINE
 ═══════════════════════════════════════════ */
-let productionDeals = JSON.parse(localStorage.getItem('gl_prod_pipeline')||JSON.stringify({
+/* Production pipeline kanban: source of truth is public.production_pipeline.
+   The in-memory map { stage: [deals...] } is rebuilt from the DB on every
+   tab switch. Distinct from public.production_runs (which is the
+   operations runs table). */
+let productionDeals = {
   'Scheduled':[],
   'In Production':[],
   'Quality Check':[],
   'Completed':[],
   'Shipped':[]
-}));
+};
 
-function switchPipeline(type,el){
+async function glProdPipelineBackfill(){
+  try {
+    if(localStorage.getItem('gl_prod_pipeline_migrated') === '1') return;
+    if(!window.supa) return;
+    const blob = localStorage.getItem('gl_prod_pipeline');
+    if(!blob){ localStorage.setItem('gl_prod_pipeline_migrated','1'); return; }
+    let legacy = {}; try { legacy = JSON.parse(blob) || {}; } catch(_e){ return; }
+    const rows = [];
+    Object.keys(legacy).forEach(stage => {
+      (legacy[stage]||[]).forEach(d => {
+        rows.push({
+          name:    String(d.name||'').slice(0,300),
+          company: d.co || null,
+          stage:   ['Scheduled','In Production','Quality Check','Completed','Shipped'].includes(stage) ? stage : 'Scheduled',
+          notes:   d.notes || null
+        });
+      });
+    });
+    if(!rows.length){ localStorage.setItem('gl_prod_pipeline_migrated','1'); return; }
+    const r = await window.supa.from('production_pipeline').insert(rows);
+    if(r.error){ console.warn('[GL] production_pipeline backfill failed', r.error.message); return; }
+    localStorage.setItem('gl_prod_pipeline_migrated','1');
+  } catch(e){ console.warn('[GL] production_pipeline backfill threw', e); }
+}
+
+async function loadProductionPipeline(){
+  if(!window.supa) return;
+  await glProdPipelineBackfill();
+  const r = await window.supa.from('production_pipeline')
+    .select('id, name, company, stage, notes, client_id, created_at')
+    .order('created_at', { ascending: false });
+  if(r.error){ console.warn('[GL] loadProductionPipeline failed', r.error.message); return; }
+  productionDeals = { 'Scheduled':[], 'In Production':[], 'Quality Check':[], 'Completed':[], 'Shipped':[] };
+  (r.data || []).forEach(d => {
+    const stage = productionDeals[d.stage] ? d.stage : 'Scheduled';
+    productionDeals[stage].push({ id: d.id, name: d.name, co: d.company, notes: d.notes, clientId: d.client_id });
+  });
+}
+
+async function switchPipeline(type,el){
   document.querySelectorAll('.pipe-tab').forEach(t=>t.classList.remove('act'));
   el.classList.add('act');
   document.getElementById('pipeline-sales').style.display=type==='sales'?'block':'none';
   document.getElementById('pipeline-production').style.display=type==='production'?'block':'none';
-  if(type==='production') renderProductionKanban();
+  if(type==='production'){
+    await loadProductionPipeline();
+    renderProductionKanban();
+  }
 }
 
 function renderProductionKanban(){
@@ -6039,11 +6345,65 @@ function renderProductionKanban(){
 
 /* ═══════════════════════════════════════════
    TASK MANAGEMENT
+   Source of truth is public.tasks in Supabase. In-memory cache
+   refreshed by loadTasks() on each page open + after mutations.
 ═══════════════════════════════════════════ */
-let tasks = JSON.parse(localStorage.getItem('gl_tasks')||'[]');
+let tasks = [];
 let taskFilter = 'all';
 
-function saveTasks(){ localStorage.setItem('gl_tasks', JSON.stringify(tasks)); }
+async function glTasksBackfill(){
+  try {
+    if(localStorage.getItem('gl_tasks_migrated') === '1') return;
+    if(!window.supa || !window.currentUser) return;
+    const blob = localStorage.getItem('gl_tasks');
+    if(!blob){ localStorage.setItem('gl_tasks_migrated','1'); return; }
+    let legacy = [];
+    try { legacy = JSON.parse(blob) || []; } catch(_e){ return; }
+    if(!legacy.length){ localStorage.setItem('gl_tasks_migrated','1'); return; }
+    const userId = window.currentUser.id;
+    const rows = legacy.map(t => ({
+      user_id:   userId,
+      title:     String(t.title || '(untitled)').slice(0, 500),
+      due_date:  t.due || null,
+      priority:  ['high','medium','low'].includes(t.priority) ? t.priority : null,
+      client_id: /^[0-9a-f-]{36}$/i.test(t.clientId||'') ? t.clientId : null,
+      notes:     t.notes || null,
+      done:      !!t.done,
+      done_at:   t.done ? new Date().toISOString() : null,
+      created_at: t.createdAt || new Date().toISOString()
+    }));
+    const r = await window.supa.from('tasks').insert(rows);
+    if(r.error){ console.warn('[GL] tasks backfill failed', r.error.message); return; }
+    localStorage.setItem('gl_tasks_migrated','1');
+    if(typeof addNotification === 'function'){
+      addNotification('✅ Tasks migrated', rows.length + ' task' + (rows.length===1?'':'s') + ' moved from device storage to the cloud.', 'success');
+    }
+  } catch(e){ console.warn('[GL] tasks backfill threw', e); }
+}
+
+async function loadTasks(){
+  if(!window.supa || !window.currentUser){ tasks = []; return; }
+  await glTasksBackfill();
+  const r = await window.supa.from('tasks')
+    .select('id, title, due_date, priority, client_id, notes, done, created_at')
+    .eq('user_id', window.currentUser.id)
+    .order('done', { ascending: true })
+    .order('due_date', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: false })
+    .limit(500);
+  if(r.error){ console.warn('[GL] loadTasks failed', r.error.message); tasks = []; return; }
+  // Keep the shape the existing renderer expects.
+  tasks = (r.data || []).map(t => ({
+    id:        t.id,
+    title:     t.title,
+    due:       t.due_date,
+    priority:  t.priority,
+    clientId:  t.client_id,
+    notes:     t.notes,
+    done:      !!t.done,
+    createdAt: t.created_at
+  }));
+}
 
 function openTaskModal(){
   const sel=document.getElementById('task-client-link');
@@ -6052,19 +6412,31 @@ function openTaskModal(){
 }
 function closeTaskModal(){ document.getElementById('task-modal').classList.remove('show'); }
 
-function saveTask(){
+async function saveTask(){
   const title=document.getElementById('task-title-inp').value.trim();
   if(!title){alert('Task title required');return;}
-  tasks.unshift({id:'t'+Date.now(),title,due:document.getElementById('task-due').value,
-    priority:document.getElementById('task-priority').value,
-    clientId:document.getElementById('task-client-link').value,
-    notes:document.getElementById('task-notes').value,done:false,createdAt:new Date().toISOString()});
-  saveTasks();
+  if(!window.supa || !window.currentUser){ alert('Cloud sync unavailable — try reloading.'); return; }
+  const due = document.getElementById('task-due').value || null;
+  const priority = document.getElementById('task-priority').value || null;
+  const clientId = document.getElementById('task-client-link').value || null;
+  const notes = document.getElementById('task-notes').value || null;
+  const r = await window.supa.from('tasks').insert([{
+    user_id:   window.currentUser.id,
+    title:     title,
+    due_date:  due,
+    priority:  ['high','medium','low'].includes(priority) ? priority : null,
+    client_id: /^[0-9a-f-]{36}$/i.test(clientId||'') ? clientId : null,
+    notes:     notes,
+    done:      false
+  }]);
+  if(r.error){ alert('Save failed: ' + r.error.message); return; }
+  await loadTasks();
   renderTasks();
   closeTaskModal();
   document.getElementById('task-title-inp').value='';
   document.getElementById('task-notes').value='';
-  addNotification('✅ Task added: '+title,'Due '+document.getElementById('task-due').value,'success');
+  if(typeof glAudit === 'function') glAudit('task_created', clientId || null, { title: title.slice(0,80) });
+  addNotification('✅ Task added: '+title, due ? 'Due '+due : 'No due date', 'success');
 }
 
 function setTaskFilter(el,f){
@@ -6082,49 +6454,107 @@ function renderTasks(){
   else if(taskFilter==='done') filtered=tasks.filter(t=>t.done);
   else if(taskFilter==='high') filtered=tasks.filter(t=>t.priority==='high'&&!t.done);
   else if(taskFilter==='medium') filtered=tasks.filter(t=>t.priority==='medium'&&!t.done);
-  
+
   const sub=document.getElementById('task-sub');
   if(sub) sub.textContent=filtered.filter(t=>!t.done).length+' open tasks';
-  
+
   if(!filtered.length){el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:20px 0">No tasks found.</div>';return;}
-  
+
   el.innerHTML=filtered.map(t=>{
     const client=clients.find(c=>c.id===t.clientId);
     const overdue=t.due&&new Date(t.due)<new Date()&&!t.done;
+    const safeTitle = String(t.title||'').replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
+    const safeNotes = t.notes ? String(t.notes).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])) : '';
     return `<div class="task-item">
       <div class="task-check ${t.done?'done':''}" onclick="toggleTask('${t.id}')">${t.done?'✓':''}</div>
       <div style="flex:1">
-        <div class="task-title ${t.done?'done':''}">${t.title}</div>
+        <div class="task-title ${t.done?'done':''}">${safeTitle}</div>
         <div class="task-meta">
           ${t.priority?`<span class="priority-badge ${t.priority}">${t.priority.charAt(0).toUpperCase()+t.priority.slice(1)}</span>`:''}
           ${t.due?`<span style="margin-left:8px;color:${overdue?'#e74c3c':'var(--muted)'}">📅 ${t.due}${overdue?' (overdue)':''}</span>`:''}
           ${client?`<span style="margin-left:8px;color:var(--muted)">👤 ${client.name}</span>`:''}
         </div>
-        ${t.notes?`<div style="font-size:11px;color:var(--muted);margin-top:3px">${t.notes}</div>`:''}
+        ${safeNotes?`<div style="font-size:11px;color:var(--muted);margin-top:3px">${safeNotes}</div>`:''}
       </div>
       <button class="cbtn red" style="font-size:10px;padding:3px 7px" onclick="deleteTask('${t.id}')">✕</button>
     </div>`;
   }).join('');
 }
 
-function toggleTask(id){
+async function toggleTask(id){
+  if(!window.supa){ return; }
   const t=tasks.find(x=>x.id===id);
-  if(t){ t.done=!t.done; saveTasks(); renderTasks(); }
-}
-function deleteTask(id){
-  tasks=tasks.filter(t=>t.id!==id);
-  saveTasks();
+  if(!t) return;
+  const nextDone = !t.done;
+  const r = await window.supa.from('tasks').update({
+    done: nextDone,
+    done_at: nextDone ? new Date().toISOString() : null
+  }).eq('id', id);
+  if(r.error){ alert('Update failed: ' + r.error.message); return; }
+  t.done = nextDone;
   renderTasks();
+  if(typeof glAudit === 'function') glAudit(nextDone ? 'task_completed' : 'task_reopened', null, { task_id: id });
+}
+
+async function deleteTask(id){
+  if(!window.supa){ return; }
+  if(!confirm('Delete this task?')) return;
+  const r = await window.supa.from('tasks').delete().eq('id', id);
+  if(r.error){ alert('Delete failed: ' + r.error.message); return; }
+  tasks = tasks.filter(t => t.id !== id);
+  renderTasks();
+  if(typeof glAudit === 'function') glAudit('task_deleted', null, { task_id: id });
 }
 
 /* ═══════════════════════════════════════════
-   DOCUMENT STORAGE
+   DOCUMENT STORAGE (metadata only — file contents live in
+   Supabase Storage when uploaded; this table is the index)
 ═══════════════════════════════════════════ */
-let documents = JSON.parse(localStorage.getItem('gl_documents')||'[]');
+let documents = [];
 let docSearch='', docClientFilter='';
 const typeIcons={'NDA':'📜','Formula':'🧪','Label Artwork':'🎨','COA':'🔬','Contract':'📋','Invoice':'🧾','Other':'📄'};
 
-function saveDocs(){ localStorage.setItem('gl_documents', JSON.stringify(documents)); }
+async function glDocumentsBackfill(){
+  try {
+    if(localStorage.getItem('gl_documents_migrated') === '1') return;
+    if(!window.supa || !window.currentUser) return;
+    const blob = localStorage.getItem('gl_documents');
+    if(!blob){ localStorage.setItem('gl_documents_migrated','1'); return; }
+    let legacy = []; try { legacy = JSON.parse(blob) || []; } catch(_e){ return; }
+    if(!legacy.length){ localStorage.setItem('gl_documents_migrated','1'); return; }
+    const rows = legacy.map(d => ({
+      client_id:   /^[0-9a-f-]{36}$/i.test(d.clientId||'') ? d.clientId : null,
+      client_name: d.clientName || null,
+      name:        String(d.name || '').slice(0, 500),
+      doc_type:    d.type || 'Other',
+      notes:       d.notes || null,
+      uploaded_by: d.uploadedBy || null,
+      uploaded_at: d.uploadedAt || new Date().toISOString()
+    }));
+    const r = await window.supa.from('documents').insert(rows);
+    if(r.error){ console.warn('[GL] documents backfill failed', r.error.message); return; }
+    localStorage.setItem('gl_documents_migrated','1');
+    if(typeof addNotification === 'function'){
+      addNotification('📁 Documents migrated', rows.length + ' moved from device storage to the cloud.', 'success');
+    }
+  } catch(e){ console.warn('[GL] documents backfill threw', e); }
+}
+
+async function loadDocs(){
+  if(!window.supa){ documents = []; return; }
+  await glDocumentsBackfill();
+  const r = await window.supa.from('documents')
+    .select('id, client_id, client_name, name, doc_type, notes, uploaded_by, uploaded_at')
+    .order('uploaded_at', { ascending: false })
+    .limit(500);
+  if(r.error){ console.warn('[GL] loadDocs failed', r.error.message); documents = []; return; }
+  documents = (r.data || []).map(d => ({
+    id: d.id, clientId: d.client_id,
+    clientName: d.client_name || ((clients.find(c => c.id === d.client_id)||{}).name) || 'General',
+    name: d.name, type: d.doc_type, notes: d.notes,
+    uploadedAt: d.uploaded_at, uploadedBy: d.uploaded_by || 'Admin'
+  }));
+}
 
 function openDocUploadModal(){
   const sel=document.getElementById('doc-client-sel');
@@ -6133,18 +6563,28 @@ function openDocUploadModal(){
 }
 function closeDocUploadModal(){ document.getElementById('doc-upload-modal').classList.remove('show'); }
 
-function saveDocument(){
+async function saveDocument(){
   const clientId=document.getElementById('doc-client-sel').value;
   const name=document.getElementById('doc-name').value.trim();
   const type=document.getElementById('doc-type').value;
   if(!name){alert('Document name required');return;}
+  if(!window.supa){ alert('Cloud sync unavailable — try reloading.'); return; }
   const client=clients.find(c=>c.id===clientId);
-  documents.unshift({id:'d'+Date.now(),clientId,clientName:client?client.name:'General',name,type,notes:document.getElementById('doc-notes').value,uploadedAt:new Date().toISOString(),uploadedBy:currentUser?currentUser.name:'Admin'});
-  saveDocs();
+  const r = await window.supa.from('documents').insert([{
+    client_id:   /^[0-9a-f-]{36}$/i.test(clientId||'') ? clientId : null,
+    client_name: client ? client.name : 'General',
+    name:        name,
+    doc_type:    type,
+    notes:       document.getElementById('doc-notes').value || null,
+    uploaded_by: (window.currentUser && window.currentUser.name) || 'Admin'
+  }]);
+  if(r.error){ alert('Save failed: ' + r.error.message); return; }
+  await loadDocs();
   renderDocs();
   closeDocUploadModal();
   document.getElementById('doc-name').value='';
   addNotification('📁 Document saved: '+name,client?client.name:'General','success');
+  if(typeof glAudit === 'function') glAudit('document_saved', clientId || null, { name: name.slice(0,80) });
 }
 
 function filterDocs(v){ docSearch=v; renderDocs(); }
@@ -6152,56 +6592,93 @@ function filterDocs(v){ docSearch=v; renderDocs(); }
 function renderDocs(){
   const el=document.getElementById('doc-list');
   if(!el) return;
-  
-  // Populate client filter
   const cf=document.getElementById('doc-client-filter');
   if(cf && cf.children.length<=1){
     cf.innerHTML='<option value="">All clients</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
   }
   docClientFilter = cf ? cf.value : '';
-  
   let filtered=documents;
-  if(docSearch) filtered=filtered.filter(d=>d.name.toLowerCase().includes(docSearch.toLowerCase())||d.type.toLowerCase().includes(docSearch.toLowerCase())||d.clientName.toLowerCase().includes(docSearch.toLowerCase()));
+  if(docSearch) filtered=filtered.filter(d=>(d.name||'').toLowerCase().includes(docSearch.toLowerCase())||(d.type||'').toLowerCase().includes(docSearch.toLowerCase())||(d.clientName||'').toLowerCase().includes(docSearch.toLowerCase()));
   if(docClientFilter) filtered=filtered.filter(d=>d.clientId===docClientFilter);
-  
   if(!filtered.length){el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:20px 0">No documents found.</div>';return;}
-  
+  const esc = s => String(s||'').replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
   el.innerHTML=filtered.map(d=>`<div class="doc-item">
     <div class="doc-icon">${typeIcons[d.type]||'📄'}</div>
     <div style="flex:1">
-      <div class="doc-name">${d.name}</div>
-      <div class="doc-meta">${d.type} &nbsp;·&nbsp; ${d.clientName} &nbsp;·&nbsp; ${d.uploadedAt?d.uploadedAt.split('T')[0]:''} &nbsp;·&nbsp; by ${d.uploadedBy||'Admin'}</div>
-      ${d.notes?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${d.notes}</div>`:''}
+      <div class="doc-name">${esc(d.name)}</div>
+      <div class="doc-meta">${esc(d.type)} &nbsp;·&nbsp; ${esc(d.clientName)} &nbsp;·&nbsp; ${d.uploadedAt?d.uploadedAt.split('T')[0]:''} &nbsp;·&nbsp; by ${esc(d.uploadedBy||'Admin')}</div>
+      ${d.notes?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(d.notes)}</div>`:''}
     </div>
     <button class="cbtn red" style="font-size:10px;padding:3px 7px" onclick="deleteDoc('${d.id}')">✕</button>
   </div>`).join('');
 }
 
-function deleteDoc(id){
+async function deleteDoc(id){
   if(!confirm('Delete this document record?')) return;
+  if(!window.supa){ return; }
+  const r = await window.supa.from('documents').delete().eq('id', id);
+  if(r.error){ alert('Delete failed: ' + r.error.message); return; }
   documents=documents.filter(d=>d.id!==id);
-  saveDocs();
   renderDocs();
+  if(typeof glAudit === 'function') glAudit('document_deleted', null, { document_id: id });
 }
 
 /* ═══════════════════════════════════════════
-   INVENTORY TRACKER
+   INVENTORY TRACKER (cloud-backed)
 ═══════════════════════════════════════════ */
-let inventory = JSON.parse(localStorage.getItem('gl_inventory')||'[]');
+let inventory = [];
 
-function saveInventory(){ localStorage.setItem('gl_inventory', JSON.stringify(inventory)); }
+async function glInventoryBackfill(){
+  try {
+    if(localStorage.getItem('gl_inventory_migrated') === '1') return;
+    if(!window.supa) return;
+    const blob = localStorage.getItem('gl_inventory');
+    if(!blob){ localStorage.setItem('gl_inventory_migrated','1'); return; }
+    let legacy = []; try { legacy = JSON.parse(blob) || []; } catch(_e){ return; }
+    if(!legacy.length){ localStorage.setItem('gl_inventory_migrated','1'); return; }
+    const rows = legacy.map(i => ({
+      name:   String(i.name || '').slice(0, 200),
+      qty:    parseInt(i.qty) || 0,
+      unit:   i.unit || 'units',
+      low_at: parseInt(i.lowAt) || 10
+    })).filter(r => r.name);
+    if(!rows.length){ localStorage.setItem('gl_inventory_migrated','1'); return; }
+    const r = await window.supa.from('inventory').insert(rows);
+    if(r.error){ console.warn('[GL] inventory backfill failed', r.error.message); return; }
+    localStorage.setItem('gl_inventory_migrated','1');
+    if(typeof addNotification === 'function'){
+      addNotification('📦 Inventory migrated', rows.length + ' item' + (rows.length===1?'':'s') + ' moved from device storage to the cloud.', 'success');
+    }
+  } catch(e){ console.warn('[GL] inventory backfill threw', e); }
+}
+
+async function loadInventory(){
+  if(!window.supa){ inventory = []; return; }
+  await glInventoryBackfill();
+  const r = await window.supa.from('inventory').select('id, name, qty, unit, low_at').order('name', { ascending: true });
+  if(r.error){ console.warn('[GL] loadInventory failed', r.error.message); inventory = []; return; }
+  inventory = (r.data || []).map(i => ({ id: i.id, name: i.name, qty: i.qty, unit: i.unit, lowAt: i.low_at }));
+}
 
 function openInventoryModal(){ document.getElementById('inventory-modal').classList.add('show'); }
 function closeInventoryModal(){ document.getElementById('inventory-modal').classList.remove('show'); }
 
-function saveInventoryItem(){
+async function saveInventoryItem(){
   const name=document.getElementById('inv-item-name').value.trim();
   if(!name){alert('Item name required');return;}
-  inventory.push({id:'inv'+Date.now(),name,qty:parseInt(document.getElementById('inv-item-qty').value)||0,unit:document.getElementById('inv-item-unit').value||'units',lowAt:parseInt(document.getElementById('inv-item-low').value)||10});
-  saveInventory();
+  if(!window.supa){ alert('Cloud sync unavailable — try reloading.'); return; }
+  const r = await window.supa.from('inventory').insert([{
+    name:   name,
+    qty:    parseInt(document.getElementById('inv-item-qty').value) || 0,
+    unit:   document.getElementById('inv-item-unit').value || 'units',
+    low_at: parseInt(document.getElementById('inv-item-low').value) || 10
+  }]);
+  if(r.error){ alert('Save failed: ' + r.error.message); return; }
+  await loadInventory();
   renderInventory();
   closeInventoryModal();
   document.getElementById('inv-item-name').value='';
+  if(typeof glAudit === 'function') glAudit('inventory_added', null, { name: name.slice(0,80) });
 }
 
 function renderInventory(){
@@ -6232,35 +6709,91 @@ function renderInventory(){
   }).join('');
 }
 
-function adjustInventory(id,delta){
+async function adjustInventory(id,delta){
   const item=inventory.find(i=>i.id===id);
-  if(item){ item.qty=Math.max(0,item.qty+delta); saveInventory(); renderInventory(); }
+  if(!item) return;
+  const newQty = Math.max(0, item.qty + delta);
+  if(!window.supa){ item.qty = newQty; renderInventory(); return; }
+  const r = await window.supa.from('inventory').update({ qty: newQty }).eq('id', id);
+  if(r.error){ alert('Update failed: ' + r.error.message); return; }
+  item.qty = newQty;
+  renderInventory();
 }
 
 /* ═══════════════════════════════════════════
-   ANNOUNCEMENTS BOARD
+   ANNOUNCEMENTS BOARD (team-wide, lives in public.announcements)
 ═══════════════════════════════════════════ */
-let announcements = JSON.parse(localStorage.getItem('gl_announcements')||'[]');
+let announcements = [];
 
-function saveAnnouncements(){ localStorage.setItem('gl_announcements', JSON.stringify(announcements.slice(0,50))); }
+async function glAnnouncementsBackfill(){
+  try {
+    if(localStorage.getItem('gl_announcements_migrated') === '1') return;
+    if(!window.supa || !window.currentUser) return;
+    const blob = localStorage.getItem('gl_announcements');
+    if(!blob){ localStorage.setItem('gl_announcements_migrated','1'); return; }
+    let legacy = [];
+    try { legacy = JSON.parse(blob) || []; } catch(_e){ return; }
+    if(!legacy.length){ localStorage.setItem('gl_announcements_migrated','1'); return; }
+    const nowMs = Date.now();
+    const rows = legacy.slice(0, 50).map((a, i) => ({
+      body:         String(a.text || '').slice(0, 4000),
+      author_id:    window.currentUser.id,
+      author_name:  a.author || window.currentUser.name || 'Admin',
+      author_email: window.currentUser.email || null,
+      created_at:   new Date(nowMs - i*1000).toISOString()
+    }));
+    const r = await window.supa.from('announcements').insert(rows);
+    if(r.error){ console.warn('[GL] announcements backfill failed', r.error.message); return; }
+    localStorage.setItem('gl_announcements_migrated','1');
+    if(typeof addNotification === 'function'){
+      addNotification('📣 Announcements migrated', rows.length + ' moved from device storage to the cloud.', 'success');
+    }
+  } catch(e){ console.warn('[GL] announcements backfill threw', e); }
+}
 
-function postAnnouncement(){
-  const text=document.getElementById('ann-input').value.trim();
+async function loadAnnouncements(){
+  if(!window.supa){ announcements = []; return; }
+  await glAnnouncementsBackfill();
+  const r = await window.supa.from('announcements')
+    .select('id, body, author_name, created_at, pinned')
+    .order('pinned', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if(r.error){ console.warn('[GL] loadAnnouncements failed', r.error.message); announcements = []; return; }
+  announcements = (r.data || []).map(a => ({
+    id: a.id,
+    text: a.body,
+    author: a.author_name || 'Admin',
+    time: new Date(a.created_at).toLocaleString()
+  }));
+}
+
+async function postAnnouncement(){
+  const text = document.getElementById('ann-input').value.trim();
   if(!text) return;
-  announcements.unshift({id:'a'+Date.now(),text,author:currentUser?currentUser.name:'Admin',time:new Date().toLocaleString()});
-  saveAnnouncements();
+  if(!window.supa || !window.currentUser){ alert('Cloud sync unavailable — try reloading.'); return; }
+  const r = await window.supa.from('announcements').insert([{
+    body:         text,
+    author_id:    window.currentUser.id,
+    author_name:  window.currentUser.name || 'Admin',
+    author_email: window.currentUser.email || null
+  }]);
+  if(r.error){ alert('Post failed: ' + r.error.message); return; }
+  document.getElementById('ann-input').value = '';
+  await loadAnnouncements();
   renderAnnouncements();
-  document.getElementById('ann-input').value='';
+  if(typeof glAudit === 'function') glAudit('announcement_posted', null, { length: text.length });
 }
 
 function renderAnnouncements(){
   const el=document.getElementById('ann-list');
   if(!el) return;
   if(!announcements.length){el.innerHTML='<div style="color:var(--muted);font-size:13px">No announcements yet. Post a note to the team.</div>';return;}
+  const esc = s => String(s||'').replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
   el.innerHTML=announcements.map(a=>`<div class="ann-item">
-    <div class="ann-author">${a.author}</div>
-    <div class="ann-text">${a.text}</div>
-    <div class="ann-time">${a.time}</div>
+    <div class="ann-author">${esc(a.author)}</div>
+    <div class="ann-text" style="white-space:pre-wrap">${esc(a.text)}</div>
+    <div class="ann-time">${esc(a.time)}</div>
   </div>`).join('');
 }
 
@@ -6284,33 +6817,80 @@ function getClientHealth(client){
 /* ═══════════════════════════════════════════
    TAGS SYSTEM
 ═══════════════════════════════════════════ */
-let clientTags = JSON.parse(localStorage.getItem('gl_client_tags')||'{}');
+/* Client tags: { clientId: [tag, tag, ...] } populated from
+   public.client_tags. Local cache rebuilt on every loadClientTags()
+   call. Each add/remove writes through to Supabase. */
+let clientTags = {};
 
-function saveClientTags(){ localStorage.setItem('gl_client_tags', JSON.stringify(clientTags)); }
+async function glClientTagsBackfill(){
+  try {
+    if(localStorage.getItem('gl_client_tags_migrated') === '1') return;
+    if(!window.supa || !window.currentUser) return;
+    const blob = localStorage.getItem('gl_client_tags');
+    if(!blob){ localStorage.setItem('gl_client_tags_migrated','1'); return; }
+    let legacy = {}; try { legacy = JSON.parse(blob) || {}; } catch(_e){ return; }
+    const rows = [];
+    Object.keys(legacy).forEach(cid => {
+      if(!/^[0-9a-f-]{36}$/i.test(cid)) return;
+      (legacy[cid]||[]).forEach(t => {
+        if(t && typeof t === 'string') rows.push({ client_id: cid, tag: t.toLowerCase().slice(0,80), created_by: (window.currentUser.name||null) });
+      });
+    });
+    if(!rows.length){ localStorage.setItem('gl_client_tags_migrated','1'); return; }
+    const r = await window.supa.from('client_tags').upsert(rows, { onConflict: 'client_id,tag', ignoreDuplicates: true });
+    if(r.error){ console.warn('[GL] client_tags backfill failed', r.error.message); return; }
+    localStorage.setItem('gl_client_tags_migrated','1');
+  } catch(e){ console.warn('[GL] client_tags backfill threw', e); }
+}
+
+async function loadClientTags(){
+  if(!window.supa){ return; }
+  await glClientTagsBackfill();
+  const r = await window.supa.from('client_tags').select('client_id, tag');
+  if(r.error){ console.warn('[GL] loadClientTags failed', r.error.message); return; }
+  clientTags = {};
+  (r.data || []).forEach(row => {
+    if(!clientTags[row.client_id]) clientTags[row.client_id] = [];
+    clientTags[row.client_id].push(row.tag);
+  });
+}
 
 function getClientTagsEl(clientId,editable=false){
   const tags=clientTags[clientId]||[];
-  if(!editable) return tags.map(t=>`<span class="tag-chip">${t}</span>`).join('');
+  const esc = s => String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[m]));
+  if(!editable) return tags.map(t=>`<span class="tag-chip">${esc(t)}</span>`).join('');
   return `<div class="tag-input-wrap" id="tag-wrap-${clientId}">
-    ${tags.map(t=>`<span class="tag-chip">${t}<span class="tag-rm" onclick="removeTag('${clientId}','${t}')">✕</span></span>`).join('')}
+    ${tags.map(t=>`<span class="tag-chip">${esc(t)}<span class="tag-rm" onclick="removeTag('${clientId}','${esc(t)}')">✕</span></span>`).join('')}
     <input placeholder="Add tag, press Enter" onkeydown="if(event.key==='Enter'){addTag('${clientId}',this.value);this.value=''}">
   </div>`;
 }
 
-function addTag(clientId,tag){
-  tag=tag.trim().toLowerCase();
+async function addTag(clientId,tag){
+  tag=String(tag||'').trim().toLowerCase().slice(0,80);
   if(!tag) return;
   if(!clientTags[clientId]) clientTags[clientId]=[];
-  if(!clientTags[clientId].includes(tag)) clientTags[clientId].push(tag);
-  saveClientTags();
+  if(clientTags[clientId].includes(tag)){ renderClientDetail(clientId); return; }
+  // Optimistic
+  clientTags[clientId].push(tag);
   renderClientDetail(clientId);
+  if(window.supa){
+    const r = await window.supa.from('client_tags').insert([{ client_id: clientId, tag, created_by: (window.currentUser && window.currentUser.name) || null }]);
+    if(r.error && !/duplicate|unique/i.test(r.error.message||'')){
+      // Rollback on real error
+      clientTags[clientId] = clientTags[clientId].filter(t => t !== tag);
+      renderClientDetail(clientId);
+      alert('Save failed: ' + r.error.message);
+    }
+  }
 }
 
-function removeTag(clientId,tag){
+async function removeTag(clientId,tag){
   if(!clientTags[clientId]) return;
   clientTags[clientId]=clientTags[clientId].filter(t=>t!==tag);
-  saveClientTags();
   renderClientDetail(clientId);
+  if(window.supa){
+    await window.supa.from('client_tags').delete().eq('client_id', clientId).eq('tag', tag);
+  }
 }
 
 function renderClientDetail(clientId){
@@ -7256,12 +7836,12 @@ renderClients=function(){
 const origCNav=cNav;
 cNav=function(page,el){
   origCNav(page,el);
-  if(page==='calendar') renderCal('general');
-  if(page==='production-cal'){ renderCal('production'); renderProductionRuns(); }
-  if(page==='tasks') renderTasks();
-  if(page==='documents') renderDocs();
-  if(page==='inventory') renderInventory();
-  if(page==='announcements') renderAnnouncements();
+  if(page==='calendar'){ loadCalEvents().then(() => renderCal('general')); }
+  if(page==='production-cal'){ loadCalEvents().then(() => { renderCal('production'); renderProductionRuns(); }); }
+  if(page==='tasks'){ loadTasks().then(renderTasks); }
+  if(page==='documents'){ loadDocs().then(renderDocs); }
+  if(page==='inventory'){ loadInventory().then(renderInventory); }
+  if(page==='announcements'){ loadAnnouncements().then(renderAnnouncements); }
   if(page==='customers') renderCustomerLogins();
 };
 
@@ -8249,11 +8829,49 @@ async function deleteClientNote(clientId, noteId){
    EMAIL TEMPLATES
    Save & reuse email templates via Mailgun
 ═══════════════════════════════════════════ */
-let emailTemplates = JSON.parse(localStorage.getItem('gl_email_templates') || '[]');
+/* Email templates source of truth: public.email_templates
+   (migration shipped 2026-05-18). The JS used to dual-write to
+   localStorage; now it just reads + writes the table. */
+let emailTemplates = [];
 
-function saveEmailTemplates(){ localStorage.setItem('gl_email_templates', JSON.stringify(emailTemplates)); }
+async function glEmailTemplatesBackfill(){
+  try {
+    if(localStorage.getItem('gl_email_templates_migrated') === '1') return;
+    if(!window.supa) return;
+    const blob = localStorage.getItem('gl_email_templates');
+    if(!blob){ localStorage.setItem('gl_email_templates_migrated','1'); return; }
+    let legacy = []; try { legacy = JSON.parse(blob) || []; } catch(_e){ return; }
+    if(!legacy.length){ localStorage.setItem('gl_email_templates_migrated','1'); return; }
+    const rows = legacy.map(t => ({
+      name:     String(t.name || 'Untitled').slice(0, 200),
+      category: 'general',
+      subject:  String(t.subject || '').slice(0, 500),
+      body:     String(t.body || ''),
+      active:   true
+    })).filter(r => r.subject && r.body);
+    if(!rows.length){ localStorage.setItem('gl_email_templates_migrated','1'); return; }
+    const r = await window.supa.from('email_templates').insert(rows);
+    if(r.error){ console.warn('[GL] email_templates backfill failed', r.error.message); return; }
+    localStorage.setItem('gl_email_templates_migrated','1');
+    if(typeof addNotification === 'function'){
+      addNotification('📧 Templates migrated', rows.length + ' email template' + (rows.length===1?'':'s') + ' moved to the cloud.', 'success');
+    }
+  } catch(e){ console.warn('[GL] email_templates backfill threw', e); }
+}
 
-function openEmailTemplates(){
+async function loadEmailTemplates(){
+  if(!window.supa){ emailTemplates = []; return; }
+  await glEmailTemplatesBackfill();
+  const r = await window.supa.from('email_templates')
+    .select('id, name, subject, body, category, active')
+    .eq('active', true)
+    .order('name', { ascending: true });
+  if(r.error){ console.warn('[GL] loadEmailTemplates failed', r.error.message); emailTemplates = []; return; }
+  emailTemplates = r.data || [];
+}
+
+async function openEmailTemplates(){
+  await loadEmailTemplates();
   const existing = document.getElementById('email-templates-modal');
   if(existing){ existing.classList.add('show'); renderEmailTemplates(); return; }
 
@@ -8279,37 +8897,45 @@ function openEmailTemplates(){
 function renderEmailTemplates(){
   const el = document.getElementById('et-list');
   if(!el) return;
+  const esc = s => String(s||'').replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
+  if(!emailTemplates.length){ el.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:10px 0">No templates yet. Save one below.</div>'; return; }
   el.innerHTML = emailTemplates.map(t => `
     <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:13px;margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <div style="font-weight:700;font-size:13px;color:var(--white)">${t.name}</div>
+        <div style="font-weight:700;font-size:13px;color:var(--white)">${esc(t.name)}</div>
         <div style="display:flex;gap:6px">
           <button class="cbtn" style="font-size:10px;padding:3px 8px" onclick="useTemplate('${t.id}')">Use</button>
           <button class="cbtn red" style="font-size:10px;padding:3px 8px" onclick="deleteTemplate('${t.id}')">✕</button>
         </div>
       </div>
-      <div style="font-size:11px;color:var(--teal);margin-bottom:3px">${t.subject}</div>
-      <div style="font-size:11px;color:var(--muted);white-space:pre-wrap">${t.body.substring(0,100)}${t.body.length>100?'…':''}</div>
+      <div style="font-size:11px;color:var(--teal);margin-bottom:3px">${esc(t.subject)}</div>
+      <div style="font-size:11px;color:var(--muted);white-space:pre-wrap">${esc(t.body.substring(0,100))}${t.body.length>100?'…':''}</div>
     </div>`).join('');
 }
 
-function saveNewTemplate(){
+async function saveNewTemplate(){
   const name = document.getElementById('et-name')?.value.trim();
   const subject = document.getElementById('et-subject')?.value.trim();
   const body = document.getElementById('et-body')?.value.trim();
   if(!name || !subject || !body){ alert('All fields required'); return; }
-  emailTemplates.unshift({id:'t'+Date.now(), name, subject, body});
-  saveEmailTemplates();
+  if(!window.supa){ alert('Cloud sync unavailable — try reloading.'); return; }
+  const r = await window.supa.from('email_templates').insert([{ name, subject, body, category: 'general', active: true }]);
+  if(r.error){ alert('Save failed: ' + r.error.message); return; }
+  await loadEmailTemplates();
   renderEmailTemplates();
   document.getElementById('et-name').value='';
   document.getElementById('et-subject').value='';
   document.getElementById('et-body').value='';
+  if(typeof glAudit === 'function') glAudit('email_template_saved', null, { name: name.slice(0,80) });
 }
 
-function deleteTemplate(id){
+async function deleteTemplate(id){
   if(!confirm('Delete this template?')) return;
-  emailTemplates = emailTemplates.filter(t => t.id !== id);
-  saveEmailTemplates();
+  if(!window.supa){ return; }
+  // Soft-delete via active=false so any historical references survive.
+  const r = await window.supa.from('email_templates').update({ active: false }).eq('id', id);
+  if(r.error){ alert('Delete failed: ' + r.error.message); return; }
+  await loadEmailTemplates();
   renderEmailTemplates();
 }
 
