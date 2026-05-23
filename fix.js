@@ -136,6 +136,21 @@
     return Number(n||0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
+  /* ── Super-user check ──
+     Mike's request 2026-05-23: there's one super user (the workspace
+     owner). Other admins keep full read/edit access but can't perform
+     destructive operations — delete client, hard-remove user, delete
+     invoice, etc. This is enforced JS-side (gating UI buttons) until
+     we move it server-side via a profiles.is_super_user column +
+     policy checks. Hardcoded to mike@goodliquid.com for now since
+     there's only one. */
+  window.GL_SUPER_USER_EMAIL = 'mike@goodliquid.com';
+  window.glIsSuperUser = window.glIsSuperUser || function(){
+    var u = window.currentUser;
+    if(!u || !u.email) return false;
+    return String(u.email).toLowerCase() === window.GL_SUPER_USER_EMAIL;
+  };
+
   /* ── INTERCEPT ALL NEW INVOICE ENTRY POINTS ──
        The original cNav lives in index.html. We only need to wrap it once;
        the perm-gate is added below in the same wrap. */
@@ -23499,21 +23514,25 @@
               ? '<span style="color:var(--muted);font-size:11px">none — uses defaults</span>'
               : '<span style="color:#6b9fff;font-size:11px">' + overrideCount + ' override' + (overrideCount===1?'':'s') + '</span>');
         var nameLabel = u.name || (u.email || '').split('@')[0] || 'user';
-        var isOwner = (u.email||'').toLowerCase() === 'mike@goodliquid.com';
+        var isOwner = (u.email||'').toLowerCase() === window.GL_SUPER_USER_EMAIL;
         var isSelf  = window.currentUser && u.id === window.currentUser.id;
+        var iAmSuper = window.glIsSuperUser && window.glIsSuperUser();
         var inactive = u.status === 'inactive';
         var nameCellExtra = inactive ? '<span style="font-size:10px;color:#ff8579;margin-left:8px">(inactive)</span>' : '';
         // Action cluster: Manage + Deactivate/Reactivate + Remove. The
-        // workspace owner (mike@goodliquid.com) can't be removed from
-        // here — Mike has to delete his own profile from the Supabase
-        // dashboard if he really wants to. Self-removal is also blocked
-        // so an admin can't lock themselves out by accident.
+        // workspace owner can't be removed from here. Self-removal is
+        // blocked so an admin can't lock themselves out. Remove is
+        // additionally super-user-only — admins can pause people but
+        // can't hard-delete user records (Mike's 2026-05-23 ask).
+        // Deactivate stays available to any admin.
         var deactivateBtn = (isOwner || isSelf)
           ? ''
           : '<button class="cbtn" onclick="event.stopPropagation();window.glToggleUserActive(\'' + u.id + '\')" style="font-size:11px;padding:5px 11px;background:' + (inactive ? 'rgba(29,158,117,.14);border-color:rgba(29,158,117,.4);color:#5fcf9e' : 'rgba(245,200,66,.12);border-color:rgba(245,200,66,.35);color:#f5c842') + ';margin-right:6px">' + (inactive ? 'Reactivate' : 'Deactivate') + '</button>';
-        var removeBtn = (isOwner || isSelf)
-          ? '<span style="font-size:10px;color:var(--muted);margin-left:6px">' + (isOwner ? 'Owner' : 'You') + '</span>'
-          : '<button class="cbtn" onclick="event.stopPropagation();window.removeUser(\'' + u.id + '\')" style="font-size:11px;padding:5px 11px;background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#ff8579;margin-right:6px">Remove</button>';
+        var removeBtn;
+        if(isOwner)  removeBtn = '<span style="font-size:10px;color:var(--muted);margin-left:6px">Owner</span>';
+        else if(isSelf) removeBtn = '<span style="font-size:10px;color:var(--muted);margin-left:6px">You</span>';
+        else if(!iAmSuper) removeBtn = ''; // non-super admins don't see Remove
+        else removeBtn = '<button class="cbtn" onclick="event.stopPropagation();window.removeUser(\'' + u.id + '\')" style="font-size:11px;padding:5px 11px;background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#ff8579;margin-right:6px">Remove</button>';
         return '<tr style="cursor:pointer' + (inactive ? ';opacity:.55' : '') + '" onclick="window.glRenderPermMatrixFor(\'' + u.id + '\')">' +
           '<td style="padding:12px 14px;font-weight:700">' + esc(nameLabel) + nameCellExtra + '</td>' +
           '<td style="padding:12px 14px;color:var(--muted);font-size:12px">' + esc(u.email||'') + '</td>' +
@@ -23741,6 +23760,10 @@
      still work. */
   var _origRemoveUser = window.removeUser;
   window.removeUser = async function(id){
+    if(!window.glIsSuperUser || !window.glIsSuperUser()){
+      alert('Only the workspace owner can remove users. Other admins can Deactivate.');
+      return;
+    }
     var sb = getSB(); if(!sb){ if(_origRemoveUser) return _origRemoveUser(id); return; }
     if(window.currentUser && id === window.currentUser.id){
       alert('You can\'t remove yourself — that would lock you out.');
