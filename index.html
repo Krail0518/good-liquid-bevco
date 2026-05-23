@@ -5772,16 +5772,86 @@ function addAIToolbar() {
 /* ═══════════════════════════════════════════
    NOTIFICATIONS SYSTEM
 ═══════════════════════════════════════════ */
-let notifications = JSON.parse(localStorage.getItem('gl_notifications')||'[]');
+/* Notifications: per-user inbox. Source of truth is public.notifications
+   in Supabase. In-memory cache populated from DB on every panel open,
+   plus optimistic update on addNotification so toasts feel instant. */
+let notifications = [];
 
-function saveNotifications(){ localStorage.setItem('gl_notifications', JSON.stringify(notifications.slice(0,50))); }
+async function glNotificationsBackfill(){
+  try {
+    if(localStorage.getItem('gl_notifications_migrated') === '1') return;
+    if(!window.supa || !window.currentUser) return;
+    const blob = localStorage.getItem('gl_notifications');
+    if(!blob){ localStorage.setItem('gl_notifications_migrated','1'); return; }
+    let legacy = [];
+    try { legacy = JSON.parse(blob) || []; } catch(_e){ return; }
+    if(!legacy.length){ localStorage.setItem('gl_notifications_migrated','1'); return; }
+    const rows = legacy.slice(0, 50).map(n => ({
+      user_id: window.currentUser.id,
+      title:   String(n.title || '').slice(0, 200),
+      sub:     n.sub || null,
+      type:    ['info','success','warning','stale','reminder','email'].includes(n.type) ? n.type : 'info',
+      read:    !!n.read,
+      read_at: n.read ? new Date().toISOString() : null,
+      created_at: n.createdAt ? new Date(n.createdAt).toISOString() : new Date().toISOString()
+    }));
+    const r = await window.supa.from('notifications').insert(rows);
+    if(r.error){ console.warn('[GL] notifications backfill failed', r.error.message); return; }
+    localStorage.setItem('gl_notifications_migrated','1');
+  } catch(e){ console.warn('[GL] notifications backfill threw', e); }
+}
 
-function addNotification(title, sub, type='info'){
-  const n={id:'n'+Date.now(),title,sub,type,time:'Just now',read:false,createdAt:Date.now()};
-  notifications.unshift(n);
-  saveNotifications();
+async function loadNotifications(){
+  if(!window.supa || !window.currentUser){ notifications = []; return; }
+  await glNotificationsBackfill();
+  const r = await window.supa.from('notifications')
+    .select('id, title, sub, type, read, created_at')
+    .eq('user_id', window.currentUser.id)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if(r.error){ console.warn('[GL] loadNotifications failed', r.error.message); notifications = []; return; }
+  notifications = (r.data || []).map(n => ({
+    id: n.id, title: n.title, sub: n.sub, type: n.type,
+    read: !!n.read,
+    time: timeAgo(new Date(n.created_at)),
+    createdAt: new Date(n.created_at).getTime()
+  }));
   updateNotifBadge();
   renderNotifList();
+}
+
+function timeAgo(d){
+  const sec = Math.floor((Date.now() - d.getTime())/1000);
+  if(sec < 60) return 'Just now';
+  if(sec < 3600) return Math.floor(sec/60) + 'm ago';
+  if(sec < 86400) return Math.floor(sec/3600) + 'h ago';
+  return Math.floor(sec/86400) + 'd ago';
+}
+
+async function addNotification(title, sub, type='info'){
+  // Optimistic insert into local cache so the toast fires immediately.
+  const localN = { id: 'tmp'+Date.now(), title, sub, type, time:'Just now', read:false, createdAt:Date.now() };
+  notifications.unshift(localN);
+  if(notifications.length > 50) notifications = notifications.slice(0,50);
+  updateNotifBadge();
+  renderNotifList();
+  // Then write through to the DB. Fire-and-forget — if it fails we keep
+  // the local copy so the user still sees it.
+  if(window.supa && window.currentUser){
+    try {
+      const r = await window.supa.from('notifications').insert([{
+        user_id: window.currentUser.id,
+        title:   String(title || '').slice(0, 200),
+        sub:     sub || null,
+        type:    ['info','success','warning','stale','reminder','email'].includes(type) ? type : 'info'
+      }]).select('id').single();
+      if(!r.error && r.data){
+        // Swap the temp id for the real one so future read/delete by id
+        // hits the right row.
+        localN.id = r.data.id;
+      }
+    } catch(_e){}
+  }
 }
 
 function addNotifBadge(){
@@ -5798,14 +5868,14 @@ function toggleNotifPanel(){
   renderNotifList();
 }
 
-function markAllNotifRead(){
+async function markAllNotifRead(){
+  if(window.supa && window.currentUser){
+    await window.supa.from('notifications').update({ read: true, read_at: new Date().toISOString() }).eq('user_id', window.currentUser.id).eq('read', false);
+  }
   notifications.forEach(n=>n.read=true);
-  saveNotifications();
   updateNotifBadge();
   renderNotifList();
 }
-
-function loadNotifications(){ updateNotifBadge(); renderNotifList(); }
 
 function renderNotifList(){
   const el=document.getElementById('notif-list');
@@ -5819,12 +5889,14 @@ function renderNotifList(){
   </div>`).join('');
 }
 
-function markNotifRead(id){
+async function markNotifRead(id){
   const n=notifications.find(x=>x.id===id);
-  if(n)n.read=true;
-  saveNotifications();
+  if(n) n.read = true;
   updateNotifBadge();
   renderNotifList();
+  if(window.supa && id && !String(id).startsWith('tmp')){
+    await window.supa.from('notifications').update({ read: true, read_at: new Date().toISOString() }).eq('id', id);
+  }
 }
 
 /* ═══════════════════════════════════════════
@@ -6321,29 +6393,79 @@ function adjustInventory(id,delta){
 }
 
 /* ═══════════════════════════════════════════
-   ANNOUNCEMENTS BOARD
+   ANNOUNCEMENTS BOARD (team-wide, lives in public.announcements)
 ═══════════════════════════════════════════ */
-let announcements = JSON.parse(localStorage.getItem('gl_announcements')||'[]');
+let announcements = [];
 
-function saveAnnouncements(){ localStorage.setItem('gl_announcements', JSON.stringify(announcements.slice(0,50))); }
+async function glAnnouncementsBackfill(){
+  try {
+    if(localStorage.getItem('gl_announcements_migrated') === '1') return;
+    if(!window.supa || !window.currentUser) return;
+    const blob = localStorage.getItem('gl_announcements');
+    if(!blob){ localStorage.setItem('gl_announcements_migrated','1'); return; }
+    let legacy = [];
+    try { legacy = JSON.parse(blob) || []; } catch(_e){ return; }
+    if(!legacy.length){ localStorage.setItem('gl_announcements_migrated','1'); return; }
+    const nowMs = Date.now();
+    const rows = legacy.slice(0, 50).map((a, i) => ({
+      body:         String(a.text || '').slice(0, 4000),
+      author_id:    window.currentUser.id,
+      author_name:  a.author || window.currentUser.name || 'Admin',
+      author_email: window.currentUser.email || null,
+      created_at:   new Date(nowMs - i*1000).toISOString()
+    }));
+    const r = await window.supa.from('announcements').insert(rows);
+    if(r.error){ console.warn('[GL] announcements backfill failed', r.error.message); return; }
+    localStorage.setItem('gl_announcements_migrated','1');
+    if(typeof addNotification === 'function'){
+      addNotification('📣 Announcements migrated', rows.length + ' moved from device storage to the cloud.', 'success');
+    }
+  } catch(e){ console.warn('[GL] announcements backfill threw', e); }
+}
 
-function postAnnouncement(){
-  const text=document.getElementById('ann-input').value.trim();
+async function loadAnnouncements(){
+  if(!window.supa){ announcements = []; return; }
+  await glAnnouncementsBackfill();
+  const r = await window.supa.from('announcements')
+    .select('id, body, author_name, created_at, pinned')
+    .order('pinned', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if(r.error){ console.warn('[GL] loadAnnouncements failed', r.error.message); announcements = []; return; }
+  announcements = (r.data || []).map(a => ({
+    id: a.id,
+    text: a.body,
+    author: a.author_name || 'Admin',
+    time: new Date(a.created_at).toLocaleString()
+  }));
+}
+
+async function postAnnouncement(){
+  const text = document.getElementById('ann-input').value.trim();
   if(!text) return;
-  announcements.unshift({id:'a'+Date.now(),text,author:currentUser?currentUser.name:'Admin',time:new Date().toLocaleString()});
-  saveAnnouncements();
+  if(!window.supa || !window.currentUser){ alert('Cloud sync unavailable — try reloading.'); return; }
+  const r = await window.supa.from('announcements').insert([{
+    body:         text,
+    author_id:    window.currentUser.id,
+    author_name:  window.currentUser.name || 'Admin',
+    author_email: window.currentUser.email || null
+  }]);
+  if(r.error){ alert('Post failed: ' + r.error.message); return; }
+  document.getElementById('ann-input').value = '';
+  await loadAnnouncements();
   renderAnnouncements();
-  document.getElementById('ann-input').value='';
+  if(typeof glAudit === 'function') glAudit('announcement_posted', null, { length: text.length });
 }
 
 function renderAnnouncements(){
   const el=document.getElementById('ann-list');
   if(!el) return;
   if(!announcements.length){el.innerHTML='<div style="color:var(--muted);font-size:13px">No announcements yet. Post a note to the team.</div>';return;}
+  const esc = s => String(s||'').replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
   el.innerHTML=announcements.map(a=>`<div class="ann-item">
-    <div class="ann-author">${a.author}</div>
-    <div class="ann-text">${a.text}</div>
-    <div class="ann-time">${a.time}</div>
+    <div class="ann-author">${esc(a.author)}</div>
+    <div class="ann-text" style="white-space:pre-wrap">${esc(a.text)}</div>
+    <div class="ann-time">${esc(a.time)}</div>
   </div>`).join('');
 }
 
@@ -7344,7 +7466,7 @@ cNav=function(page,el){
   if(page==='tasks'){ loadTasks().then(renderTasks); }
   if(page==='documents') renderDocs();
   if(page==='inventory') renderInventory();
-  if(page==='announcements') renderAnnouncements();
+  if(page==='announcements'){ loadAnnouncements().then(renderAnnouncements); }
   if(page==='customers') renderCustomerLogins();
 };
 
