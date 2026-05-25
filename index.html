@@ -1467,7 +1467,8 @@ select option, .fsel option {
       <div><div class="crm-brand-name">GOOD LIQUID</div><div class="crm-brand-sub">CRM · Admin</div></div>
     </div>
     </div>
-    <div style="display:flex;align-items:center;gap:12px">
+    <div id="crm-top-actions" style="display:flex;align-items:center;gap:8px">
+      <button id="crm-chat-btn" onclick="window.glToggleCRMChat()" title="Chat with Good Liquid AI" style="width:34px;height:34px;border-radius:8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s;font-size:16px;color:var(--teal)">💬</button>
       <div id="notif-bell" onclick="toggleNotifPanel()" style="position:relative;width:34px;height:34px;border-radius:8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s" title="Notifications">
         🔔<div id="notif-badge" style="display:none">0</div>
       </div>

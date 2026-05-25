@@ -221,7 +221,10 @@
   setTimeout(function(){
     var b=document.getElementById('gl-chat-bubble'),w=document.getElementById('gl-chat-window'),p=document.getElementById('crm-panel');
     if(!b||!p)return;b.style.display='none';
-    new MutationObserver(function(){var o=p.classList.contains('show');b.style.display=o?'flex':'none';if(!o&&w)w.classList.remove('show');}).observe(p,{attributes:true,attributeFilter:['class']});
+    // Keep the floating bubble hidden in CRM — the top-bar 💬 button is used instead.
+    new MutationObserver(function(){var o=p.classList.contains('show');b.style.display='none';if(!o&&w)w.classList.remove('show');}).observe(p,{attributes:true,attributeFilter:['class']});
+    // Top-bar chat toggle: reposition the window to drop down from the toolbar.
+    window.glToggleCRMChat=function(){if(!w)return;w.style.top='54px';w.style.bottom='auto';w.style.right='12px';if(typeof toggleChat==='function')toggleChat();else w.classList.toggle('show');};
   },200);
 
   /* ── NAV / EXIT ── */
@@ -2467,7 +2470,7 @@
     var host = document.getElementById('crm-panel') || document.body;
     var tb = document.createElement('div');
     tb.id = 'ai-toolbar';
-    tb.setAttribute('style','position:fixed;bottom:28px;right:28px;z-index:600;display:flex;flex-direction:column;gap:8px;align-items:flex-end;pointer-events:auto');
+    tb.setAttribute('style','position:relative;display:flex;align-items:center');
 
     var tools = document.createElement('div');
     tools.id = 'ai-tools';
@@ -2534,7 +2537,7 @@
 
     var fab = document.createElement('button');
     fab.setAttribute('title','AI Tools');
-    fab.setAttribute('style','width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--teal),#1a6fff);border:none;color:#0a1628;font-size:22px;cursor:pointer;box-shadow:0 4px 20px rgba(0,229,192,.4);font-weight:900');
+    fab.setAttribute('style','width:34px;height:34px;border-radius:8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;color:var(--teal);transition:all .2s');
     fab.textContent = '🤖';
     fab.addEventListener('click', function(e){
       e.stopPropagation();
@@ -2548,8 +2551,11 @@
 
     tb.appendChild(tools);
     tb.appendChild(fab);
-    host.appendChild(tb);
-    console.log('[AI toolbar] mounted inside', host.id || host.tagName);
+    // Inject into the top-bar actions row so it sits beside the bell + chat buttons.
+    var topActions = document.getElementById('crm-top-actions');
+    if(topActions) topActions.insertBefore(tb, topActions.firstChild);
+    else host.appendChild(tb);
+    console.log('[AI toolbar] mounted in', topActions ? 'crm-top-actions' : (host.id || host.tagName));
   };
 
   console.log('[GL] AI toolbar v2 loaded');
@@ -14854,7 +14860,7 @@
   function buildPanel(){
     var panel = document.createElement('div');
     panel.id = 'gl-ai-panel';
-    panel.setAttribute('style','position:fixed;bottom:90px;right:28px;z-index:601;width:380px;max-height:75vh;background:#142238;border:1px solid rgba(0,229,192,.25);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.6);display:none;flex-direction:column;overflow:hidden;color:#cfd9e6;font-family:var(--ff-body, system-ui)');
+    panel.setAttribute('style','position:fixed;top:54px;right:12px;bottom:auto;z-index:601;width:380px;max-height:75vh;background:#142238;border:1px solid rgba(0,229,192,.25);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.6);display:none;flex-direction:column;overflow:hidden;color:#cfd9e6;font-family:var(--ff-body, system-ui)');
 
     // Header — title + search + close
     var head = document.createElement('div');
