@@ -1,8 +1,25 @@
-/* fix.js v2.1 — Good Liquid Bev Co
+/* fix.js v2.2 — Good Liquid Bev Co
    All patches in one file. Loaded after index.html.
    DO NOT use Ctrl+S on index.html — only deploy fix.js */
 (function(){
   'use strict';
+
+  /* ── Production console guard ──────────────────────────────
+     Suppress all console.log output in production so the
+     feature map, record counts, and internal state are not
+     visible to anyone with DevTools open.
+     To re-enable for debugging, run in the browser console:
+       localStorage.setItem('gl_debug','1'); location.reload();
+     To disable again:
+       localStorage.removeItem('gl_debug'); location.reload();
+  ─────────────────────────────────────────────────────────── */
+  window.GL_DEBUG = (localStorage.getItem('gl_debug') === '1');
+  if(!window.GL_DEBUG){
+    var _noop = function(){};
+    console.log  = _noop;
+    console.info = _noop;
+    // Keep console.warn and console.error so real problems still surface.
+  }
 
   /* ── CSS: ensure dynamic modals always appear above CRM panel ── */
   (function(){
@@ -350,24 +367,96 @@
     }
   };
 
-  /* ── syncPasswordToSupabase — current user changes their own password via Auth ── */
-  window.syncPasswordToSupabase=async function(emailOrPw,maybePw){
-    var newPw=typeof maybePw==='string'?maybePw:emailOrPw;
-    var sb=getSupa();if(!sb)return false;
-    try{
-      var r=await sb.auth.updateUser({password:newPw});
-      if(r.error){console.error('[GL] updateUser error',r.error);return false;}
-      console.log('[GL] Password updated for current Supabase Auth user');
-      return true;
-    }catch(e){console.error('[GL] updateUser threw',e);return false;}
-  };
-
   /* ── glSignOut — clear Supabase session and close CRM ── */
   window.glSignOut=async function(){
     var sb=getSupa();
     if(sb){try{await sb.auth.signOut();}catch(e){}}
     window.currentUser=null;
     if(typeof window.exitCRM==='function')window.exitCRM();
+  };
+
+  /* ══════════════════════════════════════════════
+     APP SETTINGS — Supabase-backed org config
+     Replaces per-device localStorage for any setting
+     that must be consistent across all staff browsers:
+       - SMS notification toggles + phone number
+       - CCP (Critical Control Point) limit overrides
+       - Compliance task visibility overrides
+       - Dropbox Sign template mappings
+       - Service package pricing
+     Called automatically on login via loginUser().
+     Admin writes go through glSaveAppSetting().
+  ══════════════════════════════════════════════ */
+
+  /* In-memory cache — refreshed on login and after any write */
+  window.GL_APP_SETTINGS = window.GL_APP_SETTINGS || {};
+
+  /* Load all settings rows from Supabase into the cache */
+  window.glLoadAppSettings = async function(){
+    var sb = getSupa(); if(!sb) return;
+    try {
+      var r = await sb.from('app_settings').select('key,value');
+      if(r.error || !r.data) return;
+      r.data.forEach(function(row){
+        window.GL_APP_SETTINGS[row.key] = row.value;
+      });
+      // Bridge legacy localStorage knobs → in-memory cache (read-only;
+      // writes go to DB from now on). Done once to unify the code path.
+      _bridgeLegacySettings();
+    } catch(e){ /* non-fatal — fall back to localStorage */ }
+  };
+
+  /* Get a setting by key (DB cache first, localStorage fallback) */
+  window.glGetSetting = function(key, fallback){
+    if(key in window.GL_APP_SETTINGS) return window.GL_APP_SETTINGS[key];
+    return fallback !== undefined ? fallback : null;
+  };
+
+  /* Save a setting to Supabase and update the local cache */
+  window.glSaveAppSetting = async function(key, value){
+    window.GL_APP_SETTINGS[key] = value;
+    var sb = getSupa(); if(!sb) return false;
+    try {
+      var r = await sb.from('app_settings').upsert({key:key,value:value},{onConflict:'key'});
+      if(r.error){ console.warn('[GL] app_settings save failed',r.error); return false; }
+      return true;
+    } catch(e){ console.warn('[GL] app_settings save threw',e); return false; }
+  };
+
+  /* One-time bridge: copy existing localStorage values into the
+     in-memory cache so the rest of the app doesn't need to change yet.
+     Org admins can then update settings via the UI to persist to DB. */
+  function _bridgeLegacySettings(){
+    var map = {
+      sms_to:          'gl_sms_to',
+      sms_alert_phone: 'gl_sms_alert_phone',
+      sms_paid:        'gl_sms_paid',
+      sms_won:         'gl_sms_won',
+      sms_quote:       'gl_sms_quote',
+      sms_tour:        'gl_sms_tour',
+      sms_overdue:     'gl_sms_overdue',
+      sign_templates:  'gl_sign_templates',
+      stripe_pub_key:  'gl_stripe_pub',
+      sentry_dsn:      'gl_sentry_dsn'
+    };
+    Object.keys(map).forEach(function(settingKey){
+      if(!(settingKey in window.GL_APP_SETTINGS)){
+        var raw = localStorage.getItem(map[settingKey]);
+        if(raw != null){
+          try { window.GL_APP_SETTINGS[settingKey] = JSON.parse(raw); }
+          catch(e){ window.GL_APP_SETTINGS[settingKey] = raw; }
+        }
+      }
+    });
+    // Remove the dead dead-code key that the audit flagged
+    localStorage.removeItem('gl_supabase_key');
+  }
+
+  /* Hook into loginUser so settings load immediately on auth */
+  var _origLoginUser = window.loginUser;
+  window.loginUser = function(u){
+    if(typeof _origLoginUser === 'function') _origLoginUser(u);
+    window.glLoadAppSettings(); // non-blocking; cache fills in background
   };
 
   /* ══════════════════════════════════════════════
@@ -621,7 +710,7 @@
     var msg=inp.value.trim();if(!msg)return;inp.value='';
     msgs.innerHTML+='<div class="chat-msg user">'+msg+'</div><div class="chat-msg bot" id="chat-thinking">Thinking\u2026</div>';msgs.scrollTop=msgs.scrollHeight;
     var reply='';try{reply=await callAI('You are the Good Liquid Bev Co assistant. Key facts: Family-run beverage co-packer, Palmetto FL, Est. 2017. Services: Canning (12oz/16oz), Bottling (750ml), R&D, Consulting. Min order: 150 cases (3,600 units). R&D from $1,000/SKU. Canning from $0.28/can. Timeline: ~8 weeks. GMP, PCQI, HACCP certified. Contact: Mike@GoodLiquid.com (803) 493-5065.',msg);}catch(e){reply='Contact Mike@GoodLiquid.com or call (803) 493-5065.';}
-    var t=document.getElementById('chat-thinking');if(t)t.outerHTML='<div class="chat-msg bot">'+reply+'</div>';msgs.scrollTop=msgs.scrollHeight;
+    var t=document.getElementById('chat-thinking');if(t)t.outerHTML='<div class="chat-msg bot">'+String(reply||'').replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];})+'</div>';msgs.scrollTop=msgs.scrollHeight;
   };
 
   /* ══════════════════════════════════════════════
@@ -701,37 +790,6 @@
       var b=e.target.closest('.gl-fmt-btn');
       if(b){modal.remove();if(_pcb){_pcb(b.getAttribute('data-fmt'));_pcb=null;}return;}
       if(e.target.closest('.gl-fmt-cancel')||e.target===modal){modal.remove();_pcb=null;}
-    });
-    document.body.appendChild(modal);
-  };
-
-  /* ── RD PICKER ── */
-  window.glShowRDPicker = function(cb){
-    _pcb = cb;
-    document.getElementById('gl-rd-picker')?.remove();
-    var opts = [
-      {label:'R&D Formulation',    price:1000, unit:'SKU', note:'$1,000/SKU · 3 iterations included', icon:'&#x1F9EA;'},
-      {label:'Benchtop Verification',price:500,unit:'SKU', note:'$500/SKU · Required for co-packing',  icon:'&#x1F52C;'},
-      {label:'IP License',         price:6000, unit:'yr',  note:'$6,000/yr · Annual licensing',        icon:'&#x1F4DC;'},
-      {label:'IP Purchase',        price:15000,unit:'',    note:'$15,000 · Full ownership',            icon:'&#x1F3C6;'},
-      {label:'Materials Sourcing', price:0,    unit:'',    note:'Cost+10% · Enter actual cost in Unit Price',icon:'&#x1F4E6;'}
-    ];
-    var modal = document.createElement('div');
-    modal.id = 'gl-rd-picker';
-    modal.style.cssText = 'position:fixed;inset:0;z-index:700;background:rgba(6,13,26,.95);display:flex;align-items:center;justify-content:center';
-    var html = '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:28px;width:400px">' +
-      '<div style="font-family:var(--ff-disp);font-size:16px;letter-spacing:2px;color:var(--white);margin-bottom:20px">SELECT R&D / IP SERVICE</div>';
-    opts.forEach(function(o,i){
-      html += '<button class="gl-rd-btn" data-idx="'+i+'" style="width:100%;text-align:left;padding:14px 16px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:10px;color:var(--white);cursor:pointer;margin-bottom:8px;display:block">' +
-        '<div style="font-weight:700;font-size:14px;margin-bottom:3px">'+o.icon+' '+o.label+'</div>' +
-        '<div style="font-size:11px;color:var(--muted)">'+o.note+'</div></button>';
-    });
-    html += '<button class="gl-rd-cancel" style="width:100%;padding:10px;background:none;border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer;margin-top:4px">Cancel</button></div>';
-    modal.innerHTML = html;
-    modal.addEventListener('click',function(e){
-      var b=e.target.closest('.gl-rd-btn');
-      if(b){modal.remove();if(_pcb){_pcb(opts[parseInt(b.getAttribute('data-idx'))]);_pcb=null;}return;}
-      if(e.target.closest('.gl-rd-cancel')||e.target===modal){modal.remove();_pcb=null;}
     });
     document.body.appendChild(modal);
   };
@@ -1096,51 +1154,6 @@
     var b = document.getElementById('gl-inv-body');
     return b ? b.children[2] : null;
   }
-
-  /* ── Canning line ──────────────────────────────────────── */
-  window.glCanFormatChange = function(uid) {
-    var ce = document.getElementById(uid + '-cases');
-    var fe = document.getElementById(uid + '-format');
-    if (!ce || !fe) return;
-    var cases   = Math.max(1, parseInt(ce.value) || 150);
-    var format  = fe.value;
-    var cid     = (window.INV && window.INV.clientId) || null;
-    var perCan  = getCanRate(cases, format, cid);
-    var perCase = perCan * CANS_PER_CASE;
-    var total   = perCase * cases;
-    function s(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; }
-    s(uid + '-total', usd(total));
-    s(uid + '-pcase', usd(perCase) + '/case');
-    s(uid + '-pcan',  usd(perCan, 4) + '/can');
-    s(uid + '-cans',  (cases * CANS_PER_CASE).toLocaleString() + ' cans');
-    if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
-  };
-
-  window.glRemoveCanLine = function(uid) {
-    var e = document.getElementById(uid); if (e) e.remove();
-    if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
-  };
-
-  /* ── Bottling line ─────────────────────────────────────── */
-  window.glBottleQtyChange = function(uid) {
-    var qe = document.getElementById(uid + '-qty');
-    var fe = document.getElementById(uid + '-format');
-    if (!qe || !fe) return;
-    var qty       = Math.max(1, parseInt(qe.value) || 500);
-    var format    = fe.value;
-    var perUnit   = getBottleRate(qty, format);
-    var total     = perUnit * qty;
-    function s(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; }
-    s(uid + '-total', usd(total));
-    s(uid + '-punit', usd(perUnit, 4) + '/btl');
-    if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
-  };
-
-  window.glRemoveBottleLine = function(uid) {
-    var e = document.getElementById(uid); if (e) e.remove();
-    if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
-  };
-
 
   /* ── Pricing Admin Page ────────────────────────────────── */
   window.glOpenPricing = async function() {
@@ -2373,13 +2386,6 @@
         '</div>' +
       '</div>';
     document.body.appendChild(ov);
-  };
-
-  // Kept for backwards compatibility with any UI button bindings — but
-  // it now just bounces the operator to the (read-only) settings panel
-  // instead of writing the key client-side.
-  window.glSaveMailgunKey = function(){
-    alert('The Mailgun API key lives in Supabase secrets now. Run\n\n  supabase secrets set MAILGUN_API_KEY=key-...\n\nin PowerShell to rotate it. The CRM picks it up automatically.');
   };
 
   /* Reusable masked-credential reveal modal — used by onboarding to surface
@@ -8656,8 +8662,8 @@
         '<div style="display:flex;align-items:center;gap:10px;min-width:0">' +
           '<span style="font-size:14px">📄</span>' +
           '<div style="min-width:0">' +
-            '<div style="color:var(--white);font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + r.clientName + '</div>' +
-            '<div style="color:var(--muted);font-size:11px">' + r.label + ' · ' + r.expDate + '</div>' +
+            '<div style="color:var(--white);font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(r.clientName) + '</div>' +
+            '<div style="color:var(--muted);font-size:11px">' + esc(r.label) + ' · ' + esc(r.expDate) + '</div>' +
           '</div>' +
         '</div>' +
         '<div style="color:' + sev + ';font-size:11px;font-weight:700;white-space:nowrap;letter-spacing:.5px">' + txt + '</div>' +
@@ -9637,7 +9643,6 @@
     } catch(e){ console.warn('[GL] production_lines load failed', e); }
     return window.glProductionLines || [];
   }
-  window.glLoadProductionLines = loadProductionLines;
 
   // Detect whether `run` overlaps any OTHER run on the same line. Both
   // sides treat a missing end_date as a single-day occupation. Returns
@@ -9656,7 +9661,6 @@
       return s1 <= e2 && s2 <= e1;
     });
   }
-  window.glFindRunConflicts = findConflicts;
 
   async function loadFromSupabase(){
     if(!window.supa) return null;
@@ -9740,7 +9744,6 @@
     }).join('');
     host.innerHTML = '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">' + cards + '</div>';
   }
-  window.glRenderCapacityWidget = renderCapacityWidget;
 
   function renderBoard(){
     var host = document.getElementById('prun-board');
@@ -12869,17 +12872,6 @@
   else document.addEventListener('DOMContentLoaded', maybeMount);
   window.addEventListener('hashchange', maybeMount);
 
-  window.glCopyNpsLink = async function(clientId){
-    if(!clientId) return;
-    var base = window.location.origin + window.location.pathname.replace(/[^/]*$/, '');
-    var url = base + '#nps/' + clientId;
-    try { await navigator.clipboard.writeText(url); } catch(e){
-      var ta = document.createElement('textarea'); ta.value = url; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
-    }
-    if(typeof addNotification === 'function') addNotification('🔗 NPS link copied', url, 'success');
-    else alert('NPS link copied:\n\n' + url);
-  };
-
   window.openNpsResults = async function(){
     var prior = document.getElementById('gl-nps-results-modal'); if(prior) prior.remove();
     var host = document.getElementById('crm-panel') || document.body;
@@ -14825,7 +14817,6 @@
     if(panel && panel.style.display === 'flex') closePanel();
     else openPanel();
   }
-  window.glToggleAIPanel = togglePanel;
 
   function applyRedesign(){
     var tb = document.getElementById('ai-toolbar');
@@ -18818,7 +18809,6 @@
       };
     }
   }
-  window.glApplyApplicability = applyApplicability;
 
   // Watcher: re-apply whenever comp-body mutates (covers async renders).
   (function watchAndApply(){
@@ -20178,15 +20168,6 @@
   (function pwaPromptDisabled(){
     /* no-op */
   })();
-  window.glManifestCheck = async function(){
-    try {
-      var r = await fetch('/manifest.json');
-      var ok = r.ok;
-      var swReady = 'serviceWorker' in navigator;
-      alert('PWA status:\n  manifest.json: ' + (ok ? '✓ found' : '✗ missing') + '\n  Service Worker API: ' + (swReady ? '✓ supported' : '✗ not supported') + '\n  Install: use ⋮ → Install app in Chrome / Edge, or wait for the install prompt.');
-    } catch(e){ alert('manifest check failed: ' + e.message); }
-  };
-
   // ============================================================
   // (18) AI ROOT-CAUSE SUGGESTER on NCR / defect modal
   // ============================================================
@@ -20472,10 +20453,6 @@
       toast('Switched to ' + activeFacility.code + '. Reload to refresh lists.');
     };
   }
-
-  // Expose for other code paths that insert records:
-  window.glActiveFacilityId = function(){ return activeFacility ? activeFacility.id : null; };
-  window.glActiveFacilityCode = function(){ return activeFacility ? activeFacility.code : null; };
 
   // Intercept compliance inserts to auto-stamp facility_id
   (function wrapSupabaseInsert(){
@@ -21724,12 +21701,6 @@
   var SNOOZE_KEY = 'gl_ar_snoozes';
   function getSnoozes(){ try { return JSON.parse(localStorage.getItem(SNOOZE_KEY)||'{}'); } catch(e){ return {}; } }
   function setSnoozes(s){ try { localStorage.setItem(SNOOZE_KEY, JSON.stringify(s)); } catch(e){} }
-  window.glIsSnoozed = function(invId){
-    var s = getSnoozes(); var until = s[invId];
-    if(!until) return false;
-    if(new Date(until).getTime() < Date.now()){ delete s[invId]; setSnoozes(s); return false; }
-    return until;
-  };
   window.glSnoozeInvoice = function(invId, days){
     days = days || 5;
     var until = new Date(Date.now() + days*86400000).toISOString();

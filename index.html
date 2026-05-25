@@ -2712,6 +2712,9 @@ select option, .fsel option {
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 <script>
+/* ── Global HTML escaper — used everywhere DB fields are interpolated into innerHTML ── */
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+
 /* ═══ DATA ═══ */
 /* All arrays are bridged to window so fix.js and index.html share the same identity.
    Never reassign window.X via .filter()/etc — mutate in place (splice/push/unshift). */
@@ -2947,11 +2950,11 @@ function openCustomerPortal(customer){
   // Company info
   const companyEl = document.getElementById('portal-company-info');
   if(client){
-    companyEl.innerHTML=`<div style="font-weight:700;font-size:15px;color:var(--white);margin-bottom:8px">${client.name}</div>
+    companyEl.innerHTML=`<div style="font-weight:700;font-size:15px;color:var(--white);margin-bottom:8px">${esc(client.name)}</div>
       <div style="font-size:12px;color:var(--muted);line-height:2">
-        <div>📧 ${client.email}</div>
-        <div>🏷 Service: ${client.service}</div>
-        <div>📊 Status: <span class="cbdg ${client.status}">${client.status}</span></div>
+        <div>📧 ${esc(client.email)}</div>
+        <div>🏷 Service: ${esc(client.service)}</div>
+        <div>📊 Status: <span class="cbdg ${esc(client.status)}">${esc(client.status)}</span></div>
       </div>`;
   } else {
     companyEl.innerHTML=`<div style="font-size:13px;color:var(--muted)">Contact Mike to complete your company profile.</div>`;
@@ -2962,10 +2965,10 @@ function openCustomerPortal(customer){
   const clientRuns = calEvents.filter(e=>e.type==='production'&&e.clientId===client?.id);
   if(clientRuns.length){
     prodEl.innerHTML=clientRuns.map(r=>`<div style="margin-bottom:12px;padding:11px;background:rgba(0,229,192,.05);border:1px solid rgba(0,229,192,.12);border-radius:8px">
-      <div style="font-weight:700;font-size:13px;color:var(--white);margin-bottom:4px">${r.title}</div>
-      <div style="font-size:11px;color:var(--muted)">📅 ${r.date} · ${r.format||''} · ${r.qty||''} cases</div>
-      <div class="prod-status-bar ${r.prodStatus||'scheduled'}"></div>
-      <div style="font-size:10px;color:var(--teal);margin-top:5px;font-weight:600">${(r.prodStatus||'Scheduled').toUpperCase()}</div>
+      <div style="font-weight:700;font-size:13px;color:var(--white);margin-bottom:4px">${esc(r.title)}</div>
+      <div style="font-size:11px;color:var(--muted)">📅 ${esc(r.date)} · ${esc(r.format||'')} · ${esc(r.qty||'')} cases</div>
+      <div class="prod-status-bar ${esc(r.prodStatus||'scheduled')}"></div>
+      <div style="font-size:10px;color:var(--teal);margin-top:5px;font-weight:600">${esc((r.prodStatus||'Scheduled').toUpperCase())}</div>
     </div>`).join('');
   } else {
     prodEl.innerHTML=`<div style="font-size:13px;color:var(--muted)">No production runs scheduled yet.</div>`;
@@ -3036,8 +3039,8 @@ function renderCustomerLogins(){
   }
   el.innerHTML=`<table class="ctbl"><thead><tr><th>Name</th><th>Email</th><th>Created</th><th>Actions</th></tr></thead><tbody>${
     customerLogins.map(c=>`<tr>
-      <td style="font-weight:600">${c.name}</td>
-      <td style="font-family:var(--ff-mono);font-size:11px">${c.email}</td>
+      <td style="font-weight:600">${esc(c.name)}</td>
+      <td style="font-family:var(--ff-mono);font-size:11px">${esc(c.email)}</td>
       <td style="font-size:11px;color:var(--muted)">${c.createdAt?c.createdAt.split('T')[0]:''}</td>
       <td><button class="cbtn red" style="font-size:10px;padding:3px 8px" onclick="removeCustomerLogin('${c.id}')">Remove</button></td>
     </tr>`).join('')
@@ -3223,12 +3226,12 @@ function renderClients(list){
     const ref=referrers.find(r=>r.id===c.referredBy);
     const billed = billedByClient[c.id] != null ? billedByClient[c.id] : (c.billed || 0);
     return`<tr style="cursor:pointer" onclick="openClientDetail('${c.id}')">
-      <td><div style="display:flex;align-items:center;gap:7px"><div class="cavt" style="background:${c.color};color:${c.tc}">${c.init}</div><span style="font-weight:600">${c.name}</span></div></td>
-      <td style="color:var(--muted)">${c.contact}</td>
-      <td style="color:var(--muted)">${c.service}</td>
-      <td><span class="cbdg ${c.status}">${c.status}</span></td>
+      <td><div style="display:flex;align-items:center;gap:7px"><div class="cavt" style="background:${c.color};color:${c.tc}">${esc(c.init)}</div><span style="font-weight:600">${esc(c.name)}</span></div></td>
+      <td style="color:var(--muted)">${esc(c.contact)}</td>
+      <td style="color:var(--muted)">${esc(c.service)}</td>
+      <td><span class="cbdg ${esc(c.status)}">${esc(c.status)}</span></td>
       <td style="font-weight:600">$${Number(billed||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-      <td style="color:var(--muted)">${ref?`🤝 ${ref.name}`:'-'}</td>
+      <td style="color:var(--muted)">${ref?`🤝 ${esc(ref.name)}`:'-'}</td>
       <td onclick="event.stopPropagation()" style="white-space:nowrap">
         <button class="cbtn" style="font-size:10px;padding:3px 9px" onclick="createForClient('${c.id}')">+ Invoice</button>
         <button class="cbtn" style="font-size:10px;padding:3px 9px;margin-left:4px;background:rgba(26,111,255,.12);border-color:rgba(26,111,255,.35);color:#6b9fff" data-cname="${(c.name||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}" onclick="if(window.glInviteCustomerLogin){window.glInviteCustomerLogin('${c.id}', this.dataset.cname);}else{alert('Portal module not ready');}">🔑 Invite</button>
@@ -3438,7 +3441,7 @@ function viewInvoice(id){
             const unitLbl = l.unit ? '<span style="font-size:10px;color:var(--muted);margin-left:4px">/'+l.unit+'</span>' : '';
             const unitPrice = l.unitPrice != null ? usd(l.unitPrice) + unitLbl : '';
             return '<tr>' +
-              '<td style="padding:11px;color:var(--white);border-bottom:1px solid rgba(255,255,255,.05)">' + (l.desc || '') + '</td>' +
+              '<td style="padding:11px;color:var(--white);border-bottom:1px solid rgba(255,255,255,.05)">' + esc(l.desc || '') + '</td>' +
               '<td style="padding:11px;text-align:center;color:var(--white);border-bottom:1px solid rgba(255,255,255,.05)">' + qty + '</td>' +
               '<td style="padding:11px;text-align:right;color:var(--white);border-bottom:1px solid rgba(255,255,255,.05)">' + unitPrice + '</td>' +
               '<td style="padding:11px;text-align:right;font-weight:700;color:var(--white);border-bottom:1px solid rgba(255,255,255,.05)">' + usd(l.total||0) + '</td>' +
@@ -3452,7 +3455,7 @@ function viewInvoice(id){
       <div style="text-align:right;padding:10px 0">
         <div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:1px;color:var(--teal)">Total Due: $${(window.fmtUsd?window.fmtUsd(inv.amount):Number(inv.amount||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))}</div>
       </div>
-      ${inv.notes?`<div style="margin-top:12px;padding:11px;background:rgba(255,255,255,.04);border-radius:7px;font-size:11px;color:var(--muted)">${inv.notes}</div>`:''}
+      ${inv.notes?`<div style="margin-top:12px;padding:11px;background:rgba(255,255,255,.04);border-radius:7px;font-size:11px;color:var(--muted)">${esc(inv.notes)}</div>`:''}
       <div style="margin-top:18px;padding:14px;background:rgba(0,229,192,.05);border:1px solid rgba(0,229,192,.18);border-radius:8px">
         <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--teal);margin-bottom:8px;font-weight:700">Payment Instructions — Wire Transfer</div>
         <div style="display:grid;grid-template-columns:140px 1fr;gap:4px 12px;font-size:12px;color:var(--white)">
@@ -3654,9 +3657,9 @@ function renderReferrers(){
       <div class="rref-left">
         <div class="rref-av" style="background:${r.color};color:${r.tc}">${r.init}</div>
         <div>
-          <div class="rref-name">${r.name}</div>
-          <div class="rref-rel">${r.rel} · ${r.email} · Default: ${r.rate}% commission</div>
-          ${r.notes?`<div style="font-size:10px;color:rgba(107,135,173,.6);margin-top:2px">${r.notes}</div>`:''}
+          <div class="rref-name">${esc(r.name)}</div>
+          <div class="rref-rel">${esc(r.rel)} · ${esc(r.email)} · Default: ${esc(r.rate)}% commission</div>
+          ${r.notes?`<div style="font-size:10px;color:rgba(107,135,173,.6);margin-top:2px">${esc(r.notes)}</div>`:''}
         </div>
       </div>
       <div class="rref-stats">
