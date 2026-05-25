@@ -8209,7 +8209,6 @@ async function downloadDocFromSupabase(path) {
 }
 
 // Override saveDocument to support real file upload
-const _origSaveDocument = saveDocument;
 saveDocument = async function() {
   const fileInput = document.getElementById('doc-file-input');
   const file = fileInput?.files?.[0];
@@ -8218,23 +8217,28 @@ saveDocument = async function() {
   const type = document.getElementById('doc-type').value;
 
   if(!name) { alert('Document name required'); return; }
+  if(!window.supa) { alert('Cloud sync unavailable — try reloading.'); return; }
 
-  let fileUrl = null, filePath = null, fileName = name;
+  let fileUrl = null, filePath = null;
   if(file) {
-    fileName = file.name;
     const result = await uploadDocToSupabase(file, clientId, type, name);
     fileUrl = result.url;
     filePath = result.path;
   }
 
   const client = clients.find(c => c.id === clientId);
-  documents.unshift({
-    id: 'd' + Date.now(), clientId, clientName: client ? client.name : 'General',
-    name, fileName, type, notes: document.getElementById('doc-notes').value,
-    fileUrl, filePath, uploadedAt: new Date().toISOString(),
-    uploadedBy: currentUser ? currentUser.name : 'Admin'
-  });
-  saveDocs();
+  const r = await window.supa.from('documents').insert([{
+    client_id:   /^[0-9a-f-]{36}$/i.test(clientId||'') ? clientId : null,
+    client_name: client ? client.name : 'General',
+    name:        name,
+    doc_type:    type,
+    notes:       document.getElementById('doc-notes').value || null,
+    uploaded_by: (window.currentUser && window.currentUser.name) || 'Admin',
+    file_url:    fileUrl,
+    file_path:   filePath
+  }]);
+  if(r.error) { alert('Save failed: ' + r.error.message); return; }
+  await loadDocs();
   renderDocs();
   closeDocUploadModal();
   document.getElementById('doc-name').value = '';
