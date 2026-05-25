@@ -9,6 +9,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Good Liquid CRM">
 <link rel="manifest" id="pwa-manifest">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='80' fill='%230a1628'/><text y='380' x='60' font-size='380'>💧</text></svg>">
 <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='80' fill='%230a1628'/><text y='380' x='60' font-size='380'>💧</text></svg>">
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 
@@ -3156,6 +3157,9 @@ function renderDash(){
 
 let chartInst=null;
 function buildCharts(){
+  // Guard: Chart.js CDN may not have loaded yet (slow network / CSP block).
+  if(typeof Chart === 'undefined'){ console.warn('[GL] buildCharts: Chart.js not loaded, skipping'); return; }
+  try {
   if(chartInst)chartInst.destroy();
   const gc='rgba(255,255,255,.07)',tc='rgba(107,135,173,.7)';
   document.getElementById('rev-legend').innerHTML=
@@ -3206,6 +3210,7 @@ function buildCharts(){
       y:{grid:{color:gc},ticks:{color:tc,font:{size:10},callback:v=>'$'+v/1000+'K'}}
     }}
   });
+  } catch(e){ console.warn('[GL] buildCharts failed', e); }
 }
 
 /* Clients */
@@ -4163,7 +4168,12 @@ const _glInspectorToken = (function(){
 const _glClientOpts = _glInspectorToken
   ? { global: { headers: { 'X-Inspector-Token': _glInspectorToken } } }
   : {};
-const supa = supabase.createClient(SUPA_URL, SUPA_KEY, _glClientOpts);
+// Guard: if the Supabase JS CDN failed to load, initialize supa to null
+// so that execution continues past this point instead of throwing a
+// ReferenceError that leaves `supa` and later `notifications` in TDZ.
+const supa = (typeof supabase !== 'undefined')
+  ? supabase.createClient(SUPA_URL, SUPA_KEY, _glClientOpts)
+  : null;
 window.supa = supa;  // expose to fix.js (which needs supa.auth for login)
 window.__glInspectorTokenInUrl = _glInspectorToken; // read by fix.js's mode-activation
 
@@ -4969,7 +4979,8 @@ async function submitContactForm(btn){
 
     // 2. Save the raw submission (audit + future analytics).
     try {
-      await supa.from('contact_submissions').insert([{
+      if(!window.supa) throw new Error('Supabase not loaded');
+      await window.supa.from('contact_submissions').insert([{
         brand_name:    vals.brand_name,
         contact_name:  vals.contact_name,
         email:         vals.email,
