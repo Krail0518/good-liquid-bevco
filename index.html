@@ -6632,7 +6632,7 @@ async function loadProductionPipeline(){
 
 async function switchPipeline(type,el){
   document.querySelectorAll('.pipe-tab').forEach(t=>t.classList.remove('act'));
-  el.classList.add('act');
+  if(el) el.classList.add('act');
   document.getElementById('pipeline-sales').style.display=type==='sales'?'block':'none';
   document.getElementById('pipeline-production').style.display=type==='production'?'block':'none';
   if(type==='production'){

@@ -11958,10 +11958,10 @@
   function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
   var DEMO = [
-    { title:'How to launch a hard kombucha brand', tag:'Brand launch', excerpt:'From recipe to retail in 5 milestones. What to expect on cost, timeline, and the FDA paperwork no one warns you about.', read_time_min:6, url:'#' },
-    { title:'Canning MOQs explained', tag:'Operations', excerpt:'Why 150 cases is our floor and what economic ladder kicks in at 500 / 1k / 5k. Read this before you ask for a quote.', read_time_min:4, url:'#' },
-    { title:'Pasteurization vs cold-fill — pick one', tag:'R&D', excerpt:'A practical decision tree based on pH, sugar, and where you plan to distribute. We make the call on every formulation we run.', read_time_min:5, url:'#' },
-    { title:'PakTech handles + custom lid colors — what they cost', tag:'Packaging', excerpt:'Two upgrades brands always ask about. Real numbers on the per-can adder and when they pay off in shelf appeal.', read_time_min:3, url:'#' }
+    { title:'How to launch a hard kombucha brand', tag:'Brand launch', excerpt:'From recipe to retail in 5 milestones. What to expect on cost, timeline, and the FDA paperwork no one warns you about.', read_time_min:6, url:null },
+    { title:'Canning MOQs explained', tag:'Operations', excerpt:'Why 150 cases is our floor and what economic ladder kicks in at 500 / 1k / 5k. Read this before you ask for a quote.', read_time_min:4, url:null },
+    { title:'Pasteurization vs cold-fill — pick one', tag:'R&D', excerpt:'A practical decision tree based on pH, sugar, and where you plan to distribute. We make the call on every formulation we run.', read_time_min:5, url:null },
+    { title:'PakTech handles + custom lid colors — what they cost', tag:'Packaging', excerpt:'Two upgrades brands always ask about. Real numbers on the per-can adder and when they pay off in shelf appeal.', read_time_min:3, url:null }
   ];
 
   function tagColor(t){
@@ -11971,9 +11971,12 @@
 
   function cardHtml(p){
     var col = tagColor(p.tag);
-    var safeUrl = p.url || '#';
-    var newTab = (p.url && p.url.indexOf('http') === 0) ? ' target="_blank" rel="noopener"' : '';
-    return '<a href="' + esc(safeUrl) + '"'+newTab+' style="text-decoration:none;display:flex;flex-direction:column;gap:11px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:22px;transition:border-color .15s" onmouseover="this.style.borderColor=\'rgba(0,229,192,.35)\'" onmouseout="this.style.borderColor=\'rgba(255,255,255,.08)\'">' +
+    var hasUrl = p.url && p.url !== '#';
+    // Null/# URLs: scroll to contact form instead of jumping to top of page.
+    var safeUrl = hasUrl ? p.url : 'javascript:void(0)';
+    var newTab = (hasUrl && p.url.indexOf('http') === 0) ? ' target="_blank" rel="noopener"' : '';
+    var onclickAttr = hasUrl ? '' : ' onclick="if(typeof navTo===\'function\')navTo(\'contact\')"';
+    return '<a href="' + esc(safeUrl) + '"'+newTab+onclickAttr+' style="text-decoration:none;display:flex;flex-direction:column;gap:11px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:22px;transition:border-color .15s" onmouseover="this.style.borderColor=\'rgba(0,229,192,.35)\'" onmouseout="this.style.borderColor=\'rgba(255,255,255,.08)\'">' +
       (p.tag ? '<span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:600;letter-spacing:1px;background:' + col + '22;color:' + col + ';border:1px solid ' + col + '44;width:fit-content">' + esc(p.tag) + '</span>' : '') +
       '<div style="font-family:var(--ff-disp);font-size:16px;letter-spacing:.5px;color:#fff;line-height:1.3">' + esc(p.title || 'Untitled') + '</div>' +
       '<div style="font-size:13px;color:var(--muted);line-height:1.65">' + esc(p.excerpt || '') + '</div>' +
