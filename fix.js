@@ -12240,7 +12240,7 @@
       chemicals: chemicals,
       water_temp_f: null,
       contact_min: null,
-      operator: row.signature_name || '',
+      operator: fd.operator || row.signature_name || '',
       atp_reading: paa ? paa.reading : '',
       result: result,
       status: row.status,
@@ -16269,6 +16269,10 @@
         field('Equipment / circuit', 'equip', 'select', { options: equipOptions, required: true }) +
         field('CIP cycle start', 'start', 'datetime-local', { value: new Date(Date.now()-30*60000).toISOString().slice(0,16) }) +
       '</div>' +
+      field('Operator *', 'operator', 'select', {
+        options: [['','— Select operator —'],['Zach','Zach'],['Mike','Mike'],['Sandra','Sandra']],
+        required: true
+      }) +
       '<table style="width:100%;border-collapse:collapse;font-size:11px;margin:8px 0">' +
         '<thead><tr style="background:rgba(255,255,255,.03);text-align:left">' +
           '<th style="padding:7px 5px;color:#9aa7bd;font-size:10px;letter-spacing:1px">#</th>' +
@@ -16322,7 +16326,9 @@
           pf: modal.querySelector('#gl-cip-pf-'+s.n).value
         };
       });
-      var equip = getVal(modal,'equip');
+      var equip    = getVal(modal,'equip');
+      var operator = getVal(modal,'operator');
+      if(!operator){ alert('Please select an operator before saving.'); return; }
       var deviation = getVal(modal,'deviation');
       // Critical-limit checks
       var failures = [];
@@ -16341,6 +16347,7 @@
       var hasFailure = failures.length > 0;
       var data = {
         equipment: equip, cycle_start: getVal(modal,'start'),
+        operator: operator,
         steps: steps, deviation_notes: deviation
       };
       await saveRecord('GMP-SAN-002', data, {

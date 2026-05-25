@@ -6394,10 +6394,10 @@ async function loadCalEvents(){
 
 function saveCalEvents(){ /* DEPRECATED no-op — calendar events persist via Supabase INSERT/UPDATE/DELETE now */ }
 
-function openCalEventModal(type){
+function openCalEventModal(type, date){
   document.getElementById('cal-event-type').value=type;
   document.getElementById('cal-prod-fields').style.display=type==='production'?'block':'none';
-  document.getElementById('cal-ev-date').value=new Date().toISOString().split('T')[0];
+  document.getElementById('cal-ev-date').value=date||new Date().toISOString().split('T')[0];
   // Populate client dropdown
   const sel=document.getElementById('cal-ev-client');
   sel.innerHTML='<option value="">Select client…</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
@@ -6482,8 +6482,10 @@ function renderCal(type){
   for(let day=1;day<=daysInMonth;day++){
     const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
     const isToday=today.getFullYear()===year&&today.getMonth()===month&&today.getDate()===day;
-    const dayEvents=calEvents.filter(e=>e.date===dateStr&&(type==='general'?e.type!=='production':e.type==='production'));
-    html+=`<div class="cal-day${isToday?' today':''}" onclick="openCalEventModal('${type}')">
+    const legacyDay=calEvents.filter(e=>e.date===dateStr&&(type==='general'?e.type!=='production':e.type==='production'));
+    const prunDay=type==='production'?(window.glProductionRuns||[]).filter(r=>(r.scheduled_start_date||r.scheduled_date)===dateStr).map(r=>({title:r.run_name||'(untitled)',type:'production'})):[];
+    const dayEvents=[...legacyDay,...prunDay];
+    html+=`<div class="cal-day${isToday?' today':''}" onclick="openCalEventModal('${type}','${dateStr}')">
       <div class="cal-day-num">${day}</div>
       ${dayEvents.slice(0,3).map(e=>`<div class="cal-event ${e.type}" title="${e.title}">${e.title.substring(0,14)}${e.title.length>14?'…':''}</div>`).join('')}
       ${dayEvents.length>3?`<div style="font-size:9px;color:var(--muted)">+${dayEvents.length-3} more</div>`:''}
