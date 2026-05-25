@@ -24484,3 +24484,125 @@
 
   console.log('[GL] customer requests inbox loaded');
 }());
+
+/* ── LOGIN IP ALERT ─────────────────────────────────────────────────────────
+   On every login we:
+     1. Fetch the caller's public IP from ipify
+     2. Insert a login_events row in Supabase
+     3. Query whether this IP has been seen before for this user
+     4. If it's new → show an in-app alert banner + fire a Mailgun email
+   Graceful: all steps are try/catch'd so a failure never blocks the login.
+   ────────────────────────────────────────────────────────────────────────── */
+(function(){
+  'use strict';
+
+  /* ── helpers ── */
+  function showNewIpBanner(ip){
+    var old = document.getElementById('gl-new-ip-banner');
+    if(old) old.remove();
+    var banner = document.createElement('div');
+    banner.id = 'gl-new-ip-banner';
+    banner.setAttribute('style', [
+      'position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:9999',
+      'background:#1a2a3a;border:1px solid rgba(245,200,66,.35);border-radius:12px',
+      'padding:14px 20px;display:flex;gap:12px;align-items:flex-start',
+      'max-width:420px;width:calc(100% - 40px);box-shadow:0 8px 32px rgba(0,0,0,.5)'
+    ].join(';'));
+    banner.innerHTML = [
+      '<span style="font-size:22px;line-height:1;flex-shrink:0">⚠️</span>',
+      '<div style="flex:1;min-width:0">',
+        '<div style="font-weight:600;color:#f5c842;font-size:13px;margin-bottom:4px">New sign-in location detected</div>',
+        '<div style="font-size:12px;color:#9ca3af;line-height:1.5">',
+          'We saw a login from IP <b style="color:#cbd5e1">' + ip + '</b> — an address we haven\'t seen for your account before. ',
+          'If this was you, no action needed. If not, <b style="color:#f87171">change your password immediately.</b>',
+        '</div>',
+        '<div style="margin-top:10px;display:flex;gap:8px">',
+          '<button onclick="cNav(\'ai-settings\')" style="font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid rgba(245,200,66,.4);background:rgba(245,200,66,.08);color:#f5c842;cursor:pointer">Account Security</button>',
+          '<button onclick="document.getElementById(\'gl-new-ip-banner\').remove()" style="font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#9ca3af;cursor:pointer">Dismiss</button>',
+        '</div>',
+      '</div>'
+    ].join('');
+    document.body.appendChild(banner);
+    /* auto-dismiss after 30 s */
+    setTimeout(function(){ if(banner.parentNode) banner.remove(); }, 30000);
+  }
+
+  async function sendNewIpEmail(user, ip){
+    try {
+      var sb = window.supa;
+      if(!sb) return;
+      var name = (user.name || user.email || 'there').split(' ')[0];
+      await sb.functions.invoke('mailgun-send', {
+        body: {
+          to: user.email,
+          subject: 'New sign-in location detected — Good Liquid CRM',
+          html: [
+            '<div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#1a1a2e">',
+            '<h2 style="color:#d4a200">⚠️ New sign-in location</h2>',
+            '<p>Hi ' + name + ',</p>',
+            '<p>We noticed a login to the Good Liquid CRM from an IP address we haven\'t seen for your account before:</p>',
+            '<p style="background:#f3f4f6;border-radius:8px;padding:12px 16px;font-family:monospace;font-size:15px">' + ip + '</p>',
+            '<p>If this was you, no action is needed.</p>',
+            '<p>If you don\'t recognise this sign-in, please <strong>change your password immediately</strong> and contact your administrator.</p>',
+            '<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">',
+            '<p style="font-size:12px;color:#6b7280">Good Liquid Beverage Co. CRM — automated security alert</p>',
+            '</div>'
+          ].join('')
+        }
+      });
+    } catch(e){ console.warn('[GL] new-IP email failed:', e); }
+  }
+
+  async function recordLoginEvent(user){
+    try {
+      var sb = window.supa;
+      if(!sb || !user || !user.id) return;
+
+      /* fetch IP */
+      var ip = null;
+      try {
+        var r = await fetch('https://api.ipify.org?format=json', { signal: AbortSignal.timeout(4000) });
+        var j = await r.json();
+        ip = j.ip || null;
+      } catch(e){ console.warn('[GL] ipify failed:', e); }
+
+      /* look up prior IPs for this user */
+      var isNew = false;
+      if(ip){
+        var { data: prior, error: priorErr } = await sb
+          .from('login_events')
+          .select('ip_address')
+          .eq('user_id', user.id)
+          .eq('ip_address', ip)
+          .limit(1);
+        if(!priorErr) isNew = (!prior || prior.length === 0);
+      }
+
+      /* insert the event */
+      await sb.from('login_events').insert([{
+        user_id   : user.id,
+        ip_address: ip,
+        user_agent: navigator.userAgent.slice(0, 512),
+        is_new_ip : isNew
+      }]);
+
+      /* alert if new */
+      if(isNew && ip){
+        showNewIpBanner(ip);
+        sendNewIpEmail(user, ip); /* fire-and-forget */
+      }
+    } catch(e){ console.warn('[GL] login event record failed:', e); }
+  }
+
+  /* ── hook into loginUser ── */
+  var origLoginUser = window.loginUser;
+  if(typeof origLoginUser !== 'function') return;
+  window.loginUser = function(u){
+    var result = origLoginUser.apply(this, arguments);
+    /* defer so the rest of the login flow completes first */
+    setTimeout(function(){ recordLoginEvent(u); }, 1500);
+    return result;
+  };
+
+  console.log('[GL] login IP alert loaded');
+}());
