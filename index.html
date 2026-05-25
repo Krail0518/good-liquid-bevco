@@ -3467,7 +3467,30 @@ function viewInvoice(id){
   document.getElementById('inv-detail').classList.add('show');
 }
 function closeDetail(){document.getElementById('inv-detail').classList.remove('show')}
-function markStatus(s){if(currentInvId){const i=invoices.find(x=>x.id===currentInvId);if(i){i.status=s;viewInvoice(currentInvId);renderInvoices();renderDash()}}}
+async function markStatus(s){
+  if(!currentInvId) return;
+  const i=invoices.find(x=>x.id===currentInvId);
+  if(!i) return;
+  i.status=s;
+  viewInvoice(currentInvId);
+  renderInvoices();
+  renderDash();
+  // Persist to Supabase — markStatus only updated local state, so
+  // "Mark paid" / "Mark overdue" buttons vanished on refresh.
+  try {
+    if(!window.supa) return;
+    const patch = { status: s };
+    if(s === 'paid'){
+      patch.paid_at = new Date().toISOString();
+      patch.paid_method = 'manual';
+    }
+    if(i.supaId){
+      await window.supa.from('invoices').update(patch).eq('id', i.supaId);
+    } else {
+      await window.supa.from('invoices').update(patch).eq('invoice_number', i.id);
+    }
+  } catch(e){ console.warn('[GL] markStatus save failed', e); }
+}
 
 /* Activity feed — filterable by type + free-text search. */
 window.activityFilter = window.activityFilter || 'all';
@@ -3562,7 +3585,7 @@ function payComm(id){
   }
 }
 
-function updateRefStatus(id,status){
+async function updateRefStatus(id,status){
   const r=referrals.find(x=>x.id===id);
   if(!r)return;
   if(status==='won'){
@@ -3571,6 +3594,18 @@ function updateRefStatus(id,status){
   }
   r.status=status;
   renderReferrals();renderDash();
+  // Persist to Supabase — without this every status change was per-device
+  // and disappeared on refresh.
+  try {
+    if(window.supa && r.id && !String(r.id).startsWith('ref')){
+      const patch = { status: status };
+      if(status==='won'){
+        patch.deal_value       = r.dealValue;
+        patch.commission_amount = r.commAmount;
+      }
+      await window.supa.from('referrals').update(patch).eq('id', r.id);
+    }
+  } catch(e){ console.warn('[GL] referral status save failed', e); }
 }
 
 function openRefModal(){
@@ -4187,13 +4222,16 @@ window.checkPw = async function checkPw(){
 }
 
 async function loadSupabaseData(){
-  const [cR,iR,rrR,refR,dR,aR] = await Promise.all([
+  // NOTE: activity feed lives in `activity_feed` (kind/name columns), not `activity`.
+  // We hydrate it separately via loadActivities() below to keep the column mapping
+  // (kind→type, name→name) in one place. The 6th slot here used to point at a
+  // non-existent `activity` table and silently 404'd on every login.
+  const [cR,iR,rrR,refR,dR] = await Promise.all([
     supa.from('clients').select('*').order('created_at',{ascending:false}),
     supa.from('invoices').select('*').order('created_at',{ascending:false}),
     supa.from('referrers').select('*').order('name'),
     supa.from('referrals').select('*').order('created_at',{ascending:false}),
-    supa.from('deals').select('*').order('created_at',{ascending:false}),
-    supa.from('activity').select('*').order('created_at',{ascending:false}).limit(30)
+    supa.from('deals').select('*').order('created_at',{ascending:false})
   ]);
   if(cR.data && cR.data.length>0){
     clients.length=0;
@@ -4286,15 +4324,8 @@ async function loadSupabaseData(){
       });
     });
   }
-  if(aR.data && aR.data.length>0){
-    const icons={call:'📞',email:'✉️',deal:'⭐',note:'📝',ref:'🤝',invoice:'🧾'};
-    activities.length=0;
-    aR.data.forEach(a=>activities.push({
-      type:a.type, icon:icons[a.type]||'📋',
-      name:a.title||'', detail:a.detail||'',
-      time:new Date(a.created_at).toLocaleDateString()
-    }));
-  }
+  // Activity feed: pull from `activity_feed` via loadActivities (kind→type mapping).
+  try { await loadActivities(); } catch(e){ console.warn('[GL] loadActivities failed', e); }
   // Hydrate the follow-up log from Supabase (replaces the old gl_followup_log
   // localStorage store — see migration 20260519_followup_acks_waivers.sql).
   try { await loadFollowupLog(); } catch(e){ console.warn('[GL] loadFollowupLog failed', e); }
