@@ -12757,7 +12757,8 @@
     Object.keys(deals).forEach(function(stage){
       if(stage === 'Closed Won' || stage === 'Closed Lost') return;
       var sub = 0;
-      (deals[stage]||[]).forEach(function(d){
+      var stageArr = Array.isArray(deals[stage]) ? deals[stage] : [];
+      stageArr.forEach(function(d){
         var v = dollarsFromVal(d.val);
         var p = (d.prob != null ? d.prob : 20) / 100;
         sub += v * p;
