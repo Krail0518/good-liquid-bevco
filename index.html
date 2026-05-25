@@ -6503,19 +6503,43 @@ function setCalView(view,el){
 function renderProductionRuns(){
   const el=document.getElementById('prod-runs-list');
   if(!el) return;
-  const prodEvents=calEvents.filter(e=>e.type==='production').sort((a,b)=>a.date>b.date?1:-1);
-  if(!prodEvents.length){ el.innerHTML='<div style="color:var(--muted);font-size:13px">No production runs scheduled. Click "+ Add Production Run" to get started.</div>'; return; }
-  
-  el.innerHTML=prodEvents.map(e=>{
+  const STAGE_CLR={Discovery:'#9aa7bd',Formulation:'#7fc6f5',Sample:'#c4a4f8',COA:'#f5c842',Production:'#5fcf9e',Ship:'#00e5c0'};
+  // Legacy cal_events production entries
+  const legacyRuns=calEvents.filter(e=>e.type==='production').map(e=>({_src:'cal',id:e.id,title:e.title,clientId:e.clientId,clientName:'',date:e.date||'',dueDate:e.dueDate||'',format:e.format||'',qty:e.qty||'',stage:'',prodStatus:e.prodStatus}));
+  // New production_runs table entries — merge into schedule
+  const prunRuns=(window.glProductionRuns||[]).map(r=>({_src:'prun',id:r.id,title:r.run_name||'(untitled)',clientId:r.client_id,clientName:r.client_name||'',date:r.scheduled_start_date||r.scheduled_date||'',dueDate:r.scheduled_end_date||'',format:r.format||'',qty:r.cases||'',stage:r.stage||'Discovery',prodStatus:''}));
+  const allRuns=[...legacyRuns,...prunRuns].sort((a,b)=>(a.date||'zzz')>(b.date||'zzz')?1:-1);
+  if(!allRuns.length){ el.innerHTML='<div style="color:var(--muted);font-size:13px">No production runs scheduled. Click "+ Add Production Run" to get started.</div>'; return; }
+  el.innerHTML=allRuns.map(e=>{
+    if(e._src==='prun'){
+      const stageClr=STAGE_CLR[e.stage]||'#9aa7bd';
+      return `<div class="prod-run">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+          <div>
+            <div style="font-weight:700;font-size:14px;color:var(--white);margin-bottom:4px">${e.title} <span style="font-size:10px;font-family:var(--ff-disp);letter-spacing:1px;color:${stageClr};background:rgba(255,255,255,.05);border:1px solid ${stageClr}33;padding:2px 7px;border-radius:8px">${e.stage.toUpperCase()}</span></div>
+            <div style="font-size:12px;color:var(--muted);line-height:1.8">
+              🏢 ${e.clientName||'Unknown client'} &nbsp;·&nbsp;
+              📅 Start: ${e.date||'TBD'} &nbsp;·&nbsp;
+              🏁 End: ${e.dueDate||'TBD'}<br>
+              🥫 ${e.format||'—'} &nbsp;·&nbsp; 📦 ${e.qty||'?'} cases
+            </div>
+          </div>
+          <div style="flex-shrink:0">
+            <button class="cbtn" style="font-size:10px;padding:4px 10px" onclick="window.glOpenEditProductionRun('${e.id}')">✏️ Edit run</button>
+          </div>
+        </div>
+        <div style="height:3px;border-radius:2px;background:${stageClr};opacity:.35;margin-top:8px"></div>
+      </div>`;
+    }
+    // Legacy cal_events entry
     const client=clients.find(c=>c.id===e.clientId);
-    const statusColors={'scheduled':'#6b9fff','in-production':'#f5c842','completed':'#1D9E75'};
     return `<div class="prod-run">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
         <div>
           <div style="font-weight:700;font-size:14px;color:var(--white);margin-bottom:4px">${e.title}</div>
           <div style="font-size:12px;color:var(--muted);line-height:1.8">
-            🏢 ${client?client.name:'Unknown client'} &nbsp;·&nbsp; 
-            📅 Start: ${e.date} &nbsp;·&nbsp; 
+            🏢 ${client?client.name:'Unknown client'} &nbsp;·&nbsp;
+            📅 Start: ${e.date} &nbsp;·&nbsp;
             🏁 Due: ${e.dueDate||'TBD'}<br>
             🥫 ${e.format||''} &nbsp;·&nbsp; 📦 ${e.qty||'?'} cases
           </div>
@@ -8130,7 +8154,10 @@ const origCNav=cNav;
 cNav=function(page,el){
   origCNav(page,el);
   if(page==='calendar'){ loadCalEvents().then(() => renderCal('general')); }
-  if(page==='production-cal'){ loadCalEvents().then(() => { renderCal('production'); renderProductionRuns(); }); }
+  if(page==='production-cal'){
+    const ensurePRuns = window.glRefreshProductionRuns ? window.glRefreshProductionRuns() : Promise.resolve();
+    Promise.all([loadCalEvents(), ensurePRuns]).then(() => { renderCal('production'); renderProductionRuns(); });
+  }
   if(page==='tasks'){ loadTasks().then(renderTasks); }
   if(page==='documents'){ loadDocs().then(renderDocs); }
   if(page==='inventory'){ loadInventory().then(renderInventory); }

@@ -9676,6 +9676,10 @@
     await loadProductionLines();
     renderBoard();
   }
+  // Expose for the Production Schedule page (production-cal) so it can
+  // load the production_runs table without re-rendering the kanban board
+  // (renderBoard is a no-op if #prun-board is not in the DOM).
+  window.glRefreshProductionRuns = refreshRuns;
 
   // ──────────────────────────────────────────────────────────
   // Capacity summary widget — sits above the kanban. Computes
