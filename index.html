@@ -6622,7 +6622,8 @@ async function switchPipeline(type,el){
   document.getElementById('pipeline-sales').style.display=type==='sales'?'block':'none';
   document.getElementById('pipeline-production').style.display=type==='production'?'block':'none';
   if(type==='production'){
-    await loadProductionPipeline();
+    // Load from production_runs (same source as the Production Runs kanban)
+    if(typeof window.glRefreshProductionRuns === 'function') await window.glRefreshProductionRuns();
     renderProductionKanban();
   }
 }
@@ -6630,15 +6631,26 @@ async function switchPipeline(type,el){
 function renderProductionKanban(){
   const el=document.getElementById('kanban-prod');
   if(!el) return;
-  const stageColors={'Scheduled':'#6b9fff','In Production':'#f5c842','Quality Check':'#a855f7','Completed':'#1D9E75','Shipped':'#00e5c0'};
-  el.innerHTML=Object.entries(productionDeals).map(([stage,deals])=>`
+  const STAGES=['Discovery','Formulation','Sample','COA','Production','Ship'];
+  const stageColors={Discovery:'#9aa7bd',Formulation:'#7fc6f5',Sample:'#c4a4f8',COA:'#f5c842',Production:'#5fcf9e',Ship:'#00e5c0'};
+  const runs=window.glProductionRuns||[];
+  if(!runs.length){
+    el.innerHTML='<div style="padding:40px;color:var(--muted);font-size:13px;text-align:center">No production runs yet.<br>Go to <b>Production Runs</b> in the sidebar to add your first run.</div>';
+    return;
+  }
+  const byStage={};
+  STAGES.forEach(s=>byStage[s]=[]);
+  runs.forEach(r=>{ const s=r.stage||'Discovery'; if(byStage[s]) byStage[s].push(r); });
+  el.innerHTML=STAGES.map(stage=>`
     <div class="kcol">
-      <div class="kcol-h"><span class="kcol-t" style="color:${stageColors[stage]||'var(--muted)'}">${stage}</span><span class="kcol-c">${deals.length}</span></div>
-      ${deals.map(d=>`<div class="kcard">
-        <div class="kc-n">${d.name}</div>
-        <div class="kc-co">${d.co}</div>
-        <div class="kc-val">${d.val}</div>
-        <div class="kc-prog"><div class="kc-pf" style="width:${d.prob||0}%;background:${stageColors[stage]||'var(--teal)'}"></div></div>
+      <div class="kcol-h">
+        <span class="kcol-t" style="color:${stageColors[stage]}">${stage.toUpperCase()}</span>
+        <span class="kcol-c">${byStage[stage].length}</span>
+      </div>
+      ${byStage[stage].map(r=>`<div class="kcard" onclick="window.glOpenEditProductionRun('${r.id}')" style="cursor:pointer">
+        <div class="kc-n">${r.run_name||'(untitled)'}</div>
+        <div class="kc-co">${r.client_name||'—'}</div>
+        <div class="kc-val">${r.format||''}${r.cases?' · '+(+r.cases).toLocaleString()+' cs':''}</div>
       </div>`).join('')}
     </div>`).join('');
 }
