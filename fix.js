@@ -12422,7 +12422,15 @@
           '<div class="frow"><div class="flbl">Contact (min)</div><input class="finp" id="gl-cip-contact" type="number" min="0" value="' + esc(c.contact_min) + '"></div>' +
         '</div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
-          '<div class="frow"><div class="flbl">Operator *</div><input class="finp" id="gl-cip-op" value="' + esc(c.operator) + '"></div>' +
+          (function(){
+            var OPERATORS = ['Zach','Mike','Sandra'];
+            var opOpts = '<option value="">— Select operator —</option>' +
+              OPERATORS.map(function(n){
+                var sel = (n === c.operator) ? ' selected' : '';
+                return '<option value="' + n + '"' + sel + '>' + n + '</option>';
+              }).join('');
+            return '<div class="frow"><div class="flbl">Operator *</div><select class="fsel" id="gl-cip-op">' + opOpts + '</select></div>';
+          })() +
           '<div class="frow"><div class="flbl">ATP reading (RLU)</div><input class="finp" id="gl-cip-atp" value="' + esc(c.atp_reading) + '" placeholder="< 30 = pass"></div>' +
         '</div>' +
         '<div class="frow"><div class="flbl">Result *</div><select class="fsel" id="gl-cip-result">' + resultOpts + '</select></div>' +
