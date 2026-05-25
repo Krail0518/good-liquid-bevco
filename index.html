@@ -6089,27 +6089,7 @@ async function aiGenerateInsights() {
   document.getElementById('ai-modal-body').textContent = text;
 }
 
-// ─── ADD AI TOOLBAR TO CRM ───
-function addAIToolbar() {
-  const existing = document.getElementById('ai-toolbar');
-  if(existing) return;
-  const tb = document.createElement('div');
-  tb.id = 'ai-toolbar';
-  tb.style.cssText = 'position:fixed;bottom:28px;right:28px;z-index:600;display:flex;flex-direction:column;gap:8px;align-items:flex-end';
-  tb.innerHTML = `
-    <div id="ai-tools" style="display:none;flex-direction:column;gap:6px;align-items:flex-end;margin-bottom:6px">
-      <button onclick="aiEstimateQuote()" style="padding:8px 14px;background:#142238;border:1px solid rgba(0,229,192,.3);border-radius:20px;color:var(--teal);cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)">💰 Estimate Quote</button>
-      <button onclick="aiDraftInvoice()" style="padding:8px 14px;background:#142238;border:1px solid rgba(0,229,192,.3);border-radius:20px;color:var(--teal);cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)">🧾 Draft Invoice</button>
-      <button onclick="openMeetingNotesModal()" style="padding:8px 14px;background:#142238;border:1px solid rgba(0,229,192,.3);border-radius:20px;color:var(--teal);cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)">📝 Meeting Notes</button>
-      <button onclick="openAICommModal()" style="padding:8px 14px;background:#142238;border:1px solid rgba(0,229,192,.3);border-radius:20px;color:var(--teal);cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)">✉️ Draft Email</button>
-      <button onclick="aiGenerateForecast()" style="padding:8px 14px;background:#142238;border:1px solid rgba(0,229,192,.3);border-radius:20px;color:var(--teal);cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)">📈 Revenue Forecast</button>
-      <button onclick="openReports()" style="padding:8px 14px;background:#142238;border:1px solid rgba(0,229,192,.3);border-radius:20px;color:var(--teal);cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)">📊 Reports</button>
-      <button onclick="openAISettings()" style="padding:8px 14px;background:#142238;border:1px solid rgba(0,229,192,.3);border-radius:20px;color:var(--teal);cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)">⚙️ AI Settings</button>
-    </div>
-    <button onclick="document.getElementById('ai-tools').style.display=document.getElementById('ai-tools').style.display==='none'?'flex':'none'" 
-      style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--teal),#1a6fff);border:none;color:var(--ink);font-size:22px;cursor:pointer;box-shadow:0 4px 20px rgba(0,229,192,.4);font-weight:900" title="AI Tools">🤖</button>`;
-  document.body.appendChild(tb);
-}
+// addAIToolbar is defined and fully managed in fix.js
 
 // ─── PATCH CLIENT ROW CLICK TO OPEN DETAIL ───
 /* renderClients override removed — click handlers added inline */
@@ -8612,22 +8592,7 @@ async function aiScoreClientHealth(clientId) {
   document.getElementById('ai-modal-body').textContent = text;
 }
 
-/* ═══════════════════════════════════════════
-   ADD TIME TRACKER TO AI TOOLBAR
-═══════════════════════════════════════════ */
-const _origAddAIToolbar = addAIToolbar;
-addAIToolbar = function() {
-  _origAddAIToolbar();
-  const tools = document.getElementById('ai-tools');
-  if(tools && !document.getElementById('tt-btn')) {
-    const btn = document.createElement('button');
-    btn.id = 'tt-btn';
-    btn.onclick = openTimeTracker;
-    btn.style.cssText = 'padding:8px 14px;background:#142238;border:1px solid rgba(0,229,192,.3);border-radius:20px;color:var(--teal);cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)';
-    btn.textContent = '⏱️ Time Tracker';
-    tools.insertBefore(btn, tools.firstChild);
-  }
-};
+// Time Tracker is already in the CATEGORIES list inside fix.js's addAIToolbar — no wrapper needed
 
 /* ═══════════════════════════════════════════
    ADD CLIENT HEALTH AI BUTTON TO CLIENT DETAIL
@@ -9405,35 +9370,7 @@ function generatePayLink(invId){
   (document.getElementById('crm-panel')||document.body).appendChild(modal);
 }
 
-/* ═══════════════════════════════════════════
-   WIRE NEW FEATURES INTO AI TOOLBAR
-═══════════════════════════════════════════ */
-const _origAddAIToolbar2 = addAIToolbar;
-addAIToolbar = function(){
-  _origAddAIToolbar2();
-  const tools = document.getElementById('ai-tools');
-  if(!tools) return;
-
-  // Add Email Templates button
-  if(!document.getElementById('et-toolbar-btn')){
-    const btn = document.createElement('button');
-    btn.id = 'et-toolbar-btn';
-    btn.onclick = openEmailTemplates;
-    btn.style.cssText = 'padding:8px 14px;background:#142238;border:1px solid rgba(0,229,192,.3);border-radius:20px;color:var(--teal);cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)';
-    btn.textContent = '📧 Templates';
-    tools.appendChild(btn);
-  }
-
-  // Add Time Report button
-  if(!document.getElementById('tr-toolbar-btn')){
-    const btn2 = document.createElement('button');
-    btn2.id = 'tr-toolbar-btn';
-    btn2.onclick = openTimeTrackingReport;
-    btn2.style.cssText = 'padding:8px 14px;background:#142238;border:1px solid rgba(0,229,192,.3);border-radius:20px;color:var(--teal);cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)';
-    btn2.textContent = '⏱️ Time Report';
-    tools.appendChild(btn2);
-  }
-};
+// Email Templates and Time Report are already in fix.js's CATEGORIES list — no wrapper needed
 
 /* ═══════════════════════════════════════════
    ADD PAY LINK + NOTES BUTTONS TO INVOICE DETAIL
