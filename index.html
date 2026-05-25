@@ -4168,10 +4168,11 @@ const _glInspectorToken = (function(){
 const _glClientOpts = _glInspectorToken
   ? { global: { headers: { 'X-Inspector-Token': _glInspectorToken } } }
   : {};
-// Guard: if the Supabase JS CDN failed to load, initialize supa to null
-// so that execution continues past this point instead of throwing a
-// ReferenceError that leaves `supa` and later `notifications` in TDZ.
-const supa = (typeof supabase !== 'undefined')
+// `var` (not `const`) so that window.supa and supa are the same reference.
+// This means injecting window.supa = client after page load (e.g. when CDN
+// loads late or in test harnesses) automatically updates every caller that
+// references bare `supa` — they all read window.supa under the hood.
+var supa = (typeof supabase !== 'undefined')
   ? supabase.createClient(SUPA_URL, SUPA_KEY, _glClientOpts)
   : null;
 window.supa = supa;  // expose to fix.js (which needs supa.auth for login)
