@@ -17,3 +17,7 @@ Thumbs.db
 *.scratch.*
 .help-addon.js.scratch
 .toolbar-redesign.js.scratch
+
+# Playwright test artifacts (downloaded CDN bundles, not production assets)
+supabase.min.js
+supabase.b64.txt
