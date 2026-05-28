@@ -3327,11 +3327,17 @@ function renderInvBulkBar(){
   const selectedInvs = invoices.filter(i => window.invSelected.has(i.id));
   const total = selectedInvs.reduce((s,i) => s + (Number(i.amount)||0), 0);
   const anyUnpaid = selectedInvs.some(i => i.status !== 'paid');
+  // Count how many of the selected invoices have a reachable email
+  const sendableCount = selectedInvs.filter(i => {
+    const c = clients.find(x => x.id === i.client) || {};
+    return !!(c.email || i.clientEmail);
+  }).length;
   bar.style.display = 'flex';
   bar.innerHTML = `
     <div style="font-size:12px;color:#fff;font-weight:700">${ids.length} selected</div>
     <div style="font-size:11px;color:var(--muted)">Total: <b style="color:#00e5c0">${fmtMoneyShort(total)}</b></div>
     <div style="flex:1"></div>
+    <button class="cbtn" style="font-size:11px;padding:6px 12px;background:rgba(26,111,255,.15);border-color:rgba(26,111,255,.4);color:#6b9fff" onclick="bulkSendInvoices()">📧 Send ${sendableCount > 0 ? sendableCount : ids.length}</button>
     ${anyUnpaid ? `<button class="cbtn grn" style="font-size:11px;padding:6px 12px" onclick="bulkMarkPaid()">✓ Mark ${selectedInvs.filter(i => i.status !== 'paid').length} paid</button>` : ''}
     <button class="cbtn" style="font-size:11px;padding:6px 12px" onclick="clearInvoiceSelection()">Clear</button>`;
 }
@@ -3359,6 +3365,187 @@ async function bulkMarkPaid(){
   renderInvoices();
   renderDash();
 }
+
+async function bulkSendInvoices(){
+  const selectedInvs = invoices.filter(i => window.invSelected.has(i.id));
+  if(!selectedInvs.length) return;
+
+  // Build recipient rows — flag ones with no email
+  const rows = selectedInvs.map(inv => {
+    const c = clients.find(x => x.id === inv.client) || {};
+    const email = c.email || inv.clientEmail || '';
+    const extras = (Array.isArray(c.additionalEmails) ? c.additionalEmails : []).map(e => e.email).filter(Boolean).filter(e => e !== email);
+    const usd = n => '$' + (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+    return { inv, c, email, extras, usd, hasEmail: !!email };
+  });
+  const sendable = rows.filter(r => r.hasEmail);
+  const noEmail  = rows.filter(r => !r.hasEmail);
+
+  // Remove any prior modal
+  const prior = document.getElementById('gl-bulk-send-modal');
+  if(prior) prior.remove();
+
+  const ov = document.createElement('div');
+  ov.id = 'gl-bulk-send-modal';
+  ov.setAttribute('style','position:fixed;inset:0;z-index:1200;background:rgba(6,13,26,.9);backdrop-filter:blur(8px);display:flex;align-items:flex-start;justify-content:center;padding:30px;overflow-y:auto');
+
+  const recipientRows = rows.map(r => `
+    <tr id="gl-bsr-${r.inv.id}" style="border-bottom:1px solid rgba(255,255,255,.05)">
+      <td style="padding:9px 8px;font-family:var(--ff-mono);font-size:12px;color:var(--teal);white-space:nowrap">${r.inv.id}</td>
+      <td style="padding:9px 8px;font-size:12px;color:#fff;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.inv.clientName}</td>
+      <td style="padding:9px 8px;font-size:12px;color:${r.hasEmail ? 'var(--muted)' : '#ff8579'}">${r.hasEmail ? r.email + (r.extras.length ? ` <span style="color:#6b87ad;font-size:10px">+${r.extras.length} cc</span>` : '') : '⚠ No email on file'}</td>
+      <td style="padding:9px 8px;font-size:12px;font-weight:600;text-align:right;white-space:nowrap">${r.usd(r.inv.amount)}</td>
+      <td style="padding:9px 8px;text-align:center" id="gl-bsr-status-${r.inv.id}">
+        ${r.hasEmail ? '<span style="font-size:11px;color:var(--muted)">—</span>' : '<span style="font-size:11px;color:#6b87ad">skip</span>'}
+      </td>
+    </tr>`).join('');
+
+  ov.innerHTML = `
+    <div style="background:#142238;border:1px solid rgba(26,111,255,.25);border-radius:14px;width:100%;max-width:780px;padding:26px 28px;color:#fff">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+        <div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:#6b9fff">📧 SEND ${rows.length} INVOICE${rows.length===1?'':'S'}</div>
+        <button id="gl-bsm-close" style="background:none;border:none;color:#9aa7bd;font-size:22px;cursor:pointer;line-height:1">✕</button>
+      </div>
+
+      ${noEmail.length ? `<div style="background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.3);border-radius:8px;padding:9px 14px;font-size:12px;color:#ff8579;margin-bottom:14px">⚠ ${noEmail.length} invoice${noEmail.length===1?'':'s'} skipped — no email on file for ${noEmail.map(r=>r.inv.clientName).join(', ')}. Add email in the Clients panel first.</div>` : ''}
+
+      <!-- Recipient table -->
+      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;overflow:hidden;margin-bottom:16px;max-height:240px;overflow-y:auto">
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:rgba(255,255,255,.05)">
+            <th style="padding:7px 8px;font-size:10px;letter-spacing:1px;color:var(--muted);text-align:left;font-weight:600">Invoice</th>
+            <th style="padding:7px 8px;font-size:10px;letter-spacing:1px;color:var(--muted);text-align:left;font-weight:600">Client</th>
+            <th style="padding:7px 8px;font-size:10px;letter-spacing:1px;color:var(--muted);text-align:left;font-weight:600">Recipient</th>
+            <th style="padding:7px 8px;font-size:10px;letter-spacing:1px;color:var(--muted);text-align:right;font-weight:600">Amount</th>
+            <th style="padding:7px 8px;font-size:10px;letter-spacing:1px;color:var(--muted);text-align:center;font-weight:600">Status</th>
+          </tr></thead>
+          <tbody>${recipientRows}</tbody>
+        </table>
+      </div>
+
+      <!-- Shared email template -->
+      <div style="display:grid;grid-template-columns:80px 1fr;gap:8px 12px;align-items:center;font-size:13px;margin-bottom:12px">
+        <label style="color:var(--muted);font-size:11px;letter-spacing:1px">BCC</label>
+        <input id="gl-bsm-bcc" class="finp" placeholder="optional — e.g. mike@goodliquid.com" style="font-size:13px">
+        <label style="color:var(--muted);font-size:11px;letter-spacing:1px">SUBJECT</label>
+        <input id="gl-bsm-subject" class="finp" value="Your Invoice from Good Liquid Bev Co" style="font-size:13px">
+      </div>
+      <div style="margin-bottom:14px">
+        <div style="font-size:11px;letter-spacing:1px;color:var(--muted);margin-bottom:4px">MESSAGE (added above each invoice — use {client} for their name, {invoice} for the ID, {amount} for the total)</div>
+        <textarea id="gl-bsm-message" class="finp" rows="5" style="resize:vertical;font-size:13px">Hi {client},
+
+Please find Invoice {invoice} below for {amount}.
+
+Payment is due on receipt. Wire instructions are included at the bottom of the invoice.
+
+Let me know if you have any questions.
+
+Thanks,
+Good Liquid Accounting
+(803) 493-5065 · Mike@GoodLiquid.com</textarea>
+      </div>
+
+      <div id="gl-bsm-progress" style="display:none;margin-bottom:12px">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:5px" id="gl-bsm-prog-label">Sending…</div>
+        <div style="background:rgba(255,255,255,.07);border-radius:4px;height:6px;overflow:hidden">
+          <div id="gl-bsm-prog-bar" style="height:100%;background:var(--teal);width:0%;transition:width .4s"></div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button id="gl-bsm-cancel" class="cbtn" style="font-size:13px">Cancel</button>
+        <button id="gl-bsm-send" class="cbtn pri" style="font-size:13px" ${sendable.length===0?'disabled':''}>
+          📤 Send ${sendable.length} Invoice${sendable.length===1?'':'s'} via Mailgun
+        </button>
+      </div>
+      <div id="gl-bsm-result" style="margin-top:10px;font-size:12px;color:var(--muted);min-height:18px"></div>
+    </div>`;
+
+  document.body.appendChild(ov);
+  ov.addEventListener('click', e => { if(e.target === ov) ov.remove(); });
+  ov.querySelector('#gl-bsm-close').onclick  = () => ov.remove();
+  ov.querySelector('#gl-bsm-cancel').onclick = () => ov.remove();
+
+  ov.querySelector('#gl-bsm-send').onclick = async function(){
+    if(!sendable.length) return;
+    const btn      = this;
+    const bccRaw   = ov.querySelector('#gl-bsm-bcc').value.trim();
+    const subject  = ov.querySelector('#gl-bsm-subject').value.trim() || 'Your Invoice from Good Liquid Bev Co';
+    const msgTpl   = ov.querySelector('#gl-bsm-message').value;
+    const prog     = ov.querySelector('#gl-bsm-progress');
+    const progBar  = ov.querySelector('#gl-bsm-prog-bar');
+    const progLbl  = ov.querySelector('#gl-bsm-prog-label');
+    const result   = ov.querySelector('#gl-bsm-result');
+
+    btn.disabled = true;
+    ov.querySelector('#gl-bsm-cancel').disabled = true;
+    prog.style.display = 'block';
+
+    const usd = n => '$' + (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+    let sent = 0, failed = 0;
+
+    for(let ri = 0; ri < sendable.length; ri++){
+      const r = sendable[ri];
+      const statusCell = document.getElementById('gl-bsr-status-' + r.inv.id);
+      const row = document.getElementById('gl-bsr-' + r.inv.id);
+      if(statusCell) statusCell.innerHTML = '<span style="font-size:11px;color:#f5c842">⏳ Sending…</span>';
+      progLbl.textContent = `Sending ${ri+1} of ${sendable.length}: ${r.inv.id}…`;
+
+      // Personalise subject & message
+      const personalSubject = subject
+        .replace(/\{client\}/gi, r.c.contact || r.c.name || r.inv.clientName)
+        .replace(/\{invoice\}/gi, r.inv.id)
+        .replace(/\{amount\}/gi, usd(r.inv.amount));
+      const personalMsg = msgTpl
+        .replace(/\{client\}/gi, r.c.contact || r.c.name || r.inv.clientName)
+        .replace(/\{invoice\}/gi, r.inv.id)
+        .replace(/\{amount\}/gi, usd(r.inv.amount));
+
+      let portalUrl = '';
+      try {
+        if(typeof window.glGenerateInvoiceShareLink === 'function')
+          portalUrl = (await window.glGenerateInvoiceShareLink(r.inv.id)) || '';
+      } catch(e){/* non-blocking */}
+
+      let pdfAttachment = null;
+      try { pdfAttachment = await generateInvoicePdfBlob(r.inv.id); }
+      catch(e){ console.warn('[GL] PDF gen failed for', r.inv.id, e); }
+
+      const htmlBody = `<div style="font-family:Arial,sans-serif;color:#1a1a1a;line-height:1.55"><div style="white-space:pre-wrap;padding:0 28px 14px">${personalMsg.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</div>${buildInvoiceEmailHtml(r.inv.id, { portalUrl })}</div>`;
+      const toLine = r.email + (r.extras.length ? ', ' + r.extras.join(', ') : '');
+
+      let ok = false;
+      try {
+        ok = await sendMailgunEmail(toLine, personalSubject, personalMsg, {
+          bcc: bccRaw, html: htmlBody,
+          attachments: pdfAttachment ? [pdfAttachment] : []
+        });
+      } catch(e){ console.warn('[GL] bulkSend Mailgun error', r.inv.id, e); }
+
+      if(ok){
+        sent++;
+        if(statusCell) statusCell.innerHTML = '<span style="font-size:11px;color:#00c4a7">✓ Sent</span>';
+        if(row) row.style.opacity = '.6';
+        if(typeof window.glAudit === 'function') window.glAudit('invoice_sent', r.inv.id, { to: toLine, bulk: true });
+      } else {
+        failed++;
+        if(statusCell) statusCell.innerHTML = '<span style="font-size:11px;color:#ff8579">✗ Failed</span>';
+      }
+
+      progBar.style.width = Math.round(((ri+1)/sendable.length)*100) + '%';
+    }
+
+    progLbl.textContent = `Done — ${sent} sent${failed ? ', ' + failed + ' failed' : ''}.`;
+    result.style.color = failed ? '#ff8579' : '#5fcf9e';
+    result.textContent = failed
+      ? `✓ ${sent} sent · ✗ ${failed} failed (check console for details)`
+      : `✓ All ${sent} invoice${sent===1?'':'s'} sent successfully!`;
+    btn.textContent = 'Done';
+    if(typeof addNotification === 'function') addNotification('📧 Bulk send complete', `${sent} invoice${sent===1?'':'s'} sent`, sent&&!failed?'success':'warning');
+    if(!failed) setTimeout(() => { ov.remove(); clearInvoiceSelection(); }, 2200);
+  };
+}
+window.bulkSendInvoices = bulkSendInvoices;
 
 function renderInvoices(){
   let list=invoices.filter(i=>{
