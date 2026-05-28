@@ -4335,7 +4335,8 @@ async function loadSupabaseData(){
         city:d.city||'', state:d.state||'', service:d.service||'',
         productType:d.product_type||'', volume:d.volume||'',
         timeline:d.timeline||'', fundingStage:d.funding_stage||'',
-        leadSource:d.lead_source||''
+        leadSource:d.lead_source||'',
+        outreachStatus:d.outreach_status||null
       });
     });
   }
@@ -4876,7 +4877,20 @@ function renderKanban(){
     const otherStages = allStages.filter(s=>s!==stage);
     return`<div class="kcol">
       <div class="kcol-h"><span class="kcol-t" style="color:${sc[stage]}">${stage}</span><span class="kcol-c">${cards.length}</span></div>
-      ${cards.map((d,di)=>`<div class="kcard" onclick="openDealDetail('${stage}',${di})" style="cursor:pointer">
+      ${cards.map((d,di)=>{
+        const obColor = d.outreachStatus==='sent' ? '#f5c842' : d.outreachStatus==='replied' ? '#00c4a7' : d.outreachStatus==='no_response' ? '#e74c3c' : 'transparent';
+        const outreachRow = d.outreachStatus==='sent'
+          ? `<span style="font-size:10px;background:rgba(245,200,66,.15);border:1px solid rgba(245,200,66,.35);color:#f5c842;border-radius:4px;padding:2px 7px;font-weight:600">✉️ Awaiting reply</span>
+             <button onclick="setDealOutreach('${d.id||''}','${stage}',${di},'replied')" style="font-size:9px;padding:2px 7px;background:rgba(0,196,167,.15);border:1px solid rgba(0,196,167,.4);border-radius:4px;color:#00c4a7;cursor:pointer">✓ Replied</button>
+             <button onclick="setDealOutreach('${d.id||''}','${stage}',${di},'no_response')" style="font-size:9px;padding:2px 7px;background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.35);border-radius:4px;color:#e74c3c;cursor:pointer">No reply</button>`
+          : d.outreachStatus==='replied'
+          ? `<span style="font-size:10px;background:rgba(0,196,167,.15);border:1px solid rgba(0,196,167,.35);color:#00c4a7;border-radius:4px;padding:2px 7px;font-weight:600">✅ Replied</span>
+             <button onclick="setDealOutreach('${d.id||''}','${stage}',${di},null)" style="font-size:9px;padding:2px 7px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;color:var(--muted);cursor:pointer">Clear</button>`
+          : d.outreachStatus==='no_response'
+          ? `<span style="font-size:10px;background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.35);color:#e74c3c;border-radius:4px;padding:2px 7px;font-weight:600">🔕 No response</span>
+             <button onclick="setDealOutreach('${d.id||''}','${stage}',${di},null)" style="font-size:9px;padding:2px 7px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;color:var(--muted);cursor:pointer">Clear</button>`
+          : `<button onclick="setDealOutreach('${d.id||''}','${stage}',${di},'sent')" style="font-size:9px;padding:2px 7px;background:rgba(245,200,66,.1);border:1px solid rgba(245,200,66,.3);border-radius:4px;color:#f5c842;cursor:pointer">✉️ Log email sent</button>`;
+        return`<div class="kcard" onclick="openDealDetail('${stage}',${di})" style="cursor:pointer;border-left:3px solid ${obColor}">
         <div class="kc-n">${d.name}</div><div class="kc-co">${d.co}</div>
         ${d.contactName ? `<div style="font-size:11px;color:#9ca3af;margin-top:2px">👤 ${d.contactName}</div>` : ''}
         ${d.email ? `<div style="font-size:11px;color:#9ca3af;margin-top:1px">✉️ ${d.email}</div>` : ''}
@@ -4887,11 +4901,40 @@ function renderKanban(){
         <div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap" onclick="event.stopPropagation()">
           ${otherStages.map(s=>`<button onclick="moveDeal('${d.id||''}','${stage}','${s}',${di})" style="font-size:9px;padding:2px 6px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;color:var(--muted);cursor:pointer;white-space:nowrap">→ ${s.split(' ')[0]}</button>`).join('')}
         </div>
-      </div>`).join('')}
+        <div style="margin-top:6px;display:flex;align-items:center;gap:4px;flex-wrap:wrap" onclick="event.stopPropagation()">
+          ${outreachRow}
+        </div>
+      </div>`;}).join('')}
       <div style="font-size:10px;color:var(--muted);text-align:center;margin-top:6px">$${(tot/1000).toFixed(0)}K</div>
     </div>`;
   }).join('');
 }
+
+// Email outreach status — log from outside the CRM and track response
+async function setDealOutreach(dealId, stage, idx, status){
+  const stageArr = Array.isArray(deals[stage]) ? deals[stage] : [];
+  const d = stageArr[idx];
+  if(!d) return;
+  d.outreachStatus = status;
+  renderKanban();
+  // Persist to Supabase only for real (UUID) deal IDs
+  if(dealId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(dealId))){
+    try {
+      await supa.from('deals').update({outreach_status: status}).eq('id', dealId);
+    } catch(e){ console.warn('[GL] Outreach update failed:', e); }
+  }
+  if(status === 'sent'){
+    activities.unshift({
+      type:'email', icon:'✉️',
+      name:'Email logged — '+(d.name||d.co),
+      detail:'Outreach sent; awaiting reply',
+      clientId:'',
+      time: new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})
+    });
+    saveActivities();
+  }
+}
+window.setDealOutreach = setDealOutreach;
 
 // Close modals on backdrop click
 document.getElementById('add-client-modal').addEventListener('click', function(e){ if(e.target===this) closeAddClientModal(); });
