@@ -333,7 +333,7 @@
           }};
         return q;
       },functions:{invoke:async function(){return{data:null,error:{message:'SDK not loaded'}};}},
-      storage:{from:function(){return{getPublicUrl:function(p){return{data:{publicUrl:_GL_SUPA_URL+'/storage/v1/object/public/'+p}}};}}}
+      storage:{from:function(){return{getPublicUrl:function(p){return{data:{publicUrl:_GL_SUPA_URL+'/storage/v1/object/public/'+p}}}}}}
       };
       _glSupa=_s;window.supa=_s;
       console.warn('[GL] Using fetch-based Supabase fallback — supabase.min.js may not have loaded');
