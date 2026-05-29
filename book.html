@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Schedule a Meeting – Good Liquid Bev Co</title>
+  <style>
+    :root {
+      --bg:     #0f1624;
+      --card:   #192337;
+      --border: #1f3059;
+      --teal:   #00e5c0;
+      --text:   #c8d8f0;
+      --muted:  #6b87ad;
+      --yellow: #f5c842;
+      --green:  #5fcf9e;
+      --red:    #e74646;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
+    a { color: var(--teal); }
+
+    /* ── Layout ── */
+    .page-wrap { max-width: 760px; margin: 0 auto; padding: 32px 20px 60px; }
+
+    /* ── Logo bar ── */
+    .logo-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; }
+    .logo-bar img { height: 36px; }
+    .logo-bar .brand { font-size: 16px; font-weight: 600; color: #fff; }
+    .logo-bar .brand span { color: var(--teal); }
+
+    /* ── Card ── */
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    .card + .card { margin-top: 16px; }
+
+    /* ── Page header ── */
+    .page-header { padding: 28px 28px 22px; border-bottom: 1px solid var(--border); }
+    .page-header h1 { font-size: 22px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+    .page-header p  { font-size: 14px; color: var(--muted); line-height: 1.5; }
+    .meta-row { display: flex; gap: 16px; margin-top: 14px; flex-wrap: wrap; }
+    .meta-pill { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); background: rgba(255,255,255,.05); border: 1px solid var(--border); border-radius: 20px; padding: 5px 12px; }
+    .meta-pill .ico { font-size: 14px; }
+
+    /* ── Two-column layout ── */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 24px 28px; }
+    @media (max-width: 580px) { .two-col { grid-template-columns: 1fr; } }
+
+    /* ── Calendar ── */
+    .cal-wrap { }
+    .cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+    .cal-nav button { background: rgba(255,255,255,.07); border: 1px solid var(--border); color: var(--text); border-radius: 7px; padding: 6px 12px; cursor: pointer; font-size: 13px; transition: background .15s; }
+    .cal-nav button:hover { background: rgba(255,255,255,.12); }
+    .cal-nav .month-label { font-size: 15px; font-weight: 600; color: #fff; }
+    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+    .cal-dow  { text-align: center; font-size: 11px; color: var(--muted); font-weight: 600; padding: 4px 0 6px; }
+    .cal-day  { text-align: center; padding: 7px 2px; font-size: 13px; border-radius: 7px; cursor: default; color: var(--muted); }
+    .cal-day.available { cursor: pointer; color: var(--text); background: rgba(255,255,255,.04); border: 1px solid transparent; transition: all .15s; }
+    .cal-day.available:hover { background: rgba(0,229,192,.12); border-color: rgba(0,229,192,.3); color: var(--teal); }
+    .cal-day.selected { background: var(--teal) !important; color: #0f1624 !important; font-weight: 700; border-color: transparent !important; }
+    .cal-day.today { outline: 1px solid rgba(255,255,255,.2); }
+    .cal-day.past  { opacity: .35; }
+
+    /* ── Slots ── */
+    .slots-wrap { }
+    .slots-label { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+    .slots-grid  { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .slot-btn { background: rgba(255,255,255,.04); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 11px 8px; font-size: 13px; cursor: pointer; text-align: center; transition: all .15s; }
+    .slot-btn:hover   { background: rgba(0,229,192,.1); border-color: rgba(0,229,192,.3); color: var(--teal); }
+    .slot-btn.selected { background: rgba(0,229,192,.15); border-color: var(--teal); color: var(--teal); font-weight: 600; }
+    .slot-btn:disabled { opacity: .35; cursor: not-allowed; background: rgba(255,255,255,.02); }
+    .no-slots { font-size: 13px; color: var(--muted); padding: 20px 0; text-align: center; }
+
+    /* ── Booking form ── */
+    .booking-form { padding: 24px 28px; border-top: 1px solid var(--border); display: none; }
+    .booking-form.show { display: block; }
+    .booking-form h3 { font-size: 15px; font-weight: 600; color: #fff; margin-bottom: 16px; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 480px) { .form-grid { grid-template-columns: 1fr; } }
+    .form-field { display: flex; flex-direction: column; gap: 5px; }
+    .form-field.full { grid-column: 1 / -1; }
+    label  { font-size: 12px; color: var(--muted); }
+    input, textarea { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); border-radius: 7px; color: #fff; padding: 10px 12px; font-size: 14px; font-family: inherit; transition: border-color .15s; width: 100%; }
+    input:focus, textarea:focus { outline: none; border-color: rgba(0,229,192,.4); }
+    textarea { resize: vertical; min-height: 76px; }
+    .submit-row { margin-top: 20px; display: flex; align-items: center; gap: 12px; }
+    .btn-submit { background: var(--teal); color: #0f1624; border: none; border-radius: 8px; padding: 12px 28px; font-size: 15px; font-weight: 700; cursor: pointer; transition: opacity .15s; }
+    .btn-submit:hover { opacity: .88; }
+    .btn-submit:disabled { opacity: .5; cursor: not-allowed; }
+    .form-err { font-size: 13px; color: var(--red); display: none; }
+    .form-err.show { display: block; }
+
+    /* ── Selected slot pill ── */
+    .slot-pill { display: inline-flex; align-items: center; gap: 8px; background: rgba(0,229,192,.1); border: 1px solid rgba(0,229,192,.25); border-radius: 8px; padding: 8px 14px; font-size: 13px; color: var(--teal); margin-bottom: 16px; }
+    .slot-pill button { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 15px; line-height: 1; padding: 0; margin-left: 4px; }
+    .slot-pill button:hover { color: var(--red); }
+
+    /* ── Confirmation screen ── */
+    #confirm-screen { display: none; }
+    #confirm-screen.show { display: block; }
+    .confirm-box { text-align: center; padding: 48px 32px; }
+    .confirm-icon { font-size: 52px; margin-bottom: 16px; }
+    .confirm-box h2 { font-size: 22px; color: #fff; margin-bottom: 8px; }
+    .confirm-box p  { font-size: 14px; color: var(--muted); line-height: 1.6; max-width: 380px; margin: 0 auto; }
+    .confirm-details { background: rgba(0,229,192,.06); border: 1px solid rgba(0,229,192,.2); border-radius: 10px; padding: 18px 22px; margin: 24px auto; max-width: 380px; text-align: left; }
+    .confirm-detail { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; font-size: 14px; }
+    .confirm-detail .lbl { color: var(--muted); min-width: 70px; }
+    .confirm-detail .val { color: #fff; font-weight: 500; }
+
+    /* ── Loading / Error states ── */
+    #loading { text-align: center; padding: 60px 20px; }
+    #loading .spinner { width: 36px; height: 36px; border: 3px solid rgba(0,229,192,.15); border-top-color: var(--teal); border-radius: 50%; animation: spin .7s linear infinite; margin: 0 auto 16px; }
+    #error-state { text-align: center; padding: 60px 20px; display: none; }
+    #error-state .ico { font-size: 40px; margin-bottom: 12px; }
+    #error-state p { color: var(--muted); font-size: 14px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #main-content { display: none; }
+    #main-content.show { display: block; }
+  </style>
+</head>
+<body>
+<div class="page-wrap">
+
+  <!-- Logo -->
+  <div class="logo-bar">
+    <div class="brand">Good<span>Liquid</span> Bev Co</div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading">
+    <div class="spinner"></div>
+    <div style="color:var(--muted);font-size:14px">Loading availability…</div>
+  </div>
+
+  <!-- Error -->
+  <div id="error-state">
+    <div class="ico">🔍</div>
+    <p id="error-msg">This booking page could not be found.</p>
+  </div>
+
+  <!-- Main content (shown after load) -->
+  <div id="main-content">
+
+    <!-- Confirmation screen (shown after booking) -->
+    <div id="confirm-screen" class="card">
+      <div class="confirm-box">
+        <div class="confirm-icon">✅</div>
+        <h2>You're booked!</h2>
+        <p>A confirmation email is on its way. We look forward to speaking with you.</p>
+        <div class="confirm-details" id="confirm-details"></div>
+        <p style="margin-top:16px;font-size:13px">Questions? Email <a href="mailto:Mike@GoodLiquid.com">Mike@GoodLiquid.com</a></p>
+      </div>
+    </div>
+
+    <!-- Booking UI -->
+    <div id="booking-ui">
+
+      <!-- Page header -->
+      <div class="card">
+        <div class="page-header">
+          <h1 id="page-title">Schedule a Meeting</h1>
+          <p id="page-desc"></p>
+          <div class="meta-row">
+            <div class="meta-pill"><span class="ico">⏱</span><span id="meta-duration">30 min</span></div>
+            <div class="meta-pill"><span class="ico">📍</span><span id="meta-tz">Eastern Time</span></div>
+          </div>
+        </div>
+
+        <!-- Calendar + slots -->
+        <div class="two-col">
+          <div class="cal-wrap">
+            <div class="cal-nav">
+              <button id="prev-month">&#8592;</button>
+              <div class="month-label" id="month-label"></div>
+              <button id="next-month">&#8594;</button>
+            </div>
+            <div class="cal-grid" id="cal-grid"></div>
+          </div>
+
+          <div class="slots-wrap" id="slots-wrap">
+            <div class="no-slots" id="slots-placeholder">← Pick a date to see open times</div>
+            <div id="slots-container" style="display:none">
+              <div class="slots-label" id="slots-label"></div>
+              <div class="slots-grid" id="slots-grid"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Booking form (shown after picking a slot) -->
+        <div class="booking-form" id="booking-form">
+          <div class="slot-pill" id="selected-pill">
+            <span id="selected-label"></span>
+            <button onclick="clearSlot()" title="Change time">✕</button>
+          </div>
+          <h3>Your details</h3>
+          <div class="form-grid">
+            <div class="form-field">
+              <label>Full name *</label>
+              <input id="f-name" type="text" placeholder="Jane Smith" autocomplete="name">
+            </div>
+            <div class="form-field">
+              <label>Email address *</label>
+              <input id="f-email" type="email" placeholder="jane@company.com" autocomplete="email">
+            </div>
+            <div class="form-field">
+              <label>Company (optional)</label>
+              <input id="f-company" type="text" placeholder="Acme Brewing Co." autocomplete="organization">
+            </div>
+            <div class="form-field full" style="grid-column:unset"></div>
+            <div class="form-field full">
+              <label>Anything you'd like us to know beforehand? (optional)</label>
+              <textarea id="f-notes" placeholder="e.g. We're interested in 16oz canning, ~500 cases…"></textarea>
+            </div>
+          </div>
+          <div class="submit-row">
+            <button class="btn-submit" id="btn-book" onclick="submitBooking()">Book Meeting</button>
+            <div class="form-err" id="form-err"></div>
+          </div>
+        </div>
+
+      </div><!-- /.card -->
+    </div><!-- /#booking-ui -->
+
+  </div><!-- /#main-content -->
+
+</div><!-- /.page-wrap -->
+
+<script>
+(function(){
+  'use strict';
+
+  var SUPA_URL  = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co';
+  var ANON_KEY  = 'sb_publishable_-37mkPw8uLzEJM21T9jJOA_YQRQ7ikB';
+  var CONFIRM_FN = SUPA_URL + '/functions/v1/booking-confirm';
+
+  var page = null;          // booking_pages row
+  var takenSlots = [];      // array of { start_at, end_at } strings (UTC ISO)
+  var viewYear  = 0;
+  var viewMonth = 0;        // 0-indexed
+  var selectedDate = null;  // "YYYY-MM-DD"
+  var selectedTime = null;  // "HH:MM"
+
+  // ── Bootstrap ──────────────────────────────────────────────────────────
+  var slug = new URLSearchParams(window.location.search).get('u') || '';
+  if(!slug){ showError('No scheduling link specified (missing ?u= parameter).'); }
+  else { loadPage(slug); }
+
+  async function loadPage(slug){
+    try {
+      var r = await apiFetch('/rest/v1/booking_pages?slug=eq.' + encodeURIComponent(slug) +
+        '&is_active=eq.true&select=*&limit=1');
+      if(!r || !r.length){ showError('This booking page doesn\'t exist or is no longer active.'); return; }
+      page = r[0];
+      document.title = page.title + ' – Good Liquid Bev Co';
+      document.getElementById('page-title').textContent = page.title;
+      var desc = document.getElementById('page-desc');
+      if(page.description){ desc.textContent = page.description; }
+      else { desc.style.display = 'none'; }
+      document.getElementById('meta-duration').textContent = page.duration + ' min';
+      document.getElementById('meta-tz').textContent = tzLabel(page.timezone || 'America/New_York');
+      await loadTakenSlots();
+      initCalendar();
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('main-content').classList.add('show');
+    } catch(e){
+      showError('Could not load booking page. Please try again later.');
+      console.error(e);
+    }
+  }
+
+  async function loadTakenSlots(){
+    var now = new Date().toISOString();
+    var r = await apiFetch('/rest/v1/bookings?page_id=eq.' + page.id +
+      '&status=eq.confirmed&start_at=gte.' + encodeURIComponent(now) +
+      '&select=start_at,end_at&limit=500');
+    takenSlots = r || [];
+  }
+
+  // ── REST helper ────────────────────────────────────────────────────────
+  async function apiFetch(path){
+    var res = await fetch(SUPA_URL + path, {
+      headers: {
+        'apikey': ANON_KEY,
+        'Authorization': 'Bearer ' + ANON_KEY,
+        'Content-Type': 'application/json',
+      }
+    });
+    if(!res.ok){ throw new Error('HTTP ' + res.status + ' ' + path); }
+    return res.json();
+  }
+
+  // ── Calendar ───────────────────────────────────────────────────────────
+  var MONTHS = ['January','February','March','April','May','June',
+                'July','August','September','October','November','December'];
+  var DOW = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+
+  function initCalendar(){
+    var now = new Date();
+    viewYear  = now.getFullYear();
+    viewMonth = now.getMonth();
+    document.getElementById('prev-month').addEventListener('click', function(){ shiftMonth(-1); });
+    document.getElementById('next-month').addEventListener('click', function(){ shiftMonth(+1); });
+    renderCalendar();
+  }
+
+  function shiftMonth(delta){
+    viewMonth += delta;
+    if(viewMonth < 0){ viewMonth = 11; viewYear--; }
+    if(viewMonth > 11){ viewMonth = 0; viewYear++; }
+    renderCalendar();
+  }
+
+  function renderCalendar(){
+    document.getElementById('month-label').textContent = MONTHS[viewMonth] + ' ' + viewYear;
+    var grid = document.getElementById('cal-grid');
+    grid.innerHTML = '';
+
+    // Day-of-week headers
+    DOW.forEach(function(d){
+      var el = document.createElement('div');
+      el.className = 'cal-dow';
+      el.textContent = d;
+      grid.appendChild(el);
+    });
+
+    var today    = new Date();
+    var todayStr = isoDate(today);
+    var firstDow = new Date(viewYear, viewMonth, 1).getDay();
+    var daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+
+    // Blank cells before the 1st
+    for(var i = 0; i < firstDow; i++){
+      var blank = document.createElement('div');
+      blank.className = 'cal-day';
+      grid.appendChild(blank);
+    }
+
+    var avail = page.avail_days || [1,2,3,4,5];
+
+    for(var d = 1; d <= daysInMonth; d++){
+      var cell = document.createElement('div');
+      cell.textContent = d;
+      var dateStr = viewYear + '-' + pad(viewMonth + 1) + '-' + pad(d);
+      var dow = new Date(dateStr + 'T12:00:00Z').getUTCDay(); // use UTC noon to avoid DST shift
+      var isPast = dateStr < todayStr;
+      var isAvail = !isPast && avail.indexOf(dow) >= 0;
+
+      cell.className = 'cal-day' +
+        (isAvail     ? ' available' : '') +
+        (isPast      ? ' past'      : '') +
+        (dateStr === todayStr   ? ' today' : '') +
+        (dateStr === selectedDate ? ' selected' : '');
+
+      if(isAvail){
+        (function(ds){ cell.addEventListener('click', function(){ selectDate(ds); }); })(dateStr);
+      }
+      grid.appendChild(cell);
+    }
+  }
+
+  function selectDate(dateStr){
+    selectedDate = dateStr;
+    selectedTime = null;
+    renderCalendar();
+    renderSlots(dateStr);
+    document.getElementById('booking-form').classList.remove('show');
+  }
+
+  // ── Slot generation ────────────────────────────────────────────────────
+  function renderSlots(dateStr){
+    var ph = document.getElementById('slots-placeholder');
+    var sc = document.getElementById('slots-container');
+    var sl = document.getElementById('slots-label');
+    var sg = document.getElementById('slots-grid');
+
+    var slots = buildSlots(dateStr);
+    var d = new Date(dateStr + 'T12:00:00Z');
+    var label = d.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
+
+    sl.textContent = label;
+    sg.innerHTML = '';
+
+    if(!slots.length){
+      sg.innerHTML = '<div class="no-slots" style="grid-column:1/-1">No availability on this day.</div>';
+    } else {
+      slots.forEach(function(s){
+        var btn = document.createElement('button');
+        btn.className = 'slot-btn' + (s.time === selectedTime ? ' selected' : '');
+        btn.textContent = s.label;
+        if(s.taken){
+          btn.disabled = true;
+          btn.title = 'Already booked';
+        } else {
+          (function(t, lbl){ btn.addEventListener('click', function(){ selectSlot(t, lbl, label); }); })(s.time, s.label);
+        }
+        sg.appendChild(btn);
+      });
+    }
+
+    ph.style.display = 'none';
+    sc.style.display = 'block';
+  }
+
+  function buildSlots(dateStr){
+    var dur    = Number(page.duration)     || 30;
+    var buffer = Number(page.buffer_after) || 0;
+    var stride = dur + buffer;
+    var tz     = page.timezone || 'America/New_York';
+
+    var startParts = (page.start_time || '09:00').split(':');
+    var endParts   = (page.end_time   || '17:00').split(':');
+    var startMin   = Number(startParts[0]) * 60 + Number(startParts[1]);
+    var endMin     = Number(endParts[0])   * 60 + Number(endParts[1]);
+
+    var slots = [];
+    for(var m = startMin; m + dur <= endMin; m += stride){
+      var hh   = Math.floor(m / 60);
+      var mm   = m % 60;
+      var time = pad(hh) + ':' + pad(mm);
+
+      // Build UTC start/end for conflict check
+      var utcStart = localToUTC(dateStr, time, tz);
+      var utcEnd   = new Date(utcStart.getTime() + dur * 60000);
+
+      var taken = isSlotTaken(utcStart, utcEnd);
+
+      slots.push({
+        time:  time,
+        label: fmt12(hh, mm),
+        taken: taken,
+      });
+    }
+    return slots;
+  }
+
+  function isSlotTaken(start, end){
+    return takenSlots.some(function(s){
+      var sStart = new Date(s.start_at);
+      var sEnd   = new Date(s.end_at);
+      // Overlap: existing start < my end AND existing end > my start
+      return sStart < end && sEnd > start;
+    });
+  }
+
+  function selectSlot(time, label, dateLabel){
+    selectedTime = time;
+    // Re-render slots to update selected state
+    renderSlots(selectedDate);
+
+    // Update pill
+    var tz = page.timezone || 'America/New_York';
+    var tzLbl = tzLabel(tz);
+    document.getElementById('selected-label').textContent =
+      '📅 ' + dateLabel + ' at ' + label + ' (' + tzLbl + ')';
+
+    document.getElementById('booking-form').classList.add('show');
+    document.getElementById('booking-form').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function clearSlot(){
+    selectedTime = null;
+    document.getElementById('booking-form').classList.remove('show');
+    if(selectedDate) renderSlots(selectedDate);
+  }
+  window.clearSlot = clearSlot;
+
+  // ── Booking submission ─────────────────────────────────────────────────
+  async function submitBooking(){
+    var name    = (document.getElementById('f-name').value    || '').trim();
+    var email   = (document.getElementById('f-email').value   || '').trim();
+    var company = (document.getElementById('f-company').value || '').trim();
+    var notes   = (document.getElementById('f-notes').value   || '').trim();
+    var errEl   = document.getElementById('form-err');
+    var btn     = document.getElementById('btn-book');
+
+    function setErr(msg){ errEl.textContent = msg; errEl.classList.add('show'); }
+    function clearErr(){ errEl.classList.remove('show'); }
+
+    clearErr();
+    if(!name)                          { setErr('Please enter your name.');          return; }
+    if(!email || !email.includes('@')) { setErr('Please enter a valid email.');      return; }
+    if(!selectedDate || !selectedTime) { setErr('Please select a date and time.');   return; }
+
+    btn.disabled = true;
+    btn.textContent = 'Booking…';
+
+    try {
+      var res = await fetch(CONFIRM_FN, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': ANON_KEY },
+        body: JSON.stringify({
+          page_id:        page.id,
+          booker_name:    name,
+          booker_email:   email,
+          booker_company: company || null,
+          notes:          notes   || null,
+          slot_date:      selectedDate,
+          slot_time:      selectedTime,
+        }),
+      });
+      var data = await res.json();
+      if(!res.ok || !data.ok){
+        setErr(data.error || 'Something went wrong. Please try again.');
+        btn.disabled = false;
+        btn.textContent = 'Book Meeting';
+        return;
+      }
+
+      // Show confirmation
+      var tz  = page.timezone || 'America/New_York';
+      var utcStart = localToUTC(selectedDate, selectedTime, tz);
+      var utcEnd   = new Date(utcStart.getTime() + Number(page.duration) * 60000);
+      var dateStr  = utcStart.toLocaleDateString('en-US', { timeZone: tz, weekday:'long', month:'long', day:'numeric', year:'numeric' });
+      var timeStr  = utcStart.toLocaleTimeString('en-US', { timeZone: tz, hour:'numeric', minute:'2-digit', hour12:true }) +
+                     ' – ' +
+                     utcEnd.toLocaleTimeString('en-US',   { timeZone: tz, hour:'numeric', minute:'2-digit', hour12:true });
+
+      document.getElementById('confirm-details').innerHTML =
+        '<div class="confirm-detail"><span class="lbl">Date</span><span class="val">' + escHtml(dateStr) + '</span></div>' +
+        '<div class="confirm-detail"><span class="lbl">Time</span><span class="val">' + escHtml(timeStr) + ' (' + escHtml(tzLabel(tz)) + ')</span></div>' +
+        '<div class="confirm-detail"><span class="lbl">Duration</span><span class="val">' + page.duration + ' minutes</span></div>' +
+        '<div class="confirm-detail"><span class="lbl">Name</span><span class="val">' + escHtml(name) + '</span></div>' +
+        '<div class="confirm-detail"><span class="lbl">Email</span><span class="val">' + escHtml(email) + '</span></div>';
+
+      document.getElementById('booking-ui').style.display = 'none';
+      document.getElementById('confirm-screen').classList.add('show');
+
+    } catch(e) {
+      setErr('Network error. Please try again.');
+      btn.disabled = false;
+      btn.textContent = 'Book Meeting';
+      console.error(e);
+    }
+  }
+  window.submitBooking = submitBooking;
+
+  // ── Timezone utilities ─────────────────────────────────────────────────
+  function localToUTC(dateStr, timeStr, tz){
+    var naiveUTC  = new Date(dateStr + 'T' + timeStr + ':00.000Z');
+    var localStr  = naiveUTC.toLocaleString('sv-SE', { timeZone: tz }); // "YYYY-MM-DD HH:MM:SS"
+    var asUTC     = new Date(localStr.replace(' ', 'T') + '.000Z');
+    var offsetMs  = naiveUTC.getTime() - asUTC.getTime();
+    return new Date(naiveUTC.getTime() - offsetMs);
+  }
+
+  function tzLabel(tz){
+    try {
+      var parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'short' })
+        .formatToParts(new Date());
+      return parts.find(function(p){ return p.type === 'timeZoneName'; }).value;
+    } catch(e){ return tz; }
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────
+  function isoDate(d){ return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()); }
+  function pad(n){ return String(n).padStart(2, '0'); }
+  function fmt12(h, m){
+    var suffix = h < 12 ? 'AM' : 'PM';
+    var h12 = h % 12 || 12;
+    return h12 + ':' + pad(m) + ' ' + suffix;
+  }
+  function escHtml(v){ return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function showError(msg){
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('error-msg').textContent = msg;
+    document.getElementById('error-state').style.display = 'block';
+  }
+
+}());
+</script>
+</body>
+</html>
