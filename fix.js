@@ -12793,35 +12793,43 @@
     if(!host) return;
     var existing = document.getElementById('gl-forecast-card');
     var deals = window.deals || {};
-    var byStage = {};
-    var total = 0;
+    var byStageRaw = {};
+    var byStageWtd = {};
+    var rawTotal = 0;
+    var wtdTotal = 0;
     Object.keys(deals).forEach(function(stage){
       if(stage === 'Closed Won' || stage === 'Closed Lost') return;
-      var sub = 0;
+      var subRaw = 0, subWtd = 0;
       var stageArr = Array.isArray(deals[stage]) ? deals[stage] : [];
       stageArr.forEach(function(d){
         var v = dollarsFromVal(d.val);
         var p = (d.prob != null ? d.prob : 20) / 100;
-        sub += v * p;
+        subRaw += v;
+        subWtd += v * p;
       });
-      byStage[stage] = sub;
-      total += sub;
+      byStageRaw[stage] = subRaw;
+      byStageWtd[stage] = subWtd;
+      rawTotal += subRaw;
+      wtdTotal += subWtd;
     });
-    if(total === 0){ if(existing) existing.remove(); return; }
-    var stageBars = Object.keys(byStage).map(function(stage){
-      var amt = byStage[stage];
-      var pct = total ? Math.round(amt / total * 100) : 0;
-      return '<div style="margin-bottom:7px"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--white);margin-bottom:3px"><span>' + stage + '</span><span style="color:var(--teal);font-weight:600">' + fmt$(amt) + '</span></div>' +
+    if(rawTotal === 0){ if(existing) existing.remove(); return; }
+    var stageBars = Object.keys(byStageRaw).map(function(stage){
+      var rawAmt = byStageRaw[stage];
+      var pct = rawTotal ? Math.round(rawAmt / rawTotal * 100) : 0;
+      return '<div style="margin-bottom:7px"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--white);margin-bottom:3px"><span>' + stage + '</span><span style="color:var(--teal);font-weight:600">' + fmt$(rawAmt) + '</span></div>' +
         '<div style="height:6px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden"><div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,var(--teal),#1a6fff)"></div></div></div>';
     }).join('');
     var html =
       '<div id="gl-forecast-card" class="ccard" style="grid-column:1/-1;margin-top:14px">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
-          '<div class="ccard-t" style="margin:0">Weighted pipeline forecast</div>' +
-          '<div style="font-family:var(--ff-disp);font-size:22px;color:var(--teal)">' + fmt$(total) + '</div>' +
+          '<div class="ccard-t" style="margin:0">Open pipeline</div>' +
+          '<div style="text-align:right">' +
+            '<div style="font-family:var(--ff-disp);font-size:22px;color:var(--teal)">' + fmt$(rawTotal) + '</div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:2px">Weighted: ' + fmt$(wtdTotal) + '</div>' +
+          '</div>' +
         '</div>' +
         stageBars +
-        '<div style="font-size:10px;color:var(--muted);margin-top:8px;letter-spacing:1px">Σ (deal value × probability) across open pipeline stages.</div>' +
+        '<div style="font-size:10px;color:var(--muted);margin-top:8px;letter-spacing:1px">Weighted = deal value × close probability across open stages.</div>' +
       '</div>';
     if(existing){ existing.outerHTML = html; }
     else {
