@@ -2088,7 +2088,8 @@ select option, .fsel option {
               <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">PROJECT DETAILS / NOTES</div>
               <textarea id="ddp-notes" rows="4" style="width:100%;padding:10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:13px;font-family:var(--ff-body);resize:vertical"></textarea>
             </div>
-            <div style="display:flex;gap:10px;margin-top:4px">
+            <button onclick="openLeadEmailComposer()" style="width:100%;padding:12px;background:rgba(26,111,255,.15);color:#6b9fff;border:1px solid rgba(26,111,255,.35);border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;margin-top:4px">✉️ Email This Lead</button>
+            <div style="display:flex;gap:10px;margin-top:8px">
               <button onclick="saveDealDetail()" style="flex:1;padding:12px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:800;font-size:14px;cursor:pointer">Save Changes</button>
               <button onclick="deleteDeal()" style="padding:12px 20px;background:rgba(231,76,60,.15);color:#e74c3c;border:1px solid rgba(231,76,60,.3);border-radius:8px;font-weight:700;font-size:14px;cursor:pointer">Delete</button>
             </div>
@@ -5122,6 +5123,174 @@ async function setDealOutreach(dealId, stage, idx, status){
   }
 }
 window.setDealOutreach = setDealOutreach;
+
+// ─── LEAD EMAIL COMPOSER ───────────────────────────────────────────────────
+// Opened from the deal detail panel. Reads the current deal's data,
+// lets you draft with Claude AI, edit freely, then sends via Mailgun
+// and auto-marks the deal's outreach_status as 'sent'.
+function openLeadEmailComposer(){
+  if(currentDealStage === null || currentDealIdx === null) return;
+  const d = (deals[currentDealStage]||[])[currentDealIdx];
+  if(!d){ alert('No deal selected.'); return; }
+  if(!d.email){ alert('This lead has no email address on file. Add one in the fields above and save first.'); return; }
+
+  const prior = document.getElementById('gl-lead-email-modal');
+  if(prior) prior.remove();
+
+  // Build a readable summary of what the lead told us — shown as context
+  // inside the composer and fed to Claude for drafting.
+  const details = [
+    d.contactName  ? `Contact: ${d.contactName}` : null,
+    d.co           ? `Company: ${d.co}` : null,
+    d.service      ? `Service interest: ${d.service}` : null,
+    d.productType  ? `Product type: ${d.productType}` : null,
+    d.volume       ? `Volume / year: ${d.volume}` : null,
+    d.timeline     ? `Timeline: ${d.timeline}` : null,
+    d.fundingStage ? `Funding stage: ${d.fundingStage}` : null,
+    d.city || d.state ? `Location: ${[d.city, d.state].filter(Boolean).join(', ')}` : null,
+    d.notes        ? `Their message: "${d.notes}"` : null,
+  ].filter(Boolean);
+
+  const defaultSubject = `Re: Your inquiry to Good Liquid Bev Co${d.co ? ' — ' + d.co : ''}`;
+  const firstName = (d.contactName || '').split(' ')[0] || 'there';
+
+  const ov = document.createElement('div');
+  ov.id = 'gl-lead-email-modal';
+  ov.setAttribute('style','position:fixed;inset:0;z-index:700;background:rgba(6,13,26,.95);backdrop-filter:blur(10px);display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto');
+
+  ov.innerHTML = `
+    <div style="background:#142238;border:1px solid rgba(26,111,255,.3);border-radius:16px;width:100%;max-width:760px;padding:26px 28px;color:#fff">
+
+      <!-- Header -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+        <div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:#6b9fff">✉️ EMAIL LEAD — ${(d.name||d.co||'').toUpperCase()}</div>
+        <button id="gl-lem-close" style="background:none;border:none;color:#9aa7bd;font-size:22px;cursor:pointer;line-height:1">✕</button>
+      </div>
+
+      <!-- Lead context card -->
+      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:12px;color:var(--muted);line-height:1.7">
+        <div style="font-size:10px;letter-spacing:2px;color:#6b87ad;margin-bottom:6px;font-weight:600">THEIR INQUIRY</div>
+        ${details.length ? details.map(l=>`<div>• ${l}</div>`).join('') : '<div style="font-style:italic">No additional details on file.</div>'}
+      </div>
+
+      <!-- Fields -->
+      <div style="display:grid;grid-template-columns:60px 1fr;gap:8px 12px;align-items:center;font-size:13px;margin-bottom:12px">
+        <label style="color:var(--muted);font-size:11px;letter-spacing:1px">TO</label>
+        <input id="gl-lem-to" class="finp" value="${d.email}" style="font-size:13px">
+        <label style="color:var(--muted);font-size:11px;letter-spacing:1px">BCC</label>
+        <input id="gl-lem-bcc" class="finp" value="mike@goodliquid.com" placeholder="optional" style="font-size:13px">
+        <label style="color:var(--muted);font-size:11px;letter-spacing:1px">SUBJECT</label>
+        <input id="gl-lem-subject" class="finp" value="${defaultSubject}" style="font-size:13px">
+      </div>
+
+      <div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <div style="font-size:11px;letter-spacing:1px;color:var(--muted)">MESSAGE</div>
+          <button id="gl-lem-draft" style="font-size:11px;padding:4px 12px;background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.3);border-radius:6px;color:var(--teal);cursor:pointer;display:flex;align-items:center;gap:5px">🤖 Draft with Claude</button>
+        </div>
+        <textarea id="gl-lem-body" class="finp" rows="12" style="resize:vertical;font-size:13px;line-height:1.6" placeholder="Click '🤖 Draft with Claude' to generate a personalised message, or type your own…"></textarea>
+      </div>
+
+      <div id="gl-lem-ai-status" style="font-size:12px;color:var(--teal);min-height:16px;margin-bottom:10px;display:none">🤖 Claude is drafting your email…</div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button id="gl-lem-cancel" class="cbtn" style="font-size:13px">Cancel</button>
+        <button id="gl-lem-send" class="cbtn pri" style="font-size:13px">📤 Send via Mailgun</button>
+      </div>
+      <div id="gl-lem-result" style="margin-top:10px;font-size:12px;color:var(--muted);min-height:18px"></div>
+    </div>`;
+
+  document.body.appendChild(ov);
+  ov.addEventListener('click', e => { if(e.target === ov) ov.remove(); });
+  ov.querySelector('#gl-lem-close').onclick  = () => ov.remove();
+  ov.querySelector('#gl-lem-cancel').onclick = () => ov.remove();
+
+  // ── Claude draft button ──
+  ov.querySelector('#gl-lem-draft').onclick = async function(){
+    const btn      = this;
+    const aiStatus = ov.querySelector('#gl-lem-ai-status');
+    btn.disabled   = true;
+    btn.textContent = '🤖 Drafting…';
+    aiStatus.style.display = 'block';
+
+    const systemPrompt = `You are Mike's assistant at Good Liquid Bev Co, a beverage co-packer in Palmetto, FL (2011 51st Ave E, Unit 100). We help emerging beverage brands with R&D, small-batch canning, bottle filling, and co-packing.
+
+Write warm, professional, conversational first-contact emails — not corporate-stiff. Mike's voice is direct, encouraging, and knowledgeable. Keep it to 3–4 short paragraphs. End with a clear next step (usually a call or site visit).
+
+Output format — two sections separated by a blank line:
+SUBJECT: [one-line subject here]
+
+[email body here — start straight with the salutation, no extra labels]`;
+
+    const userPrompt = `Draft a first-contact reply email to this lead who submitted an inquiry on our website:
+
+${details.join('\n')}
+
+Greet them by first name (${firstName}). Acknowledge what they're building and why it's exciting. Briefly explain how Good Liquid Bev Co can help with their specific needs. Suggest a 20-minute intro call as the next step. Sign off as Mike, Good Liquid Bev Co, (803) 493-5065.`;
+
+    const raw = await callAI(systemPrompt, userPrompt);
+    btn.disabled    = false;
+    btn.textContent = '🤖 Re-draft with Claude';
+    aiStatus.style.display = 'none';
+
+    if(!raw){ ov.querySelector('#gl-lem-result').style.color = '#ff8579'; ov.querySelector('#gl-lem-result').textContent = '⚠ AI draft failed. Type your message manually.'; return; }
+
+    // Parse SUBJECT: line out of the response
+    const subjectMatch = raw.match(/^SUBJECT:\s*(.+)/im);
+    if(subjectMatch){
+      const subjEl = ov.querySelector('#gl-lem-subject');
+      if(subjEl) subjEl.value = subjectMatch[1].trim();
+    }
+    // Body = everything after the first blank line past the SUBJECT line
+    const bodyStart = raw.indexOf('\n\n');
+    const body = bodyStart > -1 ? raw.slice(bodyStart).trim() : raw.replace(/^SUBJECT:.*\n?/im,'').trim();
+    ov.querySelector('#gl-lem-body').value = body;
+    ov.querySelector('#gl-lem-result').textContent = '';
+  };
+
+  // ── Send button ──
+  ov.querySelector('#gl-lem-send').onclick = async function(){
+    const btn     = this;
+    const result  = ov.querySelector('#gl-lem-result');
+    const toRaw   = ov.querySelector('#gl-lem-to').value.trim();
+    const bccRaw  = ov.querySelector('#gl-lem-bcc').value.trim();
+    const subject = ov.querySelector('#gl-lem-subject').value.trim();
+    const body    = ov.querySelector('#gl-lem-body').value.trim();
+
+    if(!toRaw)  { result.style.color = '#ff8579'; result.textContent = 'To address is required.'; return; }
+    if(!subject){ result.style.color = '#ff8579'; result.textContent = 'Subject is required.'; return; }
+    if(!body)   { result.style.color = '#ff8579'; result.textContent = 'Message body is required.'; return; }
+
+    btn.disabled = true; btn.textContent = 'Sending…';
+    result.style.color = 'var(--muted)'; result.textContent = '';
+
+    const html = `<div style="font-family:Arial,sans-serif;color:#1a1a1a;line-height:1.6;max-width:640px;margin:0 auto">
+      <div style="border-top:3px solid #00e5c0;padding:24px 28px">
+        <div style="font-size:20px;font-weight:900;color:#00b89a;letter-spacing:2px;margin-bottom:4px">GOOD LIQUID BEV CO</div>
+        <div style="font-size:11px;color:#6b87ad">2011 51st Ave E, Unit 100 · Palmetto, FL 34221 · Mike@GoodLiquid.com · (803) 493-5065</div>
+      </div>
+      <div style="padding:0 28px 28px;white-space:pre-wrap;font-size:14px;line-height:1.7">${body.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</div>
+      <div style="padding:14px 28px;border-top:1px solid #e5e7eb;font-size:11px;color:#9ca3af;text-align:center">Good Liquid Bev Co · goodliquidbevco.com</div>
+    </div>`;
+
+    const ok = await sendMailgunEmail(toRaw, subject, body, { bcc: bccRaw, html });
+
+    btn.disabled = false; btn.textContent = '📤 Send via Mailgun';
+    if(ok){
+      result.style.color = '#5fcf9e';
+      result.textContent = '✓ Sent to ' + toRaw;
+      // Auto-mark outreach status as 'sent'
+      if(d.id) await setDealOutreach(d.id, currentDealStage, currentDealIdx, 'sent');
+      if(typeof addNotification === 'function') addNotification('📧 Lead emailed', (d.name||d.co) + ' → ' + toRaw, 'email');
+      if(typeof window.glAudit === 'function') window.glAudit('lead_emailed', d.id, { to: toRaw, subject });
+      setTimeout(() => { ov.remove(); }, 1600);
+    } else {
+      result.style.color = '#ff8579';
+      result.textContent = '✗ Mailgun rejected the send. Check browser console.';
+    }
+  };
+}
+window.openLeadEmailComposer = openLeadEmailComposer;
 
 // Close modals on backdrop click
 document.getElementById('add-client-modal').addEventListener('click', function(e){ if(e.target===this) closeAddClientModal(); });
