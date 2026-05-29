@@ -3042,6 +3042,12 @@ function cNav(page,el){
   var pageEl=document.getElementById('cpg-'+page);
   if(pageEl)pageEl.classList.add('act');
   closeDetail();closeRefModal();closeAddReferrer();
+  // Trigger section-specific renders so data appears immediately on navigation
+  if(page==='activity' && typeof renderActivity==='function') renderActivity();
+  if(page==='pipeline' && typeof renderKanban==='function') renderKanban();
+  if(page==='invoices' && typeof renderInvoices==='function') renderInvoices();
+  if(page==='clients' && typeof renderClients==='function') renderClients();
+  if(page==='referrals' && typeof renderReferrals==='function') renderReferrals();
 }
 
 /* Dashboard */
@@ -6039,8 +6045,9 @@ function openClientDetail(cid) {
   const cInvoices = invoices.filter(i=>i.client===cid||i.clientName===c.name);
   const cDeals = Object.values(deals).flat().filter(d=>d.co===c.name);
   const ref = referrers.find(r=>r.id===c.referredBy);
-  const paid = cInvoices.filter(i=>i.status==='paid').reduce((s,i)=>s+i.amount,0);
-  const pending = cInvoices.filter(i=>i.status==='pending'||i.status==='overdue').reduce((s,i)=>s+i.amount,0);
+  const totalBilledAmt = cInvoices.reduce((s,i)=>s+(Number(i.amount)||0),0);
+  const paid = cInvoices.filter(i=>i.status==='paid').reduce((s,i)=>s+(Number(i.amount)||0),0);
+  const pending = cInvoices.filter(i=>i.status==='pending'||i.status==='overdue').reduce((s,i)=>s+(Number(i.amount)||0),0);
 
   const existing = document.getElementById('client-detail-overlay');
   if(existing) existing.remove();
@@ -6064,7 +6071,7 @@ function openClientDetail(cid) {
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">
         <div style="background:rgba(255,255,255,.04);border-radius:10px;padding:14px;text-align:center">
           <div style="font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:4px">TOTAL BILLED</div>
-          <div style="font-family:var(--ff-disp);font-size:22px;color:var(--teal)">$${Number(c.billed||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+          <div style="font-family:var(--ff-disp);font-size:22px;color:var(--teal)">$${Number(totalBilledAmt||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
         </div>
         <div style="background:rgba(255,255,255,.04);border-radius:10px;padding:14px;text-align:center">
           <div style="font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:4px">PAID</div>
@@ -9136,20 +9143,26 @@ initCRM = function() {
    SHOW ACTIVE TIMER BADGE IN HEADER
 ═══════════════════════════════════════════ */
 let _timerBadgeTick = 0;
+let _timerBadgePollDisabled = false;  // circuit-breaker: stop polling if table missing
 async function updateTimerBadge() {
   // Cross-device check every ~15s: if a timer was started on another
   // device, this picks it up so the header badge appears even before
   // the user opens the time tracker modal here. Cheap query (single
   // row, indexed) so the polling cost is negligible.
   _timerBadgeTick = (_timerBadgeTick + 1) % 5;
-  if(_timerBadgeTick === 0 && window.supa && window.currentUser){
+  if(!_timerBadgePollDisabled && _timerBadgeTick === 0 && window.supa && window.currentUser){
     try {
       const r = await window.supa.from('time_entries')
         .select('id, client_id, activity, notes, started_at')
         .eq('user_id', window.currentUser.id)
         .is('ended_at', null)
         .maybeSingle();
-      if(!r.error){
+      if(r.error){
+        // 406 = table exists but query rejected; 404 = table missing.
+        // Either way, stop polling to avoid flooding the error log.
+        console.warn('[GL] time_entries poll disabled (table not ready):', r.error.message || r.error.code);
+        _timerBadgePollDisabled = true;
+      } else {
         if(r.data){
           activeTimer = {
             id: r.data.id,
