@@ -5329,12 +5329,37 @@
     tag(560,247,1) + tag(515,60,2)
   );
 
-  var SEC_OVERVIEW = bullets([
-    '<b>Quick search:</b> press <kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">Ctrl+K</kbd> anywhere to jump to an invoice, client, deal, or user by name.',
-    '<b>This help panel:</b> press <kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">?</kbd> any time, or click ❓ Help in the topbar. It opens to the section matching the page you\'re on.',
-    '<b>AI tools:</b> the floating 🤖 button bottom-right opens a menu of AI helpers plus all the settings (Mailgun, AI key, Email signature, Clear local cache).',
-    '<b>Data sync:</b> invoices, clients, deals, referrers, referrals, and user profiles all live in Supabase and sync across devices. Tasks, calendar, notifications, and the activity feed live in localStorage (per device).'
-  ]);
+  var SEC_OVERVIEW =
+    wf(620, 220,
+      box(0,0,140,220,'#142238','rgba(255,255,255,.05)') +
+      txt(15,22,'GOOD LIQUID',9,'#00e5c0') +
+      txt(15,40,'• Dashboard',11,'#9aa7bd') +
+      txt(15,58,'• Clients',11,'#9aa7bd') +
+      txt(15,76,'• Pipeline',11,'#9aa7bd') +
+      txt(15,94,'• Invoices',11,'#9aa7bd') +
+      txt(15,112,'• Compliance',11,'#9aa7bd') +
+      txt(15,130,'• Production',11,'#9aa7bd') +
+      txt(15,148,'• Reports',11,'#9aa7bd') +
+      box(0,158,140,62,'#1a3c30','rgba(0,229,192,.2)') +
+      txt(15,174,'── AI ──',9,'#00e5c0') +
+      txt(15,192,'💬 AI Chat',11,'#00e5c0') +
+      txt(15,210,'🤖 AI Tools',11,'#00e5c0') +
+      box(155,10,450,200,'#0d1e35','rgba(255,255,255,.05)') +
+      txt(170,30,'GOOD LIQUID BEV CO  ·  CRM',13,'#fff') +
+      box(170,46,130,36,'#1a2c48','rgba(0,229,192,.15)') + txt(180,64,'Ctrl+K',11,'#00e5c0') + txt(180,78,'Quick search',9,'#9aa7bd') +
+      box(310,46,130,36,'#1a2c48','rgba(107,159,255,.15)') + txt(320,64,'?',11,'#6b9fff') + txt(320,78,'Help panel',9,'#9aa7bd') +
+      box(450,46,145,36,'#1a2c48','rgba(245,200,66,.15)') + txt(460,64,'🤖 AI Tools FAB',11,'#f5c842') + txt(460,78,'Bottom-right',9,'#9aa7bd') +
+      txt(170,110,'All data syncs across devices via Supabase',10,'#9aa7bd') +
+      txt(170,128,'Tasks · Calendar · Activity — per device (localStorage)',10,'#9aa7bd') +
+      tag(141,170,1) + tag(310,46,2) + tag(450,46,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>(1) AI section in the sidebar</b> — click <b>💬 AI Chat</b> for the full-page conversational assistant or <b>🤖 AI Tools</b> for the categorised panel with 30+ tools across 6 categories (Invoicing, Clients, Pipeline, Compliance, Production, Marketing).',
+      '<b>(2) Quick search (Ctrl+K)</b> — jump to any invoice, client, deal, or user by name from anywhere in the app.',
+      '<b>(3) Help panel (?)</b> — press ? any time or click ❓ Help in the topbar. Opens to the section matching the page you\'re on.',
+      '<b>Data sync:</b> invoices, clients, deals, referrers, referrals, and user profiles all live in Supabase and sync across devices. Tasks, calendar, notifications, and the activity feed live in localStorage (per device).'
+    ]);
 
   var SEC_DASHBOARD = MOCK_DASHBOARD +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
@@ -5344,9 +5369,45 @@
       '<b>(3) Revenue by service chart</b> — bar chart split by Canning / R&D / Bottling / Consulting. Mixed-service invoices split per line item.',
       '<b>(4) Recent activity feed</b> — last few CRM actions; click to jump to the related screen.',
       '<b>(5) System Health widget</b> (admin only) — ✓ or ✗ for Supabase Auth, Mailgun key, AI key, audit_log table, client-docs bucket. Each ✗ has a one-click fix button.'
+    ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">📊 OPEN PIPELINE WIDGET (NEW)</h4>' +
+    wf(400, 140,
+      box(0,0,400,140,'#142238','rgba(255,255,255,.05)') +
+      txt(20,24,'OPEN PIPELINE',10,'#9aa7bd') +
+      txt(200,56,'$500K',22,'#00e5c0','middle') +
+      txt(200,76,'raw value across 8 open deals',9,'#9aa7bd','middle') +
+      txt(200,98,'Weighted: $142K',13,'#f5c842','middle') +
+      txt(200,114,'at default stage probabilities',9,'#9aa7bd','middle') +
+      box(20,122,80,12,'rgba(107,159,255,.4)','none') + txt(20,138,'Prospecting',8,'#9aa7bd') +
+      box(108,122,60,12,'rgba(245,200,66,.4)','none') + txt(108,138,'Proposal',8,'#9aa7bd') +
+      box(176,122,40,12,'rgba(231,76,60,.4)','none') + txt(176,138,'Negotiation',8,'#9aa7bd') +
+      box(224,122,30,12,'rgba(95,207,158,.4)','none') + txt(224,138,'Closed',8,'#9aa7bd') +
+      tag(130,56,1) + tag(130,98,2)
+    ) +
+    bullets([
+      '<b>(1) Raw pipeline value</b> — the sum of all deal values for every open deal (Prospecting + Proposal + Negotiation). No probability weighting applied.',
+      '<b>(2) Weighted pipeline value</b> — each deal\'s value multiplied by its stage probability percentage, then summed. Gives a more conservative revenue forecast.',
+      '<b>Stage probability defaults</b>: Prospecting 20%, Proposal 50%, Negotiation 75%, Closed Won 100%. You can override the probability on individual deals in the deal detail modal.',
+      '<b>Stage bars</b> — the colour bars below the number show the proportion of pipeline value sitting in each stage at a glance.'
     ]);
 
-  var SEC_DAILY_DIGEST = bullets([
+  var SEC_DAILY_DIGEST =
+    wf(620, 240,
+      box(0,0,620,240,'#0a1628','rgba(255,255,255,.05)') +
+      box(0,0,620,40,'#142238','rgba(0,229,192,.3)') +
+      txt(20,26,'📨 Good Liquid Daily Digest  ·  Fri, May 29 2026  ·  7:00 AM',11,'#00e5c0') +
+      box(20,54,130,64,'#1a2c48','rgba(95,207,158,.2)') + txt(30,72,'COLLECTED (24h)',8,'#9aa7bd') + txt(30,96,'$3,125',14,'#5fcf9e') + txt(30,112,'1 payment',8,'#9aa7bd') +
+      box(160,54,130,64,'#1a2c48','rgba(245,200,66,.2)') + txt(170,72,'NEW INVOICES',8,'#9aa7bd') + txt(170,96,'2',14,'#f5c842') + txt(170,112,'$6,820 total',8,'#9aa7bd') +
+      box(300,54,130,64,'#1a2c48','rgba(196,181,253,.2)') + txt(310,72,'OPEN REQUESTS',8,'#9aa7bd') + txt(310,96,'3',14,'#c4b5fd') + txt(310,112,'1 new today',8,'#9aa7bd') +
+      box(440,54,160,64,'#1a2c48','rgba(231,76,60,.2)') + txt(450,72,'A/R OUTSTANDING',8,'#9aa7bd') + txt(450,96,'$14.2K',14,'#e74c3c') + txt(450,112,'$5K overdue',8,'#9aa7bd') +
+      box(20,132,580,22,'#142238','rgba(255,255,255,.05)') + txt(30,148,'💰 Payments received (1)',10,'#5fcf9e') +
+      box(20,162,580,22,'#142238','rgba(255,255,255,.05)') + txt(30,178,'🧾 New invoices (2)',10,'#f5c842') +
+      box(20,192,580,22,'#142238','rgba(255,255,255,.05)') + txt(30,208,'📩 Customer requests (3)',10,'#c4b5fd') +
+      box(20,222,580,14,'#142238','rgba(255,255,255,.05)') + txt(30,233,'🏭 Production stage changes',10,'#9aa7bd') +
+      tag(20,54,1) + tag(160,54,2) + tag(300,54,3) + tag(440,54,4)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
     '<b>What it is</b>: a single morning email that summarizes the past 24 hours of CRM activity so you start the day knowing where things stand without opening the app.',
     '<b>Schedule</b>: fires automatically at <b>7:00 AM ET / 11:00 UTC</b> via pg_cron + the deployed <code>daily-digest</code> Edge Function. If nothing happened in the last 24 hours, the email is suppressed (no daily "nothing happened" spam).',
     '<b>Recipients</b>: every <code>profiles</code> row where <code>role</code> is <code>admin</code> or <code>staff</code> AND <code>notify_daily_digest = true</code> (the column is default-true). To opt a staff user out, open <b>🔑 Users & permissions</b> → click their row → uncheck "📨 Send Daily Digest email at 7am" in the purple <b>NOTIFICATIONS</b> panel.',
@@ -5429,7 +5490,24 @@
   // ────────────────────────────────────────────────────────────
   // Send Invoice composer
   // ────────────────────────────────────────────────────────────
-  var SEC_SEND_INVOICE = bullets([
+  var SEC_SEND_INVOICE =
+    wf(620, 250,
+      box(0,0,620,250,'#0a1628','rgba(255,255,255,.05)') +
+      box(0,0,620,36,'#142238','rgba(255,255,255,.08)') +
+      txt(20,23,'📧 Send Invoice  ·  GL-1004',13,'#fff') +
+      txt(580,23,'✕',12,'#9aa7bd','end') +
+      txt(20,56,'To',10,'#9aa7bd') + box(50,44,550,22,'#1a2c48','rgba(255,255,255,.1)') + txt(58,59,'brandon@client.com',10,'#cfd9e6') +
+      txt(20,86,'Cc',10,'#9aa7bd') + box(50,74,550,22,'#1a2c48','rgba(255,255,255,.1)') + txt(58,89,'ap@client.com',10,'#9aa7bd') +
+      txt(20,116,'Subject',10,'#9aa7bd') + box(70,104,530,22,'#1a2c48','rgba(255,255,255,.1)') + txt(78,119,'Invoice GL-1004 from Good Liquid Bev Co — $3,125.00',10,'#cfd9e6') +
+      txt(20,146,'Message',10,'#9aa7bd') + box(70,134,530,52,'#1a2c48','rgba(255,255,255,.1)') + txt(78,152,'Hi Brandon, please find your invoice attached…',10,'#cfd9e6') +
+      box(20,200,240,22,'#142238','rgba(245,200,66,.25)') + txt(30,215,'📝 Apply a template…',10,'#f5c842') +
+      box(270,200,160,22,'#1a2c48','rgba(0,229,192,.2)') + txt(280,215,'🔗 Stripe pay link ✓',10,'#00e5c0') +
+      box(440,200,80,22,'rgba(0,229,192,.1)','rgba(0,229,192,.4)') + txt(480,215,'🔗 Get link',10,'#00e5c0','middle') +
+      box(440,228,160,18,'#1a6fff','none') + txt(520,240,'📤 Send via Mailgun',10,'#fff','middle') +
+      tag(50,44,1) + tag(50,74,2) + tag(70,104,3) + tag(270,200,4) + tag(440,228,5)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
     '<b>Where to find it</b>: open any saved invoice → click the blue <b>📧 Send Invoice</b> button on the header. Also fires automatically when you click <b>📤 Save & Send</b> in the builder.',
     '<b>To / Cc / Bcc</b> — all three accept comma-separated addresses (e.g. <code>brandon@client.com, ap@client.com</code>). To is pre-filled with the client\'s primary email; Cc is pre-filled with every entry from the Additional Emails section on the client record.',
     '<b>📝 Apply a template…</b> — drop a saved template into the Subject + Message with one click. Variables like <code>{{client_name}} {{invoice_number}} {{amount}} {{due_date}}</code> are filled in automatically. <b>⚙ Manage</b> opens the template editor.',
@@ -5489,7 +5567,27 @@
   // ────────────────────────────────────────────────────────────
   // Email templates
   // ────────────────────────────────────────────────────────────
-  var SEC_EMAIL_TEMPLATES = bullets([
+  var SEC_EMAIL_TEMPLATES =
+    wf(620, 200,
+      box(0,0,200,200,'#142238','rgba(255,255,255,.05)') +
+      txt(15,22,'TEMPLATES',10,'#00e5c0') +
+      box(10,32,180,22,'#1a3c30','rgba(0,229,192,.3)') + txt(20,47,'Invoice send',10,'#fff') +
+      box(10,58,180,22,'#1a2c48','rgba(255,255,255,.05)') + txt(20,73,'Follow-up — gentle',10,'#9aa7bd') +
+      box(10,84,180,22,'#1a2c48','rgba(255,255,255,.05)') + txt(20,99,'Follow-up — firm',10,'#9aa7bd') +
+      box(10,110,180,22,'#1a2c48','rgba(255,255,255,.05)') + txt(20,125,'Onboarding welcome',10,'#9aa7bd') +
+      box(10,170,180,22,'rgba(0,229,192,.1)','rgba(0,229,192,.3)') + txt(100,185,'+ New template',10,'#00e5c0','middle') +
+      box(205,10,405,180,'#0d1e35','rgba(255,255,255,.05)') +
+      txt(215,26,'PREVIEW  ·  Invoice send',10,'#00e5c0') +
+      txt(215,46,'Subject:',9,'#9aa7bd') + txt(275,46,'Invoice {{invoice_number}} from Good Liquid Bev Co',10,'#cfd9e6') +
+      txt(215,68,'Body:',9,'#9aa7bd') +
+      txt(215,84,'Hi {{client_name}}, please find your invoice for',10,'#9aa7bd') +
+      txt(215,100,'{{amount}} attached. Payment is due {{due_date}}.',10,'#9aa7bd') +
+      txt(215,116,'— {{my_name}}  ·  {{my_phone}}',10,'#9aa7bd') +
+      box(490,164,110,22,'#1a6fff','none') + txt(545,179,'Apply template',9,'#fff','middle') +
+      tag(10,32,1) + tag(490,164,2)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
     '<b>What it is</b>: a library of reusable email subjects + bodies. Apply one to any Send Invoice or AI Follow-Up composer with one click — variables fill in automatically.',
     '<b>Where to open the manager</b>: in any composer, click <b>📝 Apply a template…</b> → ⚙ <b>Manage</b>. Or open the browser console and run <code>glOpenEmailTemplates()</code>.',
     '<b>Starter templates seeded for you</b>: <i>Invoice send</i>, <i>Follow-up — gentle</i>, <i>Follow-up — firm</i>. You can add / edit / delete or mark inactive.',
@@ -5501,7 +5599,25 @@
   // ────────────────────────────────────────────────────────────
   // Schedule follow-ups
   // ────────────────────────────────────────────────────────────
-  var SEC_EMAIL_SCHEDULE = bullets([
+  var SEC_EMAIL_SCHEDULE =
+    wf(620, 190,
+      box(0,0,620,190,'#142238','rgba(255,255,255,.05)') +
+      txt(20,24,'📅 SCHEDULED FOLLOW-UPS',12,'#fff') +
+      box(20,36,580,24,'#0d1e35','rgba(255,255,255,.05)') +
+      txt(30,52,'Invoice',10,'#9aa7bd') + txt(160,52,'To',10,'#9aa7bd') + txt(280,52,'Send at',10,'#9aa7bd') + txt(400,52,'Subject',10,'#9aa7bd') + txt(530,52,'Status',10,'#9aa7bd') +
+      box(20,64,580,26,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(30,81,'GL-1004',10,'#00e5c0') + txt(160,81,'brandon@client.com',10,'#cfd9e6') + txt(280,81,'Jun 5  9:00 AM',10,'#cfd9e6') + txt(400,81,'Follow-up on GL-1004',10,'#cfd9e6') +
+      box(530,68,68,18,'#1a3c30','rgba(0,229,192,.4)') + txt(564,80,'pending',9,'#00e5c0','middle') +
+      box(20,96,580,26,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(30,113,'GL-1002',10,'#00e5c0') + txt(160,113,'ap@brand.com',10,'#cfd9e6') + txt(280,113,'Jun 2  9:00 AM',10,'#cfd9e6') + txt(400,113,'Friendly reminder GL-1002',10,'#cfd9e6') +
+      box(530,100,55,18,'#1a3c30','rgba(95,207,158,.4)') + txt(557,112,'sent',9,'#5fcf9e','middle') +
+      box(20,128,580,26,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(30,145,'GL-1001',10,'#00e5c0') + txt(160,145,'info@acme.com',10,'#cfd9e6') + txt(280,145,'May 28  9:00 AM',10,'#cfd9e6') + txt(400,145,'Invoice still outstanding',10,'#9aa7bd') +
+      box(530,132,55,18,'#3d1a1a','rgba(231,76,60,.4)') + txt(557,144,'failed',9,'#e74c3c','middle') +
+      tag(530,68,1) + tag(530,100,2) + tag(530,132,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
     '<b>What it is</b>: queue a follow-up email to send automatically on a future date / time. A Supabase Edge Function runs every 15 minutes and dispatches anything due.',
     '<b>How to schedule</b>: open any saved invoice → click the yellow <b>📅 Schedule</b> button on the header. A modal opens with To (pre-filled with client email), Send At (defaults to T+7 days, 9 AM), Subject, and Message (defaults to a reminder template).',
     '<b>What happens next</b>: a row is inserted into the <code>email_schedule</code> table with status=pending. The cron job picks it up at the scheduled time, sends via Mailgun, marks it as sent, and logs an entry in Email Activity.',
@@ -5512,7 +5628,28 @@
   // ────────────────────────────────────────────────────────────
   // Email Activity
   // ────────────────────────────────────────────────────────────
-  var SEC_EMAIL_ACTIVITY = bullets([
+  var SEC_EMAIL_ACTIVITY =
+    wf(620, 200,
+      box(0,0,620,200,'#142238','rgba(255,255,255,.05)') +
+      txt(20,24,'📊 EMAIL ACTIVITY',12,'#fff') + txt(500,24,'All invoices',10,'#9aa7bd') +
+      box(20,36,580,24,'#0d1e35','rgba(255,255,255,.05)') +
+      txt(30,52,'To',10,'#9aa7bd') + txt(180,52,'Subject',10,'#9aa7bd') + txt(360,52,'Sent',10,'#9aa7bd') + txt(430,52,'Status',10,'#9aa7bd') + txt(530,52,'Opens',10,'#9aa7bd') +
+      box(20,64,580,26,'#1a2c48','rgba(95,207,158,.05)') +
+      txt(30,81,'brandon@client.com',10,'#cfd9e6') + txt(180,81,'Invoice GL-1004…',10,'#cfd9e6') + txt(360,81,'May 29 10:02',10,'#9aa7bd') +
+      box(430,68,58,18,'#1a3c30','rgba(0,229,192,.4)') + txt(459,80,'clicked',9,'#00e5c0','middle') + txt(530,81,'3',10,'#5fcf9e') +
+      box(20,96,580,26,'#1a2c48','rgba(107,159,255,.05)') +
+      txt(30,113,'ap@brand.com',10,'#cfd9e6') + txt(180,113,'Follow-up GL-1002…',10,'#cfd9e6') + txt(360,113,'May 28 09:15',10,'#9aa7bd') +
+      box(430,100,58,18,'#1a2c48','rgba(107,159,255,.4)') + txt(459,112,'opened',9,'#6b9fff','middle') + txt(530,113,'1',10,'#6b9fff') +
+      box(20,128,580,26,'#1a2c48','rgba(245,200,66,.05)') +
+      txt(30,145,'info@acme.com',10,'#cfd9e6') + txt(180,145,'Invoice GL-1001…',10,'#cfd9e6') + txt(360,145,'May 27 14:30',10,'#9aa7bd') +
+      box(430,132,72,18,'#1a2c48','rgba(245,200,66,.4)') + txt(466,144,'delivered',9,'#f5c842','middle') + txt(530,145,'0',10,'#9aa7bd') +
+      box(20,160,580,26,'#1a2c48','rgba(231,76,60,.05)') +
+      txt(30,177,'noreply@old.co',10,'#9aa7bd') + txt(180,177,'Invoice GL-1000…',10,'#9aa7bd') + txt(360,177,'May 26 11:00',10,'#9aa7bd') +
+      box(430,164,58,18,'#3d1a1a','rgba(231,76,60,.4)') + txt(459,176,'bounced',9,'#e74c3c','middle') + txt(530,177,'—',10,'#9aa7bd') +
+      tag(430,68,1) + tag(430,100,2) + tag(430,132,3) + tag(430,164,4)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
     '<b>What it is</b>: a list of every email sent from the CRM with real-time status (sent → delivered → opened → clicked → bounced).',
     '<b>Two ways to open it</b>: <ol style="margin:4px 0 4px 18px;padding:0"><li>From the <b>Invoices</b> list page header: <b>📊 Activity</b> (shows every send across every invoice).</li><li>From a single invoice\'s detail header: <b>📊 Activity</b> (shows only that invoice\'s sends).</li></ol>',
     '<b>Status meanings</b>: <code>sent</code> (Mailgun accepted) → <code>delivered</code> (recipient mail server accepted) → <code>opened</code> (recipient opened the email) → <code>clicked</code> (recipient clicked a link in the email). <code>bounced</code> = permanent delivery failure; <code>failed</code> = Mailgun rejected the request.',
@@ -5524,7 +5661,25 @@
   // ────────────────────────────────────────────────────────────
   // Stripe payments
   // ────────────────────────────────────────────────────────────
-  var SEC_STRIPE_PAY = bullets([
+  var SEC_STRIPE_PAY =
+    wf(620, 200,
+      box(0,0,620,200,'#0a1628','rgba(255,255,255,.05)') +
+      txt(310,26,'INVOICE GL-1004  ·  $3,125.00',13,'#fff','middle') +
+      txt(310,44,'Good Liquid Bev Co  →  Lotus Nutra',10,'#9aa7bd','middle') +
+      box(60,60,220,100,'#1a2c48','rgba(107,159,255,.25)') +
+      txt(170,88,'💳 Pay with Card',13,'#6b9fff','middle') +
+      txt(170,108,'$3,218.75 (incl. 3% surcharge)',9,'#9aa7bd','middle') +
+      txt(170,128,'Visa / Mastercard / Amex',9,'#9aa7bd','middle') +
+      box(340,60,220,100,'#1a2c48','rgba(0,229,192,.25)') +
+      txt(450,88,'🏦 Pay with ACH',13,'#00e5c0','middle') +
+      txt(450,108,'$3,125.00 (no surcharge)',9,'#9aa7bd','middle') +
+      txt(450,128,'US bank account (2-5 days)',9,'#9aa7bd','middle') +
+      box(200,172,220,22,'rgba(0,229,192,.15)','rgba(0,229,192,.3)') +
+      txt(310,187,'💳 Surcharge toggle',10,'#00e5c0','middle') +
+      tag(60,60,1) + tag(340,60,2) + tag(200,172,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
     '<b>How customers pay</b>: every invoice email includes a green <b>💳 View Invoice & Pay Online</b> CTA button. Clicking it opens the customer portal page. From there the customer sees <b>💳 Pay with Card</b> (3% surcharge added as a separate line on the Stripe receipt) and <b>🏦 Pay with ACH</b> (0% surcharge).',
     '<b>Card vs ACH</b>: the surcharge only applies to card payments (per Visa / MC rules — that\'s why ACH is shown separately). The customer sees the surcharge broken out on Stripe\'s checkout page, so it\'s never a surprise charge.',
     '<b>From the admin side</b>: open any unpaid invoice → click <b>💳 Charge via Stripe</b> on the detail header. A picker lets you choose card / ACH / both and per-invoice surcharge override.',
@@ -5536,7 +5691,30 @@
   // ────────────────────────────────────────────────────────────
   // Compliance
   // ────────────────────────────────────────────────────────────
-  var SEC_COMPLIANCE = bullets([
+  var SEC_COMPLIANCE =
+    wf(620, 240,
+      box(0,0,620,240,'#142238','rgba(255,255,255,.05)') +
+      txt(20,24,'📋 COMPLIANCE TASKS  ·  GL-PALMETTO  ·  May 29 2026',11,'#00e5c0') +
+      box(20,36,580,24,'#0d1e35','rgba(255,255,255,.05)') +
+      txt(30,52,'Task',10,'#9aa7bd') + txt(250,52,'Frequency',10,'#9aa7bd') + txt(350,52,'Last completed',10,'#9aa7bd') + txt(470,52,'Status',10,'#9aa7bd') +
+      box(20,64,580,26,'#1a2c48','rgba(95,207,158,.05)') +
+      txt(30,81,'Pre-op sanitation check',10,'#cfd9e6') + txt(250,81,'Daily',10,'#9aa7bd') + txt(350,81,'Today  07:42 AM',10,'#9aa7bd') +
+      box(470,68,80,18,'#1a3c30','rgba(0,229,192,.4)') + txt(510,80,'✓ Complete',9,'#00e5c0','middle') +
+      box(20,96,580,26,'#1a2c48','rgba(245,200,66,.05)') +
+      txt(30,113,'Metal detector calibration',10,'#cfd9e6') + txt(250,113,'Daily',10,'#9aa7bd') + txt(350,113,'Yesterday',10,'#9aa7bd') +
+      box(470,100,80,18,'#3d2f0a','rgba(245,200,66,.4)') + txt(510,112,'Due today',9,'#f5c842','middle') +
+      box(20,128,580,26,'#1a2c48','rgba(231,76,60,.05)') +
+      txt(30,145,'Allergen verification',10,'#cfd9e6') + txt(250,145,'Per run',10,'#9aa7bd') + txt(350,145,'May 22',10,'#9aa7bd') +
+      box(470,132,70,18,'#3d1a1a','rgba(231,76,60,.4)') + txt(505,144,'Overdue',9,'#e74c3c','middle') +
+      box(20,168,580,26,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(30,185,'Receiving inspection — LOT-2026-12',10,'#cfd9e6') + txt(250,185,'Per lot',10,'#9aa7bd') + txt(350,185,'Today  08:15 AM',10,'#9aa7bd') +
+      box(470,172,80,18,'#1a3c30','rgba(0,229,192,.4)') + txt(510,184,'✓ Complete',9,'#00e5c0','middle') +
+      box(20,206,580,28,'#1a2c48','rgba(196,181,253,.15)') +
+      txt(30,224,'📤 Export  🚨 SMS alerts  🎲 Mock recall  🪟 Glass break  🔒 Inspector link  🥜 Allergen decl',9,'#c4b5fd') +
+      tag(470,68,1) + tag(470,100,2) + tag(470,132,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
     '<b>What it is</b>: a 21 CFR Part 117 + Part 11–compliant logging system built into the CRM. Three database tables back it: <code>compliance_tasks</code>, <code>compliance_records</code>, <code>hold_tags</code>.',
     '<b>Where to find it</b>: left sidebar → 📋 <b>Compliance Tasks</b> (master daily checklist) · 🚫 <b>Hold Tags</b> · 🧼 <b>CIP / Sanitation Log</b>.',
     '<b>Header buttons on the Compliance Tasks page</b>: 📤 <b>Export</b> / 🚨 <b>SMS alerts</b> / 🎲 <b>Mock recall</b> / 🪟 <b>Glass break</b> / 🗄 <b>Archive old</b> / 📄 <b>Documents</b> / 🔒 <b>Inspector link</b> (generate read-only token URL) / 🥜 <b>Allergen decl</b> (per-client allergen statement) / 📥 <b>Import training CSV</b> / 📧 <b>Send digest</b> (daily compliance summary via Mailgun) / 📊 <b>Monthly report</b> (printable PDF of last 30d) / ⚙️ <b>Applicability</b> / 🎯 <b>CCP Limits</b> / 🆕 <b>New Hold Tag</b>.',
@@ -5627,6 +5805,30 @@
       '<b>(2) Deal card</b> — name, company, value. Click to open detail. Drag cards between columns (or use the arrow buttons inside each card).',
       '<b>(3) ⏰ Stale badge</b> — appears on cards in active stages (Prospecting / Proposal / Negotiation) that haven\'t been touched in >14 days. Visual cue to follow up.',
       '<b>(4) Closed Won column</b> — moving a card here also auto-bumps the related Activity Feed. Use the <b>→ Invoice</b> button in the deal detail to spin a billable invoice from a Closed Won deal.'
+    ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">📅 DAYS-IN-STAGE BADGE (NEW)</h4>' +
+    wf(400, 100,
+      box(0,0,400,100,'#142238','rgba(255,255,255,.05)') +
+      txt(20,24,'PROSPECTING',10,'#9aa7bd') +
+      box(20,34,160,56,'#243a56','rgba(107,159,255,.3)') +
+      txt(30,54,'Apex Beverages',11,'#fff') + txt(30,68,'$12,000',10,'#9aa7bd') +
+      box(110,78,60,14,'rgba(245,200,66,.4)','none') + txt(140,89,'8d',9,'#f5c842','middle') +
+      txt(240,24,'PROPOSAL',10,'#9aa7bd') +
+      box(240,34,150,56,'#243a56','rgba(0,229,192,.3)') +
+      txt(250,54,'BlueSky Drinks',11,'#fff') + txt(250,68,'$8,500',10,'#9aa7bd') +
+      box(330,78,50,14,'rgba(0,229,192,.25)','none') + txt(355,89,'3d',9,'#00e5c0','middle') +
+      tag(110,78,1)
+    ) +
+    bullets([
+      '<b>Days-in-stage badge</b>: every deal card shows a small colored pill in the bottom-right corner counting how many days the deal has been in its current stage.',
+      '<b>Color coding</b>: <span style="color:#00e5c0">green &lt; 7 days</span> (active), <span style="color:#f5c842">yellow 7–14 days</span> (watch it), <span style="color:#e74c3c">red &gt; 14 days</span> (stale — take action).',
+      '<b>What to do when stale</b>: open the deal, send a follow-up (or use Bulk Outreach below), log a note, and move the stage forward. The badge resets when the stage changes.'
+    ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#c4b5fd">📤 BULK OUTREACH (NEW)</h4>' +
+    bullets([
+      '<b>Where to find it</b>: Pipeline page header → <b>📤 Bulk Outreach</b> button (admin and sales roles only).',
+      '<b>What it does</b>: lets you select multiple Prospecting leads, review an AI-drafted personalised cold-outreach email for each, and send them all in one click. See the <a href="#help-bulk-outreach" style="color:#00e5c0">Bulk Outreach</a> section for full details.',
+      '<b>After sending</b>: each deal gets an "outreach sent" badge on its kanban card, and the sends are logged to Email Activity so you can track opens and clicks.'
     ]);
 
   var SEC_REFERRALS = MOCK_REFERRALS +
@@ -5720,7 +5922,30 @@
       'Public "Schedule a tour" submissions on the marketing site land here automatically. Stored in localStorage (gl_cal_events), per device.'
     ]);
 
-  var SEC_PRODUCTION = bullets([
+  var SEC_PRODUCTION =
+    wf(620, 240,
+      box(0,0,620,240,'#142238','rgba(255,255,255,.05)') +
+      txt(20,22,'🏭 PRODUCTION SCHEDULE  ·  Week of May 26',12,'#fff') +
+      txt(20,38,'Canning Line 1:',10,'#9aa7bd') +
+      box(140,28,240,18,'#1a3c30','none') + box(140,28,168,18,'#00e5c0','none') +
+      txt(150,41,'68%  ·  340 cases / 500 cap',9,'#0a1628') +
+      txt(20,58,'Bottling Line 1:',10,'#9aa7bd') +
+      box(140,48,240,18,'#1a3c30','none') + box(140,48,220,18,'#f5c842','none') +
+      txt(150,61,'92%  ·  92 hrs / 100 cap',9,'#0a1628') +
+      box(20,76,580,148,'#0d1e35','rgba(255,255,255,.05)') +
+      txt(30,92,'MON 26',9,'#9aa7bd','middle') + txt(30,92,'',9,'#9aa7bd') +
+      txt(121,92,'TUE 27',9,'#9aa7bd') + txt(224,92,'WED 28',9,'#9aa7bd') + txt(327,92,'THU 29',9,'#9aa7bd') + txt(430,92,'FRI 30',9,'#9aa7bd') + txt(533,92,'SAT 31',9,'#9aa7bd') +
+      box(24,100,90,50,'#1a6fff','rgba(107,159,255,.4)') + txt(30,116,'Lotus nutra',9,'#fff') + txt(30,130,'Canning L1',8,'#9aa7bd') + txt(30,144,'100 cases',8,'#9aa7bd') +
+      box(127,100,90,50,'#1a6fff','rgba(107,159,255,.4)') + txt(133,116,'Lotus nutra',9,'#fff') + txt(133,130,'Canning L1',8,'#9aa7bd') + txt(133,144,'(cont.)',8,'#9aa7bd') +
+      box(230,100,90,50,'rgba(0,229,192,.5)','rgba(0,229,192,.4)') + txt(236,116,'Ceres 14',9,'#fff') + txt(236,130,'Bottling L1',8,'#9aa7bd') + txt(236,144,'200 cases',8,'#9aa7bd') +
+      box(333,100,90,50,'rgba(245,200,66,.4)','rgba(245,200,66,.4)') + txt(339,116,'PitStop',9,'#fff') + txt(339,130,'Canning L1',8,'#9aa7bd') + txt(339,144,'150 cases',8,'#9aa7bd') +
+      box(20,158,580,62,'#142238','rgba(255,255,255,.05)') +
+      txt(30,174,'⚙ Production lines',10,'#9aa7bd') + txt(160,174,'+ Add Run',10,'#00e5c0') +
+      txt(30,194,'Capacity: 500 cases/day (Canning L1)  ·  100 hrs/wk (Bottling L1)',9,'#9aa7bd') +
+      tag(140,28,1) + tag(140,48,2) + tag(24,100,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
     'Same calendar mechanics as the General Calendar, but focused on <b>production runs</b>: which client, what format, how many cases, what stage (scheduled / in production / quality check / completed / shipped).',
     'Customers see their own scheduled runs in the Customer Portal automatically.',
     '<b>Capacity-aware scheduling (NEW)</b> — every run is assigned to a <b>Production Line</b> (Canning Line 1, Bottling Line 1, R&D Bench, etc.) with its own cases-per-day or hours-per-day capacity. The schedule widget above the kanban shows this-week and next-week utilization per line (green &lt; 70%, yellow 70-100%, red &gt; 100%). Click <b>⚙ Production lines</b> on the toolbar to add/edit/deactivate lines.',
@@ -5754,9 +5979,28 @@
       '<b>(1) + Add Item</b> — name, quantity, unit (cases / tanks / bags / etc.), low-stock threshold.',
       '<b>(2) LOW badge</b> — yellow badge when quantity is at or below the threshold. Items at LOW also surface on the dashboard. Stored in localStorage (gl_inventory).'
     ]);
-  var SEC_ANNOUNCEMENTS = bullets([
-    'Company-wide notes shown on every user\'s dashboard.',
-    'Stored in localStorage.'
+  var SEC_ANNOUNCEMENTS =
+    wf(620, 200,
+      box(0,0,620,200,'#142238','rgba(255,255,255,.05)') +
+      txt(20,24,'📣 ANNOUNCEMENTS',12,'#fff') +
+      box(520,12,90,22,'rgba(0,229,192,.1)','rgba(0,229,192,.3)') + txt(565,27,'+ New post',10,'#00e5c0','middle') +
+      box(20,38,580,60,'#1a2c48','rgba(245,200,66,.15)') +
+      txt(30,56,'📌  LINE MAINTENANCE — Canning Line 1 down Fri May 30',11,'#f5c842') +
+      txt(30,74,'Please reschedule any runs booked for Friday. Eng team will be in 7am–noon.',10,'#9aa7bd') +
+      txt(560,82,'May 29',9,'#9aa7bd','end') +
+      box(20,106,580,46,'#1a2c48','rgba(255,255,255,.06)') +
+      txt(30,124,'🎉  New client signed — Ceres 14 (200 cases, Bottling)',11,'#cfd9e6') +
+      txt(30,140,'Kick-off call scheduled for June 2. Details in pipeline.',10,'#9aa7bd') +
+      txt(560,148,'May 28',9,'#9aa7bd','end') +
+      box(20,160,580,32,'#1a2c48','rgba(255,255,255,.06)') +
+      txt(30,180,'🏭  Reminder: submit monthly capacity forecast by EOD Monday.',10,'#9aa7bd') +
+      txt(560,180,'May 27',9,'#9aa7bd','end') +
+      tag(520,12,1) + tag(20,38,2)
+    ) +
+    bullets([
+    'Company-wide notes shown on every user\'s dashboard. Use for shift reminders, client news, maintenance windows, or team announcements.',
+    '<b>+ New post</b> — click the button top-right, type a title + body, click Save. Pinned posts (📌) stay at the top.',
+    'Stored in localStorage — per device, not synced across the team.'
   ]);
   var SEC_CUSTOMERS = MOCK_CUSTOMERS +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
@@ -5793,6 +6037,358 @@
     '<kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">↑↓</kbd> in Global Search — navigate; <kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">Enter</kbd> opens.'
   ]);
 
+  // ────────────────────────────────────────────────────────────
+  // NEW SECTIONS (Task 2)
+  // ────────────────────────────────────────────────────────────
+
+  var SEC_AI_HUB =
+    wf(620, 270,
+      box(0,0,620,270,'#0a1628','rgba(255,255,255,.05)') +
+      // Chat area
+      box(0,0,620,160,'#142238','rgba(0,229,192,.1)') +
+      txt(20,20,'💬 AI CHAT',11,'#00e5c0') +
+      box(20,32,580,32,'#1a2c48','rgba(255,255,255,.05)') + txt(30,52,'How do I send an invoice reminder?',11,'#9aa7bd') +
+      box(20,70,580,46,'#1a3c30','rgba(0,229,192,.15)') + txt(30,88,'You can send overdue reminders in bulk from the Invoices page',11,'#cfd9e6') + txt(30,108,'by clicking "📧 Send overdue reminders" in the header.',11,'#cfd9e6') +
+      box(20,122,580,22,'#0d1e35','rgba(255,255,255,.05)') + txt(30,137,'Ask anything about Good Liquid CRM…',10,'#9aa7bd') +
+      box(560,122,50,22,'#1a6fff','none') + txt(585,137,'Send',9,'#fff','middle') +
+      // Tool grid
+      box(0,165,620,105,'#0d1e35','rgba(255,255,255,.03)') +
+      txt(20,182,'🤖 AI TOOLS  ·  6 categories  ·  30+ tools',10,'#00e5c0') +
+      box(20,192,90,34,'#1a2c48','rgba(0,229,192,.1)') + txt(65,213,'💰 Quote',9,'#cfd9e6','middle') +
+      box(118,192,90,34,'#1a2c48','rgba(0,229,192,.1)') + txt(163,213,'🧾 Invoice',9,'#cfd9e6','middle') +
+      box(216,192,90,34,'#1a2c48','rgba(0,229,192,.1)') + txt(261,213,'📝 Notes',9,'#cfd9e6','middle') +
+      box(314,192,90,34,'#1a2c48','rgba(0,229,192,.1)') + txt(359,213,'✉️ Email',9,'#cfd9e6','middle') +
+      box(412,192,90,34,'#1a2c48','rgba(245,200,66,.1)') + txt(457,213,'📋 Comply',9,'#f5c842','middle') +
+      box(510,192,90,34,'#1a2c48','rgba(107,159,255,.1)') + txt(555,213,'🏭 Prod.',9,'#6b9fff','middle') +
+      box(20,232,90,34,'#1a2c48','rgba(196,181,253,.1)') + txt(65,253,'🤖 AI Key',9,'#c4b5fd','middle') +
+      box(118,232,90,34,'#1a2c48','rgba(196,181,253,.1)') + txt(163,253,'📣 Social',9,'#c4b5fd','middle') +
+      box(216,232,90,34,'#1a2c48','rgba(196,181,253,.1)') + txt(261,253,'🌱 Growth',9,'#c4b5fd','middle') +
+      box(314,232,90,34,'#1a2c48','rgba(95,207,158,.1)') + txt(359,253,'📊 Report',9,'#5fcf9e','middle') +
+      tag(20,32,1) + tag(20,70,2) + tag(20,192,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>(1) AI Chat input</b> — type any question about the CRM and Claude answers in context. Use it to learn the app, troubleshoot a workflow, or draft content quickly.',
+      '<b>(2) AI response</b> — responses appear inline. The chat history persists for the session.',
+      '<b>(3) AI Tools panel</b> — 30+ one-click tools organised across 6 categories: Invoicing (Quote, Draft Invoice, Meeting Notes, Draft Email, Email Signature), Compliance (Root-Cause Suggester, COA Parser, Allergen Check), Production (Run Summary, Lot Notes), Marketing (Social Post, Press Release, Growth Tips), Reports, and Settings (AI key config). Click any tile to launch that tool.',
+      '<b>How to access</b>: click <b>💬 AI Chat</b> in the sidebar AI section for the chat page, or <b>🤖 AI Tools</b> for the full categorised panel. The floating 🤖 FAB button (bottom-right) also opens a quick-access sub-menu.',
+      '<b>AI key setup</b>: go to AI Tools → <b>🤖 AI Settings</b> and paste your Anthropic API key. Without a key the tools show a prompt asking you to add one.'
+    ]);
+
+  var SEC_PRODUCTION_RUNS =
+    wf(620, 230,
+      box(0,0,620,230,'#142238','rgba(255,255,255,.05)') +
+      txt(20,22,'🏭 PRODUCTION RUNS',12,'#fff') +
+      box(530,10,80,22,'rgba(0,229,192,.1)','rgba(0,229,192,.3)') + txt(570,24,'+ Add Run',9,'#00e5c0','middle') +
+      box(20,36,104,180,'#0d1e35','rgba(255,255,255,.05)') + txt(30,54,'DISCOVERY',9,'#9aa7bd') +
+      box(25,62,94,54,'#243a56','rgba(107,159,255,.3)') + txt(30,78,'Ceres 14',10,'#fff') + txt(30,92,'Jun 2',9,'#9aa7bd') +
+      box(40,100,60,14,'#1a3c30','none') + txt(70,111,'2d',8,'#00e5c0','middle') +
+      box(130,36,104,180,'#0d1e35','rgba(255,255,255,.05)') + txt(140,54,'FORMULATION',9,'#9aa7bd') +
+      box(135,62,94,54,'#243a56','rgba(245,200,66,.3)') + txt(140,78,'PitStop',10,'#fff') + txt(140,92,'Jun 5',9,'#9aa7bd') +
+      box(150,100,60,14,'rgba(245,200,66,.4)','none') + txt(180,111,'9d',8,'#f5c842','middle') +
+      box(240,36,104,180,'#0d1e35','rgba(255,255,255,.05)') + txt(250,54,'SCHEDULING',9,'#9aa7bd') +
+      box(245,62,94,54,'#243a56','rgba(0,229,192,.3)') + txt(250,78,'Lotus nutra',10,'#fff') + txt(250,92,'Jun 10',9,'#9aa7bd') +
+      box(260,100,60,14,'#1a3c30','none') + txt(290,111,'5d',8,'#00e5c0','middle') +
+      box(350,36,104,180,'#0d1e35','rgba(255,255,255,.05)') + txt(360,54,'PRODUCTION',9,'#9aa7bd') +
+      box(355,62,94,54,'#243a56','rgba(95,207,158,.3)') + txt(360,78,'TacoLoco',10,'#fff') + txt(360,92,'May 28',9,'#9aa7bd') +
+      box(370,100,60,14,'#1a2c48','none') + txt(400,111,'3d',8,'#5fcf9e','middle') +
+      box(460,36,104,180,'#0d1e35','rgba(255,255,255,.05)') + txt(470,54,'SHIP',9,'#9aa7bd') +
+      box(465,62,94,54,'#243a56','rgba(196,181,253,.3)') + txt(470,78,'GreenCo',10,'#fff') + txt(470,92,'May 22',9,'#9aa7bd') +
+      box(480,100,60,14,'#2a1a3c','none') + txt(510,111,'14d',8,'#c4b5fd','middle') +
+      tag(150,100,1) + tag(40,100,2) + tag(530,10,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>Five kanban stages</b>: Discovery → Formulation → Scheduling → Production → Ship. Drag cards between columns or use the arrow buttons inside each card.',
+      '<b>(1) Days-in-stage badge</b> — colored pill on every card: <span style="color:#00e5c0">green &lt; 7 days</span>, <span style="color:#f5c842">yellow 7–14 days</span>, <span style="color:#e74c3c">red &gt; 14 days</span>. A red badge means the run is stale and needs attention.',
+      '<b>(2) Adding a run</b> — click <b>+ Add Run</b> (top-right), fill in client, format, case count, lot number, assigned production line, start / end dates.',
+      '<b>Lot Documents</b> — click any run card → open the 📎 LOT DOCUMENTS section → <b>+ Attach</b> to upload COAs, spec sheets, or certs. Files land in Supabase Storage and appear in the customer\'s portal instantly.',
+      '<b>Auto stage-change emails</b> — advancing a run to a new stage fires an email to the brand\'s portal customer with the new status badge.',
+      '<b>Production lines</b> — click <b>⚙ Production lines</b> in the toolbar to configure lines with capacity (cases/day or hours/week). A capacity bar above the board shows week utilisation.'
+    ]);
+
+  var SEC_FORMULA_VAULT =
+    wf(620, 190,
+      box(0,0,620,190,'#142238','rgba(255,255,255,.05)') +
+      txt(20,22,'🧪 FORMULA VAULT',12,'#fff') +
+      box(20,34,580,24,'#0d1e35','rgba(255,255,255,.05)') +
+      txt(30,50,'Formula name',10,'#9aa7bd') + txt(200,50,'Version',10,'#9aa7bd') + txt(280,50,'Status',10,'#9aa7bd') + txt(380,50,'Allergens',10,'#9aa7bd') + txt(500,50,'Client',10,'#9aa7bd') +
+      box(20,62,580,26,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(30,79,'Mango Seltzer 12oz',10,'#cfd9e6') + txt(200,79,'v2.1',10,'#cfd9e6') +
+      box(280,66,65,18,'#1a3c30','rgba(0,229,192,.4)') + txt(312,78,'Approved',8,'#00e5c0','middle') +
+      txt(380,79,'Tree nuts',10,'#9aa7bd') + txt(500,79,'Lotus nutra',10,'#cfd9e6') +
+      box(20,94,580,26,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(30,111,'Citrus Burst 16oz',10,'#cfd9e6') + txt(200,111,'v1.0',10,'#cfd9e6') +
+      box(280,98,65,18,'#3d2f0a','rgba(245,200,66,.4)') + txt(312,110,'Benchtop',8,'#f5c842','middle') +
+      txt(380,111,'None',10,'#9aa7bd') + txt(500,111,'Ceres 14',10,'#cfd9e6') +
+      box(20,126,580,26,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(30,143,'Classic Cola 355ml',10,'#cfd9e6') + txt(200,143,'v3.0',10,'#cfd9e6') +
+      box(280,130,50,18,'#1a2c48','rgba(255,255,255,.2)') + txt(305,142,'Draft',8,'#9aa7bd','middle') +
+      txt(380,143,'Wheat',10,'#9aa7bd') + txt(500,143,'PitStop',10,'#cfd9e6') +
+      box(20,158,580,26,'#1a2c48','rgba(231,76,60,.05)') +
+      txt(30,175,'OG Recipe 2022',10,'#9aa7bd') + txt(200,175,'v1.2',10,'#9aa7bd') +
+      box(280,162,62,18,'#3d1a1a','rgba(231,76,60,.4)') + txt(311,174,'Archived',8,'#e74c3c','middle') +
+      txt(380,175,'Soy, Wheat',10,'#9aa7bd') + txt(500,175,'—',10,'#9aa7bd') +
+      tag(280,66,1) + tag(280,98,2) + tag(280,130,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>What it stores</b>: every formula tied to a client — name, version, batch size, target yield, allergens, status, and file attachments (spec sheets, COAs).',
+      '<b>Status workflow (1–3)</b>: Draft (grey) → Benchtop (yellow, pilot batch underway) → Approved (green, cleared for production) → Archived (red, no longer active). Only approved formulas appear in the customer portal.',
+      '<b>Allergen tracking</b>: the 9 major US allergens (milk, eggs, fish, shellfish, tree nuts, peanuts, wheat, soybeans, sesame) plus free-text custom allergens. Used to auto-generate allergen declarations.',
+      '<b>Version numbering</b>: each save bumps the minor version (v1.0 → v1.1). Major reformulations get a new major version (v2.0). Previous versions are preserved in the history tab.'
+    ]);
+
+  var SEC_YIELD_TRACKER =
+    wf(620, 190,
+      box(0,0,620,190,'#142238','rgba(255,255,255,.05)') +
+      txt(20,22,'📈 YIELD TRACKER',12,'#fff') +
+      box(20,34,580,28,'#1a3c30','rgba(0,229,192,.15)') +
+      txt(30,48,'Rolling 90-day avg yield:',10,'#9aa7bd') + txt(200,48,'91.4%',13,'#00e5c0') +
+      txt(350,48,'Best run:',10,'#9aa7bd') + txt(420,48,'LOT-2026-08  ·  96.2%',10,'#5fcf9e') +
+      box(20,66,580,22,'#0d1e35','rgba(255,255,255,.05)') +
+      txt(30,80,'Run Ref',10,'#9aa7bd') + txt(140,80,'Client',10,'#9aa7bd') + txt(250,80,'Planned cases',10,'#9aa7bd') + txt(370,80,'Actual cases',10,'#9aa7bd') + txt(480,80,'Yield %',10,'#9aa7bd') +
+      box(20,92,580,26,'#1a2c48','rgba(95,207,158,.05)') +
+      txt(30,109,'LOT-2026-12',10,'#00e5c0') + txt(140,109,'Lotus nutra',10,'#cfd9e6') + txt(250,109,'500',10,'#cfd9e6') + txt(370,109,'488',10,'#cfd9e6') +
+      box(480,96,60,18,'#1a3c30','rgba(0,229,192,.4)') + txt(510,108,'97.6%',9,'#00e5c0','middle') +
+      box(20,124,580,26,'#1a2c48','rgba(245,200,66,.05)') +
+      txt(30,141,'LOT-2026-10',10,'#00e5c0') + txt(140,141,'Ceres 14',10,'#cfd9e6') + txt(250,141,'200',10,'#cfd9e6') + txt(370,141,'174',10,'#cfd9e6') +
+      box(480,128,60,18,'#3d2f0a','rgba(245,200,66,.4)') + txt(510,140,'87.0%',9,'#f5c842','middle') +
+      box(20,156,580,26,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(30,173,'LOT-2026-08',10,'#00e5c0') + txt(140,173,'PitStop',10,'#cfd9e6') + txt(250,173,'300',10,'#cfd9e6') + txt(370,173,'289',10,'#cfd9e6') +
+      box(480,160,60,18,'#1a3c30','rgba(0,229,192,.4)') + txt(510,172,'96.2%',9,'#00e5c0','middle') +
+      tag(20,34,1) + tag(480,96,2)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>What yield % means</b>: (actual cases shipped / planned cases) × 100. Captures losses from breakage, rework, underfill, or QC rejects.',
+      '<b>(1) Rolling average bar</b> — shows your 90-day average yield and the best single run. Useful for trend analysis and client SLAs.',
+      '<b>(2) Color-coded yield column</b>: green ≥ 93%, yellow 85–92%, red &lt; 85%. Anything red should trigger a root-cause review.',
+      '<b>Logging a completion</b>: open any Production Run card → set stage to "Ship" → fill in <b>Actual cases shipped</b>. The yield row is created automatically.'
+    ]);
+
+  var SEC_SAMPLE_SHIPMENTS =
+    wf(620, 190,
+      box(0,0,620,190,'#142238','rgba(255,255,255,.05)') +
+      txt(20,22,'📦 SAMPLE SHIPMENTS',12,'#fff') +
+      box(530,10,80,22,'rgba(0,229,192,.1)','rgba(0,229,192,.3)') + txt(570,24,'+ Log',9,'#00e5c0','middle') +
+      box(20,36,580,22,'#0d1e35','rgba(255,255,255,.05)') +
+      txt(30,51,'Sample #',10,'#9aa7bd') + txt(120,51,'Client',10,'#9aa7bd') + txt(230,51,'Product',10,'#9aa7bd') + txt(340,51,'Shipped',10,'#9aa7bd') + txt(430,51,'Follow-up',10,'#9aa7bd') + txt(530,51,'Status',10,'#9aa7bd') +
+      box(20,62,580,26,'#1a2c48','rgba(107,159,255,.05)') +
+      txt(30,79,'SMP-041',10,'#00e5c0') + txt(120,79,'Lotus nutra',10,'#cfd9e6') + txt(230,79,'Mango Seltzer',10,'#cfd9e6') + txt(340,79,'May 27',10,'#cfd9e6') + txt(430,79,'Jun 3',10,'#cfd9e6') +
+      box(530,66,60,18,'#1a2c48','rgba(107,159,255,.4)') + txt(560,78,'sent',9,'#6b9fff','middle') +
+      box(20,94,580,26,'#1a2c48','rgba(231,76,60,.05)') +
+      txt(30,111,'SMP-039',10,'#00e5c0') + txt(120,111,'PitStop',10,'#cfd9e6') + txt(230,111,'Classic Cola',10,'#cfd9e6') + txt(340,111,'May 18',10,'#cfd9e6') + txt(430,111,'May 25',10,'#9aa7bd') +
+      box(530,98,65,18,'#3d1a1a','rgba(231,76,60,.4)') + txt(562,110,'overdue',9,'#e74c3c','middle') +
+      box(20,126,580,26,'#1a2c48','rgba(95,207,158,.05)') +
+      txt(30,143,'SMP-037',10,'#00e5c0') + txt(120,143,'Ceres 14',10,'#cfd9e6') + txt(230,143,'Citrus Burst',10,'#cfd9e6') + txt(340,143,'May 12',10,'#cfd9e6') + txt(430,143,'May 19',10,'#cfd9e6') +
+      box(530,130,75,18,'#1a3c30','rgba(0,229,192,.4)') + txt(567,142,'delivered',9,'#00e5c0','middle') +
+      tag(530,66,1) + tag(530,98,2) + tag(530,10,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>How to log a shipment</b>: click <b>+ Log</b>, fill in client, product description, carrier, tracking number, kind (flavor sample / spec sample / prototype / COA sample), quantity, and ship date.',
+      '<b>(1) Sent status</b> — shipment logged but follow-up not yet due.',
+      '<b>(2) Overdue follow-up</b> — 7 days after the ship date, the row turns red if no follow-up has been recorded. Click the row to log a follow-up note or mark it received.',
+      '<b>Ties to pipeline</b>: each shipment can be linked to a Deal card. When a sample is delivered and followed up, the linked deal can be advanced to the next pipeline stage from the shipment row.'
+    ]);
+
+  var SEC_CONTENT_CALENDAR =
+    wf(620, 220,
+      box(0,0,620,220,'#142238','rgba(255,255,255,.05)') +
+      txt(20,22,'📣 CONTENT CALENDAR  ·  June 2026',12,'#fff') +
+      box(510,10,100,22,'rgba(0,229,192,.1)','rgba(0,229,192,.3)') + txt(560,24,'+ New Post',9,'#00e5c0','middle') +
+      // Day headers
+      txt(30,48,'SUN',8,'#9aa7bd') + txt(110,48,'MON',8,'#9aa7bd') + txt(190,48,'TUE',8,'#9aa7bd') + txt(270,48,'WED',8,'#9aa7bd') + txt(350,48,'THU',8,'#9aa7bd') + txt(430,48,'FRI',8,'#9aa7bd') + txt(510,48,'SAT',8,'#9aa7bd') +
+      // Week row 1
+      box(20,56,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(25,72,'1',9,'#9aa7bd') +
+      box(100,56,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(105,72,'2',9,'#9aa7bd') +
+      box(100,74,70,20,'#d63384','none') + txt(135,88,'Instagram',8,'#fff','middle') +
+      box(180,56,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(185,72,'3',9,'#9aa7bd') +
+      box(260,56,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(265,72,'4',9,'#9aa7bd') +
+      box(260,74,70,20,'#0077b5','none') + txt(295,88,'LinkedIn',8,'#fff','middle') +
+      box(340,56,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(345,72,'5',9,'#9aa7bd') +
+      box(420,56,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(425,72,'6',9,'#9aa7bd') +
+      box(420,74,70,20,'#00e5c0','none') + txt(455,88,'Email',8,'#0a1628','middle') +
+      box(500,56,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(505,72,'7',9,'#9aa7bd') +
+      // Week row 2
+      box(20,106,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(25,122,'8',9,'#9aa7bd') +
+      box(100,106,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(105,122,'9',9,'#9aa7bd') +
+      box(180,106,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(185,122,'10',9,'#9aa7bd') +
+      box(180,124,70,20,'#7952b3','none') + txt(215,138,'Facebook',8,'#fff','middle') +
+      box(260,106,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(265,122,'11',9,'#9aa7bd') +
+      box(340,106,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(345,122,'12',9,'#9aa7bd') +
+      box(340,124,70,20,'#d63384','none') + txt(375,138,'Instagram',8,'#fff','middle') +
+      box(420,106,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(425,122,'13',9,'#9aa7bd') +
+      box(500,106,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(505,122,'14',9,'#9aa7bd') +
+      // Legend
+      box(20,158,74,20,'#d63384','none') + txt(57,172,'Instagram',8,'#fff','middle') +
+      box(100,158,66,20,'#0077b5','none') + txt(133,172,'LinkedIn',8,'#fff','middle') +
+      box(172,158,50,20,'#00e5c0','none') + txt(197,172,'Email',8,'#0a1628','middle') +
+      box(228,158,66,20,'#7952b3','none') + txt(261,172,'Facebook',8,'#fff','middle') +
+      tag(510,10,1) + tag(100,74,2) + tag(260,74,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>Channels supported</b>: Instagram (pink), LinkedIn (blue), Email (teal), Facebook (purple). Each post chip is color-coded by channel on the calendar.',
+      '<b>(1) + New Post</b> — click to create a post: pick the channel, set the date, write the caption / subject, and optionally attach an image.',
+      '<b>(2)–(3) AI Social Post drafter</b> — when creating a post, click <b>🤖 Draft with AI</b> to generate a platform-optimised caption based on your product and audience. Edit before saving.',
+      '<b>How to publish</b>: the calendar is a planning tool — posts are drafted and tracked here. When the date arrives, copy the caption and post manually (or via a connected scheduler like Buffer). Future automation is on the roadmap.'
+    ]);
+
+  var SEC_CIP_LOG =
+    wf(620, 200,
+      box(0,0,620,200,'#142238','rgba(255,255,255,.05)') +
+      txt(20,22,'🧼 CIP / SANITATION LOG',12,'#fff') +
+      box(480,10,130,22,'rgba(0,229,192,.1)','rgba(0,229,192,.3)') + txt(545,24,'+ Add Cycle',9,'#00e5c0','middle') +
+      box(20,36,580,22,'#0d1e35','rgba(255,255,255,.05)') +
+      txt(30,51,'Date / Time',10,'#9aa7bd') + txt(155,51,'Line',10,'#9aa7bd') + txt(250,51,'Sanitizer',10,'#9aa7bd') + txt(350,51,'Temp (°F)',10,'#9aa7bd') + txt(420,51,'Duration',10,'#9aa7bd') + txt(490,51,'Logged by',10,'#9aa7bd') +
+      box(20,62,580,26,'#1a2c48','rgba(95,207,158,.05)') +
+      txt(30,79,'May 29  06:30',10,'#cfd9e6') + txt(155,79,'Canning L1',10,'#cfd9e6') + txt(250,79,'Saniclean 1%',10,'#cfd9e6') + txt(350,79,'145°F',10,'#cfd9e6') + txt(420,79,'22 min',10,'#cfd9e6') + txt(490,79,'J. Rivera',10,'#cfd9e6') +
+      box(20,94,580,26,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(30,111,'May 28  17:15',10,'#cfd9e6') + txt(155,111,'Bottling L1',10,'#cfd9e6') + txt(250,111,'PAA 200ppm',10,'#cfd9e6') + txt(350,111,'140°F',10,'#cfd9e6') + txt(420,111,'18 min',10,'#cfd9e6') + txt(490,111,'M. Krail',10,'#cfd9e6') +
+      box(20,126,580,26,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(30,143,'May 28  06:00',10,'#cfd9e6') + txt(155,143,'R&D Bench',10,'#cfd9e6') + txt(250,143,'Saniclean 1%',10,'#cfd9e6') + txt(350,143,'140°F',10,'#cfd9e6') + txt(420,143,'15 min',10,'#cfd9e6') + txt(490,143,'J. Rivera',10,'#cfd9e6') +
+      box(430,168,180,22,'#1a3c30','rgba(0,229,192,.3)') + txt(520,183,'FDA-defensible record ✓',9,'#00e5c0','middle') +
+      tag(480,10,1) + tag(430,168,2)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>What Clean-In-Place (CIP) is</b>: the automated or manual process of cleaning and sanitising production equipment without disassembly. Required between every production run under 21 CFR Part 117 (FSMA Preventive Controls).',
+      '<b>When to log it</b>: after every production run, before switching products, and at the start/end of each shift. The log should be completed by the operator who performed the CIP, not a supervisor.',
+      '<b>(1) + Add Cycle</b> — fill in: line, sanitizer name + concentration, rinse water temperature, contact time (minutes), and your name. Hit Save. The record is timestamped server-side and is immutable (Part 11 compliant).',
+      '<b>(2) FDA-defensible record</b> — each entry is stored in Supabase with a server timestamp, user ID, and a hash. During an FDA inspection you can export the full log as a signed PDF from the Compliance → 📤 Export button.'
+    ]);
+
+  var SEC_HOLD_TAGS =
+    wf(620, 210,
+      box(0,0,620,210,'#142238','rgba(255,255,255,.05)') +
+      txt(20,22,'🚫 HOLD TAGS',12,'#fff') +
+      box(510,10,100,22,'rgba(231,76,60,.1)','rgba(231,76,60,.3)') + txt(560,24,'+ New Hold',9,'#e74c3c','middle') +
+      box(20,38,580,58,'#1a2c48','rgba(231,76,60,.15)') +
+      txt(30,56,'Mango Seltzer  ·  LOT-2026-12',11,'#fff') +
+      txt(30,72,'Reason: Foreign object detected in inspection — metal fragment &lt; 2mm.',10,'#9aa7bd') +
+      txt(30,86,'Blocked from shipping. Hold placed May 29 by M. Krail.',9,'#9aa7bd') +
+      box(490,48,100,20,'#3d1a1a','rgba(231,76,60,.5)') + txt(540,61,'🔴 Active hold',8,'#e74c3c','middle') +
+      box(490,72,100,20,'rgba(255,255,255,.05)','rgba(231,76,60,.3)') + txt(540,85,'Release Hold',8,'#e74c3c','middle') +
+      box(20,104,580,52,'#1a2c48','rgba(95,207,158,.15)') +
+      txt(30,122,'Classic Cola  ·  LOT-2026-10',11,'#fff') +
+      txt(30,138,'Reason: pH out of spec — corrected and re-tested. Lab sign-off received.',10,'#9aa7bd') +
+      txt(30,152,'Released May 27 by M. Krail. Root cause logged.',9,'#9aa7bd') +
+      box(490,114,100,20,'#1a3c30','rgba(0,229,192,.4)') + txt(540,127,'🟢 Released',8,'#00e5c0','middle') +
+      txt(20,180,'GMP-QC-001  ·  Hold Tag SOP  ·  Supabase hold_tags table',9,'#9aa7bd') +
+      tag(490,48,1) + tag(490,114,2) + tag(510,10,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>What a hold tag does</b>: quarantines a product lot and prevents it from being shipped or released until the issue is resolved and the hold is cleared. Required procedure under GMP-QC-001.',
+      '<b>How to create a hold (3)</b>: Compliance → 🚫 Hold Tags → <b>+ New Hold Tag</b>. Fill in lot number, product, reason, and severity. The lot is immediately flagged across the system.',
+      '<b>(1) Active hold</b> — lot is quarantined. A red banner appears on the matching Production Run card. The customer portal also surfaces the hold on their run view.',
+      '<b>(2) Releasing a hold</b> — click <b>Release Hold</b>, enter the corrective action taken + confirmation of re-test / lab sign-off. The record is permanently logged (immutable for FDA audit trail). Status flips to Released (green) and shipping is unblocked.'
+    ]);
+
+  var SEC_DEFECTS_NCR =
+    wf(620, 200,
+      box(0,0,620,200,'#142238','rgba(255,255,255,.05)') +
+      txt(20,22,'⚠️ DEFECTS / NCRs (Non-Conformance Reports)',12,'#fff') +
+      box(510,10,100,22,'rgba(245,200,66,.1)','rgba(245,200,66,.3)') + txt(560,24,'+ New NCR',9,'#f5c842','middle') +
+      box(20,36,580,22,'#0d1e35','rgba(255,255,255,.05)') +
+      txt(30,51,'Date',10,'#9aa7bd') + txt(110,51,'Run Ref',10,'#9aa7bd') + txt(210,51,'Type',10,'#9aa7bd') + txt(330,51,'Severity',10,'#9aa7bd') + txt(430,51,'Status',10,'#9aa7bd') + txt(530,51,'Action',10,'#9aa7bd') +
+      box(20,62,580,26,'#1a2c48','rgba(231,76,60,.05)') +
+      txt(30,79,'May 29',10,'#cfd9e6') + txt(110,79,'LOT-2026-12',10,'#00e5c0') + txt(210,79,'Metal contamination',10,'#cfd9e6') +
+      box(330,66,58,18,'#3d1a1a','rgba(231,76,60,.5)') + txt(359,78,'Critical',8,'#e74c3c','middle') +
+      box(430,66,50,18,'#3d2f0a','rgba(245,200,66,.4)') + txt(455,78,'Open',8,'#f5c842','middle') +
+      txt(530,79,'🤖 Suggest',9,'#c4b5fd') +
+      box(20,94,580,26,'#1a2c48','rgba(255,154,60,.05)') +
+      txt(30,111,'May 26',10,'#cfd9e6') + txt(110,111,'LOT-2026-10',10,'#00e5c0') + txt(210,111,'pH out of spec',10,'#cfd9e6') +
+      box(330,98,50,18,'#3d2000','rgba(255,154,60,.4)') + txt(355,110,'Major',8,'#ff9a3c','middle') +
+      box(430,98,55,18,'#1a3c30','rgba(0,229,192,.4)') + txt(457,110,'Closed',8,'#00e5c0','middle') +
+      txt(530,111,'View RCA',9,'#9aa7bd') +
+      box(20,126,580,26,'#1a2c48','rgba(245,200,66,.05)') +
+      txt(30,143,'May 22',10,'#cfd9e6') + txt(110,143,'LOT-2026-08',10,'#00e5c0') + txt(210,143,'Label misprint',10,'#cfd9e6') +
+      box(330,130,50,18,'#3d2f0a','rgba(245,200,66,.3)') + txt(355,142,'Minor',8,'#f5c842','middle') +
+      box(430,130,55,18,'#1a3c30','rgba(0,229,192,.4)') + txt(457,142,'Closed',8,'#00e5c0','middle') +
+      txt(530,143,'View RCA',9,'#9aa7bd') +
+      tag(330,66,1) + tag(330,98,2) + tag(330,130,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>What NCRs are</b>: Non-Conformance Reports document any product, process, or material that fails to meet specification. Required under 21 CFR Part 117 preventive controls.',
+      '<b>Three severity levels (1–3)</b>: <span style="color:#e74c3c">Critical</span> — potential safety hazard (metal, allergen, pathogen); <span style="color:#ff9a3c">Major</span> — significant quality deviation (out-of-spec pH, fill weight); <span style="color:#f5c842">Minor</span> — cosmetic or documentation issue (label misprint).',
+      '<b>Root-cause workflow</b>: open any NCR → click <b>🤖 Suggest root cause</b> → AI returns root cause, corrective action, and preventive action based on the defect type and description. Edit and save to lock in the Root Cause Analysis (RCA).',
+      '<b>Closing a defect</b>: once corrective action is complete and verified, set status to Closed. The record is immutable (FDA audit trail). Closed NCRs remain searchable by lot number.'
+    ]);
+
+  var SEC_VENDORS =
+    wf(620, 200,
+      box(0,0,620,200,'#142238','rgba(255,255,255,.05)') +
+      txt(20,22,'🏭 VENDOR DIRECTORY',12,'#fff') +
+      box(510,10,100,22,'rgba(0,229,192,.1)','rgba(0,229,192,.3)') + txt(560,24,'+ Add Vendor',9,'#00e5c0','middle') +
+      box(20,36,580,22,'#0d1e35','rgba(255,255,255,.05)') +
+      txt(30,51,'Vendor name',10,'#9aa7bd') + txt(185,51,'Type',10,'#9aa7bd') + txt(280,51,'Lead time',10,'#9aa7bd') + txt(360,51,'Certificate of Insurance',10,'#9aa7bd') + txt(510,51,'Last order',10,'#9aa7bd') +
+      box(20,62,580,26,'#1a2c48','rgba(95,207,158,.05)') +
+      txt(30,79,'Allied Filling Solutions',10,'#cfd9e6') + txt(185,79,'Co-packer',10,'#9aa7bd') + txt(280,79,'5 days',10,'#cfd9e6') +
+      box(360,66,75,18,'#1a3c30','rgba(0,229,192,.4)') + txt(397,78,'Valid',8,'#00e5c0','middle') +
+      txt(510,79,'May 15',10,'#cfd9e6') +
+      box(20,94,580,26,'#1a2c48','rgba(231,76,60,.05)') +
+      txt(30,111,'AgroPack Ingredients',10,'#cfd9e6') + txt(185,111,'Supplier',10,'#9aa7bd') + txt(280,111,'14 days',10,'#cfd9e6') +
+      box(360,98,70,18,'#3d1a1a','rgba(231,76,60,.4)') + txt(395,110,'Expired',8,'#e74c3c','middle') +
+      txt(510,111,'Apr 2',10,'#cfd9e6') +
+      box(20,126,580,26,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(30,143,'PackRight Labels',10,'#cfd9e6') + txt(185,143,'Packaging',10,'#9aa7bd') + txt(280,143,'7 days',10,'#cfd9e6') +
+      box(360,130,55,18,'#1a2c48','rgba(255,255,255,.2)') + txt(387,142,'None',8,'#9aa7bd','middle') +
+      txt(510,143,'May 22',10,'#cfd9e6') +
+      box(20,162,580,26,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(30,179,'BioVerify Labs',10,'#cfd9e6') + txt(185,179,'Lab / Testing',10,'#9aa7bd') + txt(280,179,'3 days',10,'#cfd9e6') +
+      box(360,166,75,18,'#1a3c30','rgba(0,229,192,.4)') + txt(397,178,'Valid',8,'#00e5c0','middle') +
+      txt(510,179,'May 27',10,'#cfd9e6') +
+      tag(360,66,1) + tag(360,98,2) + tag(510,10,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>What the directory tracks</b>: all ingredient suppliers, co-packers, packaging vendors, labs, and service providers. Each entry stores contact info, type, typical lead time, Certificate of Insurance (COI) status and expiry, and last order date.',
+      '<b>(1) COI Valid</b> — Certificate of Insurance on file and not expired. <b>(2) COI Expired</b> — a red badge appears and the dashboard surfaces an alert. Always collect a new COI before placing the next order with that vendor.',
+      '<b>COI expiry alerts</b>: the dashboard System Health widget shows a warning for any vendor whose COI expires within 30 days. Click the vendor row to upload the renewed certificate.',
+      '<b>(3) + Add Vendor</b> — fill in name, type, contact, lead time, COI expiry date (optional), and any notes. The vendor is immediately available for linking to Production Runs.',
+      '<b>How it connects to production</b>: when creating or editing a Production Run, you can tag the run\'s ingredient suppliers and packaging vendor. This creates a traceability link used in mock recall drills.'
+    ]);
+
+  var SEC_BULK_OUTREACH =
+    wf(620, 220,
+      box(0,0,620,220,'#0a1628','rgba(255,255,255,.05)') +
+      box(0,0,620,36,'#142238','rgba(255,255,255,.08)') +
+      txt(20,23,'📤 BULK OUTREACH  ·  Prospecting (8 leads)',13,'#fff') +
+      txt(580,23,'✕',12,'#9aa7bd','end') +
+      // Checklist
+      box(20,46,240,160,'#142238','rgba(255,255,255,.05)') +
+      txt(30,62,'SELECT LEADS',9,'#9aa7bd') +
+      txt(34,80,'☑',11,'#00e5c0') + txt(58,80,'Apex Beverages',10,'#fff') +
+      txt(34,98,'☑',11,'#00e5c0') + txt(58,98,'BlueSky Drinks',10,'#fff') +
+      txt(34,116,'☐',11,'#9aa7bd') + txt(58,116,'Canyon Craft',10,'#9aa7bd') +
+      txt(34,134,'☑',11,'#00e5c0') + txt(58,134,'DeltaDrinks LLC',10,'#fff') +
+      txt(34,152,'☐',11,'#9aa7bd') + txt(58,152,'Echo Brewing',10,'#9aa7bd') +
+      txt(34,170,'☑',11,'#00e5c0') + txt(58,170,'Floral Seltzers',10,'#fff') +
+      // Preview pane
+      box(270,46,340,160,'#142238','rgba(255,255,255,.05)') +
+      txt(280,62,'AI-DRAFTED PREVIEW  ·  Apex Beverages',9,'#9aa7bd') +
+      txt(280,80,'Subject: Good Liquid Bev Co — Private Label Production',10,'#00e5c0') +
+      txt(280,98,'Hi [First Name],',10,'#cfd9e6') +
+      txt(280,114,'I wanted to reach out about co-packing and private',10,'#9aa7bd') +
+      txt(280,130,'label production for Apex Beverages. We specialise',10,'#9aa7bd') +
+      txt(280,146,'in beverage runs from 50–5,000 cases with full R&D',10,'#9aa7bd') +
+      txt(280,162,'support. Would love to connect. — Mike Krail',10,'#9aa7bd') +
+      box(400,190,210,22,'#1a6fff','none') + txt(505,204,'📤 Send 4 emails',10,'#fff','middle') +
+      tag(20,46,1) + tag(270,46,2) + tag(400,190,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>How to find it</b>: Pipeline page → header → <b>📤 Bulk Outreach</b> button. Only appears for admin/sales roles.',
+      '<b>(1) Lead checklist</b> — all deals in Prospecting are listed with checkboxes. Tick the ones you want to email. Unticked deals are skipped.',
+      '<b>(2) AI-drafted preview</b> — the right pane shows an AI-generated cold-outreach email personalised to the selected lead\'s company name. You can edit the subject and body before sending.',
+      '<b>(3) Send X emails</b> — fires one email per selected deal via Mailgun, marks each deal as "outreach sent" in the pipeline (a small badge appears on the card), and logs the sends to Email Activity.',
+      '<b>Variables used</b>: company name, deal value (if set), and your email signature. The AI adjusts the tone based on the deal stage.'
+    ]);
+
   var HELP_HTML =
     section('help-overview',        '👋 OVERVIEW',                   SEC_OVERVIEW) +
     section('help-dashboard',       '📊 DASHBOARD',                  SEC_DASHBOARD) +
@@ -5822,6 +6418,17 @@
     section('help-customers',       '🌐 CUSTOMER LOGINS (ADMIN)',    SEC_CUSTOMERS) +
     section('help-users',           '🔑 USERS & PERMISSIONS (ADMIN)',SEC_USERS) +
     section('help-settings',        '⚙️ SETTINGS & INTEGRATIONS',    SEC_SETTINGS) +
+    section('help-ai-hub',          '🤖 AI CHAT & AI TOOLS',         SEC_AI_HUB) +
+    section('help-production-runs', '🏭 PRODUCTION RUNS',            SEC_PRODUCTION_RUNS) +
+    section('help-formula-vault',   '🧪 FORMULA VAULT',              SEC_FORMULA_VAULT) +
+    section('help-yield-tracker',   '📈 YIELD TRACKER',              SEC_YIELD_TRACKER) +
+    section('help-sample-shipments','📦 SAMPLE SHIPMENTS',           SEC_SAMPLE_SHIPMENTS) +
+    section('help-content-calendar','📣 CONTENT CALENDAR',           SEC_CONTENT_CALENDAR) +
+    section('help-cip-log',         '🧼 CIP / SANITATION LOG',       SEC_CIP_LOG) +
+    section('help-hold-tags',       '🚫 HOLD TAGS',                  SEC_HOLD_TAGS) +
+    section('help-defects-ncr',     '⚠️ DEFECTS / NCRs',             SEC_DEFECTS_NCR) +
+    section('help-vendors',         '🏭 VENDORS',                    SEC_VENDORS) +
+    section('help-bulk-outreach',   '📤 BULK OUTREACH',              SEC_BULK_OUTREACH) +
     section('help-shortcuts',       '⌨️ KEYBOARD SHORTCUTS',          SEC_SHORTCUTS);
 
   var TOC_ENTRIES = [
@@ -5841,6 +6448,17 @@
     ['help-announcements','📣 Announcements'],
     ['help-customer-requests','📩 Customer Requests'],['help-customers','🌐 Customer Logins'],
     ['help-users','🔑 Users'],['help-settings','⚙️ Settings'],
+    ['help-ai-hub','🤖 AI Chat & Tools'],
+    ['help-production-runs','🏭 Production Runs'],
+    ['help-formula-vault','🧪 Formula Vault'],
+    ['help-yield-tracker','📈 Yield Tracker'],
+    ['help-sample-shipments','📦 Sample Shipments'],
+    ['help-content-calendar','📣 Content Calendar'],
+    ['help-cip-log','🧼 CIP / Sanitation Log'],
+    ['help-hold-tags','🚫 Hold Tags'],
+    ['help-defects-ncr','⚠️ Defects / NCRs'],
+    ['help-vendors','🏭 Vendors'],
+    ['help-bulk-outreach','📤 Bulk Outreach'],
     ['help-shortcuts','⌨️ Shortcuts']
   ];
   var PAGE_TO_SECTION = {
@@ -5850,7 +6468,16 @@
     'cpg-calendar':'help-calendar','cpg-production-cal':'help-production','cpg-tasks':'help-tasks',
     'cpg-documents':'help-documents','cpg-inventory':'help-inventory','cpg-announcements':'help-announcements',
     'cpg-customers':'help-customers','cpg-users':'help-users',
-    'cpg-compliance':'help-compliance','cpg-holds':'help-compliance','cpg-cip':'help-compliance'
+    'cpg-compliance':'help-compliance',
+    'cpg-holds':'help-hold-tags','cpg-cip':'help-cip-log',
+    'cpg-ai':'help-ai-hub',
+    'cpg-production-runs':'help-production-runs',
+    'cpg-formulas':'help-formula-vault',
+    'cpg-yield':'help-yield-tracker',
+    'cpg-samples':'help-sample-shipments',
+    'cpg-content':'help-content-calendar',
+    'cpg-defects':'help-defects-ncr',
+    'cpg-vendors':'help-vendors'
   };
   function currentSection(){
     var active = document.querySelector('#crm-panel .cpg.act');
