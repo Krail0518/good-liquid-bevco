@@ -509,6 +509,7 @@ select option, .fsel option {
 .cal-event { font-size:9px;padding:2px 5px;border-radius:4px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600; }
 .cal-event.general { background:rgba(26,111,255,.25);color:#6b9fff; }
 .cal-event.production { background:rgba(0,229,192,.2);color:var(--teal); }
+.cal-event.production-run { background:rgba(0,229,192,.13);color:#00c4a7;border:1px solid rgba(0,229,192,.25); }
 .cal-event.task { background:rgba(245,200,66,.2);color:#f5c842; }
 .cal-nav { display:flex;align-items:center;justify-content:space-between;margin-bottom:10px; }
 .cal-nav-btn { background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:6px 14px;color:var(--white);cursor:pointer;font-size:13px;transition:all .2s; }
@@ -1943,7 +1944,10 @@ select option, .fsel option {
       <div id="cpg-pipeline" class="cpg">
         <div class="cph">
           <div><div class="cpt">PIPELINE</div><div class="cps" id="pipe-sub">Active brand engagements</div></div>
-          <button class="cbtn" onclick="openAddDealModal()" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)">+ Add Deal</button>
+          <div style="display:flex;gap:8px">
+            <button class="cbtn" onclick="openBulkOutreach()" style="background:rgba(245,200,66,.08);border-color:rgba(245,200,66,.25);color:#d4a200">📤 Bulk Outreach</button>
+            <button class="cbtn" onclick="openAddDealModal()" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)">+ Add Deal</button>
+          </div>
         </div>
         <div class="pipeline-switch">
           <div class="pipe-tab act" onclick="switchPipeline('sales',this)">💼 Sales Pipeline</div>
@@ -1960,7 +1964,11 @@ select option, .fsel option {
             <div class="bebas" style="font-size:22px;letter-spacing:2px;color:var(--teal)" id="ddp-title">DEAL DETAILS</div>
             <button onclick="closeDealDetail()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer">✕</button>
           </div>
-          <div style="display:flex;flex-direction:column;gap:14px">
+          <!-- VIEW MODE: read-only summary shown when card is first clicked -->
+          <div id="ddp-view-mode" style="display:flex;flex-direction:column;gap:14px"></div>
+
+          <!-- EDIT MODE: full form, hidden until ✏️ Edit is clicked -->
+          <div id="ddp-edit-mode" style="display:flex;flex-direction:column;gap:14px">
             <!-- Row 1: Deal name + Brand -->
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
               <div>
@@ -2093,7 +2101,7 @@ select option, .fsel option {
               <button onclick="saveDealDetail()" style="flex:1;padding:12px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:800;font-size:14px;cursor:pointer">Save Changes</button>
               <button onclick="deleteDeal()" style="padding:12px 20px;background:rgba(231,76,60,.15);color:#e74c3c;border:1px solid rgba(231,76,60,.3);border-radius:8px;font-weight:700;font-size:14px;cursor:pointer">Delete</button>
             </div>
-          </div>
+          </div><!-- /ddp-edit-mode -->
         </div>
       </div>
 
@@ -4435,7 +4443,8 @@ async function loadSupabaseData(){
         productType:d.product_type||'', volume:d.volume||'',
         timeline:d.timeline||'', fundingStage:d.funding_stage||'',
         leadSource:d.lead_source||'',
-        outreachStatus:d.outreach_status||null
+        outreachStatus:d.outreach_status||null,
+        stageEnteredAt:d.stage_entered_at||d.created_at||null
       });
     });
   }
@@ -4954,10 +4963,12 @@ async function moveDeal(dealId, fromStage, toStage, fallbackIdx){
   if(idx===-1) return;
   const deal = stageDeals.splice(idx,1)[0];
   if(!deals[toStage]) deals[toStage]=[];
+  const now = new Date().toISOString();
+  deal.stageEnteredAt = now;
   deals[toStage].push(deal);
   // Save to Supabase (only for real ids, not temp ones)
   if(dealId && !String(dealId).startsWith('tmp_')){
-    try { await supa.from('deals').update({stage:toStage}).eq('id',dealId); } catch(e){ console.warn('Move save failed',e); }
+    try { await supa.from('deals').update({stage:toStage, stage_entered_at:now}).eq('id',dealId); } catch(e){ console.warn('Move save failed',e); }
   }
   renderKanban(); renderDash();
 }
@@ -4996,6 +5007,14 @@ function renderKanban(){
         ${d.phone ? `<div style="font-size:11px;color:#9ca3af;margin-top:1px">📞 ${d.phone}</div>` : ''}
         ${(d.service||d.productType) ? `<div style="font-size:10px;color:var(--teal);margin-top:4px;opacity:.8">${[d.service,d.productType].filter(Boolean).join(' · ')}</div>` : ''}
         <div class="kc-val">${d.val}</div>
+        ${(()=>{
+          const daysInStage = d.stageEnteredAt
+            ? Math.floor((Date.now() - new Date(d.stageEnteredAt).getTime()) / 86400000)
+            : null;
+          if(daysInStage === null || daysInStage < 3) return '';
+          const badge = daysInStage > 14 ? '#e74c3c' : daysInStage > 7 ? '#f5c842' : '#6b87ad';
+          return `<div style="display:inline-block;margin-top:4px;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;background:${badge}22;color:${badge};border:1px solid ${badge}55">${daysInStage}d in stage</div>`;
+        })()}
         <div class="kc-prog"><div class="kc-pf" style="width:${d.prob}%;background:${sc[stage]}"></div></div>
         <div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap" onclick="event.stopPropagation()">
           ${otherStages.map(s=>`<button onclick="moveDeal('${d.id||''}','${stage}','${s}',${di})" style="font-size:9px;padding:2px 6px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;color:var(--muted);cursor:pointer;white-space:nowrap">→ ${s.split(' ')[0]}</button>`).join('')}
@@ -5214,6 +5233,173 @@ Greet them by first name (${firstName}). Acknowledge what they're building and w
 }
 window.openLeadEmailComposer = openLeadEmailComposer;
 
+// ─── BULK OUTREACH ─────────────────────────────────────────────────────────
+// Opens a modal listing all Prospecting leads with no outreach status and a
+// valid email. Drafts with Claude AI and sends via Mailgun for each checked lead.
+async function openBulkOutreach(){
+  const prior = document.getElementById('gl-bulk-outreach-modal');
+  if(prior) prior.remove();
+
+  // Collect Prospecting leads with email and no outreach yet
+  const prospects = (deals['Prospecting'] || []).map((d,i) => ({...d, _idx:i}))
+    .filter(d => d.email && !d.outreachStatus);
+
+  // Fetch capabilities/pricing doc once for AI system prompt
+  let capsDoc = '';
+  try {
+    const capsRes = await supa.from('company_docs').select('content').eq('key','capabilities_pricing').single();
+    if(capsRes.data && capsRes.data.content) capsDoc = capsRes.data.content;
+  } catch(e){ console.warn('[GL] Could not load capabilities doc', e); }
+
+  const systemPrompt = `You are Mike's assistant at Good Liquid Bev Co, a beverage co-packer in Palmetto, FL (2011 51st Ave E, Unit 100). We help emerging beverage brands with R&D, small-batch canning, bottle filling, and co-packing.
+
+Write warm, professional, conversational first-contact emails — not corporate-stiff. Mike's voice is direct, encouraging, and knowledgeable. Keep it to 3-4 short paragraphs. End with a clear next step (a call or facility tour).
+
+When relevant to the lead's interest, reference specific pricing or minimums from our capabilities deck — be concrete, not vague. Do NOT paste a full price table; just mention the relevant numbers naturally in the text.
+
+Output format — two sections separated by a blank line:
+SUBJECT: [one-line subject here]
+
+[email body here — start straight with the salutation, no extra labels]
+
+${capsDoc ? '--- GOOD LIQUID CAPABILITIES & PRICING REFERENCE ---\n' + capsDoc : ''}`;
+
+  const ov = document.createElement('div');
+  ov.id = 'gl-bulk-outreach-modal';
+  ov.setAttribute('style','position:fixed;inset:0;z-index:700;background:rgba(6,13,26,.95);backdrop-filter:blur(10px);display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto');
+
+  const rowsHtml = prospects.map(function(d,ri){
+    return '<tr data-ri="'+ri+'" style="border-bottom:1px solid rgba(255,255,255,.04)">' +
+      '<td style="padding:8px 10px"><input type="checkbox" class="gl-bo-chk" data-ri="'+ri+'" checked style="cursor:pointer"></td>' +
+      '<td style="padding:8px 10px;color:var(--white)">'+(d.name||'—')+'</td>' +
+      '<td style="padding:8px 10px;color:var(--muted)">'+(d.co||'—')+'</td>' +
+      '<td style="padding:8px 10px;color:#6b9fff">'+d.email+'</td>' +
+      '<td style="padding:8px 10px" id="gl-bo-status-'+ri+'"><span style="color:var(--muted);font-size:10px">Pending</span></td>' +
+    '</tr>';
+  }).join('');
+
+  ov.innerHTML = '<div style="background:#142238;border:1px solid rgba(245,200,66,.25);border-radius:16px;width:100%;max-width:800px;padding:26px 28px;color:#fff">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">' +
+      '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:#d4a200">📤 BULK OUTREACH — PROSPECTING</div>' +
+      '<button id="gl-bo-close" style="background:none;border:none;color:#9aa7bd;font-size:22px;cursor:pointer;line-height:1">✕</button>' +
+    '</div>' +
+    (prospects.length === 0
+      ? '<div style="color:var(--muted);font-size:14px;padding:24px 0">No uncontacted Prospecting leads with an email address found.</div>'
+      : '<div style="font-size:12px;color:var(--muted);margin-bottom:14px">'+prospects.length+' uncontacted lead'+(prospects.length!==1?'s':'')+' found. All selected by default.</div>' +
+        '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">' +
+          '<thead><tr style="border-bottom:1px solid rgba(255,255,255,.08)">' +
+            '<th style="text-align:left;padding:6px 10px;color:var(--muted);font-weight:600;width:30px"><input type="checkbox" id="gl-bo-check-all" checked style="cursor:pointer"></th>' +
+            '<th style="text-align:left;padding:6px 10px;color:var(--muted);font-weight:600">Name</th>' +
+            '<th style="text-align:left;padding:6px 10px;color:var(--muted);font-weight:600">Company</th>' +
+            '<th style="text-align:left;padding:6px 10px;color:var(--muted);font-weight:600">Email</th>' +
+            '<th style="text-align:left;padding:6px 10px;color:var(--muted);font-weight:600;width:90px">Status</th>' +
+          '</tr></thead>' +
+          '<tbody id="gl-bo-rows">'+rowsHtml+'</tbody>' +
+        '</table></div>' +
+        '<div style="margin-top:16px;background:rgba(255,255,255,.03);border-radius:8px;height:6px;overflow:hidden">' +
+          '<div id="gl-bo-progress" style="height:100%;background:#d4a200;width:0%;transition:width .3s"></div>' +
+        '</div>' +
+        '<div id="gl-bo-progress-label" style="font-size:11px;color:var(--muted);margin-top:6px;min-height:16px"></div>'
+    ) +
+    '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">' +
+      '<button id="gl-bo-cancel" class="cbtn" style="font-size:13px">Close</button>' +
+      (prospects.length > 0 ? '<button id="gl-bo-send" class="cbtn" style="font-size:13px;background:rgba(245,200,66,.12);border-color:rgba(245,200,66,.3);color:#d4a200">📤 Draft &amp; Send All</button>' : '') +
+    '</div>' +
+  '</div>';
+
+  document.body.appendChild(ov);
+  ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+  ov.querySelector('#gl-bo-close').onclick  = function(){ ov.remove(); };
+  ov.querySelector('#gl-bo-cancel').onclick = function(){ ov.remove(); };
+
+  if(prospects.length === 0) return;
+
+  // Select-all checkbox
+  ov.querySelector('#gl-bo-check-all').addEventListener('change', function(){
+    ov.querySelectorAll('.gl-bo-chk').forEach(function(chk){ chk.checked = this.checked; }, this);
+  });
+
+  // Draft & Send All button
+  ov.querySelector('#gl-bo-send').onclick = async function(){
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Sending...';
+
+    var checked = Array.from(ov.querySelectorAll('.gl-bo-chk')).filter(function(c){ return c.checked; }).map(function(c){ return parseInt(c.dataset.ri); });
+    if(!checked.length){ alert('No leads selected.'); btn.disabled=false; btn.textContent='📤 Draft & Send All'; return; }
+
+    var sent = 0;
+    var progBar   = ov.querySelector('#gl-bo-progress');
+    var progLabel = ov.querySelector('#gl-bo-progress-label');
+
+    for(var ci=0; ci<checked.length; ci++){
+      var ri = checked[ci];
+      var d = prospects[ri];
+      var statusEl = ov.querySelector('#gl-bo-status-'+ri);
+      if(!statusEl) continue;
+
+      statusEl.innerHTML = '<span style="color:var(--teal);font-size:10px">🤖 Drafting...</span>';
+
+      try {
+        var firstName = ((d.contactName || d.name || '').split(' ')[0]) || 'there';
+        var details = [
+          d.contactName  ? 'Contact: '+d.contactName : null,
+          d.co           ? 'Company: '+d.co : null,
+          d.service      ? 'Service interest: '+d.service : null,
+          d.productType  ? 'Product type: '+d.productType : null,
+          d.volume       ? 'Volume / year: '+d.volume : null,
+          d.timeline     ? 'Timeline: '+d.timeline : null,
+          d.notes        ? 'Their message: "'+d.notes+'"' : null,
+        ].filter(Boolean);
+
+        var userPrompt = 'Draft a first-contact reply email to this lead who submitted an inquiry on our website:\n\n'+details.join('\n')+'\n\nGreet them by first name ('+firstName+'). Acknowledge what they\'re building and why it\'s exciting. Mention relevant pricing or minimums from our capabilities deck that apply to their interest. Suggest a 20-minute intro call or facility tour as the next step. Sign off as Mike, Good Liquid Bev Co, (803) 493-5065.';
+
+        var raw = await callAI(systemPrompt, userPrompt);
+        if(!raw) throw new Error('AI returned empty response');
+
+        var subjectMatch = raw.match(/^SUBJECT:\s*(.+)/im);
+        var subject = subjectMatch ? subjectMatch[1].trim() : 'Re: Your inquiry to Good Liquid Bev Co'+(d.co?' — '+d.co:'');
+        var bodyStart = raw.indexOf('\n\n');
+        var body = bodyStart > -1 ? raw.slice(bodyStart).trim() : raw.replace(/^SUBJECT:.*\n?/im,'').trim();
+
+        var htmlBody = '<div style="font-family:Arial,sans-serif;color:#1a1a1a;line-height:1.6;max-width:640px;margin:0 auto">' +
+          '<div style="border-top:3px solid #00e5c0;padding:24px 28px">' +
+            '<div style="font-size:20px;font-weight:900;color:#00b89a;letter-spacing:2px;margin-bottom:4px">GOOD LIQUID BEV CO</div>' +
+            '<div style="font-size:11px;color:#6b87ad">2011 51st Ave E, Unit 100 · Palmetto, FL 34221 · Mike@GoodLiquid.com · (803) 493-5065</div>' +
+          '</div>' +
+          '<div style="padding:0 28px 28px;white-space:pre-wrap;font-size:14px;line-height:1.7">'+body.replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];})+'</div>' +
+          '<div style="padding:14px 28px;border-top:1px solid #e5e7eb;font-size:11px;color:#9ca3af;text-align:center">Good Liquid Bev Co · goodliquidbevco.com</div>' +
+        '</div>';
+
+        statusEl.innerHTML = '<span style="color:var(--muted);font-size:10px">📤 Sending...</span>';
+        var ok = await sendMailgunEmail(d.email, subject, body, { bcc: 'mike@goodliquid.com', html: htmlBody });
+
+        if(ok){
+          statusEl.innerHTML = '<span style="color:#5fcf9e;font-size:10px">✓ Sent</span>';
+          await setDealOutreach(d.id||'', 'Prospecting', d._idx, 'sent');
+          if(typeof addNotification === 'function') addNotification('📧 Lead emailed', (d.name||d.co)+' → '+d.email, 'email');
+          if(typeof window.glAudit === 'function') window.glAudit('bulk_outreach_sent', d.id, { to: d.email, subject: subject });
+          sent++;
+        } else {
+          statusEl.innerHTML = '<span style="color:#ff8579;font-size:10px">✗ Failed</span>';
+        }
+      } catch(err){
+        console.error('[GL] Bulk outreach error for', d.email, err);
+        statusEl.innerHTML = '<span style="color:#ff8579;font-size:10px">✗ Error</span>';
+      }
+
+      var pct = Math.round(((ci+1) / checked.length) * 100);
+      progBar.style.width = pct + '%';
+      progLabel.textContent = (ci+1) + ' / ' + checked.length + ' processed';
+    }
+
+    progLabel.textContent = 'Done — '+sent+' sent successfully out of '+checked.length+' attempted.';
+    btn.disabled = false;
+    btn.textContent = '✓ Complete';
+  };
+}
+window.openBulkOutreach = openBulkOutreach;
+
 // Close modals on backdrop click
 document.getElementById('add-client-modal').addEventListener('click', function(e){ if(e.target===this) closeAddClientModal(); });
 document.getElementById('add-deal-modal').addEventListener('click', function(e){ if(e.target===this) closeAddDealModal(); });
@@ -5408,9 +5594,67 @@ function openDealDetail(stage, idx){
   if(!d) return;
   currentDealStage = stage;
   currentDealIdx = idx;
-  const gv = id => { const el = document.getElementById(id); if(el) el.value = ''; };
+
+  // Build read-only view
+  const prob = d.prob || 20;
+  const sc = {'Prospecting':'#6b87ad','Proposal':'#1a6fff','Negotiation':'#f5c842','Closed Won':'#00c4a7','Closed Lost':'#e74c3c'};
+  const stageColor = sc[stage] || 'var(--teal)';
+  const obBadge = d.outreachStatus === 'sent'
+    ? '<span style="padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(245,200,66,.15);color:#f5c842;border:1px solid rgba(245,200,66,.35)">✉️ Awaiting Reply</span>'
+    : d.outreachStatus === 'replied'
+    ? '<span style="padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(0,196,167,.15);color:#00c4a7;border:1px solid rgba(0,196,167,.35)">✅ Replied</span>'
+    : d.outreachStatus === 'no_response'
+    ? '<span style="padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(231,76,60,.12);color:#e74c3c;border:1px solid rgba(231,76,60,.35)">🔕 No Response</span>'
+    : '';
+
+  function row(label, val){ return val ? `<div style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="font-size:10px;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:2px">${label}</span><span style="font-size:13px;color:var(--white)">${val}</span></div>` : ''; }
+
+  const viewHTML = `
+    <div style="margin-bottom:6px">
+      <div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:1px;color:var(--white)">${d.name||'—'}</div>
+      ${d.co ? `<div style="font-size:13px;color:var(--muted);margin-top:2px">${d.co}</div>` : ''}
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <span style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;background:${stageColor}22;color:${stageColor};border:1px solid ${stageColor}55">${stage}</span>
+      ${obBadge}
+    </div>
+    ${row('CONTACT', d.contactName)}
+    ${d.email ? `<div style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="font-size:10px;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:2px">EMAIL</span><a href="mailto:${d.email}" style="font-size:13px;color:var(--teal)">${d.email}</a></div>` : ''}
+    ${row('PHONE', d.phone)}
+    ${row('LOCATION', [d.city, d.state].filter(Boolean).join(', '))}
+    ${row('SERVICE', d.service)}
+    ${row('PRODUCT TYPE', d.productType)}
+    ${row('VOLUME / YEAR', d.volume)}
+    ${row('TIMELINE', d.timeline)}
+    <div style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+      <span style="font-size:10px;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:4px">DEAL VALUE</span>
+      <span style="font-family:var(--ff-disp);font-size:20px;color:var(--teal)">${d.val||'$0'}</span>
+    </div>
+    <div style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+      <span style="font-size:10px;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:6px">PROBABILITY — ${prob}%</span>
+      <div style="background:rgba(255,255,255,.08);border-radius:4px;height:8px;overflow:hidden"><div style="height:100%;width:${prob}%;background:${stageColor};border-radius:4px"></div></div>
+    </div>
+    ${d.notes ? `<div style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="font-size:10px;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:4px">NOTES</span><div style="font-size:13px;color:var(--white);line-height:1.6;white-space:pre-wrap">${d.notes.replace(/</g,'&lt;')}</div></div>` : ''}
+    <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+      <button onclick="editDealDetail()" style="flex:1;padding:10px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:800;font-size:13px;cursor:pointer">✏️ Edit</button>
+      <button onclick="openLeadEmailComposer()" style="flex:1;padding:10px;background:rgba(26,111,255,.15);color:#6b9fff;border:1px solid rgba(26,111,255,.35);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">✉️ Email Lead</button>
+      <button onclick="deleteDeal()" style="padding:10px 16px;background:rgba(231,76,60,.15);color:#e74c3c;border:1px solid rgba(231,76,60,.3);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">Delete</button>
+    </div>`;
+
+  document.getElementById('ddp-view-mode').innerHTML = viewHTML;
+  document.getElementById('ddp-view-mode').style.display = 'flex';
+  document.getElementById('ddp-edit-mode').style.display = 'none';
+  document.getElementById('ddp-title').textContent = 'DEAL DETAILS';
+  document.getElementById('deal-detail-panel').classList.add('show');
+}
+
+function editDealDetail(){
+  const stage = currentDealStage;
+  const idx = currentDealIdx;
+  const d = (deals[stage]||[])[idx];
+  if(!d) return;
   const sv = (id, val) => { const el = document.getElementById(id); if(el) el.value = val||''; };
-  document.getElementById('ddp-title').textContent = d.name || 'DEAL DETAILS';
+  document.getElementById('ddp-title').textContent = d.name || 'EDIT DEAL';
   sv('ddp-name',    d.name);
   sv('ddp-co',      d.co);
   sv('ddp-contact', d.contactName);
@@ -5428,7 +5672,8 @@ function openDealDetail(stage, idx){
   sv('ddp-prob',    d.prob || 20);
   sv('ddp-stage',   stage);
   sv('ddp-notes',   d.notes);
-  document.getElementById('deal-detail-panel').classList.add('show');
+  document.getElementById('ddp-view-mode').style.display = 'none';
+  document.getElementById('ddp-edit-mode').style.display = 'flex';
 }
 
 function closeDealDetail(){
@@ -5479,8 +5724,10 @@ async function saveDealDetail(){
   d.prob         = newProb;
   d.notes        = newNotes;
 
-  // Move to different stage if changed
-  if(newStage !== currentDealStage){
+  // Move to different stage if changed; reset stage timer
+  const stageChanged = newStage !== currentDealStage;
+  if(stageChanged){
+    d.stageEnteredAt = new Date().toISOString();
     deals[currentDealStage].splice(currentDealIdx, 1);
     if(!deals[newStage]) deals[newStage] = [];
     deals[newStage].push(d);
@@ -5489,7 +5736,7 @@ async function saveDealDetail(){
   // Save to Supabase if real id
   if(d.id && !String(d.id).startsWith('tmp_')){
     try {
-      await supa.from('deals').update({
+      const updatePayload = {
         name: newName, client_name: newCo, value: newVal,
         probability: newProb, stage: newStage, notes: newNotes,
         contact_name: newContactName || undefined,
@@ -5503,7 +5750,9 @@ async function saveDealDetail(){
         timeline:     newTimeline    || undefined,
         funding_stage:newFunding     || undefined,
         lead_source:  newSource      || undefined
-      }).eq('id', d.id);
+      };
+      if(stageChanged) updatePayload.stage_entered_at = d.stageEnteredAt;
+      await supa.from('deals').update(updatePayload).eq('id', d.id);
     } catch(e){ console.warn('Deal save failed:', e); }
   }
 
@@ -6197,6 +6446,23 @@ function openClientDetail(cid) {
     </div>`;
   ov.addEventListener('click', e=>{ if(e.target===ov) ov.remove(); });
   document.body.appendChild(ov);
+
+  // Auto-save client notes 1 second after user stops typing
+  const notesEl = ov.querySelector(`#gl-notes-${c.id}`);
+  const statusEl = ov.querySelector(`#gl-notes-status-${c.id}`);
+  if(notesEl){
+    let _notesTimer = null;
+    notesEl.addEventListener('input', function(){
+      if(statusEl) statusEl.textContent = '…';
+      clearTimeout(_notesTimer);
+      const val = this.value;
+      _notesTimer = setTimeout(async () => {
+        const ok = await (window.glSaveClientNotes ? window.glSaveClientNotes(c.id, val) : false);
+        if(statusEl) statusEl.textContent = ok ? '✓ saved' : '⚠ saved locally only';
+        setTimeout(()=>{ if(statusEl) statusEl.textContent = ''; }, 2500);
+      }, 1000);
+    });
+  }
 }
 
 // ─── MONTHLY REPORTS ───
@@ -6800,7 +7066,7 @@ function renderCal(type){
     const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
     const isToday=today.getFullYear()===year&&today.getMonth()===month&&today.getDate()===day;
     const legacyDay=calEvents.filter(e=>e.date===dateStr&&(type==='general'?e.type!=='production':e.type==='production'));
-    const prunDay=type==='production'?(window.glProductionRuns||[]).filter(r=>(r.scheduled_start_date||r.scheduled_date)===dateStr).map(r=>({title:r.run_name||'(untitled)',type:'production'})):[];
+    const prunDay=(window.glProductionRuns||[]).filter(r=>(r.scheduled_start_date||r.scheduled_date)===dateStr).map(r=>({title:(r.run_name||'(untitled)')+(r.client_name?' — '+r.client_name:''),type:type==='production'?'production':'production-run'}));
     const dayEvents=[...legacyDay,...prunDay];
     html+=`<div class="cal-day${isToday?' today':''}" onclick="openCalEventModal('${type}','${dateStr}')">
       <div class="cal-day-num">${day}</div>
