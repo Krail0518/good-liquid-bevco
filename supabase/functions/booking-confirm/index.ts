@@ -2,6 +2,12 @@
 // calendar event, and sends confirmation emails to both the booker and
 // the rep who owns the booking page.
 //
+// Both emails include:
+//   • An .ics (iCalendar) attachment — one click adds the event to
+//     Google Calendar, Apple Calendar, Outlook, or any calendar app.
+//   • METHOD:REQUEST so Gmail shows Accept / Decline RSVP buttons.
+//   • A "Add to Google Calendar" quick-add link in the HTML body.
+//
 // Called by the public book.html page (no auth required — anon callers).
 //
 // Request body (POST JSON):
@@ -33,52 +39,123 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders, jsonResponse, errorResponse, handlePreflight } from '../_shared/cors.ts';
 
 // ── Timezone-aware UTC conversion ──────────────────────────────────────────
-// Converts "YYYY-MM-DD" + "HH:MM" in a named timezone to a UTC Date.
-// Uses the Intl.DateTimeFormat trick that works in Deno's V8 runtime.
 function localToUTC(dateStr: string, timeStr: string, tz: string): Date {
-  // Step 1: interpret the input as UTC (naive)
-  const naiveUTC = new Date(`${dateStr}T${timeStr}:00.000Z`);
-  // Step 2: find out what local time that UTC instant maps to in `tz`
-  const fmt = new Intl.DateTimeFormat('sv-SE', {
+  const naiveUTC   = new Date(`${dateStr}T${timeStr}:00.000Z`);
+  const fmt        = new Intl.DateTimeFormat('sv-SE', {
     timeZone: tz,
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', second: '2-digit',
     hour12: false,
   });
-  const localStr = fmt.format(naiveUTC); // "YYYY-MM-DD HH:MM:SS"
+  const localStr   = fmt.format(naiveUTC);
   const localAsUTC = new Date(localStr.replace(' ', 'T') + '.000Z');
-  // Step 3: delta = naiveUTC - localAsUTC = TZ offset in ms
-  const offsetMs = naiveUTC.getTime() - localAsUTC.getTime();
-  // Step 4: actual UTC = naiveUTC - offsetMs
+  const offsetMs   = naiveUTC.getTime() - localAsUTC.getTime();
   return new Date(naiveUTC.getTime() - offsetMs);
 }
 
 function fmtLocalDate(d: Date, tz: string): string {
   return d.toLocaleDateString('en-US', {
-    timeZone: tz,
-    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+    timeZone: tz, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
   });
 }
 
 function fmtLocalTime(d: Date, tz: string): string {
   return d.toLocaleTimeString('en-US', {
-    timeZone: tz,
-    hour: 'numeric', minute: '2-digit', hour12: true,
+    timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true,
   });
 }
 
 function tzLabel(tz: string): string {
   try {
-    const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: tz, timeZoneName: 'short',
-    }).formatToParts(new Date());
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'short' })
+      .formatToParts(new Date());
     return parts.find(p => p.type === 'timeZoneName')?.value ?? tz;
   } catch { return tz; }
 }
 
-// ── Mailgun sender ─────────────────────────────────────────────────────────
+// ── ICS / iCalendar generator ──────────────────────────────────────────────
+// Produces a VCALENDAR with METHOD:REQUEST so Gmail renders RSVP buttons.
+function buildICS(opts: {
+  uid:            string;
+  summary:        string;
+  description:    string;
+  startAt:        Date;
+  endAt:          Date;
+  organizerName:  string;
+  organizerEmail: string;
+  attendeeName:   string;
+  attendeeEmail:  string;
+}): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  const dt = (d: Date) =>
+    `${d.getUTCFullYear()}${p(d.getUTCMonth()+1)}${p(d.getUTCDate())}` +
+    `T${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}Z`;
+
+  // Escape special ICS characters
+  const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/;/g, '\\;')
+    .replace(/,/g, '\\,').replace(/\n/g, '\\n');
+
+  // RFC 5545 §3.1: fold lines longer than 75 octets
+  const fold = (line: string): string => {
+    if (line.length <= 75) return line;
+    const chunks: string[] = [];
+    chunks.push(line.slice(0, 75));
+    let i = 75;
+    while (i < line.length) { chunks.push(' ' + line.slice(i, i + 74)); i += 74; }
+    return chunks.join('\r\n');
+  };
+
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Good Liquid Bev Co//Scheduling//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:REQUEST',
+    'BEGIN:VEVENT',
+    `DTSTART:${dt(opts.startAt)}`,
+    `DTEND:${dt(opts.endAt)}`,
+    `DTSTAMP:${dt(new Date())}`,
+    `UID:${opts.uid}@goodliquidbevco.com`,
+    `ORGANIZER;CN="${esc(opts.organizerName)}":mailto:${opts.organizerEmail}`,
+    `ATTENDEE;CN="${esc(opts.attendeeName)}";RSVP=TRUE;PARTSTAT=NEEDS-ACTION:mailto:${opts.attendeeEmail}`,
+    `SUMMARY:${esc(opts.summary)}`,
+    `DESCRIPTION:${esc(opts.description)}`,
+    'STATUS:CONFIRMED',
+    'SEQUENCE:0',
+    'BEGIN:VALARM',
+    'TRIGGER:-PT15M',
+    'ACTION:DISPLAY',
+    'DESCRIPTION:Meeting reminder',
+    'END:VALARM',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ];
+
+  return lines.map(fold).join('\r\n');
+}
+
+// ── Google Calendar quick-add URL ─────────────────────────────────────────
+function googleCalURL(opts: {
+  summary: string; description: string; startAt: Date; endAt: Date;
+}): string {
+  const p  = (n: number) => String(n).padStart(2, '0');
+  const dt = (d: Date) =>
+    `${d.getUTCFullYear()}${p(d.getUTCMonth()+1)}${p(d.getUTCDate())}` +
+    `T${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}Z`;
+  const q = encodeURIComponent;
+  return 'https://www.google.com/calendar/render?action=TEMPLATE' +
+    `&text=${q(opts.summary)}` +
+    `&dates=${dt(opts.startAt)}/${dt(opts.endAt)}` +
+    `&details=${q(opts.description.slice(0, 400))}`;
+}
+
+// ── Mailgun sender (with optional .ics attachment) ────────────────────────
 async function sendMail(opts: {
-  to: string; subject: string; text: string; html?: string;
+  to:          string;
+  subject:     string;
+  text:        string;
+  html?:       string;
+  icsContent?: string;   // raw ICS text to attach
 }): Promise<void> {
   const apiKey = Deno.env.get('MAILGUN_API_KEY');
   const domain = Deno.env.get('MAILGUN_DOMAIN');
@@ -93,6 +170,17 @@ async function sendMail(opts: {
   form.set('subject', opts.subject);
   form.set('text', opts.text);
   if (opts.html) form.set('html', opts.html);
+
+  // Attach .ics file — Gmail, Apple Mail, and Outlook all recognise this
+  // and render an "Add to Calendar" / RSVP prompt.
+  if (opts.icsContent) {
+    const icsBlob = new Blob(
+      [opts.icsContent],
+      { type: 'text/calendar;charset=utf-8;method=REQUEST' },
+    );
+    form.append('attachment', icsBlob, 'invite.ics');
+  }
+
   const r = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
     method: 'POST',
     headers: { Authorization: 'Basic ' + btoa('api:' + apiKey) },
@@ -127,7 +215,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(slot_date)) return errorResponse('slot_date must be YYYY-MM-DD', 400);
   if (!/^\d{2}:\d{2}$/.test(slot_time))        return errorResponse('slot_time must be HH:MM', 400);
 
-  // Service-role client — bypasses RLS
   const supa = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
@@ -145,7 +232,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const tz        = page.timezone || 'America/New_York';
   const duration  = Number(page.duration)     || 30;
-  const buffer    = Number(page.buffer_after) || 0;
   const availDays = (page.avail_days as number[]) || [1,2,3,4,5];
 
   // ── Convert slot to UTC timestamps ────────────────────────────────────
@@ -155,80 +241,63 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const endAt = new Date(startAt.getTime() + duration * 60_000);
 
-  // Reject past slots
   if (startAt.getTime() < Date.now() - 60_000) {
     return errorResponse('That slot is in the past', 400);
   }
 
-  // Validate requested day-of-week is in avail_days
-  const dow = new Date(slot_date + 'T12:00:00Z').getUTCDay(); // 0=Sun … 6=Sat (date-only, avoid timezone shift)
+  const dow = new Date(slot_date + 'T12:00:00Z').getUTCDay();
   if (!availDays.includes(dow)) {
     return errorResponse('That day is not available', 400);
   }
 
-  // Validate slot fits within start/end time window
   const [sh, sm] = (page.start_time || '09:00').split(':').map(Number);
   const [eh, em] = (page.end_time   || '17:00').split(':').map(Number);
   const [rh, rm] = slot_time.split(':').map(Number);
   const slotMin  = rh * 60 + rm;
-  const startMin = sh * 60 + sm;
-  const endMin   = eh * 60 + em;
-  if (slotMin < startMin || slotMin + duration > endMin) {
+  if (slotMin < sh * 60 + sm || slotMin + duration > eh * 60 + em) {
     return errorResponse('Slot is outside availability window', 400);
   }
 
   // ── Check for conflicts ────────────────────────────────────────────────
-  // A conflict exists if any confirmed booking overlaps [startAt, endAt)
-  // accounting for buffer: existing booking "occupies" until end + buffer.
-  const windowStart = startAt.toISOString();
-  const windowEnd   = endAt.toISOString();
-
   const { data: conflicts } = await supa
     .from('bookings')
-    .select('id, start_at, end_at')
+    .select('id')
     .eq('page_id', page_id)
     .eq('status', 'confirmed')
-    .lt('start_at', windowEnd)
-    .gt('end_at',   windowStart);   // overlapping: start < my_end AND end > my_start
+    .lt('start_at', endAt.toISOString())
+    .gt('end_at',   startAt.toISOString());
 
   if (conflicts && conflicts.length > 0) {
     return errorResponse('That slot is no longer available', 409);
   }
 
   // ── Insert cal_event ───────────────────────────────────────────────────
-  const calTitle     = `Meeting: ${booker_name}`;
-  const calNotes     = [
-    `Booked via scheduling link`,
+  const calNotes = [
+    'Booked via scheduling link',
     `Name: ${booker_name}`,
     `Email: ${booker_email}`,
     booker_company ? `Company: ${booker_company}` : null,
     notes          ? `Notes: ${notes}`             : null,
   ].filter(Boolean).join('\n');
 
-  // event_date and event_time are stored in the page's timezone
   const localStartStr = new Intl.DateTimeFormat('sv-SE', {
     timeZone: tz,
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', hour12: false,
-  }).format(startAt); // "YYYY-MM-DD HH:MM"
-
+  }).format(startAt);
   const [calDate, calTime] = localStartStr.split(' ');
 
-  const { data: calEvent, error: calErr } = await supa
+  const { data: calEvent } = await supa
     .from('cal_events')
     .insert([{
       event_type: 'general',
-      title:      calTitle,
+      title:      `Meeting: ${booker_name}`,
       event_date: calDate,
       event_time: calTime,
       notes:      calNotes,
     }])
     .select('id')
     .single();
-
-  if (calErr) {
-    console.error('[booking-confirm] cal_events insert error:', calErr);
-  }
 
   // ── Insert booking ─────────────────────────────────────────────────────
   const { data: booking, error: bookErr } = await supa
@@ -248,79 +317,139 @@ Deno.serve(async (req: Request): Promise<Response> => {
     .single();
 
   if (bookErr || !booking) {
-    console.error('[booking-confirm] bookings insert error:', bookErr);
+    console.error('[booking-confirm] booking insert error:', bookErr);
     return errorResponse('Failed to save booking', 500);
   }
 
-  // ── Format times for emails ───────────────────────────────────────────
-  const dateLabel = fmtLocalDate(startAt, tz);
-  const timeLabel = fmtLocalTime(startAt, tz) + ' – ' + fmtLocalTime(endAt, tz);
-  const tzLbl     = tzLabel(tz);
-  const hostName  = (page.profiles as any)?.name || 'the team';
-  const hostEmail = (page.profiles as any)?.email || '';
+  // ── Build shared email content ─────────────────────────────────────────
+  const dateLabel  = fmtLocalDate(startAt, tz);
+  const startLabel = fmtLocalTime(startAt, tz);
+  const timeLabel  = startLabel + ' – ' + fmtLocalTime(endAt, tz);
+  const tzLbl      = tzLabel(tz);
+  const hostName   = (page.profiles as any)?.name  || 'the team';
+  const hostEmail  = (page.profiles as any)?.email || '';
+  const summary    = `Meeting: ${booker_name} + Good Liquid Bev Co`;
+
+  const icsDesc = [
+    'Booked via Good Liquid Bev Co scheduling link.',
+    `Name: ${booker_name}`,
+    `Email: ${booker_email}`,
+    booker_company ? `Company: ${booker_company}` : null,
+    notes          ? `Notes: ${notes}`             : null,
+  ].filter(Boolean).join('\n');
+
+  // Build ICS — used by both emails
+  const icsContent = buildICS({
+    uid:            booking.id,
+    summary,
+    description:    icsDesc,
+    startAt,
+    endAt,
+    organizerName:  hostName,
+    organizerEmail: hostEmail || 'Mike@GoodLiquid.com',
+    attendeeName:   String(booker_name),
+    attendeeEmail:  String(booker_email),
+  });
+
+  // Google Calendar quick-add link (for the HTML email body)
+  const gcalURL = googleCalURL({ summary, description: icsDesc, startAt, endAt });
 
   // ── Email: booker confirmation ─────────────────────────────────────────
   const bookerText = [
     `Hi ${booker_name},`,
-    ``,
-    `Your meeting is confirmed!`,
-    ``,
+    '',
+    'Your meeting with Good Liquid Bev Co is confirmed!',
+    '',
     `📅  ${dateLabel}`,
     `🕐  ${timeLabel} (${tzLbl})`,
     `⏱   ${duration} minutes`,
     `👤  With: ${hostName}, Good Liquid Bev Co`,
-    ``,
-    `We look forward to speaking with you. If you need to reschedule or`,
-    `cancel, reply to this email and we will get you sorted.`,
-    ``,
+    '',
+    'The attached invite.ics file adds this event to Google Calendar,',
+    'Apple Calendar, or Outlook — just open it.',
+    '',
+    'Need to reschedule? Reply to this email and we\'ll get you sorted.',
+    '',
     `— ${hostName}`,
-    `Good Liquid Bev Co · Palmetto, FL`,
-    `Mike@GoodLiquid.com · (803) 493-5065`,
+    'Good Liquid Bev Co · Palmetto, FL',
+    'Mike@GoodLiquid.com · (803) 493-5065',
   ].join('\n');
 
   const bookerHtml = `
 <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:#222">
   <div style="background:#0f1624;padding:24px 32px;border-radius:10px">
-    <img src="https://goodliquidbevco.com/logo.png" alt="Good Liquid Bev Co" style="height:40px;margin-bottom:20px" onerror="this.style.display='none'">
     <h2 style="color:#00e5c0;margin:0 0 6px">Meeting Confirmed ✓</h2>
     <p style="color:#c8d8f0;margin:0 0 24px">Hi ${booker_name}, you're all set!</p>
     <div style="background:#192337;border-radius:8px;padding:20px;margin-bottom:20px">
-      <div style="margin-bottom:12px"><span style="color:#6b87ad;font-size:12px;text-transform:uppercase;letter-spacing:1px">Date</span><br><span style="color:#fff;font-size:15px">${dateLabel}</span></div>
-      <div style="margin-bottom:12px"><span style="color:#6b87ad;font-size:12px;text-transform:uppercase;letter-spacing:1px">Time</span><br><span style="color:#fff;font-size:15px">${timeLabel}</span><span style="color:#6b87ad;font-size:13px"> ${tzLbl}</span></div>
-      <div style="margin-bottom:12px"><span style="color:#6b87ad;font-size:12px;text-transform:uppercase;letter-spacing:1px">Duration</span><br><span style="color:#fff;font-size:15px">${duration} minutes</span></div>
-      <div><span style="color:#6b87ad;font-size:12px;text-transform:uppercase;letter-spacing:1px">With</span><br><span style="color:#fff;font-size:15px">${hostName} · Good Liquid Bev Co</span></div>
+      <div style="margin-bottom:12px">
+        <span style="color:#6b87ad;font-size:12px;text-transform:uppercase;letter-spacing:1px">Date</span><br>
+        <span style="color:#fff;font-size:15px">${dateLabel}</span>
+      </div>
+      <div style="margin-bottom:12px">
+        <span style="color:#6b87ad;font-size:12px;text-transform:uppercase;letter-spacing:1px">Time</span><br>
+        <span style="color:#fff;font-size:15px">${timeLabel}</span>
+        <span style="color:#6b87ad;font-size:13px"> ${tzLbl}</span>
+      </div>
+      <div style="margin-bottom:12px">
+        <span style="color:#6b87ad;font-size:12px;text-transform:uppercase;letter-spacing:1px">Duration</span><br>
+        <span style="color:#fff;font-size:15px">${duration} minutes</span>
+      </div>
+      <div>
+        <span style="color:#6b87ad;font-size:12px;text-transform:uppercase;letter-spacing:1px">With</span><br>
+        <span style="color:#fff;font-size:15px">${hostName} · Good Liquid Bev Co</span>
+      </div>
     </div>
+
+    <!-- Calendar buttons -->
+    <div style="margin-bottom:20px">
+      <p style="color:#9aa7bd;font-size:13px;margin:0 0 12px">
+        📎 <strong style="color:#c8d8f0">invite.ics</strong> is attached — open it to add this event to
+        Google Calendar, Apple Calendar, or Outlook.
+      </p>
+      <a href="${gcalURL}"
+         style="display:inline-block;padding:10px 20px;background:#4285F4;color:#fff;border-radius:6px;text-decoration:none;font-size:13px;font-weight:600;margin-right:8px">
+        📅 Add to Google Calendar
+      </a>
+    </div>
+
     <p style="color:#9aa7bd;font-size:13px">Need to reschedule? Reply to this email and we'll get you sorted.</p>
     <hr style="border:none;border-top:1px solid #1f3059;margin:20px 0">
-    <p style="color:#6b87ad;font-size:12px;margin:0">Good Liquid Bev Co · Palmetto, FL<br>Mike@GoodLiquid.com · (803) 493-5065</p>
+    <p style="color:#6b87ad;font-size:12px;margin:0">
+      Good Liquid Bev Co · Palmetto, FL<br>
+      Mike@GoodLiquid.com · (803) 493-5065
+    </p>
   </div>
 </div>`;
 
   await sendMail({
-    to:      String(booker_email),
-    subject: `Meeting confirmed: ${dateLabel} at ${fmtLocalTime(startAt, tz)}`,
-    text:    bookerText,
-    html:    bookerHtml,
+    to:         String(booker_email),
+    subject:    `Meeting confirmed: ${dateLabel} at ${startLabel}`,
+    text:       bookerText,
+    html:       bookerHtml,
+    icsContent,
   });
 
   // ── Email: host notification ───────────────────────────────────────────
   if (hostEmail) {
     const hostText = [
-      `New booking on your scheduling link!`,
-      ``,
+      'New booking on your scheduling link!',
+      '',
       `📅  ${dateLabel}`,
       `🕐  ${timeLabel} (${tzLbl})`,
-      ``,
+      '',
       `👤  Name: ${booker_name}`,
       `📧  Email: ${booker_email}`,
       booker_company ? `🏢  Company: ${booker_company}` : null,
       notes          ? `📝  Notes: ${notes}`             : null,
+      '',
+      'The attached invite.ics adds this event to your calendar.',
     ].filter(Boolean).join('\n');
 
     await sendMail({
-      to:      hostEmail,
-      subject: `New booking: ${booker_name} on ${dateLabel}`,
-      text:    hostText,
+      to:         hostEmail,
+      subject:    `New booking: ${booker_name} on ${dateLabel}`,
+      text:       hostText,
+      icsContent,
     });
   }
 
