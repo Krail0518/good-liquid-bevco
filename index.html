@@ -238,10 +238,20 @@ footer{background:var(--ink);border-top:1px solid rgba(255,255,255,.06);padding:
 #admin-btn:hover{background:rgba(0,229,192,.1);border-color:var(--teal);transform:translateY(-2px)}
 
 /* PASSWORD MODAL */
-#pw-ov{position:fixed;inset:0;z-index:500;background:rgba(6,13,26,.93);backdrop-filter:blur(16px);display:none;align-items:center;justify-content:center}
+#pw-ov{position:fixed;inset:0;z-index:500;background:rgba(6,13,26,.93);backdrop-filter:blur(16px);display:none;align-items:flex-start;justify-content:center;overflow-y:auto;-webkit-overflow-scrolling:touch}
 #pw-ov.show{display:flex}
-.pw-box{background:#0a1628;border:1px solid rgba(0,229,192,.18);border-radius:22px;padding:44px 40px;width:370px;text-align:center}
+.pw-box{background:#0a1628;border:1px solid rgba(0,229,192,.18);border-radius:22px;padding:44px 40px;width:370px;text-align:center;margin:auto}
 .pw-logo{width:50px;height:50px;border-radius:13px;overflow:hidden;margin:0 auto 18px}
+@media(max-width:480px){
+  .pw-box{width:calc(100% - 32px);padding:28px 24px;border-radius:16px}
+  .pw-logo{width:38px;height:38px;margin-bottom:10px}
+  .pw-title{font-size:20px;margin-bottom:3px}
+  .pw-sub{margin-bottom:16px;font-size:12px}
+  .pw-input{padding:11px 14px;margin-bottom:10px}
+  .pw-btn{padding:12px;margin-bottom:8px}
+  /* Hide "Stay signed in on this computer" — not relevant on phones and saves 42px */
+  .pw-box label{display:none!important}
+}
 .pw-logo img{width:100%;height:100%;object-fit:cover}
 .pw-title{font-family:var(--ff-disp);font-size:26px;letter-spacing:2px;color:var(--white);margin-bottom:5px}
 .pw-sub{font-size:13px;color:var(--muted);margin-bottom:26px}
