@@ -15,7 +15,7 @@
 
 
 <title>Good Liquid Bev Co</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="/supabase.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -4305,6 +4305,17 @@ window.checkPw = async function checkPw(){
   btn.textContent = 'Signing in…';
   btn.disabled = true;
 
+  // If supa wasn't ready at page-load (CDN race), try to init now
+  if(!supa && typeof supabase !== 'undefined'){
+    supa = supabase.createClient(SUPA_URL, SUPA_KEY, _glClientOpts);
+    window.supa = supa;
+  }
+  // Also try fix.js getSupa() fallback
+  if(!supa && typeof window.getSupabase === 'function'){
+    supa = window.getSupabase();
+    window.supa = supa;
+  }
+
   // Try Supabase auth first
   let supaOk = false;
   try {
@@ -4323,7 +4334,17 @@ window.checkPw = async function checkPw(){
       };
       try { await loadSupabaseData(); } catch(e){ console.warn('Data load error:', e); }
     }
-  } catch(e){ console.warn('Supabase unavailable, trying local auth:', e); }
+  } catch(e){
+    console.warn('Supabase auth error:', e);
+    // If supa is null, show a clearer error than "incorrect password"
+    if(!supa){
+      btn.textContent = 'Sign in →';
+      btn.disabled = false;
+      errEl.textContent = 'Connection error — please reload the page and try again.';
+      errEl.style.display = 'block';
+      return;
+    }
+  }
 
   // Fallback to local auth if Supabase failed
   if(!supaOk){

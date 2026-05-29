@@ -18,6 +18,6 @@ Thumbs.db
 .help-addon.js.scratch
 .toolbar-redesign.js.scratch
 
-# Playwright test artifacts (downloaded CDN bundles, not production assets)
-supabase.min.js
+# Playwright test artifacts
 supabase.b64.txt
+# Note: supabase.min.js is intentionally tracked — self-hosted to fix mobile CDN issues
