@@ -2431,44 +2431,6 @@ select option, .fsel option {
         <div id="users-list"></div>
       </div>
 
-      <!-- INVITE MODAL -->
-      <div class="modal-ov" id="invite-modal">
-        <div class="modal-box" style="width:460px">
-          <div class="modal-title">Invite a team member <span class="modal-close" onclick="closeInviteModal()">✕</span></div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-            <div class="frow"><div class="flbl">Full name *</div><input class="finp" type="text" id="inv-u-name" placeholder="First Last"></div>
-            <div class="frow"><div class="flbl">Email *</div><input class="finp" type="email" id="inv-u-email" placeholder="name@email.com"></div>
-          </div>
-          <div class="frow"><div class="flbl">Role</div>
-            <select class="fsel" id="inv-u-role" onchange="refreshInvitePreview()">
-              <option value="sales">Sales — clients, pipeline, invoices, referrals</option>
-              <option value="viewer">Viewer — dashboard &amp; clients (read-only)</option>
-              <option value="admin">Admin — full access including user management</option>
-            </select>
-          </div>
-          <div class="frow">
-            <div class="flbl">Temporary password</div>
-            <div style="display:flex;gap:8px">
-              <input class="finp" type="text" id="inv-u-pw" style="flex:1;font-family:var(--ff-mono);letter-spacing:2px" oninput="refreshInvitePreview()">
-              <button class="cbtn" style="font-size:11px;white-space:nowrap" onclick="genTempPw()">🔄 Generate</button>
-            </div>
-          </div>
-          <div style="background:rgba(245,200,66,.06);border:1px solid rgba(245,200,66,.18);border-radius:9px;padding:11px;margin-bottom:12px;font-size:11px;color:var(--muted);line-height:1.65">
-            ⚠️ Share this password directly (text/Slack/call). They log in with email + this password. No email reset — save it somewhere safe.
-          </div>
-          <div style="background:rgba(255,255,255,.04);border-radius:9px;padding:12px;margin-bottom:13px">
-            <div style="font-size:10px;color:var(--muted);margin-bottom:5px;letter-spacing:.5px;font-weight:600;text-transform:uppercase">Copy &amp; share with them:</div>
-            <div id="invite-share-text" style="font-size:11px;color:var(--white);line-height:1.9;font-family:var(--ff-mono)"></div>
-          </div>
-          <div style="display:flex;gap:8px">
-            <button class="cbtn grn" onclick="copyInviteText()" style="flex:1">📋 Copy invite text</button>
-            <button class="cbtn pri" onclick="saveInviteUser()" style="flex:1">Add user</button>
-            <button class="cbtn" onclick="closeInviteModal()">Cancel</button>
-          </div>
-          <div id="invite-copied" style="display:none;text-align:center;font-size:11px;color:var(--teal);margin-top:8px">✓ Copied!</div>
-        </div>
-      </div>
-
       <!-- CHANGE ROLE MODAL -->
       <div class="modal-ov" id="role-modal">
         <div class="modal-box" style="width:360px">
@@ -3121,7 +3083,7 @@ function renderDash(){
     <div class="cmc"><div class="cml">Active brands</div><div class="cmv">${act}</div><div class="cmd up">+${clients.filter(c=>c.status==='lead').length} leads</div></div>`;
   document.getElementById('dash-act').innerHTML=activities.slice(0,5).map(a=>`<div class="act-item" onclick="actNav(${JSON.stringify(a).replace(/"/g,'&quot;')})" style="cursor:pointer;border-radius:8px;padding:9px 8px;margin:0 -8px;transition:background 0.2s" onmouseenter="this.style.background='rgba(255,255,255,.04)'" onmouseleave="this.style.background='transparent'">
     <div class="act-ico ${a.type}">${a.icon}</div>
-    <div style="flex:1"><div class="act-name">${a.name}</div><div class="act-detail">${a.detail}</div><div class="act-time">${a.time}</div></div>
+    <div style="flex:1"><div class="act-name">${esc(a.name)}</div><div class="act-detail">${esc(a.detail)}</div><div class="act-time">${a.time}</div></div>
     <div style="color:var(--teal);font-size:11px;opacity:0.6;flex-shrink:0">→</div>
   </div>`).join('');
   const stages=['Prospecting','Proposal','Negotiation','Closed Won'];
@@ -3718,7 +3680,7 @@ function renderActivity(){
       ? '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No activity matches the filter.</div>'
       : list.map(a=>`<div class="act-item" onclick="actNav(${JSON.stringify(a).replace(/"/g,'&quot;')})" style="cursor:pointer;border-radius:8px;padding:9px 8px;margin:0 -8px;transition:background 0.2s" onmouseenter="this.style.background='rgba(255,255,255,.04)'" onmouseleave="this.style.background='transparent'">
         <div class="act-ico ${a.type}">${a.icon}</div>
-        <div style="flex:1"><div class="act-name">${a.name}</div><div class="act-detail">${a.detail}</div><div class="act-time">${a.time}</div></div>
+        <div style="flex:1"><div class="act-name">${esc(a.name)}</div><div class="act-detail">${esc(a.detail)}</div><div class="act-time">${a.time}</div></div>
         <div style="color:var(--teal);font-size:11px;opacity:0.6;flex-shrink:0">→</div>
       </div>`).join('')
     ) + '</div>';
@@ -4098,63 +4060,6 @@ function renderUsers(){
       </div>
     </div>`;
   }).join('');
-}
-
-function openInviteModal(){
-  if(!canAction('manage_users')){alert('Only admins can invite users.');return}
-  document.getElementById('invite-modal').classList.add('show');
-  genTempPw();
-  refreshInvitePreview();
-}
-function closeInviteModal(){document.getElementById('invite-modal').classList.remove('show');document.getElementById('invite-copied').style.display='none'}
-
-function genTempPw(){
-  // Use the policy-compliant generator (8+ chars, uppercase, digit, special).
-  const pw = (window.glGenerateTempPassword ? window.glGenerateTempPassword() : (function(){
-    const chars='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#';
-    let s='GL';for(let i=0;i<10;i++)s+=chars[Math.floor(Math.random()*chars.length)];return s;
-  })());
-  document.getElementById('inv-u-pw').value=pw;
-  refreshInvitePreview();
-}
-
-function refreshInvitePreview(){
-  const name=document.getElementById('inv-u-name')?.value||'[Name]';
-  const email=document.getElementById('inv-u-email')?.value||'[email]';
-  const pw=document.getElementById('inv-u-pw')?.value||'[password]';
-  const role=document.getElementById('inv-u-role')?.value||'sales';
-  const roleLabel={admin:'Admin',sales:'Sales',viewer:'Viewer'}[role];
-  document.getElementById('invite-share-text').innerHTML=
-    `URL: Open GoodLiquid.html in Chrome<br>`+
-    `Email: ${email}<br>`+
-    `Password: ${pw}<br>`+
-    `Role: ${roleLabel} access<br>`+
-    `Click the 🔒 ADMIN button, then sign in.`;
-}
-
-function copyInviteText(){
-  const el=document.getElementById('invite-share-text');
-  const text=el.innerText||el.textContent;
-  navigator.clipboard.writeText(text).then(()=>{
-    document.getElementById('invite-copied').style.display='block';
-    setTimeout(()=>document.getElementById('invite-copied').style.display='none',2500);
-  });
-}
-
-function saveInviteUser(){
-  const name=document.getElementById('inv-u-name').value.trim();
-  const email=document.getElementById('inv-u-email').value.trim().toLowerCase();
-  const pw=document.getElementById('inv-u-pw').value.trim();
-  const role=document.getElementById('inv-u-role').value;
-  if(!name||!email||!pw){alert('Please fill in name, email, and password.');return}
-  if(users.find(u=>u.email.toLowerCase()===email)){alert('A user with this email already exists.');return}
-  const initials=name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
-  const palettes=[['#1a3a6e','#9FE1CB'],['#0F6E56','#E1F5EE'],['#854F0B','#FAEEDA'],['#3C3489','#EEEDFE'],['#712B13','#FAECE7']];
-  const p=palettes[users.length%palettes.length];
-  users.push({id:'u'+(users.length+1),name,email,password:pw,role,status:'active',lastLogin:'Never',initials,color:p[0],tc:p[1]});
-  renderUsers();
-  closeInviteModal();
-  ['inv-u-name','inv-u-email'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});
 }
 
 let changeRoleUserId=null;
@@ -6479,7 +6384,7 @@ function openArAging(){
           </tr></thead>
           <tbody>
             ${rows.map(r => `<tr style="border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer" onclick="document.getElementById('ar-aging-overlay').remove();openClientDetail('${r.id}')">
-              <td style="padding:9px 10px;font-weight:700;color:#fff">${r.name}</td>
+              <td style="padding:9px 10px;font-weight:700;color:#fff">${esc(r.name)}</td>
               ${bcell(r.current)}${bcell(r.b1_30)}${bcell(r.b31_60)}${bcell(r.b61_90)}${bcell(r.b90plus)}
               <td style="padding:9px 10px;text-align:right;font-family:var(--ff-disp);color:#f5c842;font-size:14px">${fmtMoneyShort(r.total)}</td>
               <td style="padding:9px 10px;text-align:right;color:${r.worst>90?'#e74c3c':r.worst>60?'#ff9a3c':r.worst>30?'#f5c842':r.worst>0?'#6b9fff':'#5fcf9e'};font-weight:700">${r.worst > 0 ? r.worst + 'd' : '—'}</td>
@@ -6655,7 +6560,7 @@ function renderNotifList(){
   if(!fresh.length){el.innerHTML='<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">No notifications in the last 48 hours.</div>';return;}
   el.innerHTML=fresh.map(n=>`<div class="notif-item ${n.read?'':'unread'}" onclick="markNotifRead('${n.id}')">
     <div class="notif-ico" style="background:${colors[n.type]||colors.info}">${icons[n.type]||'🔔'}</div>
-    <div style="flex:1"><div class="notif-title">${n.title}</div><div class="notif-sub">${n.sub}</div><div class="notif-time">${n.time}</div></div>
+    <div style="flex:1"><div class="notif-title">${esc(n.title)}</div><div class="notif-sub">${esc(n.sub)}</div><div class="notif-time">${n.time}</div></div>
   </div>`).join('');
 }
 
@@ -7637,7 +7542,7 @@ function renderClientDetail(clientId){
     const tags=clientTags[clientId]||[];
     const inp=tw.querySelector('input');
     const currentVal=inp?inp.value:'';
-    tw.innerHTML=tags.map(t=>`<span class="tag-chip">${t}<span class="tag-rm" onclick="removeTag('${clientId}','${t}')">✕</span></span>`).join('')+`<input placeholder="Add tag, press Enter" value="${currentVal}" onkeydown="if(event.key==='Enter'){addTag('${clientId}',this.value);this.value=''}">`;
+    tw.innerHTML=tags.map(t=>`<span class="tag-chip">${esc(t)}<span class="tag-rm" onclick="removeTag('${esc(clientId)}','${esc(t)}')">✕</span></span>`).join('')+`<input placeholder="Add tag, press Enter" value="${esc(currentVal)}" onkeydown="if(event.key==='Enter'){addTag('${esc(clientId)}',this.value);this.value=''}">`;
   }
 }
 
@@ -8373,7 +8278,7 @@ async function sendChatMsg(){
   input.value='';
   
   const msgs=document.getElementById('gl-chat-messages');
-  msgs.innerHTML+=`<div class="chat-msg user">${msg}</div>`;
+  msgs.innerHTML+=`<div class="chat-msg user">${esc(msg)}</div>`;
   msgs.innerHTML+=`<div class="chat-msg bot" id="chat-thinking">Thinking…</div>`;
   msgs.scrollTop=msgs.scrollHeight;
   

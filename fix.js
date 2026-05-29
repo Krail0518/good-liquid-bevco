@@ -2896,10 +2896,15 @@
     });
   }
 
+  var _attachAttempts = 0;
   function attach(){
     var sb = window.supa;
     if(!sb || !sb.auth || typeof sb.auth.onAuthStateChange !== 'function'){
-      console.warn('[GL] recovery handler: supa not ready, retrying');
+      _attachAttempts++;
+      if(_attachAttempts > 25){ // give up after ~10s
+        console.warn('[GL] recovery handler: supa never became ready, giving up');
+        return;
+      }
       setTimeout(attach, 400);
       return;
     }
@@ -6430,12 +6435,7 @@
 (function(){
   var DEFAULT_FN_URL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1/send-sms';
   var LEGACY_FN_URL  = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1/twilio-sms';
-  // One-time migration: if a stored URL points at the legacy (never-deployed)
-  // twilio-sms endpoint, silently re-point it at the real send-sms function.
-  try {
-    var stored = localStorage.getItem('gl_sms_fn_url');
-    if(stored && stored.trim() === LEGACY_FN_URL) localStorage.setItem('gl_sms_fn_url', DEFAULT_FN_URL);
-  } catch(e){}
+  // Legacy one-time migration (gl_sms_fn_url rewrite) removed — no longer needed.
   var EVENT_KEYS = [
     { key:'gl_sms_paid',    label:'An invoice is marked paid' },
     { key:'gl_sms_won',     label:'A deal is moved to Closed Won' },
