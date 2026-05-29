@@ -290,18 +290,55 @@
 
   /* ── Supabase Auth (bcrypt passwords managed by Supabase) ── */
   var _glSupa=null;
+  var _GL_SUPA_URL='https://ufjkeqmxwuyhbqyugcgg.supabase.co';
+  var _GL_ANON_KEY='sb_publishable_-37mkPw8uLzEJM21T9jJOA_YQRQ7ikB';
   function getSupa(){
     if(_glSupa)return _glSupa;
-    if(window.supa){_glSupa=window.supa;return _glSupa;}
+    // 1. Use already-created client from index.html
+    if(window.supa&&window.supa.auth){_glSupa=window.supa;return _glSupa;}
+    // 2. Create from the CDN global (self-hosted supabase.min.js)
     if(window.supabase&&typeof window.supabase.createClient==='function'){
       try{
-        _glSupa=window.supabase.createClient(
-          'https://ufjkeqmxwuyhbqyugcgg.supabase.co',
-          'sb_publishable_-37mkPw8uLzEJM21T9jJOA_YQRQ7ikB'
-        );
+        _glSupa=window.supabase.createClient(_GL_SUPA_URL,_GL_ANON_KEY);
+        window.supa=_glSupa;
         return _glSupa;
       }catch(e){console.error('[GL] supabase init failed',e);}
     }
+    // 3. Last resort: build a minimal fetch-based client so auth still works
+    //    even if the supabase-js bundle failed to parse/execute.
+    try{
+      var _s={auth:{signInWithPassword:async function(o){
+        var r=await fetch(_GL_SUPA_URL+'/auth/v1/token?grant_type=password',{
+          method:'POST',headers:{'Content-Type':'application/json','apikey':_GL_ANON_KEY},
+          body:JSON.stringify({email:o.email,password:o.password})});
+        var j=await r.json();
+        if(j.error_code||j.error)return{data:null,error:{message:j.error_description||j.message||'Auth failed'}};
+        return{data:{user:j.user,session:j},error:null};
+      },signOut:async function(){return{error:null};},
+      onAuthStateChange:function(){return{data:{subscription:{unsubscribe:function(){}}}};},
+      getSession:async function(){return{data:{session:null},error:null};}},
+      from:function(t){
+        var _f=[];var _sel='*';var _si=false;
+        var q={select:function(c){_sel=c||'*';return q;},
+          eq:function(c,v){_f.push(c+'=eq.'+encodeURIComponent(v));return q;},
+          is:function(c,v){_f.push(c+'=is.'+v);return q;},
+          maybeSingle:function(){_si=true;return q;},single:function(){_si=true;return q;},
+          then:function(res){
+            var u=_GL_SUPA_URL+'/rest/v1/'+t+'?select='+encodeURIComponent(_sel)+(_f.length?'&'+_f.join('&'):'');
+            var h={'apikey':_GL_ANON_KEY,'Content-Type':'application/json'};
+            if(_si)h['Accept']='application/vnd.pgrst.object+json';
+            return fetch(u,{headers:h}).then(function(r){return r.json();})
+              .then(function(j){return res({data:j,error:null});})
+              .catch(function(e){return res({data:null,error:{message:e.message}});});
+          }};
+        return q;
+      },functions:{invoke:async function(){return{data:null,error:{message:'SDK not loaded'}};}},
+      storage:{from:function(){return{getPublicUrl:function(p){return{data:{publicUrl:_GL_SUPA_URL+'/storage/v1/object/public/'+p}}};}}}
+      };
+      _glSupa=_s;window.supa=_s;
+      console.warn('[GL] Using fetch-based Supabase fallback — supabase.min.js may not have loaded');
+      return _glSupa;
+    }catch(fb){console.error('[GL] fallback client failed',fb);}
     return null;
   }
 
@@ -342,7 +379,11 @@
     }
 
     var sb=getSupa();
-    if(!sb){showErr('Auth service unavailable.');return;}
+    if(!sb){
+      showErr('');
+      if(err){err.innerHTML='Connection error. <a href="javascript:location.reload()" style="color:var(--teal)">Reload page</a> and try again.';err.style.display='block';}
+      return;
+    }
     try{
       var r=await sb.auth.signInWithPassword({email:email,password:pw});
       if(r.error||!r.data||!r.data.user){showErr();return;}
