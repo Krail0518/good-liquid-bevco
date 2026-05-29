@@ -12791,7 +12791,10 @@
   window.renderPipelineForecast = function(){
     var host = document.getElementById('cpg-dashboard');
     if(!host) return;
+    // Always remove stale card first so we re-insert in the right place
     var existing = document.getElementById('gl-forecast-card');
+    if(existing) existing.remove();
+
     var deals = window.deals || {};
     var byStageRaw = {};
     var byStageWtd = {};
@@ -12807,39 +12810,48 @@
         subRaw += v;
         subWtd += v * p;
       });
-      byStageRaw[stage] = subRaw;
-      byStageWtd[stage] = subWtd;
-      rawTotal += subRaw;
-      wtdTotal += subWtd;
+      if(subRaw > 0){
+        byStageRaw[stage] = subRaw;
+        byStageWtd[stage] = subWtd;
+        rawTotal += subRaw;
+        wtdTotal += subWtd;
+      }
     });
-    if(rawTotal === 0){ if(existing) existing.remove(); return; }
+    if(rawTotal === 0) return;
+
     var stageBars = Object.keys(byStageRaw).map(function(stage){
       var rawAmt = byStageRaw[stage];
       var pct = rawTotal ? Math.round(rawAmt / rawTotal * 100) : 0;
-      return '<div style="margin-bottom:7px"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--white);margin-bottom:3px"><span>' + stage + '</span><span style="color:var(--teal);font-weight:600">' + fmt$(rawAmt) + '</span></div>' +
-        '<div style="height:6px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden"><div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,var(--teal),#1a6fff)"></div></div></div>';
-    }).join('');
-    var html =
-      '<div id="gl-forecast-card" class="ccard" style="grid-column:1/-1;margin-top:14px">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
-          '<div class="ccard-t" style="margin:0">Open pipeline</div>' +
-          '<div style="text-align:right">' +
-            '<div style="font-family:var(--ff-disp);font-size:22px;color:var(--teal)">' + fmt$(rawTotal) + '</div>' +
-            '<div style="font-size:11px;color:var(--muted);margin-top:2px">Weighted: ' + fmt$(wtdTotal) + '</div>' +
-          '</div>' +
+      return '<div style="margin-bottom:7px">' +
+        '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--white);margin-bottom:3px">' +
+          '<span>' + stage + '</span>' +
+          '<span style="color:var(--teal);font-weight:600">' + fmt$(rawAmt) + '</span>' +
         '</div>' +
-        stageBars +
-        '<div style="font-size:10px;color:var(--muted);margin-top:8px;letter-spacing:1px">Weighted = deal value × close probability across open stages.</div>' +
+        '<div style="height:6px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden">' +
+          '<div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,var(--teal),#1a6fff)"></div>' +
+        '</div>' +
       '</div>';
-    if(existing){ existing.outerHTML = html; }
-    else {
-      var dashRow = host.querySelector('.dash-row');
-      if(dashRow && dashRow.nextElementSibling){
-        dashRow.nextElementSibling.insertAdjacentHTML('afterend', html);
-      } else {
-        host.insertAdjacentHTML('beforeend', html);
-      }
-    }
+    }).join('');
+
+    var card = document.createElement('div');
+    card.id = 'gl-forecast-card';
+    card.className = 'ccard';
+    card.style.marginTop = '14px';
+    card.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+        '<div class="ccard-t" style="margin:0">Open pipeline</div>' +
+        '<div style="text-align:right">' +
+          '<div style="font-family:var(--ff-disp);font-size:22px;color:var(--teal)">' + fmt$(rawTotal) + '</div>' +
+          '<div style="font-size:11px;color:var(--muted);margin-top:2px">Weighted: ' + fmt$(wtdTotal) + '</div>' +
+        '</div>' +
+      '</div>' +
+      stageBars +
+      '<div style="font-size:10px;color:var(--muted);margin-top:8px;letter-spacing:1px">Weighted = deal value × close probability across open stages.</div>';
+
+    // Insert right before #dash-low-stock so position is always stable
+    var anchor = host.querySelector('#dash-low-stock');
+    if(anchor){ host.insertBefore(card, anchor); }
+    else { host.appendChild(card); }
   };
   (function wrap(){
     var orig = window.renderDash;
