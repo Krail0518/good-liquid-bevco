@@ -25507,7 +25507,7 @@
     var newPage = {
       user_id:      uid,
       slug:         slug,
-      title:        'Schedule a call with ' + (window.currentUser.name || 'Good Liquid Bev Co'),
+      title:        'Schedule a Call with Good Liquid Bev Co',
       description:  'Pick a time that works for you — 100% free, no pressure.',
       duration:     30,
       buffer_after: 10,
