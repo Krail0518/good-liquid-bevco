@@ -5222,31 +5222,62 @@
     tag(490,16,1) + tag(20,60,2) + tag(530,108,3)
   );
 
-  var MOCK_CALENDAR = wf(620, 250,
-    box(0,0,620,250,'#142238','rgba(255,255,255,.05)') +
-    txt(20,28,'CALENDAR',13,'#fff') + txt(20,46,'General events & tour requests',10,'#9aa7bd') +
-    box(420,16,40,24,'rgba(255,255,255,.06)') + txt(440,32,'‹',12,'#fff','middle') +
-    txt(490,32,'May 2026',11,'#fff','middle') +
-    box(540,16,40,24,'rgba(255,255,255,.06)') + txt(560,32,'›',12,'#fff','middle') +
-    // 7-col grid header
-    ['Su','Mo','Tu','We','Th','Fr','Sa'].map(function(d,i){ return txt(60 + i*78, 76, d, 10, '#9aa7bd','middle'); }).join('') +
-    // 5 rows × 7 cols grid (simplified)
-    (function(){
-      var cells = '';
-      for(var r=0; r<4; r++){
-        for(var c=0; c<7; c++){
-          var x = 26 + c*78, y = 90 + r*36;
-          cells += box(x, y, 70, 30, 'rgba(255,255,255,.02)', 'rgba(255,255,255,.04)');
-          cells += txt(x+8, y+18, (r*7+c+1), 10, '#cfd9e6');
-        }
-      }
-      return cells;
-    })() +
-    // Highlight one cell with an event
-    '<rect x="338" y="126" width="70" height="30" rx="6" fill="rgba(0,229,192,.12)" stroke="rgba(0,229,192,.4)"/>' +
-    txt(346,144,'15',10,'#00e5c0') + box(363,134,42,12,'rgba(0,229,192,.18)','rgba(0,229,192,.4)') + txt(384,143,'Tour',8,'#00e5c0','middle') +
-    txt(20,240,'Public "Schedule a tour" submissions land here automatically.',9,'#9aa7bd') +
-    tag(338,126,1) + tag(420,16,2)
+  var MOCK_CALENDAR = wf(620, 290,
+    box(0,0,620,290,'#142238','rgba(255,255,255,.05)') +
+    txt(20,24,'GENERAL CALENDAR',13,'#fff') +
+    // Month / List view toggle
+    box(16,36,88,24,'rgba(0,229,192,.18)','rgba(0,229,192,.4)') + txt(60,52,'Month',10,'#00e5c0','middle') +
+    box(108,36,62,24,'rgba(255,255,255,.04)','rgba(255,255,255,.1)') + txt(139,52,'List',10,'#9aa7bd','middle') +
+    // Nav arrows + month label
+    box(390,36,28,24,'rgba(255,255,255,.06)') + txt(404,52,'‹',12,'#cfd9e6','middle') +
+    txt(450,52,'May 2026',11,'#fff','middle') +
+    box(504,36,28,24,'rgba(255,255,255,.06)') + txt(518,52,'›',12,'#cfd9e6','middle') +
+    // + Add Event button
+    box(538,36,76,24,'rgba(0,229,192,.1)','rgba(0,229,192,.28)') + txt(576,52,'+ Add Event',9,'#00e5c0','middle') +
+    // Day-of-week headers
+    txt(55,74,'Su',9,'#9aa7bd','middle') + txt(141,74,'Mo',9,'#9aa7bd','middle') + txt(227,74,'Tu',9,'#9aa7bd','middle') +
+    txt(313,74,'We',9,'#9aa7bd','middle') + txt(399,74,'Th',9,'#9aa7bd','middle') + txt(485,74,'Fr',9,'#9aa7bd','middle') + txt(571,74,'Sa',9,'#9aa7bd','middle') +
+    // Row 1 (days 1-7): weekend tint on Su (col 0) and Sa (col 6)
+    box(14,80,82,34,'rgba(127,90,240,.07)','rgba(255,255,255,.04)') + txt(24,97,'1',10,'#cfd9e6') +
+    box(100,80,82,34,'rgba(255,255,255,.02)','rgba(255,255,255,.04)') + txt(110,97,'2',10,'#cfd9e6') +
+    box(186,80,82,34,'rgba(255,255,255,.02)','rgba(255,255,255,.04)') + txt(196,97,'3',10,'#cfd9e6') +
+    box(272,80,82,34,'rgba(255,255,255,.02)','rgba(255,255,255,.04)') + txt(282,97,'4',10,'#cfd9e6') +
+    box(358,80,82,34,'rgba(255,255,255,.02)','rgba(255,255,255,.04)') + txt(368,97,'5',10,'#cfd9e6') +
+    box(444,80,82,34,'rgba(255,255,255,.02)','rgba(255,255,255,.04)') + txt(454,97,'6',10,'#cfd9e6') +
+    box(530,80,82,34,'rgba(127,90,240,.07)','rgba(255,255,255,.04)') + txt(540,97,'7',10,'#cfd9e6') +
+    // Row 2 (days 8-14): event chip on Thu day 12 (col 4, x=358)
+    box(14,118,82,34,'rgba(127,90,240,.07)','rgba(255,255,255,.04)') + txt(24,135,'8',10,'#cfd9e6') +
+    box(100,118,82,34,'rgba(255,255,255,.02)','rgba(255,255,255,.04)') + txt(110,135,'9',10,'#cfd9e6') +
+    box(186,118,82,34,'rgba(255,255,255,.02)','rgba(255,255,255,.04)') + txt(196,135,'10',10,'#cfd9e6') +
+    box(272,118,82,34,'rgba(255,255,255,.02)','rgba(255,255,255,.04)') + txt(282,135,'11',10,'#cfd9e6') +
+    box(358,118,82,34,'rgba(255,255,255,.02)','rgba(0,229,192,.32)') + txt(368,133,'12',10,'#00e5c0') +
+    box(362,136,70,10,'rgba(0,229,192,.22)','rgba(0,229,192,.4)') + txt(397,144,'Tour 9am',7,'#00e5c0','middle') +
+    box(444,118,82,34,'rgba(255,255,255,.02)','rgba(255,255,255,.04)') + txt(454,135,'13',10,'#cfd9e6') +
+    box(530,118,82,34,'rgba(127,90,240,.07)','rgba(255,255,255,.04)') + txt(540,135,'14',10,'#cfd9e6') +
+    // Row 3 (days 15-21): past — dimmed opacity
+    box(14,156,82,34,'rgba(127,90,240,.04)','rgba(255,255,255,.03)') + txt(24,173,'15',10,'rgba(107,135,173,.38)') +
+    box(100,156,82,34,'rgba(255,255,255,.01)','rgba(255,255,255,.03)') + txt(110,173,'16',10,'rgba(107,135,173,.38)') +
+    box(186,156,82,34,'rgba(255,255,255,.01)','rgba(255,255,255,.03)') + txt(196,173,'17',10,'rgba(107,135,173,.38)') +
+    box(272,156,82,34,'rgba(255,255,255,.01)','rgba(255,255,255,.03)') + txt(282,173,'18',10,'rgba(107,135,173,.38)') +
+    box(358,156,82,34,'rgba(255,255,255,.01)','rgba(255,255,255,.03)') + txt(368,173,'19',10,'rgba(107,135,173,.38)') +
+    box(444,156,82,34,'rgba(255,255,255,.01)','rgba(255,255,255,.03)') + txt(454,173,'20',10,'rgba(107,135,173,.38)') +
+    box(530,156,82,34,'rgba(127,90,240,.04)','rgba(255,255,255,.03)') + txt(540,173,'21',10,'rgba(107,135,173,.38)') +
+    // Row 4 (days 22-28): past — dimmed
+    box(14,194,82,34,'rgba(127,90,240,.04)','rgba(255,255,255,.03)') + txt(24,211,'22',10,'rgba(107,135,173,.38)') +
+    box(100,194,82,34,'rgba(255,255,255,.01)','rgba(255,255,255,.03)') + txt(110,211,'23',10,'rgba(107,135,173,.38)') +
+    box(186,194,82,34,'rgba(255,255,255,.01)','rgba(255,255,255,.03)') + txt(196,211,'24',10,'rgba(107,135,173,.38)') +
+    box(272,194,82,34,'rgba(255,255,255,.01)','rgba(255,255,255,.03)') + txt(282,211,'25',10,'rgba(107,135,173,.38)') +
+    box(358,194,82,34,'rgba(255,255,255,.01)','rgba(255,255,255,.03)') + txt(368,211,'26',10,'rgba(107,135,173,.38)') +
+    box(444,194,82,34,'rgba(255,255,255,.01)','rgba(255,255,255,.03)') + txt(454,211,'27',10,'rgba(107,135,173,.38)') +
+    box(530,194,82,34,'rgba(127,90,240,.04)','rgba(255,255,255,.03)') + txt(540,211,'28',10,'rgba(107,135,173,.38)') +
+    // Row 5: Fr 29 (past) + Sa 30 TODAY
+    box(444,232,82,34,'rgba(255,255,255,.01)','rgba(255,255,255,.03)') + txt(454,249,'29',10,'rgba(107,135,173,.38)') +
+    box(530,232,82,34,'rgba(0,229,192,.1)','rgba(0,229,192,.45)') +
+    '<circle cx="548" cy="249" r="11" fill="rgba(0,229,192,.25)" stroke="#00e5c0" stroke-width="1.5"/>' +
+    txt(548,253,'30',9,'#00e5c0','middle') +
+    box(560,234,48,10,'rgba(0,229,192,.32)','none') + txt(584,242,'TODAY',7,'#00e5c0','middle') +
+    // Callout tags
+    tag(60,48,1) + tag(548,249,2) + tag(24,169,3) + tag(370,130,4)
   );
 
   var MOCK_TASKS = wf(620, 220,
@@ -5917,9 +5948,38 @@
   var SEC_CALENDAR = MOCK_CALENDAR +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
-      '<b>(1) Day cell with event</b> — green highlight means an event is scheduled. Click any day to add an event or view existing ones.',
-      '<b>(2) Month navigation</b> — arrows on either side of the month label move forward / backward.',
-      'Public "Schedule a tour" submissions on the marketing site land here automatically. Stored in localStorage (gl_cal_events), per device.'
+      '<b>(1) Month / List toggle</b> — switch between a monthly grid view and a scrollable agenda list. Your last choice is remembered.',
+      '<b>(2) Today indicator</b> — today\'s date gets a teal circle badge and a "TODAY" chip so you always know where you are in the month.',
+      '<b>(3) Past days</b> — days that have already passed are dimmed so you can focus on upcoming dates.',
+      '<b>(4) Event chips</b> — a colored chip on a day means at least one event is scheduled. Click the chip or the day cell to view or edit it.',
+      '<b>Weekend tinting</b> — Saturday and Sunday columns have a subtle purple tint to distinguish them from weekdays at a glance.',
+      '<b>Adding an event</b> — click "+ Add Event" in the top-right corner (or click any empty day cell) to open the event form. Fill in title, date, time, duration, notes, and guest email addresses.',
+      '<b>Editing / deleting</b> — click an existing event chip to open the detail drawer. From there you can edit any field or delete the event.',
+      '<b>Cancelling with notification</b> — when deleting an event that has guests, you will be prompted to send a cancellation email to all invitees automatically.',
+      '<b>Public tour requests</b> — when a visitor submits a tour request through the marketing site, it lands here automatically as a calendar event.',
+      '<b>Where to find it</b>: Sidebar → <b>Calendars → General Calendar</b>.'
+    ]) +
+    '<h4 style="color:#9aa7bd;margin:20px 0 8px;font-size:12px;letter-spacing:.5px;text-transform:uppercase">List / Agenda View</h4>' +
+    wf(620, 220,
+      box(0,0,620,220,'#142238','rgba(255,255,255,.05)') +
+      txt(20,22,'LIST VIEW — May 2026',12,'#fff') +
+      box(16,36,88,24,'rgba(255,255,255,.04)','rgba(255,255,255,.1)') + txt(60,52,'Month',10,'#9aa7bd','middle') +
+      box(108,36,62,24,'rgba(0,229,192,.18)','rgba(0,229,192,.4)') + txt(139,52,'List',10,'#00e5c0','middle') +
+      box(20,70,580,28,'rgba(0,229,192,.06)','rgba(0,229,192,.18)') +
+      txt(30,88,'TODAY  ·  May 30',9,'#00e5c0') +
+      box(20,102,580,26,'rgba(255,255,255,.02)','rgba(255,255,255,.05)') +
+      txt(30,118,'May 30',9,'#9aa7bd') + txt(110,118,'10:00 AM',9,'#fff') + txt(210,118,'Client call — Lotus Nutra',10,'#fff') + txt(590,118,'30 min',9,'#9aa7bd','end') +
+      box(20,130,580,26,'rgba(255,255,255,.02)','rgba(255,255,255,.05)') +
+      txt(30,146,'Jun 2',9,'#9aa7bd') + txt(110,146,'2:00 PM',9,'#fff') + txt(210,146,'Line changeover — Canning L1',10,'#fff') + txt(590,146,'1 hr',9,'#9aa7bd','end') +
+      box(20,158,580,26,'rgba(255,255,255,.02)','rgba(255,255,255,.05)') +
+      txt(30,174,'Jun 5',9,'#9aa7bd') + txt(110,174,'10:00 AM',9,'#fff') + txt(210,174,'Jane Smith — Discovery call',10,'#fff') + txt(590,174,'30 min',9,'#9aa7bd','end') +
+      txt(30,204,'Showing next 30 days  ·  3 events',9,'#5a7a9a') +
+      tag(108,36,1) + tag(20,102,2) + tag(590,118,3)
+    ) +
+    bullets([
+      '<b>(1) List toggle active</b> — when List is selected the calendar switches to a scrollable agenda grouped by day.',
+      '<b>(2) Event row</b> — each event shows the date, start time, title, and duration. Click any row to open the edit drawer.',
+      '<b>(3) Duration column</b> — quick glance at how long the event runs without opening the detail drawer.'
     ]);
 
   var SEC_PRODUCTION =
@@ -6424,6 +6484,67 @@
       '<b>(3) Upcoming bookings</b> — every confirmed booking appears here. The Cancel button cancels from your end; a confirmation email has already gone to the visitor. The booking also appears on your General Calendar.',
       '<b>What the visitor sees</b>: a clean booking page with a month calendar (unavailable days are greyed out), clickable time slots, and a short form (name, email, company, notes). On submit they get an instant confirmation email and you get a notification email.',
       '<b>Where to find it</b>: Sidebar → <b>Calendars → Scheduling Link</b>.'
+    ]) +
+    '<h4 style="color:#00e5c0;margin:20px 0 8px;font-size:12px;letter-spacing:.5px;text-transform:uppercase">Email Invite Button</h4>' +
+    wf(620, 162,
+      box(0,0,620,162,'#0a1628','rgba(255,255,255,.05)') +
+      txt(20,22,'Send Scheduling Link via Email',12,'#fff') +
+      txt(20,44,'To:',10,'#9aa7bd') +
+      box(44,34,556,20,'#0f1a2e','rgba(255,255,255,.08)') + txt(54,48,'jane@acmebrew.com',10,'#fff') +
+      txt(20,72,'Subject:',10,'#9aa7bd') +
+      box(66,62,534,20,'#0f1a2e','rgba(255,255,255,.08)') + txt(76,76,'Your scheduling link from Good Liquid Bev Co',10,'#fff') +
+      box(20,92,580,42,'#142238','rgba(255,255,255,.05)') +
+      txt(30,108,'Hi Jane, you can book a time with us using the button below:',9,'#9aa7bd') +
+      box(200,112,220,18,'#00e5c0','none') + txt(310,124,'Book a Time with Good Liquid',9,'#0a1628','middle') +
+      txt(30,148,'The raw URL is hidden inside the button — the recipient sees clean branding, not a long link.',9,'#5a7a9a') +
+      tag(200,112,1)
+    ) +
+    bullets([
+      '<b>(1) Styled CTA button</b> — instead of a raw URL, the recipient gets a teal "Book a Time with Good Liquid" button. Clicking it opens your scheduling page directly.',
+      '<b>How to send</b> — from the Scheduling Link panel, click "Send via Email", enter the recipient\'s address, and hit Send. The button email is generated automatically.',
+      '<b>Custom subject line</b> — the subject is pre-filled but editable before you send.'
+    ]) +
+    '<h4 style="color:#00e5c0;margin:20px 0 8px;font-size:12px;letter-spacing:.5px;text-transform:uppercase">Double-Booking Prevention</h4>' +
+    bullets([
+      '<b>Automatic conflict check</b> — when a visitor tries to book a slot, the system checks your General Calendar for existing events at that time. Slots already taken are grayed out and unclickable on the public booking page.',
+      '<b>Buffer time</b> — the buffer you configure (default 10 min) is added after each meeting before the next slot opens, so you are never booked back-to-back without a break.',
+      '<b>Manual calendar blocks it too</b> — if you add an event directly to your General Calendar (a production run, lunch, etc.), that window is automatically blocked on the public booking page as well.'
+    ]);
+
+  var SEC_RESOURCE_LIBRARY =
+    wf(620, 254,
+      box(0,0,620,254,'#060d1a','rgba(255,255,255,.04)') +
+      txt(20,22,'RESOURCE LIBRARY',12,'#fff') +
+      txt(20,40,'Five deep-dive articles for beverage brand founders',10,'#5a7a9a') +
+      box(20,54,292,88,'#0d1e35','rgba(196,164,248,.12)') +
+      txt(30,72,'BRAND LAUNCH',8,'#c4a4f8') +
+      txt(30,88,'How to launch a hard kombucha brand',10,'#fff') +
+      txt(30,106,'6 min read',8,'#5a7a9a') + txt(303,130,'→',10,'#c4a4f8','end') +
+      box(328,54,272,88,'#0d1e35','rgba(127,198,245,.12)') +
+      txt(338,72,'OPERATIONS',8,'#7fc6f5') +
+      txt(338,88,'Canning MOQs explained',10,'#fff') +
+      txt(338,106,'4 min read',8,'#5a7a9a') + txt(592,130,'→',10,'#7fc6f5','end') +
+      box(20,152,186,88,'#0d1e35','rgba(0,229,192,.12)') +
+      txt(30,170,'R&amp;D',8,'#00e5c0') +
+      txt(30,184,'Flash vs. tunnel pasteurization',10,'#fff') +
+      txt(30,198,'for botanicals  ·  7 min',8,'#5a7a9a') +
+      box(216,152,190,88,'#0d1e35','rgba(196,164,248,.12)') +
+      txt(226,170,'R&amp;D',8,'#c4a4f8') +
+      txt(226,184,'Pasteurization vs.',10,'#fff') +
+      txt(226,198,'cold-fill  ·  5 min',8,'#5a7a9a') +
+      box(416,152,184,88,'#0d1e35','rgba(245,200,66,.12)') +
+      txt(426,170,'PACKAGING',8,'#f5c842') +
+      txt(426,184,'PakTech handles +',10,'#fff') +
+      txt(426,198,'custom lid colors  ·  3 min',8,'#5a7a9a') +
+      tag(20,54,1) + tag(20,152,2) + tag(550,22,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>(1) Top-row cards</b> — "How to launch a hard kombucha brand" (6 min, Brand Launch) and "Canning MOQs Explained" (4 min, Operations). Click either card to open the full article.',
+      '<b>(2) Bottom-row cards</b> — three R&amp;D and Packaging articles: Flash vs. Tunnel Pasteurization for Botanicals (7 min), Pasteurization vs. Cold-Fill (5 min), and PakTech Handles + Custom Lid Colors (3 min).',
+      '<b>(3) Live linked pages</b> — each article is a full standalone HTML page at <code>goodliquidbev.com/resources/</code>. They open directly in the browser — no modal, no login required.',
+      '<b>Article categories</b>: Brand Launch · Operations · R&amp;D · Packaging. Each card is color-coded to its category and shows the estimated read time.',
+      '<b>Where to find it</b>: Main marketing website home page → scroll down to the <b>Resource Library</b> section.'
     ]);
 
   var HELP_HTML =
@@ -6467,6 +6588,7 @@
     section('help-vendors',         '🏭 VENDORS',                    SEC_VENDORS) +
     section('help-bulk-outreach',   '📤 BULK OUTREACH',              SEC_BULK_OUTREACH) +
     section('help-scheduling',      '📅 SCHEDULING LINK',            SEC_SCHEDULING) +
+    section('help-resource-library','📚 RESOURCE LIBRARY',           SEC_RESOURCE_LIBRARY) +
     section('help-shortcuts',       '⌨️ KEYBOARD SHORTCUTS',          SEC_SHORTCUTS);
 
   var TOC_ENTRIES = [
@@ -6498,6 +6620,7 @@
     ['help-vendors','🏭 Vendors'],
     ['help-bulk-outreach','📤 Bulk Outreach'],
     ['help-scheduling','📅 Scheduling Link'],
+    ['help-resource-library','📚 Resource Library'],
     ['help-shortcuts','⌨️ Shortcuts']
   ];
   var PAGE_TO_SECTION = {
