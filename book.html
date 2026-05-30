@@ -412,6 +412,11 @@
     var startMin   = Number(startParts[0]) * 60 + Number(startParts[1]);
     var endMin     = Number(endParts[0])   * 60 + Number(endParts[1]);
 
+    // Determine if dateStr is today in the page's timezone so we can hide past slots
+    var now = new Date();
+    var todayInTz = now.toLocaleString('sv-SE', { timeZone: tz }).slice(0, 10);
+    var isToday = (dateStr === todayInTz);
+
     var slots = [];
     for(var m = startMin; m + dur <= endMin; m += stride){
       var hh   = Math.floor(m / 60);
@@ -421,6 +426,9 @@
       // Build UTC start/end for conflict check
       var utcStart = localToUTC(dateStr, time, tz);
       var utcEnd   = new Date(utcStart.getTime() + dur * 60000);
+
+      // Hide slots that have already started today
+      if(isToday && utcStart <= now){ continue; }
 
       var taken = isSlotTaken(utcStart, utcEnd);
 
@@ -444,6 +452,9 @@
 
   function selectSlot(time, label, dateLabel){
     selectedTime = time;
+    // Clear any previous submission error
+    var errEl = document.getElementById('form-err');
+    if(errEl){ errEl.classList.remove('show'); }
     // Re-render slots to update selected state
     renderSlots(selectedDate);
 
@@ -536,11 +547,16 @@
 
   // ── Timezone utilities ─────────────────────────────────────────────────
   function localToUTC(dateStr, timeStr, tz){
-    var naiveUTC  = new Date(dateStr + 'T' + timeStr + ':00.000Z');
-    var localStr  = naiveUTC.toLocaleString('sv-SE', { timeZone: tz }); // "YYYY-MM-DD HH:MM:SS"
-    var asUTC     = new Date(localStr.replace(' ', 'T') + '.000Z');
-    var offsetMs  = naiveUTC.getTime() - asUTC.getTime();
-    return new Date(naiveUTC.getTime() - offsetMs);
+    // Treat the local time string as if it were UTC to get a reference point
+    var naiveUTC = new Date(dateStr + 'T' + timeStr + ':00.000Z');
+    // Find what the target timezone shows at that reference UTC moment
+    var localStr = naiveUTC.toLocaleString('sv-SE', { timeZone: tz }); // "YYYY-MM-DD HH:MM:SS"
+    // Parse that displayed time as UTC to get the offset direction
+    var asUTC    = new Date(localStr.replace(' ', 'T') + '.000Z');
+    // offsetMs = (reference UTC) - (what TZ shows at that UTC)
+    // e.g. EDT: 09:00 UTC - 05:00 = +4 h  →  actual UTC = naiveUTC + offsetMs = 13:00 UTC ✓
+    var offsetMs = naiveUTC.getTime() - asUTC.getTime();
+    return new Date(naiveUTC.getTime() + offsetMs);
   }
 
   function tzLabel(tz){
