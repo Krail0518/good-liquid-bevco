@@ -223,12 +223,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // ── Load booking page config ───────────────────────────────────────────
   const { data: page, error: pageErr } = await supa
     .from('booking_pages')
-    .select('*, profiles:user_id(name, email)')
+    .select('*')
     .eq('id', page_id)
     .eq('is_active', true)
     .maybeSingle() as { data: any; error: any };
 
   if (pageErr || !page) return errorResponse('Booking page not found', 404);
+
+  // Load host profile separately (booking_pages.user_id → auth.users, not profiles)
+  const { data: hostProfile } = await supa
+    .from('profiles')
+    .select('name, email')
+    .eq('id', page.user_id)
+    .maybeSingle() as { data: any; error: any };
 
   const tz        = page.timezone || 'America/New_York';
   const duration  = Number(page.duration)     || 30;
@@ -326,8 +333,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const startLabel = fmtLocalTime(startAt, tz);
   const timeLabel  = startLabel + ' – ' + fmtLocalTime(endAt, tz);
   const tzLbl      = tzLabel(tz);
-  const hostName   = (page.profiles as any)?.name  || 'the team';
-  const hostEmail  = (page.profiles as any)?.email || '';
+  const hostName   = hostProfile?.name  || 'the team';
+  const hostEmail  = hostProfile?.email || '';
   const summary    = `Meeting: ${booker_name} + Good Liquid Bev Co`;
 
   const icsDesc = [
