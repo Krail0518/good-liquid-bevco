@@ -12668,6 +12668,7 @@
   var DEMO = [
     { title:'How to launch a hard kombucha brand', tag:'Brand launch', excerpt:'From recipe to retail in 5 milestones. What to expect on cost, timeline, and the FDA paperwork no one warns you about.', read_time_min:6, url:'resources/launch-hard-kombucha-brand.html' },
     { title:'Canning MOQs explained', tag:'Operations', excerpt:'Why 150 cases is our floor and what economic ladder kicks in at 500 / 1k / 5k. Read this before you ask for a quote.', read_time_min:4, url:'resources/canning-moqs-explained.html' },
+    { title:'Flash vs. tunnel pasteurization for botanical beverages', tag:'R&D', excerpt:'Why batch flash pasteurization protects thermolabile botanicals that tunnel systems destroy. The science, the temperature data, and the real numbers.', read_time_min:7, url:'resources/flash-vs-tunnel-pasteurization-botanicals.html' },
     { title:'Pasteurization vs cold-fill — pick one', tag:'R&D', excerpt:'A practical decision tree based on pH, sugar, and where you plan to distribute. We make the call on every formulation we run.', read_time_min:5, url:'resources/pasteurization-vs-cold-fill.html' },
     { title:'PakTech handles + custom lid colors — what they cost', tag:'Packaging', excerpt:'Two upgrades brands always ask about. Real numbers on the per-can adder and when they pay off in shelf appeal.', read_time_min:3, url:'resources/paktech-custom-lid-colors.html' }
   ];
