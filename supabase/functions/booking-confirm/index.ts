@@ -40,7 +40,9 @@ import { corsHeaders, jsonResponse, errorResponse, handlePreflight } from '../_s
 
 // ── Timezone-aware UTC conversion ──────────────────────────────────────────
 function localToUTC(dateStr: string, timeStr: string, tz: string): Date {
+  // Treat the local time string as if it were UTC to get a reference point
   const naiveUTC   = new Date(`${dateStr}T${timeStr}:00.000Z`);
+  // Find what the target timezone shows at that reference UTC moment
   const fmt        = new Intl.DateTimeFormat('sv-SE', {
     timeZone: tz,
     year: 'numeric', month: '2-digit', day: '2-digit',
@@ -49,8 +51,10 @@ function localToUTC(dateStr: string, timeStr: string, tz: string): Date {
   });
   const localStr   = fmt.format(naiveUTC);
   const localAsUTC = new Date(localStr.replace(' ', 'T') + '.000Z');
+  // offsetMs = (reference UTC) - (what TZ shows at that UTC)
+  // e.g. EDT: 09:00 UTC - 05:00 = +4 h  →  actual UTC = naiveUTC + offsetMs = 13:00 UTC ✓
   const offsetMs   = naiveUTC.getTime() - localAsUTC.getTime();
-  return new Date(naiveUTC.getTime() - offsetMs);
+  return new Date(naiveUTC.getTime() + offsetMs);
 }
 
 function fmtLocalDate(d: Date, tz: string): string {
