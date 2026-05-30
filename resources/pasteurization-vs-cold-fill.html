@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pasteurization vs Cold-Fill | Good Liquid Bev Co</title>
+<meta name="description" content="A practical decision tree based on pH, sugar, and where you plan to distribute. We make the call on every formulation we run.">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#060d1a;--ink2:#0a1628;--ink3:#0d1e38;
+  --teal:#00e5c0;--teal2:#00b89a;--blue:#1a6fff;--gold:#f5c842;
+  --purple:#c4a4f8;--white:#eef4ff;--muted:#6b87ad;
+  --ff-disp:'Anton',sans-serif;--ff-body:'Plus Jakarta Sans',sans-serif;--ff-mono:'Space Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--ink);color:var(--white);font-family:var(--ff-body);line-height:1.7}
+a{color:var(--purple);text-decoration:none}
+a:hover{text-decoration:underline}
+
+nav{position:fixed;top:0;left:0;right:0;z-index:200;display:flex;align-items:center;justify-content:space-between;padding:0 48px;height:66px;background:rgba(6,13,26,.93);backdrop-filter:blur(16px);border-bottom:1px solid rgba(0,229,192,.1)}
+.logo-text{font-family:var(--ff-disp);font-size:17px;letter-spacing:3px;color:var(--white)}
+.logo-sub{font-size:9px;letter-spacing:3px;text-transform:uppercase;color:var(--teal)}
+.nav-back{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px;transition:color .2s}
+.nav-back:hover{color:var(--white);text-decoration:none}
+
+.article-hero{padding:110px 0 56px;text-align:center;background:linear-gradient(180deg,rgba(196,164,248,.04) 0%,transparent 100%);border-bottom:1px solid rgba(255,255,255,.06)}
+.tag-chip{display:inline-block;padding:4px 13px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:1px;background:rgba(196,164,248,.12);color:var(--purple);border:1px solid rgba(196,164,248,.3);margin-bottom:20px}
+.article-hero h1{font-family:var(--ff-disp);font-size:clamp(32px,5vw,58px);letter-spacing:2px;line-height:1.05;max-width:820px;margin:0 auto 18px}
+.article-hero .deck{font-size:17px;color:rgba(238,244,255,.65);max-width:600px;margin:0 auto 28px;line-height:1.65}
+.meta{display:flex;align-items:center;justify-content:center;gap:20px;font-size:12px;color:var(--muted);letter-spacing:.5px}
+
+.article-wrap{max-width:720px;margin:0 auto;padding:60px 24px 100px}
+
+h2{font-family:var(--ff-disp);font-size:26px;letter-spacing:1.5px;color:var(--purple);margin:52px 0 16px;padding-bottom:10px;border-bottom:1px solid rgba(196,164,248,.15)}
+h3{font-size:16px;font-weight:700;color:var(--white);margin:28px 0 10px;letter-spacing:.3px}
+p{margin-bottom:18px;color:rgba(238,244,255,.88);font-size:15.5px}
+ul,ol{margin:0 0 18px 22px;color:rgba(238,244,255,.88);font-size:15.5px}
+li{margin-bottom:8px}
+strong{color:var(--white);font-weight:600}
+
+.callout{border-left:3px solid var(--purple);background:rgba(196,164,248,.05);border-radius:0 10px 10px 0;padding:18px 20px;margin:28px 0;font-size:14.5px;color:rgba(238,244,255,.85)}
+.callout.gold{border-color:var(--gold);background:rgba(245,200,66,.05)}
+.callout.teal{border-color:var(--teal);background:rgba(0,229,192,.05)}
+.callout.warn{border-color:#f87171;background:rgba(248,113,113,.05)}
+.callout strong{color:var(--purple)}
+.callout.gold strong{color:var(--gold)}
+.callout.teal strong{color:var(--teal)}
+.callout.warn strong{color:#f87171}
+
+/* DECISION TREE */
+.decision-tree{background:rgba(255,255,255,.02);border:1px solid rgba(196,164,248,.15);border-radius:16px;padding:28px;margin:32px 0}
+.decision-tree h3{margin-top:0;color:var(--purple);font-family:var(--ff-mono);font-size:13px;letter-spacing:2px;text-transform:uppercase}
+.dt-row{display:flex;gap:0;margin-top:16px}
+.dt-q{flex:1;background:rgba(196,164,248,.07);border:1px solid rgba(196,164,248,.2);border-radius:10px;padding:14px;font-size:14px;line-height:1.5}
+.dt-q strong{display:block;color:var(--purple);margin-bottom:4px;font-size:12px;letter-spacing:1px;text-transform:uppercase}
+.dt-arrow{display:flex;align-items:center;padding:0 12px;color:var(--muted);font-size:20px}
+.dt-a{flex:1;background:rgba(0,229,192,.05);border:1px solid rgba(0,229,192,.2);border-radius:10px;padding:14px;font-size:14px;line-height:1.5}
+.dt-a strong{display:block;color:var(--teal);margin-bottom:4px;font-size:12px;letter-spacing:1px;text-transform:uppercase}
+
+/* COMPARISON TABLE */
+table{width:100%;border-collapse:collapse;margin:24px 0;font-size:14px}
+th{background:rgba(196,164,248,.08);color:var(--purple);font-weight:600;padding:10px 14px;text-align:left;letter-spacing:.5px;border-bottom:1px solid rgba(196,164,248,.2)}
+td{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.05);color:rgba(238,244,255,.85)}
+tr:hover td{background:rgba(255,255,255,.02)}
+td:first-child{color:var(--muted);font-size:13px}
+.yes{color:#4ade80}
+.no{color:#f87171}
+
+/* PRODUCT MAPPING */
+.product-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:24px 0}
+.product-card{border-radius:12px;padding:18px}
+.product-card.past{background:rgba(0,229,192,.05);border:1px solid rgba(0,229,192,.2)}
+.product-card.cold{background:rgba(196,164,248,.05);border:1px solid rgba(196,164,248,.2)}
+.pc-label{font-size:10px;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;font-weight:600}
+.product-card.past .pc-label{color:var(--teal)}
+.product-card.cold .pc-label{color:var(--purple)}
+.product-card ul{margin:0;list-style:none;padding:0}
+.product-card li{font-size:13px;color:rgba(238,244,255,.8);padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.product-card li:last-child{border:none}
+
+.cta-block{background:linear-gradient(135deg,rgba(196,164,248,.08),rgba(0,229,192,.05));border:1px solid rgba(196,164,248,.2);border-radius:16px;padding:40px;text-align:center;margin-top:60px}
+.cta-block h2{border:none;margin:0 0 12px;font-size:28px;color:var(--teal)}
+.cta-block p{max-width:460px;margin:0 auto 24px}
+.cta-btn{display:inline-flex;align-items:center;gap:8px;padding:14px 32px;background:var(--teal);color:var(--ink);border-radius:8px;font-weight:700;font-size:14px;letter-spacing:.4px;transition:all .25s}
+.cta-btn:hover{background:var(--teal2);transform:translateY(-2px);box-shadow:0 12px 30px rgba(0,229,192,.25);text-decoration:none}
+
+footer{border-top:1px solid rgba(255,255,255,.06);padding:32px 48px;display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--muted)}
+
+@media(max-width:640px){
+  nav{padding:0 20px}
+  .article-hero{padding:90px 20px 40px}
+  .article-wrap{padding:40px 20px 80px}
+  .product-grid{grid-template-columns:1fr}
+  .dt-row{flex-direction:column}
+  .dt-arrow{transform:rotate(90deg);justify-content:center;padding:8px 0}
+  footer{flex-direction:column;gap:8px;text-align:center;padding:24px 20px}
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <div>
+    <div class="logo-text">GOOD LIQUID</div>
+    <div class="logo-sub">Bev Co</div>
+  </div>
+  <a href="/" class="nav-back">← Back to site</a>
+</nav>
+
+<div class="article-hero">
+  <div class="tag-chip">R&amp;D</div>
+  <h1>Pasteurization vs. Cold-Fill — Pick One</h1>
+  <p class="deck">A practical decision tree based on pH, sugar content, and distribution channel. We make the call on every formulation we run — here's how we think about it.</p>
+  <div class="meta">
+    <span>📖 5 min read</span>
+    <span>·</span>
+    <span>Good Liquid Bev Co</span>
+  </div>
+</div>
+
+<div class="article-wrap">
+
+  <p>Every beverage we co-pack lives or dies on its processing decision. Pasteurize it and you get shelf stability, extended distribution reach, and room-temperature retail placement. Cold-fill it and you preserve delicate flavors, live cultures, and a "clean" ingredient story — but you are now chained to refrigerated logistics for the product's entire life. This is not a stylistic choice. It is a fundamental business decision, and the wrong one will cost you.</p>
+
+  <h2>The Basics: What Each Method Does</h2>
+
+  <h3>Tunnel pasteurization</h3>
+  <p>After the product is canned or bottled, the sealed container passes through a warm water tunnel. The standard target is 60–65°C (140–149°F) for a specified time — measured in Pasteurization Units (PUs). The formula is:</p>
+  <div class="callout">
+    <strong>PU = time (minutes) × 1.393<sup>(T − 60)</sup></strong><br><br>
+    Where T is temperature in degrees Celsius. A typical commercial target is 10–25 PUs for beer; high-acid products like kombucha often target 5–15 PUs.
+  </div>
+  <p>Tunnel pasteurization kills or inactivates pathogenic and spoilage organisms, yielding a product that is shelf-stable at ambient temperature for 12–18 months when properly sealed.</p>
+
+  <h3>Cold-fill / cold packaging</h3>
+  <p>The product is kept cold throughout — typically below 4°C (39°F) — from the end of production through the entire distribution chain. No heat is applied. Microbiological stability depends on a combination of pH, sugar content (water activity), dissolved CO₂, and alcohol content rather than thermal kill.</p>
+
+  <h2>The Decision Tree</h2>
+
+  <div class="decision-tree">
+    <h3>How We Make the Call</h3>
+
+    <div class="dt-row">
+      <div class="dt-q"><strong>Question 1</strong>Is your product pH below 4.6?</div>
+      <div class="dt-arrow">→</div>
+      <div class="dt-a"><strong>Below 4.6</strong>You pass the FDA's threshold for low-acid beverages. High-acid products have natural microbial protection. Proceed to Question 2.</div>
+    </div>
+
+    <div class="dt-row" style="margin-top:12px">
+      <div class="dt-q"><strong>Question 2</strong>Does it contain live cultures that must survive?</div>
+      <div class="dt-arrow">→</div>
+      <div class="dt-a"><strong>Yes = Cold-fill</strong>Heat kills probiotics. If live culture count is part of your label claim or product story, pasteurization is off the table.<br><br><strong>No = Either method viable.</strong> Continue to Question 3.</div>
+    </div>
+
+    <div class="dt-row" style="margin-top:12px">
+      <div class="dt-q"><strong>Question 3</strong>Is ambient (room temperature) retail distribution required?</div>
+      <div class="dt-arrow">→</div>
+      <div class="dt-a"><strong>Yes = Pasteurize</strong>Grocery ambient shelves, food service distribution, and vending require shelf stability.<br><br><strong>No</strong> = Cold-fill is viable if your pH, ABV, and sugar content provide sufficient hurdles.</div>
+    </div>
+  </div>
+
+  <h2>Product Type Mapping</h2>
+
+  <div class="product-grid">
+    <div class="product-card past">
+      <div class="pc-label">✓ Typically Pasteurized</div>
+      <ul>
+        <li>Hard seltzer (ABV 4–8%)</li>
+        <li>Craft beer (canned)</li>
+        <li>Fruit juice blends</li>
+        <li>RTD cocktails (low ABV)</li>
+        <li>Sparkling water with juice</li>
+        <li>Non-alcoholic beer</li>
+      </ul>
+    </div>
+    <div class="product-card cold">
+      <div class="pc-label">✓ Typically Cold-Fill</div>
+      <ul>
+        <li>Live-culture kombucha</li>
+        <li>Probiotic beverages</li>
+        <li>Cold brew coffee</li>
+        <li>Unpasteurized juice (HPP or cold-fill)</li>
+        <li>Kefir-based drinks</li>
+        <li>High-ABV products (14%+)</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <strong>Edge case — hard kombucha:</strong> Hard kombucha is a hybrid. The alcohol (0.5–8% ABV) combined with pH typically in the 3.0–3.5 range provides strong microbial hurdles. Some hard kombucha brands do pasteurize to prevent over-fermentation in the package. If you keep live cultures in your hard kombucha, you must cold-fill and manage ABV creep risk. This is not a both-and situation.
+  </div>
+
+  <h2>Side-by-Side Comparison</h2>
+
+  <table>
+    <tr><th>Factor</th><th>Pasteurized</th><th>Cold-Fill</th></tr>
+    <tr><td>Shelf life (ambient)</td><td>12–18 months</td><td>Not applicable</td></tr>
+    <tr><td>Shelf life (refrigerated)</td><td>12–18 months</td><td>45–90 days typical</td></tr>
+    <tr><td>Retail placement</td><td>Ambient or refrigerated</td><td>Refrigerated only</td></tr>
+    <tr><td>Distribution chain</td><td>Standard (no cold chain)</td><td>Full cold chain required</td></tr>
+    <tr><td>Live cultures preserved</td><td class="no">No</td><td class="yes">Yes</td></tr>
+    <tr><td>Heat-sensitive flavors</td><td>Some degradation possible</td><td>Fully preserved</td></tr>
+    <tr><td>Capital equipment cost</td><td>Higher (tunnel pasteurizer)</td><td>Lower (cold room / tank)</td></tr>
+    <tr><td>Distribution cost</td><td>Lower (ambient freight)</td><td>Higher (refrigerated freight)</td></tr>
+    <tr><td>Retail opportunity</td><td>Broad (all channels)</td><td>Limited to cooler-door accounts</td></tr>
+  </table>
+
+  <h2>The Cold Chain Cost Reality</h2>
+
+  <p>Cold-fill sounds simple until you price out what a full cold chain actually costs. Every node in your distribution network must be refrigerated:</p>
+
+  <ul>
+    <li><strong>Co-packer cold storage:</strong> Many facilities charge $0.25–$0.75 per case per month for refrigerated warehouse space.</li>
+    <li><strong>Refrigerated freight:</strong> Reefer truck rates typically run 25–40% higher than dry van for equivalent mileage.</li>
+    <li><strong>Distributor cold storage:</strong> Not all distributors have adequate refrigerated capacity. This limits your distributor options to those who specialize in refrigerated beverages.</li>
+    <li><strong>Retail cooler placement:</strong> You are competing for limited cooler-door slots. Ambient shelf brands face no such constraint.</li>
+  </ul>
+
+  <div class="callout gold">
+    <strong>Margin impact:</strong> A brand moving to national distribution via cold chain often finds that refrigerated logistics adds $1.50–$3.00 per case in freight cost versus ambient. At 200 cases per month, that is $300–$600 of recurring margin erosion before you've accounted for higher storage costs.
+  </div>
+
+  <h2>High-Pressure Processing: A Third Path</h2>
+
+  <p>High-Pressure Processing (HPP) is worth mentioning as an alternative for products where both pasteurization and cold-fill create problems. HPP uses cold water pressure (87,000 psi) to inactivate pathogens without heat, extending refrigerated shelf life to 60–120 days while preserving flavor and live cultures. The tradeoffs:</p>
+
+  <ul>
+    <li>HPP is a toll processing service — you ship your filled, sealed product to an HPP facility, which adds logistics complexity and cost ($0.08–$0.15 per unit)</li>
+    <li>HPP still requires cold chain — it extends refrigerated shelf life, but the product is not shelf-stable at ambient temperature</li>
+    <li>Not all packaging is HPP-compatible — soft-sided pouches and some cap types cannot withstand the pressure cycle</li>
+  </ul>
+
+  <p>HPP makes the most sense for juice blends, probiotic beverages, and ready-to-drink products where clean label, live cultures, and extended cold shelf life are all required simultaneously.</p>
+
+  <h2>How We Make the Call at Good Liquid</h2>
+
+  <p>When a new brand comes to us with a formulation, we walk through four questions in order:</p>
+
+  <ol>
+    <li><strong>What is the product's pH?</strong> — We test every batch. Anything above 4.6 requires pasteurization; below 4.6 gives us options.</li>
+    <li><strong>What does the label claim require?</strong> — "Contains live cultures" or "probiotic" means cold-fill. No exceptions.</li>
+    <li><strong>Where does this product sell?</strong> — If the brand's target is Whole Foods cooler doors, cold-fill works. If they're going into vending, food service, or club stores, we need shelf stability.</li>
+    <li><strong>Can the founder support a cold chain at their volume?</strong> — A 200-case/month brand shipping refrigerated product nationally is fighting a logistics battle with one hand tied behind their back. We'll have that conversation honestly before they commit to cold-fill.</li>
+  </ol>
+
+  <div class="cta-block">
+    <h2>Let's Talk About Your Formula</h2>
+    <p>We'll tell you which processing method makes sense for your product and distribution plan before you spend a dollar on production.</p>
+    <a href="/#contact" class="cta-btn">Start a Conversation →</a>
+  </div>
+
+</div>
+
+<footer>
+  <span>© 2026 Good Liquid Bev Co — Palmetto, FL</span>
+  <a href="/">goodliquidbev.com</a>
+</footer>
+
+</body>
+</html>
