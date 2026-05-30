@@ -25856,13 +25856,53 @@
       if(!to || !to.includes('@')){ if(errEl){errEl.textContent='Please enter a valid email address.';errEl.style.display='block';} return; }
 
       var senderName = (window.currentUser||{}).name || 'The team at Good Liquid Bev Co';
-      var greeting   = name ? 'Hi '+name+',' : 'Hi there,';
-      var noteText   = note.trim() ? '\n\n'+note.trim() : '';
+      var greeting   = name ? 'Hi ' + name + ',' : 'Hi there,';
+      var noteText   = note.trim() ? '\n\n' + note.trim() : '';
+
+      // Plain-text fallback
       var body = greeting + noteText + '\n\nI\'d love to find a time to connect. Check my availability and book a slot that works for you:\n\n' +
-                 link + '\n\nLooking forward to it!\n\n— '+senderName+'\nGood Liquid Bev Co · Mike@GoodLiquid.com · (803) 493-5065';
+                 link + '\n\nLooking forward to it!\n\n— ' + senderName + '\nGood Liquid Bev Co · Mike@GoodLiquid.com · (803) 493-5065';
+
+      // HTML version — big teal button, no raw URL visible to the reader
+      var noteHtml = note.trim()
+        ? '<p style="margin:0 0 20px;font-size:15px;color:#333;line-height:1.7">' + esc(note.trim()).replace(/\n/g,'<br>') + '</p>'
+        : '';
+      var htmlBody =
+        '<!DOCTYPE html><html><head><meta charset="utf-8"></head>' +
+        '<body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Helvetica,Arial,sans-serif">' +
+        '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:40px 16px"><tr><td align="center">' +
+        '<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.10);max-width:560px">' +
+        // Header bar
+        '<tr><td style="background:#0d1420;padding:28px 36px;text-align:center">' +
+          '<div style="font-size:20px;font-weight:800;color:#ffffff;letter-spacing:2px;text-transform:uppercase">Good Liquid Bev Co</div>' +
+          '<div style="font-size:11px;color:#00e5c0;letter-spacing:3px;margin-top:5px;text-transform:uppercase">Meeting Invite</div>' +
+        '</td></tr>' +
+        // Body
+        '<tr><td style="padding:36px 36px 28px">' +
+          '<p style="margin:0 0 18px;font-size:16px;color:#111;line-height:1.5">' + esc(greeting) + '</p>' +
+          noteHtml +
+          '<p style="margin:0 0 28px;font-size:15px;color:#333;line-height:1.7">I\'d love to find a time to connect. Click the button below to see my availability and pick a slot that works for you.</p>' +
+          // Button — teal, no raw URL visible
+          '<table cellpadding="0" cellspacing="0" style="margin:0 auto 32px"><tr>' +
+            '<td style="background:#00e5c0;border-radius:10px;box-shadow:0 4px 18px rgba(0,229,192,.35)">' +
+              '<a href="' + esc(link) + '" target="_blank" style="display:block;padding:16px 44px;font-size:16px;font-weight:800;color:#0d1420;text-decoration:none;letter-spacing:.3px;white-space:nowrap">📅&nbsp; Book a Time</a>' +
+            '</td>' +
+          '</tr></table>' +
+          '<p style="margin:0;font-size:14px;color:#333;line-height:1.7">Looking forward to connecting!</p>' +
+          '<p style="margin:12px 0 0;font-size:14px;color:#111;font-weight:700">— ' + esc(senderName) + '</p>' +
+        '</td></tr>' +
+        // Footer
+        '<tr><td style="background:#f8f9fb;padding:18px 36px;text-align:center;border-top:1px solid #eee">' +
+          '<p style="margin:0;font-size:11px;color:#aaa;line-height:1.6">' +
+            'Good Liquid Bev Co &nbsp;·&nbsp; ' +
+            '<a href="mailto:Mike@GoodLiquid.com" style="color:#00b89a;text-decoration:none">Mike@GoodLiquid.com</a>' +
+            ' &nbsp;·&nbsp; (803) 493-5065' +
+          '</p>' +
+        '</td></tr>' +
+        '</table></td></tr></table></body></html>';
 
       if(typeof window.sendMailgunEmail === 'function'){
-        var ok = await window.sendMailgunEmail(to, senderName + ' wants to meet — book a time', body);
+        var ok = await window.sendMailgunEmail(to, senderName + ' wants to meet — book a time', body, { html: htmlBody });
         if(ok){ ov.remove(); if(typeof addNotification==='function') addNotification('📧 Scheduling link sent', to, 'success'); }
         else { if(errEl){errEl.textContent='Send failed. Check your Mailgun settings.';errEl.style.display='block';} }
       } else {
