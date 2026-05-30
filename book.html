@@ -414,11 +414,21 @@
   }
 
   async function loadTakenSlots(){
-    var now = new Date().toISOString();
-    var r = await apiFetch('/rest/v1/bookings?page_id=eq.' + page.id +
-      '&status=eq.confirmed&start_at=gte.' + encodeURIComponent(now) +
-      '&select=start_at,end_at&limit=500');
-    takenSlots = r || [];
+    // Use the merged RPC so both confirmed bookings AND manually-added
+    // calendar events (tours, client visits, etc.) block their slots.
+    try {
+      var res = await fetch(SUPA_URL + '/rest/v1/rpc/get_page_blocked_slots', {
+        method: 'POST',
+        headers: {
+          'apikey':        ANON_KEY,
+          'Authorization': 'Bearer ' + ANON_KEY,
+          'Content-Type':  'application/json',
+        },
+        body: JSON.stringify({ p_page_id: page.id }),
+      });
+      if(!res.ok){ console.warn('[GL] get_page_blocked_slots HTTP', res.status); takenSlots = []; return; }
+      takenSlots = (await res.json()) || [];
+    } catch(e){ console.warn('[GL] loadTakenSlots error', e); takenSlots = []; }
   }
 
   // ── REST helper ────────────────────────────────────────────────────────
