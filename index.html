@@ -707,6 +707,57 @@ select option, .fsel option {
 }
 
 /* ═══════════════════════════════════════════════════
+   CALENDAR LIST VIEW
+════════════════════════════════════════════════════ */
+.cal-list-empty { text-align:center;padding:52px 20px;color:var(--muted);font-size:14px; }
+.cal-list-empty-icon { font-size:42px;margin-bottom:14px; }
+.cal-list-group {
+  display:flex;gap:16px;padding:13px 4px;
+  border-bottom:1px solid rgba(255,255,255,.05);
+  transition:opacity .2s;
+}
+.cal-list-group:last-child { border-bottom:none; }
+.cal-list-group.cal-list-past { opacity:.45; }
+.cal-list-date {
+  display:flex;align-items:center;gap:8px;
+  min-width:80px;flex-shrink:0;
+}
+.cal-list-day-num {
+  font-size:28px;font-weight:800;color:var(--white);line-height:1;min-width:36px;
+}
+.cal-list-day-num.is-today {
+  color:var(--teal);text-shadow:0 0 18px rgba(0,229,192,.55);
+}
+.cal-list-day-info { display:flex;flex-direction:column;gap:1px; }
+.cal-list-day-name { font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.2px; }
+.cal-list-month-str { font-size:10px;color:var(--muted);opacity:.55; }
+.cal-list-today-badge {
+  font-size:7px;font-weight:800;letter-spacing:1px;color:var(--teal);
+  background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.3);
+  border-radius:4px;padding:2px 5px;margin-left:2px;
+}
+.cal-list-events { flex:1;display:flex;flex-direction:column;gap:6px; }
+.cal-list-event {
+  display:flex;gap:0;
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.065);
+  border-radius:10px;padding:10px 14px;cursor:pointer;
+  transition:background .16s,transform .14s,box-shadow .16s;
+  position:relative;overflow:hidden;
+}
+.cal-list-event:hover {
+  background:rgba(255,255,255,.065);
+  transform:translateX(3px);
+  box-shadow:0 4px 18px rgba(0,0,0,.25);
+}
+.cal-list-event-bar {
+  position:absolute;left:0;top:0;bottom:0;width:3px;
+  border-radius:3px 0 0 3px;
+}
+.cal-list-event-body { flex:1;padding-left:10px; }
+.cal-list-event-title { font-size:13px;font-weight:600;color:var(--white);line-height:1.4; }
+.cal-list-event-time { font-size:11px;color:var(--muted);margin-top:2px; }
+
+/* ═══════════════════════════════════════════════════
    TASK MANAGEMENT
 ════════════════════════════════════════════════════ */
 .task-item { display:flex;align-items:flex-start;gap:10px;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.05); }
@@ -7290,13 +7341,91 @@ function renderCal(type){
   el.innerHTML=html;
 }
 
-function calPrev(type){ const d=calCurrentDate[type]; d.setMonth(d.getMonth()-1); renderCal(type); }
-function calNext(type){ const d=calCurrentDate[type]; d.setMonth(d.getMonth()+1); renderCal(type); }
+function calPrev(type){ const d=calCurrentDate[type]; d.setMonth(d.getMonth()-1); if(type==='general'&&calViewMode==='list'){ renderCal(type); renderCalList(type); } else { renderCal(type); } }
+function calNext(type){ const d=calCurrentDate[type]; d.setMonth(d.getMonth()+1); if(type==='general'&&calViewMode==='list'){ renderCal(type); renderCalList(type); } else { renderCal(type); } }
 
-function setCalView(view,el){ 
+function setCalView(view,el){
   calViewMode=view;
   document.querySelectorAll('.cal-tab').forEach(t=>t.classList.remove('act'));
   el.classList.add('act');
+  const grid   = document.getElementById('cal-grid-general');
+  const header = document.getElementById('cal-dow-general');
+  const list   = document.getElementById('cal-list-general');
+  if(view==='month'){
+    if(grid)   grid.style.display   = '';
+    if(header) header.style.display = '';
+    if(list)   list.style.display   = 'none';
+    renderCal('general');
+  } else {
+    if(grid)   grid.style.display   = 'none';
+    if(header) header.style.display = 'none';
+    if(list){  list.style.display   = 'block'; renderCalList('general'); }
+  }
+}
+
+function fmtCalTime(t){
+  if(!t) return '';
+  const [h,m] = t.split(':').map(Number);
+  const s = h<12?'AM':'PM', h12 = h%12||12;
+  return `${h12}:${String(m).padStart(2,'0')} ${s}`;
+}
+
+function renderCalList(type){
+  const el = document.getElementById(`cal-list-${type}`);
+  if(!el) return;
+  const d = calCurrentDate[type];
+  const year = d.getFullYear(), month = d.getMonth();
+  const daysInMonth = new Date(year,month+1,0).getDate();
+  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const todayStr = new Date().toISOString().split('T')[0];
+  const TYPE_CLR = {general:'#4a7fff',production:'#00e5c0','production-run':'#00c4a7',task:'#f5c842'};
+
+  // Collect all events for the month, grouped by date
+  const byDate = {};
+  for(let day=1;day<=daysInMonth;day++){
+    const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const legacy = calEvents.filter(e=>e.date===dateStr&&(type==='general'?e.type!=='production':e.type==='production'));
+    const pruns  = (window.glProductionRuns||[]).filter(r=>(r.scheduled_start_date||r.scheduled_date)===dateStr)
+                    .map(r=>({title:(r.run_name||'(untitled)')+(r.client_name?' — '+r.client_name:''),type:type==='production'?'production':'production-run',date:dateStr,time:''}));
+    const evs = [...legacy,...pruns];
+    if(evs.length) byDate[dateStr] = evs;
+  }
+
+  const dates = Object.keys(byDate).sort();
+  if(!dates.length){
+    el.innerHTML=`<div class="cal-list-empty"><div class="cal-list-empty-icon">📅</div><div>No events in ${MONTHS[month]} ${year}</div><div style="font-size:12px;margin-top:6px;opacity:.6">Click "+ Add Event" to schedule something</div></div>`;
+    return;
+  }
+
+  el.innerHTML = dates.map(dateStr=>{
+    const [y,m2,dd] = dateStr.split('-').map(Number);
+    const dow = new Date(y,m2-1,dd).getDay();
+    const isToday = dateStr===todayStr;
+    const isPast  = dateStr<todayStr;
+    const evHTML = byDate[dateStr].map(e=>{
+      const clr = TYPE_CLR[e.type]||'#6b87ad';
+      const timeStr = e.time ? `<div class="cal-list-event-time">⏱ ${fmtCalTime(e.time)}</div>` : '';
+      return `<div class="cal-list-event" onclick="openCalEventModal('${type}','${dateStr}')">
+        <div class="cal-list-event-bar" style="background:${clr}"></div>
+        <div class="cal-list-event-body">
+          <div class="cal-list-event-title">${e.title||'(untitled)'}</div>
+          ${timeStr}
+        </div>
+      </div>`;
+    }).join('');
+    return `<div class="cal-list-group${isPast&&!isToday?' cal-list-past':''}">
+      <div class="cal-list-date">
+        <div class="cal-list-day-num${isToday?' is-today':''}">${dd}</div>
+        <div class="cal-list-day-info">
+          <div class="cal-list-day-name">${DAYS[dow]}</div>
+          <div class="cal-list-month-str">${MONTHS[m2-1].slice(0,3)}</div>
+        </div>
+        ${isToday?'<div class="cal-list-today-badge">TODAY</div>':''}
+      </div>
+      <div class="cal-list-events">${evHTML}</div>
+    </div>`;
+  }).join('');
 }
 
 function renderProductionRuns(){
