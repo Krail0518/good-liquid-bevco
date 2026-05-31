@@ -43,7 +43,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;display:flex;align-items:cen
 .frow2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
 @media(max-width:520px){.frow2{grid-template-columns:1fr}}
 .field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
-.field label{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);font-weight:600}
+.field label,.field-label{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:2px}
 .field input,.field select,.field textarea{
   width:100%;padding:11px 14px;
   background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);
@@ -52,8 +52,41 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;display:flex;align-items:cen
 }
 .field input:focus,.field select:focus,.field textarea:focus{border-color:rgba(0,229,192,.4);background:rgba(0,229,192,.03)}
 .field select option{background:var(--ink2);color:var(--white)}
-.field input[style*="uppercase"]{text-transform:uppercase}
 
+/* ── PILL CHECKBOXES ── */
+.pill-group{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.pill-group input[type="checkbox"]{position:absolute;opacity:0;width:0;height:0;pointer-events:none}
+.pill-group label{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:7px 15px;border-radius:24px;cursor:pointer;
+  border:1px solid rgba(255,255,255,.13);background:rgba(255,255,255,.04);
+  font-size:13px;color:rgba(238,244,255,.75);
+  transition:all .15s;user-select:none;
+}
+.pill-group label:hover{border-color:rgba(0,229,192,.3);background:rgba(0,229,192,.05);color:var(--white)}
+.pill-group input[type="checkbox"]:checked + label{
+  background:rgba(0,229,192,.12);border-color:rgba(0,229,192,.45);
+  color:var(--teal);font-weight:600;
+}
+.pill-group input[type="checkbox"]:checked + label::before{content:'✓ '}
+
+/* "Other" free-text reveal */
+.other-reveal{
+  display:none;margin-top:10px;
+}
+.other-reveal.show{display:block}
+.other-reveal input{
+  width:100%;padding:10px 14px;
+  background:rgba(255,255,255,.04);border:1px solid rgba(0,229,192,.25);
+  border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body);
+  outline:none;transition:border-color .2s;
+}
+.other-reveal input:focus{border-color:rgba(0,229,192,.5);background:rgba(0,229,192,.03)}
+.other-reveal input::placeholder{color:var(--muted)}
+
+.check-section{margin-bottom:20px}
+
+/* ── MISC ── */
 .req-note{font-size:11px;color:var(--muted);margin-bottom:20px}
 .req-note span{color:#f87171}
 
@@ -67,17 +100,16 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;display:flex;align-items:cen
 .sub-btn:disabled{opacity:.6;cursor:not-allowed;transform:none}
 
 .form-ok{
-  display:none;margin-top:20px;padding:20px;
+  display:none;margin-top:20px;padding:28px 20px;
   background:rgba(0,229,192,.06);border:1px solid rgba(0,229,192,.2);
   border-radius:10px;text-align:center;
 }
-.form-ok-icon{font-size:32px;margin-bottom:8px}
+.form-ok-icon{font-size:36px;margin-bottom:10px}
 .form-ok-title{font-family:var(--ff-disp);font-size:20px;color:var(--teal);letter-spacing:1px;margin-bottom:8px}
 .form-ok-body{font-size:14px;color:rgba(238,244,255,.75);line-height:1.6}
 .form-err{display:none;margin-top:12px;padding:12px 16px;background:rgba(248,113,113,.06);border:1px solid rgba(248,113,113,.2);border-radius:8px;font-size:13px;color:#f87171}
 
 /* ── SIDEBAR ── */
-.sidebar{}
 .contact-block{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:16px;padding:28px;margin-bottom:20px}
 .contact-block h3{font-family:var(--ff-disp);font-size:16px;letter-spacing:1.5px;color:var(--white);margin-bottom:16px}
 .ci{display:flex;gap:12px;margin-bottom:14px;align-items:flex-start}
@@ -128,34 +160,40 @@ footer{border-top:1px solid rgba(255,255,255,.06);padding:28px 48px;display:flex
       <div class="field"><label>City</label><input id="qf-city" type="text" placeholder="Tampa" autocomplete="address-level2"></div>
       <div class="field"><label>State</label><input id="qf-state" type="text" maxlength="2" placeholder="FL" style="text-transform:uppercase" autocomplete="address-level1"></div>
     </div>
-    <div class="frow2">
-      <div class="field"><label>Service</label>
-        <select id="qf-service">
-          <option value="">Select service…</option>
-          <option>Beverage R&amp;D</option>
-          <option>Small batch canning</option>
-          <option>Bottle filling</option>
-          <option>Co-packing</option>
-          <option>Consulting</option>
-          <option>Not sure yet</option>
-        </select>
-      </div>
-      <div class="field"><label>Product type</label>
-        <select id="qf-product">
-          <option value="">Select…</option>
-          <option value="seltzer">Seltzer</option>
-          <option value="kombucha">Kombucha</option>
-          <option value="coldbrew">Cold brew</option>
-          <option value="juice">Juice</option>
-          <option value="rtd">RTD cocktail</option>
-          <option value="energy">Energy drink</option>
-          <option value="mocktail">Mocktail</option>
-          <option value="sparkling">Sparkling water</option>
-          <option value="sports">Sports drink</option>
-          <option value="other">Other</option>
-        </select>
+
+    <!-- SERVICE — multi-select pills -->
+    <div class="check-section">
+      <div class="field-label">Service <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:11px">— select all that apply</span></div>
+      <div class="pill-group" id="qf-service-group">
+        <input type="checkbox" id="svc-rd"       value="Beverage R&D"><label for="svc-rd">Beverage R&amp;D</label>
+        <input type="checkbox" id="svc-can"      value="Small batch canning"><label for="svc-can">Small batch canning</label>
+        <input type="checkbox" id="svc-bottle"   value="Bottle filling"><label for="svc-bottle">Bottle filling</label>
+        <input type="checkbox" id="svc-copak"    value="Co-packing"><label for="svc-copak">Co-packing</label>
+        <input type="checkbox" id="svc-consult"  value="Consulting"><label for="svc-consult">Consulting</label>
+        <input type="checkbox" id="svc-unsure"   value="Not sure yet"><label for="svc-unsure">Not sure yet</label>
       </div>
     </div>
+
+    <!-- PRODUCT TYPE — multi-select pills + free-text Other -->
+    <div class="check-section">
+      <div class="field-label">Product type <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:11px">— select all that apply</span></div>
+      <div class="pill-group" id="qf-product-group">
+        <input type="checkbox" id="pt-seltzer"   value="Seltzer"><label for="pt-seltzer">Seltzer</label>
+        <input type="checkbox" id="pt-kombucha"  value="Kombucha"><label for="pt-kombucha">Kombucha</label>
+        <input type="checkbox" id="pt-coldbrew"  value="Cold brew"><label for="pt-coldbrew">Cold brew</label>
+        <input type="checkbox" id="pt-juice"     value="Juice"><label for="pt-juice">Juice</label>
+        <input type="checkbox" id="pt-rtd"       value="RTD cocktail"><label for="pt-rtd">RTD cocktail</label>
+        <input type="checkbox" id="pt-energy"    value="Energy drink"><label for="pt-energy">Energy drink</label>
+        <input type="checkbox" id="pt-mocktail"  value="Mocktail"><label for="pt-mocktail">Mocktail</label>
+        <input type="checkbox" id="pt-sparkling" value="Sparkling water"><label for="pt-sparkling">Sparkling water</label>
+        <input type="checkbox" id="pt-sports"    value="Sports drink"><label for="pt-sports">Sports drink</label>
+        <input type="checkbox" id="pt-other"     value="Other" onchange="toggleOtherProduct(this)"><label for="pt-other">Other</label>
+      </div>
+      <div class="other-reveal" id="pt-other-reveal">
+        <input type="text" id="pt-other-text" placeholder="Describe your product type…">
+      </div>
+    </div>
+
     <div class="frow2">
       <div class="field"><label>Volume / yr</label>
         <select id="qf-volume">
@@ -204,6 +242,7 @@ footer{border-top:1px solid rgba(255,255,255,.06);padding:28px 48px;display:flex
         </select>
       </div>
     </div>
+
     <div class="field"><label>Project details</label>
       <textarea id="qf-details" rows="4" placeholder="Product concept, flavor, packaging vision, certifications needed, questions…"></textarea>
     </div>
@@ -250,8 +289,37 @@ function gv(id){ var el=document.getElementById(id); return el ? el.value.trim()
 function showErr(msg){ var el=document.getElementById('qf-err'); el.textContent=msg; el.style.display='block'; }
 function clearErr(){ document.getElementById('qf-err').style.display='none'; }
 
+// Get all checked values from a pill-group container
+function getChecked(groupId){
+  var boxes = document.querySelectorAll('#' + groupId + ' input[type="checkbox"]:checked');
+  return Array.prototype.map.call(boxes, function(cb){ return cb.value; });
+}
+
+// Show / hide the "Other" product type text field
+function toggleOtherProduct(cb){
+  var reveal = document.getElementById('pt-other-reveal');
+  if(cb.checked){
+    reveal.classList.add('show');
+    document.getElementById('pt-other-text').focus();
+  } else {
+    reveal.classList.remove('show');
+    document.getElementById('pt-other-text').value = '';
+  }
+}
+
 async function submitQuote(btn){
   clearErr();
+
+  // Collect multi-select fields
+  var services     = getChecked('qf-service-group');
+  var productTypes = getChecked('qf-product-group');
+
+  // If "Other" is checked for product type, replace the placeholder with the typed value
+  var otherText = gv('pt-other-text');
+  if(productTypes.indexOf('Other') !== -1 && otherText){
+    productTypes[productTypes.indexOf('Other')] = 'Other: ' + otherText;
+  }
+
   var vals = {
     brand_name:    gv('qf-brand'),
     contact_name:  gv('qf-name'),
@@ -259,8 +327,8 @@ async function submitQuote(btn){
     phone:         gv('qf-phone'),
     city:          gv('qf-city'),
     state:         gv('qf-state').toUpperCase(),
-    service:       gv('qf-service'),
-    product_type:  gv('qf-product'),
+    service:       services.join(', ')     || '',
+    product_type:  productTypes.join(', ') || '',
     volume:        gv('qf-volume'),
     timeline:      gv('qf-timeline'),
     funding_stage: gv('qf-funding'),
@@ -279,15 +347,15 @@ async function submitQuote(btn){
   btn.disabled = true;
 
   var noteBlock = [
-    'Brand: ' + vals.brand_name,
-    'Contact: ' + vals.contact_name + ' (' + vals.email + (vals.phone ? ', ' + vals.phone : '') + ')',
+    'Brand: '        + vals.brand_name,
+    'Contact: '      + vals.contact_name + ' (' + vals.email + (vals.phone ? ', ' + vals.phone : '') + ')',
     (vals.city || vals.state) ? 'Location: ' + [vals.city, vals.state].filter(Boolean).join(', ') : null,
-    'Service: ' + (vals.service || '—'),
-    'Product type: ' + (vals.product_type || '—'),
-    'Volume: ' + (vals.volume || '—'),
-    'Timeline: ' + (vals.timeline || '—'),
-    'Funding stage: ' + (vals.funding_stage || '—'),
-    'Lead source: ' + (vals.lead_source || '—'),
+    'Service(s): '   + (vals.service      || '—'),
+    'Product(s): '   + (vals.product_type || '—'),
+    'Volume: '       + (vals.volume        || '—'),
+    'Timeline: '     + (vals.timeline      || '—'),
+    'Funding stage: '+ (vals.funding_stage || '—'),
+    'Lead source: '  + (vals.lead_source   || '—'),
     '',
     vals.details || '(no project details given)'
   ].filter(function(x){ return x !== null; }).join('\n');
@@ -308,7 +376,7 @@ async function submitQuote(btn){
     if(res.ok) anyOk = true;
   } catch(e){ console.warn('Formspree error', e); }
 
-  // 2 — Supabase contact_submissions table (same table as the main site form)
+  // 2 — Supabase contact_submissions
   try {
     var supaRes = await fetch(SUPA_URL + '/rest/v1/contact_submissions', {
       method: 'POST',
@@ -322,16 +390,16 @@ async function submitQuote(btn){
         brand_name:    vals.brand_name,
         contact_name:  vals.contact_name,
         email:         vals.email,
-        phone:         vals.phone || null,
-        city:          vals.city || null,
-        state:         vals.state || null,
-        service:       vals.service || null,
-        product_type:  vals.product_type || null,
-        volume:        vals.volume || null,
-        timeline:      vals.timeline || null,
+        phone:         vals.phone         || null,
+        city:          vals.city          || null,
+        state:         vals.state         || null,
+        service:       vals.service       || null,
+        product_type:  vals.product_type  || null,
+        volume:        vals.volume        || null,
+        timeline:      vals.timeline      || null,
         funding_stage: vals.funding_stage || null,
-        lead_source:   vals.lead_source || null,
-        notes:         vals.details || null,
+        lead_source:   vals.lead_source   || null,
+        notes:         vals.details       || null,
         source_page:   'request-a-quote'
       })
     });
@@ -339,7 +407,9 @@ async function submitQuote(btn){
   } catch(e){ console.warn('Supabase error', e); }
 
   if(anyOk){
-    document.querySelector('.form-card').querySelectorAll('input,select,textarea,button').forEach(function(el){ el.style.display='none'; });
+    // Hide the entire form body, show success
+    var card = document.querySelector('.form-card');
+    card.querySelectorAll('.frow2, .field, .check-section, .sub-btn, .form-err').forEach(function(el){ el.style.display='none'; });
     document.getElementById('qf-ok').style.display = 'block';
     document.querySelector('.form-title').textContent = '🎉 Inquiry received!';
   } else {
