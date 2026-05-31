@@ -227,6 +227,20 @@ section{padding:96px 52px}
 .sub-btn{width:100%;padding:14px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-size:14px;font-weight:800;font-family:var(--ff-body);letter-spacing:.4px;cursor:pointer;transition:all .3s;margin-top:5px;position:relative;z-index:1}
 .sub-btn:hover{background:var(--teal2);transform:translateY(-2px);box-shadow:0 12px 32px rgba(0,229,192,.28)}
 .form-ok{display:none;margin-top:12px;text-align:center;font-size:13px;color:var(--teal);font-weight:600;padding:11px;border:1px solid rgba(0,229,192,.18);border-radius:7px;background:rgba(0,229,192,.06)}
+/* Pill checkboxes for Service & Product Type */
+.pill-group{display:flex;flex-wrap:wrap;gap:7px;margin-top:5px}
+.pill-group input[type="checkbox"]{position:absolute;opacity:0;width:0;height:0;pointer-events:none}
+.pill-group label{display:inline-flex;align-items:center;gap:5px;padding:6px 13px;border-radius:20px;cursor:pointer;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.03);font-size:12px;color:rgba(238,244,255,.7);transition:all .15s;user-select:none}
+.pill-group label:hover{border-color:rgba(0,229,192,.3);background:rgba(0,229,192,.05);color:var(--white)}
+.pill-group input[type="checkbox"]:checked+label{background:rgba(0,229,192,.12);border-color:rgba(0,229,192,.45);color:var(--teal);font-weight:600}
+.pill-group input[type="checkbox"]:checked+label::before{content:'✓ '}
+.pill-field{margin-bottom:16px;position:relative;z-index:1}
+.pill-field>label{display:block;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.other-reveal{display:none;margin-top:8px}
+.other-reveal.show{display:block}
+.other-reveal input{width:100%;padding:10px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(0,229,192,.25);border-radius:8px;color:var(--white);font-size:13px;font-family:var(--ff-body);outline:none;transition:border-color .2s}
+.other-reveal input:focus{border-color:rgba(0,229,192,.5)}
+.other-reveal input::placeholder{color:rgba(107,135,173,.5)}
 
 /* Footer */
 footer{background:var(--ink);border-top:1px solid rgba(255,255,255,.06);padding:34px 52px;display:flex;align-items:center;justify-content:space-between}
@@ -1589,29 +1603,36 @@ select option, .fsel option {
         <div class="field"><label>City</label><input id="qf-city" type="text" placeholder="Tampa"></div>
         <div class="field"><label>State</label><input id="qf-state" type="text" maxlength="2" placeholder="FL" style="text-transform:uppercase"></div>
       </div>
-      <div class="frow2">
-        <div class="field"><label>Service</label><select id="qf-service">
-          <option value="">Select service…</option>
-          <option>Beverage R&amp;D</option>
-          <option>Small batch canning</option>
-          <option>Bottle filling</option>
-          <option>Co-packing</option>
-          <option>Consulting</option>
-          <option>Not sure yet</option>
-        </select></div>
-        <div class="field"><label>Product type</label><select id="qf-product">
-          <option value="">Select…</option>
-          <option value="seltzer">Seltzer</option>
-          <option value="kombucha">Kombucha</option>
-          <option value="coldbrew">Cold brew</option>
-          <option value="juice">Juice</option>
-          <option value="rtd">RTD cocktail</option>
-          <option value="energy">Energy drink</option>
-          <option value="mocktail">Mocktail</option>
-          <option value="sparkling">Sparkling water</option>
-          <option value="sports">Sports drink</option>
-          <option value="other">Other</option>
-        </select></div>
+      <!-- Service — multi-select pills -->
+      <div class="pill-field">
+        <label>Service <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:11px">— select all that apply</span></label>
+        <div class="pill-group" id="qf-service-group">
+          <input type="checkbox" id="svc-rd"      value="Beverage R&D"><label for="svc-rd">Beverage R&amp;D</label>
+          <input type="checkbox" id="svc-can"     value="Small batch canning"><label for="svc-can">Small batch canning</label>
+          <input type="checkbox" id="svc-bottle"  value="Bottle filling"><label for="svc-bottle">Bottle filling</label>
+          <input type="checkbox" id="svc-copak"   value="Co-packing"><label for="svc-copak">Co-packing</label>
+          <input type="checkbox" id="svc-consult" value="Consulting"><label for="svc-consult">Consulting</label>
+          <input type="checkbox" id="svc-unsure"  value="Not sure yet"><label for="svc-unsure">Not sure yet</label>
+        </div>
+      </div>
+      <!-- Product type — multi-select pills + free-text Other -->
+      <div class="pill-field">
+        <label>Product type <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:11px">— select all that apply</span></label>
+        <div class="pill-group" id="qf-product-group">
+          <input type="checkbox" id="pt-seltzer"   value="Seltzer"><label for="pt-seltzer">Seltzer</label>
+          <input type="checkbox" id="pt-kombucha"  value="Kombucha"><label for="pt-kombucha">Kombucha</label>
+          <input type="checkbox" id="pt-coldbrew"  value="Cold brew"><label for="pt-coldbrew">Cold brew</label>
+          <input type="checkbox" id="pt-juice"     value="Juice"><label for="pt-juice">Juice</label>
+          <input type="checkbox" id="pt-rtd"       value="RTD cocktail"><label for="pt-rtd">RTD cocktail</label>
+          <input type="checkbox" id="pt-energy"    value="Energy drink"><label for="pt-energy">Energy drink</label>
+          <input type="checkbox" id="pt-mocktail"  value="Mocktail"><label for="pt-mocktail">Mocktail</label>
+          <input type="checkbox" id="pt-sparkling" value="Sparkling water"><label for="pt-sparkling">Sparkling water</label>
+          <input type="checkbox" id="pt-sports"    value="Sports drink"><label for="pt-sports">Sports drink</label>
+          <input type="checkbox" id="pt-other"     value="Other" onchange="toggleOtherProductMain(this)"><label for="pt-other">Other</label>
+        </div>
+        <div class="other-reveal" id="pt-other-reveal-main">
+          <input type="text" id="pt-other-text-main" placeholder="Describe your product type…">
+        </div>
       </div>
       <div class="frow2">
         <div class="field"><label>Volume / yr</label><select id="qf-volume">
@@ -5687,8 +5708,28 @@ function navTo(id){
 }
 
 
+function getCheckedMain(groupId){
+  var boxes = document.querySelectorAll('#' + groupId + ' input[type="checkbox"]:checked');
+  return Array.prototype.map.call(boxes, function(cb){ return cb.value; });
+}
+function toggleOtherProductMain(cb){
+  var reveal = document.getElementById('pt-other-reveal-main');
+  if(!reveal) return;
+  if(cb.checked){ reveal.classList.add('show'); document.getElementById('pt-other-text-main').focus(); }
+  else { reveal.classList.remove('show'); document.getElementById('pt-other-text-main').value = ''; }
+}
+
 async function submitContactForm(btn){
   const v = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+
+  // Multi-select service + product type
+  var services     = getCheckedMain('qf-service-group');
+  var productTypes = getCheckedMain('qf-product-group');
+  var otherText    = v('pt-other-text-main');
+  if(productTypes.indexOf('Other') !== -1 && otherText){
+    productTypes[productTypes.indexOf('Other')] = 'Other: ' + otherText;
+  }
+
   const vals = {
     brand_name:    v('qf-brand'),
     contact_name:  v('qf-name'),
@@ -5696,8 +5737,8 @@ async function submitContactForm(btn){
     phone:         v('qf-phone'),
     city:          v('qf-city'),
     state:         v('qf-state').toUpperCase(),
-    service:       v('qf-service'),
-    product_type:  v('qf-product'),
+    service:       services.join(', ')     || '',
+    product_type:  productTypes.join(', ') || '',
     volume:        v('qf-volume'),
     timeline:      v('qf-timeline'),
     funding_stage: v('qf-funding'),
@@ -5821,9 +5862,13 @@ async function submitContactForm(btn){
 
     if(formspreeOk){
       document.getElementById('form-ok').style.display = 'block';
-      ['qf-brand','qf-name','qf-email','qf-phone','qf-city','qf-state','qf-service','qf-product','qf-volume','qf-timeline','qf-funding','qf-source','qf-details'].forEach(id => {
+      ['qf-brand','qf-name','qf-email','qf-phone','qf-city','qf-state','qf-volume','qf-timeline','qf-funding','qf-source','qf-details'].forEach(id => {
         const el = document.getElementById(id); if(el) el.value = '';
       });
+      // Uncheck all pill checkboxes
+      document.querySelectorAll('#qf-service-group input, #qf-product-group input').forEach(cb => { cb.checked = false; });
+      var rev = document.getElementById('pt-other-reveal-main'); if(rev) rev.classList.remove('show');
+      var ot = document.getElementById('pt-other-text-main'); if(ot) ot.value = '';
       setTimeout(() => {
         const ok = document.getElementById('form-ok'); if(ok) ok.style.display = 'none';
         btn.textContent = 'Send inquiry →';
