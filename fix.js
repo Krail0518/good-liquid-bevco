@@ -5865,16 +5865,26 @@
   var SEC_REFERRALS = MOCK_REFERRALS +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
-      '<b>(1) + Add referral</b> — pick a referrer, type the client name, deal value, rate %, status (lead / presented / won / paid / lost).',
-      '<b>(2) Status badge</b> — color-coded. Won = commission "owed" on the dashboard referrer card. Paid = counts toward "Paid YTD".',
-      '<b>(3) ✓ Pay commission</b> — appears on Won rows. Click to mark the commission paid, recompute YTD totals, and log to Activity.'
+      '<b>What it is</b>: a commission-tracking ledger for deals brought in by external referrers (brokers, industry contacts, business partners). Each row links a referrer to a client deal and tracks the commission owed or already paid.',
+      '<b>(1) + Add referral</b> — click the button top-right. Fill in:<ol style="margin:4px 0 4px 18px;padding:0"><li><b>Referrer</b> — pick from the Referrers list. Must be added there first.</li><li><b>Client name</b> — the client or prospect that was referred (free text; does not need to be a CRM client record yet).</li><li><b>Deal value</b> — total $ value of the deal (the full contract amount, not the commission).</li><li><b>Rate %</b> — commission percentage for this deal. Defaults to the referrer\'s standard rate, but can be overridden per deal.</li><li><b>Status</b> — set the opening status, usually "lead".</li></ol>Click Save.',
+      '<b>Status workflow</b>: move the deal through stages as it progresses:<ul style="margin:4px 0 4px 18px;padding:0"><li><span style="color:#9aa7bd"><b>Lead</b></span> — initial intro, no proposal yet.</li><li><span style="color:#6b9fff"><b>Presented</b></span> — proposal or quote has been sent.</li><li><span style="color:#f5c842"><b>Won</b></span> — deal closed; commission is now owed.</li><li><span style="color:#22c55e"><b>Paid</b></span> — commission has been paid out.</li><li><span style="color:#e74c3c"><b>Lost</b></span> — deal fell through; no commission due.</li></ul>Click the status badge on any row to change it via a dropdown.',
+      '<b>(2) Status badge</b> — color-coded for quick scanning. <span style="color:#f5c842">Yellow "won"</span> = commission is owed and appears on the dashboard referrer card. <span style="color:#22c55e">Green "paid"</span> = commission settled and counted toward Paid YTD.',
+      '<b>Commission column</b> — calculated automatically as <code>deal value × rate %</code>. Example: $35,820 at 5% = <b>$1,791</b>. Read-only; recomputes whenever deal value or rate changes.',
+      '<b>(3) ✓ Pay commission</b> — a green checkmark button appears on Won rows. Clicking it:<ol style="margin:4px 0 4px 18px;padding:0"><li>Flips the referral status to <b>Paid</b>.</li><li>Adds the commission amount to the referrer\'s <b>Paid YTD</b> total on their referrer card.</li><li>Removes the "owed" badge from the dashboard referrer widget.</li><li>Logs the payment event to the Activity Feed.</li></ol>',
+      '<b>Editing a referral</b> — click any row to open the edit modal. Adjust the deal value, rate, client name, or status at any time. Click Save.',
+      '<b>Deleting a referral</b> — open the edit modal → click the red Delete button → confirm. The row is permanently removed and the referrer\'s commission totals adjust automatically.'
     ]);
 
   var SEC_REFERRERS = MOCK_REFERRERS +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
-      '<b>(1) + Add referrer</b> — name, relationship (broker / industry contact / business partner), email, phone, default commission rate %.',
-      '<b>(2) Referrer card</b> — avatar, name, relationship, contact info, rate %, count of referrals, and current owed / paid YTD badge. Mirrors what appears on the dashboard.'
+      '<b>What it is</b>: the master directory of external partners who send new business your way. Referrers can be brokers, industry contacts, or business partners. Each referrer card tracks contact info, a default commission rate, and a running commission summary across all their referrals.',
+      '<b>(1) + Add referrer</b> — click the button top-right. Fill in:<ol style="margin:4px 0 4px 18px;padding:0"><li><b>Name</b> — full name of the person or company.</li><li><b>Relationship type</b> — Broker, Industry contact, or Business partner. Used for filtering and display.</li><li><b>Email</b> — contact email (used for reaching out manually; not connected to automated sends).</li><li><b>Phone</b> — contact phone number.</li><li><b>Default commission rate %</b> — the standard percentage applied to referrals from this person. Can be overridden per deal on the Referrals page.</li></ol>Click Save.',
+      '<b>(2) Referrer card</b> — each referrer has a card showing their avatar (initials), name, relationship label, email, phone, commission rate, total referral count, and a commission summary badge:<ul style="margin:4px 0 4px 18px;padding:0"><li><span style="color:#f5c842"><b>$ owed</b></span> — sum of commissions on Won referrals not yet marked Paid. This amount appears on the dashboard "Top Referrers" widget as a yellow badge.</li><li><span style="color:#1D9E75"><b>$ paid YTD</b></span> — total commissions already paid out this calendar year. Resets each January 1.</li></ul>',
+      '<b>Editing a referrer</b> — click any card to open the edit modal. Change name, relationship type, contact info, or default rate. Click Save.',
+      '<b>Deleting a referrer</b> — open the edit modal → click the red Delete button. Confirm in the dialog. Deleting a referrer does not delete their referral rows — those rows remain but their referrer field shows "(deleted referrer)". Recover by re-creating the referrer and updating the referral rows.',
+      '<b>Dashboard integration</b> — the dashboard shows the top 3 referrers by total deal value. Any referrer with an outstanding commission balance shows a yellow "$ owed" badge. Click the referrer card on the dashboard to jump directly to their Referrers page card.',
+      '<b>How default rate works</b> — when you add a new referral and pick this referrer, the rate field pre-fills with their default rate. You can override it on that specific deal without changing the default. The default only applies to new referrals created after the change.'
     ]);
   // ────────────────────────────────────────────────────────────
   // Customer Requests inbox (PR 2 of 2026-05-20 enhancement series)
@@ -6019,25 +6029,42 @@
   var SEC_TASKS = MOCK_TASKS +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
-      '<b>(1) + Add Task</b> — name, optional client link, optional due date.',
-      '<b>(2) Checkbox</b> — click to mark done. Completed tasks strike through and dim. Filter pills above the list switch between All / Open / Done.',
-      '<b>(3) Due-today badge</b> — yellow badge when a task is due today; turns red when overdue. Stored in localStorage (gl_tasks), per device.'
+      '<b>What it is</b>: a personal to-do list for tracking follow-up actions, reminders, and daily work items. Tasks can be optionally linked to a specific client account for quick context.',
+      '<b>(1) + Add Task</b> — click the button top-right. A modal opens with three fields:<ol style="margin:4px 0 4px 18px;padding:0"><li><b>Task name</b> (required) — describe what needs to be done, e.g. "Follow up with Bloom on Q3 volume".</li><li><b>Client link</b> (optional) — pick a client from the dropdown. A blue client badge appears on the task row so you can see at a glance which account it belongs to.</li><li><b>Due date</b> (optional) — a date picker. Leave blank for open-ended tasks with no deadline.</li></ol>Click Save. The new task appears at the top of the list.',
+      '<b>(2) Completing a task</b> — click the checkbox on the left of any row. The task immediately strikes through and dims. Click the checkbox again to un-complete it if needed. Completed tasks move to the Done view.',
+      '<b>(3) Due-today badge</b> — a yellow "due today" pill appears on tasks whose due date is today. If the due date has already passed, the badge turns red and reads "overdue". Overdue tasks bubble up to the top of the Open filter automatically.',
+      '<b>Filter pills</b> — three pills at the top: <b>All</b> (every task regardless of status), <b>Open</b> (incomplete tasks only — overdue first, then by due date), <b>Done</b> (completed tasks, newest first).',
+      '<b>Editing a task</b> — click anywhere on a task row to reopen the edit modal. Change the name, client link, or due date, then click Save to update.',
+      '<b>Deleting a task</b> — open the task edit modal → click the red <b>Delete</b> button at the bottom. Confirm in the dialog. Deleted tasks are permanently removed.',
+      '<b>Client badge shortcut</b> — clicking the blue client badge on a task row navigates directly to that client\'s detail panel, so you can pull up account info without leaving context.',
+      '<b>Data note</b> — tasks are stored in <code>localStorage (gl_tasks)</code> on your device. They are private to your browser, not visible to other team members, and clearing your browser data will erase them. For shared team to-dos, use the <b>📣 Announcements</b> board to broadcast context to the whole team.'
     ]);
 
   var SEC_DOCUMENTS = MOCK_DOCUMENTS +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
-      '<b>(1) + Upload</b> — pick a file (PDF / Word / image / CSV), select the client and document type, upload. Files persist to Supabase Storage in the <b>client-docs</b> bucket.',
-      '<b>(2) Document table</b> — every uploaded file with the client name, type badge, uploaded date.',
-      '<b>(3) ⬇ Open</b> — opens the file in a new tab from Supabase. Documents are private to authenticated users.',
-      'If the bucket isn\'t set up yet, the file metadata is recorded but the file itself isn\'t stored. The dashboard System Health widget surfaces this with a one-click "Copy SQL" button.'
+      '<b>What it is</b>: centralized file storage for client-facing and internal documents — master formulas, label artwork, spec sheets, contracts, COAs, production schedules, and more. Files are stored securely in Supabase Storage (<b>client-docs</b> bucket) and require a staff login to view.',
+      '<b>(1) + Upload</b> — click the button top-right. A modal opens:<ol style="margin:4px 0 4px 18px;padding:0"><li><b>Client</b> — pick from the dropdown, or "(general)" for documents not tied to a specific client.</li><li><b>Document type</b> — select from: R&amp;D, Design, Ops, Contract, Spec sheet, Certificate of Analysis (COA), Allergen, Label, Other.</li><li><b>File</b> — drag-and-drop or click to browse. Accepts PDF, Word (.doc/.docx), Excel (.xls/.xlsx), images (JPG, PNG), CSV, and ZIP. Max file size: 50 MB.</li></ol>Click Upload. A metadata row saves to the <code>documents</code> table; the file lands in Supabase Storage under <code>&lt;client_id&gt;/&lt;filename&gt;</code>.',
+      '<b>(2) Document table</b> — every uploaded file with file name, client name, document type badge (color-coded by type), upload date, and action buttons. Sorted newest-first.',
+      '<b>(3) ⬇ Open</b> — generates a 60-second signed URL from Supabase Storage and opens the file in a new tab. Because links are short-lived and signed, they cannot be shared publicly — the recipient must be a logged-in staff user.',
+      '<b>Filtering documents</b> — use the <b>Filter by client</b> dropdown above the table to narrow results to one client\'s files. Use the type pills to filter by category (R&amp;D, COA, Label, etc.). Both filters work together.',
+      '<b>Deleting a document</b> — click the red 🗑 icon on any row. A confirmation dialog appears. Confirming removes both the file from Supabase Storage and the metadata row from the database.',
+      '<b>Lot-specific documents (COAs, certs)</b> — documents tied to a specific production lot are managed separately on the <b>Production Runs</b> page. Open a run → scroll to "📎 LOT DOCUMENTS" → click + Attach. Customers can download these directly from their portal without a staff login.',
+      '<b>Missing bucket warning</b> — if the <code>client-docs</code> Storage bucket hasn\'t been created yet, uploads fail silently. The dashboard <b>System Health</b> widget surfaces this with a one-click "Copy SQL" fix — run that SQL in the Supabase SQL editor to create the bucket with correct Row-Level Security policies.'
     ]);
 
   var SEC_INVENTORY = MOCK_INVENTORY +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
-      '<b>(1) + Add Item</b> — name, quantity, unit (cases / tanks / bags / etc.), low-stock threshold.',
-      '<b>(2) LOW badge</b> — yellow badge when quantity is at or below the threshold. Items at LOW also surface on the dashboard. Stored in localStorage (gl_inventory).'
+      '<b>What it is</b>: a lightweight stock tracker for raw materials, packaging components, and finished goods. Set reorder thresholds and get dashboard alerts when stock runs low.',
+      '<b>(1) + Add Item</b> — click the button top-right. Fill in:<ol style="margin:4px 0 4px 18px;padding:0"><li><b>Item name</b> (required) — e.g. "12oz Sleek Cans", "CO₂ Gas", "PakTech Handles", "750ml Bottles".</li><li><b>Quantity</b> — current stock on hand (a number).</li><li><b>Unit</b> — free text: cases, tanks, bags, pallets, lbs, kg, gallons, each — whatever makes sense for that item.</li><li><b>Low-stock threshold</b> — the quantity at or below which the LOW badge triggers and the dashboard alert fires. Example: set to 3 for CO₂ tanks so you get warned before you run out.</li></ol>Click Save. The item appears in the table.',
+      '<b>Updating a quantity</b> — after receiving a delivery or consuming material in a production run, click the item row to open the edit modal. Change the Quantity to the new on-hand number and click Save. The badge and dashboard alert recompute instantly.',
+      '<b>(2) LOW badge</b> — a yellow "LOW" badge appears on any item where quantity ≤ threshold. LOW items sort to the top of the list and also surface in the dashboard\'s <b>System Health</b> / Alerts section, so you see shortages without opening the Inventory page.',
+      '<b>OK badge</b> — a green "OK" badge appears when quantity is above the threshold. No action needed.',
+      '<b>Editing an item</b> — click any row to reopen the edit modal. You can rename the item, change the unit, adjust the threshold, or update the quantity. Click Save.',
+      '<b>Deleting an item</b> — open the edit modal → click the red <b>Delete</b> button → confirm. The item is permanently removed.',
+      '<b>Sorting</b> — LOW items always appear first. Within the same status, items are sorted alphabetically.',
+      '<b>Data note</b> — inventory data lives in <code>localStorage (gl_inventory)</code> on your device. It is not synced to Supabase or shared with other team members. For shared, production-grade inventory (with audit trails and multi-user visibility), use the Supabase <code>inventory</code> table directly or connect your ERP.'
     ]);
   var SEC_ANNOUNCEMENTS =
     wf(620, 200,
@@ -6058,10 +6085,14 @@
       tag(520,12,1) + tag(20,38,2)
     ) +
     bullets([
-    'Company-wide notes shown on every user\'s dashboard. Use for shift reminders, client news, maintenance windows, or team announcements.',
-    '<b>+ New post</b> — click the button top-right, type a title + body, click Save. Pinned posts (📌) stay at the top.',
-    'Stored in localStorage — per device, not synced across the team.'
-  ]);
+      '<b>What it is</b>: a shared notice board for company-wide messages. Announcements appear on every staff user\'s dashboard at the top of the page. Use it for shift reminders, maintenance windows, client wins, production updates, or anything the whole team needs to see.',
+      '<b>+ New post</b> — click the button top-right. A modal opens with two fields:<ol style="margin:4px 0 4px 18px;padding:0"><li><b>Title</b> (required) — a short headline, e.g. "LINE MAINTENANCE — Canning Line 1 down Fri May 30".</li><li><b>Body</b> — optional additional detail. Supports plain text. Use short, actionable sentences.</li></ol>Click Save. The announcement appears immediately on the board.',
+      '<b>Pinned posts (📌)</b> — check the "📌 Pin this post" checkbox in the new-post modal to pin it to the top of the board regardless of date. Use pinning for time-sensitive notices that must stay visible, like a line shutdown or a safety bulletin. Pinned posts remain at the top until you unpin or delete them.',
+      '<b>Emoji openers</b> — starting your title with an emoji helps team members scan the board at a glance: 📌 urgent/pinned · 🎉 celebration · 🏭 production · 🚨 safety · 📋 reminder.',
+      '<b>Editing a post</b> — click any announcement row to open the edit modal. Change the title, body, or pin status, then click Save.',
+      '<b>Deleting a post</b> — open the edit modal → click the red Delete button → confirm. The post is immediately removed from all dashboards.',
+      '<b>Data note</b> — announcements are stored in localStorage on each device. They are visible only to users on the same browser/device and are not synced across the team via Supabase. For team-wide sync, use the Supabase <code>announcements</code> table directly.'
+    ]);
   var SEC_CUSTOMERS = MOCK_CUSTOMERS +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
@@ -6082,13 +6113,12 @@
   var SEC_SETTINGS = MOCK_SETTINGS +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
-      '<b>(1) Floating 🤖 button</b> — bottom-right corner of any CRM page. Click to open the menu.',
-      '<b>(2) Popout menu</b> — opens above the button. Contains AI tools (Estimate Quote / Draft Invoice / Meeting Notes / Draft Email) AND all settings:',
-      '<b>📧 Mailgun Settings</b> — paste your Mailgun private API key. Required for outgoing email. Has a "Test send" button.',
-      '<b>🤖 AI Settings</b> — paste your Anthropic API key. Required for 🤖 AI features.',
-      '<b>✍️ Email Signature</b> — per-device signature auto-appended to outgoing follow-ups.',
-      '<b>🗑️ Clear local cache</b> (admin only, red styling) — per-key opt-in cleanup of gl_* localStorage. Use when handing the device to a new user.',
-      'The <b>System Health</b> widget on the dashboard also surfaces missing integrations with one-click fixers.'
+      '<b>What it is</b>: the Settings &amp; Integrations panel, accessed via the floating <b>🤖</b> button in the bottom-right corner of any CRM page. The same menu also provides quick access to AI Tools (see the AI Chat &amp; AI Tools section for those).',
+      '<b>(1) Floating 🤖 FAB button</b> — a teal-to-blue gradient circle fixed to the bottom-right corner on every CRM page. Click it to open the popout menu.',
+      '<b>(2) Popout menu — Settings items</b> (scroll down below the AI tools to find these):<ul style="margin:4px 0 4px 18px;padding:0"><li><b>📧 Mailgun Settings</b> — paste your Mailgun private API key (starts with <code>key-</code>). Required for all outgoing email (send invoice, follow-up, schedules). After pasting, click <b>Test send</b> to verify it works. The key is saved to localStorage on this device.</li><li><b>🤖 AI Settings</b> — paste your Anthropic API key (starts with <code>sk-ant-</code>). Required for all AI features: quote estimates, invoice drafting, meeting notes, AI chat, NCR root-cause suggester, COA parser, formula generation. Saved to localStorage.</li><li><b>✍️ Email Signature</b> — your name, title, phone, and any footer text. Auto-appended to the bottom of every outgoing follow-up email. Edit directly in the text area and click Save.</li><li><b>🗑️ Clear local cache</b> (admin only, shown in red) — opens a checklist of all <code>gl_*</code> localStorage keys (tasks, inventory, announcements, activity, Mailgun key, AI key, etc.). Check the ones you want to delete, click Confirm. Use when handing a device to a new team member.</li></ul>',
+      '<b>Where settings are stored</b>: API keys, signatures, and per-device preferences are stored in <code>localStorage</code> on your current browser. They are not synced to Supabase. Each device or browser profile needs its own keys set.',
+      '<b>QuickBooks Online (QBO)</b>: connect your QBO account from the 🤖 menu → <b>⚙ Settings → QuickBooks → Connect</b>. This opens the Intuit OAuth flow. Once connected, invoices can be pushed to QBO as bills with one click from the invoice detail page.',
+      '<b>System Health widget</b>: the dashboard\'s System Health section surfaces missing integrations (no Mailgun key, no AI key, missing Storage bucket, missing database tables) with one-click fix buttons. Always check System Health after first login on a new device.'
     ]);
   var SEC_SHORTCUTS = bullets([
     '<kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">Ctrl+K</kbd> / <kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">⌘K</kbd> — open Global Search across invoices / clients / deals / referrers / users.',
