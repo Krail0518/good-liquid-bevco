@@ -26913,7 +26913,8 @@
     if (!btnRow) return;
     var btn = document.createElement('button');
     btn.innerHTML = '🚫 Void';
-    btn.style.cssText = 'padding:6px 14px;border-radius:6px;border:1px solid #e53e3e;color:#e53e3e;background:#fff;cursor:pointer;font-size:13px;font-weight:600';
+    btn.className = 'cbtn';
+    btn.style.cssText = 'background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#e74c3c';
     btn.onclick = async function() {
       var reason = prompt('Reason for voiding this invoice:');
       if (reason === null) return;
@@ -26963,7 +26964,7 @@
     if (age < QUOTE_EXPIRY_DAYS) return;
     detail.dataset.expBannerInjected = '1';
     var banner = document.createElement('div');
-    banner.style.cssText = 'background:#fffaf0;border:1px solid #f6ad55;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:14px;color:#744210';
+    banner.style.cssText = 'background:rgba(245,200,66,.1);border:1px solid rgba(245,200,66,.35);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#f5c842';
     banner.innerHTML = '⏰ <strong>This quote expired ' + age + ' days ago.</strong> Consider sending an updated quote or converting to an invoice.';
     detail.insertBefore(banner, detail.firstChild);
   }
@@ -26984,9 +26985,9 @@
     var months = overdueDays / 30;
     var fee = (Number(inv.amount) || 0) * LATE_FEE_RATE * months;
     var banner = document.createElement('div');
-    banner.style.cssText = 'background:#fff5f5;border:1px solid #fc8181;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:14px;color:#742a2a;display:flex;align-items:center;gap:12px';
+    banner.style.cssText = 'background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.35);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#e74c3c;display:flex;align-items:center;gap:12px';
     banner.innerHTML = '<span>⚠️ <strong>' + overdueDays + ' days overdue.</strong> Suggested late fee (1.5%/mo): <strong>' + fmt$(fee) + '</strong></span>' +
-      '<button id="gl-add-late-fee" style="margin-left:auto;padding:5px 12px;border-radius:5px;border:1px solid #e53e3e;color:#e53e3e;background:#fff;cursor:pointer;font-size:12px;white-space:nowrap">Add to Invoice</button>';
+      '<button id="gl-add-late-fee" class="cbtn" style="margin-left:auto;background:rgba(231,76,60,.15);border-color:rgba(231,76,60,.4);color:#e74c3c;white-space:nowrap">Add to Invoice</button>';
     detail.insertBefore(banner, detail.firstChild);
     document.getElementById('gl-add-late-fee').onclick = async function() {
       this.disabled = true; this.textContent = 'Adding…';
@@ -27227,7 +27228,8 @@
     if (!btnRow) return;
     var btn = document.createElement('button');
     btn.innerHTML = '💵 Record Payment';
-    btn.style.cssText = 'padding:6px 14px;border-radius:6px;border:1px solid #38a169;color:#38a169;background:#fff;cursor:pointer;font-size:13px;font-weight:600';
+    btn.className = 'cbtn';
+    btn.style.cssText = 'background:rgba(95,207,158,.12);border-color:rgba(95,207,158,.35);color:#5fcf9e';
     btn.onclick = function(){ window.glRecordPayment(window.currentInvId); };
     btnRow.appendChild(btn);
   }
@@ -27288,7 +27290,8 @@
     if (!btnRow) return;
     var btn = document.createElement('button');
     btn.innerHTML = '📋 Collect';
-    btn.style.cssText = 'padding:6px 14px;border-radius:6px;border:1px solid #e53e3e;color:#e53e3e;background:#fff;cursor:pointer;font-size:13px;font-weight:600';
+    btn.className = 'cbtn';
+    btn.style.cssText = 'background:rgba(245,200,66,.12);border-color:rgba(245,200,66,.35);color:#f5c842';
     btn.onclick = function(){ window.glSetupCollections(window.currentInvId); };
     btnRow.appendChild(btn);
   }
@@ -27459,7 +27462,7 @@
       var btn = document.createElement('button');
       btn.textContent = pair[0];
       btn.className = 'cbtn';
-      btn.style.cssText = 'font-size:12px;white-space:nowrap';
+      btn.style.cssText = 'width:auto!important;white-space:nowrap';
       btn.onclick = pair[1];
       wrap.appendChild(btn);
     });
