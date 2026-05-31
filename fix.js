@@ -5459,6 +5459,23 @@
       '<b>(7) → Invoice button</b> — appears on quote-status rows. One-click conversion from "quote" to billable "pending".',
       '<b>On the invoice detail header</b> you now also have: ✏️ <b>Edit</b> (reopens the builder), 📧 <b>Send Invoice</b> (composer with To/Cc/Bcc + Stripe pay link), 📊 <b>Activity</b> (this invoice\'s sends only), 📅 <b>Schedule</b> (queue a future reminder). See the relevant sections in this guide.'
     ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">💳 ACCOUNTING TOOLBAR (NEW)</h4>' +
+    bullets([
+      '<b>Where to find it</b>: a row of 5 buttons appears directly below the INVOICES header, above the search bar.',
+      '<b>💰 Revenue by Client</b> — horizontal bar chart of total paid revenue per client (top 12). Great for quarterly reviews.',
+      '<b>📈 Cash Flow</b> — bar chart of all pending + overdue invoices grouped by due month. Shows what\'s expected to come in and when.',
+      '<b>🔄 Recurring</b> — manage recurring invoice templates. Set a client, amount, frequency (weekly / monthly / quarterly / annually) and start date. Invoices are generated automatically each cycle. Pause or resume any template at any time.',
+      '<b>📝 Credit Memo</b> — issue a credit against a client\'s balance (return, discount, over-billing correction). Creates a negative-amount invoice with prefix CM-YYYY-XXXX, status paid, so it flows into the Statement of Account automatically.',
+      '<b>💸 Expenses</b> — log business expenses (vendor, amount, category, date, optional client tag). Categories include Ingredients, Packaging, Equipment, Labor, Shipping, Marketing, and more. This-month total shown at a glance.'
+    ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#f5c842">🧾 INVOICE DETAIL — ACCOUNTING ACTIONS (NEW)</h4>' +
+    bullets([
+      '<b>💵 Record Payment</b> — open any invoice → click Record Payment in the action row. Log partial or full payments with method (Check / Wire / ACH / Cash / Stripe / Other) and an optional reference / check number. Payment history is shown above the form. When the balance hits $0 the invoice auto-marks paid and you\'re offered a receipt email.',
+      '<b>🚫 Void</b> — permanently voids an invoice. You\'ll be prompted for a reason. Sets status to "voided" with a timestamp. Cannot be undone.',
+      '<b>📋 Collect</b> — only appears on past-due invoices. Schedules a 4-step automated email sequence: gentle reminder (day 3), firm reminder (day 14), urgent notice (day 30), final notice (day 45). Shows the client\'s email on file before confirming.',
+      '<b>⚠️ Late fee banner</b> — a red banner automatically appears at the top of any overdue invoice showing the number of days overdue and the suggested late fee (1.5%/month). Click <b>Add to Invoice</b> to append it as a line item.',
+      '<b>⏰ Quote expired banner</b> — a yellow banner appears on any quote that is 30+ days old, prompting you to send an updated quote or convert to an invoice.'
+    ]) +
     /* ── A/R aging + bulk + auto-overdue (PR 1 of 2026-05-20 enhancement series) ── */
     '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#f5c842">📋 A/R AGING REPORT (NEW)</h4>' +
     wf(620, 200,
@@ -5515,7 +5532,14 @@
       '<b>(3) Line rows</b> — change qty inline; per-case / per-unit price + totals update live. Every line type has a <b>Description (optional)</b> input — type free-form notes like "Mango flavor" or "pilot batch" and they\'re appended to the saved line with an em-dash. The ↺ arrow under a Canning/Bottling price resets it to the catalog rate. The X on the right removes a line.',
       '<b>(4) Discount + total</b> — enter a discount percent; subtotal and grand total recompute live.',
       '<b>(5) Save buttons</b> — 💾 Save Invoice (status=pending), 📤 <b>Save & Send</b> (saves then opens the Send Invoice composer pre-filled), 💾 Save as Quote (status=quote), 📄 Save & Export PDF (real invoice PDF), 📋 Export as Quote (PDF only with 30-day validity, no DB save).',
-      '<b>Edit existing invoices</b>: open any saved invoice → click ✏️ <b>Edit</b> on the header. The builder reopens with the client / date / lines / discount / addons / notes all pre-filled. Hitting Save updates the same Supabase row (no duplicate). Status is preserved — editing a paid invoice doesn\'t flip it back to pending.'
+      '<b>Edit existing invoices</b>: open any saved invoice → click ✏️ <b>Edit</b> on the header. The builder reopens with the client / date / lines / discount / addons / notes all pre-filled. Hitting Save updates the same Supabase row (no duplicate). Status is preserved — editing a paid invoice doesn\'t flip it back to pending.',
+      '<b>PO Number (optional)</b> — a "PO Number" field appears at the top of the builder. Enter the customer\'s purchase order number if they require it on the invoice. Saved to the invoice record and visible on the invoice detail.'
+    ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#f5c842">⚠️ CREDIT LIMIT WARNING (NEW)</h4>' +
+    bullets([
+      '<b>What it does</b>: if a client has a credit limit set, a yellow warning banner appears inside the builder when their outstanding balance (pending + overdue invoices) reaches 80% or more of the limit.',
+      '<b>Setting a credit limit</b>: go to <b>Clients</b> → open the client → <b>✏️ Edit Client</b>. The credit limit field stores a dollar amount in the client record.',
+      '<b>Example</b>: client has a $5,000 limit and $4,200 outstanding → builder shows "⚠️ Credit limit alert: [Client] has $4,200 outstanding of $5,000 limit (84%)."'
     ]);
 
   // ────────────────────────────────────────────────────────────
@@ -5827,6 +5851,13 @@
       '<b>Optional date range</b>: <i>Effective from</i> + <i>Effective until</i> let you queue up a future rate change or expire an old one without deleting it.',
       '<b>How the builder uses it</b>: when you open a new invoice for that client, the canning + bottling lines compute totals using the override rate. A yellow "💵 N custom rates applied" badge appears next to "NEW INVOICE" so you can\'t accidentally invoice the wrong number. R&D / Production / Consulting lines still need their rates set manually for now, but the override is logged in the audit trail.',
       '<b>Removing an override</b> reverts that service back to the public tier ladder on the next invoice.'
+    ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">📄 STATEMENT OF ACCOUNT (NEW)</h4>' +
+    bullets([
+      '<b>Where to find it</b>: open any client detail → click the <b>📄 Statement</b> button in the action row at the bottom (alongside ✏️ Edit Client, 🤖 AI Health Score, etc.).',
+      '<b>What it shows</b>: Total Billed, Total Paid, Credits (from credit memos), and Balance Due — plus a full invoice-by-invoice table with dates, statuses, and amounts.',
+      '<b>Credit memos</b> appear as their own rows tagged "(CM)" and are automatically subtracted from the balance.',
+      '<b>Printing</b>: click <b>🖨️ Print Statement</b> in the modal to open the browser print dialog. Use "Save as PDF" to email a statement to your client.'
     ]);
 
   var SEC_PIPELINE = MOCK_PIPELINE +
