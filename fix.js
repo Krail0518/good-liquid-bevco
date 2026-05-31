@@ -26249,3 +26249,86 @@
 
   console.log('[GL] Calendar day-view + delete v1 loaded');
 }());
+
+/* ============================================================
+   HARD REFRESH BUTTON + RESTORE PAGE AFTER REFRESH
+   - Injects a "↻ Refresh" button into the CRM top bar
+   - Every cNav() call saves the active page to sessionStorage
+   - After login (including auto-login via Remember Me), the last
+     page is restored so F5/hard-refresh lands on the same section
+   ============================================================ */
+(function(){
+  'use strict';
+
+  var PAGE_KEY = 'gl_last_crm_page';
+
+  // ── 1. Wrap cNav to persist the active page on every navigation
+  var _cNavOrig = window.cNav;
+  window.cNav = function(page, el) {
+    if (typeof _cNavOrig === 'function') _cNavOrig.apply(this, arguments);
+    if (page) {
+      try { sessionStorage.setItem(PAGE_KEY, page); } catch(e) {}
+    }
+  };
+
+  // ── 2. Wrap loginUser to restore the saved page after auth
+  var _loginOrig = window.loginUser;
+  window.loginUser = function(u) {
+    if (typeof _loginOrig === 'function') _loginOrig.apply(this, arguments);
+    setTimeout(function() {
+      try {
+        var saved = sessionStorage.getItem(PAGE_KEY);
+        if (!saved || saved === 'dashboard') return;
+        // Find the matching sidebar nav item so the active highlight updates too
+        var navEl = null;
+        document.querySelectorAll('.cni').forEach(function(n) {
+          var oc = n.getAttribute('onclick') || '';
+          if (oc.indexOf("'" + saved + "'") !== -1) navEl = n;
+        });
+        window.cNav(saved, navEl);
+      } catch(e) {}
+    }, 220); // slight delay so initCRM() finishes rendering first
+  };
+
+  // ── 3. Inject the Refresh button into the CRM top bar
+  function injectRefreshBtn() {
+    var crm = document.getElementById('crm-top');
+    if (!crm || crm.querySelector('#gl-refresh-btn')) return;
+    var usrRow = crm.querySelector('.crm-usr');
+    if (!usrRow) return;
+
+    var btn = document.createElement('button');
+    btn.id  = 'gl-refresh-btn';
+    btn.className = 'cbtn';
+    btn.style.cssText = 'font-size:10px;padding:4px 10px;margin-left:4px;' +
+      'background:rgba(0,229,192,.08);border:1px solid rgba(0,229,192,.25);color:var(--teal)';
+    btn.title = 'Hard refresh — reload all data and stay on this page';
+    btn.textContent = '↻ Refresh';
+
+    btn.onclick = function() {
+      // Belt-and-suspenders: also capture current page from the DOM
+      // in case the user navigated via something other than cNav()
+      try {
+        var activePg = document.querySelector('.cpg.act');
+        if (activePg) {
+          sessionStorage.setItem(PAGE_KEY, activePg.id.replace('cpg-', ''));
+        }
+      } catch(e) {}
+      location.reload();
+    };
+
+    // Place the button right before the Sign Out button
+    var signOutBtn = null;
+    usrRow.querySelectorAll('.cbtn').forEach(function(b) {
+      if ((b.textContent || '').trim().toLowerCase().includes('sign out')) signOutBtn = b;
+    });
+    if (signOutBtn) usrRow.insertBefore(btn, signOutBtn);
+    else usrRow.appendChild(btn);
+  }
+
+  // #crm-top is in the DOM (just hidden) as soon as the page loads
+  if (document.readyState !== 'loading') injectRefreshBtn();
+  else document.addEventListener('DOMContentLoaded', injectRefreshBtn);
+
+  console.log('[GL] Hard refresh + page restore v1 loaded');
+}());
