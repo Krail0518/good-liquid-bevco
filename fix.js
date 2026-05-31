@@ -27442,15 +27442,16 @@
     };
   };
 
-  // ── Invoices page header buttons ──────────────────────────
-  // Real structure: <div id="cpg-invoices"><div class="cph">...<button>+ New invoice</button></div>
+  // ── Invoices page accounting toolbar ─────────────────────
+  // Injected as its own row AFTER the .cph header, before the search bar.
   function injectInvAcctBtns() {
-    var cph = document.querySelector('#cpg-invoices .cph');
-    if (!cph || cph.dataset.acctBtns) return;
-    cph.dataset.acctBtns = '1';
+    var invPage = document.getElementById('cpg-invoices');
+    if (!invPage || document.getElementById('gl-acct-toolbar')) return;
+    var cph = invPage.querySelector('.cph');
+    if (!cph) return;
     var wrap = document.createElement('div');
     wrap.id = 'gl-acct-toolbar';
-    wrap.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;width:100%';
+    wrap.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px';
     var btns = [
       ['💰 Revenue by Client', function(){ window.glOpenRevenueByClient(); }],
       ['📈 Cash Flow',          function(){ window.glOpenCashFlow(); }],
@@ -27462,11 +27463,11 @@
       var btn = document.createElement('button');
       btn.textContent = pair[0];
       btn.className = 'cbtn';
-      btn.style.cssText = 'width:auto!important;white-space:nowrap';
       btn.onclick = pair[1];
       wrap.appendChild(btn);
     });
-    cph.appendChild(wrap);
+    // Insert after .cph, before the search row
+    cph.insertAdjacentElement('afterend', wrap);
   }
 
   function injectInvAcctBtnsFallback() { /* superseded by injectInvAcctBtns */ }
