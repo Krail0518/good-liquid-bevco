@@ -26251,18 +26251,20 @@
 }());
 
 /* ============================================================
-   HARD REFRESH BUTTON + RESTORE PAGE AFTER REFRESH
+   SOFT REFRESH BUTTON + PAGE MEMORY
    - Injects a "↻ Refresh" button into the CRM top bar
+   - Clicking it reloads Supabase data in-place and re-renders
+     the current page — no full page reload, user stays put.
    - Every cNav() call saves the active page to sessionStorage
-   - After login (including auto-login via Remember Me), the last
-     page is restored so F5/hard-refresh lands on the same section
+     so F5/hard-refresh can restore it when the user re-opens
+     the Admin panel.
    ============================================================ */
 (function(){
   'use strict';
 
   var PAGE_KEY = 'gl_last_crm_page';
 
-  // ── 1. Wrap cNav to persist the active page on every navigation
+  // ── 1. Wrap cNav to persist the active page on every navigation ──
   var _cNavOrig = window.cNav;
   window.cNav = function(page, el) {
     if (typeof _cNavOrig === 'function') _cNavOrig.apply(this, arguments);
@@ -26271,7 +26273,7 @@
     }
   };
 
-  // ── 2. Wrap loginUser to restore the saved page after auth
+  // ── 2. Wrap loginUser to restore saved page after F5 → re-login ──
   var _loginOrig = window.loginUser;
   window.loginUser = function(u) {
     if (typeof _loginOrig === 'function') _loginOrig.apply(this, arguments);
@@ -26279,7 +26281,6 @@
       try {
         var saved = sessionStorage.getItem(PAGE_KEY);
         if (!saved || saved === 'dashboard') return;
-        // Find the matching sidebar nav item so the active highlight updates too
         var navEl = null;
         document.querySelectorAll('.cni').forEach(function(n) {
           var oc = n.getAttribute('onclick') || '';
@@ -26287,10 +26288,75 @@
         });
         window.cNav(saved, navEl);
       } catch(e) {}
-    }, 220); // slight delay so initCRM() finishes rendering first
+    }, 300);
   };
 
-  // ── 3. Inject the Refresh button into the CRM top bar
+  // ── 3. Soft-refresh: reload Supabase data, re-render current page ──
+  function softRefresh(btn) {
+    if (!window.currentUser) { location.reload(); return; }
+
+    // Determine which page is active right now
+    var activePg = document.querySelector('.cpg.act');
+    var page = activePg ? activePg.id.replace('cpg-', '') : 'dashboard';
+
+    // Save it so F5-restore still works
+    try { sessionStorage.setItem(PAGE_KEY, page); } catch(e) {}
+
+    // Visual feedback on the button
+    var orig = btn.textContent;
+    btn.textContent = '⏳';
+    btn.disabled = true;
+
+    // Re-render helpers (per-page, no network needed for static pages)
+    function rerender(loadedData) {
+      try {
+        var fns = {
+          dashboard:        function(){ if(typeof renderDash==='function') renderDash(); },
+          clients:          function(){ if(typeof renderClients==='function') renderClients(); },
+          pipeline:         function(){ if(typeof renderKanban==='function') renderKanban(); },
+          invoices:         function(){ if(typeof renderInvoices==='function') renderInvoices(); },
+          referrals:        function(){ if(typeof renderReferrals==='function') renderReferrals(); },
+          referrers:        function(){ if(typeof renderReferrers==='function') renderReferrers(); },
+          activity:         function(){ if(typeof renderActivity==='function') renderActivity(); },
+          calendar:         function(){ if(typeof renderCal==='function') renderCal('general'); },
+          'production-cal': function(){ if(typeof renderCal==='function') renderCal('production'); },
+          tasks:            function(){ if(typeof renderTasks==='function') renderTasks(); },
+          documents:        function(){ if(typeof renderDocs==='function') renderDocs(); },
+          inventory:        function(){ if(typeof renderInventory==='function') renderInventory(); },
+          announcements:    function(){ if(typeof renderAnnouncements==='function') renderAnnouncements(); },
+          customers:        function(){ if(typeof renderCustomerLogins==='function') renderCustomerLogins(); },
+          users:            function(){ if(typeof renderUsers==='function') renderUsers(); }
+        };
+        var fn = fns[page];
+        if (fn) fn();
+      } catch(e) { console.warn('[GL soft-refresh] rerender threw', e); }
+
+      btn.textContent = '✓';
+      setTimeout(function(){ btn.textContent = orig; btn.disabled = false; }, 1200);
+      if (typeof addNotification === 'function') {
+        addNotification('Data refreshed', 'All records reloaded from the database.', 'success');
+      }
+    }
+
+    // Load fresh data from Supabase then re-render
+    if (typeof window.loadSupabaseData === 'function') {
+      window.__glDataLoaded = false; // force re-fetch
+      window.loadSupabaseData()
+        .then(rerender)
+        .catch(function(e) {
+          console.warn('[GL soft-refresh] loadSupabaseData failed', e);
+          btn.textContent = orig;
+          btn.disabled = false;
+          if (typeof addNotification === 'function') {
+            addNotification('Refresh failed', 'Could not reload data. Check your connection.', 'error');
+          }
+        });
+    } else {
+      rerender();
+    }
+  }
+
+  // ── 4. Inject the Refresh button into the CRM top bar ──────────
   function injectRefreshBtn() {
     var crm = document.getElementById('crm-top');
     if (!crm || crm.querySelector('#gl-refresh-btn')) return;
@@ -26302,22 +26368,10 @@
     btn.className = 'cbtn';
     btn.style.cssText = 'font-size:10px;padding:4px 10px;margin-left:4px;' +
       'background:rgba(0,229,192,.08);border:1px solid rgba(0,229,192,.25);color:var(--teal)';
-    btn.title = 'Hard refresh — reload all data and stay on this page';
+    btn.title = 'Reload all data and stay on this page';
     btn.textContent = '↻ Refresh';
+    btn.onclick = function() { softRefresh(btn); };
 
-    btn.onclick = function() {
-      // Belt-and-suspenders: also capture current page from the DOM
-      // in case the user navigated via something other than cNav()
-      try {
-        var activePg = document.querySelector('.cpg.act');
-        if (activePg) {
-          sessionStorage.setItem(PAGE_KEY, activePg.id.replace('cpg-', ''));
-        }
-      } catch(e) {}
-      location.reload();
-    };
-
-    // Place the button right before the Sign Out button
     var signOutBtn = null;
     usrRow.querySelectorAll('.cbtn').forEach(function(b) {
       if ((b.textContent || '').trim().toLowerCase().includes('sign out')) signOutBtn = b;
@@ -26326,9 +26380,256 @@
     else usrRow.appendChild(btn);
   }
 
-  // #crm-top is in the DOM (just hidden) as soon as the page loads
   if (document.readyState !== 'loading') injectRefreshBtn();
   else document.addEventListener('DOMContentLoaded', injectRefreshBtn);
 
-  console.log('[GL] Hard refresh + page restore v1 loaded');
+  console.log('[GL] Soft refresh + page restore v2 loaded');
+}());
+
+/* ============================================================
+   AI CHAT ENHANCEMENT v2
+   - Markdown → HTML rendering so bold/bullets/headers display
+     correctly instead of raw symbols
+   - Comprehensive CRM how-to system prompt so the AI can
+     explain every feature in the admin area
+   - Top-bar "Chat" button now navigates to the AI Hub page
+     instead of opening the public-facing website chat widget
+   ============================================================ */
+(function(){
+  'use strict';
+
+  /* ── Markdown → safe HTML converter ──────────────────────── */
+  function mdToHtml(text) {
+    if (!text) return '';
+    var h = String(text)
+      // Escape HTML entities first so the AI can't inject HTML
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    // Headers (must run before bold so ** in headers still works)
+    h = h.replace(/^### (.+)$/gm,
+      '<div style="font-size:11px;letter-spacing:1.5px;color:var(--teal,#00e5c0);font-weight:700;margin:14px 0 4px;text-transform:uppercase">$1</div>');
+    h = h.replace(/^## (.+)$/gm,
+      '<div style="font-size:13px;color:var(--teal,#00e5c0);font-weight:700;margin:12px 0 4px">$1</div>');
+    h = h.replace(/^# (.+)$/gm,
+      '<div style="font-size:14px;color:var(--teal,#00e5c0);font-weight:700;margin:14px 0 6px">$1</div>');
+
+    // Bold and italic
+    h = h.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    h = h.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+    // Inline code
+    h = h.replace(/`([^`]+)`/g, '<code style="background:rgba(255,255,255,.08);padding:1px 5px;border-radius:3px;font-size:12px">$1</code>');
+
+    // Unordered lists — collect consecutive lines into one <ul>
+    h = h.replace(/((?:^[-•] .+\n?)+)/gm, function(block) {
+      var items = block.replace(/^[-•] (.+)$/gm, '<li>$1</li>');
+      return '<ul style="margin:6px 0 8px 0;padding-left:18px;list-style:disc">' + items + '</ul>';
+    });
+
+    // Ordered lists
+    h = h.replace(/((?:^\d+\. .+\n?)+)/gm, function(block) {
+      var items = block.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+      return '<ol style="margin:6px 0 8px 0;padding-left:18px">' + items + '</ol>';
+    });
+
+    // Horizontal rule
+    h = h.replace(/^---+$/gm, '<hr style="border:none;border-top:1px solid rgba(255,255,255,.08);margin:12px 0">');
+
+    // Paragraph breaks and line breaks
+    h = h.replace(/\n{2,}/g, '<br><br>');
+    h = h.replace(/\n/g, '<br>');
+
+    return h;
+  }
+
+  /* ── CRM how-to system prompt ─────────────────────────────── */
+  var CRM_SYSTEM_PROMPT =
+    'You are the Good Liquid Bev Co CRM assistant. Your primary job is to help ' +
+    'admin users navigate and use the CRM. Give clear, step-by-step instructions. ' +
+    'Use markdown: **bold** for button names and field labels, bullet lists for steps, ' +
+    '## for section headings.\n\n' +
+
+    '## About Good Liquid\n' +
+    'Family-run beverage co-packer, Palmetto FL (Est. 2017). Services: small-batch canning ' +
+    '(12oz/16oz), bottle filling (750ml), beverage R&D/formulation, consulting. ' +
+    'Min order 150 cases. R&D from $1,000/SKU. Canning from $0.28/can. ' +
+    'Contact: Mike@GoodLiquid.com | (803) 493-5065.\n\n' +
+
+    '## CRM Sections & How to Use Them\n\n' +
+
+    '**Dashboard** — Live business overview. Shows total revenue, active clients, ' +
+    'overdue invoice count, recent activity, and revenue charts. Data auto-loads on login.\n\n' +
+
+    '**Clients** — Full client directory.\n' +
+    '- Add a client: click **+ Add Client** → fill in company name, contact, email, phone, address, then Save.\n' +
+    '- Edit a client: click any client row to open the detail panel. Edit any field and click Save.\n' +
+    '- Client detail has tabs: Contact Info, Billing/Shipping address, COI status, W-9 on file, ' +
+    'tax-exempt status, Stripe/QuickBooks IDs, and notes.\n\n' +
+
+    '**Pipeline** — Kanban sales board.\n' +
+    '- Stages: New Lead → Qualified → Proposal Sent → In Negotiation → Won / Lost.\n' +
+    '- Add a deal: click **+ New Deal** in any column, fill in company, contact, value, notes.\n' +
+    '- Click a deal card to view full details, edit stage, or link an invoice.\n\n' +
+
+    '**Invoices** — Manage all invoices.\n' +
+    '- Filter by status: All, Draft, Pending, Paid, Overdue.\n' +
+    '- Click any row to open the invoice detail view.\n' +
+    '- Mark paid: open invoice → click **✓ Mark Paid**.\n' +
+    '- Send payment link: open invoice → click **Send Payment Link** (requires Stripe setup).\n\n' +
+
+    '**New Invoice** — Build a new invoice.\n' +
+    '- Select a client, add line items (description, qty, rate), set payment terms and due date.\n' +
+    '- Click **Save Invoice** to create it. It appears immediately in the Invoices list.\n\n' +
+
+    '**Referrals** — Track client referrals and commissions.\n' +
+    '- Add referral: click **+ New Referral** → select referrer and client, set commission rate.\n' +
+    '- Mark commission paid: open referral → click **Mark Commission Paid**.\n\n' +
+
+    '**Activity** — Full team activity log.\n' +
+    '- Filter by type: All, Emails, Calls, Notes, Deals, Invoices.\n' +
+    '- Click any row to jump to the related record.\n\n' +
+
+    '**Calendar** — Schedule and manage general events (tours, calls, meetings).\n' +
+    '- Click any date to add an event (title, time, notes, reminder).\n' +
+    '- Events show as colored dots. Click a date with events to see them and delete if needed.\n' +
+    '- Use the **Month / List** toggle to switch views.\n\n' +
+
+    '**Production Calendar** — Schedule production runs.\n' +
+    '- Click a date to add a production run with product, batch size, and run details.\n' +
+    '- Color-coded by product type. Click any event to view or delete it.\n\n' +
+
+    '**Tasks** — Team task management.\n' +
+    '- Add task: click **+ New Task** → set title, due date, assignee, priority (High/Medium/Low), and client link.\n' +
+    '- Mark done: click the checkbox on any task row.\n' +
+    '- Filter by status (open/completed) or by assignee.\n\n' +
+
+    '**Documents** — Secure client file storage.\n' +
+    '- Upload: select a client, choose document type (W-9, COI, Contract, Other), then upload a file.\n' +
+    '- Download: click any document row. Files are stored in Supabase Storage.\n\n' +
+
+    '**Inventory** — Track raw materials and finished goods.\n' +
+    '- Add item: click **+ Add Item** → name, category, quantity, unit, reorder threshold.\n' +
+    '- Update quantity: click any row and edit the quantity. Low-stock items are highlighted.\n\n' +
+
+    '**Announcements** — Company-wide posts for all staff.\n' +
+    '- New post: click **+ New Announcement** → title and body → Save.\n' +
+    '- All logged-in staff see current announcements.\n\n' +
+
+    '**AI Chat (this page)** — Ask anything. 14 quick-access AI tools are below the chat:\n' +
+    '💰 Estimate Quote, 🧾 Draft Invoice, ✉️ Draft Email, 📝 Meeting Notes, ' +
+    '📈 Revenue Forecast, 📣 Social Post, 🎯 Cross-sell Ideas, 📊 Win-Loss, ' +
+    '🔮 Churn Risk, 🎨 Image Prompts, 📊 Reports, ⏱️ Time Tracker, ' +
+    '💼 LinkedIn Outreach, 🧮 Recipe Cost.\n\n' +
+
+    '**Users** (admin only) — Manage staff accounts.\n' +
+    '- Add user: click **+ Add User** → name, email, role (Admin/Sales/Viewer), set password.\n' +
+    '- Roles: **Admin** = full access; **Sales** = no Users or Customers pages; **Viewer** = read-only.\n' +
+    '- Deactivate: open user → set Status to Inactive.\n\n' +
+
+    '**Customers** (admin only) — Customer portal access.\n' +
+    '- Grant access: click **+ Add Customer** → link to a client → set email and temporary password.\n' +
+    '- Customers log in at /portal to view their own invoices and documents.\n\n' +
+
+    '## Tips\n' +
+    '- **↻ Refresh** in the top bar reloads all data without leaving your current page.\n' +
+    '- The **💬 Chat button** in the top bar opens this AI Chat page.\n' +
+    '- AI Settings (⚙️ in sidebar) is where you configure your AI API key (OpenAI, Anthropic, etc.).\n' +
+    '- Compliance, Holds, CIP, Audit, Formulas, Yield, Content, Defects, Vendors, Samples, ' +
+    'and Production Runs are all available in the sidebar under their respective sections.';
+
+  /* ── Replace glAIHubSend with markdown-rendering version ───── */
+  window.glAIHubSend = async function() {
+    var input = document.getElementById('ai-hub-input');
+    var msgs  = document.getElementById('ai-hub-messages');
+    if (!input || !msgs) return;
+    var msg = input.value.trim();
+    if (!msg) return;
+    input.value = '';
+
+    // Remove placeholder greeting if present
+    var ph = msgs.querySelector('[style*="text-align:center"]');
+    if (ph) ph.remove();
+
+    // User message bubble
+    var userEl = document.createElement('div');
+    userEl.className = 'chat-msg user';
+    userEl.textContent = msg;
+    msgs.appendChild(userEl);
+
+    // Thinking indicator
+    var thinkEl = document.createElement('div');
+    thinkEl.className = 'chat-msg bot';
+    thinkEl.innerHTML = '<em style="color:#6b87ad">Thinking…</em>';
+    msgs.appendChild(thinkEl);
+    msgs.scrollTop = msgs.scrollHeight;
+
+    var reply = '';
+    try {
+      if (typeof window.callAI === 'function') {
+        reply = await window.callAI(CRM_SYSTEM_PROMPT, msg);
+      } else {
+        reply = 'AI not configured. Go to **⚙️ AI Settings** in the sidebar to add your API key.';
+      }
+    } catch(e) {
+      reply = 'Error: ' + (e.message || 'AI call failed. Check your API key in AI Settings.');
+    }
+
+    // Render markdown → HTML for bot reply
+    thinkEl.innerHTML = mdToHtml(reply);
+    msgs.scrollTop = msgs.scrollHeight;
+  };
+
+  /* ── Redirect top-bar "Chat" button to AI Hub page ─────────── */
+  function redirectChatBtn() {
+    window.glToggleCRMChat = function() {
+      if (typeof window.cNav === 'function') {
+        window.cNav('ai', document.getElementById('nav-ai-hub') || null);
+      }
+    };
+    // Also update the button label if it says just 💬
+    var chatBtn = document.getElementById('crm-chat-btn');
+    if (chatBtn) {
+      chatBtn.title = 'Open AI Chat';
+      chatBtn.onclick = function() { window.glToggleCRMChat(); };
+    }
+  }
+
+  /* ── Add CSS so chat messages have proper line-height ─────── */
+  function injectChatCss() {
+    if (document.getElementById('gl-chat-css-v2')) return;
+    var s = document.createElement('style');
+    s.id = 'gl-chat-css-v2';
+    s.textContent =
+      '#ai-hub-messages .chat-msg.bot { line-height:1.7; font-size:13px; }' +
+      '#ai-hub-messages .chat-msg.bot ul, #ai-hub-messages .chat-msg.bot ol { margin:6px 0 8px 0; }' +
+      '#ai-hub-messages .chat-msg.bot li { margin-bottom:3px; }' +
+      '#ai-hub-messages .chat-msg.bot strong { color:#e8f0fe; }' +
+      /* Also improve public chat widget bot bubbles */
+      '#gl-chat-messages .chat-msg.bot { line-height:1.6; font-size:13px; }';
+    document.head.appendChild(s);
+  }
+
+  function boot() {
+    redirectChatBtn();
+    injectChatCss();
+  }
+
+  if (document.readyState !== 'loading') setTimeout(boot, 400);
+  else document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 400); });
+
+  /* Re-run after login in case the top bar re-renders */
+  var _origLU = window.loginUser;
+  if (typeof _origLU === 'function' && !_origLU.__aiChatV2Hooked) {
+    window.loginUser = function() {
+      var r = _origLU.apply(this, arguments);
+      setTimeout(boot, 600);
+      return r;
+    };
+    window.loginUser.__aiChatV2Hooked = true;
+  }
+
+  console.log('[GL] AI chat v2 — markdown rendering + CRM system prompt loaded');
 }());
