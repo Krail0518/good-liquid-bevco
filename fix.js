@@ -26903,13 +26903,13 @@
 
   // ── FEATURE 2: Void Invoice button ────────────────────────
   function injectVoidButton() {
-    var detail = document.getElementById('cpg-invoice-detail') || document.getElementById('inv-detail');
-    if (!detail || detail.dataset.voidInjected) return;
+    var detail = document.getElementById('inv-detail');
+    if (!detail || !detail.classList.contains('show') || detail.dataset.voidInjected) return;
     detail.dataset.voidInjected = '1';
     var invId = window.currentInvId;
     var inv = invId ? getInv(invId) : null;
     if (!inv || inv.status === 'voided' || inv.is_credit_memo) return;
-    var btnRow = detail.querySelector('.btn-row, .cph, .action-row');
+    var btnRow = detail.querySelector('div[style*="display:flex"]');
     if (!btnRow) return;
     var btn = document.createElement('button');
     btn.innerHTML = '🚫 Void';
@@ -26954,8 +26954,8 @@
   }
 
   function injectQuoteExpiredBanner() {
-    var detail = document.getElementById('cpg-invoice-detail') || document.getElementById('inv-detail');
-    if (!detail || detail.dataset.expBannerInjected) return;
+    var detail = document.getElementById('inv-detail');
+    if (!detail || !detail.classList.contains('show') || detail.dataset.expBannerInjected) return;
     var invId = window.currentInvId;
     var inv = invId ? getInv(invId) : null;
     if (!inv || inv.status !== 'quote') return;
@@ -26971,8 +26971,8 @@
   // ── FEATURE 4: Late Fee Prompt ────────────────────────────
   var LATE_FEE_RATE = 0.015;
   function injectLateFeePrompt() {
-    var detail = document.getElementById('cpg-invoice-detail') || document.getElementById('inv-detail');
-    if (!detail || detail.dataset.lateFeeBannerInjected) return;
+    var detail = document.getElementById('inv-detail');
+    if (!detail || !detail.classList.contains('show') || detail.dataset.lateFeeBannerInjected) return;
     var invId = window.currentInvId;
     var inv = invId ? getInv(invId) : null;
     if (!inv || inv.status === 'paid' || inv.status === 'voided' || inv.is_credit_memo) return;
@@ -27083,16 +27083,23 @@
   };
 
   function injectStmtBtn() {
-    document.querySelectorAll('[data-client-id]:not([data-stmt-btn])').forEach(function(panel) {
-      panel.dataset.stmtBtn = '1';
-      var clientId = panel.dataset.clientId;
-      var btn = document.createElement('button');
-      btn.style.cssText = 'padding:5px 12px;border-radius:5px;border:1px solid #3182ce;color:#3182ce;background:#fff;cursor:pointer;font-size:12px;white-space:nowrap';
-      btn.innerHTML = '📄 Statement';
-      btn.onclick = function(){ window.glOpenStatement(clientId); };
-      var actions = panel.querySelector('.panel-actions, .btn-row, .cph');
-      if (actions) actions.appendChild(btn);
-    });
+    // Client detail is a dynamically-created #client-detail-overlay
+    var ov = document.getElementById('client-detail-overlay');
+    if (!ov || ov.dataset.stmtBtn) return;
+    ov.dataset.stmtBtn = '1';
+    // Extract clientId from one of the existing button onclick strings
+    var editBtn = ov.querySelector('button[onclick*="glOpenEditClient"]');
+    if (!editBtn) return;
+    var match = editBtn.getAttribute('onclick').match(/glOpenEditClient\('([^']+)'\)/);
+    if (!match) return;
+    var clientId = match[1];
+    var btnRow = ov.querySelector('div[style*="flex-wrap:wrap"], div[style*="flex-wrap: wrap"]');
+    if (!btnRow) return;
+    var btn = document.createElement('button');
+    btn.className = 'cbtn';
+    btn.innerHTML = '📄 Statement';
+    btn.onclick = function(){ window.glOpenStatement(clientId); };
+    btnRow.appendChild(btn);
   }
 
   // ── FEATURE 8: Revenue by Client chart ────────────────────
@@ -27211,12 +27218,12 @@
   };
 
   function injectPartialPayBtn() {
-    var detail = document.getElementById('cpg-invoice-detail') || document.getElementById('inv-detail');
-    if (!detail || detail.dataset.payBtnInjected) return;
+    var detail = document.getElementById('inv-detail');
+    if (!detail || !detail.classList.contains('show') || detail.dataset.payBtnInjected) return;
     detail.dataset.payBtnInjected = '1';
     var inv = window.currentInvId ? getInv(window.currentInvId) : null;
     if (!inv || inv.status === 'voided' || inv.is_credit_memo) return;
-    var btnRow = detail.querySelector('.btn-row, .cph, .action-row');
+    var btnRow = detail.querySelector('div[style*="display:flex"]');
     if (!btnRow) return;
     var btn = document.createElement('button');
     btn.innerHTML = '💵 Record Payment';
@@ -27270,14 +27277,14 @@
   };
 
   function injectCollectBtn() {
-    var detail = document.getElementById('cpg-invoice-detail') || document.getElementById('inv-detail');
-    if (!detail || detail.dataset.collectBtnInjected) return;
+    var detail = document.getElementById('inv-detail');
+    if (!detail || !detail.classList.contains('show') || detail.dataset.collectBtnInjected) return;
     detail.dataset.collectBtnInjected = '1';
     var inv = window.currentInvId ? getInv(window.currentInvId) : null;
     if (!inv || inv.status === 'paid' || inv.status === 'voided' || inv.is_credit_memo) return;
     var due = inv.due_date || inv.dueDate;
     if (!due || new Date(due) > new Date()) return;
-    var btnRow = detail.querySelector('.btn-row, .cph, .action-row');
+    var btnRow = detail.querySelector('div[style*="display:flex"]');
     if (!btnRow) return;
     var btn = document.createElement('button');
     btn.innerHTML = '📋 Collect';
@@ -27433,12 +27440,14 @@
   };
 
   // ── Invoices page header buttons ──────────────────────────
+  // Real structure: <div id="cpg-invoices"><div class="cph">...<button>+ New invoice</button></div>
   function injectInvAcctBtns() {
-    var header = document.querySelector('#invoices-page .page-header, #invoices-page h2, .inv-page-header');
-    if (!header || header.dataset.acctBtns) return;
-    header.dataset.acctBtns = '1';
+    var cph = document.querySelector('#cpg-invoices .cph');
+    if (!cph || cph.dataset.acctBtns) return;
+    cph.dataset.acctBtns = '1';
     var wrap = document.createElement('div');
-    wrap.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-top:10px';
+    wrap.id = 'gl-acct-toolbar';
+    wrap.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;width:100%';
     var btns = [
       ['💰 Revenue by Client', function(){ window.glOpenRevenueByClient(); }],
       ['📈 Cash Flow',          function(){ window.glOpenCashFlow(); }],
@@ -27449,41 +27458,33 @@
     btns.forEach(function(pair){
       var btn = document.createElement('button');
       btn.textContent = pair[0];
-      btn.style.cssText = 'padding:6px 14px;border-radius:6px;border:1px solid #4a5568;color:#4a5568;background:#fff;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap';
-      btn.onmouseover = function(){ this.style.background = '#edf2f7'; };
-      btn.onmouseout  = function(){ this.style.background = '#fff'; };
+      btn.className = 'cbtn';
+      btn.style.cssText = 'font-size:12px;white-space:nowrap';
       btn.onclick = pair[1];
       wrap.appendChild(btn);
     });
-    header.parentNode.insertBefore(wrap, header.nextSibling);
+    cph.appendChild(wrap);
   }
 
-  function injectInvAcctBtnsFallback() {
-    var newInvBtn = document.querySelector('button[onclick*="glNewInvoice"], button[onclick*="newInvoice"], #new-invoice-btn');
-    if (!newInvBtn) return;
-    var wrap = newInvBtn.closest('div') || newInvBtn.parentNode;
-    if (!wrap || wrap.dataset.acctBtnsFallback) return;
-    wrap.dataset.acctBtnsFallback = '1';
-    var btns = [
-      ['💰 Revenue',   function(){ window.glOpenRevenueByClient(); }],
-      ['📈 Cash Flow', function(){ window.glOpenCashFlow(); }],
-      ['🔄 Recurring', function(){ window.glOpenRecurring(); }],
-      ['📝 Credit Memo',function(){ window.glOpenCreditMemo(); }],
-      ['💸 Expenses',  function(){ window.glOpenExpenses(); }]
-    ];
-    btns.forEach(function(pair){
-      var btn = document.createElement('button');
-      btn.textContent = pair[0];
-      btn.style.cssText = 'padding:6px 12px;border-radius:6px;border:1px solid #4a5568;color:#4a5568;background:#fff;cursor:pointer;font-size:13px;font-weight:600;margin-left:8px;white-space:nowrap';
-      btn.onclick = pair[1];
-      wrap.appendChild(btn);
-    });
-  }
+  function injectInvAcctBtnsFallback() { /* superseded by injectInvAcctBtns */ }
 
   // ── Bootstrap: MutationObserver ───────────────────────────
+  function resetDetailDatasets() {
+    // When the invoice detail closes or reopens for a different invoice,
+    // clear injector flags so they re-run for the new invoice.
+    var detail = document.getElementById('inv-detail');
+    if (detail && !detail.classList.contains('show')) {
+      delete detail.dataset.voidInjected;
+      delete detail.dataset.payBtnInjected;
+      delete detail.dataset.collectBtnInjected;
+      delete detail.dataset.expBannerInjected;
+      delete detail.dataset.lateFeeBannerInjected;
+    }
+  }
+
   function runInjectors() {
+    resetDetailDatasets();
     injectInvAcctBtns();
-    injectInvAcctBtnsFallback();
     injectVoidButton();
     injectPartialPayBtn();
     injectCollectBtn();
