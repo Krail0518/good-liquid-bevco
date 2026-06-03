@@ -507,58 +507,58 @@
      through Supabase Auth + profiles table.
   ══════════════════════════════════════════════ */
 
-  /* ── createInvitedUser — admin creates a new CRM user via Supabase signUp ── */
+  /* ── createInvitedUser — admin sends a Supabase invite email (magic link) ──
+     The invitee receives an email with a link. Clicking it brings them to the
+     CRM where they are auto-signed-in and prompted to create their own password.
+     No admin-set password is ever transmitted or stored. ── */
   window.createInvitedUser=async function(){
     var nameEl=document.getElementById('inv-name');
     var emailEl=document.getElementById('inv-email');
-    var pwEl=document.getElementById('inv-password');
     var roleEl=document.getElementById('inv-role');
     var err=document.getElementById('inv-err');
     var ok=document.getElementById('inv-ok');
-    if(!nameEl||!emailEl||!pwEl||!roleEl)return;
+    if(!nameEl||!emailEl||!roleEl)return;
     if(err)err.style.display='none';
     if(ok)ok.style.display='none';
     var name=nameEl.value.trim();
     var email=emailEl.value.trim().toLowerCase();
-    var password=pwEl.value;
     var role=roleEl.value;
     function setErr(m){if(err){err.textContent=m;err.style.display='block';}}
     if(!name){setErr('Name is required');return;}
     if(!email||email.indexOf('@')<0){setErr('Valid email is required');return;}
-    var _pwErr = (window.glValidatePassword ? window.glValidatePassword(password) : (password.length < 8 ? 'Password must be at least 8 characters.' : null));
-    if(_pwErr){ setErr(_pwErr); return; }
     if((window.users||[]).find(function(u){return u.email.toLowerCase()===email;})){setErr('A user with that email already exists');return;}
-
     var sb=getSupa();
     if(!sb){setErr('Auth service unavailable.');return;}
-
-    var initials=name.split(' ').map(function(p){return p[0];}).join('').toUpperCase().substring(0,2);
-    var palettes=[['#1a3a6e','#9FE1CB'],['#0F6E56','#E1F5EE'],['#854F0B','#FAEEDA'],['#3C3489','#EEEDFE'],['#712B13','#FAECE7']];
-    var pal=palettes[(window.users||[]).length%palettes.length];
-
+    var sess=await sb.auth.getSession();
+    var token=sess&&sess.data&&sess.data.session&&sess.data.session.access_token;
+    if(!token){setErr('You must be signed in as admin to send invites.');return;}
+    var btn=document.querySelector('#invite-user-modal button.cbtn.pri');
+    var origText=btn?btn.textContent:'Send Invite';
+    if(btn){btn.disabled=true;btn.textContent='Sending…';}
     try{
-      var r=await sb.auth.signUp({email:email,password:password,options:{data:{name:name,role:role,initials:initials,color:pal[0],tc:pal[1]}}});
-      if(r.error){setErr(r.error.message||'Sign-up failed');return;}
-      var newId=(r.data&&r.data.user)?r.data.user.id:null;
-      // Update profile row created by trigger with role/colors
-      if(newId){
-        var upd=await sb.from('profiles').update({name:name,role:role,initials:initials,color:pal[0],tc:pal[1]}).eq('id',newId);
-        if(upd.error)console.warn('[GL] profile update failed (admin update policy missing?)',upd.error);
+      var r=await fetch(_GL_SUPA_URL+'/functions/v1/invite-staff-user',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+        body:JSON.stringify({email:email,name:name,role:role,redirectTo:window.location.origin})
+      });
+      var d=await r.json();
+      if(!r.ok||!d.ok){
+        setErr(d.error||'Invite failed — check the console for details');
+        if(btn){btn.disabled=false;btn.textContent=origText;}
+        return;
       }
-      // Update local users array so UI refreshes immediately
+      var initials=name.split(' ').map(function(p){return p[0];}).join('').toUpperCase().substring(0,2);
       window.users=window.users||[];
-      window.users.push({id:newId||('u'+Date.now()),name:name,email:email,role:role,initials:initials,color:pal[0],tc:pal[1],status:'active',lastLogin:'Never'});
-      if(ok){
-        ok.style.display='block';
-        ok.textContent='User created. They must click the confirmation email link before they can log in. Password: '+password;
-      }
+      window.users.push({id:d.userId||('u'+Date.now()),name:name,email:email,role:role,initials:initials,color:'#1a6fff',tc:'#fff',status:'invited',lastLogin:'Never'});
+      if(ok){ok.style.display='block';ok.textContent='✓ Invite sent! '+name+' will receive an email with a link to set their password.';}
       if(typeof renderUsersPanel==='function')renderUsersPanel();
       if(typeof renderUsers==='function')renderUsers();
-      if(typeof addNotification==='function')addNotification('👤 User invited: '+name,email+' — confirmation email sent','success');
+      if(typeof addNotification==='function')addNotification('👤 Invite sent: '+name,email+' — password-setup link emailed','success');
       setTimeout(function(){if(typeof closeInviteModal==='function')closeInviteModal();},4000);
     }catch(e){
-      console.error('[GL] signUp threw',e);
+      console.error('[GL] invite-staff-user threw',e);
       setErr('Failed: '+(e.message||'unknown'));
+      if(btn){btn.disabled=false;btn.textContent=origText;}
     }
   };
 
@@ -2847,7 +2847,8 @@
    persists the new bcrypt hash and the user is signed in.
    ============================================================ */
 (function(){
-  function openRecoveryModal(){
+  function openRecoveryModal(mode){
+    var isInvite = mode === 'invite';
     var existing = document.getElementById('gl-recovery-modal');
     if(existing) existing.remove();
     var ov = document.createElement('div');
@@ -2855,8 +2856,8 @@
     ov.setAttribute('style','position:fixed;inset:0;z-index:1200;background:rgba(6,13,26,.95);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;padding:20px');
     ov.innerHTML =
       '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:32px;width:100%;max-width:440px">' +
-        '<div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:#00e5c0;margin-bottom:6px">RESET YOUR PASSWORD</div>' +
-        '<div style="font-size:13px;color:#9ca3af;margin-bottom:22px;line-height:1.5">You arrived via a password reset link. Choose a new password to sign in.</div>' +
+        '<div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:#00e5c0;margin-bottom:6px">'+(isInvite?'CREATE YOUR PASSWORD':'RESET YOUR PASSWORD')+'</div>' +
+        '<div style="font-size:13px;color:#9ca3af;margin-bottom:22px;line-height:1.5">'+(isInvite?"Welcome to Good Liquid Bev Co CRM! Set a password to complete your account setup.":'You arrived via a password reset link. Choose a new password to sign in.')+'</div>' +
         '<div class="frow"><div class="flbl">New password</div><input class="finp" type="password" id="gl-rec-new" placeholder="Min 6 characters" autocomplete="new-password"></div>' +
         '<div class="frow"><div class="flbl">Confirm</div><input class="finp" type="password" id="gl-rec-confirm" placeholder="Re-enter to confirm" autocomplete="new-password"></div>' +
         '<label style="display:flex;align-items:center;gap:8px;font-size:11px;color:#9ca3af;margin:4px 0 18px;cursor:pointer">' +
@@ -2964,15 +2965,23 @@
     var hash = (window.location.hash || '').replace(/^#/, '');
     var search = window.location.search || '';
     var hashRecovery = hash.indexOf('type=recovery') >= 0;
+    var hashInvite   = hash.indexOf('type=invite')   >= 0;
     var pkceRecovery = /[?&]code=/.test(search) && /[?&]portal=1\b/.test(search);
     var tokenRecovery = /[?&]token_hash=/.test(search) && /[?&]type=recovery/.test(search);
+    var tokenInvite   = /[?&]token_hash=/.test(search) && /[?&]type=invite/.test(search);
     if(hashRecovery || pkceRecovery || tokenRecovery){
       console.log('[GL] recovery URL artifact detected on load → opening reset modal');
       // Slight delay so supabase-js gets a chance to finalize the session
       // (so updateUser inside the modal will have credentials).
       setTimeout(function(){
-        if(!document.getElementById('gl-recovery-modal')) openRecoveryModal();
+        if(!document.getElementById('gl-recovery-modal')) openRecoveryModal('recovery');
       }, pkceRecovery ? 1500 : 300);
+    } else if(hashInvite || tokenInvite){
+      console.log('[GL] invite URL artifact detected on load → opening create-password modal');
+      // Longer delay: supabase-js needs to exchange the invite token for a session.
+      setTimeout(function(){
+        if(!document.getElementById('gl-recovery-modal')) openRecoveryModal('invite');
+      }, 800);
     }
   }
   if(document.readyState !== 'loading') attach();

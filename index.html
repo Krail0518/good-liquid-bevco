@@ -9860,9 +9860,9 @@ function openInviteModal(){
   modal.innerHTML = `
     <div class="modal-box" style="width:460px">
       <div class="modal-title">+ Invite User <span class="modal-close" onclick="closeInviteModal()">✕</span></div>
+      <div style="font-size:12px;color:#9ca3af;margin-bottom:14px;line-height:1.5">An email will be sent with a secure link. The invitee clicks the link to set their own password and access the CRM with the role you select below.</div>
       <div class="frow"><div class="flbl">Full name *</div><input class="finp" id="inv-name" placeholder="e.g. John Smith"></div>
       <div class="frow"><div class="flbl">Email address *</div><input class="finp" type="email" id="inv-email" placeholder="john@goodliquid.com"></div>
-      <div class="frow"><div class="flbl">Password *</div><input class="finp" type="password" id="inv-password" placeholder="Min 8 characters"></div>
       <div class="frow"><div class="flbl">Role</div>
         <select class="fsel" id="inv-role">
           <option value="sales">Sales</option>
@@ -9871,9 +9871,9 @@ function openInviteModal(){
         </select>
       </div>
       <div id="inv-err" style="color:#e74c3c;font-size:12px;margin-bottom:8px;display:none"></div>
-      <div id="inv-ok" style="color:var(--teal);font-size:12px;margin-bottom:8px;display:none">✓ User created successfully!</div>
+      <div id="inv-ok" style="color:var(--teal);font-size:12px;margin-bottom:8px;display:none">✓ Invite sent!</div>
       <div style="display:flex;gap:8px;margin-top:6px">
-        <button class="cbtn pri" onclick="createInvitedUser()" style="flex:1">Create User</button>
+        <button class="cbtn pri" onclick="createInvitedUser()" style="flex:1">Send Invite</button>
         <button class="cbtn" onclick="closeInviteModal()">Cancel</button>
       </div>
     </div>`;

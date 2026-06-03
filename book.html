@@ -497,7 +497,7 @@
       cell.textContent = d;
       var dateStr = viewYear + '-' + pad(viewMonth + 1) + '-' + pad(d);
       var dow = new Date(dateStr + 'T12:00:00Z').getUTCDay(); // use UTC noon to avoid DST shift
-      var isPast = dateStr < todayStr;
+      var isPast = dateStr <= todayStr; // same-day bookings not allowed; first slot is tomorrow
       var isAvail = !isPast && avail.indexOf(dow) >= 0;
 
       cell.className = 'cal-day' +
