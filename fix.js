@@ -517,25 +517,36 @@
     var roleEl=document.getElementById('inv-role');
     var err=document.getElementById('inv-err');
     var ok=document.getElementById('inv-ok');
-    if(!nameEl||!emailEl||!roleEl)return;
+    if(!nameEl||!emailEl||!roleEl){alert('Invite form not found — reload and try again.');return;}
     if(err)err.style.display='none';
     if(ok)ok.style.display='none';
     var name=nameEl.value.trim();
     var email=emailEl.value.trim().toLowerCase();
     var role=roleEl.value;
-    function setErr(m){if(err){err.textContent=m;err.style.display='block';}}
+    function setErr(m){
+      if(err){err.textContent=m;err.style.display='block';}
+      else{alert(m);}
+    }
     if(!name){setErr('Name is required');return;}
     if(!email||email.indexOf('@')<0){setErr('Valid email is required');return;}
     if((window.users||[]).find(function(u){return u.email.toLowerCase()===email;})){setErr('A user with that email already exists');return;}
-    var sb=getSupa();
-    if(!sb){setErr('Auth service unavailable.');return;}
-    var sess=await sb.auth.getSession();
-    var token=sess&&sess.data&&sess.data.session&&sess.data.session.access_token;
-    if(!token){setErr('You must be signed in as admin to send invites.');return;}
+
+    // ── Give immediate feedback BEFORE any async work ──
     var btn=document.querySelector('#invite-user-modal button.cbtn.pri');
     var origText=btn?btn.textContent:'Send Invite';
     if(btn){btn.disabled=true;btn.textContent='Sending…';}
+
+    var sb=getSupa();
+    if(!sb){setErr('Auth service unavailable.');if(btn){btn.disabled=false;btn.textContent=origText;}return;}
+
     try{
+      var sess=await sb.auth.getSession();
+      var token=sess&&sess.data&&sess.data.session&&sess.data.session.access_token;
+      if(!token){
+        setErr('Not signed in — please log in and try again.');
+        if(btn){btn.disabled=false;btn.textContent=origText;}
+        return;
+      }
       var r=await fetch(_GL_SUPA_URL+'/functions/v1/invite-staff-user',{
         method:'POST',
         headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
@@ -543,7 +554,7 @@
       });
       var d=await r.json();
       if(!r.ok||!d.ok){
-        setErr(d.error||'Invite failed — check the console for details');
+        setErr(d.error||'Invite failed (HTTP '+r.status+') — see console');
         if(btn){btn.disabled=false;btn.textContent=origText;}
         return;
       }
@@ -557,7 +568,7 @@
       setTimeout(function(){if(typeof closeInviteModal==='function')closeInviteModal();},4000);
     }catch(e){
       console.error('[GL] invite-staff-user threw',e);
-      setErr('Failed: '+(e.message||'unknown'));
+      setErr('Failed: '+(e.message||'unknown error'));
       if(btn){btn.disabled=false;btn.textContent=origText;}
     }
   };

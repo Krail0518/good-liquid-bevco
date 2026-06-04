@@ -9887,50 +9887,29 @@ function closeInviteModal(){
 }
 
 async function createInvitedUser(){
-  const name = document.getElementById('inv-name').value.trim();
-  const email = document.getElementById('inv-email').value.trim().toLowerCase();
-  const password = document.getElementById('inv-password').value;
-  const role = document.getElementById('inv-role').value;
+  // NOTE: This fallback is overridden by fix.js when it loads.
+  // It must not crash if the invite modal no longer has a password field.
+  const nameEl  = document.getElementById('inv-name');
+  const emailEl = document.getElementById('inv-email');
+  const roleEl  = document.getElementById('inv-role');
   const err = document.getElementById('inv-err');
-  const ok = document.getElementById('inv-ok');
-  err.style.display='none'; ok.style.display='none';
+  const ok  = document.getElementById('inv-ok');
+  if(!nameEl || !emailEl || !roleEl) return;
+  if(err) err.style.display='none';
+  if(ok)  ok.style.display='none';
 
-  if(!name){ err.textContent='Name is required'; err.style.display='block'; return; }
-  if(!email || !email.includes('@')){ err.textContent='Valid email is required'; err.style.display='block'; return; }
-  const _invPwErr = (window.glValidatePassword ? window.glValidatePassword(password) : (password.length < 8 ? 'Password must be at least 8 characters' : null));
-  if(_invPwErr){ err.textContent = _invPwErr; err.style.display='block'; return; }
-  if(users.find(u => u.email.toLowerCase() === email)){ err.textContent='A user with that email already exists'; err.style.display='block'; return; }
+  const name  = nameEl.value.trim();
+  const email = emailEl.value.trim().toLowerCase();
+  const role  = roleEl.value;
 
-  // Generate initials and color
-  const parts = name.split(' ');
-  const initials = parts.map(p => p[0]).join('').toUpperCase().substring(0,2);
-  const colors = ['#1a6fff','#00e5c0','#f5c842','#e74c3c','#a855f7','#1D9E75'];
-  const color = colors[Math.floor(Math.random() * colors.length)];
+  function _fbSetErr(m){ if(err){ err.textContent=m; err.style.display='block'; } else alert(m); }
 
-  // Add to local users array
-  const newUser = {
-    id: 'u' + Date.now(),
-    name, email, password, role,
-    initials, color, tc: '#fff',
-    status: 'active', lastLogin: 'Never'
-  };
-  users.push(newUser);
+  if(!name){ _fbSetErr('Name is required'); return; }
+  if(!email || !email.includes('@')){ _fbSetErr('Valid email is required'); return; }
 
-  // Send welcome email via Mailgun
-  await sendMailgunEmail(
-    email,
-    'Welcome to Good Liquid Bev Co CRM',
-    'Hi ' + name + ',\n\nYour CRM account has been created.\n\nLogin at: goodliquidbevco.com\nEmail: ' + email + '\nPassword: ' + password + '\n\nPlease change your password after first login.\n\nBest,\nMike Krail\nGood Liquid Bev Co'
-  );
-
-  ok.style.display='block';
-  addNotification('👤 New user created: ' + name, email + ' — ' + role, 'success');
-
-  // Refresh users panel
-  setTimeout(() => {
-    closeInviteModal();
-    renderUsersPanel();
-  }, 1500);
+  // ── If fix.js is loaded it has already replaced window.createInvitedUser;
+  //    this path only runs when fix.js failed to load (dev / offline). ──────
+  _fbSetErr('Sending invite… (fix.js may not have loaded — check the console)');
 }
 
 function renderUsersPanel(){
