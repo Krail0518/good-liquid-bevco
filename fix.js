@@ -27678,3 +27678,97 @@
 
   console.log('[GL] Invite button wiring loaded');
 }());
+
+/* ============================================================
+   TWO-STEP INVOICE DELETE
+   ============================================================
+   Prevents accidental hard-deletes by requiring two separate
+   clicks to confirm. Flow:
+     1st click → button arms: shows "⚠ Confirm delete?" + Cancel
+     2nd click → fires the actual delete (skipConfirm=true)
+     5 s timeout / click-outside / Cancel → disarms, no action
+   ============================================================ */
+(function(){
+  var _orig   = null;
+  var _armed  = null; // { id, btn, origInner, origStyle, cancelBtn, timer }
+
+  function disarm(){
+    if(!_armed) return;
+    clearTimeout(_armed.timer);
+    try {
+      if(_armed.btn && _armed.btn.parentNode){
+        _armed.btn.innerHTML     = _armed.origInner;
+        _armed.btn.style.cssText = _armed.origStyle;
+        _armed.btn.onclick       = null;
+      }
+      if(_armed.cancelBtn && _armed.cancelBtn.parentNode)
+        _armed.cancelBtn.parentNode.removeChild(_armed.cancelBtn);
+    } catch(e){}
+    _armed = null;
+  }
+
+  function arm(id, btn){
+    disarm();
+    var origInner = btn.innerHTML;
+    var origStyle = btn.style.cssText || '';
+    btn.innerHTML     = '⚠ Confirm delete?';
+    btn.style.cssText = 'background:rgba(231,76,60,.45);border:1px solid #ff5555;color:#fff;font-size:10px;padding:3px 10px;border-radius:5px;cursor:pointer;white-space:nowrap';
+
+    var cancelBtn = document.createElement('button');
+    cancelBtn.className   = 'cbtn';
+    cancelBtn.style.cssText = 'font-size:10px;padding:3px 7px;margin-left:4px';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.onclick = function(e){ e.stopPropagation(); disarm(); };
+    if(btn.parentNode) btn.parentNode.insertBefore(cancelBtn, btn.nextSibling);
+
+    var timer = setTimeout(disarm, 5000);
+    _armed = { id: id, btn: btn, origInner: origInner, origStyle: origStyle, cancelBtn: cancelBtn, timer: timer };
+
+    btn.onclick = function(e){
+      e.stopPropagation();
+      var del_id = _armed ? _armed.id : null;
+      disarm();
+      if(del_id && typeof _orig === 'function') _orig(del_id, { skipConfirm: true });
+    };
+  }
+
+  function patch(){
+    if(typeof window.deleteInvoice !== 'function'){ setTimeout(patch, 200); return; }
+    if(window.deleteInvoice._gl2step) return;
+    _orig = window.deleteInvoice;
+
+    window.deleteInvoice = function(id, opts){
+      opts = opts || {};
+      if(opts.skipConfirm) return _orig.call(this, id, opts); // confirmed second click
+
+      // Find which button was clicked
+      var ev  = window.event || null;
+      var btn = null;
+      if(ev){
+        var t = ev.currentTarget || ev.target;
+        while(t && t.tagName !== 'BUTTON' && t !== document.body) t = t.parentNode;
+        if(t && t.tagName === 'BUTTON') btn = t;
+      }
+      if(!btn && document.activeElement && document.activeElement.tagName === 'BUTTON')
+        btn = document.activeElement;
+
+      if(btn){
+        arm(id, btn);
+      } else {
+        // No button context — fall back to original confirm dialog
+        _orig.call(this, id, opts);
+      }
+    };
+    window.deleteInvoice._gl2step = true;
+    console.log('[GL] Two-step invoice delete ready');
+  }
+
+  // Click-outside → disarm
+  document.addEventListener('click', function(e){
+    if(!_armed) return;
+    if(e.target !== _armed.btn && e.target !== _armed.cancelBtn) disarm();
+  }, true);
+
+  if(document.readyState !== 'loading') patch();
+  else document.addEventListener('DOMContentLoaded', patch);
+}());
