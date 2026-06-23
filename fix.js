@@ -26961,10 +26961,10 @@
     var inv = invId ? getInv(invId) : null;
     if (!inv || inv.status === 'voided' || inv.is_credit_memo) return;
     var btnRow = detail.querySelector('div[style*="display:flex"]');
-    if (!btnRow) return;
+    if (!btnRow || btnRow.querySelector('.gl-void-btn')) return;
     var btn = document.createElement('button');
     btn.innerHTML = '🚫 Void';
-    btn.className = 'cbtn';
+    btn.className = 'cbtn gl-void-btn';
     btn.style.cssText = 'background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#e74c3c';
     btn.onclick = async function() {
       var reason = prompt('Reason for voiding this invoice:');
@@ -27276,10 +27276,10 @@
     var inv = window.currentInvId ? getInv(window.currentInvId) : null;
     if (!inv || inv.status === 'voided' || inv.is_credit_memo) return;
     var btnRow = detail.querySelector('div[style*="display:flex"]');
-    if (!btnRow) return;
+    if (!btnRow || btnRow.querySelector('.gl-pay-btn')) return;
     var btn = document.createElement('button');
     btn.innerHTML = '💵 Record Payment';
-    btn.className = 'cbtn';
+    btn.className = 'cbtn gl-pay-btn';
     btn.style.cssText = 'background:rgba(95,207,158,.12);border-color:rgba(95,207,158,.35);color:#5fcf9e';
     btn.onclick = function(){ window.glRecordPayment(window.currentInvId); };
     btnRow.appendChild(btn);
@@ -27338,10 +27338,10 @@
     var due = inv.due_date || inv.dueDate;
     if (!due || new Date(due) > new Date()) return;
     var btnRow = detail.querySelector('div[style*="display:flex"]');
-    if (!btnRow) return;
+    if (!btnRow || btnRow.querySelector('.gl-collect-btn')) return;
     var btn = document.createElement('button');
     btn.innerHTML = '📋 Collect';
-    btn.className = 'cbtn';
+    btn.className = 'cbtn gl-collect-btn';
     btn.style.cssText = 'background:rgba(245,200,66,.12);border-color:rgba(245,200,66,.35);color:#f5c842';
     btn.onclick = function(){ window.glSetupCollections(window.currentInvId); };
     btnRow.appendChild(btn);
@@ -27687,20 +27687,22 @@
      1st click → button arms: shows "⚠ Confirm delete?" + Cancel
      2nd click → fires the actual delete (skipConfirm=true)
      5 s timeout / click-outside / Cancel → disarms, no action
+
+   Uses replaceChild so the armed button has ZERO prior event
+   listeners (the original button's addEventListener would
+   re-trigger arm() on the second click, preventing delete).
    ============================================================ */
 (function(){
-  var _orig   = null;
-  var _armed  = null; // { id, btn, origInner, origStyle, cancelBtn, timer }
+  var _orig  = null;
+  var _armed = null; // { id, orig, btn, cancelBtn, timer }
 
   function disarm(){
     if(!_armed) return;
     clearTimeout(_armed.timer);
     try {
-      if(_armed.btn && _armed.btn.parentNode){
-        _armed.btn.innerHTML     = _armed.origInner;
-        _armed.btn.style.cssText = _armed.origStyle;
-        _armed.btn.onclick       = null;
-      }
+      // Restore the original button (with its addEventListener intact)
+      if(_armed.btn && _armed.btn.parentNode)
+        _armed.btn.parentNode.replaceChild(_armed.orig, _armed.btn);
       if(_armed.cancelBtn && _armed.cancelBtn.parentNode)
         _armed.cancelBtn.parentNode.removeChild(_armed.cancelBtn);
     } catch(e){}
@@ -27709,27 +27711,32 @@
 
   function arm(id, btn){
     disarm();
-    var origInner = btn.innerHTML;
-    var origStyle = btn.style.cssText || '';
-    btn.innerHTML     = '⚠ Confirm delete?';
-    btn.style.cssText = 'background:rgba(231,76,60,.45);border:1px solid #ff5555;color:#fff;font-size:10px;padding:3px 10px;border-radius:5px;cursor:pointer;white-space:nowrap';
+
+    // Fresh button with NO prior event listeners — avoids addEventListener conflict
+    var fresh = document.createElement('button');
+    fresh.className     = btn.className;
+    fresh.innerHTML     = '⚠ Confirm delete?';
+    fresh.style.cssText = 'background:rgba(231,76,60,.45);border:1px solid #ff5555;color:#fff;font-size:10px;padding:3px 10px;border-radius:5px;cursor:pointer;white-space:nowrap';
+    fresh.onclick = function(e){
+      e.stopPropagation();
+      var del_id = _armed ? _armed.id : null;
+      disarm();
+      if(del_id && typeof _orig === 'function') _orig(del_id, { skipConfirm: true });
+    };
 
     var cancelBtn = document.createElement('button');
     cancelBtn.className   = 'cbtn';
     cancelBtn.style.cssText = 'font-size:10px;padding:3px 7px;margin-left:4px';
     cancelBtn.textContent = 'Cancel';
     cancelBtn.onclick = function(e){ e.stopPropagation(); disarm(); };
-    if(btn.parentNode) btn.parentNode.insertBefore(cancelBtn, btn.nextSibling);
+
+    if(btn.parentNode){
+      btn.parentNode.replaceChild(fresh, btn);
+      fresh.insertAdjacentElement('afterend', cancelBtn);
+    }
 
     var timer = setTimeout(disarm, 5000);
-    _armed = { id: id, btn: btn, origInner: origInner, origStyle: origStyle, cancelBtn: cancelBtn, timer: timer };
-
-    btn.onclick = function(e){
-      e.stopPropagation();
-      var del_id = _armed ? _armed.id : null;
-      disarm();
-      if(del_id && typeof _orig === 'function') _orig(del_id, { skipConfirm: true });
-    };
+    _armed = { id: id, orig: btn, btn: fresh, cancelBtn: cancelBtn, timer: timer };
   }
 
   function patch(){
@@ -27739,9 +27746,8 @@
 
     window.deleteInvoice = function(id, opts){
       opts = opts || {};
-      if(opts.skipConfirm) return _orig.call(this, id, opts); // confirmed second click
+      if(opts.skipConfirm) return _orig.call(this, id, opts);
 
-      // Find which button was clicked
       var ev  = window.event || null;
       var btn = null;
       if(ev){
@@ -27755,7 +27761,6 @@
       if(btn){
         arm(id, btn);
       } else {
-        // No button context — fall back to original confirm dialog
         _orig.call(this, id, opts);
       }
     };
@@ -27763,7 +27768,6 @@
     console.log('[GL] Two-step invoice delete ready');
   }
 
-  // Click-outside → disarm
   document.addEventListener('click', function(e){
     if(!_armed) return;
     if(e.target !== _armed.btn && e.target !== _armed.cancelBtn) disarm();
