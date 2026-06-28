@@ -229,11 +229,26 @@ Items hidden by default (admin-only) use `style="display:none"` and are shown by
 
 Three mechanisms, used in combination:
 
-1. **HTML `display:none` + login check** — element starts hidden; `if(u.role==='admin')` block in index.html shows it at login
-2. **`data-gl-perm` attribute** — `scanAndHide()` in permission system reveals/hides at page load
-3. **Inline JS role check** — function body checks `currentUser.role !== 'admin'` before executing
+1. **HTML `display:none` + login check** — element starts hidden; `if(u.role==='admin')` block in **fix.js line 281** (the active `loginUser`) shows it at login. The version of this check in index.html is dead code — fix.js overrides `window.loginUser` entirely.
+2. **`data-gl-perm` attribute** — `scanAndHide()` in permission system reveals/hides at page load. Has timing issues — do not rely on it for elements that must be visible immediately after login.
+3. **Inline JS role check** — function body checks `currentUser.role !== 'admin'` before executing.
 
-**For new admin-only elements:** Prefer mechanism 1 (explicit ID + login check). Mechanism 2 has timing issues and should not be used for elements that must be visible immediately after login.
+**For new admin-only elements:** Use mechanism 1. Give the element an `id`, set `display:none` in HTML, add the reveal to fix.js line 281 inside the `if(u.role==='admin')` block.
+
+### How Per-User Permission Gating Works (non-admin users)
+
+1. On login, `loginUser()` shows the CRM panel and starts polling for `perms.loaded`
+2. Concurrently, `onAuthStateChange('SIGNED_IN')` fires `loadPermissions()` — fetches `permission_components` and `user_permissions` tables from Supabase (3–4 DB calls, ~300–800ms)
+3. When `perms.loaded` becomes true, the polling loop in `loginUser` calls `applyGating()` immediately
+4. `applyGating()` hides nav items the user can't access, then checks if the current active page is forbidden — if so, redirects to the first permitted page
+5. `cNavGuard` wraps `window.cNav` to block direct navigation to forbidden pages
+6. Per-checkbox changes call `glTogglePerm()` → upserts to `user_permissions` table → takes effect next login for that user
+
+**Key constraint:** Permission changes take effect on the target user's NEXT login, not immediately. The `perms.userPerms` cache is loaded once at login.
+
+**`glCan(componentId)` logic:** checks `user_permissions` row for this user → falls back to `permission_components.default_on` → if component doesn't exist in table, returns `true` (fail-open).
+
+**Preset Apply button:** uses `window.glPresets` (same object as `ROLE_PRESETS`) — if this is undefined, the dropdown is empty and Apply does nothing. Both are set together at declaration: `var ROLE_PRESETS = window.glPresets = {...}`.
 
 ### Admin-Only Navigation
 
