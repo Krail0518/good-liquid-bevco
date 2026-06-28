@@ -24988,7 +24988,7 @@
   // Effective rule: start with the global default_on of each component,
   // then layer pageDefaults / actionDefaults (only when not undefined),
   // then layer overrides (final word).
-  var ROLE_PRESETS = {
+  var ROLE_PRESETS = window.glPresets = {
     admin: {
       label: 'Admin (full access)',
       description: 'Sets every component ON. Note: profiles.role=admin already bypasses gating; this is mostly cosmetic.',
