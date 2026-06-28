@@ -24927,6 +24927,31 @@
   if(document.readyState !== 'loading') boot();
   else document.addEventListener('DOMContentLoaded', boot);
 
+  // Wrap loginUser so non-admin users get gating applied the moment permissions
+  // finish loading — eliminates the flash where the dashboard is visible for
+  // ~500-800ms while DB calls are in flight.
+  (function(){
+    var _orig = window.loginUser;
+    window.loginUser = function(u){
+      _orig.apply(this, arguments);
+      if(u && u.role !== 'admin'){
+        if(perms.loaded){
+          applyGating();
+        } else {
+          var maxTries = 50; // 5s max
+          var tries = 0;
+          var iv = setInterval(function(){
+            tries++;
+            if(perms.loaded || tries >= maxTries){
+              clearInterval(iv);
+              if(perms.loaded) applyGating();
+            }
+          }, 100);
+        }
+      }
+    };
+  })();
+
   // Hook into cNav so the Users page (re)renders the permissions panel each time.
   function wireUsersPageRender(){
     var orig = window.cNav;
