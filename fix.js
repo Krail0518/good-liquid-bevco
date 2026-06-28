@@ -24754,12 +24754,35 @@
       return;
     }
     if(!confirm('Remove ' + (u.name || u.email) + '?\n\n' +
-      'This soft-deletes them (status=inactive) so they immediately lose CRM access.\n\n' +
-      'Their Supabase Auth account is NOT deleted by this action — to fully purge the login, go to Supabase dashboard → Authentication → Users.')) return;
-    // updated_at is bumped by trg_profiles_updated_at — see comment in
-    // glToggleUserActive above for context.
-    var r = await sb.from('profiles').update({ status: 'inactive' }).eq('id', id);
-    if(r.error){ alert('Remove failed: ' + r.error.message); return; }
+      'This permanently removes their login. They\'ll need a new invite to regain access.\n\n' +
+      'Their audit history is preserved in the database.')) return;
+
+    // Hard-delete from Supabase Auth via edge function (service-role required).
+    // This ensures their email can be re-invited later without a "already registered" error.
+    var SUPA_URL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co';
+    var sess = null;
+    try {
+      var sessRes = await sb.auth.getSession();
+      sess = sessRes && sessRes.data && sessRes.data.session;
+    } catch(e){}
+
+    if(sess && sess.access_token){
+      var delRes = await fetch(SUPA_URL + '/functions/v1/delete-staff-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sess.access_token },
+        body: JSON.stringify({ userId: id })
+      });
+      var delData = await delRes.json();
+      if(!delRes.ok || !delData.ok){
+        alert('Remove failed: ' + (delData.error || 'HTTP ' + delRes.status));
+        return;
+      }
+    } else {
+      // Fallback: soft-delete only if we can't reach the edge function
+      var r = await sb.from('profiles').update({ status: 'inactive' }).eq('id', id);
+      if(r.error){ alert('Remove failed: ' + r.error.message); return; }
+    }
+
     if(typeof window.addNotification === 'function'){
       window.addNotification('👤 User removed', u.email || u.name, 'warning');
     }

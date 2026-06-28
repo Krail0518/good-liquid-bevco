@@ -108,6 +108,8 @@ fi
 
 # ----- Deploy each function -----
 FUNCS=(
+  invite-staff-user
+  delete-staff-user
   stripe-checkout-session
   send-sms
   dropbox-sign
