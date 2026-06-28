@@ -22893,7 +22893,7 @@
     setTimeout(function(){ d.remove(); }, 4500);
   }
 
-  // Lazily load JSZip from CDN
+  // Pre-load JSZip at IIFE init so it's ready when the user clicks
   var _zipLoading = null;
   function ensureJsZip(){
     if(window.JSZip) return Promise.resolve(window.JSZip);
@@ -22908,6 +22908,8 @@
     });
     return _zipLoading;
   }
+  // Warm up JSZip in the background so first click is instant
+  ensureJsZip();
 
   // Every table we want to back up. Order doesn't matter for export.
   var EXPORT_TABLES = [
@@ -22922,11 +22924,12 @@
 
   window.glExportEverything = async function(){
     var sb = getSB();
-    if(!sb){ alert('Supabase not ready.'); return; }
-    if(!confirm('Download a full backup of every CRM table?\n\nThis will pull every row from ' + EXPORT_TABLES.length + ' tables and create a single ZIP file on this device.\n\nCan take 5–20 seconds depending on data volume.')) return;
+    if(!sb){ toast('Supabase not ready — try reloading the page.', 'err'); return; }
+    // Show progress immediately (no confirm — Chrome silently swallows confirm() if the
+    // user ever clicked "Don't allow additional dialogs", making the button appear broken)
     var status = document.createElement('div');
     status.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#142238;color:#fff;border:1px solid rgba(0,229,192,.35);border-radius:10px;padding:14px 22px;z-index:99999;font:13px system-ui;box-shadow:0 6px 18px rgba(0,0,0,.4)';
-    status.innerHTML = '<div style="font-weight:700;margin-bottom:4px">📦 Building backup…</div><div id="gl-exp-progress" style="font-size:11px;color:#9aa7bd">Loading JSZip…</div>';
+    status.innerHTML = '<div style="font-weight:700;margin-bottom:4px">📦 Building backup…</div><div id="gl-exp-progress" style="font-size:11px;color:#9aa7bd">Starting…</div>';
     document.body.appendChild(status);
 
     try {
