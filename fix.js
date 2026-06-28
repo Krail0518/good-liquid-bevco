@@ -17516,25 +17516,38 @@
       field('Supplier', 'supplier', vendors.length ? 'select' : 'text', vendors.length ? { options: vendors, required: true } : { required: true }) +
       field('Ingredient / material', 'ingredient', 'text', { required: true }) +
       field('Lot number', 'lot', 'text', { required: true }) +
-      field('Quantity received', 'qty', 'text') +
+      field('Expiration / best-by date (from supplier label)', 'exp_date', 'date') +
+      field('Quantity received', 'qty', 'text', { required: true, placeholder: 'e.g. 50 lbs, 10 cases, 5 gal' }) +
+      field('Temperature on receipt (°F) — leave blank if ambient / N/A', 'temp_f', 'number', { placeholder: 'e.g. 38', step: '0.1' }) +
+      field('Temperature within acceptable range for this material?', 'temp_ok', 'yn') +
+      field('Storage location assigned', 'storage_loc', 'text', { required: true, placeholder: 'e.g. Walk-in cooler A2, dry storage bay 3, quarantine area' }) +
       field('COA received?', 'coa', 'yn', { required: true }) +
       field('COA lot matches received lot?', 'coa_match', 'yn' ) +
       field('Allergen declaration on file?', 'allergen', 'yn') +
       field('Visual condition OK?', 'visual', 'yn', { required: true }) +
       field('Approved supplier?', 'approved', 'yn', { required: true }) +
       field('Disposition', 'disposition', 'select', { options: [['accept','Accept'],['quarantine','Quarantine — Hold Tag needed']], required: true }) +
-      field('Notes', 'notes', 'textarea');
+      field('Notes', 'notes', 'textarea') +
+      '<div style="font-size:11px;color:#7fc6f5;background:rgba(127,198,245,.08);padding:8px 12px;border-radius:6px;margin-top:8px">21 CFR 117.80: document every incoming delivery. Out-of-range temperature, failed COA, or unapproved supplier must result in Quarantine disposition and an automatic Hold Tag.</div>';
     var modal = modalShell('GMP-REC-001 · Receiving Inspection & COA Review', 'Required for every incoming delivery', body, formFooter());
     wireYn(modal);
     modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
     async function submit(signed){
-      var data = { supplier: getVal(modal,'supplier'), ingredient: getVal(modal,'ingredient'), lot: getVal(modal,'lot'), qty: getVal(modal,'qty'), coa: getVal(modal,'coa'), coa_match: getVal(modal,'coa_match'), allergen: getVal(modal,'allergen'), visual: getVal(modal,'visual'), approved: getVal(modal,'approved'), disposition: getVal(modal,'disposition'), notes: getVal(modal,'notes') };
-      var hasFailure = data.disposition === 'quarantine' || data.coa !== 'Y' || data.visual !== 'Y' || data.approved !== 'Y';
+      var data = { supplier: getVal(modal,'supplier'), ingredient: getVal(modal,'ingredient'), lot: getVal(modal,'lot'), exp_date: getVal(modal,'exp_date'), qty: getVal(modal,'qty'), temp_f: getVal(modal,'temp_f'), temp_ok: getVal(modal,'temp_ok'), storage_loc: getVal(modal,'storage_loc'), coa: getVal(modal,'coa'), coa_match: getVal(modal,'coa_match'), allergen: getVal(modal,'allergen'), visual: getVal(modal,'visual'), approved: getVal(modal,'approved'), disposition: getVal(modal,'disposition'), notes: getVal(modal,'notes') };
+      var tempFail = data.temp_f && data.temp_ok === 'N';
+      var hasFailure = data.disposition === 'quarantine' || data.coa !== 'Y' || data.visual !== 'Y' || data.approved !== 'Y' || tempFail;
       await saveRecord('GMP-REC-001', data, {
         signed: signed, complete: signed, task_id: task.id,
         has_deviation: hasFailure,
-        deviation_notes: hasFailure ? ('Receiving issue — ' + data.ingredient + ' (' + data.lot + ') from ' + data.supplier + ' · disposition: ' + data.disposition) : null,
-        corrective_action: data.notes, spawn_hold: data.disposition === 'quarantine',
+        deviation_notes: hasFailure ? ([
+          'Receiving issue — ' + data.ingredient + ' (' + data.lot + ') from ' + data.supplier,
+          tempFail ? 'Temperature out of range: ' + data.temp_f + '°F' : '',
+          data.coa !== 'Y' ? 'COA missing' : '',
+          data.visual !== 'Y' ? 'Visual condition failed' : '',
+          data.approved !== 'Y' ? 'Unapproved supplier' : '',
+          'Disposition: ' + data.disposition
+        ].filter(Boolean).join(' · ')) : null,
+        corrective_action: data.notes, spawn_hold: data.disposition === 'quarantine' || tempFail,
         product_name: data.ingredient, lot_number: data.lot, hazard_type: 'biological',
         summary: data.ingredient + ' · ' + data.supplier + ' · ' + (hasFailure ? data.disposition.toUpperCase() : 'ACCEPTED')
       });
