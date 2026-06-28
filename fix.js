@@ -24374,6 +24374,27 @@
         if(el) el.style.display = '';
       });
     }
+    // If the user is currently on a page they can no longer access (e.g. dashboard
+    // was the default landing page but has been removed from this user's permissions),
+    // redirect them to the first page they ARE allowed to see.
+    if(!perms.isAdmin){
+      var activeEl = document.querySelector('.cpg.act');
+      if(activeEl){
+        var curPageId = activeEl.id.replace(/^cpg-/, '');
+        if(!window.glCan(permIdForPage(curPageId))){
+          var firstNav = null;
+          navs.forEach(function(el){
+            if(firstNav) return;
+            var oc = el.getAttribute('onclick') || '';
+            var m2 = oc.match(/cNav\(\s*['"]([^'"]+)['"]/);
+            if(m2 && window.glCan(permIdForPage(m2[1]))){
+              firstNav = { page: m2[1], el: el };
+            }
+          });
+          if(firstNav && typeof window.cNav === 'function') window.cNav(firstNav.page, firstNav.el);
+        }
+      }
+    }
   }
 
   // Intercept cNav so a deep-link or saved nav state can't bypass the gate.
