@@ -1741,8 +1741,8 @@ select option, .fsel option {
           <div id="crm-role-badge" style="font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:1px 6px;border-radius:20px;display:inline-block;margin-top:1px">Admin</div>
         </div>
       </div>
-      <button class="cbtn" data-gl-perm="page.users" style="font-size:10px;padding:4px 10px;margin-left:4px;display:none" onclick="cNav('users',null)">🔑 Users &amp; permissions</button>
-      <button class="cbtn" data-gl-perm="page.users" style="font-size:10px;padding:4px 10px;margin-left:4px;display:none" onclick="runDailyDigestNow()" title="Send today's activity digest to all opted-in staff users right now (bypasses the 7am cron).">📨 Send digest</button>
+      <button id="top-btn-users" class="cbtn" style="font-size:10px;padding:4px 10px;margin-left:4px;display:none" onclick="cNav('users',null)">🔑 Users &amp; permissions</button>
+      <button id="top-btn-digest" class="cbtn" style="font-size:10px;padding:4px 10px;margin-left:4px;display:none" onclick="runDailyDigestNow()" title="Send today's activity digest to all opted-in staff users right now (bypasses the 7am cron).">📨 Send digest</button>
       <button class="cbtn" style="font-size:10px;padding:4px 10px;margin-left:4px" onclick="openChangePwModal()">🔑 Password</button>
       <button class="cbtn" style="font-size:10px;padding:4px 10px;margin-left:4px" onclick="logoutCRM()">Sign out</button>
     </div>
@@ -1798,7 +1798,6 @@ select option, .fsel option {
         <div class="cni" id="nav-inventory" onclick="cNav(&#39;inventory&#39;,this)"><span class="cni-ico">📦</span>Inventory</div>
         <div class="cni" id="nav-announcements" onclick="cNav(&#39;announcements&#39;,this)"><span class="cni-ico">📣</span>Announcements</div>
         <div class="cni" id="nav-time-tracker" onclick="openTimeTracker()"><span class="cni-ico">⏱️</span>Time Tracker</div>
-        <div class="cni" id="nav-users" onclick="cNav(&#39;users&#39;,this)" style="display:none"><span class="cni-ico">🔑</span>Users &amp; Permissions</div>
         <div class="cni" id="nav-customers" onclick="cNav(&#39;customers&#39;,this)" style="display:none"><span class="cni-ico">🌐</span>Customer Logins</div>
         <div class="cni" id="nav-reports" onclick="openReports()" style="color:var(--teal)"><span class="cni-ico">📊</span>Reports</div>
         <div class="cni" id="nav-ai-settings" onclick="openAISettings()" style="color:var(--teal)"><span class="cni-ico">🤖</span>AI Settings</div>
@@ -3140,6 +3139,10 @@ window.loginUser = function loginUser(u){
     const nc = document.getElementById('nav-customers');
     if(nu) nu.style.display='flex';
     if(nc) nc.style.display='flex';
+    const tbu = document.getElementById('top-btn-users');
+    const tbd = document.getElementById('top-btn-digest');
+    if(tbu) tbu.style.display='';
+    if(tbd) tbd.style.display='';
   }
   document.getElementById('crm-panel').classList.add('show');
   document.body.style.overflow = 'hidden';
