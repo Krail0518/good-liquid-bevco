@@ -5767,39 +5767,225 @@
   // Compliance
   // ────────────────────────────────────────────────────────────
   var SEC_COMPLIANCE =
-    wf(620, 240,
-      box(0,0,620,240,'#142238','rgba(255,255,255,.05)') +
-      txt(20,24,'📋 COMPLIANCE TASKS  ·  GL-PALMETTO  ·  May 29 2026',11,'#00e5c0') +
-      box(20,36,580,24,'#0d1e35','rgba(255,255,255,.05)') +
-      txt(30,52,'Task',10,'#9aa7bd') + txt(250,52,'Frequency',10,'#9aa7bd') + txt(350,52,'Last completed',10,'#9aa7bd') + txt(470,52,'Status',10,'#9aa7bd') +
-      box(20,64,580,26,'#1a2c48','rgba(95,207,158,.05)') +
-      txt(30,81,'Pre-op sanitation check',10,'#cfd9e6') + txt(250,81,'Daily',10,'#9aa7bd') + txt(350,81,'Today  07:42 AM',10,'#9aa7bd') +
-      box(470,68,80,18,'#1a3c30','rgba(0,229,192,.4)') + txt(510,80,'✓ Complete',9,'#00e5c0','middle') +
-      box(20,96,580,26,'#1a2c48','rgba(245,200,66,.05)') +
-      txt(30,113,'Metal detector calibration',10,'#cfd9e6') + txt(250,113,'Daily',10,'#9aa7bd') + txt(350,113,'Yesterday',10,'#9aa7bd') +
-      box(470,100,80,18,'#3d2f0a','rgba(245,200,66,.4)') + txt(510,112,'Due today',9,'#f5c842','middle') +
-      box(20,128,580,26,'#1a2c48','rgba(231,76,60,.05)') +
-      txt(30,145,'Allergen verification',10,'#cfd9e6') + txt(250,145,'Per run',10,'#9aa7bd') + txt(350,145,'May 22',10,'#9aa7bd') +
-      box(470,132,70,18,'#3d1a1a','rgba(231,76,60,.4)') + txt(505,144,'Overdue',9,'#e74c3c','middle') +
-      box(20,168,580,26,'#1a2c48','rgba(255,255,255,.05)') +
-      txt(30,185,'Receiving inspection — LOT-2026-12',10,'#cfd9e6') + txt(250,185,'Per lot',10,'#9aa7bd') + txt(350,185,'Today  08:15 AM',10,'#9aa7bd') +
-      box(470,172,80,18,'#1a3c30','rgba(0,229,192,.4)') + txt(510,184,'✓ Complete',9,'#00e5c0','middle') +
-      box(20,206,580,28,'#1a2c48','rgba(196,181,253,.15)') +
-      txt(30,224,'📤 Export  🚨 SMS alerts  🎲 Mock recall  🪟 Glass break  🔒 Inspector link  🥜 Allergen decl',9,'#c4b5fd') +
-      tag(470,68,1) + tag(470,100,2) + tag(470,132,3)
+    wf(620, 244,
+      box(0,0,620,244,'#0a1628','rgba(0,0,0,0)') +
+      box(0,0,620,32,'#0d1e35','rgba(0,229,192,.12)') +
+      txt(14,14,'📋 COMPLIANCE TASKS',11,'#00e5c0') +
+      txt(14,28,'Sidebar → Compliance Tasks · 3 tabs: Today · Open/Unsigned · History',9,'#9aa7bd') +
+      box(0,34,620,20,'#111e34','rgba(255,255,255,.05)') +
+      txt(14,47,'TASK',8,'#7a8ba0') + txt(300,47,'FORM CODE',8,'#7a8ba0') + txt(430,47,'STATUS',8,'#7a8ba0') +
+      box(0,56,620,26,'#0f1b30','rgba(95,207,158,.05)') +
+      txt(14,73,'📦 Receiving inspection — LOT-2026-0628-CH-001',10,'#cfd9e6') + txt(300,73,'GMP-REC-001',9,'#f5c842') +
+      box(430,60,80,18,'#1a3c30','rgba(0,229,192,.4)') + txt(470,72,'✓ Done',9,'#00e5c0','middle') + tag(590,69,1) +
+      box(0,84,620,26,'#111e34','rgba(245,200,66,.05)') +
+      txt(14,101,'🧫 Fermentation pH check — Run #14',10,'#cfd9e6') + txt(300,101,'FSP-PC-005',9,'#f5c842') +
+      box(430,88,80,18,'#3d2f0a','rgba(245,200,66,.4)') + txt(470,100,'⏳ Due now',9,'#f5c842','middle') + tag(590,97,2) +
+      box(0,112,620,26,'#0f1b30','rgba(231,76,60,.05)') +
+      txt(14,129,'🧬 Listeria swab — Zone 1 food-contact',10,'#cfd9e6') + txt(300,129,'FSP-SAN-001',9,'#f5c842') +
+      box(430,116,80,18,'#3d1a1a','rgba(231,76,60,.4)') + txt(470,128,'Overdue',9,'#e74c3c','middle') + tag(590,125,3) +
+      box(0,140,620,26,'#111e34','rgba(255,255,255,.03)') +
+      txt(14,157,'🌡 HTST pasteurization log — Run #14',10,'#cfd9e6') + txt(300,157,'FSP-PC-001',9,'#f5c842') +
+      box(430,144,80,18,'#1a3c30','rgba(0,229,192,.4)') + txt(470,156,'✓ Done',9,'#00e5c0','middle') +
+      box(0,168,620,26,'#111e34','rgba(255,255,255,.02)') +
+      txt(14,185,'🏷 Label verification — Run #14',10,'#cfd9e6') + txt(300,185,'GMP-LAB-001',9,'#f5c842') +
+      box(430,172,80,18,'#1a3c30','rgba(0,229,192,.4)') + txt(470,184,'✓ Done',9,'#00e5c0','middle') +
+      box(0,196,620,48,'#0d1e35','rgba(196,181,253,.08)') +
+      txt(14,210,'HEADER ACTIONS:',8,'#c4b5fd') +
+      txt(14,226,'📤 Export  🎲 Mock recall  🪟 Glass break  🔒 Inspector link  🥜 Allergen decl  📊 Monthly report  🎯 CCP Limits  🆕 New Hold Tag',8,'#9aa7bd')
     ) +
-    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    '<div style="font-size:11px;color:#9aa7bd;margin:4px 0 8px">Callouts: ① Completed task — record stored in Supabase with PCQI timestamp · ② Due now — ▶ Start button opens the form · ③ Overdue — turns red after its window passes.</div>' +
     bullets([
-    '<b>What it is</b>: a 21 CFR Part 117 + Part 11–compliant logging system built into the CRM. Three database tables back it: <code>compliance_tasks</code>, <code>compliance_records</code>, <code>hold_tags</code>.',
-    '<b>Where to find it</b>: left sidebar → 📋 <b>Compliance Tasks</b> (master daily checklist) · 🚫 <b>Hold Tags</b> · 🧼 <b>CIP / Sanitation Log</b>.',
-    '<b>Header buttons on the Compliance Tasks page</b>: 📤 <b>Export</b> / 🚨 <b>SMS alerts</b> / 🎲 <b>Mock recall</b> / 🪟 <b>Glass break</b> / 🗄 <b>Archive old</b> / 📄 <b>Documents</b> / 🔒 <b>Inspector link</b> (generate read-only token URL) / 🥜 <b>Allergen decl</b> (per-client allergen statement) / 📥 <b>Import training CSV</b> / 📧 <b>Send digest</b> (daily compliance summary via Mailgun) / 📊 <b>Monthly report</b> (printable PDF of last 30d) / ⚙️ <b>Applicability</b> / 🎯 <b>CCP Limits</b> / 🆕 <b>New Hold Tag</b>.',
-    '<b>Multi-PCQI signing</b>: any signed compliance record gets a "✍️ Add second PCQI signature" button on its modal. Captures typed signature + timestamp for dual-PCQI critical records.',
-    '<b>Inspector mode</b>: click <b>🔒 Inspector link</b> → enter the inspector\'s name + agency + token validity hours (default 8). You get a copyable URL. Open that URL in any browser to enter Inspector Mode: a red banner appears, every input/button is disabled, the inspector can only view + print. Tokens auto-expire.',
-    '<b>Allergen declarations</b>: click <b>🥜 Allergen decl</b> on the Compliance page (or on a Client\'s detail panel — pre-fills the client_id). Fill the 9 major US allergens + custom claims. Save + Share generates a public URL the customer can bookmark.',
-    '<b>Multi-facility</b>: a 🏭 chip top-right shows the active facility (default GL-PALMETTO). Every new compliance record / task / hold tag is auto-tagged with that facility. Click the chip to switch facilities (only relevant if you spin up a second location).',
-    '<b>Camera-based scanning</b>: <b>🥫 Scan Lot QR</b> opens the device camera and decodes lot barcodes (native BarcodeDetector — Chrome/Edge). <b>📷 Scan COA</b> appears on the receiving form → snap a Certificate of Analysis → Claude Vision parses lot/vendor/dates/results → fields pre-fill.',
-    '<b>AI root-cause suggester</b>: on any defect / NCR modal, click 🤖 <b>Suggest root cause</b> → sends defect type + description to Claude → returns root cause + corrective + preventive actions you can copy in.'
-  ]);
+      '<b>What it is</b>: a 21 CFR Part 117 + Part 11-compliant logging system built into the CRM. Three Supabase tables back it: <code>compliance_tasks</code> (the daily schedule), <code>compliance_records</code> (all FDA form entries, append-only), <code>hold_tags</code> (product holds that block shipping).',
+      '<b>Where to find it</b>: left sidebar → 📋 <b>Compliance Tasks</b> · 🚫 <b>Hold Tags</b> · 🧼 <b>CIP / Sanitation Log</b> · 📊 <b>Defects / NCRs</b>.',
+      '<b>Three tabs on the Compliance page</b>: <b>Today</b> — tasks queued for today based on your production schedule, each with a ▶ Start button that opens the correct form. <b>Open / Unsigned</b> — saved drafts and complete records waiting for PCQI sign-off. <b>History</b> — all signed records, filterable by form code.',
+      '<b>Auto-generated tasks</b>: creating a Production Run automatically queues the right forms: Pre-Op Sanitation, Label Verification, the correct CCP logs (HTST, hot fill, UV, fermentation, can seam — based on process type), post-run CIP, and Batch Record. A Receiving task is queued for any run that involves an incoming delivery.',
+      '<b>Add manual task</b>: <b>+ Add manual task</b> button → pick any built form from the list to log a record not triggered by the schedule (spot-check receiving, walk-in delivery, unscheduled training, etc.).',
+      '<b>Header buttons</b>: 📤 Export · 🚨 SMS alerts · 🎲 Mock recall · 🪟 Glass break · 🗄 Archive old · 📄 Documents · 🔒 Inspector link · 🥜 Allergen decl · 📥 Import training CSV · 📧 Send digest · 📊 Monthly report · ⚙️ Applicability · 🎯 CCP Limits · 🆕 New Hold Tag.',
+      '<b>Inspector mode</b>: <b>🔒 Inspector link</b> → enter the inspector\'s name + agency + token hours → you get a copyable URL. In Inspector Mode the page shows a red banner and every input is disabled — the inspector can only view and print. Tokens auto-expire.',
+      '<b>Monthly PDF report</b>: <b>📊 Monthly report</b> generates a printable summary of all compliance records for the last 30 days — ready to go into an audit binder.',
+      '<b>Multi-PCQI signing</b>: any signed record gets a ✍️ <b>Add second PCQI signature</b> button. Captures typed name + timestamp for dual-sign critical records.',
+      '<b>Allergen declarations</b>: <b>🥜 Allergen decl</b> → pick a client → fill all 9 FASTER Act allergens + custom claims → Save + Share gives a public URL the client can bookmark.',
+      '<b>CCP Limits</b>: <b>🎯 CCP Limits</b> shows all Critical Control Point thresholds (HTST ≥ 165°F, hot fill ≥ 185°F, UV ≥ 40 mJ/cm², fermentation pH ≤ 4.6). Editing a limit requires PCQI sign-off and is logged to the audit trail.',
+      '<b>AI root-cause suggester</b>: on any Defect / NCR modal, click 🤖 <b>Suggest root cause</b> → sends defect type + description to Claude → returns root cause, corrective action, and preventive action you can copy in.',
+      '<b>Camera scanning</b>: 🥫 <b>Scan Lot QR</b> opens the device camera and decodes lot barcodes (native BarcodeDetector — Chrome / Edge). 📷 <b>Scan COA</b> on the receiving form snaps a Certificate of Analysis — Claude Vision auto-fills lot number, vendor, dates, and test results.',
+      '<b>Multi-facility</b>: a 🏭 chip top-right shows the active facility (default GL-PALMETTO). Every new record / task / hold tag is auto-tagged with that facility.'
+    ]) +
+
+    '<h4 style="margin:22px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">📦 GMP-REC-001 · RECEIVING INSPECTION &amp; COA REVIEW</h4>' +
+    wf(620, 370,
+      box(0,0,620,370,'#0a1628','rgba(0,0,0,0)') +
+      box(0,0,620,40,'#0d1e35','rgba(0,229,192,.14)') +
+      txt(14,16,'GMP-REC-001 · RECEIVING INSPECTION &amp; COA REVIEW',11,'#00e5c0') +
+      txt(14,32,'Required for every incoming delivery  ·  21 CFR 117.80',9,'#9aa7bd') +
+      txt(14,54,'FIELD',8,'#7a8ba0') + txt(240,54,'EXAMPLE VALUE',8,'#7a8ba0') + txt(490,54,'NOTES',8,'#7a8ba0') +
+      box(0,60,620,26,'#111e34','rgba(255,255,255,.03)') +
+      txt(14,77,'Supplier',9,'#9aa7bd') +
+      box(240,63,370,18,'#0d1e35','rgba(255,255,255,.12)') + txt(246,75,'Hop Valley Brewing Co.',9,'#cfd9e6') +
+      box(0,88,620,26,'#0f1b30','rgba(255,255,255,.02)') +
+      txt(14,105,'Ingredient / material',9,'#9aa7bd') +
+      box(240,91,370,18,'#0d1e35','rgba(255,255,255,.12)') + txt(246,103,'Cascade Hops (pellet)',9,'#cfd9e6') +
+      box(0,116,620,26,'#111e34','rgba(255,255,255,.03)') +
+      txt(14,133,'Lot number',9,'#9aa7bd') +
+      box(240,119,370,18,'#0d1e35','rgba(255,255,255,.12)') + txt(246,131,'LOT-2026-0628-CH-001',9,'#cfd9e6') +
+      box(0,144,620,26,'#0c201a','rgba(95,207,158,.08)') +
+      txt(14,161,'Expiration / best-by date',9,'#9aa7bd') +
+      box(240,147,180,18,'#0d1e35','rgba(255,255,255,.12)') + txt(246,159,'2027-03-15',9,'#cfd9e6') +
+      box(430,149,34,14,'#1a3c30','rgba(95,207,158,.5)') + txt(447,159,'NEW',7,'#5fcf9e','middle') +
+      tag(596,157,1) +
+      box(0,172,620,26,'#0f1b30','rgba(255,255,255,.02)') +
+      txt(14,189,'Quantity received',9,'#9aa7bd') +
+      box(240,175,370,18,'#0d1e35','rgba(255,255,255,.12)') + txt(246,187,'50 lbs',9,'#cfd9e6') +
+      box(0,200,620,26,'#0c201a','rgba(95,207,158,.08)') +
+      txt(14,217,'Temperature on receipt (°F)',9,'#9aa7bd') +
+      box(240,203,80,18,'#0d1e35','rgba(255,255,255,.12)') + txt(246,215,'38',9,'#cfd9e6') +
+      txt(328,215,'leave blank if ambient / dry goods',8,'#7a8ba0') +
+      box(430,205,34,14,'#1a3c30','rgba(95,207,158,.5)') + txt(447,215,'NEW',7,'#5fcf9e','middle') +
+      tag(596,213,2) +
+      box(0,228,620,26,'#0c201a','rgba(95,207,158,.08)') +
+      txt(14,245,'Temperature within acceptable range?',9,'#9aa7bd') +
+      box(240,231,28,18,'#1a3c30','rgba(95,207,158,.35)') + txt(254,244,'Y',9,'#5fcf9e','middle') +
+      box(270,231,28,18,'#0d1e35','rgba(255,255,255,.1)') + txt(284,244,'N',9,'#9aa7bd','middle') +
+      txt(306,245,'N → auto Hold Tag (same as quarantine)',8,'#ff8579') +
+      box(430,233,34,14,'#1a3c30','rgba(95,207,158,.5)') + txt(447,243,'NEW',7,'#5fcf9e','middle') +
+      box(0,256,620,26,'#0c201a','rgba(95,207,158,.08)') +
+      txt(14,273,'Storage location assigned',9,'#9aa7bd') +
+      box(240,259,370,18,'#0d1e35','rgba(255,255,255,.12)') + txt(246,271,'Walk-in cooler A2',9,'#cfd9e6') +
+      box(430,261,34,14,'#1a3c30','rgba(95,207,158,.5)') + txt(447,271,'NEW',7,'#5fcf9e','middle') +
+      tag(596,269,3) +
+      box(0,284,620,26,'#111e34','rgba(255,255,255,.03)') +
+      txt(14,301,'COA received?',9,'#9aa7bd') +
+      box(240,287,28,18,'#1a3c30','rgba(95,207,158,.35)') + txt(254,300,'Y',9,'#5fcf9e','middle') +
+      box(270,287,28,18,'#0d1e35','rgba(255,255,255,.1)') + txt(284,300,'N',9,'#9aa7bd','middle') +
+      txt(306,300,'also ask: COA lot matches received lot?',8,'#7a8ba0') +
+      box(0,312,620,26,'#0f1b30','rgba(255,255,255,.02)') +
+      txt(14,329,'Visual condition OK?',9,'#9aa7bd') +
+      box(240,315,28,18,'#1a3c30','rgba(95,207,158,.35)') + txt(254,328,'Y',9,'#5fcf9e','middle') +
+      box(270,315,28,18,'#0d1e35','rgba(255,255,255,.1)') + txt(284,328,'N',9,'#9aa7bd','middle') +
+      box(0,340,620,26,'#111e34','rgba(255,255,255,.03)') +
+      txt(14,357,'Disposition',9,'#9aa7bd') +
+      box(240,343,120,18,'#0d1e35','rgba(255,255,255,.12)') + txt(246,355,'Accept',9,'#5fcf9e') +
+      txt(368,355,'or: Quarantine — Hold Tag needed',8,'#ff8579') +
+      tag(596,353,4) +
+      box(240,370,110,18,'#0d1e35','rgba(255,255,255,.1)') + txt(295,382,'Save draft',8,'#9aa7bd','middle') +
+      box(358,370,140,18,'#1a3c30','rgba(95,207,158,.4)') + txt(428,382,'✓ Sign &amp; complete',8,'#5fcf9e','middle')
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin:4px 0 8px">Callouts on the form above:</div>' +
+    bullets([
+      '① <b>Expiration / best-by date</b> (NEW) — captures the date from the supplier\'s label. Enables FIFO tracking and flags aged inventory. Leave blank for materials with no expiration date (e.g., some packaging).',
+      '② <b>Temperature on receipt (°F)</b> (NEW) — enter the measured temperature for cold-chain deliveries: cultures, botanical extracts, certain natural flavors. Leave blank for ambient or dry goods. The number itself is just recorded — the next field decides pass/fail.',
+      '<b>Temperature within acceptable range? Y/N</b> (NEW) — this is the pass/fail gate. Marking N when a temperature is entered automatically creates a Hold Tag and flags a deviation, exactly like a Quarantine disposition. A 38°F yogurt culture delivery might be in range; a 55°F one would not be.',
+      '③ <b>Storage location assigned</b> (NEW) — where the material is physically placed after receipt (Walk-in cooler A2, dry storage bay 3, quarantine area, etc.). Required so any inspector can locate a specific lot. If disposition is Quarantine, document the quarantine area here.',
+      '④ <b>Disposition → Quarantine = auto Hold Tag</b> — selecting Quarantine (or marking temperature out of range) creates a Hold Tag automatically, tagged with the ingredient name, lot number, and failure reason. The material stays blocked from production use until a PCQI dispositions it from the Hold Tags page.',
+      '<b>COA lot match check</b> — the form separately asks "COA lot matches received lot?" A supplier sometimes sends a generic COA from a prior run. Mismatches flag a deviation even if the material looks fine visually.',
+      '<b>How to open it</b>: Sidebar → Compliance Tasks → Today tab → ▶ Start on the Receiving task. Or: <b>+ Add manual task</b> → 📦 Receiving Inspection. On mobile, 🥫 Scan Lot QR pre-fills the lot number from a delivery barcode; 📷 Scan COA snaps the Certificate of Analysis and auto-fills lot, vendor, and dates.',
+      '<b>Save draft vs. Sign &amp; complete</b>: Save draft stores the record without a PCQI signature (status = draft — appears in the Open / Unsigned tab). Sign &amp; complete records your name and timestamps the sign-off (status = signed — counts toward your FDA audit trail).'
+    ]) +
+
+    '<h4 style="margin:22px 0 8px;font-size:13px;letter-spacing:1.5px;color:#ff8579">🚨 GMP-GHP-001 · GLASS BREAKAGE EVENT</h4>' +
+    wf(620, 248,
+      box(0,0,620,248,'#0a1628','rgba(0,0,0,0)') +
+      box(0,0,620,40,'#1a0d0d','rgba(231,76,60,.18)') +
+      txt(14,16,'🚨 GMP-GHP-001 · GLASS BREAKAGE EVENT',11,'#ff8579') +
+      txt(14,32,'STOP line · quarantine 10-ft radius · full cleanup · PCQI sign before restart',9,'#9aa7bd') +
+      box(0,42,620,26,'#111e34','rgba(255,255,255,.03)') +
+      txt(14,59,'Time of breakage',9,'#9aa7bd') +
+      box(240,45,300,18,'#0d1e35','rgba(255,255,255,.12)') + txt(246,57,'2026-06-28  10:22 AM',9,'#cfd9e6') +
+      box(0,70,620,26,'#0f1b30','rgba(255,255,255,.02)') +
+      txt(14,87,'Location in facility',9,'#9aa7bd') +
+      box(240,73,300,18,'#0d1e35','rgba(255,255,255,.12)') + txt(246,85,'Filling Line 1, nozzle station 3',9,'#cfd9e6') +
+      box(0,98,620,26,'#111e34','rgba(255,255,255,.03)') +
+      txt(14,115,'Source of breakage',9,'#9aa7bd') +
+      box(240,101,300,18,'#0d1e35','rgba(255,255,255,.12)') + txt(246,113,'Filled glass bottle',9,'#cfd9e6') +
+      box(0,126,620,26,'#0f1b30','rgba(255,255,255,.02)') +
+      txt(14,143,'Estimated radius cleared (ft)',9,'#9aa7bd') +
+      box(240,129,80,18,'#0d1e35','rgba(255,255,255,.12)') + txt(246,141,'10',9,'#cfd9e6') +
+      txt(328,141,'minimum — increase if contamination visible beyond',8,'#7a8ba0') +
+      box(0,154,620,26,'#111e34','rgba(255,255,255,.03)') +
+      txt(14,171,'Was line stopped?',9,'#9aa7bd') +
+      box(240,157,120,18,'#1a0d0d','rgba(231,76,60,.3)') + txt(300,170,'Yes — immediately',9,'#ff8579','middle') + tag(590,167,1) +
+      box(0,182,620,26,'#0f1b30','rgba(255,255,255,.02)') +
+      txt(14,199,'Cleanup method',9,'#9aa7bd') +
+      box(240,185,370,18,'#0d1e35','rgba(255,255,255,.12)') + txt(246,197,'Sweep + vacuum + full CIP all food-contact surfaces',9,'#9aa7bd') +
+      box(0,210,620,38,'#1a0d0d','rgba(231,76,60,.1)') +
+      txt(14,224,'🚨 Auto Hold Tag created for all product within cleared radius',9,'#ff8579') +
+      txt(14,238,'PCQI must disposition hold from Hold Tags page before product can ship',8,'#9aa7bd') +
+      tag(590,224,2)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin:4px 0 8px">Callouts: ① Line stop is required — document whether the line was immediately halted · ② Auto Hold Tag is created on save for all product within the cleared radius.</div>' +
+    bullets([
+      '<b>How to open</b>: Compliance Tasks page → header row → <b>🪟 Glass break</b> button (red).',
+      '<b>When to use</b>: any glass breakage in the production area — filled or empty bottles, sight glasses, sample containers, lab glassware, overhead lighting. When in doubt, log it.',
+      '<b>10-foot rule</b>: the form pre-fills a 10-ft minimum radius. Enter the actual radius cleared. All product within that radius is automatically placed on hold.',
+      '<b>Auto Hold Tag</b>: saving the form immediately creates a Hold Tag for affected product. The PCQI must disposition the hold (release / reprocess / destroy) from the Hold Tags page before that product can ship.',
+      '<b>PCQI sign before restart</b>: the form saves as signed with your PCQI identity and timestamp. Do not restart the line until a second person physically verifies the area is clear — document that in the Notes field or add a second PCQI signature on the record.',
+      '<b>Cleanup instructions</b>: the Cleanup method field pre-fills with the standard procedure (sweep all visible shards, vacuum, full CIP all food-contact surfaces, magnetic sweep around the line). Edit as needed for your situation and save the updated text as the permanent record.'
+    ]) +
+
+    '<h4 style="margin:22px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">🎯 MOCK RECALL SIMULATOR</h4>' +
+    wf(620, 236,
+      box(0,0,620,236,'#0a1628','rgba(0,0,0,0)') +
+      box(0,0,620,40,'#0d1e35','rgba(0,229,192,.12)') +
+      txt(14,16,'🎯 MOCK RECALL SIMULATOR',12,'#00e5c0') +
+      txt(14,32,'Evidence for FSP-VER-002 · must trace a lot to all customers under 4 hours',9,'#9aa7bd') +
+      txt(14,58,'Lot number to recall',9,'#9aa7bd') +
+      box(14,64,370,22,'#0d1e35','rgba(255,255,255,.12)') +
+      txt(20,79,'GLBC-JUC01-20260516-L1-001',9,'#cfd9e6') +
+      box(392,64,84,22,'rgba(0,229,192,.06)','rgba(0,229,192,.2)') +
+      txt(434,79,'🎲 Pick lot',9,'#00e5c0','middle') +
+      box(484,64,124,22,'rgba(0,229,192,.18)','rgba(0,229,192,.45)') +
+      txt(546,79,'▶ Start timer',9,'#00e5c0','middle') +
+      txt(14,108,'⏱  Trace complete — elapsed: 2.4 seconds',12,'#00e5c0') +
+      box(14,116,592,22,'#0d2430','rgba(0,229,192,.1)') +
+      txt(20,131,'Lot GLBC-JUC01-20260516-L1-001  →  3 distribution records  ·  260 cs total',9,'#cfd9e6') +
+      box(14,140,592,20,'#111e34','rgba(255,255,255,.04)') +
+      txt(20,153,'📦  Whole Foods Tampa  ·  120 cs  ·  shipped Jun 2 2026  ·  BOL 7742',9,'#9aa7bd') +
+      box(14,162,592,20,'#0f1b30','rgba(255,255,255,.03)') +
+      txt(20,175,'📦  Winn-Dixie Sarasota  ·  60 cs  ·  shipped Jun 4 2026  ·  BOL 7751',9,'#9aa7bd') +
+      box(14,184,592,20,'#111e34','rgba(255,255,255,.04)') +
+      txt(20,197,'📦  Total Wine Orlando  ·  80 cs  ·  shipped Jun 6 2026  ·  BOL 7763',9,'#9aa7bd') +
+      box(420,206,192,26,'#1a3c30','rgba(95,207,158,.35)') +
+      txt(516,223,'✓ PASS — under 4-hour target',9,'#5fcf9e','middle') +
+      box(14,206,400,26,'#0d1e35','rgba(255,255,255,.06)') +
+      txt(20,223,'🖨  Print mock recall report  (files result in FSP-VER-002 annual review)',8,'#9aa7bd')
+    ) +
+    bullets([
+      '<b>How to open</b>: Compliance Tasks page → header row → <b>🎲 Mock recall</b> button.',
+      '<b>What it does</b>: pulls every GMP-DIST-001 distribution record and compliance record that references the lot number you enter. Lists every customer who received product from that lot, the quantity shipped, ship date, and Bill of Lading number. Times the entire trace in real-time.',
+      '<b>Pick a recent lot</b>: click 🎲 <b>Pick lot</b> to auto-fill the most recently shipped lot number from GMP-DIST-001 records — useful if you\'re doing a scheduled drill and don\'t have a specific lot in mind.',
+      '<b>FDA requirement</b>: 21 CFR Part 117 requires documented ability to identify and locate all affected product within 4 hours of a recall decision. The PASS / FAIL badge confirms whether your trace met that threshold.',
+      '<b>Print report</b>: 🖨 <b>Print mock recall report</b> generates a formatted summary — lot, all customers, quantities, elapsed time, and a statement that this was a mock exercise. File it in your audit binder.',
+      '<b>Annual FSP Review</b>: the Annual FSP Review form (FSP-VER-002) has a "Mock recall conducted this year? Date + 4-hr result?" field. Enter the date and elapsed time from the printout. Together they satisfy the HACCP plan\'s annual verification requirement for traceability.'
+    ]) +
+
+    '<h4 style="margin:22px 0 8px;font-size:13px;letter-spacing:1.5px;color:#c4b5fd">📋 ALL GMP / HACCP FORMS — QUICK REFERENCE</h4>' +
+    '<div style="overflow-x:auto;margin:8px 0 4px">' +
+    '<table style="width:100%;border-collapse:collapse;font-size:12px;color:#cfd9e6">' +
+    '<thead><tr style="background:#0d1e35;border-bottom:2px solid rgba(0,229,192,.25)">' +
+    '<th style="text-align:left;padding:8px 10px;color:#00e5c0;font-size:11px;letter-spacing:1px;white-space:nowrap">FORM CODE</th>' +
+    '<th style="text-align:left;padding:8px 10px;color:#00e5c0;font-size:11px;letter-spacing:1px">NAME</th>' +
+    '<th style="text-align:left;padding:8px 10px;color:#00e5c0;font-size:11px;letter-spacing:1px">WHAT IT CAPTURES</th>' +
+    '<th style="text-align:left;padding:8px 10px;color:#00e5c0;font-size:11px;letter-spacing:1px;white-space:nowrap">FREQUENCY</th>' +
+    '</tr></thead><tbody>' +
+    '<tr style="background:#111e34"><td style="padding:7px 10px;color:#f5c842;font-family:monospace;white-space:nowrap">GMP-REC-001</td><td style="padding:7px 10px;white-space:nowrap">📦 Receiving Inspection</td><td style="padding:7px 10px;color:#9aa7bd">Supplier, lot, <b style="color:#5fcf9e">expiration date</b>, qty, <b style="color:#5fcf9e">temperature on receipt</b>, <b style="color:#5fcf9e">storage location</b>, COA, visual check, disposition</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Every delivery</td></tr>' +
+    '<tr style="background:#0f1b30"><td style="padding:7px 10px;color:#f5c842;font-family:monospace;white-space:nowrap">GMP-LAB-001</td><td style="padding:7px 10px;white-space:nowrap">🏷 Label Verification</td><td style="padding:7px 10px;color:#9aa7bd">8-point label check: name, weight, ingredients, all 9 FASTER Act allergens, best-by coding, lot code, TTB COLA, co-pack spec match</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Every run</td></tr>' +
+    '<tr style="background:#111e34"><td style="padding:7px 10px;color:#f5c842;font-family:monospace;white-space:nowrap">GMP-INSP-001</td><td style="padding:7px 10px;white-space:nowrap">🔍 Pre-Op Sanitation</td><td style="padding:7px 10px;color:#9aa7bd">Equipment cleanliness, allergen status, sanitation sign-off before each run begins</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Daily / per run</td></tr>' +
+    '<tr style="background:#0f1b30"><td style="padding:7px 10px;color:#f5c842;font-family:monospace;white-space:nowrap">GMP-SAN-002</td><td style="padding:7px 10px;white-space:nowrap">🧼 CIP / Sanitation Log</td><td style="padding:7px 10px;color:#9aa7bd">9-step CIP cycle with temperature, chemical type, concentration, and pass/fail per step</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Post-run</td></tr>' +
+    '<tr style="background:#111e34"><td style="padding:7px 10px;color:#f5c842;font-family:monospace;white-space:nowrap">GMP-CAL-001</td><td style="padding:7px 10px;white-space:nowrap">📐 Equipment Calibration</td><td style="padding:7px 10px;color:#9aa7bd">pH meter, thermometers, scales, UV sensors, FDD, conductivity meter — NIST-traceable reference, pass/fail, next-due date</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Monthly minimum</td></tr>' +
+    '<tr style="background:#0f1b30"><td style="padding:7px 10px;color:#f5c842;font-family:monospace;white-space:nowrap">GMP-DIST-001</td><td style="padding:7px 10px;white-space:nowrap">🚚 Distribution / Traceability</td><td style="padding:7px 10px;color:#9aa7bd">Lot, qty, customer name + address, contact, ship method, BOL number — backs up the 4-hour mock recall</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Every shipment</td></tr>' +
+    '<tr style="background:#111e34"><td style="padding:7px 10px;color:#f5c842;font-family:monospace;white-space:nowrap">GMP-HR-001</td><td style="padding:7px 10px;white-space:nowrap">🤒 Illness Exclusion</td><td style="padding:7px 10px;color:#9aa7bd">Symptoms (all 7 FDA exclusion conditions), exclusion decision, return-to-work date, medical clearance</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Upon event</td></tr>' +
+    '<tr style="background:#0f1b30"><td style="padding:7px 10px;color:#f5c842;font-family:monospace;white-space:nowrap">GMP-TR-001</td><td style="padding:7px 10px;white-space:nowrap">🎓 Employee Training</td><td style="padding:7px 10px;color:#9aa7bd">Topic, training method, duration, trainer, tested Y/N, pass/fail, employee signature on file, next-due date</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Each event + annual</td></tr>' +
+    '<tr style="background:#111e34"><td style="padding:7px 10px;color:#f5c842;font-family:monospace;white-space:nowrap">GMP-GHP-001</td><td style="padding:7px 10px;white-space:nowrap">🚨 Glass Breakage</td><td style="padding:7px 10px;color:#9aa7bd">Time, location, source, radius cleared, line stopped Y/N, cleanup method, auto Hold Tag for affected product</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Upon event</td></tr>' +
+    '<tr style="background:#0f1b30"><td style="padding:7px 10px;color:#f5c842;font-family:monospace;white-space:nowrap">GMP-QC-001</td><td style="padding:7px 10px;white-space:nowrap">🚫 Hold Tags</td><td style="padding:7px 10px;color:#9aa7bd">Product name, lot, qty held, location, reason, hazard type, PCQI notification, disposition (release / reprocess / destroy)</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Upon hold event</td></tr>' +
+    '<tr style="background:#111e34"><td style="padding:7px 10px;color:#6b9fff;font-family:monospace;white-space:nowrap">FSP-PC-001</td><td style="padding:7px 10px;white-space:nowrap">🌡 HTST Pasteurization (CCP-1)</td><td style="padding:7px 10px;color:#9aa7bd">Hold-tube temp (critical limit ≥ 165°F), cold-side temp, FDD status (OK / DIVERT), holding time, corrective action</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Every run</td></tr>' +
+    '<tr style="background:#0f1b30"><td style="padding:7px 10px;color:#6b9fff;font-family:monospace;white-space:nowrap">FSP-PC-002</td><td style="padding:7px 10px;white-space:nowrap">🔥 Hot Fill (CCP-2)</td><td style="padding:7px 10px;color:#9aa7bd">Fill nozzle temperature (critical limit ≥ 185°F), thermocouple calibration date, corrective action if below CL</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Every run</td></tr>' +
+    '<tr style="background:#111e34"><td style="padding:7px 10px;color:#6b9fff;font-family:monospace;white-space:nowrap">FSP-PC-003</td><td style="padding:7px 10px;white-space:nowrap">🥫 Can Seam (CCP-4)</td><td style="padding:7px 10px;color:#9aa7bd">Seam thickness, length, body hook, cover hook, overlap % — must meet BCMA specification</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Every 30 min (canning)</td></tr>' +
+    '<tr style="background:#0f1b30"><td style="padding:7px 10px;color:#6b9fff;font-family:monospace;white-space:nowrap">FSP-PC-004</td><td style="padding:7px 10px;white-space:nowrap">💡 UV Water Treatment (CCP-3)</td><td style="padding:7px 10px;color:#9aa7bd">UV dose (critical limit ≥ 40 mJ/cm²), intensity sensor reading, corrective action</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Hourly during production</td></tr>' +
+    '<tr style="background:#111e34"><td style="padding:7px 10px;color:#6b9fff;font-family:monospace;white-space:nowrap">FSP-PC-005</td><td style="padding:7px 10px;white-space:nowrap">🧫 Fermentation (CCP-A)</td><td style="padding:7px 10px;color:#9aa7bd">Final pH (critical limit ≤ 4.6) and ABV ≥ spec — multiple readings per batch</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Per batch</td></tr>' +
+    '<tr style="background:#0f1b30"><td style="padding:7px 10px;color:#c4b5fd;font-family:monospace;white-space:nowrap">FSP-SAN-001</td><td style="padding:7px 10px;white-space:nowrap">🧬 Environmental Monitoring</td><td style="padding:7px 10px;color:#9aa7bd">Listeria spp. + L. monocytogenes swabs across 4 zones. Zone 1-2 positive = stop production, deep clean, intensified sanitation, re-swab</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Monthly minimum</td></tr>' +
+    '<tr style="background:#111e34"><td style="padding:7px 10px;color:#c4b5fd;font-family:monospace;white-space:nowrap">FSP-SC-002</td><td style="padding:7px 10px;white-space:nowrap">📋 Supplier COA Review</td><td style="padding:7px 10px;color:#9aa7bd">Micro results, heavy metals, pesticides, potency / identity (botanicals), PCQI sign-off for high-risk lots</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Per high-risk lot</td></tr>' +
+    '<tr style="background:#0f1b30"><td style="padding:7px 10px;color:#c4b5fd;font-family:monospace;white-space:nowrap">FSP-VER-002</td><td style="padding:7px 10px;white-space:nowrap">📅 Annual FSP Review</td><td style="padding:7px 10px;color:#9aa7bd">Scope changes (products, processes, suppliers, allergens, facility), CCP validity, deviations this year, mock recall result, overall assessment, PCQI sign-off</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Annually</td></tr>' +
+    '<tr style="background:#111e34"><td style="padding:7px 10px;color:#c4b5fd;font-family:monospace;white-space:nowrap">QC-BR-001</td><td style="padding:7px 10px;white-space:nowrap">📄 Production Batch Record</td><td style="padding:7px 10px;color:#9aa7bd">All ingredients + lot numbers, batch size, process temperatures, fill temp, final pH, QC checks, operator sign-off</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Every batch</td></tr>' +
+    '</tbody></table></div>';
 
   // ────────────────────────────────────────────────────────────
   // Additional emails (per-client)
