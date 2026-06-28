@@ -1742,6 +1742,7 @@ select option, .fsel option {
         </div>
       </div>
       <button id="top-btn-users" class="cbtn" style="font-size:10px;padding:4px 10px;margin-left:4px;display:none" onclick="cNav('users',null)">🔑 Users &amp; permissions</button>
+      <button id="top-btn-backup" class="cbtn" style="font-size:10px;padding:4px 10px;margin-left:4px;display:none" onclick="window.glExportEverything && window.glExportEverything()">💾 Backup all data</button>
       <button id="top-btn-digest" class="cbtn" style="font-size:10px;padding:4px 10px;margin-left:4px;display:none" onclick="runDailyDigestNow()" title="Send today's activity digest to all opted-in staff users right now (bypasses the 7am cron).">📨 Send digest</button>
       <button class="cbtn" style="font-size:10px;padding:4px 10px;margin-left:4px" onclick="openChangePwModal()">🔑 Password</button>
       <button class="cbtn" style="font-size:10px;padding:4px 10px;margin-left:4px" onclick="logoutCRM()">Sign out</button>

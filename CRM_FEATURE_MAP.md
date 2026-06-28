@@ -94,12 +94,13 @@
 
 ### User Section (`.crm-usr`)
 3. **Avatar + Name** (`.crm-av`, `.crm-user-name`) — initials, name, role badge (gold=Admin, blue=Sales)
-4. **🔑 Users & permissions** (`#top-btn-users`) — **ADMIN ONLY** — `cNav('users',null)`; shown by login check at index.html line 3138 area
-5. **📨 Send digest** (`#top-btn-digest`) — **ADMIN ONLY** — `runDailyDigestNow()`; shown by same login check
+4. **🔑 Users & permissions** (`#top-btn-users`) — **ADMIN ONLY** — `cNav('users',null)`; shown by login check
+5. **💾 Backup all data** (`#top-btn-backup`) — **ADMIN ONLY** — `window.glExportEverything()`; shown by same login check
+6. **📨 Send digest** (`#top-btn-digest`) — **ADMIN ONLY** — `runDailyDigestNow()`; shown by same login check
 6. **🔑 Password** — `openChangePwModal()`; all users
 7. **Sign out** — `logoutCRM()`; all users
 
-**Critical:** Items 4 and 5 have `display:none` in HTML. They are revealed by the admin login check, NOT by the `data-gl-perm` permission scanner. If you add more admin-only top bar buttons, follow the same pattern: give them an `id`, set `display:none` in HTML, and add `document.getElementById('id').style.display=''` inside the `if(u.role==='admin')` block in index.html.
+**Critical:** Items 4–6 have `display:none` in HTML. They are revealed by the admin login check in **fix.js line 281** (`window.loginUser`), NOT by the `data-gl-perm` permission scanner and NOT by the version of loginUser in index.html (that version is overridden by fix.js and never runs). If you add more admin-only top bar buttons, follow the same pattern: give them an `id`, set `display:none` in HTML, and add the reveal inside the `if(u.role==='admin')` block at **fix.js line 281**.
 
 ---
 
