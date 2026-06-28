@@ -278,7 +278,7 @@
     if($('crm-user-name'))$('crm-user-name').textContent=u.name;
     var rb=$('crm-role-badge');
     if(rb){rb.textContent=u.role.charAt(0).toUpperCase()+u.role.slice(1);rb.style.cssText=u.role==='admin'?'background:rgba(245,200,66,.12);color:#d4a200;border:1px solid rgba(245,200,66,.25)':u.role==='sales'?'background:rgba(26,111,255,.12);color:#6b9fff;border:1px solid rgba(26,111,255,.25)':'background:rgba(255,255,255,.06);color:#6b87ad';}
-    if(u.role==='admin'){var nu=$('nav-users'),nc=$('nav-customers');if(nu)nu.style.display='flex';if(nc)nc.style.display='flex';}
+    if(u.role==='admin'){var nu=$('nav-users'),nc=$('nav-customers');if(nu)nu.style.display='flex';if(nc)nc.style.display='flex';var tbu=$('top-btn-users'),tbd=$('top-btn-digest');if(tbu)tbu.style.display='';if(tbd)tbd.style.display='';}
     var panel=$('crm-panel');if(panel)panel.classList.add('show');document.body.style.overflow='hidden';
     if(!window.crmInited&&typeof initCRM==='function')initCRM();
     if(typeof addAIToolbar==='function')addAIToolbar();
