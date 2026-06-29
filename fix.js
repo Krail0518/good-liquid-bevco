@@ -17409,8 +17409,9 @@
         field('Equipment / circuit', 'equip', 'select', { options: equipOptions, required: true }) +
         field('CIP cycle start', 'start', 'datetime-local', { value: new Date(Date.now()-30*60000).toISOString().slice(0,16) }) +
       '</div>' +
-      field('Operator *', 'operator', 'select', {
-        options: [['','— Select operator —'],['Zach','Zach'],['Mike','Mike'],['Sandra','Sandra']],
+      field('Operator', 'operator', 'text', {
+        value: (window.currentUser && (window.currentUser.name || window.currentUser.email)) || '',
+        placeholder: 'Enter operator name',
         required: true
       }) +
       '<table style="width:100%;border-collapse:collapse;font-size:11px;margin:8px 0">' +
@@ -17468,7 +17469,19 @@
       });
       var equip    = getVal(modal,'equip');
       var operator = getVal(modal,'operator');
-      if(!operator){ alert('Please select an operator before saving.'); return; }
+      if(!operator){
+        var errEl = modal.querySelector('#gl-cip-op-err');
+        if(!errEl){
+          errEl = document.createElement('div');
+          errEl.id = 'gl-cip-op-err';
+          errEl.style.cssText = 'color:#ff8579;background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.35);border-radius:8px;padding:8px 14px;font-size:12px;margin-bottom:10px';
+          errEl.textContent = 'Operator name is required before saving.';
+          var opField = modal.querySelector('#gl-cf-operator');
+          if(opField && opField.parentElement) opField.parentElement.insertAdjacentElement('afterend', errEl);
+        }
+        modal.querySelector('#gl-cf-operator').focus();
+        return;
+      }
       var deviation = getVal(modal,'deviation');
       // Critical-limit checks
       var failures = [];
