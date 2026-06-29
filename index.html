@@ -8,9 +8,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Good Liquid CRM">
-<link rel="manifest" id="pwa-manifest">
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='80' fill='%230a1628'/><text y='380' x='60' font-size='380'>💧</text></svg>">
-<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='80' fill='%230a1628'/><text y='380' x='60' font-size='380'>💧</text></svg>">
+<link rel="manifest" id="pwa-manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" sizes="192x192" href="icon-192.png">
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 
 
@@ -1103,6 +1104,78 @@ select option, .fsel option {
 
   /* AI Tools FAB stays visible above mobile system bars */
   #gl-ai-fab, #gl-chat-bubble { bottom: 80px !important; }
+}
+
+/* ═══════════════════════════════════════════
+   TABLET — 769px to 1080px
+   Sidebar stays visible; bump tap targets and
+   spacing for finger use on iPad / Android tablet
+═══════════════════════════════════════════ */
+@media (min-width: 769px) and (max-width: 1080px) {
+  /* Narrower sidebar so content has more room */
+  #crm-sidebar { width: 168px !important; min-width: 168px !important; }
+
+  /* Bigger tap targets on sidebar nav items */
+  .cni { padding: 11px 13px !important; margin-bottom: 4px !important; font-size: 13px !important; }
+  .cni-ico { font-size: 16px !important; width: 20px !important; }
+  .cni-sec { padding: 14px 13px 6px !important; }
+
+  /* CRM top bar — taller for easy tapping */
+  #crm-top { height: 58px !important; padding: 0 16px !important; }
+
+  /* Buttons — minimum 44px touch target height */
+  .cbtn { padding: 10px 16px !important; font-size: 13px !important; min-height: 44px !important; }
+  .cbtn.pri { min-height: 44px !important; }
+
+  /* Page content padding */
+  .cpg { padding: 18px 20px !important; }
+
+  /* Cards and metric tiles */
+  .cmc { padding: 16px !important; }
+  .ccard { padding: 16px !important; }
+
+  /* Dashboard stat grid — 2 columns on narrow tablets */
+  .dash-stats { grid-template-columns: repeat(2, 1fr) !important; gap: 12px !important; }
+  .cmetrics { grid-template-columns: repeat(2, 1fr) !important; gap: 10px !important; }
+
+  /* Tables readable on tablet — no forced nowrap needed */
+  .ctbl th, .ctbl td { padding: 10px 12px !important; font-size: 13px !important; }
+
+  /* Modals — comfortable width without going full-screen */
+  .modal-ov > div { max-width: 88vw !important; }
+  #gl-send-inv-modal > div, #gl-edit-client-modal > div, #gl-help-modal > div,
+  #gl-email-activity > div, #gl-tpl-modal > div, #gl-sched-modal > div,
+  #gl-comp-modal > div, #gl-pm > div, #gl-ar-modal > div,
+  #gl-paylink-modal > div, #gl-sign-modal > div, #gl-alg-modal > div,
+  #gl-tr-modal > div, #gl-insp-modal > div, #gl-cip-detail {
+    max-width: 86vw !important; padding: 22px 24px !important;
+  }
+
+  /* Form inputs — 16px prevents iOS zoom on focus */
+  .finp, .fsel, select, input[type="text"], input[type="number"],
+  input[type="email"], input[type="date"], input[type="datetime-local"],
+  textarea { font-size: 16px !important; padding: 10px 12px !important; }
+
+  /* Help guide — keep TOC beside content on tablets */
+  #gl-help-modal [style*="grid-template-columns:200px 1fr"] {
+    grid-template-columns: 180px 1fr !important;
+  }
+
+  /* Invoice builder — allow more room per column */
+  #gl-inv-builder { padding: 16px !important; }
+
+  /* Notification panel */
+  #notif-panel { right: 12px !important; }
+
+  /* AI FAB — lift off bottom nav area on tablets */
+  #gl-ai-fab, #gl-chat-bubble { bottom: 32px !important; right: 20px !important; }
+
+  /* Public nav — keep links but shrink slightly */
+  nav { padding: 0 28px !important; }
+  .nav-links { gap: 18px !important; }
+
+  /* CRM section heading — keep horizontal, add gap */
+  .cph { gap: 10px !important; align-items: center !important; }
 }
 
 @media (max-width: 480px) {
