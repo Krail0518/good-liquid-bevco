@@ -209,8 +209,9 @@
      Page-name convention matches index.html cNav calls (e.g. 'newinv', not 'new-invoice').
      window.PERMISSIONS is bridged from index.html so both the role-filter UI and can() share one table. */
   var ALL=['dashboard','clients','pipeline','invoices','invoice-detail','newinv','referrals','referrers','activity','users','customers','calendar','production-cal','production-runs','samples','formulas','yield','content','compliance','holds','cip','audit','defects','vendors','tasks','documents','inventory','announcements','time-tracker','reports','ai-settings'];
-  if(window.PERMISSIONS){window.PERMISSIONS.admin=ALL;window.PERMISSIONS.sales=['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','content','cip','defects','vendors','tasks','announcements','reports'];}
-  else{window.PERMISSIONS={admin:ALL,sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','content','cip','defects','vendors','tasks','announcements','reports'],viewer:['dashboard','clients','invoices','activity']};}
+  var WAREHOUSE=['dashboard','production-runs','production-cal','inventory','cip','defects','yield','samples','tasks','announcements'];
+  if(window.PERMISSIONS){window.PERMISSIONS.admin=ALL;window.PERMISSIONS.sales=['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','content','cip','defects','vendors','tasks','announcements','reports'];window.PERMISSIONS.warehouse=WAREHOUSE;}
+  else{window.PERMISSIONS={admin:ALL,sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','content','cip','defects','vendors','tasks','announcements','reports'],warehouse:WAREHOUSE,viewer:['dashboard','clients','invoices','activity']};}
   window.can=function(page){var u=window.currentUser;if(!u)return false;if(u.role==='admin')return true;return(window.PERMISSIONS[u.role]||[]).includes(page);};
   /* Single cNav wrap: perm-gate first, then dispatch new-invoice variants
      to the builder, otherwise hand off to the original cNav from index.html. */
@@ -277,7 +278,7 @@
     if($('crm-av-init'))$('crm-av-init').textContent=u.initials||u.name[0].toUpperCase();
     if($('crm-user-name'))$('crm-user-name').textContent=u.name;
     var rb=$('crm-role-badge');
-    if(rb){rb.textContent=u.role.charAt(0).toUpperCase()+u.role.slice(1);rb.style.cssText=u.role==='admin'?'background:rgba(245,200,66,.12);color:#d4a200;border:1px solid rgba(245,200,66,.25)':u.role==='sales'?'background:rgba(26,111,255,.12);color:#6b9fff;border:1px solid rgba(26,111,255,.25)':'background:rgba(255,255,255,.06);color:#6b87ad';}
+    if(rb){rb.textContent=u.role.charAt(0).toUpperCase()+u.role.slice(1);rb.style.cssText=u.role==='admin'?'background:rgba(245,200,66,.12);color:#d4a200;border:1px solid rgba(245,200,66,.25)':u.role==='sales'?'background:rgba(26,111,255,.12);color:#6b9fff;border:1px solid rgba(26,111,255,.25)':u.role==='warehouse'?'background:rgba(168,85,247,.12);color:#c4a4f8;border:1px solid rgba(168,85,247,.25)':'background:rgba(255,255,255,.06);color:#6b87ad';}
     if(u.role==='admin'){var nu=$('nav-users'),nc=$('nav-customers');if(nu)nu.style.display='flex';if(nc)nc.style.display='flex';var tbu=$('top-btn-users'),tbb=$('top-btn-backup'),tbd=$('top-btn-digest');if(tbu)tbu.style.display='';if(tbb)tbb.style.display='';if(tbd)tbd.style.display='';}
     var panel=$('crm-panel');if(panel)panel.classList.add('show');document.body.style.overflow='hidden';
     if(!window.crmInited&&typeof initCRM==='function')initCRM();
@@ -2266,6 +2267,7 @@
         : '<select onchange="window.glAdminChangeRole(\''+u.id+'\',this.value)" style="background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer">'
           +'<option value="admin"'+(u.role==='admin'?' selected':'')+'>admin</option>'
           +'<option value="sales"'+(u.role==='sales'?' selected':'')+'>sales</option>'
+          +'<option value="warehouse"'+(u.role==='warehouse'?' selected':'')+'>warehouse</option>'
           +'<option value="viewer"'+(u.role==='viewer'?' selected':'')+'>viewer</option>'
         +'</select>';
       var actions=isOwner
@@ -2290,7 +2292,7 @@
   window.glAdminChangeRole=async function(uid,newRole){
     var u=(window.users||[]).find(function(x){return x.id===uid;});
     if(!u){alert('User not found.');return;}
-    if(!['admin','sales','viewer'].includes(newRole)){alert('Invalid role.');return;}
+    if(!['admin','sales','warehouse','viewer'].includes(newRole)){alert('Invalid role.');return;}
     var sb=window.supa;
     if(sb&&uuidish(u.id)){
       try{
