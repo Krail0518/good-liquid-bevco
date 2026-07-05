@@ -3588,6 +3588,22 @@ function renderDash(){
     <button class="cbtn" style="width:100%;margin-top:10px;font-size:11px" onclick="cNav('referrals',document.querySelectorAll('.cni')[7])">View all referrals →</button>`;
 }
 
+// ── GL Module Hook System ──────────────────────────────────────────────────
+// Modules call window.GL_HOOKS.registerDashPatch(fn) instead of wrapping
+// renderDash directly. Load-order-safe: patches register whenever their IIFE
+// runs; the base fires them all in registration order.
+(function(){
+  window.GL_HOOKS = window.GL_HOOKS || {};
+  window.GL_HOOKS._dashPatches = [];
+  window.GL_HOOKS.registerDashPatch = function(fn){ window.GL_HOOKS._dashPatches.push(fn); };
+  var _base = renderDash;
+  renderDash = window.renderDash = function(){
+    var r = _base.apply(this, arguments);
+    window.GL_HOOKS._dashPatches.forEach(function(fn){ try{ fn(); }catch(e){ console.warn('[GL] dash patch threw',e); } });
+    return r;
+  };
+})();
+
 let chartInst=null;
 function buildCharts(){
   // Guard: Chart.js CDN may not have loaded yet (slow network / CSP block).

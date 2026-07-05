@@ -4499,24 +4499,7 @@
   }
 
   // Re-build whenever renderDash runs, so KPIs stay in sync with the data.
-  (function(){
-    var orig = window.renderDash;
-    if(typeof orig === 'function'){
-      window.renderDash = function(){
-        var r = orig.apply(this, arguments);
-        try { buildExtraKpis(); } catch(e){ console.error('[GL kpi] build threw', e); }
-        return r;
-      };
-    } else {
-      // renderDash not loaded yet — try once after a delay.
-      setTimeout(function(){
-        var o = window.renderDash;
-        if(typeof o === 'function'){
-          window.renderDash = function(){ var r = o.apply(this, arguments); try { buildExtraKpis(); } catch(e){} return r; };
-        }
-      }, 1500);
-    }
-  })();
+  window.GL_HOOKS.registerDashPatch(function(){ try{ buildExtraKpis(); }catch(e){ console.error('[GL kpi] build threw', e); } });
 
   console.log('[GL] Dashboard extra KPIs loaded');
 }());
@@ -9949,26 +9932,19 @@
     });
   };
 
-  // Wrap renderDash so the alert refreshes whenever the dashboard re-renders.
-  (function wrap(){
-    var orig = window.renderDash;
-    if(typeof orig !== 'function'){ setTimeout(wrap, 500); return; }
-    window.renderDash = function(){
-      var r = orig.apply(this, arguments);
-      try {
-        // Honor the per-day dismiss.
-        var hideUntil = localStorage.getItem('gl_comp_alert_hide_until');
-        var today = new Date().toISOString().slice(0,10);
-        if(hideUntil === today){
-          var host = document.getElementById('dash-compliance-alert');
-          if(host) host.innerHTML = '';
-          return r;
-        }
-        window.renderComplianceAlert();
-      } catch(e){ console.warn('[GL] compliance alert render threw', e); }
-      return r;
-    };
-  })();
+  // Refresh the compliance alert whenever the dashboard re-renders.
+  window.GL_HOOKS.registerDashPatch(function(){
+    try {
+      var hideUntil = localStorage.getItem('gl_comp_alert_hide_until');
+      var today = new Date().toISOString().slice(0,10);
+      if(hideUntil === today){
+        var host = document.getElementById('dash-compliance-alert');
+        if(host) host.innerHTML = '';
+        return;
+      }
+      window.renderComplianceAlert();
+    } catch(e){ console.warn('[GL] compliance alert render threw', e); }
+  });
 
   console.log('[GL] dashboard compliance alert loaded');
 }());
@@ -11845,15 +11821,7 @@
       '</div>';
   };
 
-  (function wrap(){
-    var orig = window.renderDash;
-    if(typeof orig !== 'function'){ setTimeout(wrap, 500); return; }
-    window.renderDash = function(){
-      var r = orig.apply(this, arguments);
-      try { window.renderARAging(); } catch(e){ console.warn('[GL] AR widget render threw', e); }
-      return r;
-    };
-  })();
+  window.GL_HOOKS.registerDashPatch(function(){ try{ window.renderARAging(); }catch(e){ console.warn('[GL] AR widget render threw', e); } });
 
   console.log('[GL] AR aging widget loaded');
 }());
@@ -13787,15 +13755,7 @@
       '</div>';
   };
 
-  (function wrap(){
-    var orig = window.renderDash;
-    if(typeof orig !== 'function'){ setTimeout(wrap, 500); return; }
-    window.renderDash = function(){
-      var r = orig.apply(this, arguments);
-      try { window.renderLowStockAlert(); } catch(e){ console.warn('[GL] low-stock alert threw', e); }
-      return r;
-    };
-  })();
+  window.GL_HOOKS.registerDashPatch(function(){ try{ window.renderLowStockAlert(); }catch(e){ console.warn('[GL] low-stock alert threw', e); } });
 
   console.log('[GL] low-stock dashboard alert loaded');
 }());
@@ -14065,15 +14025,7 @@
     if(anchor){ host.insertBefore(card, anchor); }
     else { host.appendChild(card); }
   };
-  (function wrap(){
-    var orig = window.renderDash;
-    if(typeof orig !== 'function'){ setTimeout(wrap, 500); return; }
-    window.renderDash = function(){
-      var r = orig.apply(this, arguments);
-      try { window.renderPipelineForecast(); } catch(e){ console.warn('[GL] forecast threw', e); }
-      return r;
-    };
-  })();
+  window.GL_HOOKS.registerDashPatch(function(){ try{ window.renderPipelineForecast(); }catch(e){ console.warn('[GL] forecast threw', e); } });
   console.log('[GL] weighted pipeline forecast loaded');
 }());
 
@@ -14419,15 +14371,7 @@
         }).join('') +
       '</div>';
   };
-  (function wrap(){
-    var orig = window.renderDash;
-    if(typeof orig !== 'function'){ setTimeout(wrap, 500); return; }
-    window.renderDash = function(){
-      var r = orig.apply(this, arguments);
-      try { window.renderAnniversaries(); } catch(e){ console.warn('[GL] anniversaries threw', e); }
-      return r;
-    };
-  })();
+  window.GL_HOOKS.registerDashPatch(function(){ try{ window.renderAnniversaries(); }catch(e){ console.warn('[GL] anniversaries threw', e); } });
   console.log('[GL] anniversary tracker loaded');
 }());
 
@@ -14517,15 +14461,7 @@
     if(existing) existing.outerHTML = html;
     else host.insertAdjacentHTML('beforeend', html);
   };
-  (function wrap(){
-    var orig = window.renderDash;
-    if(typeof orig !== 'function'){ setTimeout(wrap, 500); return; }
-    window.renderDash = function(){
-      var r = orig.apply(this, arguments);
-      try { window.renderRevenueForecast(); } catch(e){ console.warn('[GL] forecast threw', e); }
-      return r;
-    };
-  })();
+  window.GL_HOOKS.registerDashPatch(function(){ try{ window.renderRevenueForecast(); }catch(e){ console.warn('[GL] forecast threw', e); } });
   console.log('[GL] revenue forecast loaded');
 }());
 
@@ -14668,15 +14604,7 @@
     if(existing) existing.outerHTML = html;
     else host.insertAdjacentHTML('beforeend', html);
   };
-  (function wrap(){
-    var orig = window.renderDash;
-    if(typeof orig !== 'function'){ setTimeout(wrap, 500); return; }
-    window.renderDash = function(){
-      var r = orig.apply(this, arguments);
-      try { window.renderKpiScorecard(); } catch(e){ console.warn('[GL] KPI threw', e); }
-      return r;
-    };
-  })();
+  window.GL_HOOKS.registerDashPatch(function(){ try{ window.renderKpiScorecard(); }catch(e){ console.warn('[GL] KPI threw', e); } });
   console.log('[GL] KPI scorecard loaded');
 }());
 
