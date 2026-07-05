@@ -24781,7 +24781,8 @@
       var u = staff.find(function(x){ return x.id === userId; });
       if(!u) return '<div style="color:var(--muted);padding:20px 0">User not found.</div>';
       var userOverrides = byUser[userId] || {};
-      function rowHtml(c){
+      var B = 'border:1px solid rgba(255,255,255,.1)';  // shared cell border
+      function rowHtml(c, idx){
         var hasOverride = Object.prototype.hasOwnProperty.call(userOverrides, c.id);
         var effective = hasOverride ? userOverrides[c.id] : c.default_on;
         var note = u.role === 'admin'
@@ -24789,24 +24790,34 @@
           : (hasOverride
               ? '<span style="font-size:10px;color:#6b9fff;cursor:pointer" onclick="window.glClearPerm(\'' + userId + '\',\'' + c.id + '\')" title="Click to revert to default">overridden — revert</span>'
               : '<span style="font-size:10px;color:var(--muted)">default (' + (c.default_on ? 'on' : 'off') + ')</span>');
-        return '<tr>' +
-          '<td style="padding:6px 8px;font-weight:600">' + esc(c.label) + '</td>' +
-          '<td style="padding:6px 8px;color:var(--muted);font-size:11px">' + esc(c.description||'') + '</td>' +
-          '<td style="padding:6px 8px;text-align:center"><label style="cursor:pointer"><input type="checkbox"' + (effective?' checked':'') + (u.role==='admin'?' disabled':'') + ' onchange="window.glTogglePerm(\'' + userId + '\',\'' + c.id + '\',this.checked)"></label></td>' +
-          '<td style="padding:6px 8px">' + note + '</td>' +
+        var rowBg = idx % 2 ? 'background:rgba(255,255,255,.025)' : '';
+        var checked = effective ? ' checked' : '';
+        var disabled = u.role === 'admin' ? ' disabled' : '';
+        return '<tr style="' + rowBg + '">' +
+          '<td style="padding:9px 12px;font-weight:600;' + B + '">' +
+            esc(c.label) +
+            (c.description ? '<div style="font-size:11px;color:var(--muted);font-weight:400;margin-top:2px;white-space:normal">' + esc(c.description) + '</div>' : '') +
+          '</td>' +
+          '<td style="padding:9px 12px;text-align:center;width:72px;' + B + '">' +
+            '<label style="cursor:' + (u.role==='admin'?'default':'pointer') + ';display:block">' +
+              '<input type="checkbox"' + checked + disabled +
+                ' onchange="window.glTogglePerm(\'' + userId + '\',\'' + c.id + '\',this.checked)"' +
+                ' style="width:16px;height:16px;cursor:' + (u.role==='admin'?'default':'pointer') + ';accent-color:var(--teal)">' +
+            '</label>' +
+          '</td>' +
+          '<td style="padding:9px 12px;width:150px;' + B + '">' + note + '</td>' +
         '</tr>';
       }
       function sectionTable(title, color, items){
         if(!items.length) return '';
-        return '<div style="margin-top:14px;padding:6px 0 4px;font-size:11px;letter-spacing:2px;color:' + color + ';font-weight:700">' + title + '</div>' +
-          '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:6px">' +
-            '<thead><tr style="border-bottom:1px solid rgba(255,255,255,.08);text-align:left">' +
-              '<th style="padding:8px;color:var(--muted);font-size:10px;letter-spacing:1px;width:24%">COMPONENT</th>' +
-              '<th style="padding:8px;color:var(--muted);font-size:10px;letter-spacing:1px">DESCRIPTION</th>' +
-              '<th style="padding:8px;color:var(--muted);font-size:10px;letter-spacing:1px;text-align:center;width:80px">ACCESS</th>' +
-              '<th style="padding:8px;color:var(--muted);font-size:10px;letter-spacing:1px;width:160px">STATE</th>' +
+        return '<div style="margin-top:16px;padding:6px 0 5px;font-size:11px;letter-spacing:2px;color:' + color + ';font-weight:700">' + title + '</div>' +
+          '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px;border:1px solid rgba(255,255,255,.1)">' +
+            '<thead><tr style="background:rgba(255,255,255,.04)">' +
+              '<th style="padding:9px 12px;color:var(--muted);font-size:10px;letter-spacing:1px;text-align:left;' + B + '">COMPONENT &amp; DESCRIPTION</th>' +
+              '<th style="padding:9px 12px;color:var(--muted);font-size:10px;letter-spacing:1px;text-align:center;width:72px;' + B + '">ACCESS</th>' +
+              '<th style="padding:9px 12px;color:var(--muted);font-size:10px;letter-spacing:1px;width:150px;' + B + '">STATE</th>' +
             '</tr></thead>' +
-            '<tbody>' + items.map(rowHtml).join('') + '</tbody>' +
+            '<tbody>' + items.map(function(c,i){ return rowHtml(c,i); }).join('') + '</tbody>' +
           '</table>';
       }
       var pages   = perms.components.filter(function(c){ return c.category === 'page'   || !c.category; });
