@@ -3492,7 +3492,11 @@ function initCRM(){
 }
 
 function cNav(page,el){
-  if(!can(page)){alert('You do not have permission to view this section.');return;}
+  // Run registered guards — any returning false blocks navigation
+  var guards = (window.GL_HOOKS && window.GL_HOOKS._navGuards) || [];
+  for(var _gi=0; _gi<guards.length; _gi++){
+    if(guards[_gi](page,el) === false) return;
+  }
   document.querySelectorAll('.cni').forEach(n=>n.classList.remove('act'));
   if(el)el.classList.add('act');
   document.querySelectorAll('.cpg').forEach(p=>p.classList.remove('act'));
@@ -3512,6 +3516,9 @@ function cNav(page,el){
   if(page==='invoices' && typeof renderInvoices==='function') renderInvoices();
   if(page==='clients' && typeof renderClients==='function') renderClients();
   if(page==='referrals' && typeof renderReferrals==='function') renderReferrals();
+  // Run registered nav hooks
+  var navHooks = (window.GL_HOOKS && window.GL_HOOKS._navHooks) || [];
+  navHooks.forEach(function(fn){ try{ fn(page,el); }catch(e){ console.warn('[GL] nav hook threw',e); } });
 }
 
 /* Dashboard */
@@ -3598,6 +3605,10 @@ function renderDash(){
   window.GL_HOOKS.registerDashPatch = function(fn){ window.GL_HOOKS._dashPatches.push(fn); };
   window.GL_HOOKS._loginHooks = [];
   window.GL_HOOKS.registerLoginHook = function(fn){ window.GL_HOOKS._loginHooks.push(fn); };
+  window.GL_HOOKS._navGuards = [];
+  window.GL_HOOKS.registerNavGuard = function(fn){ window.GL_HOOKS._navGuards.push(fn); };
+  window.GL_HOOKS._navHooks = [];
+  window.GL_HOOKS.registerNavHook = function(fn){ window.GL_HOOKS._navHooks.push(fn); };
   var _base = renderDash;
   renderDash = window.renderDash = function(){
     var r = _base.apply(this, arguments);
@@ -9352,10 +9363,8 @@ renderClients=function(){
   },100);
 };
 
-// Also enhance cNav to init new pages
-const origCNav=cNav;
-cNav=function(page,el){
-  origCNav(page,el);
+// Page-specific renders registered as nav hooks
+window.GL_HOOKS.registerNavHook(function(page){
   if(page==='calendar'){ loadCalEvents().then(() => renderCal('general')); }
   if(page==='production-cal'){
     const ensurePRuns = window.glRefreshProductionRuns ? window.glRefreshProductionRuns() : Promise.resolve();
@@ -9366,7 +9375,7 @@ cNav=function(page,el){
   if(page==='inventory'){ loadInventory().then(renderInventory); }
   if(page==='announcements'){ loadAnnouncements().then(renderAnnouncements); }
   if(page==='customers') renderCustomerLogins();
-};
+});
 
 
 /* ═══════════════════════════════════════════
@@ -10159,12 +10168,10 @@ async function removeUser(id){
   addNotification('👤 User removed: ' + u.name, u.email, 'warning');
 }
 
-// Hook renderUsersPanel into cNav
-const _origCNav2 = cNav;
-cNav = function(page, el) {
-  _origCNav2(page, el);
+// Render users panel on navigation to users page
+window.GL_HOOKS.registerNavHook(function(page){
   if(page === 'users') setTimeout(renderUsersPanel, 100);
-};
+});
 
 /* ═══════════════════════════════════════════
    FAVICON FIX

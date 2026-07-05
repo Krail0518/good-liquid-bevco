@@ -213,13 +213,13 @@
   if(window.PERMISSIONS){window.PERMISSIONS.admin=ALL;window.PERMISSIONS.sales=['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','content','cip','defects','vendors','tasks','announcements','reports'];window.PERMISSIONS.warehouse=WAREHOUSE;}
   else{window.PERMISSIONS={admin:ALL,sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','content','cip','defects','vendors','tasks','announcements','reports'],warehouse:WAREHOUSE,viewer:['dashboard','clients','invoices','activity']};}
   window.can=function(page){var u=window.currentUser;if(!u)return false;if(u.role==='admin')return true;return(window.PERMISSIONS[u.role]||[]).includes(page);};
-  /* Single cNav wrap: perm-gate first, then dispatch new-invoice variants
-     to the builder, otherwise hand off to the original cNav from index.html. */
-  window.cNav=function(page,el){
-    if(!window.can(page)){if(typeof addNotification==='function')addNotification('Access denied',page,'warning');return;}
-    if(page==='newinv'||page==='new-invoice'||page==='newInvoice'){window.openNewInvoiceBuilder();return;}
-    if(typeof _cNavOrig==='function') _cNavOrig(page,el);
-  };
+  /* Register nav guards: role-based perm check + new-invoice routing */
+  window.GL_HOOKS.registerNavGuard(function(page){
+    if(!window.can(page)){if(typeof addNotification==='function')addNotification('Access denied',page,'warning');return false;}
+  });
+  window.GL_HOOKS.registerNavGuard(function(page){
+    if(page==='newinv'||page==='new-invoice'||page==='newInvoice'){window.openNewInvoiceBuilder();return false;}
+  });
 
   /* ── FIX DOM STRUCTURE ── */
   function fixDOMStructure(){
@@ -24522,11 +24522,11 @@
     }
   }
 
-  // Intercept cNav so a deep-link or saved nav state can't bypass the gate.
+  // DB-backed permission guard registered once on boot.
   function installCNavGuard(){
-    var orig = window.cNav;
-    if(typeof orig !== 'function' || orig.__glPermGuard) return;
-    window.cNav = function guardedCNav(page, el){
+    if(window.GL_HOOKS._navGuards._glPermGuardInstalled) return;
+    window.GL_HOOKS._navGuards._glPermGuardInstalled = true;
+    window.GL_HOOKS.registerNavGuard(function(page){
       var permId = permIdForPage(page);
       if(perms.loaded && permId && !window.glCan(permId)){
         if(typeof window.addNotification === 'function'){
@@ -24534,11 +24534,9 @@
         } else {
           alert('Access denied — you do not have permission for this page.');
         }
-        return;
+        return false;
       }
-      return orig.apply(this, arguments);
-    };
-    window.cNav.__glPermGuard = true;
+    });
   }
 
   // ── Users & Permissions page renderer ───────────────────────────────────
@@ -25083,25 +25081,10 @@
     }
   });
 
-  // Hook into cNav so the Users page (re)renders the permissions panel each time.
-  function wireUsersPageRender(){
-    var orig = window.cNav;
-    if(!orig || orig.__glPermPageHook) return;
-    var wrapped = function(page, el){
-      var r = orig.apply(this, arguments);
-      if(page === 'users') setTimeout(renderPermissionsPanel, 60);
-      return r;
-    };
-    wrapped.__glPermPageHook = true;
-    wrapped.__glPermGuard = orig.__glPermGuard; // preserve flag
-    window.cNav = wrapped;
-  }
-  // Wait until cNav has the guard, then layer the renderer hook on top
-  var hookTries = 0;
-  var hookIv = setInterval(function(){
-    if(window.cNav && window.cNav.__glPermGuard){ wireUsersPageRender(); clearInterval(hookIv); }
-    if(++hookTries > 50) clearInterval(hookIv);
-  }, 200);
+  // Render permissions panel whenever the users page is navigated to.
+  window.GL_HOOKS.registerNavHook(function(page){
+    if(page === 'users') setTimeout(renderPermissionsPanel, 60);
+  });
 
   // ────────────────────────────────────────────────────────────
   // Action-level gating — wrap destructive/financial global
@@ -26677,14 +26660,10 @@
 
   var PAGE_KEY = 'gl_last_crm_page';
 
-  // ── 1. Wrap cNav to persist the active page on every navigation ──
-  var _cNavOrig = window.cNav;
-  window.cNav = function(page, el) {
-    if (typeof _cNavOrig === 'function') _cNavOrig.apply(this, arguments);
-    if (page) {
-      try { sessionStorage.setItem(PAGE_KEY, page); } catch(e) {}
-    }
-  };
+  // ── 1. Persist active page on every navigation ──
+  window.GL_HOOKS.registerNavHook(function(page){
+    if(page) try{ sessionStorage.setItem(PAGE_KEY, page); }catch(e){}
+  });
 
   // ── 2. Restore saved page after F5 → re-login ──
   window.GL_HOOKS.registerLoginHook(function(){
