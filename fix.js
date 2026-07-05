@@ -1,8 +1,25 @@
-/* fix.js v2.1 — Good Liquid Bev Co
+﻿/* fix.js v2.2 — Good Liquid Bev Co
    All patches in one file. Loaded after index.html.
    DO NOT use Ctrl+S on index.html — only deploy fix.js */
 (function(){
   'use strict';
+
+  /* ── Production console guard ──────────────────────────────
+     Suppress all console.log output in production so the
+     feature map, record counts, and internal state are not
+     visible to anyone with DevTools open.
+     To re-enable for debugging, run in the browser console:
+       localStorage.setItem('gl_debug','1'); location.reload();
+     To disable again:
+       localStorage.removeItem('gl_debug'); location.reload();
+  ─────────────────────────────────────────────────────────── */
+  window.GL_DEBUG = (localStorage.getItem('gl_debug') === '1');
+  if(!window.GL_DEBUG){
+    var _noop = function(){};
+    console.log  = _noop;
+    console.info = _noop;
+    // Keep console.warn and console.error so real problems still surface.
+  }
 
   /* ── CSS: ensure dynamic modals always appear above CRM panel ── */
   (function(){
@@ -62,6 +79,103 @@
     setTimeout(attach, 500); // run again after dynamic content loads
   })();
 
+  /* ── Timezone-naive date formatter ──
+     `new Date("2026-05-20")` parses YYYY-MM-DD as UTC midnight, so any timezone
+     west of UTC renders the PREVIOUS day. Caught when a Florida-scheduled
+     2026-05-20 run displayed "May 19" in the kanban + clients page + run sheet.
+     Use window.fmtLocalDate(s, opts) for any date column persisted as a bare
+     ISO date string. Accepts the same options object as toLocaleDateString. */
+  window.fmtLocalDate = window.fmtLocalDate || function(s, opts){
+    if(!s) return '';
+    var str = String(s);
+    var m = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    var d = m ? new Date(+m[1], +m[2]-1, +m[3]) : new Date(str);
+    return d.toLocaleDateString('en-US', opts);
+  };
+
+  /* ── Password policy helper ──
+     Org-wide rule (set by Mike on 2026-05-22): minimum 8 characters,
+     at least one uppercase letter, at least one special character.
+     Returns null when the password is acceptable, otherwise an English
+     error message ready to display.
+     The error message is intentionally specific so users can see which
+     rule they tripped — vague "password is invalid" messages just lead
+     to support tickets. */
+  window.GL_PW_MIN_LEN = 8;
+  window.GL_PW_SPECIAL_RE = /[^A-Za-z0-9]/;
+  window.GL_PW_UPPER_RE = /[A-Z]/;
+  window.glValidatePassword = window.glValidatePassword || function(pw){
+    pw = String(pw == null ? '' : pw);
+    if(pw.length < window.GL_PW_MIN_LEN){
+      return 'Password must be at least ' + window.GL_PW_MIN_LEN + ' characters.';
+    }
+    if(!window.GL_PW_UPPER_RE.test(pw)){
+      return 'Password must include at least one capital letter (A–Z).';
+    }
+    if(!window.GL_PW_SPECIAL_RE.test(pw)){
+      return 'Password must include at least one special character (e.g. !@#$%^&*).';
+    }
+    return null;
+  };
+
+  /* ── Compliant temporary password generator ──
+     Produces a passphrase that satisfies window.glValidatePassword() by
+     construction (always 12 chars, at least one uppercase, one lowercase,
+     one digit, one special). Used when an admin invites a new staff or
+     customer user and the system needs to seed a password they'll
+     immediately reset. The old GL+6-random generator only sometimes hit
+     the policy. */
+  window.glGenerateTempPassword = window.glGenerateTempPassword || function(){
+    var UP = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    var LO = 'abcdefghjkmnpqrstuvwxyz';
+    var DG = '23456789';
+    var SP = '!@#$%^&*';
+    function pick(s){ return s[Math.floor(Math.random()*s.length)]; }
+    // Guarantee one of each class so policy is always met.
+    var out = [pick(UP), pick(LO), pick(DG), pick(SP)];
+    var pool = UP + LO + DG + SP;
+    while(out.length < 12) out.push(pick(pool));
+    // Shuffle so the guaranteed chars aren't always in positions 0..3.
+    for(var i = out.length - 1; i > 0; i--){
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = out[i]; out[i] = out[j]; out[j] = t;
+    }
+    return out.join('');
+  };
+
+  /* ── USD currency formatter with enforced two-decimal precision ──
+     Plain `.toLocaleString()` on a number drops trailing fractional zeros
+     ($2,312.50 → "$2,312.5") which looks like a glitch on every invoice,
+     KPI tile, and total line. Use window.fmtUsd(n) anywhere a dollar
+     amount is shown to a user. Returns the bare numeric string — caller
+     prepends the '$'. */
+  window.fmtUsd = window.fmtUsd || function(n){
+    return Number(n||0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  /* ── Super-user check ──
+     UI gate that hides destructive buttons (Delete client, Remove
+     user, etc.) for non-super admins. The server-side enforcement
+     lives in 20260523_super_user_rls_enforcement.sql — RLS policies
+     consult public.is_super_user() which reads profiles.is_super_user
+     for the calling user, so a DevTools call bypassing this UI
+     check still bounces at the database. This JS function is
+     purely cosmetic now; the security boundary is the DB.
+
+     Reads profiles.is_super_user from currentUser when available
+     (post-migration). Falls back to the hardcoded owner email so
+     the gate works against deployments that haven't applied the
+     migration yet. */
+  window.GL_SUPER_USER_EMAIL = 'mike@goodliquid.com';
+  window.glIsSuperUser = window.glIsSuperUser || function(){
+    var u = window.currentUser;
+    if(!u) return false;
+    if(u.is_super_user === true) return true;            // canonical
+    if(u.is_super_user === false) return false;          // explicitly not super
+    // Field absent (migration not applied yet) — fall back to email.
+    return String(u.email||'').toLowerCase() === window.GL_SUPER_USER_EMAIL;
+  };
+
   /* ── INTERCEPT ALL NEW INVOICE ENTRY POINTS ──
        The original cNav lives in index.html. We only need to wrap it once;
        the perm-gate is added below in the same wrap. */
@@ -95,16 +209,17 @@
      Page-name convention matches index.html cNav calls (e.g. 'newinv', not 'new-invoice').
      window.PERMISSIONS is bridged from index.html so both the role-filter UI and can() share one table. */
   var ALL=['dashboard','clients','pipeline','invoices','invoice-detail','newinv','referrals','referrers','activity','users','customers','calendar','production-cal','production-runs','samples','formulas','yield','content','compliance','holds','cip','audit','defects','vendors','tasks','documents','inventory','announcements','time-tracker','reports','ai-settings'];
-  if(window.PERMISSIONS){window.PERMISSIONS.admin=ALL;window.PERMISSIONS.sales=['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','content','cip','defects','vendors','tasks','announcements','reports'];}
-  else{window.PERMISSIONS={admin:ALL,sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','content','cip','defects','vendors','tasks','announcements','reports'],viewer:['dashboard','clients','invoices','activity']};}
+  var WAREHOUSE=['dashboard','production-runs','production-cal','inventory','cip','defects','yield','samples','tasks','announcements'];
+  if(window.PERMISSIONS){window.PERMISSIONS.admin=ALL;window.PERMISSIONS.sales=['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','content','cip','defects','vendors','tasks','announcements','reports'];window.PERMISSIONS.warehouse=WAREHOUSE;}
+  else{window.PERMISSIONS={admin:ALL,sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','content','cip','defects','vendors','tasks','announcements','reports'],warehouse:WAREHOUSE,viewer:['dashboard','clients','invoices','activity']};}
   window.can=function(page){var u=window.currentUser;if(!u)return false;if(u.role==='admin')return true;return(window.PERMISSIONS[u.role]||[]).includes(page);};
-  /* Single cNav wrap: perm-gate first, then dispatch new-invoice variants
-     to the builder, otherwise hand off to the original cNav from index.html. */
-  window.cNav=function(page,el){
-    if(!window.can(page)){if(typeof addNotification==='function')addNotification('Access denied',page,'warning');return;}
-    if(page==='newinv'||page==='new-invoice'||page==='newInvoice'){window.openNewInvoiceBuilder();return;}
-    if(typeof _cNavOrig==='function') _cNavOrig(page,el);
-  };
+  /* Register nav guards: role-based perm check + new-invoice routing */
+  window.GL_HOOKS.registerNavGuard(function(page){
+    if(!window.can(page)){if(typeof addNotification==='function')addNotification('Access denied',page,'warning');return false;}
+  });
+  window.GL_HOOKS.registerNavGuard(function(page){
+    if(page==='newinv'||page==='new-invoice'||page==='newInvoice'){window.openNewInvoiceBuilder();return false;}
+  });
 
   /* ── FIX DOM STRUCTURE ── */
   function fixDOMStructure(){
@@ -124,7 +239,10 @@
   setTimeout(function(){
     var b=document.getElementById('gl-chat-bubble'),w=document.getElementById('gl-chat-window'),p=document.getElementById('crm-panel');
     if(!b||!p)return;b.style.display='none';
-    new MutationObserver(function(){var o=p.classList.contains('show');b.style.display=o?'flex':'none';if(!o&&w)w.classList.remove('show');}).observe(p,{attributes:true,attributeFilter:['class']});
+    // Keep the floating bubble hidden in CRM — the top-bar 💬 button is used instead.
+    new MutationObserver(function(){var o=p.classList.contains('show');b.style.display='none';if(!o&&w)w.classList.remove('show');}).observe(p,{attributes:true,attributeFilter:['class']});
+    // Top-bar chat toggle: reposition the window to drop down from the toolbar.
+    window.glToggleCRMChat=function(){if(!w)return;w.style.top='54px';w.style.bottom='auto';w.style.right='12px';if(typeof toggleChat==='function')toggleChat();else w.classList.toggle('show');};
   },200);
 
   /* ── NAV / EXIT ── */
@@ -160,8 +278,8 @@
     if($('crm-av-init'))$('crm-av-init').textContent=u.initials||u.name[0].toUpperCase();
     if($('crm-user-name'))$('crm-user-name').textContent=u.name;
     var rb=$('crm-role-badge');
-    if(rb){rb.textContent=u.role.charAt(0).toUpperCase()+u.role.slice(1);rb.style.cssText=u.role==='admin'?'background:rgba(245,200,66,.12);color:#d4a200;border:1px solid rgba(245,200,66,.25)':u.role==='sales'?'background:rgba(26,111,255,.12);color:#6b9fff;border:1px solid rgba(26,111,255,.25)':'background:rgba(255,255,255,.06);color:#6b87ad';}
-    if(u.role==='admin'){var nu=$('nav-users'),nc=$('nav-customers');if(nu)nu.style.display='flex';if(nc)nc.style.display='flex';}
+    if(rb){rb.textContent=u.role.charAt(0).toUpperCase()+u.role.slice(1);rb.style.cssText=u.role==='admin'?'background:rgba(245,200,66,.12);color:#d4a200;border:1px solid rgba(245,200,66,.25)':u.role==='sales'?'background:rgba(26,111,255,.12);color:#6b9fff;border:1px solid rgba(26,111,255,.25)':u.role==='warehouse'?'background:rgba(168,85,247,.12);color:#c4a4f8;border:1px solid rgba(168,85,247,.25)':'background:rgba(255,255,255,.06);color:#6b87ad';}
+    if(u.role==='admin'){var nu=$('nav-users'),nc=$('nav-customers');if(nu)nu.style.display='flex';if(nc)nc.style.display='flex';var tbu=$('top-btn-users'),tbb=$('top-btn-backup'),tbd=$('top-btn-digest');if(tbu)tbu.style.display='';if(tbb)tbb.style.display='';if(tbd)tbd.style.display='';}
     var panel=$('crm-panel');if(panel)panel.classList.add('show');document.body.style.overflow='hidden';
     if(!window.crmInited&&typeof initCRM==='function')initCRM();
     if(typeof addAIToolbar==='function')addAIToolbar();
@@ -169,22 +287,62 @@
     if(typeof checkStaleDeals==='function')checkStaleDeals();
     if(typeof loadNotifications==='function')loadNotifications();
     setTimeout(function(){var n=document.querySelector('.cnav');if(n)n.scrollTop=0;},150);
+    if(window.GL_HOOKS && window.GL_HOOKS._loginHooks){
+      window.GL_HOOKS._loginHooks.forEach(function(fn){ try{ fn(u); }catch(e){ console.warn('[GL] login hook threw',e); } });
+    }
   };
 
   /* ── Supabase Auth (bcrypt passwords managed by Supabase) ── */
   var _glSupa=null;
+  var _GL_SUPA_URL='https://ufjkeqmxwuyhbqyugcgg.supabase.co';
+  var _GL_ANON_KEY='sb_publishable_-37mkPw8uLzEJM21T9jJOA_YQRQ7ikB';
   function getSupa(){
     if(_glSupa)return _glSupa;
-    if(window.supa){_glSupa=window.supa;return _glSupa;}
+    // 1. Use already-created client from index.html
+    if(window.supa&&window.supa.auth){_glSupa=window.supa;return _glSupa;}
+    // 2. Create from the CDN global (self-hosted supabase.min.js)
     if(window.supabase&&typeof window.supabase.createClient==='function'){
       try{
-        _glSupa=window.supabase.createClient(
-          'https://ufjkeqmxwuyhbqyugcgg.supabase.co',
-          'sb_publishable_-37mkPw8uLzEJM21T9jJOA_YQRQ7ikB'
-        );
+        _glSupa=window.supabase.createClient(_GL_SUPA_URL,_GL_ANON_KEY);
+        window.supa=_glSupa;
         return _glSupa;
       }catch(e){console.error('[GL] supabase init failed',e);}
     }
+    // 3. Last resort: build a minimal fetch-based client so auth still works
+    //    even if the supabase-js bundle failed to parse/execute.
+    try{
+      var _s={auth:{signInWithPassword:async function(o){
+        var r=await fetch(_GL_SUPA_URL+'/auth/v1/token?grant_type=password',{
+          method:'POST',headers:{'Content-Type':'application/json','apikey':_GL_ANON_KEY},
+          body:JSON.stringify({email:o.email,password:o.password})});
+        var j=await r.json();
+        if(j.error_code||j.error)return{data:null,error:{message:j.error_description||j.message||'Auth failed'}};
+        return{data:{user:j.user,session:j},error:null};
+      },signOut:async function(){return{error:null};},
+      onAuthStateChange:function(){return{data:{subscription:{unsubscribe:function(){}}}};},
+      getSession:async function(){return{data:{session:null},error:null};}},
+      from:function(t){
+        var _f=[];var _sel='*';var _si=false;
+        var q={select:function(c){_sel=c||'*';return q;},
+          eq:function(c,v){_f.push(c+'=eq.'+encodeURIComponent(v));return q;},
+          is:function(c,v){_f.push(c+'=is.'+v);return q;},
+          maybeSingle:function(){_si=true;return q;},single:function(){_si=true;return q;},
+          then:function(res){
+            var u=_GL_SUPA_URL+'/rest/v1/'+t+'?select='+encodeURIComponent(_sel)+(_f.length?'&'+_f.join('&'):'');
+            var h={'apikey':_GL_ANON_KEY,'Content-Type':'application/json'};
+            if(_si)h['Accept']='application/vnd.pgrst.object+json';
+            return fetch(u,{headers:h}).then(function(r){return r.json();})
+              .then(function(j){return res({data:j,error:null});})
+              .catch(function(e){return res({data:null,error:{message:e.message}});});
+          }};
+        return q;
+      },functions:{invoke:async function(){return{data:null,error:{message:'SDK not loaded'}};}},
+      storage:{from:function(){return{getPublicUrl:function(p){return{data:{publicUrl:_GL_SUPA_URL+'/storage/v1/object/public/'+p}}}}}}
+      };
+      _glSupa=_s;window.supa=_s;
+      console.warn('[GL] Using fetch-based Supabase fallback — supabase.min.js may not have loaded');
+      return _glSupa;
+    }catch(fb){console.error('[GL] fallback client failed',fb);}
     return null;
   }
 
@@ -198,6 +356,11 @@
         id:p.id, email:p.email||authUser.email,
         name:p.name||(authUser.email||'').split('@')[0],
         role:p.role||'sales', status:p.status||'active',
+        // is_super_user: read from the profile column when it exists
+        // (after 20260523_super_user_rls_enforcement.sql is applied).
+        // glIsSuperUser() falls back to the owner-email check when this
+        // is undefined so the UI gate works either way.
+        is_super_user: typeof p.is_super_user === 'boolean' ? p.is_super_user : undefined,
         initials:p.initials||(authUser.email||'?').slice(0,2).toUpperCase(),
         color:p.color||'#1a6fff', tc:p.tc||'#fff',
         lastLogin:'Just now'
@@ -220,7 +383,11 @@
     }
 
     var sb=getSupa();
-    if(!sb){showErr('Auth service unavailable.');return;}
+    if(!sb){
+      showErr('');
+      if(err){err.innerHTML='Connection error. <a href="javascript:location.reload()" style="color:var(--teal)">Reload page</a> and try again.';err.style.display='block';}
+      return;
+    }
     try{
       var r=await sb.auth.signInWithPassword({email:email,password:pw});
       if(r.error||!r.data||!r.data.user){showErr();return;}
@@ -245,18 +412,6 @@
     }
   };
 
-  /* ── syncPasswordToSupabase — current user changes their own password via Auth ── */
-  window.syncPasswordToSupabase=async function(emailOrPw,maybePw){
-    var newPw=typeof maybePw==='string'?maybePw:emailOrPw;
-    var sb=getSupa();if(!sb)return false;
-    try{
-      var r=await sb.auth.updateUser({password:newPw});
-      if(r.error){console.error('[GL] updateUser error',r.error);return false;}
-      console.log('[GL] Password updated for current Supabase Auth user');
-      return true;
-    }catch(e){console.error('[GL] updateUser threw',e);return false;}
-  };
-
   /* ── glSignOut — clear Supabase session and close CRM ── */
   window.glSignOut=async function(){
     var sb=getSupa();
@@ -266,63 +421,155 @@
   };
 
   /* ══════════════════════════════════════════════
+     APP SETTINGS — Supabase-backed org config
+     Replaces per-device localStorage for any setting
+     that must be consistent across all staff browsers:
+       - SMS notification toggles + phone number
+       - CCP (Critical Control Point) limit overrides
+       - Compliance task visibility overrides
+       - Dropbox Sign template mappings
+       - Service package pricing
+     Called automatically on login via loginUser().
+     Admin writes go through glSaveAppSetting().
+  ══════════════════════════════════════════════ */
+
+  /* In-memory cache — refreshed on login and after any write */
+  window.GL_APP_SETTINGS = window.GL_APP_SETTINGS || {};
+
+  /* Load all settings rows from Supabase into the cache */
+  window.glLoadAppSettings = async function(){
+    var sb = getSupa(); if(!sb) return;
+    try {
+      var r = await sb.from('app_settings').select('key,value');
+      if(r.error || !r.data) return;
+      r.data.forEach(function(row){
+        window.GL_APP_SETTINGS[row.key] = row.value;
+      });
+      // Bridge legacy localStorage knobs → in-memory cache (read-only;
+      // writes go to DB from now on). Done once to unify the code path.
+      _bridgeLegacySettings();
+    } catch(e){ /* non-fatal — fall back to localStorage */ }
+  };
+
+  /* Get a setting by key (DB cache first, localStorage fallback) */
+  window.glGetSetting = function(key, fallback){
+    if(key in window.GL_APP_SETTINGS) return window.GL_APP_SETTINGS[key];
+    return fallback !== undefined ? fallback : null;
+  };
+
+  /* Save a setting to Supabase and update the local cache */
+  window.glSaveAppSetting = async function(key, value){
+    window.GL_APP_SETTINGS[key] = value;
+    var sb = getSupa(); if(!sb) return false;
+    try {
+      var r = await sb.from('app_settings').upsert({key:key,value:value},{onConflict:'key'});
+      if(r.error){ console.warn('[GL] app_settings save failed',r.error); return false; }
+      return true;
+    } catch(e){ console.warn('[GL] app_settings save threw',e); return false; }
+  };
+
+  /* One-time bridge: copy existing localStorage values into the
+     in-memory cache so the rest of the app doesn't need to change yet.
+     Org admins can then update settings via the UI to persist to DB. */
+  function _bridgeLegacySettings(){
+    var map = {
+      sms_to:          'gl_sms_to',
+      sms_alert_phone: 'gl_sms_alert_phone',
+      sms_paid:        'gl_sms_paid',
+      sms_won:         'gl_sms_won',
+      sms_quote:       'gl_sms_quote',
+      sms_tour:        'gl_sms_tour',
+      sms_overdue:     'gl_sms_overdue',
+      sign_templates:  'gl_sign_templates',
+      stripe_pub_key:  'gl_stripe_pub',
+      sentry_dsn:      'gl_sentry_dsn'
+    };
+    Object.keys(map).forEach(function(settingKey){
+      if(!(settingKey in window.GL_APP_SETTINGS)){
+        var raw = localStorage.getItem(map[settingKey]);
+        if(raw != null){
+          try { window.GL_APP_SETTINGS[settingKey] = JSON.parse(raw); }
+          catch(e){ window.GL_APP_SETTINGS[settingKey] = raw; }
+        }
+      }
+    });
+    // Remove the dead dead-code key that the audit flagged
+    localStorage.removeItem('gl_supabase_key');
+  }
+
+  /* Hook into loginUser so settings load immediately on auth */
+  window.GL_HOOKS.registerLoginHook(function(){ window.glLoadAppSettings(); });
+
+  /* ══════════════════════════════════════════════
      ADMIN USER MANAGEMENT (Supabase Auth-backed)
      Overrides the legacy local-only flows so user
      invites, password resets, and removals go
      through Supabase Auth + profiles table.
   ══════════════════════════════════════════════ */
 
-  /* ── createInvitedUser — admin creates a new CRM user via Supabase signUp ── */
+  /* ── createInvitedUser — admin sends a Supabase invite email (magic link) ──
+     The invitee receives an email with a link. Clicking it brings them to the
+     CRM where they are auto-signed-in and prompted to create their own password.
+     No admin-set password is ever transmitted or stored. ── */
   window.createInvitedUser=async function(){
     var nameEl=document.getElementById('inv-name');
     var emailEl=document.getElementById('inv-email');
-    var pwEl=document.getElementById('inv-password');
     var roleEl=document.getElementById('inv-role');
     var err=document.getElementById('inv-err');
     var ok=document.getElementById('inv-ok');
-    if(!nameEl||!emailEl||!pwEl||!roleEl)return;
+    if(!nameEl||!emailEl||!roleEl){alert('Invite form not found — reload and try again.');return;}
     if(err)err.style.display='none';
     if(ok)ok.style.display='none';
     var name=nameEl.value.trim();
     var email=emailEl.value.trim().toLowerCase();
-    var password=pwEl.value;
     var role=roleEl.value;
-    function setErr(m){if(err){err.textContent=m;err.style.display='block';}}
+    function setErr(m){
+      if(err){err.textContent=m;err.style.display='block';}
+      else{alert(m);}
+    }
     if(!name){setErr('Name is required');return;}
     if(!email||email.indexOf('@')<0){setErr('Valid email is required');return;}
-    if(password.length<8){setErr('Password must be at least 8 characters');return;}
     if((window.users||[]).find(function(u){return u.email.toLowerCase()===email;})){setErr('A user with that email already exists');return;}
 
-    var sb=getSupa();
-    if(!sb){setErr('Auth service unavailable.');return;}
+    // ── Give immediate feedback BEFORE any async work ──
+    var btn=document.querySelector('#invite-user-modal button.cbtn.pri');
+    var origText=btn?btn.textContent:'Send Invite';
+    if(btn){btn.disabled=true;btn.textContent='Sending…';}
 
-    var initials=name.split(' ').map(function(p){return p[0];}).join('').toUpperCase().substring(0,2);
-    var palettes=[['#1a3a6e','#9FE1CB'],['#0F6E56','#E1F5EE'],['#854F0B','#FAEEDA'],['#3C3489','#EEEDFE'],['#712B13','#FAECE7']];
-    var pal=palettes[(window.users||[]).length%palettes.length];
+    var sb=getSupa();
+    if(!sb){setErr('Auth service unavailable.');if(btn){btn.disabled=false;btn.textContent=origText;}return;}
 
     try{
-      var r=await sb.auth.signUp({email:email,password:password,options:{data:{name:name,role:role,initials:initials,color:pal[0],tc:pal[1]}}});
-      if(r.error){setErr(r.error.message||'Sign-up failed');return;}
-      var newId=(r.data&&r.data.user)?r.data.user.id:null;
-      // Update profile row created by trigger with role/colors
-      if(newId){
-        var upd=await sb.from('profiles').update({name:name,role:role,initials:initials,color:pal[0],tc:pal[1]}).eq('id',newId);
-        if(upd.error)console.warn('[GL] profile update failed (admin update policy missing?)',upd.error);
+      var sess=await sb.auth.getSession();
+      var token=sess&&sess.data&&sess.data.session&&sess.data.session.access_token;
+      if(!token){
+        setErr('Not signed in — please log in and try again.');
+        if(btn){btn.disabled=false;btn.textContent=origText;}
+        return;
       }
-      // Update local users array so UI refreshes immediately
+      var r=await fetch(_GL_SUPA_URL+'/functions/v1/invite-staff-user',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+        body:JSON.stringify({email:email,name:name,role:role,redirectTo:window.location.origin})
+      });
+      var d=await r.json();
+      if(!r.ok||!d.ok){
+        setErr(d.error||'Invite failed (HTTP '+r.status+') — see console');
+        if(btn){btn.disabled=false;btn.textContent=origText;}
+        return;
+      }
+      var initials=name.split(' ').map(function(p){return p[0];}).join('').toUpperCase().substring(0,2);
       window.users=window.users||[];
-      window.users.push({id:newId||('u'+Date.now()),name:name,email:email,role:role,initials:initials,color:pal[0],tc:pal[1],status:'active',lastLogin:'Never'});
-      if(ok){
-        ok.style.display='block';
-        ok.textContent='User created. They must click the confirmation email link before they can log in. Password: '+password;
-      }
+      window.users.push({id:d.userId||('u'+Date.now()),name:name,email:email,role:role,initials:initials,color:'#1a6fff',tc:'#fff',status:'invited',lastLogin:'Never'});
+      if(ok){ok.style.display='block';ok.textContent='✓ Invite sent! '+name+' will receive an email with a link to set their password.';}
       if(typeof renderUsersPanel==='function')renderUsersPanel();
       if(typeof renderUsers==='function')renderUsers();
-      if(typeof addNotification==='function')addNotification('👤 User invited: '+name,email+' — confirmation email sent','success');
+      if(typeof addNotification==='function')addNotification('👤 Invite sent: '+name,email+' — password-setup link emailed','success');
       setTimeout(function(){if(typeof closeInviteModal==='function')closeInviteModal();},4000);
     }catch(e){
-      console.error('[GL] signUp threw',e);
-      setErr('Failed: '+(e.message||'unknown'));
+      console.error('[GL] invite-staff-user threw',e);
+      setErr('Failed: '+(e.message||'unknown error'));
+      if(btn){btn.disabled=false;btn.textContent=origText;}
     }
   };
 
@@ -379,7 +626,8 @@
     if(ok)ok.style.display='none';
     function setErr(m){if(err){err.textContent=m;err.style.display='block';}}
     function setOk(m){if(ok){ok.textContent=m;ok.style.display='block';}}
-    if(newPw.length<8){setErr('Password must be at least 8 characters.');return;}
+    var _pwErr = (window.glValidatePassword ? window.glValidatePassword(newPw) : (newPw.length < 8 ? 'Password must be at least 8 characters.' : null));
+    if(_pwErr){ setErr(_pwErr); return; }
     if(newPw!==confirmPw){setErr('Passwords do not match.');return;}
 
     var sb=getSupa();
@@ -428,8 +676,15 @@
     var uuidRe=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if(sb&&uuidRe.test(u.id||'')){
       try{
-        var r=await sb.from('profiles').update({status:'inactive',updated_at:new Date().toISOString()}).eq('id',u.id);
-        if(r.error)console.warn('[GL] profile status update failed',r.error);
+        // updated_at is bumped automatically by the trg_profiles_updated_at
+        // trigger (see 20260522_profiles_updated_at.sql) — don't send it
+        // here or the UPDATE 400's against deployments that haven't run
+        // the migration yet.
+        var r=await sb.from('profiles').update({status:'inactive'}).eq('id',u.id);
+        if(r.error){
+          console.warn('[GL] profile status update failed',r.error);
+          if(typeof addNotification==='function') addNotification('Remove failed', r.error.message, 'error');
+        }
       }catch(e){console.error('[GL] removeUser profile update threw',e);}
     }
     if(window.users)window.users=window.users.filter(function(x){return x.id!==id;});
@@ -507,7 +762,7 @@
     var msg=inp.value.trim();if(!msg)return;inp.value='';
     msgs.innerHTML+='<div class="chat-msg user">'+msg+'</div><div class="chat-msg bot" id="chat-thinking">Thinking\u2026</div>';msgs.scrollTop=msgs.scrollHeight;
     var reply='';try{reply=await callAI('You are the Good Liquid Bev Co assistant. Key facts: Family-run beverage co-packer, Palmetto FL, Est. 2017. Services: Canning (12oz/16oz), Bottling (750ml), R&D, Consulting. Min order: 150 cases (3,600 units). R&D from $1,000/SKU. Canning from $0.28/can. Timeline: ~8 weeks. GMP, PCQI, HACCP certified. Contact: Mike@GoodLiquid.com (803) 493-5065.',msg);}catch(e){reply='Contact Mike@GoodLiquid.com or call (803) 493-5065.';}
-    var t=document.getElementById('chat-thinking');if(t)t.outerHTML='<div class="chat-msg bot">'+reply+'</div>';msgs.scrollTop=msgs.scrollHeight;
+    var t=document.getElementById('chat-thinking');if(t)t.outerHTML='<div class="chat-msg bot">'+String(reply||'').replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];})+'</div>';msgs.scrollTop=msgs.scrollHeight;
   };
 
   /* ══════════════════════════════════════════════
@@ -587,37 +842,6 @@
       var b=e.target.closest('.gl-fmt-btn');
       if(b){modal.remove();if(_pcb){_pcb(b.getAttribute('data-fmt'));_pcb=null;}return;}
       if(e.target.closest('.gl-fmt-cancel')||e.target===modal){modal.remove();_pcb=null;}
-    });
-    document.body.appendChild(modal);
-  };
-
-  /* ── RD PICKER ── */
-  window.glShowRDPicker = function(cb){
-    _pcb = cb;
-    document.getElementById('gl-rd-picker')?.remove();
-    var opts = [
-      {label:'R&D Formulation',    price:1000, unit:'SKU', note:'$1,000/SKU · 3 iterations included', icon:'&#x1F9EA;'},
-      {label:'Benchtop Verification',price:500,unit:'SKU', note:'$500/SKU · Required for co-packing',  icon:'&#x1F52C;'},
-      {label:'IP License',         price:6000, unit:'yr',  note:'$6,000/yr · Annual licensing',        icon:'&#x1F4DC;'},
-      {label:'IP Purchase',        price:15000,unit:'',    note:'$15,000 · Full ownership',            icon:'&#x1F3C6;'},
-      {label:'Materials Sourcing', price:0,    unit:'',    note:'Cost+10% · Enter actual cost in Unit Price',icon:'&#x1F4E6;'}
-    ];
-    var modal = document.createElement('div');
-    modal.id = 'gl-rd-picker';
-    modal.style.cssText = 'position:fixed;inset:0;z-index:700;background:rgba(6,13,26,.95);display:flex;align-items:center;justify-content:center';
-    var html = '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:28px;width:400px">' +
-      '<div style="font-family:var(--ff-disp);font-size:16px;letter-spacing:2px;color:var(--white);margin-bottom:20px">SELECT R&D / IP SERVICE</div>';
-    opts.forEach(function(o,i){
-      html += '<button class="gl-rd-btn" data-idx="'+i+'" style="width:100%;text-align:left;padding:14px 16px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:10px;color:var(--white);cursor:pointer;margin-bottom:8px;display:block">' +
-        '<div style="font-weight:700;font-size:14px;margin-bottom:3px">'+o.icon+' '+o.label+'</div>' +
-        '<div style="font-size:11px;color:var(--muted)">'+o.note+'</div></button>';
-    });
-    html += '<button class="gl-rd-cancel" style="width:100%;padding:10px;background:none;border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer;margin-top:4px">Cancel</button></div>';
-    modal.innerHTML = html;
-    modal.addEventListener('click',function(e){
-      var b=e.target.closest('.gl-rd-btn');
-      if(b){modal.remove();if(_pcb){_pcb(opts[parseInt(b.getAttribute('data-idx'))]);_pcb=null;}return;}
-      if(e.target.closest('.gl-rd-cancel')||e.target===modal){modal.remove();_pcb=null;}
     });
     document.body.appendChild(modal);
   };
@@ -707,7 +931,7 @@
     body.innerHTML=
       '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px">'+
         '<div><div class="flbl">Client *</div>'+
-          '<select class="fsel" id="ginv-client" onchange="if(window.INV)window.INV.clientId=this.value" style="width:100%">'+
+          '<select class="fsel" id="ginv-client" onchange="if(window.INV)window.INV.clientId=this.value;if(typeof window.glOnInvClientChange===&quot;function&quot;)window.glOnInvClientChange(this.value)" style="width:100%">'+
             '<option value="">Select client\u2026</option>'+
             clients.map(function(c){return '<option value="'+c.id+'"'+(INV.clientId===c.id?' selected':'')+'>'+c.name+'</option>';}).join('')+
           '</select></div>'+
@@ -776,7 +1000,7 @@
       ov.style.cssText='align-items:flex-start;padding:20px;overflow-y:auto';
       ov.innerHTML='<div style="background:#0a1628;border:1px solid rgba(0,229,192,.18);border-radius:18px;width:100%;max-width:820px;margin:0 auto;overflow:hidden">'+
         '<div style="background:#142238;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.07)">'+
-          '<div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:var(--white)">NEW INVOICE</div>'+
+          '<div style="display:flex;align-items:center;gap:10px"><div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:var(--white)">NEW INVOICE</div><span id="gl-inv-pricing-badge" style="display:none;font-size:10px;letter-spacing:1.5px;padding:3px 8px;border-radius:4px;background:rgba(245,200,66,.14);color:#f5c842;font-weight:700"></span></div>'+
           '<button onclick="document.getElementById(\'gl-inv-builder\').classList.remove(\'show\')" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer">&#x2715;</button>'+
         '</div>'+
         '<div style="padding:24px" id="gl-inv-body"></div>'+
@@ -786,6 +1010,13 @@
       existing.classList.add('show');
     }
     glRenderBuilder();
+    // Pre-load client rate overrides if the builder opened with a client
+    // already pre-set (e.g. "Create invoice for this client" from the
+    // client detail page). Triggers the same re-render hook the dropdown
+    // onchange uses so the badge + row rates are correct on first paint.
+    if(INV && INV.clientId && typeof window.glOnInvClientChange === 'function'){
+      window.glOnInvClientChange(INV.clientId);
+    }
   };
 
   /* Legacy glSaveInvoice (INV-model) removed — overridden later by the
@@ -841,7 +1072,7 @@
   var CANS_PER_CASE = 24;
 
   /* ── Rate cache ────────────────────────────────────────── */
-  window._glRates = { canning: [], bottling: [], loaded: false };
+  window._glRates = { canning: [], bottling: [], loaded: false, overrides: {} };
 
   window.glLoadRates = async function() {
     if (window._glRates.loaded) return window._glRates;
@@ -857,7 +1088,88 @@
     return window._glRates;
   };
 
-  function getCanRate(cases, format) {
+  // Per-client negotiated rates. Cached in memory keyed by client_id so the
+  // builder reads them synchronously when rendering line rows. Refreshed on
+  // demand by glLoadClientOverrides(clientId).
+  window.glLoadClientOverrides = async function(clientId){
+    if(!clientId) return null;
+    try {
+      var rows = await fetch(SURL + '/client_rate_overrides?client_id=eq.' + clientId, {headers: SH}).then(function(r){ return r.json(); });
+      if(Array.isArray(rows)){
+        var byKey = {};
+        rows.forEach(function(r){
+          var k = (r.service||'') + '|' + (r.format||'');
+          byKey[k] = r;
+        });
+        window._glRates.overrides[clientId] = byKey;
+        return byKey;
+      }
+    } catch(e){ console.warn('[GL] client override load failed', e); }
+    return null;
+  };
+  // Re-renders any existing canning/bottling rows after a new client is
+  // picked so the override rate is applied immediately. Used by the
+  // invoice builder's client dropdown onchange handler.
+  window.glOnInvClientChange = async function(clientId){
+    if(!clientId) return;
+    await window.glLoadClientOverrides(clientId);
+    document.querySelectorAll('[id$="-format"]').forEach(function(fe){
+      var uid = fe.id.replace(/-format$/, '');
+      var row = document.getElementById(uid);
+      if(!row) return;
+      // Reset any manual price override so the new client's rate takes effect.
+      if(row.hasAttribute('data-pu-override')) row.removeAttribute('data-pu-override');
+      if(document.getElementById(uid+'-cases') && typeof window.glUpdateCan === 'function') window.glUpdateCan(uid);
+      if(document.getElementById(uid+'-qty')   && typeof window.glUpdateBtl === 'function') window.glUpdateBtl(uid);
+    });
+    // Refresh the small chip showing whether this client has overrides.
+    // Only count rows whose effective_from/until window includes today —
+    // expired or not-yet-active overrides shouldn't show as "applied."
+    var badge = document.getElementById('gl-inv-pricing-badge');
+    if(badge){
+      var cache = window._glRates.overrides && window._glRates.overrides[clientId];
+      var today = new Date().toISOString().slice(0,10);
+      var count = 0;
+      if(cache){
+        Object.keys(cache).forEach(function(k){
+          var r = cache[k];
+          if(r.effective_from   && today < r.effective_from)   return;
+          if(r.effective_until  && today > r.effective_until)  return;
+          count++;
+        });
+      }
+      if(count){
+        badge.style.display = 'inline-block';
+        badge.textContent = '💵 ' + count + ' custom rate' + (count===1?'':'s') + ' applied';
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+  };
+  function getClientOverride(clientId, service, format){
+    if(!clientId) return null;
+    var byKey = window._glRates.overrides && window._glRates.overrides[clientId];
+    if(!byKey) return null;
+    // Honor effective_from / effective_until if set.
+    function active(r){
+      if(!r) return false;
+      var today = new Date().toISOString().slice(0,10);
+      if(r.effective_from   && today < r.effective_from)   return false;
+      if(r.effective_until  && today > r.effective_until)  return false;
+      return true;
+    }
+    // Exact format match first; fall back to format-agnostic for hour services.
+    var exact = byKey[service + '|' + (format||'')];
+    if(active(exact)) return parseFloat(exact.override_rate);
+    var anyFmt = byKey[service + '|'];
+    if(active(anyFmt)) return parseFloat(anyFmt.override_rate);
+    return null;
+  }
+  window.glGetClientOverride = getClientOverride;
+
+  function getCanRate(cases, format, clientId) {
+    var ovr = getClientOverride(clientId, 'canning', format);
+    if(ovr != null) return ovr;
     var tiers = window._glRates.canning
       .filter(function(r){ return r.format === format; })
       .sort(function(a,b){ return a.min_cases - b.min_cases; });
@@ -869,7 +1181,9 @@
     return rate;
   }
 
-  function getBottleRate(units, format) {
+  function getBottleRate(units, format, clientId) {
+    var ovr = getClientOverride(clientId, 'bottling', format);
+    if(ovr != null) return ovr;
     var tiers = window._glRates.bottling
       .filter(function(r){ return r.format === format; })
       .sort(function(a,b){ return a.min_units - b.min_units; });
@@ -892,50 +1206,6 @@
     var b = document.getElementById('gl-inv-body');
     return b ? b.children[2] : null;
   }
-
-  /* ── Canning line ──────────────────────────────────────── */
-  window.glCanFormatChange = function(uid) {
-    var ce = document.getElementById(uid + '-cases');
-    var fe = document.getElementById(uid + '-format');
-    if (!ce || !fe) return;
-    var cases   = Math.max(1, parseInt(ce.value) || 150);
-    var format  = fe.value;
-    var perCan  = getCanRate(cases, format);
-    var perCase = perCan * CANS_PER_CASE;
-    var total   = perCase * cases;
-    function s(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; }
-    s(uid + '-total', usd(total));
-    s(uid + '-pcase', usd(perCase) + '/case');
-    s(uid + '-pcan',  usd(perCan, 4) + '/can');
-    s(uid + '-cans',  (cases * CANS_PER_CASE).toLocaleString() + ' cans');
-    if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
-  };
-
-  window.glRemoveCanLine = function(uid) {
-    var e = document.getElementById(uid); if (e) e.remove();
-    if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
-  };
-
-  /* ── Bottling line ─────────────────────────────────────── */
-  window.glBottleQtyChange = function(uid) {
-    var qe = document.getElementById(uid + '-qty');
-    var fe = document.getElementById(uid + '-format');
-    if (!qe || !fe) return;
-    var qty       = Math.max(1, parseInt(qe.value) || 500);
-    var format    = fe.value;
-    var perUnit   = getBottleRate(qty, format);
-    var total     = perUnit * qty;
-    function s(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; }
-    s(uid + '-total', usd(total));
-    s(uid + '-punit', usd(perUnit, 4) + '/btl');
-    if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
-  };
-
-  window.glRemoveBottleLine = function(uid) {
-    var e = document.getElementById(uid); if (e) e.remove();
-    if (typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
-  };
-
 
   /* ── Pricing Admin Page ────────────────────────────────── */
   window.glOpenPricing = async function() {
@@ -1079,14 +1349,24 @@
     window._glR.b=Array.isArray(res[1])?res[1]:[];
     window._glR.ok=true;
   };
-  window.glGetCanRate=function(cases,fmt){
+  window.glGetCanRate=function(cases,fmt,clientId){
+    clientId = clientId || (window.INV && window.INV.clientId) || null;
+    if(typeof window.glGetClientOverride === 'function'){
+      var ovr = window.glGetClientOverride(clientId,'canning',fmt);
+      if(ovr != null) return ovr;
+    }
     var t=window._glR.c.filter(function(r){return r.format===fmt;}).sort(function(a,b){return a.min_cases-b.min_cases;});
     if(!t.length)return 0;
     var v=parseFloat(t[0].price_per_can);
     for(var i=0;i<t.length;i++)if(cases>=t[i].min_cases)v=parseFloat(t[i].price_per_can);
     return v;
   };
-  window.glGetBtlRate=function(qty,fmt){
+  window.glGetBtlRate=function(qty,fmt,clientId){
+    clientId = clientId || (window.INV && window.INV.clientId) || null;
+    if(typeof window.glGetClientOverride === 'function'){
+      var ovr = window.glGetClientOverride(clientId,'bottling',fmt);
+      if(ovr != null) return ovr;
+    }
     var t=window._glR.b.filter(function(r){return r.format===fmt;}).sort(function(a,b){return a.min_units-b.min_units;});
     if(!t.length)return 0;
     var v=parseFloat(t[0].price_per_unit);
@@ -1217,14 +1497,24 @@
     window._glR.b=Array.isArray(res[1])?res[1]:[];
     window._glR.ok=true;
   };
-  window.glGetCanRate=function(cases,fmt){
+  window.glGetCanRate=function(cases,fmt,clientId){
+    clientId = clientId || (window.INV && window.INV.clientId) || null;
+    if(typeof window.glGetClientOverride === 'function'){
+      var ovr = window.glGetClientOverride(clientId,'canning',fmt);
+      if(ovr != null) return ovr;
+    }
     var t=window._glR.c.filter(function(r){return r.format===fmt;}).sort(function(a,b){return a.min_cases-b.min_cases;});
     if(!t.length)return 0;
     var v=parseFloat(t[0].price_per_can);
     for(var i=0;i<t.length;i++)if(cases>=t[i].min_cases)v=parseFloat(t[i].price_per_can);
     return v;
   };
-  window.glGetBtlRate=function(qty,fmt){
+  window.glGetBtlRate=function(qty,fmt,clientId){
+    clientId = clientId || (window.INV && window.INV.clientId) || null;
+    if(typeof window.glGetClientOverride === 'function'){
+      var ovr = window.glGetClientOverride(clientId,'bottling',fmt);
+      if(ovr != null) return ovr;
+    }
     var t=window._glR.b.filter(function(r){return r.format===fmt;}).sort(function(a,b){return a.min_units-b.min_units;});
     if(!t.length)return 0;
     var v=parseFloat(t[0].price_per_unit);
@@ -1976,6 +2266,7 @@
         : '<select onchange="window.glAdminChangeRole(\''+u.id+'\',this.value)" style="background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer">'
           +'<option value="admin"'+(u.role==='admin'?' selected':'')+'>admin</option>'
           +'<option value="sales"'+(u.role==='sales'?' selected':'')+'>sales</option>'
+          +'<option value="warehouse"'+(u.role==='warehouse'?' selected':'')+'>warehouse</option>'
           +'<option value="viewer"'+(u.role==='viewer'?' selected':'')+'>viewer</option>'
         +'</select>';
       var actions=isOwner
@@ -2000,7 +2291,7 @@
   window.glAdminChangeRole=async function(uid,newRole){
     var u=(window.users||[]).find(function(x){return x.id===uid;});
     if(!u){alert('User not found.');return;}
-    if(!['admin','sales','viewer'].includes(newRole)){alert('Invalid role.');return;}
+    if(!['admin','sales','warehouse','viewer'].includes(newRole)){alert('Invalid role.');return;}
     var sb=window.supa;
     if(sb&&uuidish(u.id)){
       try{
@@ -2067,7 +2358,8 @@
       clearErr();
       var pw = newEl.value;
       var c  = conEl.value;
-      if(pw.length < 6){ showErr('Password must be at least 6 characters.'); return; }
+      var _pwErr = (window.glValidatePassword ? window.glValidatePassword(pw) : (pw.length < 8 ? 'Password must be at least 8 characters.' : null));
+      if(_pwErr){ showErr(_pwErr); return; }
       if(pw !== c){ showErr('Passwords do not match.'); return; }
       var sb = window.supa;
       if(!sb){ showErr('Auth service unavailable.'); return; }
@@ -2117,38 +2409,36 @@
      reporting success, opens Settings when key is missing.
    ============================================================ */
 (function(){
+  /* Wipe any legacy gl_mailgun_key on load. Per the security audit
+     in PR #141, the Mailgun API key has lived in Supabase secrets
+     (read by the mailgun-send Edge Function) for a while now. The
+     localStorage copy was a hold-over that gave anyone with access
+     to the browser a way to read the key. Remove on every load so
+     we don't have stale credentials sitting in DevTools. */
+  try { if(localStorage.getItem('gl_mailgun_key')) localStorage.removeItem('gl_mailgun_key'); } catch(_e){}
+
   window.openMailgunSettings = function(){
     var existing = document.getElementById('mg-settings-overlay');
     if(existing) existing.remove();
     var ov = document.createElement('div');
     ov.id = 'mg-settings-overlay';
     ov.setAttribute('style','position:fixed;inset:0;z-index:900;background:rgba(6,13,26,.95);backdrop-filter:blur(16px);display:flex;align-items:center;justify-content:center;padding:20px');
-    var saved = localStorage.getItem('gl_mailgun_key') || '';
     ov.innerHTML =
-      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:36px;width:100%;max-width:520px">' +
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:36px;width:100%;max-width:560px">' +
         '<div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:2px;color:var(--teal);margin-bottom:8px">📧 MAILGUN SETTINGS</div>' +
-        '<div style="font-size:13px;color:var(--muted);margin-bottom:24px;line-height:1.6">Mailgun sends onboarding emails, follow-ups, and tour confirmations. Paste your private API key — it stays in this browser only.</div>' +
-        (saved ? '<div style="background:rgba(29,158,117,.1);border:1px solid rgba(29,158,117,.3);border-radius:8px;padding:10px 14px;font-size:13px;color:#1D9E75;margin-bottom:16px">✅ API key is saved and active</div>' : '') +
-        '<div style="margin-bottom:16px"><div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">MAILGUN PRIVATE API KEY</div>' +
-          '<input id="mg-key-input" type="password" value="' + saved.replace(/"/g,'&quot;') + '" placeholder="key-..." style="width:100%;padding:13px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#fff;font-size:13px;font-family:var(--ff-mono);box-sizing:border-box"></div>' +
-        '<div style="font-size:11px;color:var(--muted);margin-bottom:20px">Find it at <span style="color:var(--teal)">app.mailgun.com → Send → Sending → Domain settings → API Keys</span></div>' +
+        '<div style="font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.6">Mailgun sends onboarding emails, follow-ups, and tour confirmations. The API key lives <b>server-side in Supabase secrets</b> — the browser never sees it.</div>' +
+        '<div style="background:rgba(29,158,117,.1);border:1px solid rgba(29,158,117,.3);border-radius:8px;padding:12px 16px;font-size:13px;color:#5fcf9e;margin-bottom:20px;line-height:1.6">✅ Sends route through the <code>mailgun-send</code> Edge Function. The function reads <code>MAILGUN_API_KEY</code> from Supabase secrets at run time.</div>' +
+        '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">TO ROTATE THE KEY</div>' +
+        '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:12px;margin-bottom:18px;font-size:12px;color:#cfd9e6;line-height:1.7">' +
+          'Run in PowerShell: <code style="background:#0a1628;padding:2px 6px;border-radius:4px;color:var(--teal);font-family:var(--ff-mono);font-size:11px">supabase secrets set MAILGUN_API_KEY=key-...</code><br>' +
+          'Then redeploy the function (or it will pick up the new value on next cold start). No frontend change needed.' +
+        '</div>' +
         '<div style="display:flex;gap:10px">' +
-          '<button onclick="window.glSaveMailgunKey()" style="flex:1;padding:13px;background:var(--teal);color:#0a1628;border:none;border-radius:8px;font-weight:800;cursor:pointer;font-size:14px">Save Key</button>' +
-          (saved ? '<button onclick="window.glTestMailgun()" style="padding:13px 18px;background:rgba(245,200,66,.08);color:#f5c842;border:1px solid rgba(245,200,66,.3);border-radius:8px;cursor:pointer;font-size:13px">Test send</button>' : '') +
-          '<button onclick="document.getElementById(\'mg-settings-overlay\').remove()" style="padding:13px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer">Cancel</button>' +
+          '<button onclick="window.glTestMailgun()" style="flex:1;padding:13px;background:rgba(245,200,66,.08);color:#f5c842;border:1px solid rgba(245,200,66,.3);border-radius:8px;cursor:pointer;font-size:13px">Test send</button>' +
+          '<button onclick="document.getElementById(\'mg-settings-overlay\').remove()" style="padding:13px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer">Close</button>' +
         '</div>' +
       '</div>';
     document.body.appendChild(ov);
-  };
-
-  window.glSaveMailgunKey = function(){
-    var k = (document.getElementById('mg-key-input')||{}).value || '';
-    k = k.trim();
-    if(!k){ alert('Please paste a Mailgun API key.'); return; }
-    localStorage.setItem('gl_mailgun_key', k);
-    document.getElementById('mg-settings-overlay').remove();
-    if(typeof addNotification==='function') addNotification('Mailgun key saved','Onboarding + follow-up emails will now send.','success');
-    else alert('✅ Mailgun key saved.');
   };
 
   /* Reusable masked-credential reveal modal — used by onboarding to surface
@@ -2196,66 +2486,27 @@
   };
 
   window.glTestMailgun = async function(){
-    var key = localStorage.getItem('gl_mailgun_key');
-    if(!key){ alert('Save a key first.'); return; }
     if(typeof window.sendMailgunEmail !== 'function'){ alert('sendMailgunEmail unavailable.'); return; }
     var ok = await window.sendMailgunEmail('mike@goodliquid.com','Mailgun test from Good Liquid CRM','This is a test email confirming Mailgun is wired up. — Good Liquid CRM');
     if(ok) alert('✓ Test email sent to mike@goodliquid.com');
-    else alert('✗ Test failed. Check the API key and the browser console for the Mailgun response.');
+    else alert('✗ Test failed. Check that MAILGUN_API_KEY is set in Supabase secrets (run `supabase secrets list`) and that the mailgun-send Edge Function is deployed.');
   };
 
-  /* Replace sendOnboardingEmail with a version that pre-flights the Mailgun
-     key, awaits the send, and only reports success when the send actually
-     succeeded. */
-  window.sendOnboardingEmail = async function(){
-    if(!localStorage.getItem('gl_mailgun_key')){
-      if(typeof addNotification==='function') addNotification('Mailgun key required','Paste your Mailgun API key in Settings before sending onboarding emails.','warning');
-      window.openMailgunSettings();
-      return;
-    }
-    var email = prompt('Customer email address to send onboarding link:');
-    if(!email) return;
-    email = email.trim();
-    if(!email || email.indexOf('@')<0){ alert('Invalid email.'); return; }
-    var name = prompt('Customer name:');
-    if(!name) return;
-    name = name.trim();
-    if(!name){ alert('Name required.'); return; }
+  /* sendOnboardingEmail (called by the "📧 Send Onboarding Email" button on
+     the Customer Logins page) is now a thin wrapper that opens the modern
+     invite picker. The picker handles client selection, creates a real
+     auth user via signUp, links it to the client via link_customer_user_by_email,
+     and fires the Supabase password-reset email so the customer can set
+     their own password — no more locally-generated "temp passwords" that
+     don't actually work because no real auth user existed.
 
-    var tempPw = 'GL' + Math.random().toString(36).substring(2,8).toUpperCase();
-    var list = window.customerLogins || [];
-    list.push({id:'cust-'+Date.now(),name:name,email:email,password:tempPw,createdAt:new Date().toISOString()});
-    window.customerLogins = list;
-    if(typeof saveCustomerLogins==='function') saveCustomerLogins();
-    if(typeof renderCustomerLogins==='function') renderCustomerLogins();
-
-    var body =
-      'Hi ' + name + ',\n\n' +
-      'Welcome to Good Liquid Bev Co! Your client portal is ready.\n\n' +
-      'Login at: https://www.goodliquidbevco.com\n' +
-      'Email: ' + email + '\n' +
-      'Temporary password: ' + tempPw + '\n\n' +
-      'Please change your password after first login.\n\n' +
-      'Best,\nMike Krail\nGood Liquid Bev Co\nMike@GoodLiquid.com | (803) 493-5065';
-
-    var ok = false;
-    try{ ok = await window.sendMailgunEmail(email, 'Welcome to Good Liquid Bev Co — Your Portal Access', body); }
-    catch(e){ console.error('[GL] onboarding mailgun threw', e); ok = false; }
-
-    if(ok){
-      if(typeof addNotification==='function') addNotification('📧 Onboarding email sent to '+name,email,'success');
-      window.glRevealCredential({
-        title: 'Onboarding email sent',
-        message: 'The welcome email is on its way to <b>'+name+'</b>. The temporary password is shown below — share it via a separate channel.',
-        email: email, password: tempPw, status: 'ok'
-      });
+     This replaces the previous local-only flow that wrote to the dead
+     customerLogins localStorage array and minted unusable temp passwords. */
+  window.sendOnboardingEmail = function(){
+    if(typeof window.glOpenInvitePicker === 'function'){
+      window.glOpenInvitePicker();
     } else {
-      if(typeof addNotification==='function') addNotification('Email send failed',email+' — see console for details','warning');
-      window.glRevealCredential({
-        title: 'Email send failed',
-        message: 'Mailgun rejected the message but the account was created locally. Share the password manually and check Mailgun Settings (API key valid? Domain authorized?).',
-        email: email, password: tempPw, status: 'warn'
-      });
+      alert('Invite UI not ready yet — reload the page and try again.');
     }
   };
 
@@ -2278,7 +2529,7 @@
     var host = document.getElementById('crm-panel') || document.body;
     var tb = document.createElement('div');
     tb.id = 'ai-toolbar';
-    tb.setAttribute('style','position:fixed;bottom:28px;right:28px;z-index:600;display:flex;flex-direction:column;gap:8px;align-items:flex-end;pointer-events:auto');
+    tb.setAttribute('style','position:relative;display:flex;align-items:center');
 
     var tools = document.createElement('div');
     tools.id = 'ai-tools';
@@ -2345,7 +2596,7 @@
 
     var fab = document.createElement('button');
     fab.setAttribute('title','AI Tools');
-    fab.setAttribute('style','width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--teal),#1a6fff);border:none;color:#0a1628;font-size:22px;cursor:pointer;box-shadow:0 4px 20px rgba(0,229,192,.4);font-weight:900');
+    fab.setAttribute('style','width:34px;height:34px;border-radius:8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;color:var(--teal);transition:all .2s');
     fab.textContent = '🤖';
     fab.addEventListener('click', function(e){
       e.stopPropagation();
@@ -2359,8 +2610,11 @@
 
     tb.appendChild(tools);
     tb.appendChild(fab);
-    host.appendChild(tb);
-    console.log('[AI toolbar] mounted inside', host.id || host.tagName);
+    // Inject into the top-bar actions row so it sits beside the bell + chat buttons.
+    var topActions = document.getElementById('crm-top-actions');
+    if(topActions) topActions.insertBefore(tb, topActions.firstChild);
+    else host.appendChild(tb);
+    console.log('[AI toolbar] mounted in', topActions ? 'crm-top-actions' : (host.id || host.tagName));
   };
 
   console.log('[GL] AI toolbar v2 loaded');
@@ -2605,7 +2859,8 @@
    persists the new bcrypt hash and the user is signed in.
    ============================================================ */
 (function(){
-  function openRecoveryModal(){
+  function openRecoveryModal(mode){
+    var isInvite = mode === 'invite';
     var existing = document.getElementById('gl-recovery-modal');
     if(existing) existing.remove();
     var ov = document.createElement('div');
@@ -2613,8 +2868,8 @@
     ov.setAttribute('style','position:fixed;inset:0;z-index:1200;background:rgba(6,13,26,.95);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;padding:20px');
     ov.innerHTML =
       '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:32px;width:100%;max-width:440px">' +
-        '<div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:#00e5c0;margin-bottom:6px">RESET YOUR PASSWORD</div>' +
-        '<div style="font-size:13px;color:#9ca3af;margin-bottom:22px;line-height:1.5">You arrived via a password reset link. Choose a new password to sign in.</div>' +
+        '<div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:#00e5c0;margin-bottom:6px">'+(isInvite?'CREATE YOUR PASSWORD':'RESET YOUR PASSWORD')+'</div>' +
+        '<div style="font-size:13px;color:#9ca3af;margin-bottom:22px;line-height:1.5">'+(isInvite?"Welcome to Good Liquid Bev Co CRM! Set a password to complete your account setup.":'You arrived via a password reset link. Choose a new password to sign in.')+'</div>' +
         '<div class="frow"><div class="flbl">New password</div><input class="finp" type="password" id="gl-rec-new" placeholder="Min 6 characters" autocomplete="new-password"></div>' +
         '<div class="frow"><div class="flbl">Confirm</div><input class="finp" type="password" id="gl-rec-confirm" placeholder="Re-enter to confirm" autocomplete="new-password"></div>' +
         '<label style="display:flex;align-items:center;gap:8px;font-size:11px;color:#9ca3af;margin:4px 0 18px;cursor:pointer">' +
@@ -2640,7 +2895,8 @@
     btn.addEventListener('click', async function(){
       errEl.style.display='none';
       var pw = newEl.value;
-      if(pw.length < 6){ showErr('Password must be at least 6 characters.'); return; }
+      var _pwErr = (window.glValidatePassword ? window.glValidatePassword(pw) : (pw.length < 8 ? 'Password must be at least 8 characters.' : null));
+      if(_pwErr){ showErr(_pwErr); return; }
       if(pw !== conEl.value){ showErr('Passwords do not match.'); return; }
       var sb = window.supa;
       if(!sb){ showErr('Auth service unavailable.'); return; }
@@ -2694,10 +2950,15 @@
     });
   }
 
+  var _attachAttempts = 0;
   function attach(){
     var sb = window.supa;
     if(!sb || !sb.auth || typeof sb.auth.onAuthStateChange !== 'function'){
-      console.warn('[GL] recovery handler: supa not ready, retrying');
+      _attachAttempts++;
+      if(_attachAttempts > 25){ // give up after ~10s
+        console.warn('[GL] recovery handler: supa never became ready, giving up');
+        return;
+      }
       setTimeout(attach, 400);
       return;
     }
@@ -2716,15 +2977,23 @@
     var hash = (window.location.hash || '').replace(/^#/, '');
     var search = window.location.search || '';
     var hashRecovery = hash.indexOf('type=recovery') >= 0;
+    var hashInvite   = hash.indexOf('type=invite')   >= 0;
     var pkceRecovery = /[?&]code=/.test(search) && /[?&]portal=1\b/.test(search);
     var tokenRecovery = /[?&]token_hash=/.test(search) && /[?&]type=recovery/.test(search);
+    var tokenInvite   = /[?&]token_hash=/.test(search) && /[?&]type=invite/.test(search);
     if(hashRecovery || pkceRecovery || tokenRecovery){
       console.log('[GL] recovery URL artifact detected on load → opening reset modal');
       // Slight delay so supabase-js gets a chance to finalize the session
       // (so updateUser inside the modal will have credentials).
       setTimeout(function(){
-        if(!document.getElementById('gl-recovery-modal')) openRecoveryModal();
+        if(!document.getElementById('gl-recovery-modal')) openRecoveryModal('recovery');
       }, pkceRecovery ? 1500 : 300);
+    } else if(hashInvite || tokenInvite){
+      console.log('[GL] invite URL artifact detected on load → opening create-password modal');
+      // Longer delay: supabase-js needs to exchange the invite token for a session.
+      setTimeout(function(){
+        if(!document.getElementById('gl-recovery-modal')) openRecoveryModal('invite');
+      }, 800);
     }
   }
   if(document.readyState !== 'loading') attach();
@@ -3301,10 +3570,41 @@
      real Checkout Session creator using the Stripe secret key.
    ============================================================ */
 (function(){
+  /* Pay link storage: source of truth is the
+     invoices.stripe_payment_link column added by
+     20260523_activities_calendar_pipeline_paylinks.sql. The
+     legacy gl_invoice_paylinks {invId: url} blob is preserved
+     ONLY as a fallback for renderers that need a sync read
+     before the DB has loaded — every write goes to the DB. */
   function getLinks(){ try { return JSON.parse(localStorage.getItem('gl_invoice_paylinks')||'{}'); } catch(e){ return {}; } }
   function saveLinks(m){ try { localStorage.setItem('gl_invoice_paylinks', JSON.stringify(m)); } catch(e){} }
 
+  // One-shot backfill: every legacy LS entry becomes an UPDATE on
+  // the invoices row.
+  (async function backfillPaylinks(){
+    try {
+      if(localStorage.getItem('gl_invoice_paylinks_migrated') === '1') return;
+      if(!window.supa) return;
+      var blob = localStorage.getItem('gl_invoice_paylinks');
+      if(!blob){ localStorage.setItem('gl_invoice_paylinks_migrated','1'); return; }
+      var legacy = {}; try { legacy = JSON.parse(blob) || {}; } catch(_e){ return; }
+      var ids = Object.keys(legacy);
+      if(!ids.length){ localStorage.setItem('gl_invoice_paylinks_migrated','1'); return; }
+      for(var i=0;i<ids.length;i++){
+        var invId = ids[i]; var url = legacy[invId];
+        if(!url) continue;
+        // Match by invoice_number since the legacy keys are GL-2026-XYZ strings.
+        await window.supa.from('invoices').update({ stripe_payment_link: url }).eq('invoice_number', invId);
+      }
+      localStorage.setItem('gl_invoice_paylinks_migrated','1');
+    } catch(e){ console.warn('[GL] invoice_paylinks backfill threw', e); }
+  })();
+
   window.glGetPayLink = function(invId){
+    // Prefer the invoices column when available (canonical), fall
+    // back to the LS map for callers that haven't refetched yet.
+    var inv = (window.invoices||[]).find(function(i){ return i.id === invId || i.invoice_number === invId; });
+    if(inv && inv.stripe_payment_link) return inv.stripe_payment_link;
     var m = getLinks();
     return m[invId] || '';
   };
@@ -3313,6 +3613,12 @@
     var m = getLinks();
     if(url) m[invId] = url; else delete m[invId];
     saveLinks(m);
+    // Persist to the canonical column too.
+    if(window.supa){
+      window.supa.from('invoices').update({ stripe_payment_link: url || null }).eq('invoice_number', invId).then(function(r){
+        if(r.error) console.warn('[GL] pay link DB update failed', r.error.message);
+      });
+    }
   };
 
   // Override the legacy generatePayLink with a Stripe-aware version.
@@ -3723,9 +4029,11 @@
     } catch(e){ return { ok:false, msg:e.message||'storage check threw' }; }
   }
   function checkMailgun(){
-    var k = localStorage.getItem('gl_mailgun_key');
-    if(k && k.length > 10) return { ok:true, msg:'Key set ('+ k.slice(0,8) +'…)' };
-    return { ok:false, msg:'Click to add your Mailgun key', action:'mailgun_settings' };
+    // Mailgun key lives in Supabase secrets — the browser has no way
+    // to inspect the secret directly, so we surface the status of the
+    // Edge Function instead. Status panel is informational; the real
+    // test is the "Test send" button in Mailgun Settings.
+    return { ok:true, msg:'Managed via Supabase secrets' };
   }
   function checkAIKey(){
     var k = localStorage.getItem('gl_ai_key');
@@ -4174,32 +4482,23 @@
   }
   function kpiCard(label, value, sub, color){
     color = color || 'var(--teal)';
+    // Empty-state values (— em-dash, "0", null-rendered "—") should render
+    // in the muted color so they read as "no data" instead of looking like
+    // a colored progress bar (caught on the dashboard "AVG DAYS TO PAID"
+    // tile during the Playwright runtime audit — the teal em-dash at 24px
+    // looked exactly like a progress indicator).
+    var v = String(value == null ? '—' : value);
+    var isEmpty = v === '—' || v === 'n/a' || v === '0' || v === '0d';
+    var valColor = isEmpty ? 'var(--muted)' : color;
     return '<div style="background:#243a56;border:1px solid rgba(255,255,255,.06);border-radius:11px;padding:14px 16px">' +
       '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">' + label.toUpperCase() + '</div>' +
-      '<div style="font-family:var(--ff-disp);font-size:24px;font-weight:700;color:' + color + ';line-height:1">' + value + '</div>' +
+      '<div style="font-family:var(--ff-disp);font-size:24px;font-weight:700;color:' + valColor + ';line-height:1">' + v + '</div>' +
       '<div style="font-size:10px;color:var(--muted);margin-top:4px">' + sub + '</div>' +
     '</div>';
   }
 
   // Re-build whenever renderDash runs, so KPIs stay in sync with the data.
-  (function(){
-    var orig = window.renderDash;
-    if(typeof orig === 'function'){
-      window.renderDash = function(){
-        var r = orig.apply(this, arguments);
-        try { buildExtraKpis(); } catch(e){ console.error('[GL kpi] build threw', e); }
-        return r;
-      };
-    } else {
-      // renderDash not loaded yet — try once after a delay.
-      setTimeout(function(){
-        var o = window.renderDash;
-        if(typeof o === 'function'){
-          window.renderDash = function(){ var r = o.apply(this, arguments); try { buildExtraKpis(); } catch(e){} return r; };
-        }
-      }, 1500);
-    }
-  })();
+  window.GL_HOOKS.registerDashPatch(function(){ try{ buildExtraKpis(); }catch(e){ console.error('[GL kpi] build threw', e); } });
 
   console.log('[GL] Dashboard extra KPIs loaded');
 }());
@@ -4403,11 +4702,9 @@
     var eff = function(i){ return (typeof window.effectiveInvoiceStatus === 'function') ? window.effectiveInvoiceStatus(i) : (i && i.status); };
     var overdue = (window.invoices||[]).filter(function(i){ return eff(i) === 'overdue'; });
     if(!overdue.length){ alert('No overdue invoices.'); return; }
-    if(!localStorage.getItem('gl_mailgun_key')){
-      if(typeof window.openMailgunSettings === 'function') window.openMailgunSettings();
-      alert('Mailgun key required first.');
-      return;
-    }
+    // Mailgun lives server-side in the mailgun-send Edge Function — the
+    // send itself returns a clear error if the secret isn't set, so no
+    // need to gate on a stale localStorage flag here.
     if(!confirm('Send a reminder email to ' + overdue.length + ' overdue invoice client(s)?\n\nEach email will include the invoice id, amount, days overdue, and your Stripe pay link (if set).')) return;
 
     var sent = 0, skipped = 0, failed = 0;
@@ -4929,31 +5226,62 @@
     tag(490,16,1) + tag(20,60,2) + tag(530,108,3)
   );
 
-  var MOCK_CALENDAR = wf(620, 250,
-    box(0,0,620,250,'#142238','rgba(255,255,255,.05)') +
-    txt(20,28,'CALENDAR',13,'#fff') + txt(20,46,'General events & tour requests',10,'#9aa7bd') +
-    box(420,16,40,24,'rgba(255,255,255,.06)') + txt(440,32,'‹',12,'#fff','middle') +
-    txt(490,32,'May 2026',11,'#fff','middle') +
-    box(540,16,40,24,'rgba(255,255,255,.06)') + txt(560,32,'›',12,'#fff','middle') +
-    // 7-col grid header
-    ['Su','Mo','Tu','We','Th','Fr','Sa'].map(function(d,i){ return txt(60 + i*78, 76, d, 10, '#9aa7bd','middle'); }).join('') +
-    // 5 rows × 7 cols grid (simplified)
-    (function(){
-      var cells = '';
-      for(var r=0; r<4; r++){
-        for(var c=0; c<7; c++){
-          var x = 26 + c*78, y = 90 + r*36;
-          cells += box(x, y, 70, 30, 'rgba(255,255,255,.02)', 'rgba(255,255,255,.04)');
-          cells += txt(x+8, y+18, (r*7+c+1), 10, '#cfd9e6');
-        }
-      }
-      return cells;
-    })() +
-    // Highlight one cell with an event
-    '<rect x="338" y="126" width="70" height="30" rx="6" fill="rgba(0,229,192,.12)" stroke="rgba(0,229,192,.4)"/>' +
-    txt(346,144,'15',10,'#00e5c0') + box(363,134,42,12,'rgba(0,229,192,.18)','rgba(0,229,192,.4)') + txt(384,143,'Tour',8,'#00e5c0','middle') +
-    txt(20,240,'Public "Schedule a tour" submissions land here automatically.',9,'#9aa7bd') +
-    tag(338,126,1) + tag(420,16,2)
+  var MOCK_CALENDAR = wf(620, 290,
+    box(0,0,620,290,'#142238','rgba(255,255,255,.05)') +
+    txt(20,24,'GENERAL CALENDAR',13,'#fff') +
+    // Month / List view toggle
+    box(16,36,88,24,'rgba(0,229,192,.18)','rgba(0,229,192,.4)') + txt(60,52,'Month',10,'#00e5c0','middle') +
+    box(108,36,62,24,'rgba(255,255,255,.04)','rgba(255,255,255,.1)') + txt(139,52,'List',10,'#9aa7bd','middle') +
+    // Nav arrows + month label
+    box(390,36,28,24,'rgba(255,255,255,.06)') + txt(404,52,'‹',12,'#cfd9e6','middle') +
+    txt(450,52,'May 2026',11,'#fff','middle') +
+    box(504,36,28,24,'rgba(255,255,255,.06)') + txt(518,52,'›',12,'#cfd9e6','middle') +
+    // + Add Event button
+    box(538,36,76,24,'rgba(0,229,192,.1)','rgba(0,229,192,.28)') + txt(576,52,'+ Add Event',9,'#00e5c0','middle') +
+    // Day-of-week headers
+    txt(55,74,'Su',9,'#9aa7bd','middle') + txt(141,74,'Mo',9,'#9aa7bd','middle') + txt(227,74,'Tu',9,'#9aa7bd','middle') +
+    txt(313,74,'We',9,'#9aa7bd','middle') + txt(399,74,'Th',9,'#9aa7bd','middle') + txt(485,74,'Fr',9,'#9aa7bd','middle') + txt(571,74,'Sa',9,'#9aa7bd','middle') +
+    // Row 1 (days 1-7): weekend tint on Su (col 0) and Sa (col 6)
+    box(14,80,82,34,'rgba(127,90,240,.07)','rgba(255,255,255,.04)') + txt(24,97,'1',10,'#cfd9e6') +
+    box(100,80,82,34,'rgba(255,255,255,.02)','rgba(255,255,255,.04)') + txt(110,97,'2',10,'#cfd9e6') +
+    box(186,80,82,34,'rgba(255,255,255,.02)','rgba(255,255,255,.04)') + txt(196,97,'3',10,'#cfd9e6') +
+    box(272,80,82,34,'rgba(255,255,255,.02)','rgba(255,255,255,.04)') + txt(282,97,'4',10,'#cfd9e6') +
+    box(358,80,82,34,'rgba(255,255,255,.02)','rgba(255,255,255,.04)') + txt(368,97,'5',10,'#cfd9e6') +
+    box(444,80,82,34,'rgba(255,255,255,.02)','rgba(255,255,255,.04)') + txt(454,97,'6',10,'#cfd9e6') +
+    box(530,80,82,34,'rgba(127,90,240,.07)','rgba(255,255,255,.04)') + txt(540,97,'7',10,'#cfd9e6') +
+    // Row 2 (days 8-14): event chip on Thu day 12 (col 4, x=358)
+    box(14,118,82,34,'rgba(127,90,240,.07)','rgba(255,255,255,.04)') + txt(24,135,'8',10,'#cfd9e6') +
+    box(100,118,82,34,'rgba(255,255,255,.02)','rgba(255,255,255,.04)') + txt(110,135,'9',10,'#cfd9e6') +
+    box(186,118,82,34,'rgba(255,255,255,.02)','rgba(255,255,255,.04)') + txt(196,135,'10',10,'#cfd9e6') +
+    box(272,118,82,34,'rgba(255,255,255,.02)','rgba(255,255,255,.04)') + txt(282,135,'11',10,'#cfd9e6') +
+    box(358,118,82,34,'rgba(255,255,255,.02)','rgba(0,229,192,.32)') + txt(368,133,'12',10,'#00e5c0') +
+    box(362,136,70,10,'rgba(0,229,192,.22)','rgba(0,229,192,.4)') + txt(397,144,'Tour 9am',7,'#00e5c0','middle') +
+    box(444,118,82,34,'rgba(255,255,255,.02)','rgba(255,255,255,.04)') + txt(454,135,'13',10,'#cfd9e6') +
+    box(530,118,82,34,'rgba(127,90,240,.07)','rgba(255,255,255,.04)') + txt(540,135,'14',10,'#cfd9e6') +
+    // Row 3 (days 15-21): past — dimmed opacity
+    box(14,156,82,34,'rgba(127,90,240,.04)','rgba(255,255,255,.03)') + txt(24,173,'15',10,'rgba(107,135,173,.38)') +
+    box(100,156,82,34,'rgba(255,255,255,.01)','rgba(255,255,255,.03)') + txt(110,173,'16',10,'rgba(107,135,173,.38)') +
+    box(186,156,82,34,'rgba(255,255,255,.01)','rgba(255,255,255,.03)') + txt(196,173,'17',10,'rgba(107,135,173,.38)') +
+    box(272,156,82,34,'rgba(255,255,255,.01)','rgba(255,255,255,.03)') + txt(282,173,'18',10,'rgba(107,135,173,.38)') +
+    box(358,156,82,34,'rgba(255,255,255,.01)','rgba(255,255,255,.03)') + txt(368,173,'19',10,'rgba(107,135,173,.38)') +
+    box(444,156,82,34,'rgba(255,255,255,.01)','rgba(255,255,255,.03)') + txt(454,173,'20',10,'rgba(107,135,173,.38)') +
+    box(530,156,82,34,'rgba(127,90,240,.04)','rgba(255,255,255,.03)') + txt(540,173,'21',10,'rgba(107,135,173,.38)') +
+    // Row 4 (days 22-28): past — dimmed
+    box(14,194,82,34,'rgba(127,90,240,.04)','rgba(255,255,255,.03)') + txt(24,211,'22',10,'rgba(107,135,173,.38)') +
+    box(100,194,82,34,'rgba(255,255,255,.01)','rgba(255,255,255,.03)') + txt(110,211,'23',10,'rgba(107,135,173,.38)') +
+    box(186,194,82,34,'rgba(255,255,255,.01)','rgba(255,255,255,.03)') + txt(196,211,'24',10,'rgba(107,135,173,.38)') +
+    box(272,194,82,34,'rgba(255,255,255,.01)','rgba(255,255,255,.03)') + txt(282,211,'25',10,'rgba(107,135,173,.38)') +
+    box(358,194,82,34,'rgba(255,255,255,.01)','rgba(255,255,255,.03)') + txt(368,211,'26',10,'rgba(107,135,173,.38)') +
+    box(444,194,82,34,'rgba(255,255,255,.01)','rgba(255,255,255,.03)') + txt(454,211,'27',10,'rgba(107,135,173,.38)') +
+    box(530,194,82,34,'rgba(127,90,240,.04)','rgba(255,255,255,.03)') + txt(540,211,'28',10,'rgba(107,135,173,.38)') +
+    // Row 5: Fr 29 (past) + Sa 30 TODAY
+    box(444,232,82,34,'rgba(255,255,255,.01)','rgba(255,255,255,.03)') + txt(454,249,'29',10,'rgba(107,135,173,.38)') +
+    box(530,232,82,34,'rgba(0,229,192,.1)','rgba(0,229,192,.45)') +
+    '<circle cx="548" cy="249" r="11" fill="rgba(0,229,192,.25)" stroke="#00e5c0" stroke-width="1.5"/>' +
+    txt(548,253,'30',9,'#00e5c0','middle') +
+    box(560,234,48,10,'rgba(0,229,192,.32)','none') + txt(584,242,'TODAY',7,'#00e5c0','middle') +
+    // Callout tags
+    tag(60,48,1) + tag(548,249,2) + tag(24,169,3) + tag(370,130,4)
   );
 
   var MOCK_TASKS = wf(620, 220,
@@ -5036,12 +5364,37 @@
     tag(560,247,1) + tag(515,60,2)
   );
 
-  var SEC_OVERVIEW = bullets([
-    '<b>Quick search:</b> press <kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">Ctrl+K</kbd> anywhere to jump to an invoice, client, deal, or user by name.',
-    '<b>This help panel:</b> press <kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">?</kbd> any time, or click ❓ Help in the topbar. It opens to the section matching the page you\'re on.',
-    '<b>AI tools:</b> the floating 🤖 button bottom-right opens a menu of AI helpers plus all the settings (Mailgun, AI key, Email signature, Clear local cache).',
-    '<b>Data sync:</b> invoices, clients, deals, referrers, referrals, and user profiles all live in Supabase and sync across devices. Tasks, calendar, notifications, and the activity feed live in localStorage (per device).'
-  ]);
+  var SEC_OVERVIEW =
+    wf(620, 220,
+      box(0,0,140,220,'#142238','rgba(255,255,255,.05)') +
+      txt(15,22,'GOOD LIQUID',9,'#00e5c0') +
+      txt(15,40,'• Dashboard',11,'#9aa7bd') +
+      txt(15,58,'• Clients',11,'#9aa7bd') +
+      txt(15,76,'• Pipeline',11,'#9aa7bd') +
+      txt(15,94,'• Invoices',11,'#9aa7bd') +
+      txt(15,112,'• Compliance',11,'#9aa7bd') +
+      txt(15,130,'• Production',11,'#9aa7bd') +
+      txt(15,148,'• Reports',11,'#9aa7bd') +
+      box(0,158,140,62,'#1a3c30','rgba(0,229,192,.2)') +
+      txt(15,174,'── AI ──',9,'#00e5c0') +
+      txt(15,192,'💬 AI Chat',11,'#00e5c0') +
+      txt(15,210,'🤖 AI Tools',11,'#00e5c0') +
+      box(155,10,450,200,'#0d1e35','rgba(255,255,255,.05)') +
+      txt(170,30,'GOOD LIQUID BEV CO  ·  CRM',13,'#fff') +
+      box(170,46,130,36,'#1a2c48','rgba(0,229,192,.15)') + txt(180,64,'Ctrl+K',11,'#00e5c0') + txt(180,78,'Quick search',9,'#9aa7bd') +
+      box(310,46,130,36,'#1a2c48','rgba(107,159,255,.15)') + txt(320,64,'?',11,'#6b9fff') + txt(320,78,'Help panel',9,'#9aa7bd') +
+      box(450,46,145,36,'#1a2c48','rgba(245,200,66,.15)') + txt(460,64,'🤖 AI Tools FAB',11,'#f5c842') + txt(460,78,'Bottom-right',9,'#9aa7bd') +
+      txt(170,110,'All data syncs across devices via Supabase',10,'#9aa7bd') +
+      txt(170,128,'Tasks · Calendar · Activity — per device (localStorage)',10,'#9aa7bd') +
+      tag(141,170,1) + tag(310,46,2) + tag(450,46,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>(1) AI section in the sidebar</b> — click <b>💬 AI Chat</b> for the full-page conversational assistant or <b>🤖 AI Tools</b> for the categorised panel with 30+ tools across 6 categories (Invoicing, Clients, Pipeline, Compliance, Production, Marketing).',
+      '<b>(2) Quick search (Ctrl+K)</b> — jump to any invoice, client, deal, or user by name from anywhere in the app.',
+      '<b>(3) Help panel (?)</b> — press ? any time or click ❓ Help in the topbar. Opens to the section matching the page you\'re on.',
+      '<b>Data sync:</b> invoices, clients, deals, referrers, referrals, and user profiles all live in Supabase and sync across devices. Tasks, calendar, notifications, and the activity feed live in localStorage (per device).'
+    ]);
 
   var SEC_DASHBOARD = MOCK_DASHBOARD +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
@@ -5051,7 +5404,52 @@
       '<b>(3) Revenue by service chart</b> — bar chart split by Canning / R&D / Bottling / Consulting. Mixed-service invoices split per line item.',
       '<b>(4) Recent activity feed</b> — last few CRM actions; click to jump to the related screen.',
       '<b>(5) System Health widget</b> (admin only) — ✓ or ✗ for Supabase Auth, Mailgun key, AI key, audit_log table, client-docs bucket. Each ✗ has a one-click fix button.'
+    ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">📊 OPEN PIPELINE WIDGET (NEW)</h4>' +
+    wf(400, 140,
+      box(0,0,400,140,'#142238','rgba(255,255,255,.05)') +
+      txt(20,24,'OPEN PIPELINE',10,'#9aa7bd') +
+      txt(200,56,'$500K',22,'#00e5c0','middle') +
+      txt(200,76,'raw value across 8 open deals',9,'#9aa7bd','middle') +
+      txt(200,98,'Weighted: $142K',13,'#f5c842','middle') +
+      txt(200,114,'at default stage probabilities',9,'#9aa7bd','middle') +
+      box(20,122,80,12,'rgba(107,159,255,.4)','none') + txt(20,138,'Prospecting',8,'#9aa7bd') +
+      box(108,122,60,12,'rgba(245,200,66,.4)','none') + txt(108,138,'Proposal',8,'#9aa7bd') +
+      box(176,122,40,12,'rgba(231,76,60,.4)','none') + txt(176,138,'Negotiation',8,'#9aa7bd') +
+      box(224,122,30,12,'rgba(95,207,158,.4)','none') + txt(224,138,'Closed',8,'#9aa7bd') +
+      tag(130,56,1) + tag(130,98,2)
+    ) +
+    bullets([
+      '<b>(1) Raw pipeline value</b> — the sum of all deal values for every open deal (Prospecting + Proposal + Negotiation). No probability weighting applied.',
+      '<b>(2) Weighted pipeline value</b> — each deal\'s value multiplied by its stage probability percentage, then summed. Gives a more conservative revenue forecast.',
+      '<b>Stage probability defaults</b>: Prospecting 20%, Proposal 50%, Negotiation 75%, Closed Won 100%. You can override the probability on individual deals in the deal detail modal.',
+      '<b>Stage bars</b> — the colour bars below the number show the proportion of pipeline value sitting in each stage at a glance.'
     ]);
+
+  var SEC_DAILY_DIGEST =
+    wf(620, 240,
+      box(0,0,620,240,'#0a1628','rgba(255,255,255,.05)') +
+      box(0,0,620,40,'#142238','rgba(0,229,192,.3)') +
+      txt(20,26,'📨 Good Liquid Daily Digest  ·  Fri, May 29 2026  ·  7:00 AM',11,'#00e5c0') +
+      box(20,54,130,64,'#1a2c48','rgba(95,207,158,.2)') + txt(30,72,'COLLECTED (24h)',8,'#9aa7bd') + txt(30,96,'$3,125',14,'#5fcf9e') + txt(30,112,'1 payment',8,'#9aa7bd') +
+      box(160,54,130,64,'#1a2c48','rgba(245,200,66,.2)') + txt(170,72,'NEW INVOICES',8,'#9aa7bd') + txt(170,96,'2',14,'#f5c842') + txt(170,112,'$6,820 total',8,'#9aa7bd') +
+      box(300,54,130,64,'#1a2c48','rgba(196,181,253,.2)') + txt(310,72,'OPEN REQUESTS',8,'#9aa7bd') + txt(310,96,'3',14,'#c4b5fd') + txt(310,112,'1 new today',8,'#9aa7bd') +
+      box(440,54,160,64,'#1a2c48','rgba(231,76,60,.2)') + txt(450,72,'A/R OUTSTANDING',8,'#9aa7bd') + txt(450,96,'$14.2K',14,'#e74c3c') + txt(450,112,'$5K overdue',8,'#9aa7bd') +
+      box(20,132,580,22,'#142238','rgba(255,255,255,.05)') + txt(30,148,'💰 Payments received (1)',10,'#5fcf9e') +
+      box(20,162,580,22,'#142238','rgba(255,255,255,.05)') + txt(30,178,'🧾 New invoices (2)',10,'#f5c842') +
+      box(20,192,580,22,'#142238','rgba(255,255,255,.05)') + txt(30,208,'📩 Customer requests (3)',10,'#c4b5fd') +
+      box(20,222,580,14,'#142238','rgba(255,255,255,.05)') + txt(30,233,'🏭 Production stage changes',10,'#9aa7bd') +
+      tag(20,54,1) + tag(160,54,2) + tag(300,54,3) + tag(440,54,4)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+    '<b>What it is</b>: a single morning email that summarizes the past 24 hours of CRM activity so you start the day knowing where things stand without opening the app.',
+    '<b>Schedule</b>: fires automatically at <b>7:00 AM ET / 11:00 UTC</b> via pg_cron + the deployed <code>daily-digest</code> Edge Function. If nothing happened in the last 24 hours, the email is suppressed (no daily "nothing happened" spam).',
+    '<b>Recipients</b>: every <code>profiles</code> row where <code>role</code> is <code>admin</code> or <code>staff</code> AND <code>notify_daily_digest = true</code> (the column is default-true). To opt a staff user out, open <b>🔑 Users & permissions</b> → click their row → uncheck "📨 Send Daily Digest email at 7am" in the purple <b>NOTIFICATIONS</b> panel.',
+    '<b>What\'s in it</b>: 4 KPI tiles up top — Collected (24h), New invoices, Open customer requests, A/R outstanding (with overdue $). Then expandable sections for: payments received, new invoices, customer requests, production-run stage changes, new clients.',
+    '<b>📨 Send digest button</b> (admin top-right) — bypasses the cron schedule and fires the digest right now. Useful for testing after a big day or before a board meeting. Shows the recipient/sent/failed counts in an alert.',
+    '<b>Audit trail</b>: every send (manual or scheduled) inserts a <code>daily_digest_sent</code> row into <code>audit_log</code> with full counts, so you can verify the morning email actually went out.'
+  ]);
 
   var SEC_INVOICES = MOCK_INVOICES +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
@@ -5064,6 +5462,23 @@
       '<b>(6) Row actions</b> — 💳 opens the Stripe pay link for that invoice; 👁 opens the invoice detail.',
       '<b>(7) → Invoice button</b> — appears on quote-status rows. One-click conversion from "quote" to billable "pending".',
       '<b>On the invoice detail header</b> you now also have: ✏️ <b>Edit</b> (reopens the builder), 📧 <b>Send Invoice</b> (composer with To/Cc/Bcc + Stripe pay link), 📊 <b>Activity</b> (this invoice\'s sends only), 📅 <b>Schedule</b> (queue a future reminder). See the relevant sections in this guide.'
+    ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">💳 ACCOUNTING TOOLBAR (NEW)</h4>' +
+    bullets([
+      '<b>Where to find it</b>: a row of 5 buttons appears directly below the INVOICES header, above the search bar.',
+      '<b>💰 Revenue by Client</b> — horizontal bar chart of total paid revenue per client (top 12). Great for quarterly reviews.',
+      '<b>📈 Cash Flow</b> — bar chart of all pending + overdue invoices grouped by due month. Shows what\'s expected to come in and when.',
+      '<b>🔄 Recurring</b> — manage recurring invoice templates. Set a client, amount, frequency (weekly / monthly / quarterly / annually) and start date. Invoices are generated automatically each cycle. Pause or resume any template at any time.',
+      '<b>📝 Credit Memo</b> — issue a credit against a client\'s balance (return, discount, over-billing correction). Creates a negative-amount invoice with prefix CM-YYYY-XXXX, status paid, so it flows into the Statement of Account automatically.',
+      '<b>💸 Expenses</b> — log business expenses (vendor, amount, category, date, optional client tag). Categories include Ingredients, Packaging, Equipment, Labor, Shipping, Marketing, and more. This-month total shown at a glance.'
+    ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#f5c842">🧾 INVOICE DETAIL — ACCOUNTING ACTIONS (NEW)</h4>' +
+    bullets([
+      '<b>💵 Record Payment</b> — open any invoice → click Record Payment in the action row. Log partial or full payments with method (Check / Wire / ACH / Cash / Stripe / Other) and an optional reference / check number. Payment history is shown above the form. When the balance hits $0 the invoice auto-marks paid and you\'re offered a receipt email.',
+      '<b>🚫 Void</b> — permanently voids an invoice. You\'ll be prompted for a reason. Sets status to "voided" with a timestamp. Cannot be undone.',
+      '<b>📋 Collect</b> — only appears on past-due invoices. Schedules a 4-step automated email sequence: gentle reminder (day 3), firm reminder (day 14), urgent notice (day 30), final notice (day 45). Shows the client\'s email on file before confirming.',
+      '<b>⚠️ Late fee banner</b> — a red banner automatically appears at the top of any overdue invoice showing the number of days overdue and the suggested late fee (1.5%/month). Click <b>Add to Invoice</b> to append it as a line item.',
+      '<b>⏰ Quote expired banner</b> — a yellow banner appears on any quote that is 30+ days old, prompting you to send an updated quote or convert to an invoice.'
     ]) +
     /* ── A/R aging + bulk + auto-overdue (PR 1 of 2026-05-20 enhancement series) ── */
     '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#f5c842">📋 A/R AGING REPORT (NEW)</h4>' +
@@ -5102,23 +5517,56 @@
       '<b>Select all</b>: tick the header checkbox to select every visible (filtered) row at once.',
       '<b>Confirm dialog</b> warns "use only for offline payments — won\'t charge Stripe." Stripe-paid invoices flip automatically via the webhook; this button is for cash/check/wire receipts you book manually.',
       '<b>What it sets</b>: <code>status=paid</code>, <code>paid_at=now()</code>, <code>paid_method=manual</code>. The dashboard and A/R aging report update instantly.'
+    ]) +
+    /* ── SMS overdue reminders ── */
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#f5c842">📱 SMS OVERDUE REMINDERS (NEW)</h4>' +
+    bullets([
+      '<b>Where to find it</b>: when an invoice is past due, a yellow <b>📱</b> button appears on its row (next to <b>Paid</b> / <b>👁</b> / <b>🗑</b>). Click it to text the client a short reminder.',
+      '<b>What gets sent</b>: a single SMS reading "Good Liquid Bev Co: friendly reminder — invoice GL-XXXX for $X was due [date]. Pay online: [link] — Reply STOP to opt out." Routes through the deployed <code>send-sms</code> Edge Function so the Twilio credentials never touch the browser.',
+      '<b>Opt-in gating</b> (legally required): the button only fires for clients who have explicitly opted in. Open the <b>✏️ Edit Client</b> modal → check <b>📱 SMS overdue reminders</b> under MAIN POINT OF CONTACT before sending. Without that flag, clicking 📱 shows an alert and does nothing.',
+      '<b>Phone normalization</b>: bare 10-digit US numbers get auto-prefixed with <code>+1</code>; any other format must be valid E.164 (e.g. <code>+44…</code>) or the send is refused.',
+      '<b>Logging</b>: every SMS attempt (success or failure) inserts a <code>followup_log</code> row with <code>channel=\'sms\'</code> so the invoice\'s follow-up history shows email + SMS interleaved. Also logged through the audit trail as <code>invoice_sms_reminder</code>.'
     ]);
 
   var SEC_NEWINV = MOCK_NEWINV +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
       '<b>(1) Client / date / invoice #</b> — client dropdown is required; date defaults to today; invoice # auto-generates.',
-      '<b>(2) Add-line buttons</b> — Canning, Bottling, R&D / IP, Production Hours, Custom. Canning & Bottling auto-tier their per-unit rate from Supabase canning_rates / bottling_rates.',
+      '<b>(2) Add-line buttons</b> — Canning, Bottling, R&D / IP, Production Hours, Custom. Canning & Bottling auto-tier their per-unit rate from Supabase canning_rates / bottling_rates. <b>Per-client overrides win</b> — if a client has a negotiated rate in <code>client_rate_overrides</code>, the builder uses that flat rate instead of the public tier ladder (a yellow "💵 N custom rates applied" badge appears next to "NEW INVOICE" so staff can see they\'re in effect).',
       '<b>(3) Line rows</b> — change qty inline; per-case / per-unit price + totals update live. Every line type has a <b>Description (optional)</b> input — type free-form notes like "Mango flavor" or "pilot batch" and they\'re appended to the saved line with an em-dash. The ↺ arrow under a Canning/Bottling price resets it to the catalog rate. The X on the right removes a line.',
       '<b>(4) Discount + total</b> — enter a discount percent; subtotal and grand total recompute live.',
       '<b>(5) Save buttons</b> — 💾 Save Invoice (status=pending), 📤 <b>Save & Send</b> (saves then opens the Send Invoice composer pre-filled), 💾 Save as Quote (status=quote), 📄 Save & Export PDF (real invoice PDF), 📋 Export as Quote (PDF only with 30-day validity, no DB save).',
-      '<b>Edit existing invoices</b>: open any saved invoice → click ✏️ <b>Edit</b> on the header. The builder reopens with the client / date / lines / discount / addons / notes all pre-filled. Hitting Save updates the same Supabase row (no duplicate). Status is preserved — editing a paid invoice doesn\'t flip it back to pending.'
+      '<b>Edit existing invoices</b>: open any saved invoice → click ✏️ <b>Edit</b> on the header. The builder reopens with the client / date / lines / discount / addons / notes all pre-filled. Hitting Save updates the same Supabase row (no duplicate). Status is preserved — editing a paid invoice doesn\'t flip it back to pending.',
+      '<b>PO Number (optional)</b> — a "PO Number" field appears at the top of the builder. Enter the customer\'s purchase order number if they require it on the invoice. Saved to the invoice record and visible on the invoice detail.'
+    ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#f5c842">⚠️ CREDIT LIMIT WARNING (NEW)</h4>' +
+    bullets([
+      '<b>What it does</b>: if a client has a credit limit set, a yellow warning banner appears inside the builder when their outstanding balance (pending + overdue invoices) reaches 80% or more of the limit.',
+      '<b>Setting a credit limit</b>: go to <b>Clients</b> → open the client → <b>✏️ Edit Client</b>. The credit limit field stores a dollar amount in the client record.',
+      '<b>Example</b>: client has a $5,000 limit and $4,200 outstanding → builder shows "⚠️ Credit limit alert: [Client] has $4,200 outstanding of $5,000 limit (84%)."'
     ]);
 
   // ────────────────────────────────────────────────────────────
   // Send Invoice composer
   // ────────────────────────────────────────────────────────────
-  var SEC_SEND_INVOICE = bullets([
+  var SEC_SEND_INVOICE =
+    wf(620, 250,
+      box(0,0,620,250,'#0a1628','rgba(255,255,255,.05)') +
+      box(0,0,620,36,'#142238','rgba(255,255,255,.08)') +
+      txt(20,23,'📧 Send Invoice  ·  GL-1004',13,'#fff') +
+      txt(580,23,'✕',12,'#9aa7bd','end') +
+      txt(20,56,'To',10,'#9aa7bd') + box(50,44,550,22,'#1a2c48','rgba(255,255,255,.1)') + txt(58,59,'brandon@client.com',10,'#cfd9e6') +
+      txt(20,86,'Cc',10,'#9aa7bd') + box(50,74,550,22,'#1a2c48','rgba(255,255,255,.1)') + txt(58,89,'ap@client.com',10,'#9aa7bd') +
+      txt(20,116,'Subject',10,'#9aa7bd') + box(70,104,530,22,'#1a2c48','rgba(255,255,255,.1)') + txt(78,119,'Invoice GL-1004 from Good Liquid Bev Co — $3,125.00',10,'#cfd9e6') +
+      txt(20,146,'Message',10,'#9aa7bd') + box(70,134,530,52,'#1a2c48','rgba(255,255,255,.1)') + txt(78,152,'Hi Brandon, please find your invoice attached…',10,'#cfd9e6') +
+      box(20,200,240,22,'#142238','rgba(245,200,66,.25)') + txt(30,215,'📝 Apply a template…',10,'#f5c842') +
+      box(270,200,160,22,'#1a2c48','rgba(0,229,192,.2)') + txt(280,215,'🔗 Stripe pay link ✓',10,'#00e5c0') +
+      box(440,200,80,22,'rgba(0,229,192,.1)','rgba(0,229,192,.4)') + txt(480,215,'🔗 Get link',10,'#00e5c0','middle') +
+      box(440,228,160,18,'#1a6fff','none') + txt(520,240,'📤 Send via Mailgun',10,'#fff','middle') +
+      tag(50,44,1) + tag(50,74,2) + tag(70,104,3) + tag(270,200,4) + tag(440,228,5)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
     '<b>Where to find it</b>: open any saved invoice → click the blue <b>📧 Send Invoice</b> button on the header. Also fires automatically when you click <b>📤 Save & Send</b> in the builder.',
     '<b>To / Cc / Bcc</b> — all three accept comma-separated addresses (e.g. <code>brandon@client.com, ap@client.com</code>). To is pre-filled with the client\'s primary email; Cc is pre-filled with every entry from the Additional Emails section on the client record.',
     '<b>📝 Apply a template…</b> — drop a saved template into the Subject + Message with one click. Variables like <code>{{client_name}} {{invoice_number}} {{amount}} {{due_date}}</code> are filled in automatically. <b>⚙ Manage</b> opens the template editor.',
@@ -5178,7 +5626,27 @@
   // ────────────────────────────────────────────────────────────
   // Email templates
   // ────────────────────────────────────────────────────────────
-  var SEC_EMAIL_TEMPLATES = bullets([
+  var SEC_EMAIL_TEMPLATES =
+    wf(620, 200,
+      box(0,0,200,200,'#142238','rgba(255,255,255,.05)') +
+      txt(15,22,'TEMPLATES',10,'#00e5c0') +
+      box(10,32,180,22,'#1a3c30','rgba(0,229,192,.3)') + txt(20,47,'Invoice send',10,'#fff') +
+      box(10,58,180,22,'#1a2c48','rgba(255,255,255,.05)') + txt(20,73,'Follow-up — gentle',10,'#9aa7bd') +
+      box(10,84,180,22,'#1a2c48','rgba(255,255,255,.05)') + txt(20,99,'Follow-up — firm',10,'#9aa7bd') +
+      box(10,110,180,22,'#1a2c48','rgba(255,255,255,.05)') + txt(20,125,'Onboarding welcome',10,'#9aa7bd') +
+      box(10,170,180,22,'rgba(0,229,192,.1)','rgba(0,229,192,.3)') + txt(100,185,'+ New template',10,'#00e5c0','middle') +
+      box(205,10,405,180,'#0d1e35','rgba(255,255,255,.05)') +
+      txt(215,26,'PREVIEW  ·  Invoice send',10,'#00e5c0') +
+      txt(215,46,'Subject:',9,'#9aa7bd') + txt(275,46,'Invoice {{invoice_number}} from Good Liquid Bev Co',10,'#cfd9e6') +
+      txt(215,68,'Body:',9,'#9aa7bd') +
+      txt(215,84,'Hi {{client_name}}, please find your invoice for',10,'#9aa7bd') +
+      txt(215,100,'{{amount}} attached. Payment is due {{due_date}}.',10,'#9aa7bd') +
+      txt(215,116,'— {{my_name}}  ·  {{my_phone}}',10,'#9aa7bd') +
+      box(490,164,110,22,'#1a6fff','none') + txt(545,179,'Apply template',9,'#fff','middle') +
+      tag(10,32,1) + tag(490,164,2)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
     '<b>What it is</b>: a library of reusable email subjects + bodies. Apply one to any Send Invoice or AI Follow-Up composer with one click — variables fill in automatically.',
     '<b>Where to open the manager</b>: in any composer, click <b>📝 Apply a template…</b> → ⚙ <b>Manage</b>. Or open the browser console and run <code>glOpenEmailTemplates()</code>.',
     '<b>Starter templates seeded for you</b>: <i>Invoice send</i>, <i>Follow-up — gentle</i>, <i>Follow-up — firm</i>. You can add / edit / delete or mark inactive.',
@@ -5190,7 +5658,25 @@
   // ────────────────────────────────────────────────────────────
   // Schedule follow-ups
   // ────────────────────────────────────────────────────────────
-  var SEC_EMAIL_SCHEDULE = bullets([
+  var SEC_EMAIL_SCHEDULE =
+    wf(620, 190,
+      box(0,0,620,190,'#142238','rgba(255,255,255,.05)') +
+      txt(20,24,'📅 SCHEDULED FOLLOW-UPS',12,'#fff') +
+      box(20,36,580,24,'#0d1e35','rgba(255,255,255,.05)') +
+      txt(30,52,'Invoice',10,'#9aa7bd') + txt(160,52,'To',10,'#9aa7bd') + txt(280,52,'Send at',10,'#9aa7bd') + txt(400,52,'Subject',10,'#9aa7bd') + txt(530,52,'Status',10,'#9aa7bd') +
+      box(20,64,580,26,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(30,81,'GL-1004',10,'#00e5c0') + txt(160,81,'brandon@client.com',10,'#cfd9e6') + txt(280,81,'Jun 5  9:00 AM',10,'#cfd9e6') + txt(400,81,'Follow-up on GL-1004',10,'#cfd9e6') +
+      box(530,68,68,18,'#1a3c30','rgba(0,229,192,.4)') + txt(564,80,'pending',9,'#00e5c0','middle') +
+      box(20,96,580,26,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(30,113,'GL-1002',10,'#00e5c0') + txt(160,113,'ap@brand.com',10,'#cfd9e6') + txt(280,113,'Jun 2  9:00 AM',10,'#cfd9e6') + txt(400,113,'Friendly reminder GL-1002',10,'#cfd9e6') +
+      box(530,100,55,18,'#1a3c30','rgba(95,207,158,.4)') + txt(557,112,'sent',9,'#5fcf9e','middle') +
+      box(20,128,580,26,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(30,145,'GL-1001',10,'#00e5c0') + txt(160,145,'info@acme.com',10,'#cfd9e6') + txt(280,145,'May 28  9:00 AM',10,'#cfd9e6') + txt(400,145,'Invoice still outstanding',10,'#9aa7bd') +
+      box(530,132,55,18,'#3d1a1a','rgba(231,76,60,.4)') + txt(557,144,'failed',9,'#e74c3c','middle') +
+      tag(530,68,1) + tag(530,100,2) + tag(530,132,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
     '<b>What it is</b>: queue a follow-up email to send automatically on a future date / time. A Supabase Edge Function runs every 15 minutes and dispatches anything due.',
     '<b>How to schedule</b>: open any saved invoice → click the yellow <b>📅 Schedule</b> button on the header. A modal opens with To (pre-filled with client email), Send At (defaults to T+7 days, 9 AM), Subject, and Message (defaults to a reminder template).',
     '<b>What happens next</b>: a row is inserted into the <code>email_schedule</code> table with status=pending. The cron job picks it up at the scheduled time, sends via Mailgun, marks it as sent, and logs an entry in Email Activity.',
@@ -5201,7 +5687,28 @@
   // ────────────────────────────────────────────────────────────
   // Email Activity
   // ────────────────────────────────────────────────────────────
-  var SEC_EMAIL_ACTIVITY = bullets([
+  var SEC_EMAIL_ACTIVITY =
+    wf(620, 200,
+      box(0,0,620,200,'#142238','rgba(255,255,255,.05)') +
+      txt(20,24,'📊 EMAIL ACTIVITY',12,'#fff') + txt(500,24,'All invoices',10,'#9aa7bd') +
+      box(20,36,580,24,'#0d1e35','rgba(255,255,255,.05)') +
+      txt(30,52,'To',10,'#9aa7bd') + txt(180,52,'Subject',10,'#9aa7bd') + txt(360,52,'Sent',10,'#9aa7bd') + txt(430,52,'Status',10,'#9aa7bd') + txt(530,52,'Opens',10,'#9aa7bd') +
+      box(20,64,580,26,'#1a2c48','rgba(95,207,158,.05)') +
+      txt(30,81,'brandon@client.com',10,'#cfd9e6') + txt(180,81,'Invoice GL-1004…',10,'#cfd9e6') + txt(360,81,'May 29 10:02',10,'#9aa7bd') +
+      box(430,68,58,18,'#1a3c30','rgba(0,229,192,.4)') + txt(459,80,'clicked',9,'#00e5c0','middle') + txt(530,81,'3',10,'#5fcf9e') +
+      box(20,96,580,26,'#1a2c48','rgba(107,159,255,.05)') +
+      txt(30,113,'ap@brand.com',10,'#cfd9e6') + txt(180,113,'Follow-up GL-1002…',10,'#cfd9e6') + txt(360,113,'May 28 09:15',10,'#9aa7bd') +
+      box(430,100,58,18,'#1a2c48','rgba(107,159,255,.4)') + txt(459,112,'opened',9,'#6b9fff','middle') + txt(530,113,'1',10,'#6b9fff') +
+      box(20,128,580,26,'#1a2c48','rgba(245,200,66,.05)') +
+      txt(30,145,'info@acme.com',10,'#cfd9e6') + txt(180,145,'Invoice GL-1001…',10,'#cfd9e6') + txt(360,145,'May 27 14:30',10,'#9aa7bd') +
+      box(430,132,72,18,'#1a2c48','rgba(245,200,66,.4)') + txt(466,144,'delivered',9,'#f5c842','middle') + txt(530,145,'0',10,'#9aa7bd') +
+      box(20,160,580,26,'#1a2c48','rgba(231,76,60,.05)') +
+      txt(30,177,'noreply@old.co',10,'#9aa7bd') + txt(180,177,'Invoice GL-1000…',10,'#9aa7bd') + txt(360,177,'May 26 11:00',10,'#9aa7bd') +
+      box(430,164,58,18,'#3d1a1a','rgba(231,76,60,.4)') + txt(459,176,'bounced',9,'#e74c3c','middle') + txt(530,177,'—',10,'#9aa7bd') +
+      tag(430,68,1) + tag(430,100,2) + tag(430,132,3) + tag(430,164,4)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
     '<b>What it is</b>: a list of every email sent from the CRM with real-time status (sent → delivered → opened → clicked → bounced).',
     '<b>Two ways to open it</b>: <ol style="margin:4px 0 4px 18px;padding:0"><li>From the <b>Invoices</b> list page header: <b>📊 Activity</b> (shows every send across every invoice).</li><li>From a single invoice\'s detail header: <b>📊 Activity</b> (shows only that invoice\'s sends).</li></ol>',
     '<b>Status meanings</b>: <code>sent</code> (Mailgun accepted) → <code>delivered</code> (recipient mail server accepted) → <code>opened</code> (recipient opened the email) → <code>clicked</code> (recipient clicked a link in the email). <code>bounced</code> = permanent delivery failure; <code>failed</code> = Mailgun rejected the request.',
@@ -5213,7 +5720,25 @@
   // ────────────────────────────────────────────────────────────
   // Stripe payments
   // ────────────────────────────────────────────────────────────
-  var SEC_STRIPE_PAY = bullets([
+  var SEC_STRIPE_PAY =
+    wf(620, 200,
+      box(0,0,620,200,'#0a1628','rgba(255,255,255,.05)') +
+      txt(310,26,'INVOICE GL-1004  ·  $3,125.00',13,'#fff','middle') +
+      txt(310,44,'Good Liquid Bev Co  →  Lotus Nutra',10,'#9aa7bd','middle') +
+      box(60,60,220,100,'#1a2c48','rgba(107,159,255,.25)') +
+      txt(170,88,'💳 Pay with Card',13,'#6b9fff','middle') +
+      txt(170,108,'$3,218.75 (incl. 3% surcharge)',9,'#9aa7bd','middle') +
+      txt(170,128,'Visa / Mastercard / Amex',9,'#9aa7bd','middle') +
+      box(340,60,220,100,'#1a2c48','rgba(0,229,192,.25)') +
+      txt(450,88,'🏦 Pay with ACH',13,'#00e5c0','middle') +
+      txt(450,108,'$3,125.00 (no surcharge)',9,'#9aa7bd','middle') +
+      txt(450,128,'US bank account (2-5 days)',9,'#9aa7bd','middle') +
+      box(200,172,220,22,'rgba(0,229,192,.15)','rgba(0,229,192,.3)') +
+      txt(310,187,'💳 Surcharge toggle',10,'#00e5c0','middle') +
+      tag(60,60,1) + tag(340,60,2) + tag(200,172,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
     '<b>How customers pay</b>: every invoice email includes a green <b>💳 View Invoice & Pay Online</b> CTA button. Clicking it opens the customer portal page. From there the customer sees <b>💳 Pay with Card</b> (3% surcharge added as a separate line on the Stripe receipt) and <b>🏦 Pay with ACH</b> (0% surcharge).',
     '<b>Card vs ACH</b>: the surcharge only applies to card payments (per Visa / MC rules — that\'s why ACH is shown separately). The customer sees the surcharge broken out on Stripe\'s checkout page, so it\'s never a surprise charge.',
     '<b>From the admin side</b>: open any unpaid invoice → click <b>💳 Charge via Stripe</b> on the detail header. A picker lets you choose card / ACH / both and per-invoice surcharge override.',
@@ -5225,17 +5750,226 @@
   // ────────────────────────────────────────────────────────────
   // Compliance
   // ────────────────────────────────────────────────────────────
-  var SEC_COMPLIANCE = bullets([
-    '<b>What it is</b>: a 21 CFR Part 117 + Part 11–compliant logging system built into the CRM. Three database tables back it: <code>compliance_tasks</code>, <code>compliance_records</code>, <code>hold_tags</code>.',
-    '<b>Where to find it</b>: left sidebar → 📋 <b>Compliance Tasks</b> (master daily checklist) · 🚫 <b>Hold Tags</b> · 🧼 <b>CIP / Sanitation Log</b>.',
-    '<b>Header buttons on the Compliance Tasks page</b>: 📤 <b>Export</b> / 🚨 <b>SMS alerts</b> / 🎲 <b>Mock recall</b> / 🪟 <b>Glass break</b> / 🗄 <b>Archive old</b> / 📄 <b>Documents</b> / 🔒 <b>Inspector link</b> (generate read-only token URL) / 🥜 <b>Allergen decl</b> (per-client allergen statement) / 📥 <b>Import training CSV</b> / 📧 <b>Send digest</b> (daily compliance summary via Mailgun) / 📊 <b>Monthly report</b> (printable PDF of last 30d) / ⚙️ <b>Applicability</b> / 🎯 <b>CCP Limits</b> / 🆕 <b>New Hold Tag</b>.',
-    '<b>Multi-PCQI signing</b>: any signed compliance record gets a "✍️ Add second PCQI signature" button on its modal. Captures typed signature + timestamp for dual-PCQI critical records.',
-    '<b>Inspector mode</b>: click <b>🔒 Inspector link</b> → enter the inspector\'s name + agency + token validity hours (default 8). You get a copyable URL. Open that URL in any browser to enter Inspector Mode: a red banner appears, every input/button is disabled, the inspector can only view + print. Tokens auto-expire.',
-    '<b>Allergen declarations</b>: click <b>🥜 Allergen decl</b> on the Compliance page (or on a Client\'s detail panel — pre-fills the client_id). Fill the 9 major US allergens + custom claims. Save + Share generates a public URL the customer can bookmark.',
-    '<b>Multi-facility</b>: a 🏭 chip top-right shows the active facility (default GL-PALMETTO). Every new compliance record / task / hold tag is auto-tagged with that facility. Click the chip to switch facilities (only relevant if you spin up a second location).',
-    '<b>Camera-based scanning</b>: <b>🥫 Scan Lot QR</b> opens the device camera and decodes lot barcodes (native BarcodeDetector — Chrome/Edge). <b>📷 Scan COA</b> appears on the receiving form → snap a Certificate of Analysis → Claude Vision parses lot/vendor/dates/results → fields pre-fill.',
-    '<b>AI root-cause suggester</b>: on any defect / NCR modal, click 🤖 <b>Suggest root cause</b> → sends defect type + description to Claude → returns root cause + corrective + preventive actions you can copy in.'
-  ]);
+  var SEC_COMPLIANCE =
+    wf(620, 244,
+      box(0,0,620,244,'#0a1628','rgba(0,0,0,0)') +
+      box(0,0,620,32,'#0d1e35','rgba(0,229,192,.12)') +
+      txt(14,14,'📋 COMPLIANCE TASKS',11,'#00e5c0') +
+      txt(14,28,'Sidebar → Compliance Tasks · 3 tabs: Today · Open/Unsigned · History',9,'#9aa7bd') +
+      box(0,34,620,20,'#111e34','rgba(255,255,255,.05)') +
+      txt(14,47,'TASK',8,'#7a8ba0') + txt(300,47,'FORM CODE',8,'#7a8ba0') + txt(430,47,'STATUS',8,'#7a8ba0') +
+      box(0,56,620,26,'#0f1b30','rgba(95,207,158,.05)') +
+      txt(14,73,'📦 Receiving inspection — LOT-2026-0628-CH-001',10,'#cfd9e6') + txt(300,73,'GMP-REC-001',9,'#f5c842') +
+      box(430,60,80,18,'#1a3c30','rgba(0,229,192,.4)') + txt(470,72,'✓ Done',9,'#00e5c0','middle') + tag(590,69,1) +
+      box(0,84,620,26,'#111e34','rgba(245,200,66,.05)') +
+      txt(14,101,'🧫 Fermentation pH check — Run #14',10,'#cfd9e6') + txt(300,101,'FSP-PC-005',9,'#f5c842') +
+      box(430,88,80,18,'#3d2f0a','rgba(245,200,66,.4)') + txt(470,100,'⏳ Due now',9,'#f5c842','middle') + tag(590,97,2) +
+      box(0,112,620,26,'#0f1b30','rgba(231,76,60,.05)') +
+      txt(14,129,'🧬 Listeria swab — Zone 1 food-contact',10,'#cfd9e6') + txt(300,129,'FSP-SAN-001',9,'#f5c842') +
+      box(430,116,80,18,'#3d1a1a','rgba(231,76,60,.4)') + txt(470,128,'Overdue',9,'#e74c3c','middle') + tag(590,125,3) +
+      box(0,140,620,26,'#111e34','rgba(255,255,255,.03)') +
+      txt(14,157,'🌡 HTST pasteurization log — Run #14',10,'#cfd9e6') + txt(300,157,'FSP-PC-001',9,'#f5c842') +
+      box(430,144,80,18,'#1a3c30','rgba(0,229,192,.4)') + txt(470,156,'✓ Done',9,'#00e5c0','middle') +
+      box(0,168,620,26,'#111e34','rgba(255,255,255,.02)') +
+      txt(14,185,'🏷 Label verification — Run #14',10,'#cfd9e6') + txt(300,185,'GMP-LAB-001',9,'#f5c842') +
+      box(430,172,80,18,'#1a3c30','rgba(0,229,192,.4)') + txt(470,184,'✓ Done',9,'#00e5c0','middle') +
+      box(0,196,620,48,'#0d1e35','rgba(196,181,253,.08)') +
+      txt(14,210,'HEADER ACTIONS:',8,'#c4b5fd') +
+      txt(14,226,'📤 Export  🎲 Mock recall  🪟 Glass break  🔒 Inspector link  🥜 Allergen decl  📊 Monthly report  🎯 CCP Limits  🆕 New Hold Tag',8,'#9aa7bd')
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin:4px 0 8px">Callouts: ① Completed task — record stored in Supabase with PCQI timestamp · ② Due now — ▶ Start button opens the form · ③ Overdue — turns red after its window passes.</div>' +
+    bullets([
+      '<b>What it is</b>: a 21 CFR Part 117 + Part 11-compliant logging system built into the CRM. Three Supabase tables back it: <code>compliance_tasks</code> (the daily schedule), <code>compliance_records</code> (all FDA form entries, append-only), <code>hold_tags</code> (product holds that block shipping).',
+      '<b>Where to find it</b>: left sidebar → 📋 <b>Compliance Tasks</b> · 🚫 <b>Hold Tags</b> · 🧼 <b>CIP / Sanitation Log</b> · 📊 <b>Defects / NCRs</b>.',
+      '<b>Three tabs on the Compliance page</b>: <b>Today</b> — tasks queued for today based on your production schedule, each with a ▶ Start button that opens the correct form. <b>Open / Unsigned</b> — saved drafts and complete records waiting for PCQI sign-off. <b>History</b> — all signed records, filterable by form code.',
+      '<b>Auto-generated tasks</b>: creating a Production Run automatically queues the right forms: Pre-Op Sanitation, Label Verification, the correct CCP logs (HTST, hot fill, UV, fermentation, can seam — based on process type), post-run CIP, and Batch Record. A Receiving task is queued for any run that involves an incoming delivery.',
+      '<b>Add manual task</b>: <b>+ Add manual task</b> button → pick any built form from the list to log a record not triggered by the schedule (spot-check receiving, walk-in delivery, unscheduled training, etc.).',
+      '<b>Header buttons</b>: 📤 Export · 🚨 SMS alerts · 🎲 Mock recall · 🪟 Glass break · 🗄 Archive old · 📄 Documents · 🔒 Inspector link · 🥜 Allergen decl · 📥 Import training CSV · 📧 Send digest · 📊 Monthly report · ⚙️ Applicability · 🎯 CCP Limits · 🆕 New Hold Tag.',
+      '<b>Inspector mode</b>: <b>🔒 Inspector link</b> → enter the inspector\'s name + agency + token hours → you get a copyable URL. In Inspector Mode the page shows a red banner and every input is disabled — the inspector can only view and print. Tokens auto-expire.',
+      '<b>Monthly PDF report</b>: <b>📊 Monthly report</b> generates a printable summary of all compliance records for the last 30 days — ready to go into an audit binder.',
+      '<b>Multi-PCQI signing</b>: any signed record gets a ✍️ <b>Add second PCQI signature</b> button. Captures typed name + timestamp for dual-sign critical records.',
+      '<b>Allergen declarations</b>: <b>🥜 Allergen decl</b> → pick a client → fill all 9 FASTER Act allergens + custom claims → Save + Share gives a public URL the client can bookmark.',
+      '<b>CCP Limits</b>: <b>🎯 CCP Limits</b> shows all Critical Control Point thresholds (HTST ≥ 165°F, hot fill ≥ 185°F, UV ≥ 40 mJ/cm², fermentation pH ≤ 4.6). Editing a limit requires PCQI sign-off and is logged to the audit trail.',
+      '<b>AI root-cause suggester</b>: on any Defect / NCR modal, click 🤖 <b>Suggest root cause</b> → sends defect type + description to Claude → returns root cause, corrective action, and preventive action you can copy in.',
+      '<b>Camera scanning</b>: 🥫 <b>Scan Lot QR</b> opens the device camera and decodes lot barcodes (native BarcodeDetector — Chrome / Edge). 📷 <b>Scan COA</b> on the receiving form snaps a Certificate of Analysis — Claude Vision auto-fills lot number, vendor, dates, and test results.',
+      '<b>Multi-facility</b>: a 🏭 chip top-right shows the active facility (default GL-PALMETTO). Every new record / task / hold tag is auto-tagged with that facility.'
+    ]) +
+
+    '<h4 style="margin:22px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">📦 GMP-REC-001 · RECEIVING INSPECTION &amp; COA REVIEW</h4>' +
+    wf(620, 370,
+      box(0,0,620,370,'#0a1628','rgba(0,0,0,0)') +
+      box(0,0,620,40,'#0d1e35','rgba(0,229,192,.14)') +
+      txt(14,16,'GMP-REC-001 · RECEIVING INSPECTION &amp; COA REVIEW',11,'#00e5c0') +
+      txt(14,32,'Required for every incoming delivery  ·  21 CFR 117.80',9,'#9aa7bd') +
+      txt(14,54,'FIELD',8,'#7a8ba0') + txt(240,54,'EXAMPLE VALUE',8,'#7a8ba0') + txt(490,54,'NOTES',8,'#7a8ba0') +
+      box(0,60,620,26,'#111e34','rgba(255,255,255,.03)') +
+      txt(14,77,'Supplier',9,'#9aa7bd') +
+      box(240,63,370,18,'#0d1e35','rgba(255,255,255,.12)') + txt(246,75,'Hop Valley Brewing Co.',9,'#cfd9e6') +
+      box(0,88,620,26,'#0f1b30','rgba(255,255,255,.02)') +
+      txt(14,105,'Ingredient / material',9,'#9aa7bd') +
+      box(240,91,370,18,'#0d1e35','rgba(255,255,255,.12)') + txt(246,103,'Cascade Hops (pellet)',9,'#cfd9e6') +
+      box(0,116,620,26,'#111e34','rgba(255,255,255,.03)') +
+      txt(14,133,'Lot number',9,'#9aa7bd') +
+      box(240,119,370,18,'#0d1e35','rgba(255,255,255,.12)') + txt(246,131,'LOT-2026-0628-CH-001',9,'#cfd9e6') +
+      box(0,144,620,26,'#0c201a','rgba(95,207,158,.08)') +
+      txt(14,161,'Expiration / best-by date',9,'#9aa7bd') +
+      box(240,147,180,18,'#0d1e35','rgba(255,255,255,.12)') + txt(246,159,'2027-03-15',9,'#cfd9e6') +
+      box(430,149,34,14,'#1a3c30','rgba(95,207,158,.5)') + txt(447,159,'NEW',7,'#5fcf9e','middle') +
+      tag(596,157,1) +
+      box(0,172,620,26,'#0f1b30','rgba(255,255,255,.02)') +
+      txt(14,189,'Quantity received',9,'#9aa7bd') +
+      box(240,175,370,18,'#0d1e35','rgba(255,255,255,.12)') + txt(246,187,'50 lbs',9,'#cfd9e6') +
+      box(0,200,620,26,'#0c201a','rgba(95,207,158,.08)') +
+      txt(14,217,'Temperature on receipt (°F)',9,'#9aa7bd') +
+      box(240,203,80,18,'#0d1e35','rgba(255,255,255,.12)') + txt(246,215,'38',9,'#cfd9e6') +
+      txt(328,215,'leave blank if ambient / dry goods',8,'#7a8ba0') +
+      box(430,205,34,14,'#1a3c30','rgba(95,207,158,.5)') + txt(447,215,'NEW',7,'#5fcf9e','middle') +
+      tag(596,213,2) +
+      box(0,228,620,26,'#0c201a','rgba(95,207,158,.08)') +
+      txt(14,245,'Temperature within acceptable range?',9,'#9aa7bd') +
+      box(240,231,28,18,'#1a3c30','rgba(95,207,158,.35)') + txt(254,244,'Y',9,'#5fcf9e','middle') +
+      box(270,231,28,18,'#0d1e35','rgba(255,255,255,.1)') + txt(284,244,'N',9,'#9aa7bd','middle') +
+      txt(306,245,'N → auto Hold Tag (same as quarantine)',8,'#ff8579') +
+      box(430,233,34,14,'#1a3c30','rgba(95,207,158,.5)') + txt(447,243,'NEW',7,'#5fcf9e','middle') +
+      box(0,256,620,26,'#0c201a','rgba(95,207,158,.08)') +
+      txt(14,273,'Storage location assigned',9,'#9aa7bd') +
+      box(240,259,370,18,'#0d1e35','rgba(255,255,255,.12)') + txt(246,271,'Walk-in cooler A2',9,'#cfd9e6') +
+      box(430,261,34,14,'#1a3c30','rgba(95,207,158,.5)') + txt(447,271,'NEW',7,'#5fcf9e','middle') +
+      tag(596,269,3) +
+      box(0,284,620,26,'#111e34','rgba(255,255,255,.03)') +
+      txt(14,301,'COA received?',9,'#9aa7bd') +
+      box(240,287,28,18,'#1a3c30','rgba(95,207,158,.35)') + txt(254,300,'Y',9,'#5fcf9e','middle') +
+      box(270,287,28,18,'#0d1e35','rgba(255,255,255,.1)') + txt(284,300,'N',9,'#9aa7bd','middle') +
+      txt(306,300,'also ask: COA lot matches received lot?',8,'#7a8ba0') +
+      box(0,312,620,26,'#0f1b30','rgba(255,255,255,.02)') +
+      txt(14,329,'Visual condition OK?',9,'#9aa7bd') +
+      box(240,315,28,18,'#1a3c30','rgba(95,207,158,.35)') + txt(254,328,'Y',9,'#5fcf9e','middle') +
+      box(270,315,28,18,'#0d1e35','rgba(255,255,255,.1)') + txt(284,328,'N',9,'#9aa7bd','middle') +
+      box(0,340,620,26,'#111e34','rgba(255,255,255,.03)') +
+      txt(14,357,'Disposition',9,'#9aa7bd') +
+      box(240,343,120,18,'#0d1e35','rgba(255,255,255,.12)') + txt(246,355,'Accept',9,'#5fcf9e') +
+      txt(368,355,'or: Quarantine — Hold Tag needed',8,'#ff8579') +
+      tag(596,353,4) +
+      box(240,370,110,18,'#0d1e35','rgba(255,255,255,.1)') + txt(295,382,'Save draft',8,'#9aa7bd','middle') +
+      box(358,370,140,18,'#1a3c30','rgba(95,207,158,.4)') + txt(428,382,'✓ Sign &amp; complete',8,'#5fcf9e','middle')
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin:4px 0 8px">Callouts on the form above:</div>' +
+    bullets([
+      '① <b>Expiration / best-by date</b> (NEW) — captures the date from the supplier\'s label. Enables FIFO tracking and flags aged inventory. Leave blank for materials with no expiration date (e.g., some packaging).',
+      '② <b>Temperature on receipt (°F)</b> (NEW) — enter the measured temperature for cold-chain deliveries: cultures, botanical extracts, certain natural flavors. Leave blank for ambient or dry goods. The number itself is just recorded — the next field decides pass/fail.',
+      '<b>Temperature within acceptable range? Y/N</b> (NEW) — this is the pass/fail gate. Marking N when a temperature is entered automatically creates a Hold Tag and flags a deviation, exactly like a Quarantine disposition. A 38°F yogurt culture delivery might be in range; a 55°F one would not be.',
+      '③ <b>Storage location assigned</b> (NEW) — where the material is physically placed after receipt (Walk-in cooler A2, dry storage bay 3, quarantine area, etc.). Required so any inspector can locate a specific lot. If disposition is Quarantine, document the quarantine area here.',
+      '④ <b>Disposition → Quarantine = auto Hold Tag</b> — selecting Quarantine (or marking temperature out of range) creates a Hold Tag automatically, tagged with the ingredient name, lot number, and failure reason. The material stays blocked from production use until a PCQI dispositions it from the Hold Tags page.',
+      '<b>COA lot match check</b> — the form separately asks "COA lot matches received lot?" A supplier sometimes sends a generic COA from a prior run. Mismatches flag a deviation even if the material looks fine visually.',
+      '<b>How to open it</b>: Sidebar → Compliance Tasks → Today tab → ▶ Start on the Receiving task. Or: <b>+ Add manual task</b> → 📦 Receiving Inspection. On mobile, 🥫 Scan Lot QR pre-fills the lot number from a delivery barcode; 📷 Scan COA snaps the Certificate of Analysis and auto-fills lot, vendor, and dates.',
+      '<b>Save draft vs. Sign &amp; complete</b>: Save draft stores the record without a PCQI signature (status = draft — appears in the Open / Unsigned tab). Sign &amp; complete records your name and timestamps the sign-off (status = signed — counts toward your FDA audit trail).'
+    ]) +
+
+    '<h4 style="margin:22px 0 8px;font-size:13px;letter-spacing:1.5px;color:#ff8579">🚨 GMP-GHP-001 · GLASS BREAKAGE EVENT</h4>' +
+    wf(620, 248,
+      box(0,0,620,248,'#0a1628','rgba(0,0,0,0)') +
+      box(0,0,620,40,'#1a0d0d','rgba(231,76,60,.18)') +
+      txt(14,16,'🚨 GMP-GHP-001 · GLASS BREAKAGE EVENT',11,'#ff8579') +
+      txt(14,32,'STOP line · quarantine 10-ft radius · full cleanup · PCQI sign before restart',9,'#9aa7bd') +
+      box(0,42,620,26,'#111e34','rgba(255,255,255,.03)') +
+      txt(14,59,'Time of breakage',9,'#9aa7bd') +
+      box(240,45,300,18,'#0d1e35','rgba(255,255,255,.12)') + txt(246,57,'2026-06-28  10:22 AM',9,'#cfd9e6') +
+      box(0,70,620,26,'#0f1b30','rgba(255,255,255,.02)') +
+      txt(14,87,'Location in facility',9,'#9aa7bd') +
+      box(240,73,300,18,'#0d1e35','rgba(255,255,255,.12)') + txt(246,85,'Filling Line 1, nozzle station 3',9,'#cfd9e6') +
+      box(0,98,620,26,'#111e34','rgba(255,255,255,.03)') +
+      txt(14,115,'Source of breakage',9,'#9aa7bd') +
+      box(240,101,300,18,'#0d1e35','rgba(255,255,255,.12)') + txt(246,113,'Filled glass bottle',9,'#cfd9e6') +
+      box(0,126,620,26,'#0f1b30','rgba(255,255,255,.02)') +
+      txt(14,143,'Estimated radius cleared (ft)',9,'#9aa7bd') +
+      box(240,129,80,18,'#0d1e35','rgba(255,255,255,.12)') + txt(246,141,'10',9,'#cfd9e6') +
+      txt(328,141,'minimum — increase if contamination visible beyond',8,'#7a8ba0') +
+      box(0,154,620,26,'#111e34','rgba(255,255,255,.03)') +
+      txt(14,171,'Was line stopped?',9,'#9aa7bd') +
+      box(240,157,120,18,'#1a0d0d','rgba(231,76,60,.3)') + txt(300,170,'Yes — immediately',9,'#ff8579','middle') + tag(590,167,1) +
+      box(0,182,620,26,'#0f1b30','rgba(255,255,255,.02)') +
+      txt(14,199,'Cleanup method',9,'#9aa7bd') +
+      box(240,185,370,18,'#0d1e35','rgba(255,255,255,.12)') + txt(246,197,'Sweep + vacuum + full CIP all food-contact surfaces',9,'#9aa7bd') +
+      box(0,210,620,38,'#1a0d0d','rgba(231,76,60,.1)') +
+      txt(14,224,'🚨 Auto Hold Tag created for all product within cleared radius',9,'#ff8579') +
+      txt(14,238,'PCQI must disposition hold from Hold Tags page before product can ship',8,'#9aa7bd') +
+      tag(590,224,2)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin:4px 0 8px">Callouts: ① Line stop is required — document whether the line was immediately halted · ② Auto Hold Tag is created on save for all product within the cleared radius.</div>' +
+    bullets([
+      '<b>How to open</b>: Compliance Tasks page → header row → <b>🪟 Glass break</b> button (red).',
+      '<b>When to use</b>: any glass breakage in the production area — filled or empty bottles, sight glasses, sample containers, lab glassware, overhead lighting. When in doubt, log it.',
+      '<b>10-foot rule</b>: the form pre-fills a 10-ft minimum radius. Enter the actual radius cleared. All product within that radius is automatically placed on hold.',
+      '<b>Auto Hold Tag</b>: saving the form immediately creates a Hold Tag for affected product. The PCQI must disposition the hold (release / reprocess / destroy) from the Hold Tags page before that product can ship.',
+      '<b>PCQI sign before restart</b>: the form saves as signed with your PCQI identity and timestamp. Do not restart the line until a second person physically verifies the area is clear — document that in the Notes field or add a second PCQI signature on the record.',
+      '<b>Cleanup instructions</b>: the Cleanup method field pre-fills with the standard procedure (sweep all visible shards, vacuum, full CIP all food-contact surfaces, magnetic sweep around the line). Edit as needed for your situation and save the updated text as the permanent record.'
+    ]) +
+
+    '<h4 style="margin:22px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">🎯 MOCK RECALL SIMULATOR</h4>' +
+    wf(620, 236,
+      box(0,0,620,236,'#0a1628','rgba(0,0,0,0)') +
+      box(0,0,620,40,'#0d1e35','rgba(0,229,192,.12)') +
+      txt(14,16,'🎯 MOCK RECALL SIMULATOR',12,'#00e5c0') +
+      txt(14,32,'Evidence for FSP-VER-002 · must trace a lot to all customers under 4 hours',9,'#9aa7bd') +
+      txt(14,58,'Lot number to recall',9,'#9aa7bd') +
+      box(14,64,370,22,'#0d1e35','rgba(255,255,255,.12)') +
+      txt(20,79,'GLBC-JUC01-20260516-L1-001',9,'#cfd9e6') +
+      box(392,64,84,22,'rgba(0,229,192,.06)','rgba(0,229,192,.2)') +
+      txt(434,79,'🎲 Pick lot',9,'#00e5c0','middle') +
+      box(484,64,124,22,'rgba(0,229,192,.18)','rgba(0,229,192,.45)') +
+      txt(546,79,'▶ Start timer',9,'#00e5c0','middle') +
+      txt(14,108,'⏱  Trace complete — elapsed: 2.4 seconds',12,'#00e5c0') +
+      box(14,116,592,22,'#0d2430','rgba(0,229,192,.1)') +
+      txt(20,131,'Lot GLBC-JUC01-20260516-L1-001  →  3 distribution records  ·  260 cs total',9,'#cfd9e6') +
+      box(14,140,592,20,'#111e34','rgba(255,255,255,.04)') +
+      txt(20,153,'📦  Whole Foods Tampa  ·  120 cs  ·  shipped Jun 2 2026  ·  BOL 7742',9,'#9aa7bd') +
+      box(14,162,592,20,'#0f1b30','rgba(255,255,255,.03)') +
+      txt(20,175,'📦  Winn-Dixie Sarasota  ·  60 cs  ·  shipped Jun 4 2026  ·  BOL 7751',9,'#9aa7bd') +
+      box(14,184,592,20,'#111e34','rgba(255,255,255,.04)') +
+      txt(20,197,'📦  Total Wine Orlando  ·  80 cs  ·  shipped Jun 6 2026  ·  BOL 7763',9,'#9aa7bd') +
+      box(420,206,192,26,'#1a3c30','rgba(95,207,158,.35)') +
+      txt(516,223,'✓ PASS — under 4-hour target',9,'#5fcf9e','middle') +
+      box(14,206,400,26,'#0d1e35','rgba(255,255,255,.06)') +
+      txt(20,223,'🖨  Print mock recall report  (files result in FSP-VER-002 annual review)',8,'#9aa7bd')
+    ) +
+    bullets([
+      '<b>How to open</b>: Compliance Tasks page → header row → <b>🎲 Mock recall</b> button.',
+      '<b>What it does</b>: pulls every GMP-DIST-001 distribution record and compliance record that references the lot number you enter. Lists every customer who received product from that lot, the quantity shipped, ship date, and Bill of Lading number. Times the entire trace in real-time.',
+      '<b>Pick a recent lot</b>: click 🎲 <b>Pick lot</b> to auto-fill the most recently shipped lot number from GMP-DIST-001 records — useful if you\'re doing a scheduled drill and don\'t have a specific lot in mind.',
+      '<b>FDA requirement</b>: 21 CFR Part 117 requires documented ability to identify and locate all affected product within 4 hours of a recall decision. The PASS / FAIL badge confirms whether your trace met that threshold.',
+      '<b>Print report</b>: 🖨 <b>Print mock recall report</b> generates a formatted summary — lot, all customers, quantities, elapsed time, and a statement that this was a mock exercise. File it in your audit binder.',
+      '<b>Annual FSP Review</b>: the Annual FSP Review form (FSP-VER-002) has a "Mock recall conducted this year? Date + 4-hr result?" field. Enter the date and elapsed time from the printout. Together they satisfy the HACCP plan\'s annual verification requirement for traceability.'
+    ]) +
+
+    '<h4 style="margin:22px 0 8px;font-size:13px;letter-spacing:1.5px;color:#c4b5fd">📋 ALL GMP / HACCP FORMS — QUICK REFERENCE</h4>' +
+    '<div style="overflow-x:auto;margin:8px 0 4px">' +
+    '<table style="width:100%;border-collapse:collapse;font-size:12px;color:#cfd9e6">' +
+    '<thead><tr style="background:#0d1e35;border-bottom:2px solid rgba(0,229,192,.25)">' +
+    '<th style="text-align:left;padding:8px 10px;color:#00e5c0;font-size:11px;letter-spacing:1px;white-space:nowrap">FORM CODE</th>' +
+    '<th style="text-align:left;padding:8px 10px;color:#00e5c0;font-size:11px;letter-spacing:1px">NAME</th>' +
+    '<th style="text-align:left;padding:8px 10px;color:#00e5c0;font-size:11px;letter-spacing:1px">WHAT IT CAPTURES</th>' +
+    '<th style="text-align:left;padding:8px 10px;color:#00e5c0;font-size:11px;letter-spacing:1px;white-space:nowrap">FREQUENCY</th>' +
+    '</tr></thead><tbody>' +
+    '<tr style="background:#111e34"><td style="padding:7px 10px;color:#f5c842;font-family:monospace;white-space:nowrap">GMP-REC-001</td><td style="padding:7px 10px;white-space:nowrap">📦 Receiving Inspection</td><td style="padding:7px 10px;color:#9aa7bd">Supplier, lot, <b style="color:#5fcf9e">expiration date</b>, qty, <b style="color:#5fcf9e">temperature on receipt</b>, <b style="color:#5fcf9e">storage location</b>, COA, visual check, disposition</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Every delivery</td></tr>' +
+    '<tr style="background:#0f1b30"><td style="padding:7px 10px;color:#f5c842;font-family:monospace;white-space:nowrap">GMP-LAB-001</td><td style="padding:7px 10px;white-space:nowrap">🏷 Label Verification</td><td style="padding:7px 10px;color:#9aa7bd">8-point label check: name, weight, ingredients, all 9 FASTER Act allergens, best-by coding, lot code, TTB COLA, co-pack spec match</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Every run</td></tr>' +
+    '<tr style="background:#111e34"><td style="padding:7px 10px;color:#f5c842;font-family:monospace;white-space:nowrap">GMP-INSP-001</td><td style="padding:7px 10px;white-space:nowrap">🔍 Pre-Op Sanitation</td><td style="padding:7px 10px;color:#9aa7bd">Equipment cleanliness, allergen status, sanitation sign-off before each run begins</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Daily / per run</td></tr>' +
+    '<tr style="background:#0f1b30"><td style="padding:7px 10px;color:#f5c842;font-family:monospace;white-space:nowrap">GMP-SAN-002</td><td style="padding:7px 10px;white-space:nowrap">🧼 CIP / Sanitation Log</td><td style="padding:7px 10px;color:#9aa7bd">9-step CIP cycle with temperature, chemical type, concentration, and pass/fail per step</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Post-run</td></tr>' +
+    '<tr style="background:#111e34"><td style="padding:7px 10px;color:#f5c842;font-family:monospace;white-space:nowrap">GMP-CAL-001</td><td style="padding:7px 10px;white-space:nowrap">📐 Equipment Calibration</td><td style="padding:7px 10px;color:#9aa7bd">pH meter, thermometers, scales, UV sensors, FDD, conductivity meter — NIST-traceable reference, pass/fail, next-due date</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Monthly minimum</td></tr>' +
+    '<tr style="background:#0f1b30"><td style="padding:7px 10px;color:#f5c842;font-family:monospace;white-space:nowrap">GMP-DIST-001</td><td style="padding:7px 10px;white-space:nowrap">🚚 Distribution / Traceability</td><td style="padding:7px 10px;color:#9aa7bd">Lot, qty, customer name + address, contact, ship method, BOL number — backs up the 4-hour mock recall</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Every shipment</td></tr>' +
+    '<tr style="background:#111e34"><td style="padding:7px 10px;color:#f5c842;font-family:monospace;white-space:nowrap">GMP-HR-001</td><td style="padding:7px 10px;white-space:nowrap">🤒 Illness Exclusion</td><td style="padding:7px 10px;color:#9aa7bd">Symptoms (all 7 FDA exclusion conditions), exclusion decision, return-to-work date, medical clearance</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Upon event</td></tr>' +
+    '<tr style="background:#0f1b30"><td style="padding:7px 10px;color:#f5c842;font-family:monospace;white-space:nowrap">GMP-TR-001</td><td style="padding:7px 10px;white-space:nowrap">🎓 Employee Training</td><td style="padding:7px 10px;color:#9aa7bd">Topic, training method, duration, trainer, tested Y/N, pass/fail, employee signature on file, next-due date</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Each event + annual</td></tr>' +
+    '<tr style="background:#111e34"><td style="padding:7px 10px;color:#f5c842;font-family:monospace;white-space:nowrap">GMP-GHP-001</td><td style="padding:7px 10px;white-space:nowrap">🚨 Glass Breakage</td><td style="padding:7px 10px;color:#9aa7bd">Time, location, source, radius cleared, line stopped Y/N, cleanup method, auto Hold Tag for affected product</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Upon event</td></tr>' +
+    '<tr style="background:#0f1b30"><td style="padding:7px 10px;color:#f5c842;font-family:monospace;white-space:nowrap">GMP-QC-001</td><td style="padding:7px 10px;white-space:nowrap">🚫 Hold Tags</td><td style="padding:7px 10px;color:#9aa7bd">Product name, lot, qty held, location, reason, hazard type, PCQI notification, disposition (release / reprocess / destroy)</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Upon hold event</td></tr>' +
+    '<tr style="background:#111e34"><td style="padding:7px 10px;color:#6b9fff;font-family:monospace;white-space:nowrap">FSP-PC-001</td><td style="padding:7px 10px;white-space:nowrap">🌡 HTST Pasteurization (CCP-1)</td><td style="padding:7px 10px;color:#9aa7bd">Hold-tube temp (critical limit ≥ 165°F), cold-side temp, FDD status (OK / DIVERT), holding time, corrective action</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Every run</td></tr>' +
+    '<tr style="background:#0f1b30"><td style="padding:7px 10px;color:#6b9fff;font-family:monospace;white-space:nowrap">FSP-PC-002</td><td style="padding:7px 10px;white-space:nowrap">🔥 Hot Fill (CCP-2)</td><td style="padding:7px 10px;color:#9aa7bd">Fill nozzle temperature (critical limit ≥ 185°F), thermocouple calibration date, corrective action if below CL</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Every run</td></tr>' +
+    '<tr style="background:#111e34"><td style="padding:7px 10px;color:#6b9fff;font-family:monospace;white-space:nowrap">FSP-PC-003</td><td style="padding:7px 10px;white-space:nowrap">🥫 Can Seam (CCP-4)</td><td style="padding:7px 10px;color:#9aa7bd">Seam thickness, length, body hook, cover hook, overlap % — must meet BCMA specification</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Every 30 min (canning)</td></tr>' +
+    '<tr style="background:#0f1b30"><td style="padding:7px 10px;color:#6b9fff;font-family:monospace;white-space:nowrap">FSP-PC-004</td><td style="padding:7px 10px;white-space:nowrap">💡 UV Water Treatment (CCP-3)</td><td style="padding:7px 10px;color:#9aa7bd">UV dose (critical limit ≥ 40 mJ/cm²), intensity sensor reading, corrective action</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Hourly during production</td></tr>' +
+    '<tr style="background:#111e34"><td style="padding:7px 10px;color:#6b9fff;font-family:monospace;white-space:nowrap">FSP-PC-005</td><td style="padding:7px 10px;white-space:nowrap">🧫 Fermentation (CCP-A)</td><td style="padding:7px 10px;color:#9aa7bd">Final pH (critical limit ≤ 4.6) and ABV ≥ spec — multiple readings per batch</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Per batch</td></tr>' +
+    '<tr style="background:#0f1b30"><td style="padding:7px 10px;color:#c4b5fd;font-family:monospace;white-space:nowrap">FSP-SAN-001</td><td style="padding:7px 10px;white-space:nowrap">🧬 Environmental Monitoring</td><td style="padding:7px 10px;color:#9aa7bd">Listeria spp. + L. monocytogenes swabs across 4 zones. Zone 1-2 positive = stop production, deep clean, intensified sanitation, re-swab</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Monthly minimum</td></tr>' +
+    '<tr style="background:#111e34"><td style="padding:7px 10px;color:#c4b5fd;font-family:monospace;white-space:nowrap">FSP-SC-002</td><td style="padding:7px 10px;white-space:nowrap">📋 Supplier COA Review</td><td style="padding:7px 10px;color:#9aa7bd">Micro results, heavy metals, pesticides, potency / identity (botanicals), PCQI sign-off for high-risk lots</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Per high-risk lot</td></tr>' +
+    '<tr style="background:#0f1b30"><td style="padding:7px 10px;color:#c4b5fd;font-family:monospace;white-space:nowrap">FSP-VER-002</td><td style="padding:7px 10px;white-space:nowrap">📅 Annual FSP Review</td><td style="padding:7px 10px;color:#9aa7bd">Scope changes (products, processes, suppliers, allergens, facility), CCP validity, deviations this year, mock recall result, overall assessment, PCQI sign-off</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Annually</td></tr>' +
+    '<tr style="background:#111e34"><td style="padding:7px 10px;color:#c4b5fd;font-family:monospace;white-space:nowrap">QC-BR-001</td><td style="padding:7px 10px;white-space:nowrap">📄 Production Batch Record</td><td style="padding:7px 10px;color:#9aa7bd">All ingredients + lot numbers, batch size, process temperatures, fill temp, final pH, QC checks, operator sign-off</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Every batch</td></tr>' +
+    '</tbody></table></div>';
 
   // ────────────────────────────────────────────────────────────
   // Additional emails (per-client)
@@ -5298,6 +6032,22 @@
       '<b>(2) Search bar</b> — filters the list as you type (matches across name / contact / email).',
       '<b>(3) Row click</b> — opens the client detail panel: billed-to-date, recent invoices, deals, notes, 🤖 AI Summary button.',
       '<b>(4) Status badge</b> — green = active, blue = lead. Active clients count toward the dashboard "Active brands" metric. New clients persist to Supabase.'
+    ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#f5c842">💵 PRICING OVERRIDES (NEW)</h4>' +
+    bullets([
+      '<b>Where</b>: open <b>✏️ Edit Client</b> → scroll near the bottom to the yellow "💵 PRICING OVERRIDES" panel.',
+      '<b>What it does</b>: lets you lock in a flat negotiated rate that overrides the public tier ladder for that specific client. Use it for pilots, incubator deals, bulk pre-quotes, or anyone you\'ve hand-shaken on a number outside the published canning_rates / bottling_rates ladder.',
+      '<b>Five services supported</b>: Canning (per can), Bottling (per unit), R&D / formulation (per hour), Production hours (per hour), Consulting (per hour). Canning + Bottling require a format; the three hour-based services apply to all formats.',
+      '<b>Optional date range</b>: <i>Effective from</i> + <i>Effective until</i> let you queue up a future rate change or expire an old one without deleting it.',
+      '<b>How the builder uses it</b>: when you open a new invoice for that client, the canning + bottling lines compute totals using the override rate. A yellow "💵 N custom rates applied" badge appears next to "NEW INVOICE" so you can\'t accidentally invoice the wrong number. R&D / Production / Consulting lines still need their rates set manually for now, but the override is logged in the audit trail.',
+      '<b>Removing an override</b> reverts that service back to the public tier ladder on the next invoice.'
+    ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">📄 STATEMENT OF ACCOUNT (NEW)</h4>' +
+    bullets([
+      '<b>Where to find it</b>: open any client detail → click the <b>📄 Statement</b> button in the action row at the bottom (alongside ✏️ Edit Client, 🤖 AI Health Score, etc.).',
+      '<b>What it shows</b>: Total Billed, Total Paid, Credits (from credit memos), and Balance Due — plus a full invoice-by-invoice table with dates, statuses, and amounts.',
+      '<b>Credit memos</b> appear as their own rows tagged "(CM)" and are automatically subtracted from the balance.',
+      '<b>Printing</b>: click <b>🖨️ Print Statement</b> in the modal to open the browser print dialog. Use "Save as PDF" to email a statement to your client.'
     ]);
 
   var SEC_PIPELINE = MOCK_PIPELINE +
@@ -5307,21 +6057,55 @@
       '<b>(2) Deal card</b> — name, company, value. Click to open detail. Drag cards between columns (or use the arrow buttons inside each card).',
       '<b>(3) ⏰ Stale badge</b> — appears on cards in active stages (Prospecting / Proposal / Negotiation) that haven\'t been touched in >14 days. Visual cue to follow up.',
       '<b>(4) Closed Won column</b> — moving a card here also auto-bumps the related Activity Feed. Use the <b>→ Invoice</b> button in the deal detail to spin a billable invoice from a Closed Won deal.'
+    ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">📅 DAYS-IN-STAGE BADGE (NEW)</h4>' +
+    wf(400, 100,
+      box(0,0,400,100,'#142238','rgba(255,255,255,.05)') +
+      txt(20,24,'PROSPECTING',10,'#9aa7bd') +
+      box(20,34,160,56,'#243a56','rgba(107,159,255,.3)') +
+      txt(30,54,'Apex Beverages',11,'#fff') + txt(30,68,'$12,000',10,'#9aa7bd') +
+      box(110,78,60,14,'rgba(245,200,66,.4)','none') + txt(140,89,'8d',9,'#f5c842','middle') +
+      txt(240,24,'PROPOSAL',10,'#9aa7bd') +
+      box(240,34,150,56,'#243a56','rgba(0,229,192,.3)') +
+      txt(250,54,'BlueSky Drinks',11,'#fff') + txt(250,68,'$8,500',10,'#9aa7bd') +
+      box(330,78,50,14,'rgba(0,229,192,.25)','none') + txt(355,89,'3d',9,'#00e5c0','middle') +
+      tag(110,78,1)
+    ) +
+    bullets([
+      '<b>Days-in-stage badge</b>: every deal card shows a small colored pill in the bottom-right corner counting how many days the deal has been in its current stage.',
+      '<b>Color coding</b>: <span style="color:#00e5c0">green &lt; 7 days</span> (active), <span style="color:#f5c842">yellow 7–14 days</span> (watch it), <span style="color:#e74c3c">red &gt; 14 days</span> (stale — take action).',
+      '<b>What to do when stale</b>: open the deal, send a follow-up (or use Bulk Outreach below), log a note, and move the stage forward. The badge resets when the stage changes.'
+    ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#c4b5fd">📤 BULK OUTREACH (NEW)</h4>' +
+    bullets([
+      '<b>Where to find it</b>: Pipeline page header → <b>📤 Bulk Outreach</b> button (admin and sales roles only).',
+      '<b>What it does</b>: lets you select multiple Prospecting leads, review an AI-drafted personalised cold-outreach email for each, and send them all in one click. See the <a href="#help-bulk-outreach" style="color:#00e5c0">Bulk Outreach</a> section for full details.',
+      '<b>After sending</b>: each deal gets an "outreach sent" badge on its kanban card, and the sends are logged to Email Activity so you can track opens and clicks.'
     ]);
 
   var SEC_REFERRALS = MOCK_REFERRALS +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
-      '<b>(1) + Add referral</b> — pick a referrer, type the client name, deal value, rate %, status (lead / presented / won / paid / lost).',
-      '<b>(2) Status badge</b> — color-coded. Won = commission "owed" on the dashboard referrer card. Paid = counts toward "Paid YTD".',
-      '<b>(3) ✓ Pay commission</b> — appears on Won rows. Click to mark the commission paid, recompute YTD totals, and log to Activity.'
+      '<b>What it is</b>: a commission-tracking ledger for deals brought in by external referrers (brokers, industry contacts, business partners). Each row links a referrer to a client deal and tracks the commission owed or already paid.',
+      '<b>(1) + Add referral</b> — click the button top-right. Fill in:<ol style="margin:4px 0 4px 18px;padding:0"><li><b>Referrer</b> — pick from the Referrers list. Must be added there first.</li><li><b>Client name</b> — the client or prospect that was referred (free text; does not need to be a CRM client record yet).</li><li><b>Deal value</b> — total $ value of the deal (the full contract amount, not the commission).</li><li><b>Rate %</b> — commission percentage for this deal. Defaults to the referrer\'s standard rate, but can be overridden per deal.</li><li><b>Status</b> — set the opening status, usually "lead".</li></ol>Click Save.',
+      '<b>Status workflow</b>: move the deal through stages as it progresses:<ul style="margin:4px 0 4px 18px;padding:0"><li><span style="color:#9aa7bd"><b>Lead</b></span> — initial intro, no proposal yet.</li><li><span style="color:#6b9fff"><b>Presented</b></span> — proposal or quote has been sent.</li><li><span style="color:#f5c842"><b>Won</b></span> — deal closed; commission is now owed.</li><li><span style="color:#22c55e"><b>Paid</b></span> — commission has been paid out.</li><li><span style="color:#e74c3c"><b>Lost</b></span> — deal fell through; no commission due.</li></ul>Click the status badge on any row to change it via a dropdown.',
+      '<b>(2) Status badge</b> — color-coded for quick scanning. <span style="color:#f5c842">Yellow "won"</span> = commission is owed and appears on the dashboard referrer card. <span style="color:#22c55e">Green "paid"</span> = commission settled and counted toward Paid YTD.',
+      '<b>Commission column</b> — calculated automatically as <code>deal value × rate %</code>. Example: $35,820 at 5% = <b>$1,791</b>. Read-only; recomputes whenever deal value or rate changes.',
+      '<b>(3) ✓ Pay commission</b> — a green checkmark button appears on Won rows. Clicking it:<ol style="margin:4px 0 4px 18px;padding:0"><li>Flips the referral status to <b>Paid</b>.</li><li>Adds the commission amount to the referrer\'s <b>Paid YTD</b> total on their referrer card.</li><li>Removes the "owed" badge from the dashboard referrer widget.</li><li>Logs the payment event to the Activity Feed.</li></ol>',
+      '<b>Editing a referral</b> — click any row to open the edit modal. Adjust the deal value, rate, client name, or status at any time. Click Save.',
+      '<b>Deleting a referral</b> — open the edit modal → click the red Delete button → confirm. The row is permanently removed and the referrer\'s commission totals adjust automatically.'
     ]);
 
   var SEC_REFERRERS = MOCK_REFERRERS +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
-      '<b>(1) + Add referrer</b> — name, relationship (broker / industry contact / business partner), email, phone, default commission rate %.',
-      '<b>(2) Referrer card</b> — avatar, name, relationship, contact info, rate %, count of referrals, and current owed / paid YTD badge. Mirrors what appears on the dashboard.'
+      '<b>What it is</b>: the master directory of external partners who send new business your way. Referrers can be brokers, industry contacts, or business partners. Each referrer card tracks contact info, a default commission rate, and a running commission summary across all their referrals.',
+      '<b>(1) + Add referrer</b> — click the button top-right. Fill in:<ol style="margin:4px 0 4px 18px;padding:0"><li><b>Name</b> — full name of the person or company.</li><li><b>Relationship type</b> — Broker, Industry contact, or Business partner. Used for filtering and display.</li><li><b>Email</b> — contact email (used for reaching out manually; not connected to automated sends).</li><li><b>Phone</b> — contact phone number.</li><li><b>Default commission rate %</b> — the standard percentage applied to referrals from this person. Can be overridden per deal on the Referrals page.</li></ol>Click Save.',
+      '<b>(2) Referrer card</b> — each referrer has a card showing their avatar (initials), name, relationship label, email, phone, commission rate, total referral count, and a commission summary badge:<ul style="margin:4px 0 4px 18px;padding:0"><li><span style="color:#f5c842"><b>$ owed</b></span> — sum of commissions on Won referrals not yet marked Paid. This amount appears on the dashboard "Top Referrers" widget as a yellow badge.</li><li><span style="color:#1D9E75"><b>$ paid YTD</b></span> — total commissions already paid out this calendar year. Resets each January 1.</li></ul>',
+      '<b>Editing a referrer</b> — click any card to open the edit modal. Change name, relationship type, contact info, or default rate. Click Save.',
+      '<b>Deleting a referrer</b> — open the edit modal → click the red Delete button. Confirm in the dialog. Deleting a referrer does not delete their referral rows — those rows remain but their referrer field shows "(deleted referrer)". Recover by re-creating the referrer and updating the referral rows.',
+      '<b>Dashboard integration</b> — the dashboard shows the top 3 referrers by total deal value. Any referrer with an outstanding commission balance shows a yellow "$ owed" badge. Click the referrer card on the dashboard to jump directly to their Referrers page card.',
+      '<b>How default rate works</b> — when you add a new referral and pick this referrer, the rate field pre-fills with their default rate. You can override it on that specific deal without changing the default. The default only applies to new referrals created after the change.'
     ]);
   // ────────────────────────────────────────────────────────────
   // Customer Requests inbox (PR 2 of 2026-05-20 enhancement series)
@@ -5395,62 +6179,167 @@
   var SEC_CALENDAR = MOCK_CALENDAR +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
-      '<b>(1) Day cell with event</b> — green highlight means an event is scheduled. Click any day to add an event or view existing ones.',
-      '<b>(2) Month navigation</b> — arrows on either side of the month label move forward / backward.',
-      'Public "Schedule a tour" submissions on the marketing site land here automatically. Stored in localStorage (gl_cal_events), per device.'
+      '<b>(1) Month / List toggle</b> — switch between a monthly grid view and a scrollable agenda list. Your last choice is remembered.',
+      '<b>(2) Today indicator</b> — today\'s date gets a teal circle badge and a "TODAY" chip so you always know where you are in the month.',
+      '<b>(3) Past days</b> — days that have already passed are dimmed so you can focus on upcoming dates.',
+      '<b>(4) Event chips</b> — a colored chip on a day means at least one event is scheduled. Click the chip or the day cell to view or edit it.',
+      '<b>Weekend tinting</b> — Saturday and Sunday columns have a subtle purple tint to distinguish them from weekdays at a glance.',
+      '<b>Adding an event</b> — click "+ Add Event" in the top-right corner (or click any empty day cell) to open the event form. Fill in title, date, time, duration, notes, and guest email addresses.',
+      '<b>Editing / deleting</b> — click an existing event chip to open the detail drawer. From there you can edit any field or delete the event.',
+      '<b>Cancelling with notification</b> — when deleting an event that has guests, you will be prompted to send a cancellation email to all invitees automatically.',
+      '<b>Public tour requests</b> — when a visitor submits a tour request through the marketing site, it lands here automatically as a calendar event.',
+      '<b>Where to find it</b>: Sidebar → <b>Calendars → General Calendar</b>.'
+    ]) +
+    '<h4 style="color:#9aa7bd;margin:20px 0 8px;font-size:12px;letter-spacing:.5px;text-transform:uppercase">List / Agenda View</h4>' +
+    wf(620, 220,
+      box(0,0,620,220,'#142238','rgba(255,255,255,.05)') +
+      txt(20,22,'LIST VIEW — May 2026',12,'#fff') +
+      box(16,36,88,24,'rgba(255,255,255,.04)','rgba(255,255,255,.1)') + txt(60,52,'Month',10,'#9aa7bd','middle') +
+      box(108,36,62,24,'rgba(0,229,192,.18)','rgba(0,229,192,.4)') + txt(139,52,'List',10,'#00e5c0','middle') +
+      box(20,70,580,28,'rgba(0,229,192,.06)','rgba(0,229,192,.18)') +
+      txt(30,88,'TODAY  ·  May 30',9,'#00e5c0') +
+      box(20,102,580,26,'rgba(255,255,255,.02)','rgba(255,255,255,.05)') +
+      txt(30,118,'May 30',9,'#9aa7bd') + txt(110,118,'10:00 AM',9,'#fff') + txt(210,118,'Client call — Lotus Nutra',10,'#fff') + txt(590,118,'30 min',9,'#9aa7bd','end') +
+      box(20,130,580,26,'rgba(255,255,255,.02)','rgba(255,255,255,.05)') +
+      txt(30,146,'Jun 2',9,'#9aa7bd') + txt(110,146,'2:00 PM',9,'#fff') + txt(210,146,'Line changeover — Canning L1',10,'#fff') + txt(590,146,'1 hr',9,'#9aa7bd','end') +
+      box(20,158,580,26,'rgba(255,255,255,.02)','rgba(255,255,255,.05)') +
+      txt(30,174,'Jun 5',9,'#9aa7bd') + txt(110,174,'10:00 AM',9,'#fff') + txt(210,174,'Jane Smith — Discovery call',10,'#fff') + txt(590,174,'30 min',9,'#9aa7bd','end') +
+      txt(30,204,'Showing next 30 days  ·  3 events',9,'#5a7a9a') +
+      tag(108,36,1) + tag(20,102,2) + tag(590,118,3)
+    ) +
+    bullets([
+      '<b>(1) List toggle active</b> — when List is selected the calendar switches to a scrollable agenda grouped by day.',
+      '<b>(2) Event row</b> — each event shows the date, start time, title, and duration. Click any row to open the edit drawer.',
+      '<b>(3) Duration column</b> — quick glance at how long the event runs without opening the detail drawer.'
     ]);
 
-  var SEC_PRODUCTION = bullets([
+  var SEC_PRODUCTION =
+    wf(620, 240,
+      box(0,0,620,240,'#142238','rgba(255,255,255,.05)') +
+      txt(20,22,'🏭 PRODUCTION SCHEDULE  ·  Week of May 26',12,'#fff') +
+      txt(20,38,'Canning Line 1:',10,'#9aa7bd') +
+      box(140,28,240,18,'#1a3c30','none') + box(140,28,168,18,'#00e5c0','none') +
+      txt(150,41,'68%  ·  340 cases / 500 cap',9,'#0a1628') +
+      txt(20,58,'Bottling Line 1:',10,'#9aa7bd') +
+      box(140,48,240,18,'#1a3c30','none') + box(140,48,220,18,'#f5c842','none') +
+      txt(150,61,'92%  ·  92 hrs / 100 cap',9,'#0a1628') +
+      box(20,76,580,148,'#0d1e35','rgba(255,255,255,.05)') +
+      txt(30,92,'MON 26',9,'#9aa7bd','middle') + txt(30,92,'',9,'#9aa7bd') +
+      txt(121,92,'TUE 27',9,'#9aa7bd') + txt(224,92,'WED 28',9,'#9aa7bd') + txt(327,92,'THU 29',9,'#9aa7bd') + txt(430,92,'FRI 30',9,'#9aa7bd') + txt(533,92,'SAT 31',9,'#9aa7bd') +
+      box(24,100,90,50,'#1a6fff','rgba(107,159,255,.4)') + txt(30,116,'Lotus nutra',9,'#fff') + txt(30,130,'Canning L1',8,'#9aa7bd') + txt(30,144,'100 cases',8,'#9aa7bd') +
+      box(127,100,90,50,'#1a6fff','rgba(107,159,255,.4)') + txt(133,116,'Lotus nutra',9,'#fff') + txt(133,130,'Canning L1',8,'#9aa7bd') + txt(133,144,'(cont.)',8,'#9aa7bd') +
+      box(230,100,90,50,'rgba(0,229,192,.5)','rgba(0,229,192,.4)') + txt(236,116,'Ceres 14',9,'#fff') + txt(236,130,'Bottling L1',8,'#9aa7bd') + txt(236,144,'200 cases',8,'#9aa7bd') +
+      box(333,100,90,50,'rgba(245,200,66,.4)','rgba(245,200,66,.4)') + txt(339,116,'PitStop',9,'#fff') + txt(339,130,'Canning L1',8,'#9aa7bd') + txt(339,144,'150 cases',8,'#9aa7bd') +
+      box(20,158,580,62,'#142238','rgba(255,255,255,.05)') +
+      txt(30,174,'⚙ Production lines',10,'#9aa7bd') + txt(160,174,'+ Add Run',10,'#00e5c0') +
+      txt(30,194,'Capacity: 500 cases/day (Canning L1)  ·  100 hrs/wk (Bottling L1)',9,'#9aa7bd') +
+      tag(140,28,1) + tag(140,48,2) + tag(24,100,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
     'Same calendar mechanics as the General Calendar, but focused on <b>production runs</b>: which client, what format, how many cases, what stage (scheduled / in production / quality check / completed / shipped).',
     'Customers see their own scheduled runs in the Customer Portal automatically.',
-    'Stored in localStorage (gl_prod_pipeline).'
+    '<b>Capacity-aware scheduling (NEW)</b> — every run is assigned to a <b>Production Line</b> (Canning Line 1, Bottling Line 1, R&D Bench, etc.) with its own cases-per-day or hours-per-day capacity. The schedule widget above the kanban shows this-week and next-week utilization per line (green &lt; 70%, yellow 70-100%, red &gt; 100%). Click <b>⚙ Production lines</b> on the toolbar to add/edit/deactivate lines.',
+    '<b>Date range + conflict warning (NEW)</b> — runs now have a Start date + End date (blank end = single day). When the dates overlap another run already booked on the same line, a red banner appears inside the modal listing the conflicting runs. Saving still works — this is a warning, not a hard block, so you can choose to double-book intentionally.',
+    '<b>Auto stage-change emails</b> — when you advance a run between kanban stages, the brand\'s portal customer gets an email with the new status. Skipped for clients with no portal user, or for users who opted out (Portal → Account Settings → <b>NOTIFICATIONS</b> → uncheck "Production stage emails").',
+    '<b>📎 Lot Documents (NEW)</b> — every run now carries a <i>Lot number</i> field + an inline "📎 LOT DOCUMENTS" section. Click <b>+ Attach</b> on an existing run to upload a COA, spec sheet, allergen statement, kosher/organic cert, or NFP — anything the customer would otherwise email you for. The file lands in the <code>client-docs</code> Storage bucket under <code>&lt;client_id&gt;/lots/&lt;lot&gt;/</code> and a metadata row goes into <code>lot_documents</code>. Each row has 🗑 (delete) and ⬇ (download) buttons.',
+    '<b>What the customer sees</b>: a new "📎 COAs & DOCUMENTS" section on their portal dashboard with type badges (COA / Spec sheet / Allergen / Kosher / Organic / Nutrition / Other) and a one-click <b>⬇ Download</b> that hits a 60-second signed URL. RLS gates this to <code>client_id = current_customer_client_id()</code> — no risk of one brand seeing another brand\'s files.',
+    'Stored in Supabase <b>production_runs</b> + <b>lot_documents</b>.'
   ]);
 
   var SEC_TASKS = MOCK_TASKS +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
-      '<b>(1) + Add Task</b> — name, optional client link, optional due date.',
-      '<b>(2) Checkbox</b> — click to mark done. Completed tasks strike through and dim. Filter pills above the list switch between All / Open / Done.',
-      '<b>(3) Due-today badge</b> — yellow badge when a task is due today; turns red when overdue. Stored in localStorage (gl_tasks), per device.'
+      '<b>What it is</b>: a personal to-do list for tracking follow-up actions, reminders, and daily work items. Tasks can be optionally linked to a specific client account for quick context.',
+      '<b>(1) + Add Task</b> — click the button top-right. A modal opens with three fields:<ol style="margin:4px 0 4px 18px;padding:0"><li><b>Task name</b> (required) — describe what needs to be done, e.g. "Follow up with Bloom on Q3 volume".</li><li><b>Client link</b> (optional) — pick a client from the dropdown. A blue client badge appears on the task row so you can see at a glance which account it belongs to.</li><li><b>Due date</b> (optional) — a date picker. Leave blank for open-ended tasks with no deadline.</li></ol>Click Save. The new task appears at the top of the list.',
+      '<b>(2) Completing a task</b> — click the checkbox on the left of any row. The task immediately strikes through and dims. Click the checkbox again to un-complete it if needed. Completed tasks move to the Done view.',
+      '<b>(3) Due-today badge</b> — a yellow "due today" pill appears on tasks whose due date is today. If the due date has already passed, the badge turns red and reads "overdue". Overdue tasks bubble up to the top of the Open filter automatically.',
+      '<b>Filter pills</b> — three pills at the top: <b>All</b> (every task regardless of status), <b>Open</b> (incomplete tasks only — overdue first, then by due date), <b>Done</b> (completed tasks, newest first).',
+      '<b>Editing a task</b> — click anywhere on a task row to reopen the edit modal. Change the name, client link, or due date, then click Save to update.',
+      '<b>Deleting a task</b> — open the task edit modal → click the red <b>Delete</b> button at the bottom. Confirm in the dialog. Deleted tasks are permanently removed.',
+      '<b>Client badge shortcut</b> — clicking the blue client badge on a task row navigates directly to that client\'s detail panel, so you can pull up account info without leaving context.',
+      '<b>Data note</b> — tasks are stored in <code>localStorage (gl_tasks)</code> on your device. They are private to your browser, not visible to other team members, and clearing your browser data will erase them. For shared team to-dos, use the <b>📣 Announcements</b> board to broadcast context to the whole team.'
     ]);
 
   var SEC_DOCUMENTS = MOCK_DOCUMENTS +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
-      '<b>(1) + Upload</b> — pick a file (PDF / Word / image / CSV), select the client and document type, upload. Files persist to Supabase Storage in the <b>client-docs</b> bucket.',
-      '<b>(2) Document table</b> — every uploaded file with the client name, type badge, uploaded date.',
-      '<b>(3) ⬇ Open</b> — opens the file in a new tab from Supabase. Documents are private to authenticated users.',
-      'If the bucket isn\'t set up yet, the file metadata is recorded but the file itself isn\'t stored. The dashboard System Health widget surfaces this with a one-click "Copy SQL" button.'
+      '<b>What it is</b>: centralized file storage for client-facing and internal documents — master formulas, label artwork, spec sheets, contracts, COAs, production schedules, and more. Files are stored securely in Supabase Storage (<b>client-docs</b> bucket) and require a staff login to view.',
+      '<b>(1) + Upload</b> — click the button top-right. A modal opens:<ol style="margin:4px 0 4px 18px;padding:0"><li><b>Client</b> — pick from the dropdown, or "(general)" for documents not tied to a specific client.</li><li><b>Document type</b> — select from: R&amp;D, Design, Ops, Contract, Spec sheet, Certificate of Analysis (COA), Allergen, Label, Other.</li><li><b>File</b> — drag-and-drop or click to browse. Accepts PDF, Word (.doc/.docx), Excel (.xls/.xlsx), images (JPG, PNG), CSV, and ZIP. Max file size: 50 MB.</li></ol>Click Upload. A metadata row saves to the <code>documents</code> table; the file lands in Supabase Storage under <code>&lt;client_id&gt;/&lt;filename&gt;</code>.',
+      '<b>(2) Document table</b> — every uploaded file with file name, client name, document type badge (color-coded by type), upload date, and action buttons. Sorted newest-first.',
+      '<b>(3) ⬇ Open</b> — generates a 60-second signed URL from Supabase Storage and opens the file in a new tab. Because links are short-lived and signed, they cannot be shared publicly — the recipient must be a logged-in staff user.',
+      '<b>Filtering documents</b> — use the <b>Filter by client</b> dropdown above the table to narrow results to one client\'s files. Use the type pills to filter by category (R&amp;D, COA, Label, etc.). Both filters work together.',
+      '<b>Deleting a document</b> — click the red 🗑 icon on any row. A confirmation dialog appears. Confirming removes both the file from Supabase Storage and the metadata row from the database.',
+      '<b>Lot-specific documents (COAs, certs)</b> — documents tied to a specific production lot are managed separately on the <b>Production Runs</b> page. Open a run → scroll to "📎 LOT DOCUMENTS" → click + Attach. Customers can download these directly from their portal without a staff login.',
+      '<b>Missing bucket warning</b> — if the <code>client-docs</code> Storage bucket hasn\'t been created yet, uploads fail silently. The dashboard <b>System Health</b> widget surfaces this with a one-click "Copy SQL" fix — run that SQL in the Supabase SQL editor to create the bucket with correct Row-Level Security policies.'
     ]);
 
   var SEC_INVENTORY = MOCK_INVENTORY +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
-      '<b>(1) + Add Item</b> — name, quantity, unit (cases / tanks / bags / etc.), low-stock threshold.',
-      '<b>(2) LOW badge</b> — yellow badge when quantity is at or below the threshold. Items at LOW also surface on the dashboard. Stored in localStorage (gl_inventory).'
+      '<b>What it is</b>: a lightweight stock tracker for raw materials, packaging components, and finished goods. Set reorder thresholds and get dashboard alerts when stock runs low.',
+      '<b>(1) + Add Item</b> — click the button top-right. Fill in:<ol style="margin:4px 0 4px 18px;padding:0"><li><b>Item name</b> (required) — e.g. "12oz Sleek Cans", "CO₂ Gas", "PakTech Handles", "750ml Bottles".</li><li><b>Quantity</b> — current stock on hand (a number).</li><li><b>Unit</b> — free text: cases, tanks, bags, pallets, lbs, kg, gallons, each — whatever makes sense for that item.</li><li><b>Low-stock threshold</b> — the quantity at or below which the LOW badge triggers and the dashboard alert fires. Example: set to 3 for CO₂ tanks so you get warned before you run out.</li></ol>Click Save. The item appears in the table.',
+      '<b>Updating a quantity</b> — after receiving a delivery or consuming material in a production run, click the item row to open the edit modal. Change the Quantity to the new on-hand number and click Save. The badge and dashboard alert recompute instantly.',
+      '<b>(2) LOW badge</b> — a yellow "LOW" badge appears on any item where quantity ≤ threshold. LOW items sort to the top of the list and also surface in the dashboard\'s <b>System Health</b> / Alerts section, so you see shortages without opening the Inventory page.',
+      '<b>OK badge</b> — a green "OK" badge appears when quantity is above the threshold. No action needed.',
+      '<b>Editing an item</b> — click any row to reopen the edit modal. You can rename the item, change the unit, adjust the threshold, or update the quantity. Click Save.',
+      '<b>Deleting an item</b> — open the edit modal → click the red <b>Delete</b> button → confirm. The item is permanently removed.',
+      '<b>Sorting</b> — LOW items always appear first. Within the same status, items are sorted alphabetically.',
+      '<b>Data note</b> — inventory data lives in <code>localStorage (gl_inventory)</code> on your device. It is not synced to Supabase or shared with other team members. For shared, production-grade inventory (with audit trails and multi-user visibility), use the Supabase <code>inventory</code> table directly or connect your ERP.'
     ]);
-  var SEC_ANNOUNCEMENTS = bullets([
-    'Company-wide notes shown on every user\'s dashboard.',
-    'Stored in localStorage.'
-  ]);
+  var SEC_ANNOUNCEMENTS =
+    wf(620, 200,
+      box(0,0,620,200,'#142238','rgba(255,255,255,.05)') +
+      txt(20,24,'📣 ANNOUNCEMENTS',12,'#fff') +
+      box(520,12,90,22,'rgba(0,229,192,.1)','rgba(0,229,192,.3)') + txt(565,27,'+ New post',10,'#00e5c0','middle') +
+      box(20,38,580,60,'#1a2c48','rgba(245,200,66,.15)') +
+      txt(30,56,'📌  LINE MAINTENANCE — Canning Line 1 down Fri May 30',11,'#f5c842') +
+      txt(30,74,'Please reschedule any runs booked for Friday. Eng team will be in 7am–noon.',10,'#9aa7bd') +
+      txt(560,82,'May 29',9,'#9aa7bd','end') +
+      box(20,106,580,46,'#1a2c48','rgba(255,255,255,.06)') +
+      txt(30,124,'🎉  New client signed — Ceres 14 (200 cases, Bottling)',11,'#cfd9e6') +
+      txt(30,140,'Kick-off call scheduled for June 2. Details in pipeline.',10,'#9aa7bd') +
+      txt(560,148,'May 28',9,'#9aa7bd','end') +
+      box(20,160,580,32,'#1a2c48','rgba(255,255,255,.06)') +
+      txt(30,180,'🏭  Reminder: submit monthly capacity forecast by EOD Monday.',10,'#9aa7bd') +
+      txt(560,180,'May 27',9,'#9aa7bd','end') +
+      tag(520,12,1) + tag(20,38,2)
+    ) +
+    bullets([
+      '<b>What it is</b>: a shared notice board for company-wide messages. Announcements appear on every staff user\'s dashboard at the top of the page. Use it for shift reminders, maintenance windows, client wins, production updates, or anything the whole team needs to see.',
+      '<b>+ New post</b> — click the button top-right. A modal opens with two fields:<ol style="margin:4px 0 4px 18px;padding:0"><li><b>Title</b> (required) — a short headline, e.g. "LINE MAINTENANCE — Canning Line 1 down Fri May 30".</li><li><b>Body</b> — optional additional detail. Supports plain text. Use short, actionable sentences.</li></ol>Click Save. The announcement appears immediately on the board.',
+      '<b>Pinned posts (📌)</b> — check the "📌 Pin this post" checkbox in the new-post modal to pin it to the top of the board regardless of date. Use pinning for time-sensitive notices that must stay visible, like a line shutdown or a safety bulletin. Pinned posts remain at the top until you unpin or delete them.',
+      '<b>Emoji openers</b> — starting your title with an emoji helps team members scan the board at a glance: 📌 urgent/pinned · 🎉 celebration · 🏭 production · 🚨 safety · 📋 reminder.',
+      '<b>Editing a post</b> — click any announcement row to open the edit modal. Change the title, body, or pin status, then click Save.',
+      '<b>Deleting a post</b> — open the edit modal → click the red Delete button → confirm. The post is immediately removed from all dashboards.',
+      '<b>Data note</b> — announcements are stored in localStorage on each device. They are visible only to users on the same browser/device and are not synced across the team via Supabase. For team-wide sync, use the Supabase <code>announcements</code> table directly.'
+    ]);
   var SEC_CUSTOMERS = MOCK_CUSTOMERS +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
-      '<b>(1) 📧 Send Onboarding Email</b> — prompts for name + email, creates a portal login with a temp password, emails the customer the login link via Mailgun. Requires Mailgun key (🤖 toolbar → 📧 Mailgun Settings).',
+      '<b>(1) 📧 Send Onboarding Email</b> — opens the invite picker (client dropdown + email field). Behind the scenes it calls Supabase to create a real auth user, links them to the picked client, and fires a password-reset email so the customer sets their own password. Mailgun is configured server-side in the <code>mailgun-send</code> Edge Function — no per-browser API key needed anymore.',
       '<b>(2) Row actions</b> — <span style="color:#f5c842">reset</span> sends a Supabase password recovery email; <span style="color:#e74c3c">remove</span> deletes the portal login.',
       'Customers who log in see invoices addressed to them, 💳 Pay Now buttons (using Stripe links you saved per-invoice), ✓ Accept Quote buttons (emails Mike on click), and a contact form to message you.'
+    ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#7fc6f5">👥 MULTI-USER PORTAL ACCOUNTS (NEW)</h4>' +
+    bullets([
+      '<b>Two roles per brand</b>: <span style="color:#00e5c0;font-weight:700">OWNER</span> can invite/remove teammates and edit account settings. <span style="color:#7fc6f5;font-weight:700">MEMBER</span> is view-only — sees the same invoices/runs/samples but can\'t change billing info or invite others.',
+      '<b>The first invite is owner</b>: when a CRM admin clicks "🔑 Invite Customer Login" on a client, that first user becomes the owner. Every subsequent invite (from CRM or from the portal itself) becomes a member.',
+      '<b>Portal-side invites</b>: the customer\'s owner can add their AP/ops/buyer themselves — Customer Portal → <b>Account settings</b> → <b>TEAMMATES</b> section → enter email + display name → <b>+ Invite</b>. The new user gets a password-reset email; once they set a password they\'re in the portal under the same brand.',
+      '<b>CRM-side controls</b>: the Customer Logins table now shows a <b>Role</b> column. Click <b>Make owner</b> on a member row to promote them (e.g. if the original owner left and you need to hand off the account). Deactivate works the same as before.',
+      '<b>What members CAN\'T do</b>: invite teammates, remove teammates, edit account settings (the Teammates section says "Only the brand owner can invite teammates" instead of showing the invite form). They CAN see everything an owner sees on the portal.',
+      '<b>Behind the scenes</b>: a single Postgres RPC (<code>portal_invite_teammate</code>) runs as SECURITY DEFINER so the portal user — who has no insert privileges on customer_users — can still create the row. The RPC refuses if the caller isn\'t an owner. A companion RPC (<code>portal_remove_teammate</code>) deactivates teammates with the same gating.'
     ]);
 
   var SEC_SETTINGS = MOCK_SETTINGS +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
-      '<b>(1) Floating 🤖 button</b> — bottom-right corner of any CRM page. Click to open the menu.',
-      '<b>(2) Popout menu</b> — opens above the button. Contains AI tools (Estimate Quote / Draft Invoice / Meeting Notes / Draft Email) AND all settings:',
-      '<b>📧 Mailgun Settings</b> — paste your Mailgun private API key. Required for outgoing email. Has a "Test send" button.',
-      '<b>🤖 AI Settings</b> — paste your Anthropic API key. Required for 🤖 AI features.',
-      '<b>✍️ Email Signature</b> — per-device signature auto-appended to outgoing follow-ups.',
-      '<b>🗑️ Clear local cache</b> (admin only, red styling) — per-key opt-in cleanup of gl_* localStorage. Use when handing the device to a new user.',
-      'The <b>System Health</b> widget on the dashboard also surfaces missing integrations with one-click fixers.'
+      '<b>What it is</b>: the Settings &amp; Integrations panel, accessed via the floating <b>🤖</b> button in the bottom-right corner of any CRM page. The same menu also provides quick access to AI Tools (see the AI Chat &amp; AI Tools section for those).',
+      '<b>(1) Floating 🤖 FAB button</b> — a teal-to-blue gradient circle fixed to the bottom-right corner on every CRM page. Click it to open the popout menu.',
+      '<b>(2) Popout menu — Settings items</b> (scroll down below the AI tools to find these):<ul style="margin:4px 0 4px 18px;padding:0"><li><b>📧 Mailgun Settings</b> — paste your Mailgun private API key (starts with <code>key-</code>). Required for all outgoing email (send invoice, follow-up, schedules). After pasting, click <b>Test send</b> to verify it works. The key is saved to localStorage on this device.</li><li><b>🤖 AI Settings</b> — paste your Anthropic API key (starts with <code>sk-ant-</code>). Required for all AI features: quote estimates, invoice drafting, meeting notes, AI chat, NCR root-cause suggester, COA parser, formula generation. Saved to localStorage.</li><li><b>✍️ Email Signature</b> — your name, title, phone, and any footer text. Auto-appended to the bottom of every outgoing follow-up email. Edit directly in the text area and click Save.</li><li><b>🗑️ Clear local cache</b> (admin only, shown in red) — opens a checklist of all <code>gl_*</code> localStorage keys (tasks, inventory, announcements, activity, Mailgun key, AI key, etc.). Check the ones you want to delete, click Confirm. Use when handing a device to a new team member.</li></ul>',
+      '<b>Where settings are stored</b>: API keys, signatures, and per-device preferences are stored in <code>localStorage</code> on your current browser. They are not synced to Supabase. Each device or browser profile needs its own keys set.',
+      '<b>QuickBooks Online (QBO)</b>: connect your QBO account from the 🤖 menu → <b>⚙ Settings → QuickBooks → Connect</b>. This opens the Intuit OAuth flow. Once connected, invoices can be pushed to QBO as bills with one click from the invoice detail page.',
+      '<b>System Health widget</b>: the dashboard\'s System Health section surfaces missing integrations (no Mailgun key, no AI key, missing Storage bucket, missing database tables) with one-click fix buttons. Always check System Health after first login on a new device.'
     ]);
   var SEC_SHORTCUTS = bullets([
     '<kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">Ctrl+K</kbd> / <kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">⌘K</kbd> — open Global Search across invoices / clients / deals / referrers / users.',
@@ -5459,9 +6348,598 @@
     '<kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">↑↓</kbd> in Global Search — navigate; <kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">Enter</kbd> opens.'
   ]);
 
+  // ────────────────────────────────────────────────────────────
+  // NEW SECTIONS (Task 2)
+  // ────────────────────────────────────────────────────────────
+
+  var SEC_AI_HUB =
+    wf(620, 270,
+      box(0,0,620,270,'#0a1628','rgba(255,255,255,.05)') +
+      // Chat area
+      box(0,0,620,160,'#142238','rgba(0,229,192,.1)') +
+      txt(20,20,'💬 AI CHAT',11,'#00e5c0') +
+      box(20,32,580,32,'#1a2c48','rgba(255,255,255,.05)') + txt(30,52,'How do I send an invoice reminder?',11,'#9aa7bd') +
+      box(20,70,580,46,'#1a3c30','rgba(0,229,192,.15)') + txt(30,88,'You can send overdue reminders in bulk from the Invoices page',11,'#cfd9e6') + txt(30,108,'by clicking "📧 Send overdue reminders" in the header.',11,'#cfd9e6') +
+      box(20,122,580,22,'#0d1e35','rgba(255,255,255,.05)') + txt(30,137,'Ask anything about Good Liquid CRM…',10,'#9aa7bd') +
+      box(560,122,50,22,'#1a6fff','none') + txt(585,137,'Send',9,'#fff','middle') +
+      // Tool grid
+      box(0,165,620,105,'#0d1e35','rgba(255,255,255,.03)') +
+      txt(20,182,'🤖 AI TOOLS  ·  6 categories  ·  30+ tools',10,'#00e5c0') +
+      box(20,192,90,34,'#1a2c48','rgba(0,229,192,.1)') + txt(65,213,'💰 Quote',9,'#cfd9e6','middle') +
+      box(118,192,90,34,'#1a2c48','rgba(0,229,192,.1)') + txt(163,213,'🧾 Invoice',9,'#cfd9e6','middle') +
+      box(216,192,90,34,'#1a2c48','rgba(0,229,192,.1)') + txt(261,213,'📝 Notes',9,'#cfd9e6','middle') +
+      box(314,192,90,34,'#1a2c48','rgba(0,229,192,.1)') + txt(359,213,'✉️ Email',9,'#cfd9e6','middle') +
+      box(412,192,90,34,'#1a2c48','rgba(245,200,66,.1)') + txt(457,213,'📋 Comply',9,'#f5c842','middle') +
+      box(510,192,90,34,'#1a2c48','rgba(107,159,255,.1)') + txt(555,213,'🏭 Prod.',9,'#6b9fff','middle') +
+      box(20,232,90,34,'#1a2c48','rgba(196,181,253,.1)') + txt(65,253,'🤖 AI Key',9,'#c4b5fd','middle') +
+      box(118,232,90,34,'#1a2c48','rgba(196,181,253,.1)') + txt(163,253,'📣 Social',9,'#c4b5fd','middle') +
+      box(216,232,90,34,'#1a2c48','rgba(196,181,253,.1)') + txt(261,253,'🌱 Growth',9,'#c4b5fd','middle') +
+      box(314,232,90,34,'#1a2c48','rgba(95,207,158,.1)') + txt(359,253,'📊 Report',9,'#5fcf9e','middle') +
+      tag(20,32,1) + tag(20,70,2) + tag(20,192,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>(1) AI Chat input</b> — type any question about the CRM and Claude answers in context. Use it to learn the app, troubleshoot a workflow, or draft content quickly.',
+      '<b>(2) AI response</b> — responses appear inline. The chat history persists for the session.',
+      '<b>(3) AI Tools panel</b> — 30+ one-click tools organised across 6 categories: Invoicing (Quote, Draft Invoice, Meeting Notes, Draft Email, Email Signature), Compliance (Root-Cause Suggester, COA Parser, Allergen Check), Production (Run Summary, Lot Notes), Marketing (Social Post, Press Release, Growth Tips), Reports, and Settings (AI key config). Click any tile to launch that tool.',
+      '<b>How to access</b>: click <b>💬 AI Chat</b> in the sidebar AI section for the chat page, or <b>🤖 AI Tools</b> for the full categorised panel. The floating 🤖 FAB button (bottom-right) also opens a quick-access sub-menu.',
+      '<b>AI key setup</b>: go to AI Tools → <b>🤖 AI Settings</b> and paste your Anthropic API key. Without a key the tools show a prompt asking you to add one.'
+    ]);
+
+  var SEC_PRODUCTION_RUNS =
+    wf(620, 230,
+      box(0,0,620,230,'#142238','rgba(255,255,255,.05)') +
+      txt(20,22,'🏭 PRODUCTION RUNS',12,'#fff') +
+      box(530,10,80,22,'rgba(0,229,192,.1)','rgba(0,229,192,.3)') + txt(570,24,'+ Add Run',9,'#00e5c0','middle') +
+      box(20,36,104,180,'#0d1e35','rgba(255,255,255,.05)') + txt(30,54,'DISCOVERY',9,'#9aa7bd') +
+      box(25,62,94,54,'#243a56','rgba(107,159,255,.3)') + txt(30,78,'Ceres 14',10,'#fff') + txt(30,92,'Jun 2',9,'#9aa7bd') +
+      box(40,100,60,14,'#1a3c30','none') + txt(70,111,'2d',8,'#00e5c0','middle') +
+      box(130,36,104,180,'#0d1e35','rgba(255,255,255,.05)') + txt(140,54,'FORMULATION',9,'#9aa7bd') +
+      box(135,62,94,54,'#243a56','rgba(245,200,66,.3)') + txt(140,78,'PitStop',10,'#fff') + txt(140,92,'Jun 5',9,'#9aa7bd') +
+      box(150,100,60,14,'rgba(245,200,66,.4)','none') + txt(180,111,'9d',8,'#f5c842','middle') +
+      box(240,36,104,180,'#0d1e35','rgba(255,255,255,.05)') + txt(250,54,'SCHEDULING',9,'#9aa7bd') +
+      box(245,62,94,54,'#243a56','rgba(0,229,192,.3)') + txt(250,78,'Lotus nutra',10,'#fff') + txt(250,92,'Jun 10',9,'#9aa7bd') +
+      box(260,100,60,14,'#1a3c30','none') + txt(290,111,'5d',8,'#00e5c0','middle') +
+      box(350,36,104,180,'#0d1e35','rgba(255,255,255,.05)') + txt(360,54,'PRODUCTION',9,'#9aa7bd') +
+      box(355,62,94,54,'#243a56','rgba(95,207,158,.3)') + txt(360,78,'TacoLoco',10,'#fff') + txt(360,92,'May 28',9,'#9aa7bd') +
+      box(370,100,60,14,'#1a2c48','none') + txt(400,111,'3d',8,'#5fcf9e','middle') +
+      box(460,36,104,180,'#0d1e35','rgba(255,255,255,.05)') + txt(470,54,'SHIP',9,'#9aa7bd') +
+      box(465,62,94,54,'#243a56','rgba(196,181,253,.3)') + txt(470,78,'GreenCo',10,'#fff') + txt(470,92,'May 22',9,'#9aa7bd') +
+      box(480,100,60,14,'#2a1a3c','none') + txt(510,111,'14d',8,'#c4b5fd','middle') +
+      tag(150,100,1) + tag(40,100,2) + tag(530,10,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>Five kanban stages</b>: Discovery → Formulation → Scheduling → Production → Ship. Drag cards between columns or use the arrow buttons inside each card.',
+      '<b>(1) Days-in-stage badge</b> — colored pill on every card: <span style="color:#00e5c0">green &lt; 7 days</span>, <span style="color:#f5c842">yellow 7–14 days</span>, <span style="color:#e74c3c">red &gt; 14 days</span>. A red badge means the run is stale and needs attention.',
+      '<b>(2) Adding a run</b> — click <b>+ Add Run</b> (top-right), fill in client, format, case count, lot number, assigned production line, start / end dates.',
+      '<b>Lot Documents</b> — click any run card → open the 📎 LOT DOCUMENTS section → <b>+ Attach</b> to upload COAs, spec sheets, or certs. Files land in Supabase Storage and appear in the customer\'s portal instantly.',
+      '<b>Auto stage-change emails</b> — advancing a run to a new stage fires an email to the brand\'s portal customer with the new status badge.',
+      '<b>Production lines</b> — click <b>⚙ Production lines</b> in the toolbar to configure lines with capacity (cases/day or hours/week). A capacity bar above the board shows week utilisation.'
+    ]);
+
+  var SEC_FORMULA_VAULT =
+    wf(620, 190,
+      box(0,0,620,190,'#142238','rgba(255,255,255,.05)') +
+      txt(20,22,'🧪 FORMULA VAULT',12,'#fff') +
+      box(20,34,580,24,'#0d1e35','rgba(255,255,255,.05)') +
+      txt(30,50,'Formula name',10,'#9aa7bd') + txt(200,50,'Version',10,'#9aa7bd') + txt(280,50,'Status',10,'#9aa7bd') + txt(380,50,'Allergens',10,'#9aa7bd') + txt(500,50,'Client',10,'#9aa7bd') +
+      box(20,62,580,26,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(30,79,'Mango Seltzer 12oz',10,'#cfd9e6') + txt(200,79,'v2.1',10,'#cfd9e6') +
+      box(280,66,65,18,'#1a3c30','rgba(0,229,192,.4)') + txt(312,78,'Approved',8,'#00e5c0','middle') +
+      txt(380,79,'Tree nuts',10,'#9aa7bd') + txt(500,79,'Lotus nutra',10,'#cfd9e6') +
+      box(20,94,580,26,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(30,111,'Citrus Burst 16oz',10,'#cfd9e6') + txt(200,111,'v1.0',10,'#cfd9e6') +
+      box(280,98,65,18,'#3d2f0a','rgba(245,200,66,.4)') + txt(312,110,'Benchtop',8,'#f5c842','middle') +
+      txt(380,111,'None',10,'#9aa7bd') + txt(500,111,'Ceres 14',10,'#cfd9e6') +
+      box(20,126,580,26,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(30,143,'Classic Cola 355ml',10,'#cfd9e6') + txt(200,143,'v3.0',10,'#cfd9e6') +
+      box(280,130,50,18,'#1a2c48','rgba(255,255,255,.2)') + txt(305,142,'Draft',8,'#9aa7bd','middle') +
+      txt(380,143,'Wheat',10,'#9aa7bd') + txt(500,143,'PitStop',10,'#cfd9e6') +
+      box(20,158,580,26,'#1a2c48','rgba(231,76,60,.05)') +
+      txt(30,175,'OG Recipe 2022',10,'#9aa7bd') + txt(200,175,'v1.2',10,'#9aa7bd') +
+      box(280,162,62,18,'#3d1a1a','rgba(231,76,60,.4)') + txt(311,174,'Archived',8,'#e74c3c','middle') +
+      txt(380,175,'Soy, Wheat',10,'#9aa7bd') + txt(500,175,'—',10,'#9aa7bd') +
+      tag(280,66,1) + tag(280,98,2) + tag(280,130,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>What it stores</b>: every formula tied to a client — name, version, batch size, target yield, allergens, status, and file attachments (spec sheets, COAs).',
+      '<b>Status workflow (1–3)</b>: Draft (grey) → Benchtop (yellow, pilot batch underway) → Approved (green, cleared for production) → Archived (red, no longer active). Only approved formulas appear in the customer portal.',
+      '<b>Allergen tracking</b>: the 9 major US allergens (milk, eggs, fish, shellfish, tree nuts, peanuts, wheat, soybeans, sesame) plus free-text custom allergens. Used to auto-generate allergen declarations.',
+      '<b>Version numbering</b>: each save bumps the minor version (v1.0 → v1.1). Major reformulations get a new major version (v2.0). Previous versions are preserved in the history tab.'
+    ]);
+
+  var SEC_YIELD_TRACKER =
+    wf(620, 190,
+      box(0,0,620,190,'#142238','rgba(255,255,255,.05)') +
+      txt(20,22,'📈 YIELD TRACKER',12,'#fff') +
+      box(20,34,580,28,'#1a3c30','rgba(0,229,192,.15)') +
+      txt(30,48,'Rolling 90-day avg yield:',10,'#9aa7bd') + txt(200,48,'91.4%',13,'#00e5c0') +
+      txt(350,48,'Best run:',10,'#9aa7bd') + txt(420,48,'LOT-2026-08  ·  96.2%',10,'#5fcf9e') +
+      box(20,66,580,22,'#0d1e35','rgba(255,255,255,.05)') +
+      txt(30,80,'Run Ref',10,'#9aa7bd') + txt(140,80,'Client',10,'#9aa7bd') + txt(250,80,'Planned cases',10,'#9aa7bd') + txt(370,80,'Actual cases',10,'#9aa7bd') + txt(480,80,'Yield %',10,'#9aa7bd') +
+      box(20,92,580,26,'#1a2c48','rgba(95,207,158,.05)') +
+      txt(30,109,'LOT-2026-12',10,'#00e5c0') + txt(140,109,'Lotus nutra',10,'#cfd9e6') + txt(250,109,'500',10,'#cfd9e6') + txt(370,109,'488',10,'#cfd9e6') +
+      box(480,96,60,18,'#1a3c30','rgba(0,229,192,.4)') + txt(510,108,'97.6%',9,'#00e5c0','middle') +
+      box(20,124,580,26,'#1a2c48','rgba(245,200,66,.05)') +
+      txt(30,141,'LOT-2026-10',10,'#00e5c0') + txt(140,141,'Ceres 14',10,'#cfd9e6') + txt(250,141,'200',10,'#cfd9e6') + txt(370,141,'174',10,'#cfd9e6') +
+      box(480,128,60,18,'#3d2f0a','rgba(245,200,66,.4)') + txt(510,140,'87.0%',9,'#f5c842','middle') +
+      box(20,156,580,26,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(30,173,'LOT-2026-08',10,'#00e5c0') + txt(140,173,'PitStop',10,'#cfd9e6') + txt(250,173,'300',10,'#cfd9e6') + txt(370,173,'289',10,'#cfd9e6') +
+      box(480,160,60,18,'#1a3c30','rgba(0,229,192,.4)') + txt(510,172,'96.2%',9,'#00e5c0','middle') +
+      tag(20,34,1) + tag(480,96,2)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>What yield % means</b>: (actual cases shipped / planned cases) × 100. Captures losses from breakage, rework, underfill, or QC rejects.',
+      '<b>(1) Rolling average bar</b> — shows your 90-day average yield and the best single run. Useful for trend analysis and client SLAs.',
+      '<b>(2) Color-coded yield column</b>: green ≥ 93%, yellow 85–92%, red &lt; 85%. Anything red should trigger a root-cause review.',
+      '<b>Logging a completion</b>: open any Production Run card → set stage to "Ship" → fill in <b>Actual cases shipped</b>. The yield row is created automatically.'
+    ]);
+
+  var SEC_SAMPLE_SHIPMENTS =
+    wf(620, 190,
+      box(0,0,620,190,'#142238','rgba(255,255,255,.05)') +
+      txt(20,22,'📦 SAMPLE SHIPMENTS',12,'#fff') +
+      box(530,10,80,22,'rgba(0,229,192,.1)','rgba(0,229,192,.3)') + txt(570,24,'+ Log',9,'#00e5c0','middle') +
+      box(20,36,580,22,'#0d1e35','rgba(255,255,255,.05)') +
+      txt(30,51,'Sample #',10,'#9aa7bd') + txt(120,51,'Client',10,'#9aa7bd') + txt(230,51,'Product',10,'#9aa7bd') + txt(340,51,'Shipped',10,'#9aa7bd') + txt(430,51,'Follow-up',10,'#9aa7bd') + txt(530,51,'Status',10,'#9aa7bd') +
+      box(20,62,580,26,'#1a2c48','rgba(107,159,255,.05)') +
+      txt(30,79,'SMP-041',10,'#00e5c0') + txt(120,79,'Lotus nutra',10,'#cfd9e6') + txt(230,79,'Mango Seltzer',10,'#cfd9e6') + txt(340,79,'May 27',10,'#cfd9e6') + txt(430,79,'Jun 3',10,'#cfd9e6') +
+      box(530,66,60,18,'#1a2c48','rgba(107,159,255,.4)') + txt(560,78,'sent',9,'#6b9fff','middle') +
+      box(20,94,580,26,'#1a2c48','rgba(231,76,60,.05)') +
+      txt(30,111,'SMP-039',10,'#00e5c0') + txt(120,111,'PitStop',10,'#cfd9e6') + txt(230,111,'Classic Cola',10,'#cfd9e6') + txt(340,111,'May 18',10,'#cfd9e6') + txt(430,111,'May 25',10,'#9aa7bd') +
+      box(530,98,65,18,'#3d1a1a','rgba(231,76,60,.4)') + txt(562,110,'overdue',9,'#e74c3c','middle') +
+      box(20,126,580,26,'#1a2c48','rgba(95,207,158,.05)') +
+      txt(30,143,'SMP-037',10,'#00e5c0') + txt(120,143,'Ceres 14',10,'#cfd9e6') + txt(230,143,'Citrus Burst',10,'#cfd9e6') + txt(340,143,'May 12',10,'#cfd9e6') + txt(430,143,'May 19',10,'#cfd9e6') +
+      box(530,130,75,18,'#1a3c30','rgba(0,229,192,.4)') + txt(567,142,'delivered',9,'#00e5c0','middle') +
+      tag(530,66,1) + tag(530,98,2) + tag(530,10,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>How to log a shipment</b>: click <b>+ Log</b>, fill in client, product description, carrier, tracking number, kind (flavor sample / spec sample / prototype / COA sample), quantity, and ship date.',
+      '<b>(1) Sent status</b> — shipment logged but follow-up not yet due.',
+      '<b>(2) Overdue follow-up</b> — 7 days after the ship date, the row turns red if no follow-up has been recorded. Click the row to log a follow-up note or mark it received.',
+      '<b>Ties to pipeline</b>: each shipment can be linked to a Deal card. When a sample is delivered and followed up, the linked deal can be advanced to the next pipeline stage from the shipment row.'
+    ]);
+
+  var SEC_CONTENT_CALENDAR =
+    wf(620, 220,
+      box(0,0,620,220,'#142238','rgba(255,255,255,.05)') +
+      txt(20,22,'📣 CONTENT CALENDAR  ·  June 2026',12,'#fff') +
+      box(510,10,100,22,'rgba(0,229,192,.1)','rgba(0,229,192,.3)') + txt(560,24,'+ New Post',9,'#00e5c0','middle') +
+      // Day headers
+      txt(30,48,'SUN',8,'#9aa7bd') + txt(110,48,'MON',8,'#9aa7bd') + txt(190,48,'TUE',8,'#9aa7bd') + txt(270,48,'WED',8,'#9aa7bd') + txt(350,48,'THU',8,'#9aa7bd') + txt(430,48,'FRI',8,'#9aa7bd') + txt(510,48,'SAT',8,'#9aa7bd') +
+      // Week row 1
+      box(20,56,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(25,72,'1',9,'#9aa7bd') +
+      box(100,56,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(105,72,'2',9,'#9aa7bd') +
+      box(100,74,70,20,'#d63384','none') + txt(135,88,'Instagram',8,'#fff','middle') +
+      box(180,56,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(185,72,'3',9,'#9aa7bd') +
+      box(260,56,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(265,72,'4',9,'#9aa7bd') +
+      box(260,74,70,20,'#0077b5','none') + txt(295,88,'LinkedIn',8,'#fff','middle') +
+      box(340,56,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(345,72,'5',9,'#9aa7bd') +
+      box(420,56,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(425,72,'6',9,'#9aa7bd') +
+      box(420,74,70,20,'#00e5c0','none') + txt(455,88,'Email',8,'#0a1628','middle') +
+      box(500,56,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(505,72,'7',9,'#9aa7bd') +
+      // Week row 2
+      box(20,106,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(25,122,'8',9,'#9aa7bd') +
+      box(100,106,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(105,122,'9',9,'#9aa7bd') +
+      box(180,106,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(185,122,'10',9,'#9aa7bd') +
+      box(180,124,70,20,'#7952b3','none') + txt(215,138,'Facebook',8,'#fff','middle') +
+      box(260,106,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(265,122,'11',9,'#9aa7bd') +
+      box(340,106,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(345,122,'12',9,'#9aa7bd') +
+      box(340,124,70,20,'#d63384','none') + txt(375,138,'Instagram',8,'#fff','middle') +
+      box(420,106,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(425,122,'13',9,'#9aa7bd') +
+      box(500,106,74,44,'#1a2c48','rgba(255,255,255,.05)') + txt(505,122,'14',9,'#9aa7bd') +
+      // Legend
+      box(20,158,74,20,'#d63384','none') + txt(57,172,'Instagram',8,'#fff','middle') +
+      box(100,158,66,20,'#0077b5','none') + txt(133,172,'LinkedIn',8,'#fff','middle') +
+      box(172,158,50,20,'#00e5c0','none') + txt(197,172,'Email',8,'#0a1628','middle') +
+      box(228,158,66,20,'#7952b3','none') + txt(261,172,'Facebook',8,'#fff','middle') +
+      tag(510,10,1) + tag(100,74,2) + tag(260,74,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>Channels supported</b>: Instagram (pink), LinkedIn (blue), Email (teal), Facebook (purple). Each post chip is color-coded by channel on the calendar.',
+      '<b>(1) + New Post</b> — click to create a post: pick the channel, set the date, write the caption / subject, and optionally attach an image.',
+      '<b>(2)–(3) AI Social Post drafter</b> — when creating a post, click <b>🤖 Draft with AI</b> to generate a platform-optimised caption based on your product and audience. Edit before saving.',
+      '<b>How to publish</b>: the calendar is a planning tool — posts are drafted and tracked here. When the date arrives, copy the caption and post manually (or via a connected scheduler like Buffer). Future automation is on the roadmap.'
+    ]);
+
+  var SEC_CIP_LOG =
+    wf(620, 200,
+      box(0,0,620,200,'#142238','rgba(255,255,255,.05)') +
+      txt(20,22,'🧼 CIP / SANITATION LOG',12,'#fff') +
+      box(480,10,130,22,'rgba(0,229,192,.1)','rgba(0,229,192,.3)') + txt(545,24,'+ Add Cycle',9,'#00e5c0','middle') +
+      box(20,36,580,22,'#0d1e35','rgba(255,255,255,.05)') +
+      txt(30,51,'Date / Time',10,'#9aa7bd') + txt(155,51,'Line',10,'#9aa7bd') + txt(250,51,'Sanitizer',10,'#9aa7bd') + txt(350,51,'Temp (°F)',10,'#9aa7bd') + txt(420,51,'Duration',10,'#9aa7bd') + txt(490,51,'Logged by',10,'#9aa7bd') +
+      box(20,62,580,26,'#1a2c48','rgba(95,207,158,.05)') +
+      txt(30,79,'May 29  06:30',10,'#cfd9e6') + txt(155,79,'Canning L1',10,'#cfd9e6') + txt(250,79,'Saniclean 1%',10,'#cfd9e6') + txt(350,79,'145°F',10,'#cfd9e6') + txt(420,79,'22 min',10,'#cfd9e6') + txt(490,79,'J. Rivera',10,'#cfd9e6') +
+      box(20,94,580,26,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(30,111,'May 28  17:15',10,'#cfd9e6') + txt(155,111,'Bottling L1',10,'#cfd9e6') + txt(250,111,'PAA 200ppm',10,'#cfd9e6') + txt(350,111,'140°F',10,'#cfd9e6') + txt(420,111,'18 min',10,'#cfd9e6') + txt(490,111,'M. Krail',10,'#cfd9e6') +
+      box(20,126,580,26,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(30,143,'May 28  06:00',10,'#cfd9e6') + txt(155,143,'R&D Bench',10,'#cfd9e6') + txt(250,143,'Saniclean 1%',10,'#cfd9e6') + txt(350,143,'140°F',10,'#cfd9e6') + txt(420,143,'15 min',10,'#cfd9e6') + txt(490,143,'J. Rivera',10,'#cfd9e6') +
+      box(430,168,180,22,'#1a3c30','rgba(0,229,192,.3)') + txt(520,183,'FDA-defensible record ✓',9,'#00e5c0','middle') +
+      tag(480,10,1) + tag(430,168,2)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>What Clean-In-Place (CIP) is</b>: the automated or manual process of cleaning and sanitising production equipment without disassembly. Required between every production run under 21 CFR Part 117 (FSMA Preventive Controls).',
+      '<b>When to log it</b>: after every production run, before switching products, and at the start/end of each shift. The log should be completed by the operator who performed the CIP, not a supervisor.',
+      '<b>(1) + Add Cycle</b> — fill in: line, sanitizer name + concentration, rinse water temperature, contact time (minutes), and your name. Hit Save. The record is timestamped server-side and is immutable (Part 11 compliant).',
+      '<b>(2) FDA-defensible record</b> — each entry is stored in Supabase with a server timestamp, user ID, and a hash. During an FDA inspection you can export the full log as a signed PDF from the Compliance → 📤 Export button.'
+    ]);
+
+  var SEC_HOLD_TAGS =
+    wf(620, 210,
+      box(0,0,620,210,'#142238','rgba(255,255,255,.05)') +
+      txt(20,22,'🚫 HOLD TAGS',12,'#fff') +
+      box(510,10,100,22,'rgba(231,76,60,.1)','rgba(231,76,60,.3)') + txt(560,24,'+ New Hold',9,'#e74c3c','middle') +
+      box(20,38,580,58,'#1a2c48','rgba(231,76,60,.15)') +
+      txt(30,56,'Mango Seltzer  ·  LOT-2026-12',11,'#fff') +
+      txt(30,72,'Reason: Foreign object detected in inspection — metal fragment &lt; 2mm.',10,'#9aa7bd') +
+      txt(30,86,'Blocked from shipping. Hold placed May 29 by M. Krail.',9,'#9aa7bd') +
+      box(490,48,100,20,'#3d1a1a','rgba(231,76,60,.5)') + txt(540,61,'🔴 Active hold',8,'#e74c3c','middle') +
+      box(490,72,100,20,'rgba(255,255,255,.05)','rgba(231,76,60,.3)') + txt(540,85,'Release Hold',8,'#e74c3c','middle') +
+      box(20,104,580,52,'#1a2c48','rgba(95,207,158,.15)') +
+      txt(30,122,'Classic Cola  ·  LOT-2026-10',11,'#fff') +
+      txt(30,138,'Reason: pH out of spec — corrected and re-tested. Lab sign-off received.',10,'#9aa7bd') +
+      txt(30,152,'Released May 27 by M. Krail. Root cause logged.',9,'#9aa7bd') +
+      box(490,114,100,20,'#1a3c30','rgba(0,229,192,.4)') + txt(540,127,'🟢 Released',8,'#00e5c0','middle') +
+      txt(20,180,'GMP-QC-001  ·  Hold Tag SOP  ·  Supabase hold_tags table',9,'#9aa7bd') +
+      tag(490,48,1) + tag(490,114,2) + tag(510,10,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>What a hold tag does</b>: quarantines a product lot and prevents it from being shipped or released until the issue is resolved and the hold is cleared. Required procedure under GMP-QC-001.',
+      '<b>How to create a hold (3)</b>: Compliance → 🚫 Hold Tags → <b>+ New Hold Tag</b>. Fill in lot number, product, reason, and severity. The lot is immediately flagged across the system.',
+      '<b>(1) Active hold</b> — lot is quarantined. A red banner appears on the matching Production Run card. The customer portal also surfaces the hold on their run view.',
+      '<b>(2) Releasing a hold</b> — click <b>Release Hold</b>, enter the corrective action taken + confirmation of re-test / lab sign-off. The record is permanently logged (immutable for FDA audit trail). Status flips to Released (green) and shipping is unblocked.'
+    ]);
+
+  var SEC_DEFECTS_NCR =
+    wf(620, 200,
+      box(0,0,620,200,'#142238','rgba(255,255,255,.05)') +
+      txt(20,22,'⚠️ DEFECTS / NCRs (Non-Conformance Reports)',12,'#fff') +
+      box(510,10,100,22,'rgba(245,200,66,.1)','rgba(245,200,66,.3)') + txt(560,24,'+ New NCR',9,'#f5c842','middle') +
+      box(20,36,580,22,'#0d1e35','rgba(255,255,255,.05)') +
+      txt(30,51,'Date',10,'#9aa7bd') + txt(110,51,'Run Ref',10,'#9aa7bd') + txt(210,51,'Type',10,'#9aa7bd') + txt(330,51,'Severity',10,'#9aa7bd') + txt(430,51,'Status',10,'#9aa7bd') + txt(530,51,'Action',10,'#9aa7bd') +
+      box(20,62,580,26,'#1a2c48','rgba(231,76,60,.05)') +
+      txt(30,79,'May 29',10,'#cfd9e6') + txt(110,79,'LOT-2026-12',10,'#00e5c0') + txt(210,79,'Metal contamination',10,'#cfd9e6') +
+      box(330,66,58,18,'#3d1a1a','rgba(231,76,60,.5)') + txt(359,78,'Critical',8,'#e74c3c','middle') +
+      box(430,66,50,18,'#3d2f0a','rgba(245,200,66,.4)') + txt(455,78,'Open',8,'#f5c842','middle') +
+      txt(530,79,'🤖 Suggest',9,'#c4b5fd') +
+      box(20,94,580,26,'#1a2c48','rgba(255,154,60,.05)') +
+      txt(30,111,'May 26',10,'#cfd9e6') + txt(110,111,'LOT-2026-10',10,'#00e5c0') + txt(210,111,'pH out of spec',10,'#cfd9e6') +
+      box(330,98,50,18,'#3d2000','rgba(255,154,60,.4)') + txt(355,110,'Major',8,'#ff9a3c','middle') +
+      box(430,98,55,18,'#1a3c30','rgba(0,229,192,.4)') + txt(457,110,'Closed',8,'#00e5c0','middle') +
+      txt(530,111,'View RCA',9,'#9aa7bd') +
+      box(20,126,580,26,'#1a2c48','rgba(245,200,66,.05)') +
+      txt(30,143,'May 22',10,'#cfd9e6') + txt(110,143,'LOT-2026-08',10,'#00e5c0') + txt(210,143,'Label misprint',10,'#cfd9e6') +
+      box(330,130,50,18,'#3d2f0a','rgba(245,200,66,.3)') + txt(355,142,'Minor',8,'#f5c842','middle') +
+      box(430,130,55,18,'#1a3c30','rgba(0,229,192,.4)') + txt(457,142,'Closed',8,'#00e5c0','middle') +
+      txt(530,143,'View RCA',9,'#9aa7bd') +
+      tag(330,66,1) + tag(330,98,2) + tag(330,130,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>What NCRs are</b>: Non-Conformance Reports document any product, process, or material that fails to meet specification. Required under 21 CFR Part 117 preventive controls.',
+      '<b>Three severity levels (1–3)</b>: <span style="color:#e74c3c">Critical</span> — potential safety hazard (metal, allergen, pathogen); <span style="color:#ff9a3c">Major</span> — significant quality deviation (out-of-spec pH, fill weight); <span style="color:#f5c842">Minor</span> — cosmetic or documentation issue (label misprint).',
+      '<b>Root-cause workflow</b>: open any NCR → click <b>🤖 Suggest root cause</b> → AI returns root cause, corrective action, and preventive action based on the defect type and description. Edit and save to lock in the Root Cause Analysis (RCA).',
+      '<b>Closing a defect</b>: once corrective action is complete and verified, set status to Closed. The record is immutable (FDA audit trail). Closed NCRs remain searchable by lot number.'
+    ]);
+
+  var SEC_VENDORS =
+    wf(620, 200,
+      box(0,0,620,200,'#142238','rgba(255,255,255,.05)') +
+      txt(20,22,'🏭 VENDOR DIRECTORY',12,'#fff') +
+      box(510,10,100,22,'rgba(0,229,192,.1)','rgba(0,229,192,.3)') + txt(560,24,'+ Add Vendor',9,'#00e5c0','middle') +
+      box(20,36,580,22,'#0d1e35','rgba(255,255,255,.05)') +
+      txt(30,51,'Vendor name',10,'#9aa7bd') + txt(185,51,'Type',10,'#9aa7bd') + txt(280,51,'Lead time',10,'#9aa7bd') + txt(360,51,'Certificate of Insurance',10,'#9aa7bd') + txt(510,51,'Last order',10,'#9aa7bd') +
+      box(20,62,580,26,'#1a2c48','rgba(95,207,158,.05)') +
+      txt(30,79,'Allied Filling Solutions',10,'#cfd9e6') + txt(185,79,'Co-packer',10,'#9aa7bd') + txt(280,79,'5 days',10,'#cfd9e6') +
+      box(360,66,75,18,'#1a3c30','rgba(0,229,192,.4)') + txt(397,78,'Valid',8,'#00e5c0','middle') +
+      txt(510,79,'May 15',10,'#cfd9e6') +
+      box(20,94,580,26,'#1a2c48','rgba(231,76,60,.05)') +
+      txt(30,111,'AgroPack Ingredients',10,'#cfd9e6') + txt(185,111,'Supplier',10,'#9aa7bd') + txt(280,111,'14 days',10,'#cfd9e6') +
+      box(360,98,70,18,'#3d1a1a','rgba(231,76,60,.4)') + txt(395,110,'Expired',8,'#e74c3c','middle') +
+      txt(510,111,'Apr 2',10,'#cfd9e6') +
+      box(20,126,580,26,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(30,143,'PackRight Labels',10,'#cfd9e6') + txt(185,143,'Packaging',10,'#9aa7bd') + txt(280,143,'7 days',10,'#cfd9e6') +
+      box(360,130,55,18,'#1a2c48','rgba(255,255,255,.2)') + txt(387,142,'None',8,'#9aa7bd','middle') +
+      txt(510,143,'May 22',10,'#cfd9e6') +
+      box(20,162,580,26,'#1a2c48','rgba(255,255,255,.05)') +
+      txt(30,179,'BioVerify Labs',10,'#cfd9e6') + txt(185,179,'Lab / Testing',10,'#9aa7bd') + txt(280,179,'3 days',10,'#cfd9e6') +
+      box(360,166,75,18,'#1a3c30','rgba(0,229,192,.4)') + txt(397,178,'Valid',8,'#00e5c0','middle') +
+      txt(510,179,'May 27',10,'#cfd9e6') +
+      tag(360,66,1) + tag(360,98,2) + tag(510,10,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>What the directory tracks</b>: all ingredient suppliers, co-packers, packaging vendors, labs, and service providers. Each entry stores contact info, type, typical lead time, Certificate of Insurance (COI) status and expiry, and last order date.',
+      '<b>(1) COI Valid</b> — Certificate of Insurance on file and not expired. <b>(2) COI Expired</b> — a red badge appears and the dashboard surfaces an alert. Always collect a new COI before placing the next order with that vendor.',
+      '<b>COI expiry alerts</b>: the dashboard System Health widget shows a warning for any vendor whose COI expires within 30 days. Click the vendor row to upload the renewed certificate.',
+      '<b>(3) + Add Vendor</b> — fill in name, type, contact, lead time, COI expiry date (optional), and any notes. The vendor is immediately available for linking to Production Runs.',
+      '<b>How it connects to production</b>: when creating or editing a Production Run, you can tag the run\'s ingredient suppliers and packaging vendor. This creates a traceability link used in mock recall drills.'
+    ]);
+
+  var SEC_BULK_OUTREACH =
+    wf(620, 220,
+      box(0,0,620,220,'#0a1628','rgba(255,255,255,.05)') +
+      box(0,0,620,36,'#142238','rgba(255,255,255,.08)') +
+      txt(20,23,'📤 BULK OUTREACH  ·  Prospecting (8 leads)',13,'#fff') +
+      txt(580,23,'✕',12,'#9aa7bd','end') +
+      // Checklist
+      box(20,46,240,160,'#142238','rgba(255,255,255,.05)') +
+      txt(30,62,'SELECT LEADS',9,'#9aa7bd') +
+      txt(34,80,'☑',11,'#00e5c0') + txt(58,80,'Apex Beverages',10,'#fff') +
+      txt(34,98,'☑',11,'#00e5c0') + txt(58,98,'BlueSky Drinks',10,'#fff') +
+      txt(34,116,'☐',11,'#9aa7bd') + txt(58,116,'Canyon Craft',10,'#9aa7bd') +
+      txt(34,134,'☑',11,'#00e5c0') + txt(58,134,'DeltaDrinks LLC',10,'#fff') +
+      txt(34,152,'☐',11,'#9aa7bd') + txt(58,152,'Echo Brewing',10,'#9aa7bd') +
+      txt(34,170,'☑',11,'#00e5c0') + txt(58,170,'Floral Seltzers',10,'#fff') +
+      // Preview pane
+      box(270,46,340,160,'#142238','rgba(255,255,255,.05)') +
+      txt(280,62,'AI-DRAFTED PREVIEW  ·  Apex Beverages',9,'#9aa7bd') +
+      txt(280,80,'Subject: Good Liquid Bev Co — Private Label Production',10,'#00e5c0') +
+      txt(280,98,'Hi [First Name],',10,'#cfd9e6') +
+      txt(280,114,'I wanted to reach out about co-packing and private',10,'#9aa7bd') +
+      txt(280,130,'label production for Apex Beverages. We specialise',10,'#9aa7bd') +
+      txt(280,146,'in beverage runs from 50–5,000 cases with full R&D',10,'#9aa7bd') +
+      txt(280,162,'support. Would love to connect. — Mike Krail',10,'#9aa7bd') +
+      box(400,190,210,22,'#1a6fff','none') + txt(505,204,'📤 Send 4 emails',10,'#fff','middle') +
+      tag(20,46,1) + tag(270,46,2) + tag(400,190,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>How to find it</b>: Pipeline page → header → <b>📤 Bulk Outreach</b> button. Only appears for admin/sales roles.',
+      '<b>(1) Lead checklist</b> — all deals in Prospecting are listed with checkboxes. Tick the ones you want to email. Unticked deals are skipped.',
+      '<b>(2) AI-drafted preview</b> — the right pane shows an AI-generated cold-outreach email personalised to the selected lead\'s company name. You can edit the subject and body before sending.',
+      '<b>(3) Send X emails</b> — fires one email per selected deal via Mailgun, marks each deal as "outreach sent" in the pipeline (a small badge appears on the card), and logs the sends to Email Activity.',
+      '<b>Variables used</b>: company name, deal value (if set), and your email signature. The AI adjusts the tone based on the deal stage.'
+    ]);
+
+  var SEC_SCHEDULING =
+    wf(620, 240,
+      box(0,0,620,240,'#0a1628','rgba(255,255,255,.05)') +
+      box(0,0,620,36,'#142238','rgba(255,255,255,.08)') +
+      txt(20,23,'📅 SCHEDULING LINK  ·  Mike Krail',13,'#fff') +
+      txt(580,23,'✕',12,'#9aa7bd','end') +
+      // Link display
+      box(20,50,580,28,'#0f1a2e','rgba(0,229,192,.07)') +
+      txt(30,67,'goodliquidbevco.com/book?u=mike',11,'#00e5c0') +
+      txt(560,67,'Copy',10,'#00e5c0','end') +
+      // Settings grid
+      box(20,90,180,130,'#142238','rgba(255,255,255,.05)') +
+      txt(30,106,'AVAILABILITY',9,'#9aa7bd') +
+      txt(30,124,'Duration: 30 min',10,'#fff') +
+      txt(30,140,'Buffer: 10 min',10,'#9aa7bd') +
+      txt(30,156,'Mon – Fri',10,'#fff') +
+      txt(30,172,'9:00 AM – 5:00 PM',10,'#9aa7bd') +
+      txt(30,188,'Eastern Time',10,'#9aa7bd') +
+      // Upcoming bookings
+      box(214,90,386,130,'#142238','rgba(255,255,255,.05)') +
+      txt(224,106,'UPCOMING BOOKINGS',9,'#9aa7bd') +
+      txt(224,124,'Jane Smith',10,'#fff') + txt(570,124,'Jun 5, 10:00 AM',10,'#9aa7bd','end') +
+      txt(224,140,'jane@acmebrew.com · Acme Brewing',10,'#5fcf9e') +
+      txt(224,162,'Carlos Rivera',10,'#fff') + txt(570,162,'Jun 6, 2:00 PM',10,'#9aa7bd','end') +
+      txt(224,178,'carlos@sunseltzer.com',10,'#5fcf9e') +
+      box(520,186,70,22,'rgba(231,70,70,.2)','none') + txt(555,200,'Cancel',9,'#e74646','middle') +
+      tag(20,50,1) + tag(20,90,2) + tag(214,90,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>(1) Your shareable link</b> — a unique URL like <code>goodliquidbevco.com/book?u=mike</code>. Anyone who opens it can see your availability and book a slot — no login required. Use "Copy Link" or "Send via Email" to share it.',
+      '<b>(2) Availability settings</b> — set your meeting duration (15 / 30 / 60 min), buffer after each meeting, which days you\'re available, and your working hours. Changes save instantly. Visitors always see real-time availability.',
+      '<b>(3) Upcoming bookings</b> — every confirmed booking appears here. The Cancel button cancels from your end; a confirmation email has already gone to the visitor. The booking also appears on your General Calendar.',
+      '<b>What the visitor sees</b>: a clean booking page with a month calendar (unavailable days are greyed out), clickable time slots, and a short form (name, email, company, notes). On submit they get an instant confirmation email and you get a notification email.',
+      '<b>Where to find it</b>: Sidebar → <b>Calendars → Scheduling Link</b>.'
+    ]) +
+    '<h4 style="color:#00e5c0;margin:20px 0 8px;font-size:12px;letter-spacing:.5px;text-transform:uppercase">Email Invite Button</h4>' +
+    wf(620, 162,
+      box(0,0,620,162,'#0a1628','rgba(255,255,255,.05)') +
+      txt(20,22,'Send Scheduling Link via Email',12,'#fff') +
+      txt(20,44,'To:',10,'#9aa7bd') +
+      box(44,34,556,20,'#0f1a2e','rgba(255,255,255,.08)') + txt(54,48,'jane@acmebrew.com',10,'#fff') +
+      txt(20,72,'Subject:',10,'#9aa7bd') +
+      box(66,62,534,20,'#0f1a2e','rgba(255,255,255,.08)') + txt(76,76,'Your scheduling link from Good Liquid Bev Co',10,'#fff') +
+      box(20,92,580,42,'#142238','rgba(255,255,255,.05)') +
+      txt(30,108,'Hi Jane, you can book a time with us using the button below:',9,'#9aa7bd') +
+      box(200,112,220,18,'#00e5c0','none') + txt(310,124,'Book a Time with Good Liquid',9,'#0a1628','middle') +
+      txt(30,148,'The raw URL is hidden inside the button — the recipient sees clean branding, not a long link.',9,'#5a7a9a') +
+      tag(200,112,1)
+    ) +
+    bullets([
+      '<b>(1) Styled CTA button</b> — instead of a raw URL, the recipient gets a teal "Book a Time with Good Liquid" button. Clicking it opens your scheduling page directly.',
+      '<b>How to send</b> — from the Scheduling Link panel, click "Send via Email", enter the recipient\'s address, and hit Send. The button email is generated automatically.',
+      '<b>Custom subject line</b> — the subject is pre-filled but editable before you send.'
+    ]) +
+    '<h4 style="color:#00e5c0;margin:20px 0 8px;font-size:12px;letter-spacing:.5px;text-transform:uppercase">Double-Booking Prevention</h4>' +
+    bullets([
+      '<b>Automatic conflict check</b> — when a visitor tries to book a slot, the system checks your General Calendar for existing events at that time. Slots already taken are grayed out and unclickable on the public booking page.',
+      '<b>Buffer time</b> — the buffer you configure (default 10 min) is added after each meeting before the next slot opens, so you are never booked back-to-back without a break.',
+      '<b>Manual calendar blocks it too</b> — if you add an event directly to your General Calendar (a production run, lunch, etc.), that window is automatically blocked on the public booking page as well.'
+    ]);
+
+  var SEC_RESOURCE_LIBRARY =
+    wf(620, 254,
+      box(0,0,620,254,'#060d1a','rgba(255,255,255,.04)') +
+      txt(20,22,'RESOURCE LIBRARY',12,'#fff') +
+      txt(20,40,'Five deep-dive articles for beverage brand founders',10,'#5a7a9a') +
+      box(20,54,292,88,'#0d1e35','rgba(196,164,248,.12)') +
+      txt(30,72,'BRAND LAUNCH',8,'#c4a4f8') +
+      txt(30,88,'How to launch a hard kombucha brand',10,'#fff') +
+      txt(30,106,'6 min read',8,'#5a7a9a') + txt(303,130,'→',10,'#c4a4f8','end') +
+      box(328,54,272,88,'#0d1e35','rgba(127,198,245,.12)') +
+      txt(338,72,'OPERATIONS',8,'#7fc6f5') +
+      txt(338,88,'Canning MOQs explained',10,'#fff') +
+      txt(338,106,'4 min read',8,'#5a7a9a') + txt(592,130,'→',10,'#7fc6f5','end') +
+      box(20,152,186,88,'#0d1e35','rgba(0,229,192,.12)') +
+      txt(30,170,'R&amp;D',8,'#00e5c0') +
+      txt(30,184,'Flash vs. tunnel pasteurization',10,'#fff') +
+      txt(30,198,'for botanicals  ·  7 min',8,'#5a7a9a') +
+      box(216,152,190,88,'#0d1e35','rgba(196,164,248,.12)') +
+      txt(226,170,'R&amp;D',8,'#c4a4f8') +
+      txt(226,184,'Pasteurization vs.',10,'#fff') +
+      txt(226,198,'cold-fill  ·  5 min',8,'#5a7a9a') +
+      box(416,152,184,88,'#0d1e35','rgba(245,200,66,.12)') +
+      txt(426,170,'PACKAGING',8,'#f5c842') +
+      txt(426,184,'PakTech handles +',10,'#fff') +
+      txt(426,198,'custom lid colors  ·  3 min',8,'#5a7a9a') +
+      tag(20,54,1) + tag(20,152,2) + tag(550,22,3)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>(1) Top-row cards</b> — "How to launch a hard kombucha brand" (6 min, Brand Launch) and "Canning MOQs Explained" (4 min, Operations). Click either card to open the full article.',
+      '<b>(2) Bottom-row cards</b> — three R&amp;D and Packaging articles: Flash vs. Tunnel Pasteurization for Botanicals (7 min), Pasteurization vs. Cold-Fill (5 min), and PakTech Handles + Custom Lid Colors (3 min).',
+      '<b>(3) Live linked pages</b> — each article is a full standalone HTML page at <code>goodliquidbev.com/resources/</code>. They open directly in the browser — no modal, no login required.',
+      '<b>Article categories</b>: Brand Launch · Operations · R&amp;D · Packaging. Each card is color-coded to its category and shows the estimated read time.',
+      '<b>Where to find it</b>: Main marketing website home page → scroll down to the <b>Resource Library</b> section.'
+    ]);
+
+  // ──────────────────────────────────────────────────────────
+  // ACCOUNTING ENHANCEMENT HELP SECTIONS
+  // ──────────────────────────────────────────────────────────
+
+  var SEC_PARTIAL_PAYMENTS =
+    wf(620, 220,
+      box(0,0,620,220,'#0a1628','rgba(255,255,255,.05)') +
+      box(0,0,620,36,'#142238','rgba(255,255,255,.08)') +
+      txt(20,23,'💵 Record Payment — GL-2025-042',13,'#fff') +
+      txt(580,23,'✕',12,'#9aa7bd','end') +
+      box(20,50,180,60,'#1a2c48','rgba(0,229,192,.15)') + txt(30,68,'Invoice Total',10,'#9aa7bd') + txt(30,94,'$1,250.00',16,'#fff') +
+      box(210,50,180,60,'#1a2c48','rgba(95,207,158,.25)') + txt(220,68,'Paid',10,'#9aa7bd') + txt(220,94,'$750.00',16,'#5fcf9e') +
+      box(400,50,200,60,'#1a2c48','rgba(231,76,60,.25)') + txt(410,68,'Remaining',10,'#9aa7bd') + txt(410,94,'$500.00',16,'#e74c3c') +
+      box(20,124,580,28,'#1a2c48','rgba(255,255,255,.05)') + txt(30,142,'2025-05-01  ·  Check  ·  #1042',10,'#9aa7bd') + txt(560,142,'$750.00',10,'#5fcf9e','end') +
+      box(20,158,200,40,'#243a56','rgba(0,229,192,.2)') + txt(30,178,'Amount: $500.00',10,'#00e5c0') +
+      box(230,158,160,40,'#243a56','rgba(255,255,255,.08)') + txt(240,178,'Method: ACH',10,'#9aa7bd') +
+      box(400,158,100,40,'#5fcf9e','none') + txt(450,178,'Save Payment',10,'#0a1628','middle')
+    ) +
+    bullets([
+      '<b>Where to find it</b>: open any invoice → click <b>💵 Record Payment</b> in the button row.',
+      '<b>Partial payments</b>: record any amount up to the remaining balance. Each payment is saved to <code>invoice_payments</code> with date, method, and optional reference/check number.',
+      '<b>Payment methods</b>: Check, Wire transfer, ACH, Cash, Stripe, Other.',
+      '<b>Full payment</b>: when the payment brings the balance to $0 the invoice status automatically flips to <b>paid</b> and you\'re offered the option to send a receipt email to the client.',
+      '<b>Payment history</b>: every prior payment appears in the table above the "Record New Payment" form — date, method, reference, and amount.',
+      '<b>Receipt email</b>: call <code>window.glSendPaymentReceipt(invId)</code> from the console, or just confirm when prompted after a full payment. Routes through your configured email provider (Mailgun).'
+    ]);
+
+  var SEC_COLLECTIONS_SEQ =
+    wf(620, 200,
+      box(0,0,620,200,'#0a1628','rgba(255,255,255,.05)') +
+      box(0,0,620,36,'#142238','rgba(255,255,255,.08)') +
+      txt(20,23,'📋 Collections Sequence — GL-2025-038',13,'#fff') +
+      txt(580,23,'✕',12,'#9aa7bd','end') +
+      txt(20,56,'Step',9,'#9aa7bd') + txt(160,56,'Send Date',9,'#9aa7bd') + txt(340,56,'Type',9,'#9aa7bd') +
+      box(20,66,580,24,'#1a2c48','rgba(255,255,255,.05)') + txt(30,82,'Gentle reminder',10,'#fff') + txt(170,82,'Jun 3, 2025',10,'#9aa7bd') + txt(350,82,'gentle',10,'#9aa7bd') +
+      box(20,96,580,24,'#1a2c48','rgba(107,159,255,.2)') + txt(30,112,'Firm reminder',10,'#fff') + txt(170,112,'Jun 14, 2025',10,'#9aa7bd') + txt(350,112,'firm',10,'#9aa7bd') +
+      box(20,126,580,24,'#1a2c48','rgba(245,200,66,.2)') + txt(30,142,'Urgent notice',10,'#fff') + txt(170,142,'Jun 30, 2025',10,'#9aa7bd') + txt(350,142,'urgent',10,'#f5c842') +
+      box(20,156,580,24,'#1a2c48','rgba(231,76,60,.2)') + txt(30,172,'Final notice',10,'#fff') + txt(170,172,'Jul 15, 2025',10,'#9aa7bd') + txt(350,172,'final',10,'#e74c3c') +
+      box(440,184,160,12,'#e74c3c','none') + txt(520,192,'Schedule Sequence',9,'#fff','middle')
+    ) +
+    bullets([
+      '<b>Where to find it</b>: on any overdue invoice detail, click the <b>📋 Collect</b> button in the action row (only appears on past-due invoices).',
+      '<b>The 4-step sequence</b>: Gentle reminder (day 3) → Firm reminder (day 14) → Urgent notice (day 30) → Final notice (day 45). All dates computed from today.',
+      '<b>Scheduling</b>: steps are inserted into the <code>email_schedule</code> table. A separate job picks them up and sends them at the right time via Mailgun.',
+      '<b>Client email required</b>: the modal shows the client\'s email on file. If none exists, add the email via Client Edit before scheduling.',
+      '<b>Cancelling</b>: delete rows from the <code>email_schedule</code> table in Supabase directly, or mark the invoice paid (pending steps won\'t fire for paid invoices).'
+    ]);
+
+  var SEC_RECURRING_INV =
+    wf(620, 210,
+      box(0,0,620,210,'#0a1628','rgba(255,255,255,.05)') +
+      box(0,0,620,36,'#142238','rgba(255,255,255,.08)') +
+      txt(20,23,'🔄 Recurring Invoices',13,'#fff') +
+      txt(580,23,'✕',12,'#9aa7bd','end') +
+      txt(20,56,'Client',9,'#9aa7bd') + txt(160,56,'Description',9,'#9aa7bd') + txt(310,56,'Amount',9,'#9aa7bd') + txt(380,56,'Frequency',9,'#9aa7bd') + txt(470,56,'Next Run',9,'#9aa7bd') + txt(540,56,'Status',9,'#9aa7bd') +
+      box(20,66,580,24,'#1a2c48','rgba(95,207,158,.1)') + txt(30,82,'Lotus Nutra',10,'#fff') + txt(170,82,'Monthly retainer',10,'#9aa7bd') + txt(320,82,'$1,500',10,'#5fcf9e') + txt(390,82,'monthly',10,'#9aa7bd') + txt(480,82,'Jun 1',10,'#9aa7bd') + txt(540,82,'active',10,'#5fcf9e') +
+      box(20,96,580,24,'#1a2c48','rgba(255,255,255,.04)') + txt(30,112,'AlphaFi',10,'#fff') + txt(170,112,'Quarterly formulation fee',10,'#9aa7bd') + txt(320,112,'$2,400',10,'#5fcf9e') + txt(390,112,'quarterly',10,'#9aa7bd') + txt(480,112,'Jul 1',10,'#9aa7bd') + txt(540,112,'active',10,'#5fcf9e') +
+      box(20,136,580,64,'#1a2c48','rgba(255,255,255,.04)') +
+      txt(30,154,'New Template:',10,'#00e5c0') +
+      txt(30,172,'Client ▾',9,'#9aa7bd') + txt(130,172,'Amount',9,'#9aa7bd') + txt(230,172,'Description',9,'#9aa7bd') + txt(370,172,'monthly ▾',9,'#9aa7bd') + txt(460,172,'Start date',9,'#9aa7bd') +
+      box(530,160,70,28,'#38a169','none') + txt(565,178,'Save',10,'#fff','middle')
+    ) +
+    bullets([
+      '<b>Where to find it</b>: on the Invoices page, click the <b>🔄 Recurring</b> button in the toolbar.',
+      '<b>Creating a template</b>: choose client → enter description, amount, frequency (weekly / monthly / quarterly / annually) and start date. Optionally set an end date.',
+      '<b>Auto-generation</b>: when a <code>next_run</code> date arrives the system generates a real invoice automatically (via pg_cron job at 8 AM EST) and advances <code>next_run</code> to the next cycle.',
+      '<b>Pause / Resume</b>: click the Pause or Resume button on any row. Paused templates are skipped by the auto-generator.',
+      '<b>Payment terms</b>: new recurring invoices inherit the template\'s payment terms (default Net 30). Edit the template to change terms for future invoices.',
+      '<b>Manual run</b>: if you need to generate a recurring invoice immediately, open the Supabase SQL editor and run the commented <code>pg_cron</code> body from the migration file.'
+    ]);
+
+  var SEC_CREDIT_MEMOS =
+    wf(620, 180,
+      box(0,0,620,180,'#0a1628','rgba(255,255,255,.05)') +
+      box(0,0,620,36,'#142238','rgba(255,255,255,.08)') +
+      txt(20,23,'📝 Issue Credit Memo',13,'#fff') +
+      txt(580,23,'✕',12,'#9aa7bd','end') +
+      txt(20,58,'A credit memo reduces a client\'s balance.',10,'#9aa7bd') +
+      box(20,76,280,36,'#1a2c48','rgba(255,255,255,.06)') + txt(30,94,'Client: Lotus Nutra',11,'#fff') +
+      box(310,76,290,36,'#1a2c48','rgba(255,255,255,.06)') + txt(320,94,'Amount: $250.00',11,'#fff') +
+      box(20,120,580,28,'#1a2c48','rgba(255,255,255,.06)') + txt(30,138,'Reason: Return of excess packaging material',11,'#9aa7bd') +
+      box(450,156,150,18,'#805ad5','none') + txt(525,168,'Issue Credit Memo',9,'#fff','middle')
+    ) +
+    bullets([
+      '<b>Where to find it</b>: on the Invoices page, click the <b>📝 Credit Memo</b> button in the toolbar.',
+      '<b>What it creates</b>: a new invoice record with prefix <code>CM-YYYY-XXXX</code>, negative amount, and <code>is_credit_memo=true</code>. Status is set to "paid" so it doesn\'t appear as an outstanding invoice.',
+      '<b>Statement of Account</b>: credit memos appear in the client\'s statement as a "Credits" line item that reduces the balance due.',
+      '<b>Use cases</b>: returns, over-billing corrections, goodwill discounts, or any other situation where you\'re reducing what a client owes.',
+      '<b>Accounting note</b>: credit memos lower the client\'s Total Billed figure on the statement. Export CSV from Invoices to get the full picture for your accountant.'
+    ]);
+
+  var SEC_EXPENSE_TRACKER =
+    wf(620, 210,
+      box(0,0,620,210,'#0a1628','rgba(255,255,255,.05)') +
+      box(0,0,620,36,'#142238','rgba(255,255,255,.08)') +
+      txt(20,23,'💸 Expense Tracker',13,'#fff') +
+      txt(580,23,'✕',12,'#9aa7bd','end') +
+      box(20,44,200,52,'#1a2c48','rgba(231,76,60,.2)') + txt(30,62,'This Month',9,'#9aa7bd') + txt(30,84,'$4,320.00',18,'#e74c3c') +
+      txt(360,62,'24 expenses tracked',10,'#9aa7bd') +
+      txt(20,108,'Date',9,'#9aa7bd') + txt(100,108,'Vendor',9,'#9aa7bd') + txt(240,108,'Category',9,'#9aa7bd') + txt(360,108,'Notes',9,'#9aa7bd') + txt(560,108,'Amount',9,'#9aa7bd') +
+      box(20,116,580,22,'#1a2c48','rgba(255,255,255,.05)') + txt(30,130,'2025-05-28',9,'#fff') + txt(110,130,'Crown Packaging',9,'#fff') + txt(250,130,'Packaging',9,'#9aa7bd') + txt(370,130,'Q2 order',9,'#9aa7bd') + txt(560,130,'$2,100',9,'#e74c3c','end') +
+      box(20,140,580,22,'#1a2c48','rgba(255,255,255,.05)') + txt(30,154,'2025-05-25',9,'#fff') + txt(110,154,'Sysco',9,'#fff') + txt(250,154,'Ingredients',9,'#9aa7bd') + txt(370,154,'Botanicals',9,'#9aa7bd') + txt(560,154,'$980',9,'#e74c3c','end') +
+      box(20,168,580,36,'#243a56','rgba(0,229,192,.1)') +
+      txt(30,184,'Vendor ___',9,'#9aa7bd') + txt(140,184,'Amount ___',9,'#9aa7bd') + txt(260,184,'Category ▾',9,'#9aa7bd') + txt(380,184,'Date ___',9,'#9aa7bd') +
+      box(530,172,70,28,'#e53e3e','none') + txt(565,188,'Save',10,'#fff','middle')
+    ) +
+    bullets([
+      '<b>Where to find it</b>: on the Invoices page, click the <b>💸 Expenses</b> button in the toolbar.',
+      '<b>Adding an expense</b>: enter vendor name, amount, category, date. Optionally link to a client or add notes. Hit <b>Save Expense</b>.',
+      '<b>Categories</b>: Ingredients · Packaging · Equipment · Labor · Shipping · Marketing · Office · Travel · Utilities · Other.',
+      '<b>This Month summary</b>: the top card shows total spend for the current calendar month at a glance.',
+      '<b>Client tagging</b>: tag an expense to a specific client to track client-specific costs for profitability analysis.',
+      '<b>Export</b>: expenses are stored in the <code>expenses</code> Supabase table. Pull a CSV from Supabase or build a custom report for your accountant.'
+    ]);
+
+  var SEC_STATEMENT_ACCT =
+    wf(620, 210,
+      box(0,0,620,210,'#0a1628','rgba(255,255,255,.05)') +
+      box(0,0,620,36,'#142238','rgba(255,255,255,.08)') +
+      txt(20,23,'📄 Statement of Account — Lotus Nutra',13,'#fff') +
+      txt(560,23,'🖨️ Print',10,'#3182ce','end') +
+      box(20,46,130,50,'#1a2c48','rgba(255,255,255,.06)') + txt(30,62,'Total Billed',9,'#9aa7bd') + txt(30,84,'$12,500',14,'#fff') +
+      box(160,46,130,50,'#1a2c48','rgba(95,207,158,.2)') + txt(170,62,'Total Paid',9,'#9aa7bd') + txt(170,84,'$8,000',14,'#5fcf9e') +
+      box(300,46,130,50,'#1a2c48','rgba(196,164,248,.2)') + txt(310,62,'Credits',9,'#9aa7bd') + txt(310,84,'$250',14,'#c4a4f8') +
+      box(440,46,160,50,'#1a2c48','rgba(231,76,60,.2)') + txt(450,62,'Balance Due',9,'#9aa7bd') + txt(450,84,'$4,250',14,'#e74c3c') +
+      txt(20,108,'Invoice #',9,'#9aa7bd') + txt(120,108,'Date',9,'#9aa7bd') + txt(200,108,'Due Date',9,'#9aa7bd') + txt(300,108,'Status',9,'#9aa7bd') + txt(560,108,'Amount',9,'#9aa7bd') +
+      box(20,116,580,22,'#1a2c48','rgba(255,255,255,.05)') + txt(30,130,'GL-2025-038',9,'#fff') + txt(130,130,'Apr 1',9,'#9aa7bd') + txt(210,130,'May 1',9,'#9aa7bd') + txt(310,130,'overdue',9,'#e74c3c') + txt(560,130,'$4,500',9,'#e74c3c','end') +
+      box(20,140,580,22,'#1a2c48','rgba(255,255,255,.05)') + txt(30,154,'GL-2025-029',9,'#fff') + txt(130,154,'Mar 1',9,'#9aa7bd') + txt(210,154,'Apr 1',9,'#9aa7bd') + txt(310,154,'paid',9,'#5fcf9e') + txt(560,154,'$3,500',9,'#5fcf9e','end') +
+      box(20,164,580,22,'#1a2c48','rgba(196,164,248,.1)') + txt(30,178,'CM-2025-0001',9,'#c4a4f8') + txt(130,178,'May 28',9,'#9aa7bd') + txt(210,178,'May 28',9,'#9aa7bd') + txt(310,178,'paid (CM)',9,'#c4a4f8') + txt(560,178,'-$250',9,'#c4a4f8','end')
+    ) +
+    bullets([
+      '<b>Where to find it</b>: open any client panel → click <b>📄 Statement</b> button in the client actions area.',
+      '<b>Summary row</b>: four cards — Total Billed, Total Paid, Credits (from credit memos), and Balance Due.',
+      '<b>Invoice list</b>: all invoices for the client in one place — invoice #, date, due date, status, and amount. Credit memos show as "(CM)".',
+      '<b>Printing</b>: click <b>🖨️ Print Statement</b> to open the browser print dialog. The modal is formatted for clean A4/Letter output.',
+      '<b>Sending to client</b>: print to PDF (browser built-in) and email the PDF via the Send Invoice composer.'
+    ]);
+
   var HELP_HTML =
     section('help-overview',        '👋 OVERVIEW',                   SEC_OVERVIEW) +
     section('help-dashboard',       '📊 DASHBOARD',                  SEC_DASHBOARD) +
+    section('help-daily-digest',    '📨 DAILY DIGEST EMAIL',         SEC_DAILY_DIGEST) +
     section('help-clients',         '👥 CLIENTS',                    SEC_CLIENTS) +
     section('help-client-emails',   '📧 ADDITIONAL EMAILS (AP / OPS)', SEC_CLIENT_EMAILS) +
     section('help-pipeline',        '📊 PIPELINE (DEALS)',           SEC_PIPELINE) +
@@ -5487,10 +6965,30 @@
     section('help-customers',       '🌐 CUSTOMER LOGINS (ADMIN)',    SEC_CUSTOMERS) +
     section('help-users',           '🔑 USERS & PERMISSIONS (ADMIN)',SEC_USERS) +
     section('help-settings',        '⚙️ SETTINGS & INTEGRATIONS',    SEC_SETTINGS) +
-    section('help-shortcuts',       '⌨️ KEYBOARD SHORTCUTS',          SEC_SHORTCUTS);
+    section('help-ai-hub',          '🤖 AI CHAT & AI TOOLS',         SEC_AI_HUB) +
+    section('help-production-runs', '🏭 PRODUCTION RUNS',            SEC_PRODUCTION_RUNS) +
+    section('help-formula-vault',   '🧪 FORMULA VAULT',              SEC_FORMULA_VAULT) +
+    section('help-yield-tracker',   '📈 YIELD TRACKER',              SEC_YIELD_TRACKER) +
+    section('help-sample-shipments','📦 SAMPLE SHIPMENTS',           SEC_SAMPLE_SHIPMENTS) +
+    section('help-content-calendar','📣 CONTENT CALENDAR',           SEC_CONTENT_CALENDAR) +
+    section('help-cip-log',         '🧼 CIP / SANITATION LOG',       SEC_CIP_LOG) +
+    section('help-hold-tags',       '🚫 HOLD TAGS',                  SEC_HOLD_TAGS) +
+    section('help-defects-ncr',     '⚠️ DEFECTS / NCRs',             SEC_DEFECTS_NCR) +
+    section('help-vendors',         '🏭 VENDORS',                    SEC_VENDORS) +
+    section('help-bulk-outreach',   '📤 BULK OUTREACH',              SEC_BULK_OUTREACH) +
+    section('help-scheduling',      '📅 SCHEDULING LINK',            SEC_SCHEDULING) +
+    section('help-resource-library','📚 RESOURCE LIBRARY',           SEC_RESOURCE_LIBRARY) +
+    section('help-shortcuts',       '⌨️ KEYBOARD SHORTCUTS',          SEC_SHORTCUTS) +
+    section('help-partial-payments','💵 PARTIAL PAYMENTS',            SEC_PARTIAL_PAYMENTS) +
+    section('help-collections',     '📋 COLLECTIONS SEQUENCE',        SEC_COLLECTIONS_SEQ) +
+    section('help-recurring-inv',   '🔄 RECURRING INVOICES',          SEC_RECURRING_INV) +
+    section('help-credit-memos',    '📝 CREDIT MEMOS',                SEC_CREDIT_MEMOS) +
+    section('help-expenses',        '💸 EXPENSE TRACKER',             SEC_EXPENSE_TRACKER) +
+    section('help-statement',       '📄 STATEMENT OF ACCOUNT',        SEC_STATEMENT_ACCT);
 
   var TOC_ENTRIES = [
     ['help-overview','👋 Overview'],['help-dashboard','📊 Dashboard'],
+    ['help-daily-digest','📨 Daily Digest'],
     ['help-clients','👥 Clients'],['help-client-emails','📧 Additional Emails'],
     ['help-pipeline','📊 Pipeline'],
     ['help-invoices','🧾 Invoices'],['help-newinv','➕ New Invoice'],
@@ -5505,7 +7003,26 @@
     ['help-announcements','📣 Announcements'],
     ['help-customer-requests','📩 Customer Requests'],['help-customers','🌐 Customer Logins'],
     ['help-users','🔑 Users'],['help-settings','⚙️ Settings'],
-    ['help-shortcuts','⌨️ Shortcuts']
+    ['help-ai-hub','🤖 AI Chat & Tools'],
+    ['help-production-runs','🏭 Production Runs'],
+    ['help-formula-vault','🧪 Formula Vault'],
+    ['help-yield-tracker','📈 Yield Tracker'],
+    ['help-sample-shipments','📦 Sample Shipments'],
+    ['help-content-calendar','📣 Content Calendar'],
+    ['help-cip-log','🧼 CIP / Sanitation Log'],
+    ['help-hold-tags','🚫 Hold Tags'],
+    ['help-defects-ncr','⚠️ Defects / NCRs'],
+    ['help-vendors','🏭 Vendors'],
+    ['help-bulk-outreach','📤 Bulk Outreach'],
+    ['help-scheduling','📅 Scheduling Link'],
+    ['help-resource-library','📚 Resource Library'],
+    ['help-shortcuts','⌨️ Shortcuts'],
+    ['help-partial-payments','💵 Partial Payments'],
+    ['help-collections','📋 Collections Sequence'],
+    ['help-recurring-inv','🔄 Recurring Invoices'],
+    ['help-credit-memos','📝 Credit Memos'],
+    ['help-expenses','💸 Expense Tracker'],
+    ['help-statement','📄 Statement of Account']
   ];
   var PAGE_TO_SECTION = {
     'cpg-dashboard':'help-dashboard','cpg-clients':'help-clients','cpg-pipeline':'help-pipeline',
@@ -5514,7 +7031,19 @@
     'cpg-calendar':'help-calendar','cpg-production-cal':'help-production','cpg-tasks':'help-tasks',
     'cpg-documents':'help-documents','cpg-inventory':'help-inventory','cpg-announcements':'help-announcements',
     'cpg-customers':'help-customers','cpg-users':'help-users',
-    'cpg-compliance':'help-compliance','cpg-holds':'help-compliance','cpg-cip':'help-compliance'
+    'cpg-compliance':'help-compliance',
+    'cpg-holds':'help-hold-tags','cpg-cip':'help-cip-log',
+    'cpg-ai':'help-ai-hub',
+    'cpg-production-runs':'help-production-runs',
+    'cpg-formulas':'help-formula-vault',
+    'cpg-yield':'help-yield-tracker',
+    'cpg-samples':'help-sample-shipments',
+    'cpg-content':'help-content-calendar',
+    'cpg-defects':'help-defects-ncr',
+    'cpg-vendors':'help-vendors',
+    'cpg-scheduling':'help-scheduling',
+    'cpg-expenses':'help-expenses',
+    'cpg-recurring':'help-recurring-inv'
   };
   function currentSection(){
     var active = document.querySelector('#crm-panel .cpg.act');
@@ -5998,9 +7527,22 @@
 
   async function postError(payload){
     try {
+      // Use the user's session JWT when available so the row passes RLS
+      // (the `error_log insert anyone authed` policy is scoped `to authenticated`).
+      // Anonymous visitors fall through to the anon key — those inserts get
+      // rejected with 401, which is fine since they wouldn't have anything
+      // useful to log anyway.
+      var token = null;
+      try {
+        if(window.supa && window.supa.auth && typeof window.supa.auth.getSession === 'function'){
+          var s = await window.supa.auth.getSession();
+          token = s && s.data && s.data.session && s.data.session.access_token;
+        }
+      } catch(_e){}
+      var headers = { apikey: SKEY, Authorization: 'Bearer ' + (token || SKEY), 'Content-Type': 'application/json', 'Prefer': 'return=minimal' };
       await fetch(SURL + '/error_log', {
         method: 'POST',
-        headers: { apikey: SKEY, Authorization: 'Bearer ' + SKEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        headers: headers,
         body: JSON.stringify(payload),
         keepalive: true
       });
@@ -6125,7 +7667,9 @@
    https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1/twilio-sms
    ============================================================ */
 (function(){
-  var DEFAULT_FN_URL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1/twilio-sms';
+  var DEFAULT_FN_URL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1/send-sms';
+  var LEGACY_FN_URL  = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1/twilio-sms';
+  // Legacy one-time migration (gl_sms_fn_url rewrite) removed — no longer needed.
   var EVENT_KEYS = [
     { key:'gl_sms_paid',    label:'An invoice is marked paid' },
     { key:'gl_sms_won',     label:'A deal is moved to Closed Won' },
@@ -6475,7 +8019,10 @@
   function isDone(){ return localStorage.getItem('gl_wizard_done') === '1'; }
   function markDone(){ localStorage.setItem('gl_wizard_done', '1'); }
 
-  function statusMailgun(){ return (localStorage.getItem('gl_mailgun_key')||'').length > 10; }
+  // Mailgun key lives in Supabase secrets; assume it's set when the
+  // first-run wizard runs. (Operators can still re-run the wizard
+  // manually if they want a checklist.)
+  function statusMailgun(){ return true; }
   function statusAI(){ return (localStorage.getItem('gl_ai_key')||'').length > 10; }
   function statusSignature(){ var s = localStorage.getItem('gl_email_signature'); return s !== null && (s || '').trim().length > 0; }
   function statusGA(){ return (localStorage.getItem('gl_ga_id')||'').length > 5; }
@@ -6615,18 +8162,10 @@
 
   // Auto-open on first admin login: hook loginUser. Skip if already done
   // or if the user isn't an admin.
-  (function(){
-    var orig = window.loginUser;
-    if(typeof orig !== 'function') return;
-    window.loginUser = function(u){
-      var r = orig.apply(this, arguments);
-      if(u && u.role === 'admin' && !isDone()){
-        // Delay so the CRM panel renders first
-        setTimeout(function(){ window.openSetupWizard({ auto: true }); }, 600);
-      }
-      return r;
-    };
-  })();
+  window.GL_HOOKS.registerLoginHook(function(u){
+    if(u && u.role === 'admin' && !isDone())
+      setTimeout(function(){ window.openSetupWizard({ auto: true }); }, 600);
+  });
 
   console.log('[GL] First-run setup wizard loaded');
 }());
@@ -7651,6 +9190,10 @@
                 '<input id="gl-ec-phone" placeholder="Phone" value="'+esc(c.phone)+'" style="'+INPUT_STYLE+'">' +
               '</div>' +
               '<select id="gl-ec-contact-type" style="'+INPUT_STYLE+'">'+contactTypeOptions+'</select>' +
+              '<label style="display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--white);cursor:pointer;padding:8px 10px;background:rgba(245,200,66,.05);border:1px solid rgba(245,200,66,.18);border-radius:6px;line-height:1.45">' +
+                '<input type="checkbox" id="gl-ec-notify-sms"'+(c.notify_overdue_sms?' checked':'')+' style="accent-color:#f5c842;width:15px;height:15px;cursor:pointer;margin-top:1px;flex-shrink:0">' +
+                '<span>📱 <b>SMS overdue reminders</b> — customer has agreed to receive past-due invoice reminders by text. <span style="color:var(--muted);font-size:11px">Required by TCPA — check only with explicit opt-in.</span></span>' +
+              '</label>' +
             '</div>' +
           '</div>' +
           '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:12px">' +
@@ -7807,6 +9350,14 @@
               (c.qboCustomerId ?    '<div style="font-size:12px;color:var(--white)"><span style="color:var(--muted)">QuickBooks:</span> <code style="font-family:var(--ff-mono);font-size:11px">'+esc(c.qboCustomerId)+'</code></div>' : '') +
             '</div>' : '') +
           '<div><div style="'+LABEL_STYLE+'">NOTES</div><textarea id="gl-ec-notes" rows="3" style="'+INPUT_STYLE+';resize:vertical">'+esc(c.notes)+'</textarea></div>' +
+          '<div style="background:rgba(245,200,66,.04);border:1px solid rgba(245,200,66,.18);border-radius:8px;padding:14px;margin-top:6px">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+              '<div style="'+LABEL_STYLE+'">💵 PRICING OVERRIDES</div>' +
+              '<button type="button" id="gl-ec-rate-add" style="background:rgba(245,200,66,.14);border:1px solid rgba(245,200,66,.4);color:#f5c842;font-size:11px;padding:4px 10px;border-radius:4px;cursor:pointer">+ Add rate</button>' +
+            '</div>' +
+            '<div id="gl-ec-rates-list" style="font-size:11px;color:#9aa7bd">Loading…</div>' +
+            '<div style="font-size:10px;color:#6b87ad;margin-top:8px;line-height:1.5">Negotiated rates for this client. Used by the invoice builder INSTEAD OF the global tier ladder when present. Leave format blank for hour-based services (R&D / Production / Consulting).</div>' +
+          '</div>' +
           '<div id="gl-ec-err" style="display:none;color:#e74c3c;font-size:12px"></div>' +
           '<div style="display:flex;gap:8px;margin-top:6px">' +
             '<button id="gl-ec-save" class="cbtn pri" style="flex:1;padding:13px;font-weight:800">💾 Save changes</button>' +
@@ -7818,6 +9369,131 @@
     ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
     ov.querySelector('#gl-ec-close').addEventListener('click', function(){ ov.remove(); });
     ov.querySelector('#gl-ec-cancel').addEventListener('click', function(){ ov.remove(); });
+
+    // ── Pricing overrides ──────────────────────────────────────
+    var RATE_SERVICES = [
+      { value:'canning',    label:'Canning (per can)',         needsFmt:true,  formats:['12oz Standard can','12oz Sleek can','16oz Standard can'] },
+      { value:'bottling',   label:'Bottling (per unit)',       needsFmt:true,  formats:['750ml bottle','355ml bottle','12oz bottle'] },
+      { value:'rd',         label:'R&D / formulation (per hr)',needsFmt:false },
+      { value:'production', label:'Production hours (per hr)', needsFmt:false },
+      { value:'consulting', label:'Consulting (per hr)',       needsFmt:false }
+    ];
+    async function loadOverrides(){
+      var listEl = ov.querySelector('#gl-ec-rates-list'); if(!listEl) return;
+      if(!window.supa){ listEl.innerHTML = '<span style="color:#ff8579">Supabase not ready</span>'; return; }
+      listEl.innerHTML = 'Loading…';
+      var r = await window.supa.from('client_rate_overrides')
+        .select('id, service, format, override_rate, notes, effective_from, effective_until')
+        .eq('client_id', clientId)
+        .order('service', { ascending: true });
+      if(r.error){ listEl.innerHTML = '<span style="color:#ff8579">Failed: '+esc(r.error.message)+'</span>'; return; }
+      var rows = r.data || [];
+      if(!rows.length){
+        listEl.innerHTML = '<span style="font-style:italic;color:#6b87ad">No custom rates — this client pays the standard tier ladder.</span>';
+        return;
+      }
+      listEl.innerHTML = rows.map(function(o){
+        var svc = (RATE_SERVICES.find(function(s){ return s.value === o.service; })||{label:o.service}).label;
+        var fmtBit = o.format ? ' · <span style="color:#7fc6f5">' + esc(o.format) + '</span>' : '';
+        var dateBit = '';
+        if(o.effective_from) dateBit += ' · from ' + esc(o.effective_from);
+        if(o.effective_until) dateBit += ' · until ' + esc(o.effective_until);
+        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(255,255,255,.03);border-radius:5px;margin-bottom:5px">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="color:#fff;font-size:12px;font-weight:600">' + esc(svc) + fmtBit + '</div>' +
+            '<div style="color:#f5c842;font-size:13px;font-weight:700;margin-top:2px">$' + (parseFloat(o.override_rate)||0).toFixed(4) + '</div>' +
+            (o.notes ? '<div style="color:#9aa7bd;font-size:10px;margin-top:2px;font-style:italic">' + esc(o.notes) + '</div>' : '') +
+            (dateBit ? '<div style="color:#6b87ad;font-size:10px;margin-top:2px">' + dateBit.slice(3) + '</div>' : '') +
+          '</div>' +
+          '<button type="button" data-rate-rm="' + esc(o.id) + '" style="background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.35);color:#ff8579;font-size:10px;padding:4px 8px;border-radius:4px;cursor:pointer">Remove</button>' +
+        '</div>';
+      }).join('');
+      Array.prototype.forEach.call(listEl.querySelectorAll('[data-rate-rm]'), function(b){
+        b.onclick = async function(){
+          var id = b.getAttribute('data-rate-rm');
+          if(!confirm('Remove this rate override? The client will go back to the standard tier ladder for this service.')) return;
+          b.disabled = true; b.textContent = '…';
+          var rr = await window.supa.from('client_rate_overrides').delete().eq('id', id);
+          if(rr.error){ alert('Delete failed: ' + rr.error.message); b.disabled = false; b.textContent = 'Remove'; return; }
+          if(typeof window.glAudit === 'function') window.glAudit('rate_override_removed', clientId, { id: id });
+          // Invalidate cache so next invoice builder load fetches fresh.
+          if(window._glRates && window._glRates.overrides) delete window._glRates.overrides[clientId];
+          loadOverrides();
+        };
+      });
+    }
+    function openAddRateModal(){
+      var prior = document.getElementById('gl-rate-modal'); if(prior) prior.remove();
+      var svcOpts = RATE_SERVICES.map(function(s){ return '<option value="'+s.value+'">'+esc(s.label)+'</option>'; }).join('');
+      var mov = document.createElement('div');
+      mov.id = 'gl-rate-modal';
+      mov.setAttribute('style','position:fixed;inset:0;z-index:1200;background:rgba(6,13,26,.92);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+      mov.innerHTML =
+        '<div style="background:#142238;border:1px solid rgba(245,200,66,.35);border-radius:14px;padding:24px;width:100%;max-width:440px">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+            '<div style="font-family:var(--ff-disp);font-size:16px;letter-spacing:2px;color:#f5c842">💵 ADD RATE OVERRIDE</div>' +
+            '<button id="gl-rate-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+          '</div>' +
+          '<div class="frow"><div class="flbl">Service *</div><select class="fsel" id="gl-rate-service">' + svcOpts + '</select></div>' +
+          '<div class="frow" id="gl-rate-fmt-row"><div class="flbl">Format <span style="opacity:.6">(leave blank to apply to all formats)</span></div><input class="finp" id="gl-rate-format" placeholder="e.g. 12oz Standard can"></div>' +
+          '<div class="frow"><div class="flbl">Override rate * <span style="opacity:.6">(per can / per unit / per hour, USD)</span></div><input class="finp" id="gl-rate-amt" type="number" step="0.0001" min="0" placeholder="0.42"></div>' +
+          '<div class="frow"><div class="flbl">Notes <span style="opacity:.6">(why this rate exists)</span></div><textarea class="finp" id="gl-rate-notes" rows="2" placeholder="e.g. Locked in Mar 2026 pilot rate"></textarea></div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+            '<div class="frow"><div class="flbl">Effective from <span style="opacity:.6">(optional)</span></div><input class="finp" id="gl-rate-from" type="date"></div>' +
+            '<div class="frow"><div class="flbl">Effective until <span style="opacity:.6">(optional)</span></div><input class="finp" id="gl-rate-until" type="date"></div>' +
+          '</div>' +
+          '<div id="gl-rate-msg" style="display:none;margin:10px 0;padding:8px 10px;border-radius:6px;font-size:12px"></div>' +
+          '<div style="display:flex;gap:8px;margin-top:8px">' +
+            '<button id="gl-rate-save" class="cbtn pri" style="flex:1">💾 Save rate</button>' +
+            '<button id="gl-rate-cancel" class="cbtn">Cancel</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(mov);
+      function rateMsg(text, kind){
+        var el = mov.querySelector('#gl-rate-msg'); el.style.display='block'; el.textContent = text;
+        if(kind==='err'){ el.style.background='rgba(231,76,60,.12)'; el.style.border='1px solid rgba(231,76,60,.35)'; el.style.color='#ff8579'; }
+        else { el.style.background='rgba(95,207,158,.12)'; el.style.border='1px solid rgba(95,207,158,.35)'; el.style.color='#5fcf9e'; }
+      }
+      function toggleFmtRow(){
+        var svc = mov.querySelector('#gl-rate-service').value;
+        var meta = RATE_SERVICES.find(function(s){ return s.value === svc; });
+        mov.querySelector('#gl-rate-fmt-row').style.display = (meta && meta.needsFmt) ? 'block' : 'none';
+      }
+      toggleFmtRow();
+      mov.querySelector('#gl-rate-service').onchange = toggleFmtRow;
+      mov.querySelector('#gl-rate-close').onclick  = function(){ mov.remove(); };
+      mov.querySelector('#gl-rate-cancel').onclick = function(){ mov.remove(); };
+      mov.querySelector('#gl-rate-save').onclick = async function(){
+        var svc = mov.querySelector('#gl-rate-service').value;
+        var fmt = (mov.querySelector('#gl-rate-format').value||'').trim() || null;
+        var amt = parseFloat(mov.querySelector('#gl-rate-amt').value);
+        if(!(amt >= 0)){ rateMsg('Enter a non-negative rate.', 'err'); return; }
+        var notes = (mov.querySelector('#gl-rate-notes').value||'').trim() || null;
+        var dFrom = mov.querySelector('#gl-rate-from').value || null;
+        var dTo   = mov.querySelector('#gl-rate-until').value || null;
+        var btn = this; btn.disabled = true; btn.textContent = 'Saving…';
+        var ins = await window.supa.from('client_rate_overrides').insert({
+          client_id: clientId, service: svc, format: fmt,
+          override_rate: amt, notes: notes,
+          effective_from: dFrom, effective_until: dTo
+        });
+        if(ins.error){
+          // 23505 = unique violation (already exists for this svc+fmt)
+          var dup = /duplicate key|23505|unique constraint/i.test(ins.error.message);
+          rateMsg(dup ? 'A rate for this service + format already exists. Remove it first.' : 'Save failed: ' + ins.error.message, 'err');
+          btn.disabled = false; btn.textContent = '💾 Save rate';
+          return;
+        }
+        if(typeof window.glAudit === 'function') window.glAudit('rate_override_added', clientId, { service: svc, format: fmt, rate: amt });
+        if(window._glRates && window._glRates.overrides) delete window._glRates.overrides[clientId];
+        mov.remove();
+        loadOverrides();
+      };
+    }
+    var rateAddBtn = ov.querySelector('#gl-ec-rate-add');
+    if(rateAddBtn) rateAddBtn.onclick = openAddRateModal;
+    loadOverrides();
+
     // Toggle billing block based on "same as physical" checkbox.
     var bsame = ov.querySelector('#gl-ec-billing-same');
     var bblock = ov.querySelector('#gl-ec-billing-block');
@@ -7980,6 +9656,7 @@
         shippingState:  sSame ? bState  : val('gl-ec-shipping-state').toUpperCase(),
         shippingZip:    sSame ? bZip    : val('gl-ec-shipping-zip'),
         liftGate:       chk('gl-ec-lift-gate'),
+        notify_overdue_sms: chk('gl-ec-notify-sms'),
         dockDays:       dockDaysOut,
         dockHours:      val('gl-ec-dock-hours'),
         commPrefs:      commPrefsOut,
@@ -8056,6 +9733,7 @@
           shipping_state:  patch.shippingState,
           shipping_zip:    patch.shippingZip,
           lift_gate:       !!patch.liftGate,
+          notify_overdue_sms: typeof patch.notify_overdue_sms === 'boolean' ? patch.notify_overdue_sms : undefined,
           dock_days:       patch.dockDays,
           dock_hours:      patch.dockHours,
           comm_prefs:      patch.commPrefs,
@@ -8210,8 +9888,8 @@
         '<div style="display:flex;align-items:center;gap:10px;min-width:0">' +
           '<span style="font-size:14px">📄</span>' +
           '<div style="min-width:0">' +
-            '<div style="color:var(--white);font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + r.clientName + '</div>' +
-            '<div style="color:var(--muted);font-size:11px">' + r.label + ' · ' + r.expDate + '</div>' +
+            '<div style="color:var(--white);font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(r.clientName) + '</div>' +
+            '<div style="color:var(--muted);font-size:11px">' + esc(r.label) + ' · ' + esc(r.expDate) + '</div>' +
           '</div>' +
         '</div>' +
         '<div style="color:' + sev + ';font-size:11px;font-weight:700;white-space:nowrap;letter-spacing:.5px">' + txt + '</div>' +
@@ -8245,26 +9923,19 @@
     });
   };
 
-  // Wrap renderDash so the alert refreshes whenever the dashboard re-renders.
-  (function wrap(){
-    var orig = window.renderDash;
-    if(typeof orig !== 'function'){ setTimeout(wrap, 500); return; }
-    window.renderDash = function(){
-      var r = orig.apply(this, arguments);
-      try {
-        // Honor the per-day dismiss.
-        var hideUntil = localStorage.getItem('gl_comp_alert_hide_until');
-        var today = new Date().toISOString().slice(0,10);
-        if(hideUntil === today){
-          var host = document.getElementById('dash-compliance-alert');
-          if(host) host.innerHTML = '';
-          return r;
-        }
-        window.renderComplianceAlert();
-      } catch(e){ console.warn('[GL] compliance alert render threw', e); }
-      return r;
-    };
-  })();
+  // Refresh the compliance alert whenever the dashboard re-renders.
+  window.GL_HOOKS.registerDashPatch(function(){
+    try {
+      var hideUntil = localStorage.getItem('gl_comp_alert_hide_until');
+      var today = new Date().toISOString().slice(0,10);
+      if(hideUntil === today){
+        var host = document.getElementById('dash-compliance-alert');
+        if(host) host.innerHTML = '';
+        return;
+      }
+      window.renderComplianceAlert();
+    } catch(e){ console.warn('[GL] compliance alert render threw', e); }
+  });
 
   console.log('[GL] dashboard compliance alert loaded');
 }());
@@ -9179,11 +10850,41 @@
   };
   function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   window.glProductionRuns = window.glProductionRuns || [];
+  window.glProductionLines = window.glProductionLines || [];
+
+  // Loads production_lines into the in-memory cache. Called from the
+  // run modal + the schedule page. No-op if the table is missing.
+  async function loadProductionLines(){
+    if(!window.supa) return [];
+    try {
+      var r = await window.supa.from('production_lines').select('*').eq('active', true).order('kind').order('name');
+      if(r && r.data){ window.glProductionLines = r.data; return r.data; }
+    } catch(e){ console.warn('[GL] production_lines load failed', e); }
+    return window.glProductionLines || [];
+  }
+
+  // Detect whether `run` overlaps any OTHER run on the same line. Both
+  // sides treat a missing end_date as a single-day occupation. Returns
+  // the conflicting rows (excluding `selfId` if provided) sorted by date.
+  function findConflicts(lineId, startStr, endStr, selfId){
+    if(!lineId || !startStr) return [];
+    var s1 = startStr;
+    var e1 = endStr || startStr;
+    return (window.glProductionRuns || []).filter(function(other){
+      if(!other || other.id === selfId) return false;
+      if(other.production_line_id !== lineId) return false;
+      var s2 = other.scheduled_start_date || other.scheduled_date;
+      var e2 = other.scheduled_end_date   || s2;
+      if(!s2) return false;
+      // Overlap rule: s1 <= e2 && s2 <= e1
+      return s1 <= e2 && s2 <= e1;
+    });
+  }
 
   async function loadFromSupabase(){
     if(!window.supa) return null;
     try {
-      var r = await window.supa.from('production_runs').select('*').order('scheduled_date',{ascending:true,nullsFirst:false});
+      var r = await window.supa.from('production_runs').select('*').order('scheduled_start_date',{ascending:true,nullsFirst:false});
       if(r && r.data) return r.data;
     } catch(e){ console.warn('[GL] production_runs load failed', e); }
     return null;
@@ -9200,12 +10901,84 @@
     var rows = await loadFromSupabase();
     if(rows) window.glProductionRuns = rows;
     else      window.glProductionRuns = loadFromLocal();
+    // Pull lines in parallel so the kanban + capacity widgets render together.
+    await loadProductionLines();
     renderBoard();
+  }
+  // Expose for the Production Schedule page (production-cal) so it can
+  // load the production_runs table without re-rendering the kanban board
+  // (renderBoard is a no-op if #prun-board is not in the DOM).
+  window.glRefreshProductionRuns = refreshRuns;
+
+  // ──────────────────────────────────────────────────────────
+  // Capacity summary widget — sits above the kanban. Computes
+  // this week + next week utilization per active line.
+  // ──────────────────────────────────────────────────────────
+  function renderCapacityWidget(){
+    var host = document.getElementById('prun-capacity'); if(!host) return;
+    var lines = (window.glProductionLines || []).filter(function(l){ return l.active !== false; });
+    if(!lines.length){
+      host.innerHTML = '<div style="font-size:11px;color:#6b87ad;font-style:italic;padding:6px 12px">No production lines configured. <button onclick="window.glOpenProductionLines()" style="background:none;border:0;color:#00e5c0;cursor:pointer;text-decoration:underline;font-size:11px">Set them up →</button></div>';
+      return;
+    }
+    function weekRange(offset){
+      var d = new Date();
+      var day = d.getDay(); // 0 = Sun
+      var monday = new Date(d); monday.setDate(d.getDate() - ((day+6)%7) + offset*7);
+      var sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+      function iso(x){ return x.toISOString().slice(0,10); }
+      return { start: iso(monday), end: iso(sunday), label: (offset===0?'This week':(offset===1?'Next week':('Week +'+offset))) };
+    }
+    function utilization(lineId, wkStart, wkEnd){
+      var runs = (window.glProductionRuns || []).filter(function(r){
+        if(r.production_line_id !== lineId) return false;
+        var s = r.scheduled_start_date || r.scheduled_date;
+        var e = r.scheduled_end_date || s;
+        if(!s) return false;
+        return s <= wkEnd && e >= wkStart;
+      });
+      var totalCases = runs.reduce(function(a,r){ return a + (Number(r.cases)||0); }, 0);
+      return { runs: runs.length, cases: totalCases };
+    }
+    var cards = [weekRange(0), weekRange(1)].map(function(wk){
+      var rows = lines.map(function(l){
+        var u = utilization(l.id, wk.start, wk.end);
+        var cap = Number(l.capacity_per_day) || 0;
+        // Estimate: capacity_per_day × 5 weekdays in the week. Rough but
+        // gives staff a sense of how booked the line is at a glance.
+        var capWeek = cap * 5;
+        var pct = capWeek ? Math.min(999, Math.round((u.cases / capWeek) * 100)) : 0;
+        var color = pct >= 100 ? '#e74c3c' : pct >= 70 ? '#f5c842' : '#5fcf9e';
+        return '<div style="display:grid;grid-template-columns:1fr 70px 60px 90px;gap:10px;align-items:center;padding:6px 10px;font-size:12px">' +
+          '<div style="color:#fff;font-weight:600">' + esc(l.name) + ' <span style="color:#6b87ad;font-weight:400;font-size:10px;text-transform:uppercase;letter-spacing:1px">' + esc(l.kind||'') + '</span></div>' +
+          '<div style="color:#9aa7bd;text-align:right">' + u.runs + ' run' + (u.runs===1?'':'s') + '</div>' +
+          '<div style="color:#9aa7bd;text-align:right;font-family:var(--ff-mono)">' + u.cases.toLocaleString() + '</div>' +
+          '<div style="text-align:right"><span style="color:' + color + ';font-weight:700">' + (capWeek ? pct + '%' : '—') + '</span>' + (capWeek ? '<span style="color:#6b87ad;font-size:10px"> / ' + capWeek.toLocaleString() + '</span>' : '') + '</div>' +
+        '</div>';
+      }).join('');
+      return '<div style="flex:1;min-width:280px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:10px;margin-right:10px">' +
+        '<div style="font-family:var(--ff-disp);font-size:11px;letter-spacing:2px;color:#7fc6f5;margin-bottom:6px;padding:0 10px">' + esc(wk.label) + ' · ' + esc(wk.start) + ' → ' + esc(wk.end) + '</div>' +
+        rows +
+      '</div>';
+    }).join('');
+    host.innerHTML = '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">' + cards + '</div>';
   }
 
   function renderBoard(){
     var host = document.getElementById('prun-board');
     if(!host) return;
+    // Make sure a capacity widget host exists right above the kanban.
+    if(!document.getElementById('prun-capacity')){
+      var cap = document.createElement('div'); cap.id = 'prun-capacity';
+      host.parentNode.insertBefore(cap, host);
+      // Toolbar with "⚙ Lines" admin button.
+      var bar = document.createElement('div');
+      bar.id = 'prun-toolbar';
+      bar.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-bottom:8px';
+      bar.innerHTML = '<button class="cbtn" style="font-size:11px;padding:5px 10px" onclick="window.glOpenProductionLines()">⚙ Production lines</button>';
+      host.parentNode.insertBefore(bar, host.parentNode.firstChild.nextSibling);
+    }
+    renderCapacityWidget();
     var sub = document.getElementById('prun-sub');
     var byStage = {};
     STAGES.forEach(function(s){ byStage[s] = []; });
@@ -9221,7 +10994,7 @@
       var color = STAGE_COLOR[stage];
       var cards = byStage[stage].map(function(r){
         var clientName = r.client_name || ((window.clients||[]).find(function(c){ return c.id === r.client_id; })||{}).name || '—';
-        var sched = r.scheduled_date ? new Date(r.scheduled_date).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—';
+        var sched = r.scheduled_date ? window.fmtLocalDate(r.scheduled_date, {month:'short',day:'numeric'}) : '—';
         var cases = r.cases ? Number(r.cases).toLocaleString() + ' cs' : '';
         return '<div class="gl-prun-card" data-id="' + esc(r.id) + '" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:11px 13px;margin-bottom:9px;cursor:pointer;transition:border-color .15s" onmouseover="this.style.borderColor=\'rgba(0,229,192,.35)\'" onmouseout="this.style.borderColor=\'rgba(255,255,255,.08)\'">' +
           '<div style="font-size:13px;color:var(--white);font-weight:600;margin-bottom:4px">' + esc(r.run_name || '(untitled)') + '</div>' +
@@ -9248,11 +11021,23 @@
     });
   }
 
-  function runModal(existing){
+  async function runModal(existing){
     var prior = document.getElementById('gl-prun-modal'); if(prior) prior.remove();
     var host = document.getElementById('crm-panel') || document.body;
     var isEdit = !!existing;
-    var run = existing || { run_name:'', client_id:'', client_name:'', format:'', cases:'', stage:'Discovery', scheduled_date:'', notes:'' };
+    var run = existing || { run_name:'', client_id:'', client_name:'', format:'', cases:'', stage:'Discovery', scheduled_date:'', scheduled_start_date:'', scheduled_end_date:'', production_line_id:'', notes:'' };
+    // Make sure the line list is in cache BEFORE we build the dropdown HTML —
+    // otherwise the dropdown opens with only "— No line assigned —" if the
+    // user clicks "+ Add Run" before refreshRuns() finishes loading lines.
+    if(window.supa && !(window.glProductionLines && window.glProductionLines.length)){
+      await loadProductionLines();
+    }
+    var lineOptions = '<option value="">— No line assigned —</option>' +
+      (window.glProductionLines||[]).map(function(l){
+        var sel = (l.id === run.production_line_id) ? ' selected' : '';
+        var capBit = l.capacity_per_day ? ' (' + l.capacity_per_day + ' ' + (l.capacity_unit||'cases') + '/day)' : '';
+        return '<option value="' + esc(l.id) + '"'+sel+'>' + esc(l.name) + capBit + '</option>';
+      }).join('');
     var clientOptions = '<option value="">— Pick client —</option>' +
       (window.clients||[]).map(function(c){
         var sel = (c.id === run.client_id) ? ' selected' : '';
@@ -9266,6 +11051,8 @@
       var sel = (f === run.format) ? ' selected' : '';
       return '<option value="' + esc(f) + '"'+sel+'>' + esc(f || 'Select format…') + '</option>';
     }).join('');
+    var startVal = run.scheduled_start_date || run.scheduled_date || '';
+    var endVal   = run.scheduled_end_date || '';
     var ov = document.createElement('div');
     ov.id = 'gl-prun-modal';
     ov.setAttribute('style','position:fixed;inset:0;z-index:1000;background:rgba(6,13,26,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
@@ -9281,11 +11068,25 @@
           '<div class="frow"><div class="flbl">Format</div><select class="fsel" id="gl-prun-format">' + formatOptions + '</select></div>' +
           '<div class="frow"><div class="flbl">Cases planned</div><input class="finp" id="gl-prun-cases" type="number" min="0" value="' + (run.cases || '') + '"></div>' +
         '</div>' +
+        '<div class="frow"><div class="flbl">Stage</div><select class="fsel" id="gl-prun-stage">' + stageOptions + '</select></div>' +
+        '<div class="frow"><div class="flbl">Production line</div><select class="fsel" id="gl-prun-line">' + lineOptions + '</select></div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
-          '<div class="frow"><div class="flbl">Stage</div><select class="fsel" id="gl-prun-stage">' + stageOptions + '</select></div>' +
-          '<div class="frow"><div class="flbl">Scheduled date</div><input class="finp" id="gl-prun-date" type="date" value="' + esc(run.scheduled_date || '') + '"></div>' +
+          '<div class="frow"><div class="flbl">Start date</div><input class="finp" id="gl-prun-start" type="date" value="' + esc(startVal) + '"></div>' +
+          '<div class="frow"><div class="flbl">End date <span style="opacity:.6">(blank = single day)</span></div><input class="finp" id="gl-prun-end" type="date" value="' + esc(endVal) + '"></div>' +
         '</div>' +
+        '<div id="gl-prun-conflict" style="display:none;font-size:11px;background:rgba(231,76,60,.08);border:1px solid rgba(231,76,60,.3);color:#ff8579;border-radius:6px;padding:8px 10px;margin-bottom:8px;line-height:1.5"></div>' +
+        '<div class="frow"><div class="flbl">Lot number <span style="opacity:.6">(stamped on cans for traceability)</span></div><input class="finp" id="gl-prun-lot" value="' + esc(run.lot_number || '') + '" placeholder="e.g. L26140-A"></div>' +
         '<div class="frow"><div class="flbl">Notes</div><textarea class="finp" id="gl-prun-notes" rows="3" placeholder="QC notes, allergen flags, anything the line lead should know…">' + esc(run.notes) + '</textarea></div>' +
+        (isEdit ? (
+          '<div style="border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:12px;margin:10px 0;background:rgba(255,255,255,.02)">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+              '<div style="font-family:var(--ff-disp);font-size:11px;letter-spacing:2px;color:#7fc6f5">📎 LOT DOCUMENTS</div>' +
+              '<button id="gl-prun-doc-add" class="cbtn" style="font-size:11px;padding:4px 10px">+ Attach</button>' +
+            '</div>' +
+            '<div id="gl-prun-doc-list" style="font-size:11px;color:#9aa7bd">Loading…</div>' +
+            '<div style="font-size:10px;color:#6b87ad;margin-top:6px;line-height:1.5">Files attached here are visible to the brand\'s portal customer. Use for COAs, spec sheets, allergen declarations, etc.</div>' +
+          '</div>'
+        ) : '') +
         '<div style="display:flex;gap:8px;margin-top:6px">' +
           '<button id="gl-prun-save" class="cbtn pri" style="flex:1">💾 Save</button>' +
           (isEdit ? '<button id="gl-prun-del" class="cbtn" style="background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#ff8579">Delete</button>' : '') +
@@ -9304,22 +11105,69 @@
       if(typeof addNotification === 'function') addNotification('🏭 Run deleted', run.run_name, 'warning');
       if(typeof window.glAudit === 'function') window.glAudit('production_run_deleted', run.id, {});
     });
+    // Live conflict banner — refresh whenever line / start / end change.
+    function refreshConflictBanner(){
+      var banner = ov.querySelector('#gl-prun-conflict'); if(!banner) return;
+      var lid   = ov.querySelector('#gl-prun-line').value;
+      var start = ov.querySelector('#gl-prun-start').value;
+      var end   = ov.querySelector('#gl-prun-end').value;
+      if(!lid || !start){ banner.style.display = 'none'; return; }
+      var conflicts = findConflicts(lid, start, end, run.id);
+      if(!conflicts.length){ banner.style.display = 'none'; return; }
+      banner.style.display = 'block';
+      var lineName = ((window.glProductionLines||[]).find(function(l){ return l.id === lid; })||{}).name || 'this line';
+      banner.innerHTML = '⚠ <b>Schedule conflict</b> — ' + esc(lineName) + ' already has ' + conflicts.length + ' run' + (conflicts.length===1?'':'s') + ' overlapping these dates:<br>' +
+        conflicts.slice(0,3).map(function(o){
+          var s = o.scheduled_start_date || o.scheduled_date;
+          var e = o.scheduled_end_date   || s;
+          return '· <b>' + esc(o.run_name || '(unnamed)') + '</b> · ' + esc(o.client_name || '') + ' · ' + esc(s) + (e && e !== s ? ' → ' + esc(e) : '');
+        }).join('<br>') +
+        (conflicts.length > 3 ? '<br>… and ' + (conflicts.length - 3) + ' more' : '') +
+        '<br><span style="color:#9aa7bd;font-size:10px">You can still save — this is a warning, not a block.</span>';
+    }
+    ['gl-prun-line','gl-prun-start','gl-prun-end'].forEach(function(id){
+      var el = ov.querySelector('#' + id);
+      if(el) el.addEventListener('change', refreshConflictBanner);
+    });
+    refreshConflictBanner();
+
     ov.querySelector('#gl-prun-save').addEventListener('click', async function(){
       var name = ov.querySelector('#gl-prun-name').value.trim();
       if(!name){ alert('Run name is required.'); return; }
       var cid = ov.querySelector('#gl-prun-client').value;
       var c   = (window.clients||[]).find(function(x){ return x.id === cid; });
+      var lotEl = ov.querySelector('#gl-prun-lot');
+      var startVal = ov.querySelector('#gl-prun-start').value || null;
+      var endVal   = ov.querySelector('#gl-prun-end').value || null;
+      var lineId   = ov.querySelector('#gl-prun-line').value || null;
       var data = {
-        run_name:       name,
-        client_id:      cid || null,
-        client_name:    c ? c.name : '',
-        format:         ov.querySelector('#gl-prun-format').value,
-        cases:          parseInt(ov.querySelector('#gl-prun-cases').value, 10) || 0,
-        stage:          ov.querySelector('#gl-prun-stage').value,
-        scheduled_date: ov.querySelector('#gl-prun-date').value || null,
-        notes:          ov.querySelector('#gl-prun-notes').value,
-        updated_at:     new Date().toISOString()
+        run_name:             name,
+        client_id:            cid || null,
+        client_name:          c ? c.name : '',
+        format:               ov.querySelector('#gl-prun-format').value,
+        cases:                parseInt(ov.querySelector('#gl-prun-cases').value, 10) || 0,
+        stage:                ov.querySelector('#gl-prun-stage').value,
+        scheduled_date:       startVal,
+        scheduled_start_date: startVal,
+        scheduled_end_date:   endVal,
+        production_line_id:   lineId,
+        lot_number:           lotEl ? (lotEl.value || '').trim() || null : (run.lot_number || null),
+        notes:                ov.querySelector('#gl-prun-notes').value,
+        updated_at:           new Date().toISOString()
       };
+      // Final conflict check at save — warn but allow override.
+      if(lineId && startVal){
+        var conflicts = findConflicts(lineId, startVal, endVal, run.id);
+        if(conflicts.length){
+          var lineName = ((window.glProductionLines||[]).find(function(l){ return l.id === lineId; })||{}).name || 'this line';
+          var msg = 'Schedule conflict on ' + lineName + ':\n\n' +
+            conflicts.slice(0, 5).map(function(o){
+              return '· ' + (o.run_name || '(unnamed)') + ' — ' + (o.client_name || '') + ' (' + (o.scheduled_start_date || o.scheduled_date) + (o.scheduled_end_date && o.scheduled_end_date !== (o.scheduled_start_date||o.scheduled_date) ? ' → ' + o.scheduled_end_date : '') + ')';
+            }).join('\n') +
+            '\n\nSave anyway?';
+          if(!confirm(msg)) return;
+        }
+      }
       // Compliance gate — block transition to Ship if there's an open Hold Tag for this run
       if(data.stage === 'Ship' && run && run.id && typeof window.glCheckRunHoldStatus === 'function'){
         var blocker = await window.glCheckRunHoldStatus(run.id);
@@ -9356,7 +11204,288 @@
       if(typeof window.glAudit === 'function') window.glAudit(isEdit ? 'production_run_edited' : 'production_run_added', data.run_name, { stage: data.stage });
     });
     host.appendChild(ov);
+
+    // ──────────────────────────────────────────────────────────
+    // Lot documents section — staff attach COAs / spec sheets /
+    // allergen statements to this production run. Visible to the
+    // brand's portal customer via lot_documents RLS.
+    // ──────────────────────────────────────────────────────────
+    if(isEdit){
+      var listEl = ov.querySelector('#gl-prun-doc-list');
+      var addBtn = ov.querySelector('#gl-prun-doc-add');
+      var DOC_TYPES = [
+        ['coa', 'Certificate of Analysis (COA)'],
+        ['spec_sheet', 'Spec sheet'],
+        ['allergen', 'Allergen statement'],
+        ['kosher', 'Kosher certificate'],
+        ['organic', 'Organic certificate'],
+        ['nutrition', 'Nutrition / NFP'],
+        ['other', 'Other']
+      ];
+      function fmtBytes(n){
+        if(!n) return '';
+        if(n < 1024) return n + ' B';
+        if(n < 1024*1024) return (n/1024).toFixed(0) + ' KB';
+        return (n/1024/1024).toFixed(1) + ' MB';
+      }
+      async function loadDocs(){
+        if(!listEl) return;
+        if(!window.supa){ listEl.innerHTML = '<span style="color:#ff8579">Supabase not ready.</span>'; return; }
+        listEl.innerHTML = 'Loading…';
+        var r = await window.supa.from('lot_documents')
+          .select('id, document_type, title, lot_number, file_name, file_size, file_path, uploaded_at')
+          .eq('production_run_id', run.id)
+          .order('uploaded_at', { ascending: false });
+        if(r.error){ listEl.innerHTML = '<span style="color:#ff8579">Failed to load: ' + esc(r.error.message) + '</span>'; return; }
+        var rows = r.data || [];
+        if(!rows.length){
+          listEl.innerHTML = '<div style="font-style:italic;color:#6b87ad;padding:6px 0">No documents attached yet. Click <b>+ Attach</b> to upload a COA, spec sheet, or other PDF.</div>';
+          return;
+        }
+        listEl.innerHTML = rows.map(function(d){
+          var typeLabel = (DOC_TYPES.find(function(t){ return t[0] === d.document_type; }) || [d.document_type, d.document_type])[1];
+          var when = d.uploaded_at ? new Date(d.uploaded_at).toLocaleDateString() : '';
+          return '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);border-radius:6px;margin-bottom:5px">' +
+            '<div style="flex:1;min-width:0">' +
+              '<div style="color:#fff;font-size:12px;font-weight:600">' + esc(d.title || d.file_name || 'Document') + '</div>' +
+              '<div style="color:#6b87ad;font-size:10px;margin-top:2px">' + esc(typeLabel) + (d.lot_number ? ' · Lot ' + esc(d.lot_number) : '') + (d.file_size ? ' · ' + fmtBytes(d.file_size) : '') + ' · ' + esc(when) + '</div>' +
+            '</div>' +
+            '<button data-doc-dl="' + esc(d.id) + '" class="cbtn" style="font-size:10px;padding:3px 8px">⬇</button>' +
+            '<button data-doc-rm="' + esc(d.id) + '" data-doc-path="' + esc(d.file_path) + '" class="cbtn" style="font-size:10px;padding:3px 8px;background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#ff8579">🗑</button>' +
+          '</div>';
+        }).join('');
+        // Wire row buttons
+        Array.prototype.forEach.call(listEl.querySelectorAll('[data-doc-dl]'), function(b){
+          b.onclick = async function(){
+            var id = b.getAttribute('data-doc-dl');
+            var row = rows.find(function(x){ return x.id === id; });
+            if(!row) return;
+            var su = await window.supa.storage.from('client-docs').createSignedUrl(row.file_path, 60);
+            if(su.error || !su.data){ alert('Signed URL failed: ' + (su.error && su.error.message || 'unknown')); return; }
+            window.open(su.data.signedUrl, '_blank', 'noopener');
+          };
+        });
+        Array.prototype.forEach.call(listEl.querySelectorAll('[data-doc-rm]'), function(b){
+          b.onclick = async function(){
+            var id = b.getAttribute('data-doc-rm');
+            var p  = b.getAttribute('data-doc-path');
+            if(!confirm('Delete this document? The customer will no longer be able to see it.')) return;
+            b.disabled = true; b.textContent = '…';
+            try { if(p) await window.supa.storage.from('client-docs').remove([p]); } catch(e){}
+            var rr = await window.supa.from('lot_documents').delete().eq('id', id);
+            if(rr.error){ alert('Delete failed: ' + rr.error.message); b.disabled = false; b.textContent = '🗑'; return; }
+            if(typeof window.glAudit === 'function') window.glAudit('lot_document_deleted', id, { run: run.id });
+            loadDocs();
+          };
+        });
+      }
+      loadDocs();
+
+      if(addBtn) addBtn.onclick = function(){
+        if(!run.client_id){ alert('This run has no client linked. Pick a client + save the run first.'); return; }
+        openAttachDocModal(run, loadDocs);
+      };
+    }
   }
+
+  // ──────────────────────────────────────────────────────────
+  // Attach-document sub-modal
+  // ──────────────────────────────────────────────────────────
+  function openAttachDocModal(run, onSaved){
+    var prior = document.getElementById('gl-doc-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    var DOC_TYPES = [
+      ['coa', 'Certificate of Analysis (COA)'],
+      ['spec_sheet', 'Spec sheet'],
+      ['allergen', 'Allergen statement'],
+      ['kosher', 'Kosher certificate'],
+      ['organic', 'Organic certificate'],
+      ['nutrition', 'Nutrition / NFP'],
+      ['other', 'Other']
+    ];
+    var typeOpts = DOC_TYPES.map(function(t){ return '<option value="' + t[0] + '">' + esc(t[1]) + '</option>'; }).join('');
+    var ov = document.createElement('div');
+    ov.id = 'gl-doc-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1100;background:rgba(6,13,26,.92);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(127,198,245,.3);border-radius:14px;padding:24px;width:100%;max-width:460px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+          '<div style="font-family:var(--ff-disp);font-size:16px;letter-spacing:2px;color:#7fc6f5">📎 ATTACH DOCUMENT</div>' +
+          '<button id="gl-doc-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="font-size:11px;color:#6b87ad;margin-bottom:14px">Brand: <b style="color:#fff">' + esc(run.client_name || '') + '</b>' + (run.run_name ? ' · Run <b style="color:#fff">' + esc(run.run_name) + '</b>' : '') + '</div>' +
+        '<div class="frow"><div class="flbl">File *</div><input class="finp" id="gl-doc-file" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"></div>' +
+        '<div class="frow"><div class="flbl">Document type *</div><select class="fsel" id="gl-doc-type">' + typeOpts + '</select></div>' +
+        '<div class="frow"><div class="flbl">Title *</div><input class="finp" id="gl-doc-title" placeholder="e.g. COA — Mango pilot — Lot L26140-A"></div>' +
+        '<div class="frow"><div class="flbl">Lot number <span style="opacity:.6">(optional)</span></div><input class="finp" id="gl-doc-lot" value="' + esc(run.lot_number || '') + '"></div>' +
+        '<div class="frow"><div class="flbl">Notes <span style="opacity:.6">(optional)</span></div><textarea class="finp" id="gl-doc-notes" rows="2"></textarea></div>' +
+        '<div id="gl-doc-msg" style="display:none;margin:10px 0;padding:8px 10px;border-radius:6px;font-size:12px"></div>' +
+        '<div style="display:flex;gap:8px;margin-top:8px">' +
+          '<button id="gl-doc-save" class="cbtn pri" style="flex:1">📤 Upload</button>' +
+          '<button id="gl-doc-cancel" class="cbtn">Cancel</button>' +
+        '</div>' +
+      '</div>';
+    host.appendChild(ov);
+    function msg(text, kind){
+      var el = ov.querySelector('#gl-doc-msg'); el.style.display='block'; el.textContent = text;
+      if(kind === 'err'){ el.style.background='rgba(231,76,60,.12)'; el.style.border='1px solid rgba(231,76,60,.35)'; el.style.color='#ff8579'; }
+      else { el.style.background='rgba(95,207,158,.12)'; el.style.border='1px solid rgba(95,207,158,.35)'; el.style.color='#5fcf9e'; }
+    }
+    ov.querySelector('#gl-doc-close').onclick  = function(){ ov.remove(); };
+    ov.querySelector('#gl-doc-cancel').onclick = function(){ ov.remove(); };
+    ov.querySelector('#gl-doc-save').onclick = async function(){
+      var fileEl = ov.querySelector('#gl-doc-file');
+      var f = fileEl && fileEl.files && fileEl.files[0];
+      if(!f){ msg('Pick a file first.', 'err'); return; }
+      var title = (ov.querySelector('#gl-doc-title').value||'').trim();
+      if(!title){ msg('Title is required.', 'err'); return; }
+      if(f.size > 25 * 1024 * 1024){ msg('File too large (max 25MB).', 'err'); return; }
+      var docType = ov.querySelector('#gl-doc-type').value || 'other';
+      var lot     = (ov.querySelector('#gl-doc-lot').value||'').trim() || run.lot_number || null;
+      var notes   = (ov.querySelector('#gl-doc-notes').value||'').trim() || null;
+      var btn = this; var orig = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Uploading…';
+      try {
+        var safeName = (f.name || 'file').replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 120);
+        var stamp = Date.now();
+        var path = run.client_id + '/lots/' + (lot || 'unlabeled') + '/' + stamp + '_' + safeName;
+        var up = await window.supa.storage.from('client-docs').upload(path, f, { contentType: f.type || 'application/octet-stream', upsert: false });
+        if(up.error){ msg('Upload failed: ' + up.error.message, 'err'); btn.disabled = false; btn.textContent = orig; return; }
+        var ins = await window.supa.from('lot_documents').insert({
+          client_id:         run.client_id,
+          production_run_id: run.id,
+          lot_number:        lot,
+          document_type:     docType,
+          title:             title,
+          notes:             notes,
+          file_path:         path,
+          file_name:         f.name,
+          file_size:         f.size,
+          mime_type:         f.type || null
+        });
+        if(ins.error){
+          // Clean up the orphaned storage file so we don't accumulate garbage.
+          try { await window.supa.storage.from('client-docs').remove([path]); } catch(e){}
+          msg('Save metadata failed: ' + ins.error.message, 'err');
+          btn.disabled = false; btn.textContent = orig;
+          return;
+        }
+        if(typeof window.glAudit === 'function') window.glAudit('lot_document_uploaded', run.id, { type: docType, title: title, lot: lot });
+        if(typeof addNotification === 'function') addNotification('📎 Document attached', title, 'success');
+        ov.remove();
+        if(typeof onSaved === 'function') onSaved();
+      } catch(e){
+        msg('Threw: ' + (e.message || e), 'err');
+        btn.disabled = false; btn.textContent = orig;
+      }
+    };
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // Production-line management modal (admin CRUD)
+  // ──────────────────────────────────────────────────────────
+  window.glOpenProductionLines = async function(){
+    var prior = document.getElementById('gl-lines-modal'); if(prior) prior.remove();
+    var host = document.getElementById('crm-panel') || document.body;
+    await loadProductionLines();
+    var ov = document.createElement('div');
+    ov.id = 'gl-lines-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1100;background:rgba(6,13,26,.92);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;padding:20px');
+    function rowHtml(l){
+      var checked = l.active === false ? '' : ' checked';
+      return '<tr data-line-id="' + esc(l.id) + '" style="border-top:1px solid rgba(255,255,255,.05)">' +
+        '<td style="padding:8px 6px"><input class="finp gl-ln-name" value="' + esc(l.name) + '" style="width:100%"></td>' +
+        '<td style="padding:8px 6px"><select class="fsel gl-ln-kind">' +
+          ['canning','bottling','rd','blending','other'].map(function(k){ return '<option value="'+k+'"'+(l.kind===k?' selected':'')+'>'+k+'</option>'; }).join('') +
+        '</select></td>' +
+        '<td style="padding:8px 6px"><input class="finp gl-ln-cap" type="number" step="0.01" min="0" value="' + (l.capacity_per_day != null ? l.capacity_per_day : '') + '" style="width:90px"></td>' +
+        '<td style="padding:8px 6px"><select class="fsel gl-ln-unit"><option value="cases"'+(l.capacity_unit==='cases'?' selected':'')+'>cases</option><option value="hours"'+(l.capacity_unit==='hours'?' selected':'')+'>hours</option></select></td>' +
+        '<td style="padding:8px 6px;text-align:center"><input type="checkbox" class="gl-ln-active"'+checked+'></td>' +
+        '<td style="padding:8px 6px;text-align:right;white-space:nowrap">' +
+          '<button class="cbtn gl-ln-save" style="font-size:11px;padding:4px 9px">💾</button> ' +
+          '<button class="cbtn gl-ln-rm" style="font-size:11px;padding:4px 9px;background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#ff8579">🗑</button>' +
+        '</td>' +
+      '</tr>';
+    }
+    var rowsHtml = (window.glProductionLines||[]).map(rowHtml).join('');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(127,198,245,.3);border-radius:14px;padding:24px;width:100%;max-width:780px;max-height:88vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:#7fc6f5">⚙ PRODUCTION LINES</div>' +
+          '<button id="gl-lines-close" style="background:none;border:none;color:#9aa7bd;font-size:22px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="font-size:11px;color:#6b87ad;margin-bottom:14px;line-height:1.5">A line is a piece of equipment (or bench) you schedule runs on. Capacity is per <i>operating day</i>; the schedule widget multiplies by 5 weekdays for a weekly utilization estimate. Deactivate a line instead of deleting if you ever bring it back online.</div>' +
+        '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="font-size:10px;letter-spacing:1.5px;color:#9aa7bd">' +
+          '<th style="text-align:left;padding:6px">NAME</th>' +
+          '<th style="text-align:left;padding:6px">KIND</th>' +
+          '<th style="text-align:left;padding:6px">CAP/DAY</th>' +
+          '<th style="text-align:left;padding:6px">UNIT</th>' +
+          '<th style="text-align:center;padding:6px">ACTIVE</th>' +
+          '<th style="padding:6px"></th>' +
+        '</tr></thead><tbody id="gl-lines-tbody">' + rowsHtml + '</tbody></table>' +
+        '<div style="display:flex;gap:8px;margin-top:14px">' +
+          '<button id="gl-lines-add" class="cbtn pri" style="flex:1">+ Add line</button>' +
+          '<button id="gl-lines-done" class="cbtn">Done</button>' +
+        '</div>' +
+      '</div>';
+    host.appendChild(ov);
+    function refresh(){
+      var tb = ov.querySelector('#gl-lines-tbody');
+      tb.innerHTML = (window.glProductionLines||[]).map(rowHtml).join('');
+      wireRows();
+    }
+    function rowToPatch(tr){
+      return {
+        name:             tr.querySelector('.gl-ln-name').value.trim(),
+        kind:             tr.querySelector('.gl-ln-kind').value,
+        capacity_per_day: parseFloat(tr.querySelector('.gl-ln-cap').value) || null,
+        capacity_unit:    tr.querySelector('.gl-ln-unit').value,
+        active:           tr.querySelector('.gl-ln-active').checked
+      };
+    }
+    function wireRows(){
+      ov.querySelectorAll('tr[data-line-id]').forEach(function(tr){
+        var id = tr.getAttribute('data-line-id');
+        tr.querySelector('.gl-ln-save').onclick = async function(){
+          var patch = rowToPatch(tr);
+          if(!patch.name){ alert('Name is required.'); return; }
+          if(window.supa){
+            var r = await window.supa.from('production_lines').update(patch).eq('id', id);
+            if(r.error){ alert('Save failed: ' + r.error.message); return; }
+          }
+          await loadProductionLines();
+          renderCapacityWidget();
+          if(typeof window.glAudit === 'function') window.glAudit('production_line_updated', id, patch);
+          this.textContent = '✓';
+          setTimeout(function(){ try { tr.querySelector('.gl-ln-save').textContent = '💾'; } catch(e){} }, 1200);
+        };
+        tr.querySelector('.gl-ln-rm').onclick = async function(){
+          if(!confirm('Delete this line? Existing runs assigned to it will be unassigned (line_id set to NULL).')) return;
+          if(window.supa){
+            var r = await window.supa.from('production_lines').delete().eq('id', id);
+            if(r.error){ alert('Delete failed: ' + r.error.message); return; }
+          }
+          await loadProductionLines();
+          await refreshRuns();
+          if(typeof window.glAudit === 'function') window.glAudit('production_line_deleted', id, {});
+          refresh();
+        };
+      });
+    }
+    wireRows();
+    ov.querySelector('#gl-lines-close').onclick = function(){ ov.remove(); };
+    ov.querySelector('#gl-lines-done').onclick  = function(){ ov.remove(); };
+    ov.querySelector('#gl-lines-add').onclick = async function(){
+      if(!window.supa){ alert('Supabase not ready.'); return; }
+      var ins = await window.supa.from('production_lines').insert({
+        name: 'New line', kind: 'canning', capacity_per_day: null, capacity_unit: 'cases', active: true
+      }).select().single();
+      if(ins.error){ alert('Add failed: ' + ins.error.message); return; }
+      await loadProductionLines();
+      if(typeof window.glAudit === 'function') window.glAudit('production_line_added', ins.data && ins.data.id, {});
+      refresh();
+    };
+  };
 
   window.glOpenAddProductionRun  = function(){ runModal(null); };
   window.glOpenEditProductionRun = function(id){
@@ -9426,7 +11555,7 @@
     }
     var rowsHtml = rows.map(function(s){
       var clientName = s.client_name || ((window.clients||[]).find(function(c){ return c.id === s.client_id; })||{}).name || '—';
-      var shipDate = s.shipped_date ? new Date(s.shipped_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+      var shipDate = s.shipped_date ? window.fmtLocalDate(s.shipped_date, {month:'short',day:'numeric',year:'numeric'}) : '—';
       var followBadge = '';
       if(s.status === 'responded'){
         followBadge = '<span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(29,158,117,.15);color:#5fcf9e;border:1px solid rgba(29,158,117,.35)">✓ Responded</span>';
@@ -9683,15 +11812,7 @@
       '</div>';
   };
 
-  (function wrap(){
-    var orig = window.renderDash;
-    if(typeof orig !== 'function'){ setTimeout(wrap, 500); return; }
-    window.renderDash = function(){
-      var r = orig.apply(this, arguments);
-      try { window.renderARAging(); } catch(e){ console.warn('[GL] AR widget render threw', e); }
-      return r;
-    };
-  })();
+  window.GL_HOOKS.registerDashPatch(function(){ try{ window.renderARAging(); }catch(e){ console.warn('[GL] AR widget render threw', e); } });
 
   console.log('[GL] AR aging widget loaded');
 }());
@@ -10067,7 +12188,7 @@
       if(inv && inv.data) out.invoices = inv.data;
     } catch(e){}
     try {
-      var rn = await window.supa.from('production_runs').select('*').eq('client_id', cid).order('scheduled_date',{ascending:true,nullsFirst:false}).limit(20);
+      var rn = await window.supa.from('production_runs').select('*').eq('client_id', cid).order('scheduled_start_date',{ascending:true,nullsFirst:false}).limit(20);
       if(rn && rn.data) out.runs = rn.data;
     } catch(e){}
     try {
@@ -10129,7 +12250,7 @@
         (data.runs.length
           ? '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden">' +
               data.runs.map(function(r, i){
-                var sched = r.scheduled_date ? new Date(r.scheduled_date).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—';
+                var sched = r.scheduled_date ? window.fmtLocalDate(r.scheduled_date, {month:'short',day:'numeric'}) : '—';
                 return '<div style="padding:14px 18px;display:flex;justify-content:space-between;align-items:center' + (i < data.runs.length - 1 ? ';border-bottom:1px solid rgba(255,255,255,.05)' : '') + '">' +
                   '<div><div style="font-size:13px;color:#fff;font-weight:600">' + esc(r.run_name || '(run)') + '</div>' +
                   '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">' + esc(r.format || '—') + (r.cases ? ' · ' + Number(r.cases).toLocaleString() + ' cases' : '') + ' · 📅 ' + sched + '</div></div>' +
@@ -10145,7 +12266,7 @@
         (data.samples.length
           ? '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden">' +
               data.samples.map(function(s, i){
-                var shipDate = s.shipped_date ? new Date(s.shipped_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+                var shipDate = s.shipped_date ? window.fmtLocalDate(s.shipped_date, {month:'short',day:'numeric',year:'numeric'}) : '—';
                 return '<div style="padding:14px 18px;display:flex;justify-content:space-between;align-items:center' + (i < data.samples.length - 1 ? ';border-bottom:1px solid rgba(255,255,255,.05)' : '') + '">' +
                   '<div><div style="font-size:13px;color:#fff;font-weight:600">' + esc(s.kind || 'Sample') + (s.qty ? ' · ' + s.qty + ' unit' + (s.qty === 1 ? '' : 's') : '') + '</div>' +
                   '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">Shipped ' + shipDate + (s.carrier ? ' via ' + esc(s.carrier) : '') + (s.tracking ? ' · ' + esc(s.tracking) : '') + '</div></div>' +
@@ -10161,7 +12282,7 @@
         (data.invoices.length
           ? '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden">' +
               data.invoices.map(function(inv, i){
-                var d = inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+                var d = inv.invoice_date ? window.fmtLocalDate(inv.invoice_date, {month:'short',day:'numeric',year:'numeric'}) : '—';
                 return '<div style="padding:14px 18px;display:flex;justify-content:space-between;align-items:center' + (i < data.invoices.length - 1 ? ';border-bottom:1px solid rgba(255,255,255,.05)' : '') + '">' +
                   '<div><div style="font-size:13px;color:#fff;font-weight:600">' + esc(inv.invoice_number || inv.id) + ' · ' + fmt$(inv.amount) + '</div>' +
                   '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">' + esc(inv.service || '') + ' · ' + d + '</div></div>' +
@@ -10211,7 +12332,7 @@
     var allergenList = allergens.length
       ? allergens.map(function(a){ return allergenMap[a] || a; }).join(' · ')
       : '<span style="color:#666">None declared</span>';
-    var sched = run.scheduled_date ? new Date(run.scheduled_date).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}) : '—';
+    var sched = run.scheduled_date ? window.fmtLocalDate(run.scheduled_date, {weekday:'long',month:'long',day:'numeric',year:'numeric'}) : '—';
 
     return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Run Sheet · ' + esc(run.run_name||'') + '</title>' +
       '<style>' +
@@ -10346,7 +12467,7 @@
     var totalRev  = rows.reduce(function(s,r){ return s + (Number(r.revenue)||0); }, 0);
     var totalROI  = roi({ cost: totalCost, revenue: totalRev });
     var rowsHtml = rows.map(function(r){
-      var d = r.show_date ? new Date(r.show_date).toLocaleDateString('en-US',{month:'short',year:'numeric'}) : '—';
+      var d = r.show_date ? window.fmtLocalDate(r.show_date, {month:'short',year:'numeric'}) : '—';
       var p = roi(r);
       return '<tr style="cursor:pointer" onclick="window.glEditTradeShow(\'' + esc(r.id) + '\')">' +
         '<td style="padding:11px;font-weight:600;color:var(--white)">' + esc(r.name || '(untitled)') + '</td>' +
@@ -11048,10 +13169,11 @@
   function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
   var DEMO = [
-    { title:'How to launch a hard kombucha brand', tag:'Brand launch', excerpt:'From recipe to retail in 5 milestones. What to expect on cost, timeline, and the FDA paperwork no one warns you about.', read_time_min:6, url:'#' },
-    { title:'Canning MOQs explained', tag:'Operations', excerpt:'Why 150 cases is our floor and what economic ladder kicks in at 500 / 1k / 5k. Read this before you ask for a quote.', read_time_min:4, url:'#' },
-    { title:'Pasteurization vs cold-fill — pick one', tag:'R&D', excerpt:'A practical decision tree based on pH, sugar, and where you plan to distribute. We make the call on every formulation we run.', read_time_min:5, url:'#' },
-    { title:'PakTech handles + custom lid colors — what they cost', tag:'Packaging', excerpt:'Two upgrades brands always ask about. Real numbers on the per-can adder and when they pay off in shelf appeal.', read_time_min:3, url:'#' }
+    { title:'How to launch a hard kombucha brand', tag:'Brand launch', excerpt:'From recipe to retail in 5 milestones. What to expect on cost, timeline, and the FDA paperwork no one warns you about.', read_time_min:6, url:'resources/launch-hard-kombucha-brand.html' },
+    { title:'Canning MOQs explained', tag:'Operations', excerpt:'Why 150 cases is our floor and what economic ladder kicks in at 500 / 1k / 5k. Read this before you ask for a quote.', read_time_min:4, url:'resources/canning-moqs-explained.html' },
+    { title:'Flash vs. tunnel pasteurization for botanical beverages', tag:'R&D', excerpt:'Why batch flash pasteurization protects thermolabile botanicals that tunnel systems destroy. The science, the temperature data, and the real numbers.', read_time_min:7, url:'resources/flash-vs-tunnel-pasteurization-botanicals.html' },
+    { title:'Pasteurization vs cold-fill — pick one', tag:'R&D', excerpt:'A practical decision tree based on pH, sugar, and where you plan to distribute. We make the call on every formulation we run.', read_time_min:5, url:'resources/pasteurization-vs-cold-fill.html' },
+    { title:'PakTech handles + custom lid colors — what they cost', tag:'Packaging', excerpt:'Two upgrades brands always ask about. Real numbers on the per-can adder and when they pay off in shelf appeal.', read_time_min:3, url:'resources/paktech-custom-lid-colors.html' }
   ];
 
   function tagColor(t){
@@ -11061,9 +13183,12 @@
 
   function cardHtml(p){
     var col = tagColor(p.tag);
-    var safeUrl = p.url || '#';
-    var newTab = (p.url && p.url.indexOf('http') === 0) ? ' target="_blank" rel="noopener"' : '';
-    return '<a href="' + esc(safeUrl) + '"'+newTab+' style="text-decoration:none;display:flex;flex-direction:column;gap:11px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:22px;transition:border-color .15s" onmouseover="this.style.borderColor=\'rgba(0,229,192,.35)\'" onmouseout="this.style.borderColor=\'rgba(255,255,255,.08)\'">' +
+    var hasUrl = p.url && p.url !== '#';
+    // Null/# URLs: scroll to contact form instead of jumping to top of page.
+    var safeUrl = hasUrl ? p.url : 'javascript:void(0)';
+    var newTab = (hasUrl && p.url.indexOf('http') === 0) ? ' target="_blank" rel="noopener"' : '';
+    var onclickAttr = hasUrl ? '' : ' onclick="if(typeof navTo===\'function\')navTo(\'contact\')"';
+    return '<a href="' + esc(safeUrl) + '"'+newTab+onclickAttr+' style="text-decoration:none;display:flex;flex-direction:column;gap:11px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:22px;transition:border-color .15s" onmouseover="this.style.borderColor=\'rgba(0,229,192,.35)\'" onmouseout="this.style.borderColor=\'rgba(255,255,255,.08)\'">' +
       (p.tag ? '<span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:600;letter-spacing:1px;background:' + col + '22;color:' + col + ';border:1px solid ' + col + '44;width:fit-content">' + esc(p.tag) + '</span>' : '') +
       '<div style="font-family:var(--ff-disp);font-size:16px;letter-spacing:.5px;color:#fff;line-height:1.3">' + esc(p.title || 'Untitled') + '</div>' +
       '<div style="font-size:13px;color:var(--muted);line-height:1.65">' + esc(p.excerpt || '') + '</div>' +
@@ -11295,10 +13420,64 @@
   var METHODS = ['CIP (closed-loop)','Manual scrub','CIP + manual'];
   var CHEMICALS = ['Caustic (NaOH)','Acid (phosphoric)','Sanitizer (peracetic)','Sanitizer (chlorine)','Sanitizer (quat)','Other'];
 
+  // Maps a compliance_records row (form_code='GMP-SAN-002' — the canonical
+  // 9-step CIP form) into the row shape this page's render() expects.
+  // Schema reminder (per saveRecord at line 15526):
+  //   row.data       — jsonb form payload (NOT row.form_data!)
+  //   row.status     — 'draft' | 'complete' | 'signed' (NOT row.complete/signed)
+  //   row.signed_by  — uuid of PCQI who signed
+  //   row.signature_name — display name captured at signing time
+  function mapComplianceCipRow(row){
+    var fd = (row && row.data) || {};
+    var steps = Array.isArray(fd.steps) ? fd.steps : [];
+    var doneSteps = steps.filter(function(s){ return s && s.done; });
+    var chemicals = [];
+    doneSteps.forEach(function(s){
+      if(s.chem && s.chem !== '—' && s.chem !== 'Potable water' && chemicals.indexOf(s.chem) < 0){
+        chemicals.push(s.chem);
+      }
+    });
+    // PAA reading lives on the sanitize steps (8/9 — PAA strip ppm).
+    var paa = doneSteps.find(function(s){ return s && s.n >= 8 && s.reading; });
+    // Status decoding:
+    //   has_deviation → FAIL (critical limit was missed)
+    //   status='signed'   → PASS (PCQI signed off)
+    //   status='complete' → PASS (operator completed all required fields)
+    //   status='draft'    → DRAFT (logged but not finalized)
+    //   anything else     → PENDING (defensive default)
+    var result;
+    if(row.has_deviation) result = 'fail';
+    else if(row.status === 'signed' || row.status === 'complete') result = 'pass';
+    else if(row.status === 'draft') result = 'draft';
+    else result = 'pending';
+    return {
+      id: row.id,
+      cycle_at: fd.cycle_start || row.recorded_at || row.record_date,
+      line_area: fd.equipment || row.product_name || '—',
+      method: 'CIP (9-step) — ' + doneSteps.length + '/9 steps',
+      chemicals: chemicals,
+      water_temp_f: null,
+      contact_min: null,
+      operator: fd.operator || row.signature_name || '',
+      atp_reading: paa ? paa.reading : '',
+      result: result,
+      status: row.status,
+      notes: row.deviation_notes || fd.deviation_notes || '',
+      _source: 'compliance_records',
+      _form_code: row.form_code,
+      _raw: row
+    };
+  }
   async function loadFromSupabase(){
     if(!window.supa) return null;
-    try { var r = await window.supa.from('cip_logs').select('*').order('cycle_at',{ascending:false}); if(r && r.data) return r.data; }
-    catch(e){}
+    try {
+      var r = await window.supa.from('compliance_records')
+        .select('*').eq('form_code','GMP-SAN-002')
+        .order('recorded_at',{ascending:false})
+        .limit(200);
+      if(r && r.error){ console.warn('[GL cip] load error:', r.error.message); return null; }
+      if(r && Array.isArray(r.data)) return r.data.map(mapComplianceCipRow);
+    } catch(e){ console.warn('[GL cip] load threw', e); }
     return null;
   }
   function loadLocal(){ try { return JSON.parse(localStorage.getItem('gl_cip_logs') || '[]'); } catch(e){ return []; } }
@@ -11306,7 +13485,20 @@
 
   async function refresh(){
     var rows = await loadFromSupabase();
-    window.glCipLogs = rows || loadLocal();
+    var local = loadLocal();
+    if(rows === null){
+      // DB unreachable or threw — show whatever's in localStorage.
+      window.glCipLogs = local;
+    } else if(rows.length === 0 && local.length > 0){
+      // DB returned 0 but localStorage has cycles — probably means a save
+      // got rejected (likely RLS) and the operator's work is sitting in
+      // localStorage only. Merge so we still show their entries instead
+      // of silently wiping them, and surface the gap to the admin.
+      window.glCipLogs = local;
+      console.warn('[GL cip] DB returned 0 rows but localStorage has ' + local.length + ' — DB save likely rejected. Check RLS on public.cip_logs.');
+    } else {
+      window.glCipLogs = rows;
+    }
     render();
   }
 
@@ -11315,22 +13507,28 @@
     if(!host) return;
     var sub = document.getElementById('cip-sub');
     var rows = window.glCipLogs || [];
-    var fails = rows.filter(function(r){ return r.result === 'fail'; }).length;
-    if(sub) sub.textContent = rows.length + ' cycle' + (rows.length === 1 ? '' : 's') + ' logged' + (fails ? ' · ' + fails + ' fail' + (fails === 1 ? '' : 's') + ' on record' : '');
+    var fails  = rows.filter(function(r){ return r.result === 'fail';  }).length;
+    var drafts = rows.filter(function(r){ return r.result === 'draft'; }).length;
+    var subBits = [rows.length + ' cycle' + (rows.length === 1 ? '' : 's') + ' logged'];
+    if(fails)  subBits.push(fails  + ' fail'  + (fails  === 1 ? '' : 's')  + ' on record');
+    if(drafts) subBits.push(drafts + ' draft' + (drafts === 1 ? '' : 's') + ' awaiting PCQI sign-off');
+    if(sub) sub.textContent = subBits.join(' · ');
 
     if(!rows.length){
-      host.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No cycles logged yet. Click "Log Cycle" after every sanitation between runs. FDA-required.</div>';
+      host.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No cycles logged yet. Click "+ Log Cycle" above to open the canonical 9-step FDA form. FDA-required between every run.</div>';
       return;
     }
-    host.innerHTML = '<table class="ctbl"><thead><tr><th>When</th><th>Line / area</th><th>Method</th><th>Chemicals</th><th>Operator</th><th>ATP swab</th><th>Result</th></tr></thead><tbody>' +
+    var hint = '<div style="font-size:11px;color:var(--muted);padding:8px 14px 12px;line-height:1.5">Showing canonical 9-step CIP records (form <code>GMP-SAN-002</code>). Click any row to see the full step-by-step detail.</div>';
+    var RES_COLOR = { pass:'#5fcf9e', fail:'#ff8579', draft:'#f5c842', pending:'#9aa7bd' };
+    host.innerHTML = hint + '<table class="ctbl"><thead><tr><th>When</th><th>Equipment</th><th>Steps done</th><th>Chemicals</th><th>Operator</th><th>PAA ppm</th><th>Result</th></tr></thead><tbody>' +
       rows.map(function(r){
         var when = r.cycle_at ? new Date(r.cycle_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '—';
-        var resColor = r.result === 'pass' ? '#5fcf9e' : r.result === 'fail' ? '#ff8579' : '#9aa7bd';
+        var resColor = RES_COLOR[r.result] || '#9aa7bd';
         var resLabel = (r.result || 'pending').toUpperCase();
-        return '<tr style="cursor:pointer" onclick="window.glOpenEditCip(\'' + esc(r.id) + '\')">' +
+        return '<tr style="cursor:pointer" onclick="window.glOpenCipDetail(\'' + esc(r.id) + '\')">' +
           '<td style="padding:11px;color:var(--white);font-weight:600">' + when + '</td>' +
           '<td style="padding:11px;color:var(--muted)">' + esc(r.line_area || '—') + '</td>' +
-          '<td style="padding:11px;color:var(--muted)">' + esc(r.method || '—') + '</td>' +
+          '<td style="padding:11px;color:var(--muted);font-size:11px">' + esc(r.method || '—') + '</td>' +
           '<td style="padding:11px;color:var(--muted);font-size:11px">' + esc((r.chemicals||[]).join(', ') || '—') + '</td>' +
           '<td style="padding:11px;color:var(--muted)">' + esc(r.operator || '—') + '</td>' +
           '<td style="padding:11px;color:var(--muted);font-family:var(--ff-mono);font-size:11px">' + esc(r.atp_reading || '—') + '</td>' +
@@ -11339,107 +13537,80 @@
       }).join('') + '</tbody></table>';
   }
 
-  function cipModal(existing){
-    var prior = document.getElementById('gl-cip-modal'); if(prior) prior.remove();
-    var host = document.getElementById('crm-panel') || document.body;
-    var isEdit = !!existing;
-    var c = existing || { line_area:'', method:'CIP (closed-loop)', chemicals:[], water_temp_f:'', contact_min:'', operator:'', atp_reading:'', result:'pass', notes:'', cycle_at: new Date().toISOString().slice(0,16) };
-    var methodOpts = METHODS.map(function(m){
-      var sel = (m === c.method) ? ' selected' : ''; return '<option' + sel + '>' + esc(m) + '</option>';
-    }).join('');
-    var chemChecks = CHEMICALS.map(function(x){
-      var k = x.replace(/\W+/g,'_').toLowerCase();
-      var ch = (c.chemicals||[]).indexOf(x) >= 0 ? ' checked' : '';
-      return '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--white)"><input type="checkbox" data-chem="' + esc(x) + '" id="gl-cip-ch-' + k + '"'+ch+' style="accent-color:var(--teal);width:15px;height:15px;cursor:pointer">' + esc(x) + '</label>';
-    }).join('');
-    var resultOpts = [['pass','✓ Pass'],['fail','✗ Fail'],['pending','⏳ Pending verification']].map(function(o){
-      var sel = (o[0] === c.result) ? ' selected' : ''; return '<option value="' + o[0] + '"'+sel+'>' + o[1] + '</option>';
-    }).join('');
+  // Read-only detail viewer for a CIP cycle. Shows all 9 steps with their
+  // checkbox state, actual minutes, temp, reading, and pass/fail. Opens on
+  // row click. Source is the cached glCipLogs entry (carries the raw
+  // compliance_records row on _raw).
+  window.glOpenCipDetail = function(id){
+    var row = (window.glCipLogs || []).find(function(x){ return x.id === id; });
+    if(!row){ alert('Cycle not found in current view.'); return; }
+    var raw = row._raw || {};
+    var fd  = raw.data || {};
+    var steps = Array.isArray(fd.steps) ? fd.steps : [];
+    var prior = document.getElementById('gl-cip-detail'); if(prior) prior.remove();
+    var RES_COLOR = { pass:'#5fcf9e', fail:'#ff8579', draft:'#f5c842', pending:'#9aa7bd' };
+    var resColor = RES_COLOR[row.result] || '#9aa7bd';
+    var STEP_DEFS = [
+      { n:1, name:'Pre-Rinse',                  hot:true,  expect:'Visual — runs clear' },
+      { n:2, name:'PBW Wash',                   hot:true,  expect:'1 oz/gal · 30 min · ≥160°F' },
+      { n:3, name:'Intermediate Rinse #1',      hot:true,  expect:'Conductivity <50 µS/cm' },
+      { n:4, name:'Caustic Wash (NaOH)',        hot:true,  expect:'1.5% · 30 min · ≥160°F' },
+      { n:5, name:'Intermediate Rinse #2',      hot:true,  expect:'Conductivity <50 µS/cm' },
+      { n:6, name:'Acid Wash',                  hot:true,  expect:'1 oz/gal · 30 min · ≥160°F' },
+      { n:7, name:'Final Rinse',                hot:true,  expect:'pH + conductivity to baseline' },
+      { n:8, name:'POST-CIP PAA Sanitize',      hot:false, expect:'100–300 ppm · 20 min · DO NOT RINSE' },
+      { n:9, name:'PRE-USE PAA (at run time)',  hot:false, expect:'100–300 ppm · 20 min · DO NOT RINSE' }
+    ];
+    function stepRow(def){
+      var s = steps.find(function(x){ return x && x.n === def.n; }) || {};
+      var done = !!s.done;
+      var pf = (s.pf || '').toLowerCase();
+      var pfColor = pf === 'pass' ? '#5fcf9e' : pf === 'fail' ? '#ff8579' : '#9aa7bd';
+      var pfLabel = pf ? pf.toUpperCase() : (done ? '—' : 'skipped');
+      var tempBit = def.hot && s.temp_f ? ' · ' + s.temp_f + '°F' : '';
+      var minBit  = s.actual_min ? s.actual_min + ' min' : '—';
+      return '<tr style="border-top:1px solid rgba(255,255,255,.05);' + (done?'':'opacity:.5') + '">' +
+        '<td style="padding:8px;color:' + (done?'#5fcf9e':'#6b87ad') + ';font-weight:700;width:38px;text-align:center">' + (done ? '☑' : '☐') + '</td>' +
+        '<td style="padding:8px;color:#fff;font-weight:600;width:30px">' + def.n + '</td>' +
+        '<td style="padding:8px;color:#fff">' + esc(def.name) + '<div style="font-size:10px;color:#6b87ad;margin-top:2px">' + esc(def.expect) + '</div></td>' +
+        '<td style="padding:8px;color:#9aa7bd;font-size:11px;text-align:right;white-space:nowrap">' + minBit + tempBit + '</td>' +
+        '<td style="padding:8px;color:#9aa7bd;font-family:var(--ff-mono);font-size:11px">' + esc(s.reading || '—') + '</td>' +
+        '<td style="padding:8px;color:' + pfColor + ';font-weight:700;font-size:11px;text-align:right;white-space:nowrap">' + pfLabel + '</td>' +
+      '</tr>';
+    }
+    var when = row.cycle_at ? new Date(row.cycle_at).toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}) : '—';
+    var headerBits = [];
+    headerBits.push('<div><div style="font-size:10px;letter-spacing:1.5px;color:#6b87ad">EQUIPMENT</div><div style="color:#fff;font-weight:700">' + esc(row.line_area || '—') + '</div></div>');
+    headerBits.push('<div><div style="font-size:10px;letter-spacing:1.5px;color:#6b87ad">CYCLE START</div><div style="color:#fff;font-weight:700">' + esc(when) + '</div></div>');
+    headerBits.push('<div><div style="font-size:10px;letter-spacing:1.5px;color:#6b87ad">OPERATOR / PCQI</div><div style="color:#fff;font-weight:700">' + esc(row.operator || '(unsigned)') + '</div></div>');
+    headerBits.push('<div><div style="font-size:10px;letter-spacing:1.5px;color:#6b87ad">STATUS</div><div style="color:' + resColor + ';font-weight:700">' + (row.result||'').toUpperCase() + ' · ' + (row.status||'') + '</div></div>');
+    var devNote = row.notes ? '<div style="margin-top:14px;padding:12px;background:rgba(231,76,60,.08);border:1px solid rgba(231,76,60,.3);border-radius:8px;color:#ff8579;font-size:12px"><b>Deviation note:</b><br>' + esc(row.notes) + '</div>' : '';
     var ov = document.createElement('div');
-    ov.id = 'gl-cip-modal';
-    ov.setAttribute('style','position:fixed;inset:0;z-index:1000;background:rgba(6,13,26,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.id = 'gl-cip-detail';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1000;background:rgba(6,13,26,.92);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;padding:20px');
     ov.innerHTML =
-      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:26px;width:100%;max-width:520px;max-height:88vh;overflow-y:auto">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
-          '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">' + (isEdit ? '✏️ EDIT CYCLE' : '🧼 LOG CIP CYCLE') + '</div>' +
-          '<button id="gl-cip-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.25);border-radius:14px;padding:24px;width:100%;max-width:760px;max-height:88vh;overflow-y:auto">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">' +
+          '<div><div style="font-family:var(--ff-disp);font-size:16px;letter-spacing:2px;color:var(--teal)">🧼 CIP CYCLE DETAIL</div><div style="font-size:11px;color:#6b87ad;margin-top:2px">Form GMP-SAN-002 · Record id ' + esc(String(row.id).slice(0,8)) + '</div></div>' +
+          '<button id="gl-cipd-close" style="background:none;border:none;color:#9aa7bd;font-size:22px;cursor:pointer">✕</button>' +
         '</div>' +
-        '<div class="frow"><div class="flbl">When *</div><input class="finp" id="gl-cip-when" type="datetime-local" value="' + esc(c.cycle_at) + '"></div>' +
-        '<div class="frow"><div class="flbl">Line / area *</div><input class="finp" id="gl-cip-area" value="' + esc(c.line_area) + '" placeholder="e.g. Filler #1 / fill heads / hoses"></div>' +
-        '<div class="frow"><div class="flbl">Method</div><select class="fsel" id="gl-cip-method">' + methodOpts + '</select></div>' +
-        '<div>' +
-          '<div class="flbl" style="margin-bottom:6px">Chemicals used</div>' +
-          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px 12px;padding:11px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:8px;margin-bottom:12px">' + chemChecks + '</div>' +
-        '</div>' +
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
-          '<div class="frow"><div class="flbl">Water temp (°F)</div><input class="finp" id="gl-cip-temp" type="number" min="0" value="' + esc(c.water_temp_f) + '"></div>' +
-          '<div class="frow"><div class="flbl">Contact (min)</div><input class="finp" id="gl-cip-contact" type="number" min="0" value="' + esc(c.contact_min) + '"></div>' +
-        '</div>' +
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
-          '<div class="frow"><div class="flbl">Operator *</div><input class="finp" id="gl-cip-op" value="' + esc(c.operator) + '"></div>' +
-          '<div class="frow"><div class="flbl">ATP reading (RLU)</div><input class="finp" id="gl-cip-atp" value="' + esc(c.atp_reading) + '" placeholder="< 30 = pass"></div>' +
-        '</div>' +
-        '<div class="frow"><div class="flbl">Result *</div><select class="fsel" id="gl-cip-result">' + resultOpts + '</select></div>' +
-        '<div class="frow"><div class="flbl">Notes</div><textarea class="finp" id="gl-cip-notes" rows="2">' + esc(c.notes) + '</textarea></div>' +
-        '<div style="display:flex;gap:8px;margin-top:6px">' +
-          '<button id="gl-cip-save" class="cbtn pri" style="flex:1">💾 Save</button>' +
-          (isEdit ? '<button id="gl-cip-del" class="cbtn" style="background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#ff8579">Delete</button>' : '') +
-          '<button id="gl-cip-cancel" class="cbtn">Cancel</button>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px;background:rgba(255,255,255,.03);border-radius:8px;margin-bottom:14px;font-size:12px">' + headerBits.join('') + '</div>' +
+        '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="font-size:10px;letter-spacing:1px;color:#6b87ad;text-align:left;border-bottom:1px solid rgba(255,255,255,.08)">' +
+          '<th style="padding:6px;text-align:center">DONE</th><th style="padding:6px">#</th><th style="padding:6px">STEP</th><th style="padding:6px;text-align:right">TIME/TEMP</th><th style="padding:6px">READING</th><th style="padding:6px;text-align:right">P/F</th>' +
+        '</tr></thead><tbody>' + STEP_DEFS.map(stepRow).join('') + '</tbody></table>' +
+        devNote +
+        '<div style="display:flex;justify-content:flex-end;margin-top:18px">' +
+          '<button id="gl-cipd-done" class="cbtn">Close</button>' +
         '</div>' +
       '</div>';
+    document.body.appendChild(ov);
     ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
-    ov.querySelector('#gl-cip-close').addEventListener('click', function(){ ov.remove(); });
-    ov.querySelector('#gl-cip-cancel').addEventListener('click', function(){ ov.remove(); });
-    var del = ov.querySelector('#gl-cip-del');
-    if(del) del.addEventListener('click', async function(){
-      if(!confirm('Delete this CIP cycle? FDA requires you to retain a log — only delete if entered in error.')) return;
-      if(window.supa){ try { await window.supa.from('cip_logs').delete().eq('id', c.id); } catch(e){} }
-      window.glCipLogs = (window.glCipLogs||[]).filter(function(x){ return x.id !== c.id; });
-      saveLocal(); render(); ov.remove();
-      if(typeof window.glAudit === 'function') window.glAudit('cip_cycle_deleted', c.id, {});
-    });
-    ov.querySelector('#gl-cip-save').addEventListener('click', async function(){
-      var area = ov.querySelector('#gl-cip-area').value.trim();
-      var op = ov.querySelector('#gl-cip-op').value.trim();
-      if(!area || !op){ alert('Line/area and operator are required.'); return; }
-      var chemicals = [];
-      ov.querySelectorAll('input[data-chem]').forEach(function(el){ if(el.checked) chemicals.push(el.getAttribute('data-chem')); });
-      var data = {
-        cycle_at:    ov.querySelector('#gl-cip-when').value || new Date().toISOString(),
-        line_area:   area,
-        method:      ov.querySelector('#gl-cip-method').value,
-        chemicals:   chemicals,
-        water_temp_f: parseFloat(ov.querySelector('#gl-cip-temp').value) || null,
-        contact_min:  parseInt(ov.querySelector('#gl-cip-contact').value, 10) || null,
-        operator:    op,
-        atp_reading: ov.querySelector('#gl-cip-atp').value.trim(),
-        result:      ov.querySelector('#gl-cip-result').value,
-        notes:       ov.querySelector('#gl-cip-notes').value
-      };
-      if(window.supa){
-        try {
-          if(isEdit){ await window.supa.from('cip_logs').update(data).eq('id', c.id); Object.assign(c, data); }
-          else { var r = await window.supa.from('cip_logs').insert([data]).select().single(); if(r && r.data){ window.glCipLogs.unshift(r.data); } else { data.id = 'local_' + Date.now(); window.glCipLogs.unshift(data); } }
-        } catch(e){
-          if(isEdit) Object.assign(c, data);
-          else { data.id = 'local_' + Date.now(); window.glCipLogs.unshift(data); }
-        }
-      } else {
-        if(isEdit) Object.assign(c, data);
-        else { data.id = 'local_' + Date.now(); window.glCipLogs.unshift(data); }
-      }
-      saveLocal(); ov.remove(); render();
-      if(typeof addNotification === 'function') addNotification('🧼 CIP cycle ' + (isEdit ? 'updated' : 'logged'), data.line_area + ' — ' + data.result.toUpperCase(), data.result === 'fail' ? 'warning' : 'success');
-      if(typeof window.glAudit === 'function') window.glAudit(isEdit ? 'cip_cycle_edited' : 'cip_cycle_logged', data.line_area, { result: data.result });
-    });
-    host.appendChild(ov);
-  }
-
-  window.glOpenAddCip  = function(){ cipModal(null); };
-  window.glOpenEditCip = function(id){
-    var c = (window.glCipLogs||[]).find(function(x){ return x.id === id; });
-    if(c) cipModal(c);
+    ov.querySelector('#gl-cipd-close').onclick = function(){ ov.remove(); };
+    ov.querySelector('#gl-cipd-done').onclick  = function(){ ov.remove(); };
   };
+
+  // glOpenAddCip is set to glOpenCipForm (the live 9-step FDA form) at the
+  // bottom of the compliance-forms IIFE. No stub needed here.
 
   function watch(){
     var pg = document.getElementById('cpg-cip');
@@ -11487,7 +13658,7 @@
         var details = r.details ? '<code style="font-family:var(--ff-mono);font-size:11px;color:var(--muted);max-width:240px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(JSON.stringify(r.details)) + '</code>' : '<span style="color:rgba(255,255,255,.2)">—</span>';
         return '<tr>' +
           '<td style="padding:11px;color:var(--muted);font-size:11px;white-space:nowrap">' + when + '</td>' +
-          '<td style="padding:11px;color:var(--white);font-size:12px">' + esc(r.actor || 'system') + '</td>' +
+          '<td style="padding:11px;color:var(--white);font-size:12px">' + esc(r.actor_email || r.actor || 'system') + '</td>' +
           '<td style="padding:11px;color:var(--teal);font-family:var(--ff-mono);font-size:11px">' + esc(r.action) + '</td>' +
           '<td style="padding:11px;color:var(--muted);font-size:12px">' + esc(r.target || '—') + '</td>' +
           '<td style="padding:11px">' + details + '</td>' +
@@ -11575,15 +13746,7 @@
       '</div>';
   };
 
-  (function wrap(){
-    var orig = window.renderDash;
-    if(typeof orig !== 'function'){ setTimeout(wrap, 500); return; }
-    window.renderDash = function(){
-      var r = orig.apply(this, arguments);
-      try { window.renderLowStockAlert(); } catch(e){ console.warn('[GL] low-stock alert threw', e); }
-      return r;
-    };
-  })();
+  window.GL_HOOKS.registerDashPatch(function(){ try{ window.renderLowStockAlert(); }catch(e){ console.warn('[GL] low-stock alert threw', e); } });
 
   console.log('[GL] low-stock dashboard alert loaded');
 }());
@@ -11791,56 +13954,69 @@
   window.renderPipelineForecast = function(){
     var host = document.getElementById('cpg-dashboard');
     if(!host) return;
+    // Always remove stale card first so we re-insert in the right place
     var existing = document.getElementById('gl-forecast-card');
+    if(existing) existing.remove();
+
     var deals = window.deals || {};
-    var byStage = {};
-    var total = 0;
+    var byStageRaw = {};
+    var byStageWtd = {};
+    var rawTotal = 0;
+    var wtdTotal = 0;
     Object.keys(deals).forEach(function(stage){
       if(stage === 'Closed Won' || stage === 'Closed Lost') return;
-      var sub = 0;
-      (deals[stage]||[]).forEach(function(d){
+      var subRaw = 0, subWtd = 0;
+      var stageArr = Array.isArray(deals[stage]) ? deals[stage] : [];
+      stageArr.forEach(function(d){
         var v = dollarsFromVal(d.val);
         var p = (d.prob != null ? d.prob : 20) / 100;
-        sub += v * p;
+        subRaw += v;
+        subWtd += v * p;
       });
-      byStage[stage] = sub;
-      total += sub;
-    });
-    if(total === 0){ if(existing) existing.remove(); return; }
-    var stageBars = Object.keys(byStage).map(function(stage){
-      var amt = byStage[stage];
-      var pct = total ? Math.round(amt / total * 100) : 0;
-      return '<div style="margin-bottom:7px"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--white);margin-bottom:3px"><span>' + stage + '</span><span style="color:var(--teal);font-weight:600">' + fmt$(amt) + '</span></div>' +
-        '<div style="height:6px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden"><div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,var(--teal),#1a6fff)"></div></div></div>';
-    }).join('');
-    var html =
-      '<div id="gl-forecast-card" class="ccard" style="grid-column:1/-1;margin-top:14px">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
-          '<div class="ccard-t" style="margin:0">Weighted pipeline forecast</div>' +
-          '<div style="font-family:var(--ff-disp);font-size:22px;color:var(--teal)">' + fmt$(total) + '</div>' +
-        '</div>' +
-        stageBars +
-        '<div style="font-size:10px;color:var(--muted);margin-top:8px;letter-spacing:1px">Σ (deal value × probability) across open pipeline stages.</div>' +
-      '</div>';
-    if(existing){ existing.outerHTML = html; }
-    else {
-      var dashRow = host.querySelector('.dash-row');
-      if(dashRow && dashRow.nextElementSibling){
-        dashRow.nextElementSibling.insertAdjacentHTML('afterend', html);
-      } else {
-        host.insertAdjacentHTML('beforeend', html);
+      if(subRaw > 0){
+        byStageRaw[stage] = subRaw;
+        byStageWtd[stage] = subWtd;
+        rawTotal += subRaw;
+        wtdTotal += subWtd;
       }
-    }
+    });
+    if(rawTotal === 0) return;
+
+    var stageBars = Object.keys(byStageRaw).map(function(stage){
+      var rawAmt = byStageRaw[stage];
+      var pct = rawTotal ? Math.round(rawAmt / rawTotal * 100) : 0;
+      return '<div style="margin-bottom:7px">' +
+        '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--white);margin-bottom:3px">' +
+          '<span>' + stage + '</span>' +
+          '<span style="color:var(--teal);font-weight:600">' + fmt$(rawAmt) + '</span>' +
+        '</div>' +
+        '<div style="height:6px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden">' +
+          '<div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,var(--teal),#1a6fff)"></div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    var card = document.createElement('div');
+    card.id = 'gl-forecast-card';
+    card.className = 'ccard';
+    card.style.marginTop = '14px';
+    card.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+        '<div class="ccard-t" style="margin:0">Open pipeline</div>' +
+        '<div style="text-align:right">' +
+          '<div style="font-family:var(--ff-disp);font-size:22px;color:var(--teal)">' + fmt$(rawTotal) + '</div>' +
+          '<div style="font-size:11px;color:var(--muted);margin-top:2px">Weighted: ' + fmt$(wtdTotal) + '</div>' +
+        '</div>' +
+      '</div>' +
+      stageBars +
+      '<div style="font-size:10px;color:var(--muted);margin-top:8px;letter-spacing:1px">Weighted = deal value × close probability across open stages.</div>';
+
+    // Insert right before #dash-low-stock so position is always stable
+    var anchor = host.querySelector('#dash-low-stock');
+    if(anchor){ host.insertBefore(card, anchor); }
+    else { host.appendChild(card); }
   };
-  (function wrap(){
-    var orig = window.renderDash;
-    if(typeof orig !== 'function'){ setTimeout(wrap, 500); return; }
-    window.renderDash = function(){
-      var r = orig.apply(this, arguments);
-      try { window.renderPipelineForecast(); } catch(e){ console.warn('[GL] forecast threw', e); }
-      return r;
-    };
-  })();
+  window.GL_HOOKS.registerDashPatch(function(){ try{ window.renderPipelineForecast(); }catch(e){ console.warn('[GL] forecast threw', e); } });
   console.log('[GL] weighted pipeline forecast loaded');
 }());
 
@@ -11915,17 +14091,6 @@
   if(document.readyState !== 'loading') maybeMount();
   else document.addEventListener('DOMContentLoaded', maybeMount);
   window.addEventListener('hashchange', maybeMount);
-
-  window.glCopyNpsLink = async function(clientId){
-    if(!clientId) return;
-    var base = window.location.origin + window.location.pathname.replace(/[^/]*$/, '');
-    var url = base + '#nps/' + clientId;
-    try { await navigator.clipboard.writeText(url); } catch(e){
-      var ta = document.createElement('textarea'); ta.value = url; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
-    }
-    if(typeof addNotification === 'function') addNotification('🔗 NPS link copied', url, 'success');
-    else alert('NPS link copied:\n\n' + url);
-  };
 
   window.openNpsResults = async function(){
     var prior = document.getElementById('gl-nps-results-modal'); if(prior) prior.remove();
@@ -12197,15 +14362,7 @@
         }).join('') +
       '</div>';
   };
-  (function wrap(){
-    var orig = window.renderDash;
-    if(typeof orig !== 'function'){ setTimeout(wrap, 500); return; }
-    window.renderDash = function(){
-      var r = orig.apply(this, arguments);
-      try { window.renderAnniversaries(); } catch(e){ console.warn('[GL] anniversaries threw', e); }
-      return r;
-    };
-  })();
+  window.GL_HOOKS.registerDashPatch(function(){ try{ window.renderAnniversaries(); }catch(e){ console.warn('[GL] anniversaries threw', e); } });
   console.log('[GL] anniversary tracker loaded');
 }());
 
@@ -12295,15 +14452,7 @@
     if(existing) existing.outerHTML = html;
     else host.insertAdjacentHTML('beforeend', html);
   };
-  (function wrap(){
-    var orig = window.renderDash;
-    if(typeof orig !== 'function'){ setTimeout(wrap, 500); return; }
-    window.renderDash = function(){
-      var r = orig.apply(this, arguments);
-      try { window.renderRevenueForecast(); } catch(e){ console.warn('[GL] forecast threw', e); }
-      return r;
-    };
-  })();
+  window.GL_HOOKS.registerDashPatch(function(){ try{ window.renderRevenueForecast(); }catch(e){ console.warn('[GL] forecast threw', e); } });
   console.log('[GL] revenue forecast loaded');
 }());
 
@@ -12446,15 +14595,7 @@
     if(existing) existing.outerHTML = html;
     else host.insertAdjacentHTML('beforeend', html);
   };
-  (function wrap(){
-    var orig = window.renderDash;
-    if(typeof orig !== 'function'){ setTimeout(wrap, 500); return; }
-    window.renderDash = function(){
-      var r = orig.apply(this, arguments);
-      try { window.renderKpiScorecard(); } catch(e){ console.warn('[GL] KPI threw', e); }
-      return r;
-    };
-  })();
+  window.GL_HOOKS.registerDashPatch(function(){ try{ window.renderKpiScorecard(); }catch(e){ console.warn('[GL] KPI threw', e); } });
   console.log('[GL] KPI scorecard loaded');
 }());
 
@@ -12699,11 +14840,11 @@
         '</div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
           '<div class="frow"><div class="flbl">Lead time (days)</div><input class="finp" id="gl-ven-lead" type="number" min="0" value="' + esc(v.lead_time_days) + '"></div>' +
-          '<div class="frow"><div class="flbl">MOQ</div><input class="finp" id="gl-ven-moq" value="' + esc(v.moq) + '" placeholder="e.g. 50,000 cans"></div>' +
+          '<div class="frow"><div class="flbl">Minimum Order Quantity (MOQ)</div><input class="finp" id="gl-ven-moq" value="' + esc(v.moq) + '" placeholder="e.g. 50,000 cans"></div>' +
         '</div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
           '<div class="frow"><div class="flbl">Payment terms</div><input class="finp" id="gl-ven-terms" value="' + esc(v.payment_terms) + '" placeholder="e.g. Net 30"></div>' +
-          '<div class="frow"><div class="flbl">COI expires</div><input class="finp" id="gl-ven-coi" type="date" value="' + esc(v.coi_expires) + '"></div>' +
+          '<div class="frow"><div class="flbl">Certificate of Insurance (COI) expires</div><input class="finp" id="gl-ven-coi" type="date" value="' + esc(v.coi_expires) + '"></div>' +
         '</div>' +
         '<div class="frow"><div class="flbl">Notes</div><textarea class="finp" id="gl-ven-notes" rows="3">' + esc(v.notes) + '</textarea></div>' +
         '<div style="display:flex;gap:8px;margin-top:6px">' +
@@ -12958,9 +15099,11 @@
     txt(15,28,'OPERATIONS PRO',9,'#9aa7bd') +
     txt(15,52,'• Formula Vault',11,'#00e5c0') +
     txt(15,72,'• Yield Tracker',11,'#9aa7bd') +
-    txt(15,92,'• Production Runs',11,'#9aa7bd') +
-    txt(15,112,'• Sample Shipments',11,'#9aa7bd') +
-    txt(15,132,'• CIP / Sanitation',11,'#9aa7bd') +
+    txt(15,98,'OPERATIONS',9,'#9aa7bd') +
+    txt(15,118,'• Production Runs',11,'#9aa7bd') +
+    txt(15,138,'• Sample Shipments',11,'#9aa7bd') +
+    txt(15,164,'COMPLIANCE',9,'#9aa7bd') +
+    txt(15,184,'• CIP / Sanitation Log',11,'#9aa7bd') +
     txt(160,28,'FORMULA VAULT',13,'#fff') +
     txt(160,46,'Versioned recipes per client',10,'#9aa7bd') +
     box(160,60,440,30) + txt(170,79,'+ New Formula',11,'#00e5c0') + tag(580,75,1) +
@@ -12975,7 +15118,7 @@
     locator(
       '<b>Formula Vault, Yield Tracker</b> &rarr; sidebar &rarr; <b>Operations Pro</b> section.<br>' +
       '<b>Production Runs, Sample Shipments</b> &rarr; sidebar &rarr; <b>Operations</b> section.<br>' +
-      '<b>CIP / Sanitation Log</b> &rarr; sidebar &rarr; <b>Compliance</b> section.'
+      '<b>CIP / Sanitation Log, Hold Tags, Audit Log, Compliance Tasks</b> &rarr; sidebar &rarr; <b>Compliance</b> section.'
     ) +
     intro('Your production-line + compliance tooling. Spread across three sidebar sections (Operations, Operations Pro, Compliance) because they map to different parts of your day. Everything here writes to Supabase (with localStorage fallback) and creates an audit log entry on every action.') +
     subhead('🧪', 'FORMULA VAULT') +
@@ -13008,7 +15151,7 @@
       'Save. The row colour-codes itself; trend updates live.'
     ]) +
     whereToFind('Sidebar → Operations Pro → Yield Tracker') +
-    subhead('🏭', 'PRODUCTION RUNS — KANBAN') +
+    subhead('🏭', 'PRODUCTION RUNS') +
     intro('Operations kanban for every run in flight. Six columns map your real-world stages.') +
     bullets([
       '<b>Columns:</b> Discovery → Formulation → Sample → COA → Production → Ship.',
@@ -13017,12 +15160,12 @@
       'Backed by Supabase <code>production_runs</code> table; falls back to localStorage if the table is missing.'
     ]) +
     steps([
-      'Sidebar → <b>Operations Pro → Production Runs</b>.',
+      'Sidebar → <b>Operations → Production Runs</b>.',
       'Click <b>+ Add Run</b>. Pick client, name the run (e.g. "SunBurst Mar batch"), set format + cases + scheduled date.',
       'As work progresses, click the stage dropdown on the card to advance it.',
       'When it hits Ship, file it off — appears in the activity feed as "shipped".'
     ]) +
-    whereToFind('Sidebar → Operations Pro → Production Runs') +
+    whereToFind('Sidebar → Operations → Production Runs') +
     subhead('📬', 'SAMPLE SHIPMENTS') +
     intro('Track every sample that leaves the facility so nothing falls into the prospect-followup void.') +
     bullets([
@@ -13030,11 +15173,11 @@
       '<b>Followup nudge:</b> any sample marked "delivered" more than 7 days ago surfaces a yellow "send followup?" badge.'
     ]) +
     steps([
-      'Sidebar → <b>Operations Pro → Sample Shipments</b>.',
+      'Sidebar → <b>Operations → Sample Shipments</b>.',
       '<b>+ New Sample</b> when you pack one out. Paste tracking when you have it.',
       'Update status as it moves. Mark "followup-sent" once you reach out — the nudge clears.'
     ]) +
-    whereToFind('Sidebar → Operations Pro → Sample Shipments') +
+    whereToFind('Sidebar → Operations → Sample Shipments') +
     subhead('🧽', 'CIP / SANITATION LOG (compliance)') +
     intro('FDA-defensible record of every cleaning cycle between runs. If an auditor walks in, this is the page you open first.') +
     bullets([
@@ -13043,12 +15186,12 @@
       'Every entry hits the <b>Audit Log</b> automatically so changes are tracked too.'
     ]) +
     steps([
-      'Sidebar → <b>Operations Pro → CIP / Sanitation</b>.',
+      'Sidebar → <b>Compliance → CIP / Sanitation Log</b>.',
       '<b>+ Log Cleaning</b> immediately after a CIP cycle. Pick method, chemicals, concentration.',
       'Enter ATP swab result (the number from your luminometer).',
       'Pass/fail auto-flags red if the ATP exceeds your threshold.'
     ]) +
-    whereToFind('Sidebar → Operations Pro → CIP / Sanitation Log');
+    whereToFind('Sidebar → Compliance → CIP / Sanitation Log');
 
   /* SECTION 2 — QUALITY & SUPPLY */
   var MOCK_QS = wf(620, 250,
@@ -13096,12 +15239,12 @@
       '<b>Filter bar</b> at the top lets you scope to one user or action type — useful for auditing.'
     ]) +
     steps([
-      'Sidebar → <b>Quality & Supply → Audit Log</b> (callout 2).',
+      'Sidebar → <b>Compliance → Audit Log</b> (admin only; the link is hidden for non-admins).',
       'Filter by actor to see what one user did this week.',
       'Filter by action to find e.g. every <code>invoice_deleted</code> event.',
       'Click any row to expand the JSON details payload.'
     ]) +
-    whereToFind('Sidebar → Quality & Supply → Audit Log') +
+    whereToFind('Sidebar → Compliance → Audit Log (admin only)') +
     subhead('🏢', 'VENDOR DIRECTORY') +
     intro('Searchable directory of every ingredient/can/label/equipment supplier you work with. Like a Rolodex with COIs.') +
     bullets([
@@ -13338,11 +15481,11 @@
     subhead('🔄', 'RUN → INVOICE') +
     intro('Convert a completed Production Run into a draft invoice in one click. Pulls client, formula, cases, and pricing.') +
     steps([
-      'Sidebar → Operations Pro → Production Runs.',
+      'Sidebar → Operations → Production Runs.',
       'Find the run in the <b>Ship</b> column. Click the <b>"→ Invoice"</b> button on the card.',
       'A pre-filled invoice opens in the New Invoice builder. Tweak line items if needed and send.'
     ]) +
-    whereToFind('Production Runs kanban → "Ship" column → card action button') +
+    whereToFind('Sidebar → Operations → Production Runs → "Ship" column → card action button') +
     subhead('📈', 'WEIGHTED PIPELINE FORECAST') +
     intro('Shows total deal value weighted by stage probability (Prospecting 20% / Proposal 50% / Negotiation 70% / Closing 80%). Updates when you move deals between stages.') +
     bullets([
@@ -13448,11 +15591,11 @@
     subhead('📄', 'RUN SHEET PDF') +
     intro('Generates a printable production run sheet for the floor. One page per run with formula, allergens, target yield, batch size, operator sign-off lines.') +
     steps([
-      'Sidebar → Operations Pro → Production Runs.',
+      'Sidebar → Operations → Production Runs.',
       'Find the run. Click the <b>"Print sheet"</b> button on the card.',
       'PDF opens in a new tab. Print it for the floor. Operator signs at bottom.'
     ]) +
-    whereToFind('Production Runs kanban → any card → "Print sheet" button');
+    whereToFind('Sidebar → Operations → Production Runs → any card → "Print sheet" button');
 
   /* SECTION 7 — PUBLIC WEBSITE */
   var MOCK_PUBLIC = wf(620, 220,
@@ -13521,7 +15664,10 @@
      PATCH: wrap glOpenHelp to inject new sections + TOC entries
      ────────────────────────────────────────────────────────── */
   var NEW_SECTIONS = [
-    { id:'help-ops-pro',   icon:'🏭', label:'Operations Pro',     html:SEC_OPS_PRO },
+    // Label spans three sidebar sections (Operations, Operations Pro, Compliance)
+    // because production workflow crosses them — see the locator block at the top
+    // of SEC_OPS_PRO for the exact mapping.
+    { id:'help-ops-pro',   icon:'🏭', label:'Production & Operations', html:SEC_OPS_PRO },
     { id:'help-qs',        icon:'✅',       label:'Quality & Supply',   html:SEC_QS },
     { id:'help-marketing', icon:'📣', label:'Marketing & Content',html:SEC_MARKETING },
     { id:'help-growth',    icon:'🚀', label:'Growth Tools',       html:SEC_GROWTH },
@@ -13776,7 +15922,7 @@
   function buildPanel(){
     var panel = document.createElement('div');
     panel.id = 'gl-ai-panel';
-    panel.setAttribute('style','position:fixed;bottom:90px;right:28px;z-index:601;width:380px;max-height:75vh;background:#142238;border:1px solid rgba(0,229,192,.25);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.6);display:none;flex-direction:column;overflow:hidden;color:#cfd9e6;font-family:var(--ff-body, system-ui)');
+    panel.setAttribute('style','position:fixed;top:54px;right:12px;bottom:auto;z-index:601;width:380px;max-height:75vh;background:#142238;border:1px solid rgba(0,229,192,.25);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.6);display:none;flex-direction:column;overflow:hidden;color:#cfd9e6;font-family:var(--ff-body, system-ui)');
 
     // Header — title + search + close
     var head = document.createElement('div');
@@ -13867,7 +16013,6 @@
     if(panel && panel.style.display === 'flex') closePanel();
     else openPanel();
   }
-  window.glToggleAIPanel = togglePanel;
 
   function applyRedesign(){
     var tb = document.getElementById('ai-toolbar');
@@ -14217,16 +16362,8 @@
     });
   }
 
-  // Wrap loginUser so post-login (any path) triggers a data refresh
-  (function wrap(){
-    var orig = window.loginUser;
-    if(typeof orig !== 'function'){ setTimeout(wrap, 400); return; }
-    window.loginUser = function(){
-      var r = orig.apply(this, arguments);
-      setTimeout(ensureDataLoaded, 60);
-      return r;
-    };
-  })();
+  // Trigger a data refresh on every login
+  window.GL_HOOKS.registerLoginHook(function(){ setTimeout(ensureDataLoaded, 60); });
 
   // Also watch for the CRM panel becoming visible — covers any other entry path
   function watchPanel(){
@@ -14438,14 +16575,23 @@
   }
 
   async function dbInsert(table, row){
+    var lastErr = null;
     if(window.supa){
       try {
         var r = await window.supa.from(table).insert([row]).select().single();
         if(r && !r.error && r.data) return r.data;
-      } catch(e){ console.warn('[GL compliance] dbInsert '+table+' failed', e); }
+        if(r && r.error){ lastErr = r.error; console.warn('[GL compliance] dbInsert '+table+' rejected:', r.error.message, r.error.code); }
+      } catch(e){ lastErr = e; console.warn('[GL compliance] dbInsert '+table+' threw', e); }
     }
-    // Local fallback
-    var fake = Object.assign({ id: uid(), created_at: nowISO() }, row);
+    // Local fallback — keep the work, but loudly flag the DB failure so the
+    // operator knows the record never reached Supabase. Without this, FDA-
+    // required records silently vanish when RLS / schema mismatches reject
+    // the insert.
+    if(lastErr && typeof window.addNotification === 'function'){
+      var msg = (lastErr && lastErr.message) ? lastErr.message : String(lastErr);
+      window.addNotification('⚠ DB save FAILED · ' + table, msg.slice(0,160) + ' — record kept locally only; admin must fix and re-save.', 'warning');
+    }
+    var fake = Object.assign({ id: uid(), created_at: nowISO(), _localOnly: true, _dbError: lastErr ? (lastErr.message || String(lastErr)) : null }, row);
     var rows = readLocal(table);
     rows.unshift(fake);
     writeLocal(table, rows);
@@ -14940,13 +17086,14 @@
     var body =
       field('Product / lot', 'product', 'text', { value: run ? (run.run_name || '') : '', required: true }) +
       field('Reading time', 'time', 'time', { value: (new Date()).toTimeString().slice(0,5), required: true }) +
-      field('Hold-tube temperature (°F)', 'temp_f', 'number', { step: '0.1', required: true }) +
+      field('Hold-tube temperature (°F) — hot side', 'temp_f', 'number', { step: '0.1', required: true }) +
+      field('Cold-side / outlet temperature (°F) — post-cooler', 'cold_temp_f', 'number', { step: '0.1' }) +
       field('Holding time (seconds)', 'hold_sec', 'number', { step: '0.1', value: '15' }) +
       field('Product pressure (PSI)', 'product_psi', 'number', { step: '0.1' }) +
       field('Media pressure (PSI)', 'media_psi', 'number', { step: '0.1' }) +
       field('FDD status', 'fdd', 'select', { options: [['ok','OK — forward flow'],['divert','DIVERT — flow diverted']], required: true }) +
       field('Corrective action (if deviation)', 'corrective', 'textarea') +
-      '<div style="font-size:11px;color:#f5c842;background:rgba(245,200,66,.08);padding:8px 12px;border-radius:6px;margin-top:8px">Critical limit: hold-tube temp ≥ ' + DEFAULT_LIMITS.htst_temp_f + '°F (per LEAN_01 default — confirm your FSP). FDD DIVERT or temp drop = STOP production, hold lot, auto-NC.</div>';
+      '<div style="font-size:11px;color:#f5c842;background:rgba(245,200,66,.08);padding:8px 12px;border-radius:6px;margin-top:8px">Critical limit (hot side): hold-tube temp ≥ ' + DEFAULT_LIMITS.htst_temp_f + '°F. Cold side typically ≤ 40°F for refrigerated storage (confirm your FSP). FDD DIVERT or hot-side temp drop = STOP production, hold lot, auto-NC.</div>';
     var modal = modalShell('FSP-PC-001 · HTST Pasteurization Reading (CCP-1)', 'Log every 30 minutes during pasteurization', body, formFooter());
     wireYn(modal);
     modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
@@ -14955,6 +17102,7 @@
       var data = {
         product: getVal(modal,'product'), time: getVal(modal,'time'),
         temp_f: parseFloat(getVal(modal,'temp_f')) || null,
+        cold_temp_f: parseFloat(getVal(modal,'cold_temp_f')) || null,
         hold_sec: parseFloat(getVal(modal,'hold_sec')) || null,
         product_psi: parseFloat(getVal(modal,'product_psi')) || null,
         media_psi: parseFloat(getVal(modal,'media_psi')) || null,
@@ -14963,7 +17111,12 @@
       };
       var tempFail = (data.temp_f || 0) < DEFAULT_LIMITS.htst_temp_f;
       var fddFail = data.fdd === 'divert';
+      // Cold-side check is informational unless explicitly above 40°F — FSP
+      // confirmation needed to escalate this to a hard CCP failure. For now
+      // we capture the reading and flag a soft warning in the summary.
+      var coldWarn = data.cold_temp_f != null && data.cold_temp_f > 40;
       var hasFailure = tempFail || fddFail;
+      var coldBit = data.cold_temp_f != null ? ' · cold ' + data.cold_temp_f + '°F' + (coldWarn ? ' ⚠' : '') : '';
       await saveRecord('FSP-PC-001', data, {
         signed: signed, complete: signed,
         task_id: null, run_id: task.run_id,
@@ -14972,13 +17125,14 @@
           'HTST CCP-1 deviation at ' + data.time + ' — ' +
           (tempFail ? 'hold-tube ' + data.temp_f + '°F < ' + DEFAULT_LIMITS.htst_temp_f + '°F. ' : '') +
           (fddFail ? 'FDD DIVERT. ' : '') +
+          (coldWarn ? 'Cold-side ' + data.cold_temp_f + '°F > 40°F (chill verification needed). ' : '') +
           (data.corrective || '')
         ) : null,
         corrective_action: data.corrective,
         spawn_hold: hasFailure,
         product_name: data.product,
         hazard_type: 'biological',
-        summary: data.time + ' · ' + data.temp_f + '°F · ' + (hasFailure ? 'CCP FAIL' : 'OK')
+        summary: data.time + ' · hot ' + data.temp_f + '°F' + coldBit + ' · ' + (hasFailure ? 'CCP FAIL' : 'OK')
       });
       modal.remove();
       refreshMaster();
@@ -15168,6 +17322,11 @@
         field('Equipment / circuit', 'equip', 'select', { options: equipOptions, required: true }) +
         field('CIP cycle start', 'start', 'datetime-local', { value: new Date(Date.now()-30*60000).toISOString().slice(0,16) }) +
       '</div>' +
+      field('Operator', 'operator', 'text', {
+        value: (window.currentUser && (window.currentUser.name || window.currentUser.email)) || '',
+        placeholder: 'Enter operator name',
+        required: true
+      }) +
       '<table style="width:100%;border-collapse:collapse;font-size:11px;margin:8px 0">' +
         '<thead><tr style="background:rgba(255,255,255,.03);text-align:left">' +
           '<th style="padding:7px 5px;color:#9aa7bd;font-size:10px;letter-spacing:1px">#</th>' +
@@ -15221,7 +17380,21 @@
           pf: modal.querySelector('#gl-cip-pf-'+s.n).value
         };
       });
-      var equip = getVal(modal,'equip');
+      var equip    = getVal(modal,'equip');
+      var operator = getVal(modal,'operator');
+      if(!operator){
+        var errEl = modal.querySelector('#gl-cip-op-err');
+        if(!errEl){
+          errEl = document.createElement('div');
+          errEl.id = 'gl-cip-op-err';
+          errEl.style.cssText = 'color:#ff8579;background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.35);border-radius:8px;padding:8px 14px;font-size:12px;margin-bottom:10px';
+          errEl.textContent = 'Operator name is required before saving.';
+          var opField = modal.querySelector('#gl-cf-operator');
+          if(opField && opField.parentElement) opField.parentElement.insertAdjacentElement('afterend', errEl);
+        }
+        modal.querySelector('#gl-cf-operator').focus();
+        return;
+      }
       var deviation = getVal(modal,'deviation');
       // Critical-limit checks
       var failures = [];
@@ -15240,6 +17413,7 @@
       var hasFailure = failures.length > 0;
       var data = {
         equipment: equip, cycle_start: getVal(modal,'start'),
+        operator: operator,
         steps: steps, deviation_notes: deviation
       };
       await saveRecord('GMP-SAN-002', data, {
@@ -15454,25 +17628,38 @@
       field('Supplier', 'supplier', vendors.length ? 'select' : 'text', vendors.length ? { options: vendors, required: true } : { required: true }) +
       field('Ingredient / material', 'ingredient', 'text', { required: true }) +
       field('Lot number', 'lot', 'text', { required: true }) +
-      field('Quantity received', 'qty', 'text') +
+      field('Expiration / best-by date (from supplier label)', 'exp_date', 'date') +
+      field('Quantity received', 'qty', 'text', { required: true, placeholder: 'e.g. 50 lbs, 10 cases, 5 gal' }) +
+      field('Temperature on receipt (°F) — leave blank if ambient / N/A', 'temp_f', 'number', { placeholder: 'e.g. 38', step: '0.1' }) +
+      field('Temperature within acceptable range for this material?', 'temp_ok', 'yn') +
+      field('Storage location assigned', 'storage_loc', 'text', { required: true, placeholder: 'e.g. Walk-in cooler A2, dry storage bay 3, quarantine area' }) +
       field('COA received?', 'coa', 'yn', { required: true }) +
       field('COA lot matches received lot?', 'coa_match', 'yn' ) +
       field('Allergen declaration on file?', 'allergen', 'yn') +
       field('Visual condition OK?', 'visual', 'yn', { required: true }) +
       field('Approved supplier?', 'approved', 'yn', { required: true }) +
       field('Disposition', 'disposition', 'select', { options: [['accept','Accept'],['quarantine','Quarantine — Hold Tag needed']], required: true }) +
-      field('Notes', 'notes', 'textarea');
+      field('Notes', 'notes', 'textarea') +
+      '<div style="font-size:11px;color:#7fc6f5;background:rgba(127,198,245,.08);padding:8px 12px;border-radius:6px;margin-top:8px">21 CFR 117.80: document every incoming delivery. Out-of-range temperature, failed COA, or unapproved supplier must result in Quarantine disposition and an automatic Hold Tag.</div>';
     var modal = modalShell('GMP-REC-001 · Receiving Inspection & COA Review', 'Required for every incoming delivery', body, formFooter());
     wireYn(modal);
     modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
     async function submit(signed){
-      var data = { supplier: getVal(modal,'supplier'), ingredient: getVal(modal,'ingredient'), lot: getVal(modal,'lot'), qty: getVal(modal,'qty'), coa: getVal(modal,'coa'), coa_match: getVal(modal,'coa_match'), allergen: getVal(modal,'allergen'), visual: getVal(modal,'visual'), approved: getVal(modal,'approved'), disposition: getVal(modal,'disposition'), notes: getVal(modal,'notes') };
-      var hasFailure = data.disposition === 'quarantine' || data.coa !== 'Y' || data.visual !== 'Y' || data.approved !== 'Y';
+      var data = { supplier: getVal(modal,'supplier'), ingredient: getVal(modal,'ingredient'), lot: getVal(modal,'lot'), exp_date: getVal(modal,'exp_date'), qty: getVal(modal,'qty'), temp_f: getVal(modal,'temp_f'), temp_ok: getVal(modal,'temp_ok'), storage_loc: getVal(modal,'storage_loc'), coa: getVal(modal,'coa'), coa_match: getVal(modal,'coa_match'), allergen: getVal(modal,'allergen'), visual: getVal(modal,'visual'), approved: getVal(modal,'approved'), disposition: getVal(modal,'disposition'), notes: getVal(modal,'notes') };
+      var tempFail = data.temp_f && data.temp_ok === 'N';
+      var hasFailure = data.disposition === 'quarantine' || data.coa !== 'Y' || data.visual !== 'Y' || data.approved !== 'Y' || tempFail;
       await saveRecord('GMP-REC-001', data, {
         signed: signed, complete: signed, task_id: task.id,
         has_deviation: hasFailure,
-        deviation_notes: hasFailure ? ('Receiving issue — ' + data.ingredient + ' (' + data.lot + ') from ' + data.supplier + ' · disposition: ' + data.disposition) : null,
-        corrective_action: data.notes, spawn_hold: data.disposition === 'quarantine',
+        deviation_notes: hasFailure ? ([
+          'Receiving issue — ' + data.ingredient + ' (' + data.lot + ') from ' + data.supplier,
+          tempFail ? 'Temperature out of range: ' + data.temp_f + '°F' : '',
+          data.coa !== 'Y' ? 'COA missing' : '',
+          data.visual !== 'Y' ? 'Visual condition failed' : '',
+          data.approved !== 'Y' ? 'Unapproved supplier' : '',
+          'Disposition: ' + data.disposition
+        ].filter(Boolean).join(' · ')) : null,
+        corrective_action: data.notes, spawn_hold: data.disposition === 'quarantine' || tempFail,
         product_name: data.ingredient, lot_number: data.lot, hazard_type: 'biological',
         summary: data.ingredient + ' · ' + data.supplier + ' · ' + (hasFailure ? data.disposition.toUpperCase() : 'ACCEPTED')
       });
@@ -16986,13 +19173,29 @@
   // SMS settings. We don't override the existing openSmsSettings; we just save to the same key.
   window.glSetSmsAlertPhone = function(){
     var cur = localStorage.getItem('gl_sms_alert_phone') || '';
-    var v = prompt('Phone number for compliance critical-failure SMS (E.164, e.g. +18135550100). Leave blank to disable.', cur);
-    if(v === null) return;
-    v = v.trim();
-    if(!v){ localStorage.removeItem('gl_sms_alert_phone'); alert('SMS alerts disabled.'); return; }
-    if(!/^\+\d{8,15}$/.test(v)){ alert('Invalid E.164 format. Use +<country><number>, e.g. +18135550100'); return; }
-    localStorage.setItem('gl_sms_alert_phone', v);
-    alert('Compliance SMS alerts will go to ' + v + '. (Requires deployed send-sms Edge Function + Twilio creds.)');
+    // Strip the +1 if present so the prompt shows the cleaner 10-digit format
+    var curDisplay = cur.replace(/^\+1/, '').replace(/\D+/g, '');
+    var raw = prompt('Phone number for compliance critical-failure SMS\n(10-digit US, e.g. 8135550100 — or full international like +447700900123).\nLeave blank to disable.', curDisplay);
+    if(raw === null) return;
+    raw = raw.trim();
+    if(!raw){ localStorage.removeItem('gl_sms_alert_phone'); alert('SMS alerts disabled.'); return; }
+    // Normalize: 10-digit US gets +1 auto-prefixed; 11-digit starting with 1 gets +;
+    // anything already prefixed with + is treated as international E.164.
+    var digits = raw.replace(/\D+/g, '');
+    var e164;
+    if(raw.charAt(0) === '+'){
+      if(!/^\+\d{8,15}$/.test('+'+digits)){ alert('Invalid international number. Expected + followed by 8–15 digits.'); return; }
+      e164 = '+' + digits;
+    } else if(digits.length === 10){
+      e164 = '+1' + digits;
+    } else if(digits.length === 11 && digits.charAt(0) === '1'){
+      e164 = '+' + digits;
+    } else {
+      alert('Enter a 10-digit US number (e.g. 8135550100) or an international number starting with + (e.g. +447700900123).');
+      return;
+    }
+    localStorage.setItem('gl_sms_alert_phone', e164);
+    alert('Compliance SMS alerts will go to ' + e164 + '. (Requires deployed send-sms Edge Function + Twilio creds.)');
   };
 
   // ── (9) Photo upload helper ──
@@ -17741,28 +19944,97 @@
       if(typeof addNotification === 'function') addNotification('⚙️ Applicability saved', newHidden.length + ' task type' + (newHidden.length===1?'':'s') + ' hidden','success');
       if(typeof window.glAudit === 'function') window.glAudit('compliance_applicability_changed','', { hidden: newHidden });
       close();
-      // Trigger a refresh of the compliance master
-      if(typeof window.refreshComplianceMaster === 'function') window.refreshComplianceMaster();
+      // Apply visibility immediately so the user sees the result without
+      // having to renavigate. THEN also trigger a master refresh so newly-
+      // generated tasks honor the new config.
+      applyApplicability();
+      if(typeof window.refreshComplianceMaster === 'function'){
+        // Small delay so refreshComplianceMaster's async render lands first,
+        // then re-apply on the freshly-rendered cards.
+        window.refreshComplianceMaster();
+        setTimeout(applyApplicability, 80);
+        setTimeout(applyApplicability, 400);
+      }
     });
   };
 
-  // Hide rendered task cards whose task_type is in the hidden set.
-  // Watch comp-body for renders.
-  (function hideHiddenTasks(){
+  // applyApplicability — hide rendered task cards whose task_type is in the
+  // hidden set. Callable from anywhere; the save handler above invokes it
+  // explicitly so the user sees the result immediately. The MutationObserver
+  // below also calls it so newly-rendered tasks get hidden too. Re-shows
+  // (display:'') cards that are no longer in the hidden set, so unchecking
+  // a previously-hidden type reveals its tasks again.
+  // Also renders a visible "🙈 Hiding N types" banner above the task list
+  // so the operator can see the effect of the picker (previously the picker
+  // appeared to do nothing because the visual change happened off-screen).
+  var TASK_TYPE_LABELS = {
+    htst_reading:     'HTST Pasteurization',
+    hot_fill_reading: 'Hot Fill',
+    seam_check:       'Can Seam',
+    uv_reading:       'UV Water Treatment',
+    ferm_reading:     'Fermentation',
+    cip_cycle:        'CIP cycle',
+    allergen_swab:    'Allergen Swab',
+    batch_record:     'Batch Record',
+    preop_inspection: 'Pre-op Inspection',
+    label_verify:     'Label Verification',
+    calibration:      'Calibration',
+    listeria_swab:    'Listeria Swab'
+  };
+  function applyApplicability(){
+    var host = document.getElementById('comp-body'); if(!host) return;
+    var hidden = new Set(readApp());
+    var hiddenCount = 0;
+    var totalCards = 0;
+    host.querySelectorAll('.gl-comp-task').forEach(function(card){
+      totalCards++;
+      var btn = card.querySelector('button[data-task-type]');
+      if(!btn) return;
+      var tt = btn.getAttribute('data-task-type');
+      var willHide = hidden.has(tt);
+      card.style.display = willHide ? 'none' : '';
+      if(willHide) hiddenCount++;
+    });
+    // Render the status banner. Pin it just above #comp-tab-body so it
+    // appears at the top of the task list view, on every tab.
+    var tabBody = host.querySelector('#comp-tab-body');
+    var existingBanner = host.querySelector('#gl-applic-banner');
+    if(existingBanner) existingBanner.remove();
+    if(hidden.size && tabBody){
+      var hiddenLabels = Array.from(hidden).map(function(k){ return TASK_TYPE_LABELS[k] || k; }).join(', ');
+      var banner = document.createElement('div');
+      banner.id = 'gl-applic-banner';
+      banner.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 14px;margin-bottom:10px;background:rgba(196,164,248,.08);border:1px solid rgba(196,164,248,.3);border-radius:8px;font-size:12px;color:#c4a4f8';
+      banner.innerHTML =
+        '<span style="font-size:16px">🙈</span>' +
+        '<div style="flex:1"><b>Applicability filter active</b> — hiding ' + hidden.size + ' task type' + (hidden.size===1?'':'s') +
+          (hiddenCount ? ' (' + hiddenCount + ' card' + (hiddenCount===1?'':'s') + ' hidden today)' : ' (no matching tasks today)') +
+          '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">Hidden: ' + String(hiddenLabels).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }) + '</div>' +
+        '</div>' +
+        '<button id="gl-applic-banner-edit" style="background:rgba(196,164,248,.14);border:1px solid rgba(196,164,248,.4);color:#c4a4f8;font-size:11px;padding:5px 11px;border-radius:5px;cursor:pointer">Edit</button>' +
+        '<button id="gl-applic-banner-clear" style="background:none;border:1px solid rgba(255,255,255,.12);color:#9aa7bd;font-size:11px;padding:5px 11px;border-radius:5px;cursor:pointer">Show all</button>';
+      tabBody.parentNode.insertBefore(banner, tabBody);
+      banner.querySelector('#gl-applic-banner-edit').onclick = function(){ window.glOpenApplicabilityConfig(); };
+      banner.querySelector('#gl-applic-banner-clear').onclick = function(){
+        writeApp([]);
+        applyApplicability();
+        if(typeof addNotification === 'function') addNotification('🙈 Filter cleared', 'All compliance task types are visible again', 'success');
+        if(typeof window.glAudit === 'function') window.glAudit('compliance_applicability_cleared','',{});
+      };
+    }
+  }
+
+  // Watcher: re-apply whenever comp-body mutates (covers async renders).
+  (function watchAndApply(){
     var host = document.getElementById('comp-body');
-    if(!host){ setTimeout(hideHiddenTasks, 700); return; }
+    if(!host){ setTimeout(watchAndApply, 700); return; }
+    var pending = false;
     new MutationObserver(function(){
-      var hidden = new Set(readApp());
-      if(!hidden.size) return;
-      host.querySelectorAll('.gl-comp-task').forEach(function(card){
-        // Find the action button to read data-task-type
-        var btn = card.querySelector('button[data-task-type]');
-        if(!btn) return;
-        var tt = btn.getAttribute('data-task-type');
-        if(hidden.has(tt)) card.style.display = 'none';
-        else card.style.display = '';
-      });
+      if(pending) return;
+      pending = true;
+      requestAnimationFrame(function(){ pending = false; applyApplicability(); });
     }).observe(host, { childList:true, subtree:true });
+    applyApplicability(); // initial paint
   })();
 
   // ============================================================
@@ -18796,10 +21068,16 @@
   function fmtTs(d){ if(!d) return ''; var x = new Date(d); return isNaN(x.getTime()) ? String(d) : x.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); }
   function nowISO(){ return new Date().toISOString(); }
   function todayISO(){ return new Date().toISOString().slice(0,10); }
-  function getMailgunKey(){ return localStorage.getItem('gl_mailgun_key') || ''; }
-  function getMailgunDomain(){ return localStorage.getItem('gl_mailgun_domain') || 'mail.goodliquidbevco.com'; }
-  function getMailgunFrom(){ return localStorage.getItem('gl_mailgun_from') || 'Good Liquid Bev Co <noreply@mail.goodliquidbevco.com>'; }
-  function getAiKey(){ return localStorage.getItem('gl_ai_key') || ''; }
+  // DEPRECATED: these getters used to read API credentials out of
+  // localStorage. The Mailgun key + AI key now live in Supabase secrets,
+  // and the from-address is set inside the mailgun-send Edge Function.
+  // The stubs are kept only because legacy callers reference them; they
+  // return empty strings so any leftover client-side send paths fail
+  // closed instead of leaking credentials.
+  function getMailgunKey(){ return ''; }
+  function getMailgunDomain(){ return 'mail.goodliquidbevco.com'; }
+  function getMailgunFrom(){ return 'Good Liquid Bev Co <noreply@mail.goodliquidbevco.com>'; }
+  function getAiKey(){ return ''; }
 
   async function sendMailgun(to, subject, text, html){
     if(!window.supa || !window.supa.functions){
@@ -19093,48 +21371,17 @@
   // ============================================================
   // (15) PWA INSTALL PROMPT
   // ============================================================
-  // The manifest.json + sw.js already exist on this site. We add a small
-  // "Install app" badge to the topbar that appears when Chrome's
-  // beforeinstallprompt event fires.
-  (function pwaPrompt(){
-    var deferred = null;
-    window.addEventListener('beforeinstallprompt', function(e){
-      e.preventDefault();
-      deferred = e;
-      var bar = document.createElement('div');
-      bar.id = 'gl-pwa-prompt';
-      bar.setAttribute('style','position:fixed;bottom:90px;left:28px;z-index:540;background:#243653;border:1px solid rgba(0,229,192,.32);border-radius:10px;padding:11px 14px;box-shadow:0 10px 30px rgba(0,0,0,.4);color:#fff;font-size:12px;font-family:sans-serif;display:flex;align-items:center;gap:10px;max-width:300px');
-      bar.innerHTML = '<span style="font-size:18px">📲</span><div style="flex:1">Install Good Liquid CRM on this device for offline + faster access?</div>' +
-        '<button class="cbtn pri" id="gl-pwa-go" style="font-size:11px;padding:5px 11px">Install</button>' +
-        '<button class="cbtn" id="gl-pwa-skip" style="font-size:11px;padding:5px 9px">No</button>';
-      document.body.appendChild(bar);
-      document.getElementById('gl-pwa-go').addEventListener('click', async function(){
-        bar.remove();
-        if(deferred){
-          deferred.prompt();
-          var choice = await deferred.userChoice;
-          if(typeof addNotification === 'function') addNotification('📲 Install ' + (choice.outcome === 'accepted' ? 'accepted' : 'dismissed'),'','info');
-          deferred = null;
-        }
-      });
-      document.getElementById('gl-pwa-skip').addEventListener('click', function(){
-        bar.remove(); deferred = null;
-        localStorage.setItem('gl_pwa_dismissed', String(Date.now()));
-      });
-    });
-    // Suppress if user dismissed in the last 30 days
-    var last = parseInt(localStorage.getItem('gl_pwa_dismissed') || '0', 10);
-    if(last && Date.now() - last < 30*86400000){ /* will skip prompt for 30d */ }
+  // PWA install prompt — DISABLED here.
+  // There were three independent beforeinstallprompt listeners across
+  // the codebase (two in fix.js, one in index.html), each appending its
+  // own banner. A fresh load on the marketing site showed three
+  // "Install Good Liquid CRM" prompts simultaneously. The canonical
+  // handler now lives only in index.html (showInstallBanner + installPWA).
+  // This stub stays so any future grep finds it but it never mounts UI.
+  // Caught during the Playwright runtime audit on 2026-05-21.
+  (function pwaPromptDisabled(){
+    /* no-op */
   })();
-  window.glManifestCheck = async function(){
-    try {
-      var r = await fetch('/manifest.json');
-      var ok = r.ok;
-      var swReady = 'serviceWorker' in navigator;
-      alert('PWA status:\n  manifest.json: ' + (ok ? '✓ found' : '✗ missing') + '\n  Service Worker API: ' + (swReady ? '✓ supported' : '✗ not supported') + '\n  Install: use ⋮ → Install app in Chrome / Edge, or wait for the install prompt.');
-    } catch(e){ alert('manifest check failed: ' + e.message); }
-  };
-
   // ============================================================
   // (18) AI ROOT-CAUSE SUGGESTER on NCR / defect modal
   // ============================================================
@@ -19421,10 +21668,6 @@
     };
   }
 
-  // Expose for other code paths that insert records:
-  window.glActiveFacilityId = function(){ return activeFacility ? activeFacility.id : null; };
-  window.glActiveFacilityCode = function(){ return activeFacility ? activeFacility.code : null; };
-
   // Intercept compliance inserts to auto-stamp facility_id
   (function wrapSupabaseInsert(){
     var sb = getSB(); if(!sb || sb.__glFacilityWrapped) return;
@@ -19485,25 +21728,115 @@
     window.__glInspectorMode = true;
   }
 
-  window.glGenerateInspectorLink = async function(){
+  // Inspector access link — generates a one-time token bound to a time
+  // window, lands in inspector_tokens (anon-readable while live so the
+  // inspector URL works without a login). Replaces the previous 4-sequential-
+  // prompt() flow which was hostile (one accidental Cancel and the whole
+  // flow aborted silently) AND only offered a clipboard copy.
+  window.glGenerateInspectorLink = function(){
     if(window.__glInspectorMode){ toast('Cannot generate links in inspector mode', 'err'); return; }
-    var inspector = prompt('Inspector name (required):'); if(!inspector) return;
-    var agency = prompt('Agency (FDA / FDACS / state — optional):') || '';
-    var purpose = prompt('Visit purpose (optional):') || '';
-    var hours = parseInt(prompt('Token valid for how many hours? (default 8)', '8'), 10) || 8;
     var sb = getSB(); if(!sb){ toast('Supabase not ready', 'err'); return; }
-    var token = randToken();
-    var validUntil = new Date(Date.now() + hours * 3600 * 1000).toISOString();
-    var row = { token: token, inspector: inspector, agency: agency || null, purpose: purpose || null, valid_until: validUntil, created_by: getCurrentUserId() };
-    var r = await sb.from('inspector_tokens').insert(row).select().single();
-    if(r.error){ toast('Failed: ' + r.error.message, 'err'); return; }
-    var link = window.location.origin + window.location.pathname + '?inspector=' + token;
-    var html = '<div style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center"><div style="background:#fff;padding:20px;border-radius:8px;max-width:560px;width:90%"><h3 style="margin:0 0 10px">Inspector access link</h3><p>Give this URL to <b>'+escHtml(inspector)+'</b>. Valid for '+hours+' hours.</p><input type="text" value="'+escHtml(link)+'" readonly style="width:100%;padding:8px;font:13px monospace;border:1px solid #ccc;border-radius:4px" id="gl-insp-link-field"><div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end"><button id="gl-insp-copy" style="background:#0ea5e9;color:#fff;padding:6px 14px;border:0;border-radius:4px">Copy</button><button id="gl-insp-close" style="padding:6px 14px">Close</button></div></div></div>';
-    var w = document.createElement('div'); w.innerHTML = html; document.body.appendChild(w);
-    w.querySelector('#gl-insp-copy').onclick = function(){
-      var f = w.querySelector('#gl-insp-link-field'); f.select(); document.execCommand('copy'); toast('Link copied');
+    var prior = document.getElementById('gl-insp-modal'); if(prior) prior.remove();
+    var ov = document.createElement('div');
+    ov.id = 'gl-insp-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:99999;background:rgba(6,13,26,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(220,38,38,.3);border-radius:14px;padding:24px;width:100%;max-width:520px;color:#eef4ff">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+          '<div><div style="font-family:var(--ff-disp);font-size:16px;letter-spacing:2px;color:#fca5a5">🔒 INSPECTOR ACCESS LINK</div><div style="font-size:11px;color:#9aa7bd;margin-top:2px">One-time read-only URL for FDA / FDACS / state visits</div></div>' +
+          '<button id="gl-insp-close" style="background:none;border:none;color:#9aa7bd;font-size:22px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div id="gl-insp-step1">' +
+          '<div class="frow"><div class="flbl">Inspector name *</div><input class="finp" id="gl-insp-name" placeholder="e.g. Jane Smith"></div>' +
+          '<div class="frow"><div class="flbl">📧 Inspector email <span style="opacity:.6">(link will be emailed on Generate)</span></div><input class="finp" id="gl-insp-email" type="email" placeholder="inspector@fda.hhs.gov"></div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+            '<div class="frow"><div class="flbl">Agency</div><input class="finp" id="gl-insp-agency" placeholder="FDA / FDACS / state" list="gl-insp-agencies"><datalist id="gl-insp-agencies"><option value="FDA"><option value="FDACS"><option value="USDA"></datalist></div>' +
+            '<div class="frow"><div class="flbl">Valid for (hours)</div><input class="finp" id="gl-insp-hours" type="number" min="1" max="168" value="8"></div>' +
+          '</div>' +
+          '<div class="frow"><div class="flbl">Visit purpose <span style="opacity:.6">(optional)</span></div><input class="finp" id="gl-insp-purpose" placeholder="Routine inspection / complaint follow-up / etc."></div>' +
+          '<div id="gl-insp-err" style="display:none;color:#ff8579;font-size:12px;margin-bottom:8px"></div>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">' +
+            '<button id="gl-insp-cancel" class="cbtn">Cancel</button>' +
+            '<button id="gl-insp-gen" class="cbtn pri">🔒 Generate & email link</button>' +
+          '</div>' +
+        '</div>' +
+        '<div id="gl-insp-step2" style="display:none"></div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    function close(){ ov.remove(); }
+    ov.addEventListener('click', function(e){ if(e.target === ov) close(); });
+    ov.querySelector('#gl-insp-close').onclick = close;
+    ov.querySelector('#gl-insp-cancel').onclick = close;
+    setTimeout(function(){ ov.querySelector('#gl-insp-name').focus(); }, 30);
+    ov.querySelector('#gl-insp-gen').onclick = async function(){
+      var btn = this;
+      var inspector = ov.querySelector('#gl-insp-name').value.trim();
+      var email     = ov.querySelector('#gl-insp-email').value.trim();
+      var agency    = ov.querySelector('#gl-insp-agency').value.trim();
+      var purpose   = ov.querySelector('#gl-insp-purpose').value.trim();
+      var hours     = parseInt(ov.querySelector('#gl-insp-hours').value, 10) || 8;
+      var err = ov.querySelector('#gl-insp-err');
+      err.style.display = 'none';
+      if(!inspector){ err.textContent = 'Inspector name is required.'; err.style.display='block'; return; }
+      if(email && email.indexOf('@') < 0){ err.textContent = 'Email looks invalid — fix it or clear the field to skip email.'; err.style.display='block'; return; }
+      if(hours < 1 || hours > 168){ err.textContent = 'Valid hours must be 1–168 (max 1 week).'; err.style.display='block'; return; }
+      btn.disabled = true; btn.textContent = email ? 'Generating + emailing…' : 'Generating…';
+      var token = randToken();
+      var validUntil = new Date(Date.now() + hours * 3600 * 1000).toISOString();
+      var row = { token: token, inspector: inspector, agency: agency || null, purpose: purpose || null, valid_until: validUntil, created_by: getCurrentUserId() };
+      var r = await sb.from('inspector_tokens').insert(row).select().single();
+      if(r.error){
+        err.textContent = 'Save failed: ' + r.error.message + (r.error.code ? ' (' + r.error.code + ')' : '');
+        err.style.display = 'block';
+        btn.disabled = false; btn.textContent = '🔒 Generate & email link';
+        return;
+      }
+      var link = window.location.origin + window.location.pathname + '?inspector=' + token;
+      var expires = new Date(validUntil).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+      if(typeof window.glAudit === 'function') window.glAudit('inspector_link_generated', inspector, { agency: agency, hours: hours, expires: validUntil });
+
+      // Fire the email NOW if a recipient was provided — single-step UX.
+      var emailStatus = '';
+      if(email){
+        var subj = 'Good Liquid Bev Co — read-only audit access for ' + (agency || 'your visit');
+        var body = 'Hi ' + inspector + ',\n\n' +
+          'Per our scheduled ' + (purpose || 'inspection') + ', here is your read-only access link for Good Liquid Bev Co\'s compliance records:\n\n' +
+          link + '\n\n' +
+          'The link is valid through ' + expires + '. No login required.\n\n' +
+          'You\'ll have read-only access to compliance records (CIP cycles, batch records, hold tags, allergen declarations, etc.), audit log, and signed FDA forms. You will NOT be able to edit, sign, export, or delete anything.\n\n' +
+          'Questions: Mike@GoodLiquid.com · (803) 493-5065.\n\n' +
+          '— Good Liquid Bev Co';
+        var sender = (typeof window.sendMailgunEmail === 'function') ? window.sendMailgunEmail : null;
+        var ok = false;
+        if(sender){ try { ok = await sender(email, subj, body); } catch(e){} }
+        if(ok){
+          emailStatus = '<div style="padding:10px 12px;background:rgba(95,207,158,.08);border:1px solid rgba(95,207,158,.3);border-radius:8px;margin-bottom:10px;font-size:12px;color:#5fcf9e">📧 Link emailed to <b>' + escHtml(email) + '</b></div>';
+          if(typeof window.glAudit === 'function') window.glAudit('inspector_link_emailed', email, { inspector: inspector, agency: agency, hours: hours });
+        } else {
+          emailStatus = '<div style="padding:10px 12px;background:rgba(245,200,66,.08);border:1px solid rgba(245,200,66,.3);border-radius:8px;margin-bottom:10px;font-size:12px;color:#f5c842">⚠ Email send failed — use Copy link below to send manually.</div>';
+        }
+      }
+
+      ov.querySelector('#gl-insp-step1').style.display = 'none';
+      var step2 = ov.querySelector('#gl-insp-step2');
+      step2.style.display = 'block';
+      step2.innerHTML =
+        '<div style="padding:12px 14px;background:rgba(95,207,158,.08);border:1px solid rgba(95,207,158,.3);border-radius:8px;margin-bottom:14px;font-size:12px;color:#5fcf9e">✓ Link generated for <b>' + escHtml(inspector) + '</b>' + (agency?' ('+escHtml(agency)+')':'') + ' — valid until ' + expires + '</div>' +
+        emailStatus +
+        '<div class="frow"><div class="flbl">Access URL <span style="opacity:.6">(also useful for SMS or printing)</span></div><textarea class="finp" id="gl-insp-link-out" readonly rows="3" style="font-family:var(--ff-mono);font-size:11px;resize:none">' + escHtml(link) + '</textarea></div>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+          '<button id="gl-insp-copy" class="cbtn pri">📋 Copy link</button>' +
+          '<button id="gl-insp-done" class="cbtn">Done</button>' +
+        '</div>';
+      step2.querySelector('#gl-insp-copy').onclick = async function(){
+        var f = step2.querySelector('#gl-insp-link-out');
+        try { await navigator.clipboard.writeText(f.value); }
+        catch(e){ f.select(); document.execCommand('copy'); }
+        this.textContent = '✓ Copied'; var self = this;
+        setTimeout(function(){ self.textContent = '📋 Copy link'; }, 1400);
+      };
+      step2.querySelector('#gl-insp-done').onclick = close;
     };
-    w.querySelector('#gl-insp-close').onclick = function(){ w.remove(); };
   };
 
   /* ==========================================================
@@ -20242,19 +22575,27 @@
     setTimeout(function(){ d.remove(); }, 4500);
   }
 
-  // Wrap sendMailgunEmail to log every send.
-  // Mailgun returns { id: '<message-id>' } in the JSON body — we'd need to
-  // parse the response to capture it. For now, log basic metadata; the
-  // mailgun_id can be backfilled if/when the wrapper is upgraded to parse
-  // the response body. The webhook Edge Function correlates by subject
-  // + recipient + timestamp as a fallback.
+  // Wrap sendMailgunEmail to log every send to email_log.
+  // The underlying sendMailgunEmail (index.html) now stashes the Mailgun
+  // message id on `sendMailgunEmail._lastMailgunId` after each successful
+  // send. We grab it here and write it as `mailgun_id` on the email_log
+  // row so the mailgun-webhook Edge Function can match incoming
+  // delivered/opened/clicked events back to the right row. Without that
+  // link, every email got stuck on "sent" status forever even when the
+  // webhook fired correctly (caught via Playwright runtime audit
+  // 2026-05-21 — GL-1003 send was 1d old with no Delivered/Opened state).
   (function wrapSend(){
     var orig = window.sendMailgunEmail;
     if(typeof orig !== 'function') { setTimeout(wrapSend, 500); return; }
     if(orig.__glLogged) return;
     window.sendMailgunEmail = async function(to, subject, body, opts){
       var sb = getSB();
+      // Clear any stale id before the call so a failed send doesn't
+      // accidentally re-use the previous send's id.
+      try { orig._lastMailgunId = null; } catch(e){}
       var ok = await orig.apply(this, arguments);
+      var mailgunId = null;
+      try { mailgunId = orig._lastMailgunId || null; } catch(e){}
       // Best-effort log — don't block on errors
       try {
         var ccArr = [];
@@ -20280,6 +22621,7 @@
             if(matched && matched.supaId) invSupaId = matched.supaId;
           }
           await sb.from('email_log').insert({
+            mailgun_id: mailgunId,
             to_email: Array.isArray(to) ? to.join(', ') : (to||''),
             cc_emails: ccArr.length ? ccArr : null,
             bcc_emails: bccArr.length ? bccArr : null,
@@ -20573,12 +22915,6 @@
   var SNOOZE_KEY = 'gl_ar_snoozes';
   function getSnoozes(){ try { return JSON.parse(localStorage.getItem(SNOOZE_KEY)||'{}'); } catch(e){ return {}; } }
   function setSnoozes(s){ try { localStorage.setItem(SNOOZE_KEY, JSON.stringify(s)); } catch(e){} }
-  window.glIsSnoozed = function(invId){
-    var s = getSnoozes(); var until = s[invId];
-    if(!until) return false;
-    if(new Date(until).getTime() < Date.now()){ delete s[invId]; setSnoozes(s); return false; }
-    return until;
-  };
   window.glSnoozeInvoice = function(invId, days){
     days = days || 5;
     var until = new Date(Date.now() + days*86400000).toISOString();
@@ -20637,40 +22973,10 @@
   setInterval(expireOldQuotes, 3600000);
 
   // ────────────────────────────────────────────────────────────
-  // PWA INSTALL NUDGE — surface the browser's install prompt
-  // ────────────────────────────────────────────────────────────
-  var deferredPrompt = null;
-  window.addEventListener('beforeinstallprompt', function(e){
-    e.preventDefault();
-    deferredPrompt = e;
-    // Show a small banner top-right after the CRM is up
-    if(document.getElementById('gl-pwa-banner')) return;
-    setTimeout(function(){
-      var dismissed = localStorage.getItem('gl_pwa_install_dismissed') === '1';
-      if(dismissed) return;
-      var b = document.createElement('div');
-      b.id = 'gl-pwa-banner';
-      b.style.cssText = 'position:fixed;top:60px;right:16px;background:#0a1628;color:#fff;border:1px solid rgba(0,229,192,.35);border-radius:10px;padding:12px 16px;z-index:9999;box-shadow:0 6px 18px rgba(0,0,0,.4);max-width:300px;font:13px system-ui';
-      b.innerHTML =
-        '<div style="font-weight:600;margin-bottom:6px">📱 Install Good Liquid CRM</div>' +
-        '<div style="font-size:11px;color:#9aa7bd;margin-bottom:10px;line-height:1.4">Add to your home screen for one-tap launch. Works offline for cached views.</div>' +
-        '<div style="display:flex;gap:6px"><button id="gl-pwa-yes" style="flex:1;background:#00e5c0;color:#0a1628;border:0;padding:7px 12px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">Install</button>' +
-        '<button id="gl-pwa-no" style="flex:1;background:transparent;color:#9aa7bd;border:1px solid rgba(255,255,255,.1);padding:7px 12px;border-radius:6px;font-size:12px;cursor:pointer">Not now</button></div>';
-      document.body.appendChild(b);
-      b.querySelector('#gl-pwa-yes').onclick = async function(){
-        if(!deferredPrompt) { b.remove(); return; }
-        deferredPrompt.prompt();
-        var choice = await deferredPrompt.userChoice;
-        deferredPrompt = null;
-        b.remove();
-        if(choice && choice.outcome === 'accepted') toast('Installing ✓');
-      };
-      b.querySelector('#gl-pwa-no').onclick = function(){
-        localStorage.setItem('gl_pwa_install_dismissed', '1');
-        b.remove();
-      };
-    }, 4000);
-  });
+  // PWA INSTALL NUDGE — DISABLED here.
+  // See sibling note above the pwaPromptDisabled stub: three independent
+  // beforeinstallprompt listeners produced three install banners on
+  // every page load. The canonical handler lives only in index.html now.
 
   // ────────────────────────────────────────────────────────────
   // Add a 📅 Queue button to the Invoices page toolbar
@@ -20712,7 +23018,7 @@
     setTimeout(function(){ d.remove(); }, 4500);
   }
 
-  // Lazily load JSZip from CDN
+  // Pre-load JSZip at IIFE init so it's ready when the user clicks
   var _zipLoading = null;
   function ensureJsZip(){
     if(window.JSZip) return Promise.resolve(window.JSZip);
@@ -20727,6 +23033,8 @@
     });
     return _zipLoading;
   }
+  // Warm up JSZip in the background so first click is instant
+  ensureJsZip();
 
   // Every table we want to back up. Order doesn't matter for export.
   var EXPORT_TABLES = [
@@ -20741,11 +23049,12 @@
 
   window.glExportEverything = async function(){
     var sb = getSB();
-    if(!sb){ alert('Supabase not ready.'); return; }
-    if(!confirm('Download a full backup of every CRM table?\n\nThis will pull every row from ' + EXPORT_TABLES.length + ' tables and create a single ZIP file on this device.\n\nCan take 5–20 seconds depending on data volume.')) return;
+    if(!sb){ toast('Supabase not ready — try reloading the page.', 'err'); return; }
+    // Show progress immediately (no confirm — Chrome silently swallows confirm() if the
+    // user ever clicked "Don't allow additional dialogs", making the button appear broken)
     var status = document.createElement('div');
     status.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#142238;color:#fff;border:1px solid rgba(0,229,192,.35);border-radius:10px;padding:14px 22px;z-index:99999;font:13px system-ui;box-shadow:0 6px 18px rgba(0,0,0,.4)';
-    status.innerHTML = '<div style="font-weight:700;margin-bottom:4px">📦 Building backup…</div><div id="gl-exp-progress" style="font-size:11px;color:#9aa7bd">Loading JSZip…</div>';
+    status.innerHTML = '<div style="font-weight:700;margin-bottom:4px">📦 Building backup…</div><div id="gl-exp-progress" style="font-size:11px;color:#9aa7bd">Starting…</div>';
     document.body.appendChild(status);
 
     try {
@@ -20906,7 +23215,7 @@
     if(sess.data && sess.data.session){
       // Verify the user is a customer (has a customer_users row)
       var u = await sb.from('customer_users')
-        .select('id, client_id, email, display_name, active')
+        .select('id, client_id, email, display_name, active, role, notify_run_stage_changes')
         .eq('auth_user_id', sess.data.session.user.id)
         .eq('active', true)
         .maybeSingle();
@@ -21072,13 +23381,18 @@
     var invs = invR.data || [];
     var algR = await sb.from('client_allergen_declarations').select('id, product_name, allergens, declared_at, share_token').eq('client_id', customer.client_id).order('declared_at', { ascending: false });
     var algs = algR.data || [];
-    var prR = await sb.from('production_runs').select('id, run_name, format, cases, stage, scheduled_date, updated_at').eq('client_id', customer.client_id).order('scheduled_date', { ascending: false, nullsFirst: false });
+    var prR = await sb.from('production_runs').select('id, run_name, format, cases, stage, scheduled_date, scheduled_start_date, scheduled_end_date, lot_number, updated_at').eq('client_id', customer.client_id).order('scheduled_start_date', { ascending: false, nullsFirst: false });
     var prs = (prR && prR.data) || [];
-    var shR = await sb.from('sample_shipments').select('id, kind, qty, shipped_date, carrier, tracking, status, updated_at').eq('client_id', customer.client_id).order('shipped_date', { ascending: false, nullsFirst: false });
+    // Note: updated_at omitted because some prod schemas have drifted and
+    // it's not actually rendered downstream. Migration 20260521 restores
+    // the column server-side; this SELECT stays defensive either way.
+    var shR = await sb.from('sample_shipments').select('id, kind, qty, shipped_date, carrier, tracking, status').eq('client_id', customer.client_id).order('shipped_date', { ascending: false, nullsFirst: false });
     var shs = (shR && shR.data) || [];
     // Only show non-draft formulas to the customer
     var fmR = await sb.from('formulas').select('id, name, version, status, batch_size_gal, target_yield_cases, allergens, updated_at').eq('client_id', customer.client_id).neq('status', 'draft').order('updated_at', { ascending: false });
     var fms = (fmR && fmR.data) || [];
+    var ldR = await sb.from('lot_documents').select('id, document_type, title, lot_number, file_name, file_size, file_path, mime_type, uploaded_at, production_run_id').eq('client_id', customer.client_id).order('uploaded_at', { ascending: false });
+    var lds = (ldR && ldR.data) || [];
 
     var STATUS_COLOR = { paid:'#5fcf9e', pending:'#f5c842', overdue:'#e74c3c', quote:'#9aa7bd', expired:'#9aa7bd', draft:'#9aa7bd' };
     var paidTotal = invs.filter(function(i){ return i.status === 'paid'; }).reduce(function(s,i){ return s + (Number(i.amount)||0); }, 0);
@@ -21106,12 +23420,35 @@
     }).join('') : '<div style="padding:30px;text-align:center;color:#6b87ad;font-size:13px">No invoices yet.</div>';
 
     var PR_STAGE_COLOR = { Discovery:'#9aa7bd', Formulation:'#6b9fff', Sample:'#c4b5fd', COA:'#f5c842', Production:'#00e5c0', Ship:'#5fcf9e' };
+    // Parse a Postgres `date` column (YYYY-MM-DD) as a LOCAL date — not UTC.
+    // `new Date("2026-05-20")` interprets the string as UTC midnight, which
+    // then renders as the PREVIOUS DAY in any timezone west of UTC (caught
+    // during Playwright runtime audit — Mike in FL saw a 2026-05-20 run
+    // displayed as "5/19/2026"). Forcing the timezone-naive parse here.
+    function fmtLocalDate(s){
+      if(!s) return '';
+      var m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if(m) return new Date(+m[1], +m[2]-1, +m[3]).toLocaleDateString();
+      return new Date(s).toLocaleDateString();
+    }
     var prRowsHtml = prs.length ? prs.map(function(p){
       var color = PR_STAGE_COLOR[p.stage] || '#9aa7bd';
-      var dateLbl = p.scheduled_date ? new Date(p.scheduled_date).toLocaleDateString() : 'TBD';
+      // Prefer the new start/end columns; fall back to legacy scheduled_date.
+      var startDate = p.scheduled_start_date || p.scheduled_date;
+      var endDate   = p.scheduled_end_date;
+      var dateLbl   = 'TBD';
+      if(startDate){
+        var s = fmtLocalDate(startDate);
+        if(endDate && endDate !== startDate){
+          dateLbl = s + ' → ' + fmtLocalDate(endDate);
+        } else {
+          dateLbl = s;
+        }
+      }
       var meta = [];
       if(p.format) meta.push(escHtml(p.format));
       if(p.cases) meta.push(escHtml(String(p.cases)) + ' cases');
+      if(p.lot_number) meta.push('Lot ' + escHtml(p.lot_number));
       return '<div style="display:grid;grid-template-columns:1fr 130px 120px;gap:12px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.05);align-items:center">' +
         '<div>' +
           '<div style="font-size:13px;color:#fff;font-weight:700">' + escHtml(p.run_name || 'Run') + '</div>' +
@@ -21139,7 +23476,7 @@
     }
     var shRowsHtml = shs.length ? shs.map(function(s){
       var color = SH_STATUS_COLOR[s.status] || '#9aa7bd';
-      var dateLbl = s.shipped_date ? new Date(s.shipped_date).toLocaleDateString() : '—';
+      var dateLbl = s.shipped_date ? fmtLocalDate(s.shipped_date) : '—';
       var meta = [];
       if(s.kind) meta.push(escHtml(s.kind));
       if(s.qty) meta.push(escHtml(String(s.qty)) + ' unit' + (s.qty===1?'':'s'));
@@ -21175,6 +23512,42 @@
         '</div>' +
       '</div>';
     }).join('') : '<div style="padding:20px;text-align:center;color:#6b87ad;font-size:12px">No formulas on file.</div>';
+
+    var DOC_TYPE_LBL = { coa:'COA', spec_sheet:'Spec sheet', allergen:'Allergen statement', kosher:'Kosher cert', organic:'Organic cert', nutrition:'Nutrition / NFP', other:'Document' };
+    var DOC_TYPE_COLOR = { coa:'#5fcf9e', spec_sheet:'#6b9fff', allergen:'#c4b5fd', kosher:'#f5c842', organic:'#5fcf9e', nutrition:'#7fc6f5', other:'#9aa7bd' };
+    function fmtBytesPortal(n){ if(!n) return ''; if(n<1024) return n+' B'; if(n<1024*1024) return (n/1024).toFixed(0)+' KB'; return (n/1024/1024).toFixed(1)+' MB'; }
+    var ldRowsHtml = lds.length ? lds.map(function(d){
+      var color = DOC_TYPE_COLOR[d.document_type] || '#9aa7bd';
+      var typeLbl = DOC_TYPE_LBL[d.document_type] || 'Document';
+      var meta = [];
+      if(d.lot_number) meta.push('Lot ' + escHtml(d.lot_number));
+      if(d.file_size)  meta.push(fmtBytesPortal(d.file_size));
+      if(d.uploaded_at) meta.push(new Date(d.uploaded_at).toLocaleDateString());
+      return '<div style="display:grid;grid-template-columns:1fr 120px 100px;gap:12px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.05);align-items:center">' +
+        '<div>' +
+          '<div style="font-size:13px;color:#fff;font-weight:600">' + escHtml(d.title || d.file_name || 'Document') + '</div>' +
+          (meta.length ? '<div style="font-size:11px;color:#6b87ad;margin-top:2px">' + meta.join(' · ') + '</div>' : '') +
+        '</div>' +
+        '<div style="text-align:right">' +
+          '<span style="display:inline-block;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:' + color + ';font-weight:700;background:rgba(255,255,255,.04);border:1px solid ' + color + '33;padding:3px 8px;border-radius:4px">' + escHtml(typeLbl) + '</span>' +
+        '</div>' +
+        '<div style="text-align:right">' +
+          '<button onclick="window.glPortalDownloadLotDoc(\'' + d.id + '\', event)" style="background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.35);color:#c4b5fd;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">⬇ Download</button>' +
+        '</div>' +
+      '</div>';
+    }).join('') : '<div style="padding:20px;text-align:center;color:#6b87ad;font-size:12px">No documents on file yet. Your account manager will upload COAs and spec sheets here as they\'re produced.</div>';
+
+    // Cache the file paths keyed by doc id so the download handler can use them
+    window._glPortalLotDocs = {};
+    lds.forEach(function(d){ window._glPortalLotDocs[d.id] = d; });
+    window.glPortalDownloadLotDoc = async function(docId, ev){
+      if(ev && ev.preventDefault) ev.preventDefault();
+      var doc = window._glPortalLotDocs && window._glPortalLotDocs[docId];
+      if(!doc){ alert('Document not found'); return; }
+      var su = await sb.storage.from('client-docs').createSignedUrl(doc.file_path, 60);
+      if(su.error || !su.data){ alert('Download link failed: ' + (su.error && su.error.message || 'unknown')); return; }
+      window.open(su.data.signedUrl, '_blank', 'noopener');
+    };
 
     var algRowsHtml = algs.length ? algs.map(function(a){
       var url = a.share_token ? (location.origin + location.pathname + '?allergen_decl=' + a.share_token) : '';
@@ -21239,6 +23612,11 @@
             fmRowsHtml +
           '</div>' +
 
+          '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
+            '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:#7fc6f5;font-weight:700">📎 COAs & DOCUMENTS</div>' +
+            ldRowsHtml +
+          '</div>' +
+
           (algs.length ? '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
             '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:#c4b5fd;font-weight:700">ALLERGEN DECLARATIONS</div>' +
             algRowsHtml +
@@ -21277,9 +23655,23 @@
     }
     function fld(id, label, val, type, placeholder){
       type = type || 'text';
+      // Force autocomplete="new-password" on any password input rendered by
+      // this helper. The Account Settings modal uses it ONLY for the
+      // "change password" + "confirm password" fields (no sign-in form
+      // routes through here). Without this hint, Chrome / 1Password /
+      // Edge silently autofill the user's SAVED LOGIN password into the
+      // "New password" field — caught during the Playwright runtime
+      // audit on 2026-05-21, where the modal opened with a 9-character
+      // password already in place. If the user clicked Save without
+      // noticing, they would have silently set their password to
+      // whatever the browser had remembered. autocomplete="new-password"
+      // tells autofill systems "this is a brand-new password being
+      // created" and they leave it alone.
+      var extra = '';
+      if(type === 'password') extra = ' autocomplete="new-password"';
       return '<div style="margin-bottom:12px">' +
         '<div style="font-size:10px;letter-spacing:1.5px;color:#6b87ad;margin-bottom:4px;text-transform:uppercase">' + escHtml(label) + '</div>' +
-        '<input id="' + id + '" type="' + type + '" value="' + escHtml(val||'') + '" placeholder="' + escHtml(placeholder||'') + '" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#eef4ff;font-size:13px;box-sizing:border-box">' +
+        '<input id="' + id + '" type="' + type + '"' + extra + ' value="' + escHtml(val||'') + '" placeholder="' + escHtml(placeholder||'') + '" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#eef4ff;font-size:13px;box-sizing:border-box">' +
       '</div>';
     }
     function chk(id, label, val){
@@ -21329,6 +23721,30 @@
         chk('acct-lift-gate', 'Lift gate required for delivery', !!client.lift_gate) +
         fld('acct-dock-hours', 'Receiving hours', client.dock_hours, 'text', 'e.g. Mon–Fri 8a–4p') +
 
+        sectionHdr('NOTIFICATIONS', '#c4b5fd') +
+        '<label style="display:flex;align-items:flex-start;gap:10px;font-size:13px;color:#eef4ff;cursor:pointer;padding:8px 10px;background:rgba(124,58,237,.05);border:1px solid rgba(124,58,237,.2);border-radius:6px;line-height:1.45">' +
+          '<input type="checkbox" id="acct-notify-stage"' + (customer.notify_run_stage_changes === false ? '' : ' checked') + ' style="margin-top:1px;width:15px;height:15px;cursor:pointer;flex-shrink:0;accent-color:#c4b5fd">' +
+          '<span>🏭 <b>Production stage emails</b> — get an email each time my run advances between kanban stages (Discovery → Formulation → Sample → COA → Production → Ship). <span style="color:#6b87ad;font-size:11px">Uncheck to opt out.</span></span>' +
+        '</label>' +
+
+        sectionHdr('TEAMMATES', '#7fc6f5') +
+        '<div style="font-size:11px;color:#6b87ad;margin-bottom:10px;line-height:1.5">' +
+          (customer.role === 'owner'
+            ? 'Add your AP, ops, or buyer so they can sign into the same portal. They\'ll get a password-reset email at the address you enter.'
+            : '<i>Only the brand owner can invite teammates. Ask them to add you instead.</i>') +
+        '</div>' +
+        '<div id="acct-teammates-list" style="font-size:12px;color:#9aa7bd;margin-bottom:10px">Loading…</div>' +
+        (customer.role === 'owner' ? (
+          '<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end">' +
+            '<div><div style="font-size:10px;letter-spacing:1.5px;color:#6b87ad;margin-bottom:4px;text-transform:uppercase">Email</div>' +
+              '<input id="acct-mate-email" type="email" placeholder="ap@brand.com" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#eef4ff;font-size:13px;box-sizing:border-box"></div>' +
+            '<div><div style="font-size:10px;letter-spacing:1.5px;color:#6b87ad;margin-bottom:4px;text-transform:uppercase">Display name <span style="opacity:.6;text-transform:none">(optional)</span></div>' +
+              '<input id="acct-mate-name" type="text" placeholder="Jordan Lee" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#eef4ff;font-size:13px;box-sizing:border-box"></div>' +
+            '<button id="acct-mate-invite" style="background:#00e5c0;border:0;color:#0a1628;padding:9px 16px;border-radius:6px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap">+ Invite</button>' +
+          '</div>'
+        ) : '') +
+        '<div id="acct-mate-msg" style="display:none;margin-top:10px;padding:9px 11px;border-radius:6px;font-size:12px"></div>' +
+
         sectionHdr('CHANGE PASSWORD', '#5fcf9e') +
         '<div style="font-size:11px;color:#6b87ad;margin-bottom:8px">Leave blank to keep your current password.</div>' +
         fld('acct-new-pw',     'New password',     '', 'password', 'Min 6 characters') +
@@ -21359,12 +23775,110 @@
       document.getElementById('acct-ship-block').style.display = this.checked ? 'none' : 'block';
     };
 
+    // ── Teammates: load + invite + remove ──────────────────────────
+    function mateMsg(text, kind){
+      var el = document.getElementById('acct-mate-msg'); if(!el) return;
+      el.style.display = 'block'; el.textContent = text;
+      if(kind === 'err'){ el.style.background='rgba(231,76,60,.12)'; el.style.border='1px solid rgba(231,76,60,.35)'; el.style.color='#ff8579'; }
+      else { el.style.background='rgba(95,207,158,.12)'; el.style.border='1px solid rgba(95,207,158,.35)'; el.style.color='#5fcf9e'; }
+    }
+    async function loadTeammates(){
+      var listEl = document.getElementById('acct-teammates-list'); if(!listEl) return;
+      listEl.innerHTML = 'Loading…';
+      var r = await sb.from('customer_users')
+        .select('id, email, display_name, role, active, last_login, invited_at, auth_user_id')
+        .eq('client_id', customer.client_id)
+        .order('invited_at', { ascending: true });
+      if(r.error){ listEl.innerHTML = '<span style="color:#ff8579">Failed to load teammates: ' + escHtml(r.error.message) + '</span>'; return; }
+      var rows = (r.data || []).filter(function(x){ return x.active !== false; });
+      if(!rows.length){ listEl.innerHTML = '<span style="color:#6b87ad;font-style:italic">No teammates yet — you\'re the only one with portal access.</span>'; return; }
+      listEl.innerHTML = rows.map(function(u){
+        var isYou  = u.auth_user_id && (u.id === customer.id);
+        var isOwn  = (u.role === 'owner');
+        var lastIn = u.last_login ? new Date(u.last_login).toLocaleDateString() : 'never';
+        var canRm  = (customer.role === 'owner') && !isYou && !isOwn;
+        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:6px;margin-bottom:6px">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="color:#fff;font-size:13px;font-weight:600">' + escHtml(u.display_name || u.email) +
+              (isYou ? ' <span style="color:#00e5c0;font-size:10px;letter-spacing:1px;margin-left:6px">YOU</span>' : '') +
+              '<span style="margin-left:8px;font-size:9px;letter-spacing:1.5px;padding:2px 6px;border-radius:3px;background:' + (isOwn?'rgba(0,229,192,.14)':'rgba(127,198,245,.14)') + ';color:' + (isOwn?'#00e5c0':'#7fc6f5') + '">' + (isOwn?'OWNER':'MEMBER') + '</span>' +
+            '</div>' +
+            (u.display_name ? '<div style="color:#6b87ad;font-size:11px;margin-top:2px">' + escHtml(u.email) + '</div>' : '') +
+            '<div style="color:#6b87ad;font-size:10px;margin-top:2px">Last sign-in: ' + escHtml(lastIn) + '</div>' +
+          '</div>' +
+          (canRm
+            ? '<button data-mate-rm="' + escHtml(u.id) + '" style="background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.35);color:#ff8579;font-size:11px;padding:5px 10px;border-radius:4px;cursor:pointer">Remove</button>'
+            : '') +
+        '</div>';
+      }).join('');
+      // Wire remove buttons
+      Array.prototype.forEach.call(listEl.querySelectorAll('[data-mate-rm]'), function(btn){
+        btn.onclick = async function(){
+          var id = btn.getAttribute('data-mate-rm');
+          if(!confirm('Remove this teammate? They will lose portal access immediately.')) return;
+          btn.disabled = true; btn.textContent = '…';
+          var rr = await sb.rpc('portal_remove_teammate', { p_customer_user_id: id });
+          if(rr.error){ mateMsg('Remove failed: ' + rr.error.message, 'err'); btn.disabled = false; btn.textContent = 'Remove'; return; }
+          if(rr.data && rr.data.ok === false){ mateMsg('Remove failed: ' + (rr.data.error||'unknown'), 'err'); btn.disabled = false; btn.textContent = 'Remove'; return; }
+          mateMsg('Teammate removed.', 'ok');
+          loadTeammates();
+        };
+      });
+    }
+    loadTeammates();
+
+    var inviteBtn = document.getElementById('acct-mate-invite');
+    if(inviteBtn){
+      inviteBtn.onclick = async function(){
+        var email = (val('acct-mate-email') || '').toLowerCase();
+        var name  = val('acct-mate-name');
+        if(!email || email.indexOf('@') < 0){ mateMsg('Enter a valid email.', 'err'); return; }
+        var btn = this; var origTxt = btn.textContent;
+        btn.disabled = true; btn.textContent = 'Inviting…';
+        try {
+          // Try the RPC first (handles the case where the auth user already exists).
+          var first = await sb.rpc('portal_invite_teammate', { p_email: email, p_display_name: name || null });
+          if(first.error){ mateMsg('Invite failed: ' + first.error.message, 'err'); return; }
+          if(first.data && first.data.ok){
+            mateMsg('✓ ' + (first.data.action === 'reactivated' ? 'Teammate reactivated.' : 'Teammate added.') + ' Sending sign-in email…', 'ok');
+            await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname + '?portal=1' });
+            document.getElementById('acct-mate-email').value = '';
+            document.getElementById('acct-mate-name').value = '';
+            loadTeammates();
+            return;
+          }
+          // Need to create the auth user first, then re-call the RPC.
+          if(first.data && first.data.error === 'auth_user_not_found'){
+            var tempPw = 'GL!' + Math.random().toString(36).slice(2,12) + 'aZ1';
+            var su = await sb.auth.signUp({ email: email, password: tempPw, options: { emailRedirectTo: location.origin + location.pathname + '?portal=1' } });
+            if(su.error && !/already (registered|exists)|user_already_exists/i.test(su.error.message||'')){
+              mateMsg('Sign-up failed: ' + su.error.message, 'err'); return;
+            }
+            var second = await sb.rpc('portal_invite_teammate', { p_email: email, p_display_name: name || null });
+            if(second.error || (second.data && second.data.ok === false)){
+              mateMsg('Invite failed: ' + (second.error ? second.error.message : second.data.error), 'err'); return;
+            }
+            mateMsg('✓ Teammate added. Sending sign-in email…', 'ok');
+            await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname + '?portal=1' });
+            document.getElementById('acct-mate-email').value = '';
+            document.getElementById('acct-mate-name').value = '';
+            loadTeammates();
+            return;
+          }
+          mateMsg('Invite failed: ' + (first.data && first.data.error || 'unknown'), 'err');
+        } finally {
+          btn.disabled = false; btn.textContent = origTxt;
+        }
+      };
+    }
+
     document.getElementById('acct-save').onclick = async function(){
       var btn = this; var orig = btn.textContent;
       var newPw = val('acct-new-pw');
       var confirmPw = val('acct-confirm-pw');
       if(newPw){
-        if(newPw.length < 6){ msg('New password must be at least 6 characters.', 'err'); return; }
+        var _pwErr = (window.glValidatePassword ? window.glValidatePassword(newPw) : (newPw.length < 8 ? 'New password must be at least 8 characters.' : null));
+        if(_pwErr){ msg(_pwErr, 'err'); return; }
         if(newPw !== confirmPw){ msg('New passwords do not match.', 'err'); return; }
       }
       btn.disabled = true; btn.textContent = 'Saving…';
@@ -21394,6 +23908,13 @@
       var r = await sb.rpc('update_customer_account', args);
       if(r.error){ msg('Save failed: ' + r.error.message, 'err'); btn.disabled = false; btn.textContent = orig; return; }
       if(r.data && r.data.ok === false){ msg('Save failed: ' + (r.data.error||'unknown'), 'err'); btn.disabled = false; btn.textContent = orig; return; }
+
+      // 1b) Notification preferences — flips customer_users.notify_run_stage_changes
+      // via a dedicated SECURITY DEFINER RPC since the customer can't update
+      // their own customer_users row directly under the current RLS policies.
+      var notifyOn = chkv('acct-notify-stage');
+      var nr = await sb.rpc('portal_update_my_notify', { p_notify_run_stage_changes: notifyOn });
+      if(nr.error){ console.warn('[GL portal] notify update failed', nr.error); }
 
       // 2) Update password if provided
       if(newPw){
@@ -21588,7 +24109,7 @@
     if(!sb){ el.innerHTML = '<div style="color:var(--muted);padding:20px 0">Supabase not ready.</div>'; return; }
     el.innerHTML = '<div style="color:var(--muted);padding:20px 0">Loading…</div>';
     var cuR = await sb.from('customer_users')
-      .select('id, auth_user_id, client_id, email, display_name, active, invited_at, last_login, created_at')
+      .select('id, auth_user_id, client_id, email, display_name, active, invited_at, last_login, created_at, role')
       .order('invited_at', { ascending: false });
     if(cuR.error){ el.innerHTML = '<div style="color:#ff8579;padding:20px 0">Error: ' + esc(cuR.error.message) + '</div>'; return; }
     var rows = cuR.data || [];
@@ -21616,14 +24137,20 @@
       var brand = clientMap[r.client_id] || '(no client)';
       var inactive = r.active === false;
       var lastLogin = r.last_login ? fmtDateTime(r.last_login) : '<span style="color:var(--muted);font-style:italic">never</span>';
+      var role = (r.role || 'owner').toLowerCase();
+      var roleBadge = '<span style="font-size:9px;letter-spacing:1.5px;padding:2px 7px;border-radius:3px;background:' + (role==='owner'?'rgba(0,229,192,.14)':'rgba(127,198,245,.14)') + ';color:' + (role==='owner'?'#00e5c0':'#7fc6f5') + ';font-weight:700">' + role.toUpperCase() + '</span>';
       return '<tr style="' + (inactive ? 'opacity:.55' : '') + '">' +
         '<td style="font-weight:600">' + esc(brand) + '</td>' +
         '<td style="font-family:var(--ff-mono);font-size:11px">' + esc(r.email) + '</td>' +
+        '<td>' + roleBadge + '</td>' +
         '<td style="font-size:11px;color:var(--muted)">' + fmtDate(r.invited_at) + '</td>' +
         '<td style="font-size:11px;color:var(--muted)">' + lastLogin + '</td>' +
         '<td>' + (inactive ? '<span style="font-size:10px;letter-spacing:1px;color:#e74c3c;font-weight:700">DISABLED</span>' : '<span style="font-size:10px;letter-spacing:1px;color:#5fcf9e;font-weight:700">ACTIVE</span>') + '</td>' +
         '<td>' +
           '<button class="cbtn" style="font-size:10px;padding:3px 8px" onclick="window.glCpResendInvite(\'' + r.id + '\',\'' + esc(r.email) + '\')">Resend invite</button> ' +
+          (role === 'member'
+            ? '<button class="cbtn" style="font-size:10px;padding:3px 8px;color:#00e5c0;border-color:rgba(0,229,192,.35)" onclick="window.glCpSetRole(\'' + r.id + '\',\'owner\')">Make owner</button> '
+            : '') +
           (inactive
             ? '<button class="cbtn" style="font-size:10px;padding:3px 8px;color:#5fcf9e" onclick="window.glCpSetActive(\'' + r.id + '\',true)">Reactivate</button>'
             : '<button class="cbtn red" style="font-size:10px;padding:3px 8px" onclick="window.glCpSetActive(\'' + r.id + '\',false)">Deactivate</button>') +
@@ -21632,7 +24159,7 @@
     }).join('');
     el.innerHTML = summary +
       '<table class="ctbl"><thead><tr>' +
-        '<th>Brand</th><th>Email</th><th>Invited</th><th>Last login</th><th>Status</th><th>Actions</th>' +
+        '<th>Brand</th><th>Email</th><th>Role</th><th>Invited</th><th>Last login</th><th>Status</th><th>Actions</th>' +
       '</tr></thead><tbody>' + body + '</tbody></table>';
   }
 
@@ -21659,6 +24186,16 @@
     if(!confirm('Are you sure you want to ' + verb + ' this customer portal account?')) return;
     var r = await sb.from('customer_users').update({ active: active }).eq('id', rowId);
     if(r.error) return alert('Update failed: ' + r.error.message);
+    renderFromSupabase();
+  };
+
+  window.glCpSetRole = async function(rowId, role){
+    var sb = getSB(); if(!sb) return alert('Supabase not ready');
+    if(role !== 'owner' && role !== 'member'){ alert('Invalid role'); return; }
+    if(!confirm('Set this portal user as ' + role + '? ' + (role === 'owner' ? 'They will be able to invite/remove teammates and edit account settings.' : 'They will lose invite + edit privileges.'))) return;
+    var r = await sb.from('customer_users').update({ role: role }).eq('id', rowId);
+    if(r.error) return alert('Update failed: ' + r.error.message);
+    if(typeof window.glAudit === 'function') window.glAudit('portal_role_changed', rowId, { role: role });
     renderFromSupabase();
   };
 
@@ -21962,13 +24499,34 @@
         if(el) el.style.display = '';
       });
     }
+    // If the user is currently on a page they can no longer access (e.g. dashboard
+    // was the default landing page but has been removed from this user's permissions),
+    // redirect them to the first page they ARE allowed to see.
+    if(!perms.isAdmin){
+      var activeEl = document.querySelector('.cpg.act');
+      if(activeEl){
+        var curPageId = activeEl.id.replace(/^cpg-/, '');
+        if(!window.glCan(permIdForPage(curPageId))){
+          var firstNav = null;
+          navs.forEach(function(el){
+            if(firstNav) return;
+            var oc = el.getAttribute('onclick') || '';
+            var m2 = oc.match(/cNav\(\s*['"]([^'"]+)['"]/);
+            if(m2 && window.glCan(permIdForPage(m2[1]))){
+              firstNav = { page: m2[1], el: el };
+            }
+          });
+          if(firstNav && typeof window.cNav === 'function') window.cNav(firstNav.page, firstNav.el);
+        }
+      }
+    }
   }
 
-  // Intercept cNav so a deep-link or saved nav state can't bypass the gate.
+  // DB-backed permission guard registered once on boot.
   function installCNavGuard(){
-    var orig = window.cNav;
-    if(typeof orig !== 'function' || orig.__glPermGuard) return;
-    window.cNav = function guardedCNav(page, el){
+    if(window.GL_HOOKS._navGuards._glPermGuardInstalled) return;
+    window.GL_HOOKS._navGuards._glPermGuardInstalled = true;
+    window.GL_HOOKS.registerNavGuard(function(page){
       var permId = permIdForPage(page);
       if(perms.loaded && permId && !window.glCan(permId)){
         if(typeof window.addNotification === 'function'){
@@ -21976,11 +24534,9 @@
         } else {
           alert('Access denied — you do not have permission for this page.');
         }
-        return;
+        return false;
       }
-      return orig.apply(this, arguments);
-    };
-    window.cNav.__glPermGuard = true;
+    });
   }
 
   // ── Users & Permissions page renderer ───────────────────────────────────
@@ -21999,13 +24555,28 @@
       await loadPermissions();
     }
     // Pull staff profiles (everyone except portal customers)
-    var profR = await sb.from('profiles').select('id, name, email, role, status').order('name', { ascending: true });
+    var profR = await sb.from('profiles').select('id, name, email, role, status, notify_daily_digest').order('name', { ascending: true });
     var allProfiles = (profR && profR.data) || [];
     // Exclude profiles whose auth user is in customer_users (portal customers, not staff)
     var cuR = await sb.from('customer_users').select('auth_user_id, active');
     var customerIds = {};
     (cuR && cuR.data || []).forEach(function(r){ if(r.active !== false) customerIds[r.auth_user_id] = true; });
     var staff = allProfiles.filter(function(p){ return !customerIds[p.id]; });
+    // Keep the page header count honest — the legacy renderUsers() in
+    // index.html writes "N team members" from a stale in-memory list
+    // that doesn't include profiles created via auth signup. The real
+    // staff list is the one we just queried above.
+    var activeStaffCount = staff.filter(function(p){ return p.status !== 'inactive'; }).length;
+    var inactiveStaffCount = staff.length - activeStaffCount;
+    var hdr = document.getElementById('users-sub');
+    if(hdr){
+      // Show "N active" by default since the table itself hides inactive
+      // rows. If there are inactive members, note them so admins know
+      // they exist (a click on the toggle link in TEAM MEMBERS header
+      // brings them back into view).
+      hdr.textContent = activeStaffCount + ' active team member' + (activeStaffCount === 1 ? '' : 's') +
+        (inactiveStaffCount ? ' (+ ' + inactiveStaffCount + ' inactive)' : '');
+    }
     // Refresh full user_permissions snapshot for the matrix
     var allPerms = await sb.from('user_permissions').select('user_id, component_id, granted');
     var byUser = {};
@@ -22037,7 +24608,23 @@
 
     function userListHtml(){
       if(!staff.length) return '<div style="color:var(--muted);padding:20px 0">No staff users found.</div>';
-      var rows = staff.map(function(u){
+      // Inactive users are hidden by default so Remove / Deactivate actually
+      // makes the row go away — that was Mike's call-out after fix #18
+      // shipped. The header gets a toggle link to show them again. Toggle
+      // state lives on the perms object so it survives the re-render that
+      // glToggleUserActive / window.removeUser kick off.
+      if(typeof perms.showInactive === 'undefined') perms.showInactive = false;
+      var inactiveStaff = staff.filter(function(u){ return u.status === 'inactive'; });
+      var visibleStaff = perms.showInactive ? staff : staff.filter(function(u){ return u.status !== 'inactive'; });
+      if(!visibleStaff.length){
+        // Edge case: every staff row is inactive AND we're filtering them
+        // out — show an empty state that explains how to bring them back.
+        var emptyToggle = inactiveStaff.length
+          ? ' <a href="#" onclick="event.preventDefault();window.glToggleInactiveVisibility();" style="color:var(--teal);text-decoration:none">Show ' + inactiveStaff.length + ' inactive</a>'
+          : '';
+        return '<div style="color:var(--muted);padding:20px 0">No active staff to show.' + emptyToggle + '</div>';
+      }
+      var rows = visibleStaff.map(function(u){
         var overrideCount = (byUser[u.id] && Object.keys(byUser[u.id]).length) || 0;
         var roleColor = u.role === 'admin' ? '#f5c842' : u.role === 'sales' ? '#6b9fff' : 'var(--muted)';
         var overrideLabel = u.role === 'admin'
@@ -22046,18 +24633,46 @@
               ? '<span style="color:var(--muted);font-size:11px">none — uses defaults</span>'
               : '<span style="color:#6b9fff;font-size:11px">' + overrideCount + ' override' + (overrideCount===1?'':'s') + '</span>');
         var nameLabel = u.name || (u.email || '').split('@')[0] || 'user';
-        return '<tr style="cursor:pointer" onclick="window.glRenderPermMatrixFor(\'' + u.id + '\')">' +
-          '<td style="padding:12px 14px;font-weight:700">' + esc(nameLabel) + '</td>' +
+        var isOwner = (u.email||'').toLowerCase() === window.GL_SUPER_USER_EMAIL;
+        var isSelf  = window.currentUser && u.id === window.currentUser.id;
+        var iAmSuper = window.glIsSuperUser && window.glIsSuperUser();
+        var inactive = u.status === 'inactive';
+        var nameCellExtra = inactive ? '<span style="font-size:10px;color:#ff8579;margin-left:8px">(inactive)</span>' : '';
+        // Action cluster: Manage + Deactivate/Reactivate + Remove. The
+        // workspace owner can't be removed from here. Self-removal is
+        // blocked so an admin can't lock themselves out. Remove is
+        // additionally super-user-only — admins can pause people but
+        // can't hard-delete user records (Mike's 2026-05-23 ask).
+        // Deactivate stays available to any admin.
+        var deactivateBtn = (isOwner || isSelf)
+          ? ''
+          : '<button class="cbtn" onclick="event.stopPropagation();window.glToggleUserActive(\'' + u.id + '\')" style="font-size:11px;padding:5px 11px;background:' + (inactive ? 'rgba(29,158,117,.14);border-color:rgba(29,158,117,.4);color:#5fcf9e' : 'rgba(245,200,66,.12);border-color:rgba(245,200,66,.35);color:#f5c842') + ';margin-right:6px">' + (inactive ? 'Reactivate' : 'Deactivate') + '</button>';
+        var removeBtn;
+        if(isOwner)  removeBtn = '<span style="font-size:10px;color:var(--muted);margin-left:6px">Owner</span>';
+        else if(isSelf) removeBtn = '<span style="font-size:10px;color:var(--muted);margin-left:6px">You</span>';
+        else if(!iAmSuper) removeBtn = ''; // non-super admins don't see Remove
+        else removeBtn = '<button class="cbtn" onclick="event.stopPropagation();window.removeUser(\'' + u.id + '\')" style="font-size:11px;padding:5px 11px;background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#ff8579;margin-right:6px">Remove</button>';
+        return '<tr style="cursor:pointer' + (inactive ? ';opacity:.55' : '') + '" onclick="window.glRenderPermMatrixFor(\'' + u.id + '\')">' +
+          '<td style="padding:12px 14px;font-weight:700">' + esc(nameLabel) + nameCellExtra + '</td>' +
           '<td style="padding:12px 14px;color:var(--muted);font-size:12px">' + esc(u.email||'') + '</td>' +
           '<td style="padding:12px 14px"><span style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:' + roleColor + ';font-weight:700">' + esc(u.role||'sales') + '</span></td>' +
           '<td style="padding:12px 14px">' + overrideLabel + '</td>' +
-          '<td style="padding:12px 14px;text-align:right">' +
+          '<td style="padding:12px 14px;text-align:right;white-space:nowrap">' +
+            removeBtn +
+            deactivateBtn +
             '<button class="cbtn" onclick="event.stopPropagation();window.glRenderPermMatrixFor(\'' + u.id + '\')" style="font-size:11px;padding:5px 14px;background:rgba(0,229,192,.12);border-color:rgba(0,229,192,.35);color:var(--teal)">Manage →</button>' +
           '</td>' +
         '</tr>';
       }).join('');
+      var toggleLink = inactiveStaff.length === 0 ? '' :
+        '<a href="#" onclick="event.preventDefault();window.glToggleInactiveVisibility();" ' +
+          'style="font-size:11px;letter-spacing:1px;color:var(--muted);text-decoration:none;font-weight:500;text-transform:none">' +
+          (perms.showInactive
+            ? '(showing ' + inactiveStaff.length + ' inactive · click to hide)'
+            : '(' + inactiveStaff.length + ' inactive hidden · click to show)') +
+        '</a>';
       return '<div style="background:#0d1b2e;border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden">' +
-        '<div style="padding:12px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:11px;letter-spacing:2px;color:var(--teal);font-weight:700">TEAM MEMBERS</div>' +
+        '<div style="padding:12px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:11px;letter-spacing:2px;color:var(--teal);font-weight:700;display:flex;justify-content:space-between;align-items:center"><span>TEAM MEMBERS</span>' + toggleLink + '</div>' +
         '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
           '<thead><tr style="border-bottom:1px solid rgba(255,255,255,.06)">' +
             '<th style="padding:8px 14px;text-align:left;color:var(--muted);font-size:10px;letter-spacing:1px">NAME</th>' +
@@ -22075,7 +24690,11 @@
       var u = staff.find(function(x){ return x.id === userId; });
       if(!u) return '<div style="color:var(--muted);padding:20px 0">User not found.</div>';
       var userOverrides = byUser[userId] || {};
-      function rowHtml(c){
+      var B = 'border:1px solid rgba(255,255,255,.28)';
+      var HOVER_ON  = "this.style.background='rgba(0,229,192,.08)'";
+      var HOVER_OFF_EVEN = "this.style.background=''";
+      var HOVER_OFF_ODD  = "this.style.background='rgba(255,255,255,.05)'";
+      function rowHtml(c, idx){
         var hasOverride = Object.prototype.hasOwnProperty.call(userOverrides, c.id);
         var effective = hasOverride ? userOverrides[c.id] : c.default_on;
         var note = u.role === 'admin'
@@ -22083,24 +24702,36 @@
           : (hasOverride
               ? '<span style="font-size:10px;color:#6b9fff;cursor:pointer" onclick="window.glClearPerm(\'' + userId + '\',\'' + c.id + '\')" title="Click to revert to default">overridden — revert</span>'
               : '<span style="font-size:10px;color:var(--muted)">default (' + (c.default_on ? 'on' : 'off') + ')</span>');
-        return '<tr>' +
-          '<td style="padding:6px 8px;font-weight:600">' + esc(c.label) + '</td>' +
-          '<td style="padding:6px 8px;color:var(--muted);font-size:11px">' + esc(c.description||'') + '</td>' +
-          '<td style="padding:6px 8px;text-align:center"><label style="cursor:pointer"><input type="checkbox"' + (effective?' checked':'') + (u.role==='admin'?' disabled':'') + ' onchange="window.glTogglePerm(\'' + userId + '\',\'' + c.id + '\',this.checked)"></label></td>' +
-          '<td style="padding:6px 8px">' + note + '</td>' +
+        var isOdd = idx % 2;
+        var rowBg = isOdd ? 'background:rgba(255,255,255,.05)' : '';
+        var hoverOff = isOdd ? HOVER_OFF_ODD : HOVER_OFF_EVEN;
+        var checked = effective ? ' checked' : '';
+        var disabled = u.role === 'admin' ? ' disabled' : '';
+        return '<tr style="' + rowBg + ';transition:background .1s" onmouseover="' + HOVER_ON + '" onmouseout="' + hoverOff + '">' +
+          '<td style="padding:10px 12px;font-weight:600;' + B + '">' +
+            esc(c.label) +
+            (c.description ? '<div style="font-size:11px;color:var(--muted);font-weight:400;margin-top:3px;white-space:normal">' + esc(c.description) + '</div>' : '') +
+          '</td>' +
+          '<td style="padding:10px 12px;text-align:center;width:72px;' + B + '">' +
+            '<label style="cursor:' + (u.role==='admin'?'default':'pointer') + ';display:block">' +
+              '<input type="checkbox"' + checked + disabled +
+                ' onchange="window.glTogglePerm(\'' + userId + '\',\'' + c.id + '\',this.checked)"' +
+                ' style="width:18px;height:18px;cursor:' + (u.role==='admin'?'default':'pointer') + ';accent-color:var(--teal)">' +
+            '</label>' +
+          '</td>' +
+          '<td style="padding:10px 12px;width:150px;' + B + '">' + note + '</td>' +
         '</tr>';
       }
       function sectionTable(title, color, items){
         if(!items.length) return '';
-        return '<div style="margin-top:14px;padding:6px 0 4px;font-size:11px;letter-spacing:2px;color:' + color + ';font-weight:700">' + title + '</div>' +
-          '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:6px">' +
-            '<thead><tr style="border-bottom:1px solid rgba(255,255,255,.08);text-align:left">' +
-              '<th style="padding:8px;color:var(--muted);font-size:10px;letter-spacing:1px;width:24%">COMPONENT</th>' +
-              '<th style="padding:8px;color:var(--muted);font-size:10px;letter-spacing:1px">DESCRIPTION</th>' +
-              '<th style="padding:8px;color:var(--muted);font-size:10px;letter-spacing:1px;text-align:center;width:80px">ACCESS</th>' +
-              '<th style="padding:8px;color:var(--muted);font-size:10px;letter-spacing:1px;width:160px">STATE</th>' +
+        return '<div style="margin-top:18px;padding:6px 0 5px;font-size:11px;letter-spacing:2px;color:' + color + ';font-weight:700">' + title + '</div>' +
+          '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px;border:2px solid rgba(255,255,255,.28)">' +
+            '<thead><tr style="background:rgba(255,255,255,.08)">' +
+              '<th style="padding:10px 12px;color:#ccd6f6;font-size:10px;letter-spacing:1.5px;text-align:left;' + B + '">COMPONENT &amp; DESCRIPTION</th>' +
+              '<th style="padding:10px 12px;color:#ccd6f6;font-size:10px;letter-spacing:1.5px;text-align:center;width:72px;' + B + '">ACCESS</th>' +
+              '<th style="padding:10px 12px;color:#ccd6f6;font-size:10px;letter-spacing:1.5px;width:150px;' + B + '">STATE</th>' +
             '</tr></thead>' +
-            '<tbody>' + items.map(rowHtml).join('') + '</tbody>' +
+            '<tbody>' + items.map(function(c,i){ return rowHtml(c,i); }).join('') + '</tbody>' +
           '</table>';
       }
       var pages   = perms.components.filter(function(c){ return c.category === 'page'   || !c.category; });
@@ -22124,17 +24755,28 @@
       }).join('');
       var isSelf = u.id === perms.userId;
       var roleControl =
-        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 14px;padding:8px 12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:8px">' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 10px;padding:8px 12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:8px">' +
           '<span style="font-size:10px;letter-spacing:1.5px;color:var(--muted);font-weight:700">ROLE</span>' +
           '<select id="gl-role-' + u.id + '" ' + (isSelf?'disabled':'') + ' onchange="window.glChangeUserRole(\'' + u.id + '\',this.value)" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);color:#eef4ff;padding:5px 10px;border-radius:6px;font-size:12px">' + roleOpts + '</select>' +
           (isSelf
             ? '<span style="font-size:10px;color:var(--muted)">— you can\'t change your own role (locked out risk)</span>'
             : '<span style="font-size:10px;color:var(--muted)">Admin role bypasses every gate. Changing to Sales/Viewer makes the per-component overrides apply.</span>') +
         '</div>';
+      var digestOn = u.notify_daily_digest !== false;
+      var notifyControl =
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 14px;padding:8px 12px;background:rgba(124,58,237,.06);border:1px solid rgba(124,58,237,.2);border-radius:8px">' +
+          '<span style="font-size:10px;letter-spacing:1.5px;color:#c4b5fd;font-weight:700">NOTIFICATIONS</span>' +
+          '<label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#eef4ff;cursor:pointer">' +
+            '<input type="checkbox"' + (digestOn?' checked':'') + ' onchange="window.glToggleUserNotify(\'' + u.id + '\',\'notify_daily_digest\',this.checked)" style="width:14px;height:14px;cursor:pointer;accent-color:#c4b5fd">' +
+            '<span>📨 Send Daily Digest email at 7am</span>' +
+          '</label>' +
+          '<span style="font-size:10px;color:var(--muted)">Uncheck to opt this user out of the morning digest.</span>' +
+        '</div>';
       return '<div style="background:#0d1b2e;border:1px solid rgba(255,255,255,.08);border-radius:0 8px 8px 8px;padding:16px;margin-bottom:18px">' +
         '<div style="font-size:13px;color:#fff;font-weight:700;margin-bottom:2px">' + esc(u.name||u.email) + '</div>' +
         '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">' + esc(u.email||'') + (u.role==='admin' ? ' · <span style="color:#f5c842">admin bypasses all gates</span>' : '') + '</div>' +
         roleControl +
+        notifyControl +
         presetBar +
         sectionTable('PAGES — what they can navigate to',  '#00e5c0', pages) +
         sectionTable('ACTIONS — what they can do',          '#f5c842', actions) +
@@ -22190,6 +24832,148 @@
     if(typeof renderPermissionsPanel === 'function'){
       await renderPermissionsPanel();
       if(typeof window.glRenderPermMatrixFor === 'function') window.glRenderPermMatrixFor(userId);
+    }
+  };
+
+  /* ── glToggleInactiveVisibility — show/hide inactive rows in the team
+     members table. Default-hidden so Remove / Deactivate visually take
+     effect (Mike's call-out after fix #18 shipped: "I clicked Remove and
+     nothing happened"). The state lives on the perms object so it survives
+     re-renders. */
+  window.glToggleInactiveVisibility = function(){
+    perms.showInactive = !perms.showInactive;
+    if(typeof renderPermissionsPanel === 'function') renderPermissionsPanel();
+  };
+
+  /* ── glToggleUserActive — flip profiles.status between active / inactive ──
+     Powers the Deactivate/Reactivate button in the new Users & Permissions
+     team-members table. An inactive profile keeps its row in the DB (so
+     audit history stays intact) but the user can no longer use the CRM —
+     RLS policies + the in-app `can()` gate both check status. To FULLY
+     delete the user (including the Supabase auth row), go to the Supabase
+     dashboard → Authentication → Users. That step has to happen there
+     because the JS client can't admin-delete auth users (anon key has no
+     service-role privilege). */
+  window.glToggleUserActive = async function(userId){
+    var sb = getSB(); if(!sb) return;
+    if(window.currentUser && userId === window.currentUser.id){
+      alert('You can\'t deactivate yourself — that would lock you out.');
+      return;
+    }
+    // Fetch the current status from the DB (don't trust the in-memory cache,
+    // which may be stale or missing the row entirely for profiles created via
+    // auth signup).
+    var cur = await sb.from('profiles').select('id, email, name, status').eq('id', userId).maybeSingle();
+    if(cur.error || !cur.data){ alert('User lookup failed: ' + ((cur.error && cur.error.message) || 'not found')); return; }
+    var u = cur.data;
+    var nextStatus = (u.status === 'inactive') ? 'active' : 'inactive';
+    var verb = nextStatus === 'inactive' ? 'Deactivate' : 'Reactivate';
+    if(!confirm(verb + ' ' + (u.name || u.email) + '? ' +
+      (nextStatus === 'inactive'
+        ? 'They will lose CRM access immediately, but their audit history stays. You can reactivate them any time.'
+        : 'They\'ll regain CRM access at their current role.'))) return;
+    // updated_at is bumped automatically by trg_profiles_updated_at; sending
+    // it explicitly would 400 against deployments that haven't run the
+    // 20260522_profiles_updated_at migration yet (originally caught when
+    // Mike clicked Deactivate on Danny and got "Could not find the
+    // 'updated_at' column" — the click silently bounced).
+    var r = await sb.from('profiles').update({ status: nextStatus }).eq('id', userId);
+    if(r.error){ alert('Status change failed: ' + r.error.message); return; }
+    if(typeof window.addNotification === 'function'){
+      window.addNotification('👤 User ' + nextStatus, u.email || u.name, nextStatus === 'inactive' ? 'warning' : 'success');
+    }
+    if(typeof window.glAudit === 'function') window.glAudit('user_' + nextStatus, u.email || userId, null);
+    // Re-render the panel so the row reflects the new state.
+    if(typeof renderPermissionsPanel === 'function') renderPermissionsPanel();
+  };
+
+  /* ── removeUser fallback — original lives at the top of this IIFE but
+     bails out when `window.users` doesn't have the row (which is every
+     profile that came in via auth signup). Re-bind it so the team-members
+     table in the new panel can soft-delete those too. We keep the same
+     `window.removeUser` name so existing call sites in the old renderer
+     still work. */
+  var _origRemoveUser = window.removeUser;
+  window.removeUser = async function(id){
+    if(!window.glIsSuperUser || !window.glIsSuperUser()){
+      alert('Only the workspace owner can remove users. Other admins can Deactivate.');
+      return;
+    }
+    var sb = getSB(); if(!sb){ if(_origRemoveUser) return _origRemoveUser(id); return; }
+    if(window.currentUser && id === window.currentUser.id){
+      alert('You can\'t remove yourself — that would lock you out.');
+      return;
+    }
+    var cur = await sb.from('profiles').select('id, email, name').eq('id', id).maybeSingle();
+    if(cur.error || !cur.data){
+      // Fall back to the original behavior (works against window.users cache).
+      if(_origRemoveUser) return _origRemoveUser(id);
+      alert('User not found.');
+      return;
+    }
+    var u = cur.data;
+    if((u.email||'').toLowerCase() === 'mike@goodliquid.com'){
+      alert('The workspace owner can\'t be removed from here. Use the Supabase dashboard → Authentication → Users if you really need to.');
+      return;
+    }
+    if(!confirm('Remove ' + (u.name || u.email) + '?\n\n' +
+      'This permanently removes their login. They\'ll need a new invite to regain access.\n\n' +
+      'Their audit history is preserved in the database.')) return;
+
+    // Hard-delete from Supabase Auth via edge function (service-role required).
+    // This ensures their email can be re-invited later without a "already registered" error.
+    var SUPA_URL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co';
+    var sess = null;
+    try {
+      var sessRes = await sb.auth.getSession();
+      sess = sessRes && sessRes.data && sessRes.data.session;
+    } catch(e){}
+
+    if(sess && sess.access_token){
+      var delRes = await fetch(SUPA_URL + '/functions/v1/delete-staff-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sess.access_token },
+        body: JSON.stringify({ userId: id })
+      });
+      var delData = await delRes.json();
+      if(!delRes.ok || !delData.ok){
+        alert('Remove failed: ' + (delData.error || 'HTTP ' + delRes.status));
+        return;
+      }
+    } else {
+      // Fallback: soft-delete only if we can't reach the edge function
+      var r = await sb.from('profiles').update({ status: 'inactive' }).eq('id', id);
+      if(r.error){ alert('Remove failed: ' + r.error.message); return; }
+    }
+
+    if(typeof window.addNotification === 'function'){
+      window.addNotification('👤 User removed', u.email || u.name, 'warning');
+    }
+    if(typeof window.glAudit === 'function') window.glAudit('user_removed', u.email || id, null);
+    if(window.users) window.users = window.users.filter(function(x){ return x.id !== id; });
+    if(typeof renderPermissionsPanel === 'function') renderPermissionsPanel();
+    if(typeof window.renderUsers === 'function') window.renderUsers();
+  };
+
+  // Flip a notification preference column on a user's profiles row. Used
+  // by the NOTIFICATIONS block in the Users & Permissions matrix to
+  // opt-staff in/out of the morning Daily Digest. Whitelisted set of
+  // columns to prevent arbitrary profile updates from this UI.
+  window.glToggleUserNotify = async function(userId, field, on){
+    var ALLOWED = ['notify_daily_digest'];
+    if(ALLOWED.indexOf(field) < 0){ alert('Unsupported field: ' + field); return; }
+    var sb = getSB(); if(!sb) return;
+    var patch = {}; patch[field] = !!on;
+    var r = await sb.from('profiles').update(patch).eq('id', userId);
+    if(r.error){ alert('Save failed: ' + r.error.message); return; }
+    if(typeof window.addNotification === 'function'){
+      window.addNotification('Notification preference saved', field + ' = ' + (on?'on':'off'), 'success');
+    }
+    if(typeof window.glAudit === 'function') window.glAudit('user_notify_changed', userId, { field: field, value: !!on });
+    // Update local cache so re-renders reflect the new value without a refetch.
+    if(typeof perms === 'object' && Array.isArray(perms.staff)){
+      var u = perms.staff.find(function(x){ return x.id === userId; });
+      if(u) u[field] = !!on;
     }
   };
 
@@ -22282,25 +25066,25 @@
   if(document.readyState !== 'loading') boot();
   else document.addEventListener('DOMContentLoaded', boot);
 
-  // Hook into cNav so the Users page (re)renders the permissions panel each time.
-  function wireUsersPageRender(){
-    var orig = window.cNav;
-    if(!orig || orig.__glPermPageHook) return;
-    var wrapped = function(page, el){
-      var r = orig.apply(this, arguments);
-      if(page === 'users') setTimeout(renderPermissionsPanel, 60);
-      return r;
-    };
-    wrapped.__glPermPageHook = true;
-    wrapped.__glPermGuard = orig.__glPermGuard; // preserve flag
-    window.cNav = wrapped;
-  }
-  // Wait until cNav has the guard, then layer the renderer hook on top
-  var hookTries = 0;
-  var hookIv = setInterval(function(){
-    if(window.cNav && window.cNav.__glPermGuard){ wireUsersPageRender(); clearInterval(hookIv); }
-    if(++hookTries > 50) clearInterval(hookIv);
-  }, 200);
+  // Apply permissions gating for non-admin users on login
+  window.GL_HOOKS.registerLoginHook(function(u){
+    if(u && u.role !== 'admin'){
+      if(perms.loaded){
+        applyGating();
+      } else {
+        var maxTries = 50, tries = 0;
+        var iv = setInterval(function(){
+          tries++;
+          if(perms.loaded || tries >= maxTries){ clearInterval(iv); if(perms.loaded) applyGating(); }
+        }, 100);
+      }
+    }
+  });
+
+  // Render permissions panel whenever the users page is navigated to.
+  window.GL_HOOKS.registerNavHook(function(page){
+    if(page === 'users') setTimeout(renderPermissionsPanel, 60);
+  });
 
   // ────────────────────────────────────────────────────────────
   // Action-level gating — wrap destructive/financial global
@@ -22364,7 +25148,7 @@
   // Effective rule: start with the global default_on of each component,
   // then layer pageDefaults / actionDefaults (only when not undefined),
   // then layer overrides (final word).
-  var ROLE_PRESETS = {
+  var ROLE_PRESETS = window.glPresets = {
     admin: {
       label: 'Admin (full access)',
       description: 'Sets every component ON. Note: profiles.role=admin already bypasses gating; this is mostly cosmetic.',
@@ -22844,4 +25628,2170 @@
   else document.addEventListener('DOMContentLoaded', watchDash);
 
   console.log('[GL] customer requests inbox loaded');
+}());
+
+/* ── LOGIN IP ALERT ─────────────────────────────────────────────────────────
+   On every login we:
+     1. Fetch the caller's public IP from ipify
+     2. Insert a login_events row in Supabase
+     3. Query whether this IP has been seen before for this user
+     4. If it's new → show an in-app alert banner + fire a Mailgun email
+   Graceful: all steps are try/catch'd so a failure never blocks the login.
+   ────────────────────────────────────────────────────────────────────────── */
+(function(){
+  'use strict';
+
+  /* ── helpers ── */
+  function showNewIpBanner(ip){
+    var old = document.getElementById('gl-new-ip-banner');
+    if(old) old.remove();
+    var banner = document.createElement('div');
+    banner.id = 'gl-new-ip-banner';
+    banner.setAttribute('style', [
+      'position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:9999',
+      'background:#1a2a3a;border:1px solid rgba(245,200,66,.35);border-radius:12px',
+      'padding:14px 20px;display:flex;gap:12px;align-items:flex-start',
+      'max-width:420px;width:calc(100% - 40px);box-shadow:0 8px 32px rgba(0,0,0,.5)'
+    ].join(';'));
+    banner.innerHTML = [
+      '<span style="font-size:22px;line-height:1;flex-shrink:0">⚠️</span>',
+      '<div style="flex:1;min-width:0">',
+        '<div style="font-weight:600;color:#f5c842;font-size:13px;margin-bottom:4px">New sign-in location detected</div>',
+        '<div style="font-size:12px;color:#9ca3af;line-height:1.5">',
+          'We saw a login from IP <b style="color:#cbd5e1">' + ip + '</b> — an address we haven\'t seen for your account before. ',
+          'If this was you, no action needed. If not, <b style="color:#f87171">change your password immediately.</b>',
+        '</div>',
+        '<div style="margin-top:10px;display:flex;gap:8px">',
+          '<button onclick="cNav(\'ai-settings\')" style="font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid rgba(245,200,66,.4);background:rgba(245,200,66,.08);color:#f5c842;cursor:pointer">Account Security</button>',
+          '<button onclick="document.getElementById(\'gl-new-ip-banner\').remove()" style="font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#9ca3af;cursor:pointer">Dismiss</button>',
+        '</div>',
+      '</div>'
+    ].join('');
+    document.body.appendChild(banner);
+    /* auto-dismiss after 30 s */
+    setTimeout(function(){ if(banner.parentNode) banner.remove(); }, 30000);
+  }
+
+  async function sendNewIpEmail(user, ip){
+    try {
+      var sb = window.supa;
+      if(!sb) return;
+      var name = (user.name || user.email || 'there').split(' ')[0];
+      await sb.functions.invoke('mailgun-send', {
+        body: {
+          to: user.email,
+          subject: 'New sign-in location detected — Good Liquid CRM',
+          html: [
+            '<div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#1a1a2e">',
+            '<h2 style="color:#d4a200">⚠️ New sign-in location</h2>',
+            '<p>Hi ' + name + ',</p>',
+            '<p>We noticed a login to the Good Liquid CRM from an IP address we haven\'t seen for your account before:</p>',
+            '<p style="background:#f3f4f6;border-radius:8px;padding:12px 16px;font-family:monospace;font-size:15px">' + ip + '</p>',
+            '<p>If this was you, no action is needed.</p>',
+            '<p>If you don\'t recognise this sign-in, please <strong>change your password immediately</strong> and contact your administrator.</p>',
+            '<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">',
+            '<p style="font-size:12px;color:#6b7280">Good Liquid Beverage Co. CRM — automated security alert</p>',
+            '</div>'
+          ].join('')
+        }
+      });
+    } catch(e){ console.warn('[GL] new-IP email failed:', e); }
+  }
+
+  async function recordLoginEvent(user){
+    try {
+      var sb = window.supa;
+      if(!sb || !user || !user.id) return;
+
+      /* fetch IP */
+      var ip = null;
+      try {
+        var r = await fetch('https://api.ipify.org?format=json', { signal: AbortSignal.timeout(4000) });
+        var j = await r.json();
+        ip = j.ip || null;
+      } catch(e){ console.warn('[GL] ipify failed:', e); }
+
+      /* look up prior IPs for this user */
+      var isNew = false;
+      if(ip){
+        var { data: prior, error: priorErr } = await sb
+          .from('login_events')
+          .select('ip_address')
+          .eq('user_id', user.id)
+          .eq('ip_address', ip)
+          .limit(1);
+        if(!priorErr) isNew = (!prior || prior.length === 0);
+      }
+
+      /* insert the event */
+      await sb.from('login_events').insert([{
+        user_id   : user.id,
+        ip_address: ip,
+        user_agent: navigator.userAgent.slice(0, 512),
+        is_new_ip : isNew
+      }]);
+
+      /* alert if new */
+      if(isNew && ip){
+        showNewIpBanner(ip);
+        sendNewIpEmail(user, ip); /* fire-and-forget */
+      }
+    } catch(e){ console.warn('[GL] login event record failed:', e); }
+  }
+
+  /* ── hook into loginUser ── */
+  window.GL_HOOKS.registerLoginHook(function(u){ setTimeout(function(){ recordLoginEvent(u); }, 1500); });
+
+  console.log('[GL] login IP alert loaded');
+}());
+
+/* ============================================================
+   AI HUB — dedicated page: inline chat at the top + tool grid
+   • Adds an "AI" section to the sidebar (after MAIN, before Billing)
+   • Creates #cpg-ai if missing and wires cNav('ai')
+   • Re-boots after loginUser so nav items survive fresh logins
+   ============================================================ */
+(function(){
+  /* ─── Quick-access tool grid ─────────────────────────────────── */
+  var QUICK_TOOLS = [
+    { icon:'💰', label:'Estimate Quote',    fn:'aiEstimateQuote' },
+    { icon:'🧾', label:'Draft Invoice',     fn:'aiDraftInvoice' },
+    { icon:'✉️', label:'Draft Email',       fn:'openAICommModal' },
+    { icon:'📝', label:'Meeting Notes',     fn:'openMeetingNotesModal' },
+    { icon:'📈', label:'Revenue Forecast',  fn:'aiGenerateForecast' },
+    { icon:'📣', label:'Social Post',       fn:'openSocialDrafter' },
+    { icon:'🎯', label:'Cross-sell Ideas',  fn:'openCrossSellSuggester' },
+    { icon:'📊', label:'Win-Loss',          fn:'openWinLossAnalytics' },
+    { icon:'🔮', label:'Churn Risk',        fn:'openChurnPredictor' },
+    { icon:'🎨', label:'Image Prompts',     fn:'openAIImagePrompts' },
+    { icon:'📊', label:'Reports',           fn:'openReports' },
+    { icon:'⏱️', label:'Time Tracker',      fn:'openTimeTracker' },
+    { icon:'💼', label:'LinkedIn Outreach', fn:'openLinkedInOutreach' },
+    { icon:'🧮', label:'Recipe Cost',       fn:'openRecipeCostCalc' },
+  ];
+
+  /* ─── Chat state (persists while session is open) ─────────────── */
+  var _chatHistory = [];
+
+  /* ─── Render AI Hub page ───────────────────────────────────────── */
+  function renderHub(){
+    var host = document.getElementById('cpg-ai');
+    if(!host) return;
+    if(host.querySelector('#ai-hub-chat')) {
+      // Already rendered — just refocus input
+      var inp = document.getElementById('ai-hub-input');
+      if(inp) setTimeout(function(){ inp.focus(); }, 50);
+      return;
+    }
+
+    var toolBtns = QUICK_TOOLS.map(function(t){
+      return '<button data-fn="' + t.fn + '" ' +
+        'style="display:flex;align-items:center;gap:9px;padding:12px 14px;background:rgba(255,255,255,.04);' +
+        'border:1px solid rgba(255,255,255,.08);border-radius:10px;color:var(--white,#e8f0fe);cursor:pointer;' +
+        'font-size:13px;font-weight:500;text-align:left;transition:all .15s;min-height:44px">' +
+        '<span style="font-size:18px;flex-shrink:0">' + t.icon + '</span>' +
+        '<span>' + t.label + '</span>' +
+      '</button>';
+    }).join('');
+
+    host.innerHTML =
+      '<div class="cph" style="margin-bottom:0">' +
+        '<div><div class="cpt">AI ASSISTANT</div>' +
+        '<div class="cps">Chat with your Good Liquid AI · use tools below for specific tasks</div></div>' +
+      '</div>' +
+
+      /* Chat card */
+      '<div class="ccard" style="margin-bottom:16px">' +
+        '<div id="ai-hub-chat" style="display:flex;flex-direction:column;height:340px">' +
+          '<div id="ai-hub-messages" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:4px 0 8px"></div>' +
+          '<div style="display:flex;gap:8px;padding-top:10px;border-top:1px solid rgba(255,255,255,.06)">' +
+            '<input id="ai-hub-input" type="text" autocomplete="off" ' +
+              'placeholder="Ask anything about your pipeline, clients, invoices…" ' +
+              'style="flex:1;background:#0a1628;border:1px solid rgba(255,255,255,.1);border-radius:8px;' +
+              'padding:10px 14px;color:var(--white,#e8f0fe);font-size:13px;outline:none" ' +
+              'onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();window.glAIHubSend();}">' +
+            '<button onclick="window.glAIHubSend()" class="cbtn pri" style="padding:10px 20px;flex-shrink:0">Send</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+
+      /* Tool grid */
+      '<div style="font-size:10px;letter-spacing:2px;color:var(--muted,#6b87ad);font-weight:600;margin-bottom:10px">AI TOOLS</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px">' +
+        toolBtns +
+      '</div>';
+
+    /* Tool grid click handler */
+    host.querySelectorAll('[data-fn]').forEach(function(btn){
+      btn.addEventListener('mouseenter', function(){
+        btn.style.background = 'rgba(0,229,192,.08)';
+        btn.style.borderColor = 'rgba(0,229,192,.3)';
+      });
+      btn.addEventListener('mouseleave', function(){
+        btn.style.background = 'rgba(255,255,255,.04)';
+        btn.style.borderColor = 'rgba(255,255,255,.08)';
+      });
+      btn.addEventListener('click', function(){
+        var fn = btn.dataset.fn;
+        try {
+          if(typeof window[fn] === 'function') window[fn]();
+          else { alert(btn.querySelector('span:last-child').textContent + ' — coming soon!'); }
+        } catch(e) { console.error('[AI hub]', fn, e); }
+      });
+    });
+
+    /* Restore history or show greeting */
+    var msgs = document.getElementById('ai-hub-messages');
+    if(_chatHistory.length === 0){
+      msgs.innerHTML = '<div style="color:var(--muted,#6b87ad);font-size:13px;text-align:center;padding:50px 0">' +
+        '👋 Hi! Ask me anything about your Good Liquid business.</div>';
+    } else {
+      _chatHistory.forEach(function(m){ appendMsg(m.role, m.text); });
+    }
+
+    var inp = document.getElementById('ai-hub-input');
+    if(inp) setTimeout(function(){ inp.focus(); }, 80);
+  }
+
+  function appendMsg(role, text){
+    var msgs = document.getElementById('ai-hub-messages');
+    if(!msgs) return;
+    var d = document.createElement('div');
+    d.className = 'chat-msg ' + role;
+    d.textContent = text;
+    msgs.appendChild(d);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  window.glAIHubSend = async function(){
+    var input = document.getElementById('ai-hub-input');
+    var msgs = document.getElementById('ai-hub-messages');
+    if(!input || !msgs) return;
+    var msg = input.value.trim();
+    if(!msg) return;
+    input.value = '';
+
+    /* Remove placeholder greeting */
+    var ph = msgs.querySelector('[style*="text-align:center"]');
+    if(ph) ph.remove();
+
+    appendMsg('user', msg);
+    _chatHistory.push({ role:'user', text:msg });
+
+    var thinkEl = document.createElement('div');
+    thinkEl.className = 'chat-msg bot';
+    thinkEl.textContent = 'Thinking…';
+    msgs.appendChild(thinkEl);
+    msgs.scrollTop = msgs.scrollHeight;
+
+    var reply = '';
+    try {
+      if(typeof window.callAI === 'function'){
+        var sys = 'You are the Good Liquid Bev Co CRM assistant. Be concise and helpful. ' +
+          'Good Liquid is a family-run beverage co-packer in Palmetto FL (Est. 2017). ' +
+          'Services: Canning (12oz/16oz), Bottling (750ml), R&D, Consulting. ' +
+          'Min order 150 cases. Canning from $0.28/can. Contact: Mike@GoodLiquid.com.';
+        reply = await window.callAI(sys, msg);
+      } else {
+        reply = 'AI not configured. Open 🤖 AI Tools → AI Settings to add your API key.';
+      }
+    } catch(e){
+      reply = 'Error: ' + (e.message || 'AI call failed. Check your API key in AI Settings.');
+    }
+
+    thinkEl.textContent = reply;
+    _chatHistory.push({ role:'bot', text:reply });
+    msgs.scrollTop = msgs.scrollHeight;
+  };
+
+  /* ─── Inject nav items (AI section above Billing) ─────────────── */
+  function injectNav(){
+    if(document.getElementById('nav-ai-hub')) return; // already done
+    var cnav = document.querySelector('.cnav');
+    if(!cnav) return;
+
+    /* Find the Billing section header */
+    var billingHeader = null;
+    cnav.querySelectorAll('.cni-sec').forEach(function(s){
+      if(!billingHeader && s.textContent.trim().toUpperCase() === 'BILLING') billingHeader = s;
+    });
+    if(!billingHeader) return;
+
+    var wrapper = document.createElement('div');
+    wrapper.innerHTML =
+      '<div class="cni-sec">AI</div>' +
+      '<div class="cni" id="nav-ai-hub" onclick="cNav(\'ai\',this)" style="color:var(--teal,#00e5c0)">' +
+        '<span class="cni-ico">💬</span>AI Chat' +
+      '</div>' +
+      '<div class="cni" id="nav-ai-tools-btn" ' +
+        'onclick="(function(){var p=document.getElementById(\'gl-ai-panel\');if(p){p.style.display=p.style.display===\'flex\'?\'none\':\'flex\';}})()" ' +
+        'style="color:var(--teal,#00e5c0)">' +
+        '<span class="cni-ico">🤖</span>AI Tools' +
+      '</div>';
+
+    while(wrapper.firstChild) cnav.insertBefore(wrapper.firstChild, billingHeader);
+  }
+
+  /* ─── Inject #cpg-ai page container ───────────────────────────── */
+  function injectPage(){
+    if(document.getElementById('cpg-ai')) return;
+    var main = document.querySelector('.crm-main');
+    if(!main) return;
+    var div = document.createElement('div');
+    div.id = 'cpg-ai';
+    div.className = 'cpg';
+    main.insertBefore(div, main.firstChild);
+  }
+
+  /* ─── Wire MutationObserver on cpg-ai ─────────────────────────── */
+  function watchPage(){
+    var pg = document.getElementById('cpg-ai');
+    if(!pg){ setTimeout(watchPage, 500); return; }
+    if(pg.__aiHubWatched) return;
+    pg.__aiHubWatched = true;
+    new MutationObserver(function(){
+      if(pg.classList.contains('act')) renderHub();
+    }).observe(pg, { attributes:true, attributeFilter:['class'] });
+  }
+
+  /* ─── Also update top-bar chat button label ──────────────────────── */
+  function polishTopBar(){
+    var chatBtn = document.getElementById('crm-chat-btn');
+    if(chatBtn && chatBtn.textContent === '💬'){
+      chatBtn.innerHTML = '💬 <span style="font-size:11px;font-weight:600">Chat</span>';
+      chatBtn.style.width = 'auto';
+      chatBtn.style.padding = '0 10px';
+      chatBtn.style.gap = '4px';
+    }
+  }
+
+  /* ─── Boot ─────────────────────────────────────────────────────── */
+  function boot(){
+    // Grant 'ai' page access to all roles (like calendar/tasks)
+    if(window.PERMISSIONS){
+      ['admin','sales','viewer'].forEach(function(r){
+        if(window.PERMISSIONS[r] && !window.PERMISSIONS[r].includes('ai'))
+          window.PERMISSIONS[r].push('ai');
+      });
+    }
+    injectPage();
+    injectNav();
+    watchPage();
+    polishTopBar();
+  }
+
+  if(document.readyState !== 'loading') setTimeout(boot, 350);
+  else document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 350); });
+
+  /* Re-run after login so the nav items survive re-mounts */
+  window.GL_HOOKS.registerLoginHook(function(){ setTimeout(boot, 500); });
+
+  console.log('[GL] AI hub loaded');
+}());
+
+/* ============================================================
+   SCHEDULING LINK (CRM page + public book.html support)
+
+   Lets every rep configure their availability and share a
+   public booking URL (goodliquidbevco.com/book?u=<slug>).
+   Visitors can book a time slot without logging in; a
+   confirmation email goes to both parties.
+
+   Backed by:
+     • booking_pages  — per-user availability config
+     • bookings       — individual appointments
+     • booking-confirm Edge Function — validates, inserts,
+                         creates cal_event, sends emails
+   ============================================================ */
+(function(){
+  'use strict';
+
+  var CONFIRM_URL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1/booking-confirm';
+  var BOOK_BASE   = window.location.origin + '/book';
+
+  function getSB(){ return window.supa || null; }
+  function esc(v){ return v==null?'':String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  var _page     = null;   // current user's booking_pages row
+  var _bookings = [];     // upcoming confirmed bookings
+
+  // ── Slug helper ─────────────────────────────────────────────────────
+  function makeSlug(name){
+    return String(name||'').toLowerCase().split('@')[0]
+      .replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,30) || 'user';
+  }
+
+  // ── Load or auto-create the user's booking page ─────────────────────
+  async function ensurePage(){
+    var sb = getSB();
+    if(!sb || !window.currentUser) return null;
+    var uid = window.currentUser.id;
+
+    var r = await sb.from('booking_pages').select('*').eq('user_id', uid).maybeSingle();
+    if(r && r.data){ _page = r.data; return _page; }
+
+    // Auto-create
+    var slug = makeSlug(window.currentUser.name || window.currentUser.email || uid);
+    var newPage = {
+      user_id:      uid,
+      slug:         slug,
+      title:        'Schedule a Call with Good Liquid Bev Co',
+      description:  'Pick a time that works for you — 100% free, no pressure.',
+      duration:     30,
+      buffer_after: 10,
+      timezone:     'America/New_York',
+      avail_days:   [1,2,3,4,5],
+      start_time:   '09:00',
+      end_time:     '17:00',
+      is_active:    true
+    };
+
+    var ins = await sb.from('booking_pages').insert([newPage]).select().single();
+    if(ins && ins.data){ _page = ins.data; return _page; }
+
+    // Slug collision? Try with random suffix
+    newPage.slug = slug + '-' + Math.random().toString(36).slice(2,5);
+    ins = await sb.from('booking_pages').insert([newPage]).select().single();
+    if(ins && ins.data){ _page = ins.data; return _page; }
+
+    return null;
+  }
+
+  async function loadBookings(){
+    var sb = getSB();
+    if(!sb || !_page) return;
+    var r = await sb.from('bookings')
+      .select('*')
+      .eq('page_id', _page.id)
+      .eq('status', 'confirmed')
+      .gte('start_at', new Date().toISOString())
+      .order('start_at', {ascending:true})
+      .limit(50);
+    _bookings = (r && r.data) || [];
+  }
+
+  // ── Main page render ─────────────────────────────────────────────────
+  async function refresh(){
+    var host = document.getElementById('cpg-scheduling');
+    if(!host || !host.classList.contains('act')) return;
+    host.innerHTML = '<div style="padding:24px;color:var(--teal,#00e5c0);font-size:13px">Loading…</div>';
+
+    var page = await ensurePage();
+    if(!page){
+      host.innerHTML = '<div style="padding:24px;color:var(--muted,#6b87ad);font-size:14px">Could not load your scheduling page. Please refresh and try again.</div>';
+      return;
+    }
+    await loadBookings();
+    renderPage(host, page);
+  }
+
+  function tz12(tz){
+    try {
+      var p = new Intl.DateTimeFormat('en-US',{timeZone:tz,timeZoneName:'short'}).formatToParts(new Date());
+      return (p.find(function(x){return x.type==='timeZoneName';})||{value:tz}).value;
+    } catch(e){ return tz; }
+  }
+
+  function fmtDT(iso){
+    var d = new Date(iso);
+    return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) +
+           ' at ' + d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true});
+  }
+
+  function renderPage(host, page){
+    var link = BOOK_BASE + '?u=' + encodeURIComponent(page.slug);
+    var upcoming = _bookings;
+    var daysMap  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var selDays  = page.avail_days || [1,2,3,4,5];
+
+    var tzOpts = [
+      ['America/New_York',   'Eastern Time (ET)'],
+      ['America/Chicago',    'Central Time (CT)'],
+      ['America/Denver',     'Mountain Time (MT)'],
+      ['America/Los_Angeles','Pacific Time (PT)'],
+      ['America/Phoenix',    'Arizona (no DST)'],
+      ['America/Anchorage',  'Alaska (AKT)'],
+      ['Pacific/Honolulu',   'Hawaii (HST)'],
+      ['UTC',                'UTC']
+    ].map(function(o){
+      return '<option value="'+esc(o[0])+'"'+(page.timezone===o[0]?' selected':'')+'>'+esc(o[1])+'</option>';
+    }).join('');
+
+    host.innerHTML =
+      '<div style="padding:20px 24px;max-width:720px;margin:0 auto">' +
+
+        /* ── Header ── */
+        '<div style="margin-bottom:18px">' +
+          '<h2 style="margin:0;font-size:20px;color:#fff">📅 Scheduling Link</h2>' +
+          '<div style="color:var(--muted,#6b87ad);font-size:13px;margin-top:3px">Share your link — visitors book directly onto your calendar</div>' +
+        '</div>' +
+
+        /* ── Link card ── */
+        '<div class="ccard" style="margin-bottom:18px;padding:18px 20px">' +
+          '<div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted,#6b87ad);margin-bottom:8px">Your booking link</div>' +
+          '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+            '<div style="flex:1;min-width:200px;background:rgba(0,229,192,.06);border:1px solid rgba(0,229,192,.2);border-radius:8px;padding:10px 14px;font-size:13px;color:var(--teal,#00e5c0);word-break:break-all">'+esc(link)+'</div>' +
+            '<button onclick="window.glSchedCopy()" style="white-space:nowrap;padding:10px 16px;background:rgba(0,229,192,.12);color:var(--teal,#00e5c0);border:1px solid rgba(0,229,192,.25);border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">Copy Link</button>' +
+          '</div>' +
+          '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">' +
+            '<button onclick="window.glSchedEmail()" style="padding:8px 14px;background:rgba(245,200,66,.07);color:#f5c842;border:1px solid rgba(245,200,66,.25);border-radius:7px;cursor:pointer;font-size:12px">📧 Send via Email</button>' +
+            '<a href="'+esc(link)+'" target="_blank" style="display:inline-flex;align-items:center;padding:8px 14px;background:rgba(100,140,255,.07);color:#7fc6f5;border:1px solid rgba(100,140,255,.2);border-radius:7px;cursor:pointer;font-size:12px;text-decoration:none">🔗 Preview Page</a>' +
+          '</div>' +
+        '</div>' +
+
+        /* ── Settings ── */
+        '<div class="ccard" style="margin-bottom:18px">' +
+          '<div style="font-size:14px;font-weight:600;color:#fff;padding:16px 20px 0;margin-bottom:14px">Availability Settings</div>' +
+          '<div style="padding:0 20px 20px;display:grid;gap:14px">' +
+
+            /* Title */
+            '<div>' +
+              '<label style="font-size:12px;color:var(--muted,#6b87ad);display:block;margin-bottom:5px">Booking page title (shown to visitors)</label>' +
+              '<input id="gl-sched-title" value="'+esc(page.title)+'" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:#fff;padding:9px 12px;font-size:14px">' +
+            '</div>' +
+
+            /* Description */
+            '<div>' +
+              '<label style="font-size:12px;color:var(--muted,#6b87ad);display:block;margin-bottom:5px">Description (shown to visitors, optional)</label>' +
+              '<input id="gl-sched-desc" value="'+esc(page.description||'')+'" placeholder="e.g. Quick intro call — no commitment" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:#fff;padding:9px 12px;font-size:14px">' +
+            '</div>' +
+
+            /* Duration + Buffer */
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
+              '<div>' +
+                '<label style="font-size:12px;color:var(--muted,#6b87ad);display:block;margin-bottom:5px">Meeting duration</label>' +
+                '<select id="gl-sched-dur" style="width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:#fff;padding:9px 12px;font-size:14px">' +
+                  '<option value="15"'+(page.duration===15?' selected':'')+'>15 minutes</option>' +
+                  '<option value="30"'+(page.duration===30?' selected':'')+'>30 minutes</option>' +
+                  '<option value="60"'+(page.duration===60?' selected':'')+'>60 minutes</option>' +
+                '</select>' +
+              '</div>' +
+              '<div>' +
+                '<label style="font-size:12px;color:var(--muted,#6b87ad);display:block;margin-bottom:5px">Buffer after each meeting</label>' +
+                '<select id="gl-sched-buf" style="width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:#fff;padding:9px 12px;font-size:14px">' +
+                  '<option value="0"'+(page.buffer_after===0?' selected':'')+'>No buffer</option>' +
+                  '<option value="5"'+(page.buffer_after===5?' selected':'')+'>5 min</option>' +
+                  '<option value="10"'+(page.buffer_after===10?' selected':'')+'>10 min</option>' +
+                  '<option value="15"'+(page.buffer_after===15?' selected':'')+'>15 min</option>' +
+                  '<option value="30"'+(page.buffer_after===30?' selected':'')+'>30 min</option>' +
+                '</select>' +
+              '</div>' +
+            '</div>' +
+
+            /* Timezone */
+            '<div>' +
+              '<label style="font-size:12px;color:var(--muted,#6b87ad);display:block;margin-bottom:5px">Your timezone</label>' +
+              '<select id="gl-sched-tz" style="width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:#fff;padding:9px 12px;font-size:14px">' +
+                tzOpts +
+              '</select>' +
+            '</div>' +
+
+            /* Available days */
+            '<div>' +
+              '<label style="font-size:12px;color:var(--muted,#6b87ad);display:block;margin-bottom:8px">Available days</label>' +
+              '<div style="display:flex;gap:7px;flex-wrap:wrap">' +
+                [0,1,2,3,4,5,6].map(function(d){
+                  var on = selDays.indexOf(d) >= 0;
+                  return '<label style="display:flex;align-items:center;gap:5px;padding:6px 10px;border-radius:6px;background:'+(on?'rgba(0,229,192,.1)':'rgba(255,255,255,.04)')+';border:1px solid '+(on?'rgba(0,229,192,.3)':'rgba(255,255,255,.08)')+';cursor:pointer;font-size:13px;color:'+(on?'var(--teal,#00e5c0)':'#9aa7bd')+'">' +
+                    '<input type="checkbox" name="gl-sched-day" value="'+d+'"'+(on?' checked':'')+' style="margin:0"> '+daysMap[d] +
+                  '</label>';
+                }).join('') +
+              '</div>' +
+            '</div>' +
+
+            /* Hours */
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
+              '<div>' +
+                '<label style="font-size:12px;color:var(--muted,#6b87ad);display:block;margin-bottom:5px">Start time</label>' +
+                '<input type="time" id="gl-sched-start" value="'+esc(page.start_time)+'" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:#fff;padding:9px 12px;font-size:14px">' +
+              '</div>' +
+              '<div>' +
+                '<label style="font-size:12px;color:var(--muted,#6b87ad);display:block;margin-bottom:5px">End time</label>' +
+                '<input type="time" id="gl-sched-end" value="'+esc(page.end_time)+'" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:#fff;padding:9px 12px;font-size:14px">' +
+              '</div>' +
+            '</div>' +
+
+            /* Slug */
+            '<div>' +
+              '<label style="font-size:12px;color:var(--muted,#6b87ad);display:block;margin-bottom:5px">Your link slug — the part after <code style="color:var(--teal,#00e5c0)">/book?u=</code></label>' +
+              '<input id="gl-sched-slug" value="'+esc(page.slug)+'" placeholder="mike" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:#fff;padding:9px 12px;font-size:14px;font-family:monospace">' +
+            '</div>' +
+
+            /* Save */
+            '<div style="display:flex;align-items:center;gap:12px">' +
+              '<button onclick="window.glSchedSave()" style="padding:11px 24px;background:var(--teal,#00e5c0);color:#0f1624;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Save Settings</button>' +
+              '<span id="gl-sched-msg" style="font-size:13px;color:#5fcf9e"></span>' +
+            '</div>' +
+
+          '</div>' +
+        '</div>' +
+
+        /* ── Upcoming bookings ── */
+        renderUpcoming(upcoming) +
+
+      '</div>';
+
+    // Wire up handlers
+    window.glSchedSave  = saveSettings;
+    window.glSchedCopy  = function(){ copyText(link, 'gl-sched-msg', 'Link copied!'); };
+    window.glSchedEmail = openEmailModal;
+    window.glSchedCancel = cancelBooking;
+  }
+
+  function renderUpcoming(list){
+    var header = '<div class="ccard">' +
+      '<div style="font-size:14px;font-weight:600;color:#fff;padding:16px 20px 0;margin-bottom:4px">' +
+        'Upcoming Bookings <span style="font-weight:400;font-size:13px;color:var(--muted,#6b87ad)">(' + list.length + ')</span>' +
+      '</div>';
+
+    if(!list.length){
+      return header +
+        '<div style="padding:20px 20px 24px;font-size:13px;color:var(--muted,#6b87ad)">No upcoming bookings yet. Share your link to get started.</div>' +
+        '</div>';
+    }
+
+    return header +
+      '<div>' +
+        list.map(function(b){
+          var start = new Date(b.start_at);
+          var end   = new Date(b.end_at);
+          var dateStr = start.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+          var timeStr = start.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}) +
+                        ' – ' + end.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true});
+          return '<div style="display:flex;align-items:center;gap:12px;padding:14px 20px;border-top:1px solid rgba(255,255,255,.06)">' +
+            '<div style="flex:1;min-width:0">' +
+              '<div style="font-size:14px;color:#fff;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(b.booker_name)+'</div>' +
+              '<div style="font-size:12px;color:var(--muted,#6b87ad);margin-top:2px">'+esc(b.booker_email)+(b.booker_company?' · '+esc(b.booker_company):'')+'</div>' +
+              (b.notes?'<div style="font-size:11px;color:#9aa7bd;margin-top:3px;font-style:italic">'+esc(b.notes.slice(0,80))+'</div>':'') +
+            '</div>' +
+            '<div style="text-align:right;white-space:nowrap;flex-shrink:0">' +
+              '<div style="font-size:13px;color:#fff">'+esc(dateStr)+'</div>' +
+              '<div style="font-size:12px;color:var(--muted,#6b87ad)">'+esc(timeStr)+'</div>' +
+            '</div>' +
+            '<button onclick="window.glSchedCancel(\''+b.id+'\')" style="flex-shrink:0;padding:6px 12px;background:rgba(231,70,70,.08);color:#e74646;border:1px solid rgba(231,70,70,.2);border-radius:6px;cursor:pointer;font-size:12px">Cancel</button>' +
+          '</div>';
+        }).join('') +
+      '</div></div>';
+  }
+
+  // ── Save settings ────────────────────────────────────────────────────
+  async function saveSettings(){
+    var sb = getSB();
+    if(!sb || !_page) return;
+
+    var title  = (document.getElementById('gl-sched-title')||{}).value || '';
+    var desc   = (document.getElementById('gl-sched-desc')||{}).value  || '';
+    var dur    = parseInt((document.getElementById('gl-sched-dur')||{}).value||'30', 10);
+    var buf    = parseInt((document.getElementById('gl-sched-buf')||{}).value||'10', 10);
+    var tz     = (document.getElementById('gl-sched-tz')||{}).value || 'America/New_York';
+    var start  = (document.getElementById('gl-sched-start')||{}).value || '09:00';
+    var end    = (document.getElementById('gl-sched-end')||{}).value   || '17:00';
+    var slug   = ((document.getElementById('gl-sched-slug')||{}).value || '').trim()
+                   .toLowerCase().replace(/[^a-z0-9-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,30);
+
+    var days = [];
+    document.querySelectorAll('input[name="gl-sched-day"]:checked').forEach(function(el){ days.push(Number(el.value)); });
+
+    var msg = document.getElementById('gl-sched-msg');
+    if(msg){ msg.textContent = 'Saving…'; msg.style.color = '#9aa7bd'; }
+
+    var updates = {
+      title:        title.trim() || 'Schedule a meeting',
+      description:  desc.trim() || null,
+      duration:     [15,30,60].includes(dur) ? dur : 30,
+      buffer_after: [0,5,10,15,30].includes(buf) ? buf : 10,
+      timezone:     tz,
+      start_time:   start,
+      end_time:     end,
+      avail_days:   days.length ? days : [1,2,3,4,5],
+      slug:         slug || _page.slug
+    };
+
+    var r = await sb.from('booking_pages').update(updates).eq('id', _page.id).select().single();
+    if(r && r.data){
+      _page = r.data;
+      if(msg){ msg.textContent = '✓ Saved'; msg.style.color = '#5fcf9e'; setTimeout(function(){ if(msg)msg.textContent=''; }, 3000); }
+      // Refresh link display
+      var linkEl = document.querySelector('#cpg-scheduling [style*="word-break"]');
+      if(linkEl){ linkEl.textContent = BOOK_BASE + '?u=' + encodeURIComponent(_page.slug); }
+    } else {
+      if(msg){ msg.textContent = r && r.error ? r.error.message : 'Save failed'; msg.style.color = '#e74646'; }
+    }
+  }
+
+  // ── Cancel a booking ─────────────────────────────────────────────────
+  async function cancelBooking(id){
+    if(!confirm('Cancel this booking? The visitor has already received a confirmation email — you may want to email them directly to let them know.')) return;
+    var sb = getSB();
+    if(!sb) return;
+    await sb.from('bookings').update({status:'cancelled'}).eq('id', id);
+    _bookings = _bookings.filter(function(b){ return b.id !== id; });
+    // Re-render just the bookings section — re-call refresh for simplicity
+    refresh();
+  }
+
+  // ── Copy to clipboard ────────────────────────────────────────────────
+  function copyText(text, msgId, successMsg){
+    navigator.clipboard.writeText(text).then(function(){
+      var el = document.getElementById(msgId);
+      if(el){ el.textContent = successMsg; el.style.color = '#5fcf9e'; setTimeout(function(){ if(el)el.textContent=''; }, 3000); }
+    }).catch(function(){
+      prompt('Copy this link:', text);
+    });
+  }
+
+  // ── "Send via Email" modal ────────────────────────────────────────────
+  function openEmailModal(){
+    if(!_page) return;
+    var link = BOOK_BASE + '?u=' + encodeURIComponent(_page.slug);
+    var ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML =
+      '<div style="background:#192337;border:1px solid #1f3059;border-radius:14px;padding:28px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5)">' +
+        '<div style="font-size:17px;font-weight:700;color:#fff;margin-bottom:4px">📧 Send Your Scheduling Link</div>' +
+        '<div style="font-size:13px;color:#6b87ad;margin-bottom:18px">Send a personalised email with your booking link</div>' +
+        '<div style="display:grid;gap:12px">' +
+          '<div>' +
+            '<label style="font-size:12px;color:#6b87ad;display:block;margin-bottom:5px">Recipient email *</label>' +
+            '<input id="gl-sched-email-to" type="email" placeholder="prospect@company.com" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:#fff;padding:9px 12px;font-size:14px">' +
+          '</div>' +
+          '<div>' +
+            '<label style="font-size:12px;color:#6b87ad;display:block;margin-bottom:5px">Their name (optional)</label>' +
+            '<input id="gl-sched-email-name" type="text" placeholder="Jane" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:#fff;padding:9px 12px;font-size:14px">' +
+          '</div>' +
+          '<div>' +
+            '<label style="font-size:12px;color:#6b87ad;display:block;margin-bottom:5px">Personal note (optional)</label>' +
+            '<textarea id="gl-sched-email-note" rows="3" placeholder="Would love to connect and discuss your project…" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:#fff;padding:9px 12px;font-size:14px;font-family:inherit;resize:vertical"></textarea>' +
+          '</div>' +
+        '</div>' +
+        '<div style="margin-top:8px;padding:12px;background:rgba(0,229,192,.05);border:1px solid rgba(0,229,192,.15);border-radius:8px;font-size:12px;color:#9aa7bd">' +
+          'Preview: "'+esc((window.currentUser||{}).name||'I')+' would like to find a time to connect. Check my availability and book a slot that works for you: <a style=\'color:#00e5c0\'>' + esc(link) + '</a>"' +
+        '</div>' +
+        '<div style="display:flex;gap:10px;margin-top:18px">' +
+          '<button onclick="window.glSchedSendEmail()" style="flex:1;padding:12px;background:var(--teal,#00e5c0);color:#0f1624;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Send Email</button>' +
+          '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="padding:12px 18px;background:rgba(255,255,255,.07);color:#9aa7bd;border:1px solid rgba(255,255,255,.1);border-radius:8px;cursor:pointer;font-size:14px">Cancel</button>' +
+        '</div>' +
+        '<div id="gl-sched-email-err" style="margin-top:10px;font-size:13px;color:#e74646;display:none"></div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+
+    window.glSchedSendEmail = async function(){
+      var to   = (document.getElementById('gl-sched-email-to')  ||{}).value||'';
+      var name = (document.getElementById('gl-sched-email-name')||{}).value||'';
+      var note = (document.getElementById('gl-sched-email-note')||{}).value||'';
+      var errEl= document.getElementById('gl-sched-email-err');
+      if(!to || !to.includes('@')){ if(errEl){errEl.textContent='Please enter a valid email address.';errEl.style.display='block';} return; }
+
+      var senderName = (window.currentUser||{}).name || 'The team at Good Liquid Bev Co';
+      var greeting   = name ? 'Hi ' + name + ',' : 'Hi there,';
+      var noteText   = note.trim() ? '\n\n' + note.trim() : '';
+
+      // Plain-text fallback
+      var body = greeting + noteText + '\n\nI\'d love to find a time to connect. Check my availability and book a slot that works for you:\n\n' +
+                 link + '\n\nLooking forward to it!\n\n— ' + senderName + '\nGood Liquid Bev Co · Mike@GoodLiquid.com · (803) 493-5065';
+
+      // HTML version — big teal button, no raw URL visible to the reader
+      var noteHtml = note.trim()
+        ? '<p style="margin:0 0 20px;font-size:15px;color:#333;line-height:1.7">' + esc(note.trim()).replace(/\n/g,'<br>') + '</p>'
+        : '';
+      var htmlBody =
+        '<!DOCTYPE html><html><head><meta charset="utf-8"></head>' +
+        '<body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Helvetica,Arial,sans-serif">' +
+        '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:40px 16px"><tr><td align="center">' +
+        '<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.10);max-width:560px">' +
+        // Header bar
+        '<tr><td style="background:#0d1420;padding:28px 36px;text-align:center">' +
+          '<div style="font-size:20px;font-weight:800;color:#ffffff;letter-spacing:2px;text-transform:uppercase">Good Liquid Bev Co</div>' +
+          '<div style="font-size:11px;color:#00e5c0;letter-spacing:3px;margin-top:5px;text-transform:uppercase">Meeting Invite</div>' +
+        '</td></tr>' +
+        // Body
+        '<tr><td style="padding:36px 36px 28px">' +
+          '<p style="margin:0 0 18px;font-size:16px;color:#111;line-height:1.5">' + esc(greeting) + '</p>' +
+          noteHtml +
+          '<p style="margin:0 0 28px;font-size:15px;color:#333;line-height:1.7">I\'d love to find a time to connect. Click the button below to see my availability and pick a slot that works for you.</p>' +
+          // Button — teal, no raw URL visible
+          '<table cellpadding="0" cellspacing="0" style="margin:0 auto 32px"><tr>' +
+            '<td style="background:#00e5c0;border-radius:10px;box-shadow:0 4px 18px rgba(0,229,192,.35)">' +
+              '<a href="' + esc(link) + '" target="_blank" style="display:block;padding:16px 44px;font-size:16px;font-weight:800;color:#0d1420;text-decoration:none;letter-spacing:.3px;white-space:nowrap">📅&nbsp; Book a Time</a>' +
+            '</td>' +
+          '</tr></table>' +
+          '<p style="margin:0;font-size:14px;color:#333;line-height:1.7">Looking forward to connecting!</p>' +
+          '<p style="margin:12px 0 0;font-size:14px;color:#111;font-weight:700">— ' + esc(senderName) + '</p>' +
+        '</td></tr>' +
+        // Footer
+        '<tr><td style="background:#f8f9fb;padding:18px 36px;text-align:center;border-top:1px solid #eee">' +
+          '<p style="margin:0;font-size:11px;color:#aaa;line-height:1.6">' +
+            'Good Liquid Bev Co &nbsp;·&nbsp; ' +
+            '<a href="mailto:Mike@GoodLiquid.com" style="color:#00b89a;text-decoration:none">Mike@GoodLiquid.com</a>' +
+            ' &nbsp;·&nbsp; (803) 493-5065' +
+          '</p>' +
+        '</td></tr>' +
+        '</table></td></tr></table></body></html>';
+
+      if(typeof window.sendMailgunEmail === 'function'){
+        var ok = await window.sendMailgunEmail(to, senderName + ' wants to meet — book a time', body, { html: htmlBody });
+        if(ok){ ov.remove(); if(typeof addNotification==='function') addNotification('📧 Scheduling link sent', to, 'success'); }
+        else { if(errEl){errEl.textContent='Send failed. Check your Mailgun settings.';errEl.style.display='block';} }
+      } else {
+        // Fallback: mailto link
+        window.open('mailto:'+encodeURIComponent(to)+'?subject='+encodeURIComponent(senderName+' wants to meet')+'&body='+encodeURIComponent(body));
+        ov.remove();
+      }
+    };
+  }
+
+  // ── Nav injection (Calendars section) ────────────────────────────────
+  function injectNav(){
+    if(document.getElementById('nav-scheduling')) return;
+    var calNav = document.getElementById('nav-calendar') || document.getElementById('nav-production-cal');
+    if(!calNav) return;
+    var parent = calNav.parentElement;
+    if(!parent) return;
+    var link = document.createElement('div');
+    link.id        = 'nav-scheduling';
+    link.className = 'cni';
+    link.innerHTML = '<span class="cni-ico">🔗</span>Scheduling Link';
+    link.setAttribute('onclick', "cNav('scheduling',this)");
+    // Insert after production-cal (last item in Calendars section)
+    var prodCal = document.getElementById('nav-production-cal');
+    var ref = prodCal ? prodCal.nextSibling : null;
+    parent.insertBefore(link, ref);
+  }
+
+  // ── Page container injection ──────────────────────────────────────────
+  function injectPage(){
+    if(document.getElementById('cpg-scheduling')) return;
+    var main = document.querySelector('.crm-main');
+    if(!main) return;
+    var div = document.createElement('div');
+    div.id        = 'cpg-scheduling';
+    div.className = 'cpg';
+    main.insertBefore(div, main.firstChild);
+  }
+
+  // ── MutationObserver watcher ──────────────────────────────────────────
+  function watchPage(){
+    var pg = document.getElementById('cpg-scheduling');
+    if(!pg){ setTimeout(watchPage, 500); return; }
+    if(pg.__schedWatched) return;
+    pg.__schedWatched = true;
+    new MutationObserver(function(){
+      if(pg.classList.contains('act')) refresh();
+    }).observe(pg, { attributes:true, attributeFilter:['class'] });
+  }
+
+  // ── Boot ──────────────────────────────────────────────────────────────
+  function boot(){
+    // Grant 'scheduling' permission to admin + sales roles
+    if(window.PERMISSIONS){
+      ['admin','sales'].forEach(function(role){
+        var arr = window.PERMISSIONS[role];
+        if(arr && !arr.includes('scheduling')) arr.push('scheduling');
+      });
+    }
+    injectPage();
+    injectNav();
+    watchPage();
+  }
+
+  if(document.readyState !== 'loading') setTimeout(boot, 400);
+  else document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 400); });
+
+  window.GL_HOOKS.registerLoginHook(function(){ setTimeout(boot, 600); });
+
+  console.log('[GL] Scheduling link loaded');
+}());
+
+/* ============================================================
+   CALENDAR: show existing events when clicking a day + delete
+   Overrides openCalEventModal so a clicked day with events shows
+   each event with a 🗑 Delete button, then the Add-Event form.
+   ============================================================ */
+(function(){
+  'use strict';
+
+  var _origOpenCal = window.openCalEventModal;
+
+  window.openCalEventModal = function(type, date) {
+    // Run the original (resets form, shows modal)
+    if (typeof _origOpenCal === 'function') _origOpenCal(type, date);
+
+    var modal = document.getElementById('cal-event-modal');
+    if (!modal) return;
+    var box = modal.querySelector('.modal-box');
+    if (!box) return;
+
+    // Remove any previously injected panel (re-use between clicks)
+    var oldPanel = box.querySelector('#gl-cal-day-panel');
+    if (oldPanel) oldPanel.remove();
+
+    // calEvents is a top-level `let` in index.html — shared global scope
+    var cache = [];
+    try { if (typeof calEvents !== 'undefined') cache = calEvents; } catch(e){}
+    if (!Array.isArray(cache)) cache = [];
+
+    var dayEvs = cache.filter(function(e) {
+      if (e.date !== date) return false;
+      return type === 'general' ? e.type !== 'production' : e.type === 'production';
+    });
+
+    if (!dayEvs.length) return; // empty day — show plain add-event form as before
+
+    // ── Update modal title to show the date
+    var titleEl = box.querySelector('.modal-title');
+    if (titleEl && titleEl.firstChild && titleEl.firstChild.nodeType === 3) {
+      var d = new Date(date + 'T12:00:00');
+      titleEl.firstChild.nodeValue = d.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'}) + '  ';
+    }
+
+    // ── Build the "existing events" panel
+    var panel = document.createElement('div');
+    panel.id = 'gl-cal-day-panel';
+
+    var panelHdr = document.createElement('div');
+    panelHdr.style.cssText = 'font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#6b87ad;margin-bottom:10px';
+    panelHdr.textContent = dayEvs.length === 1 ? '1 event on this day' : dayEvs.length + ' events on this day';
+    panel.appendChild(panelHdr);
+
+    dayEvs.forEach(function(ev) {
+      // Format time if present
+      var timeStr = '';
+      if (ev.time) {
+        try {
+          timeStr = typeof fmtCalTime === 'function' ? fmtCalTime(ev.time) : ev.time;
+        } catch(e) { timeStr = ev.time; }
+      }
+
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;gap:12px;' +
+        'padding:10px 12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);' +
+        'border-radius:8px;margin-bottom:8px';
+
+      var info = document.createElement('div');
+      info.style.cssText = 'flex:1;min-width:0';
+      info.innerHTML =
+        '<div style="font-size:14px;font-weight:600;color:#eef4ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' +
+          (ev.title || '(untitled)') + '</div>' +
+        (timeStr ? '<div style="font-size:12px;color:#6b87ad;margin-top:3px">⏱ ' + timeStr + '</div>' : '') +
+        (ev.notes ? '<div style="font-size:12px;color:#6b87ad;margin-top:3px;white-space:pre-line">' + ev.notes + '</div>' : '');
+
+      var delBtn = document.createElement('button');
+      delBtn.textContent = '🗑 Delete';
+      delBtn.style.cssText = 'flex-shrink:0;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.3);' +
+        'color:#f87171;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;' +
+        'transition:background .2s';
+      delBtn.onmouseover = function(){ this.style.background = 'rgba(248,113,113,.18)'; };
+      delBtn.onmouseout  = function(){ this.style.background = 'rgba(248,113,113,.08)'; };
+
+      // Close over the event copy so the button always deletes the right one
+      (function(evCopy) {
+        delBtn.onclick = function() {
+          var evTitle = evCopy.title || 'this event';
+          if (!confirm('Delete "' + evTitle + '"? This cannot be undone.')) return;
+          window.glDeleteCalEvent(evCopy.id, type, date);
+        };
+      }(ev));
+
+      row.appendChild(info);
+      row.appendChild(delBtn);
+      panel.appendChild(row);
+    });
+
+    // ── Separator + "Add New Event" sub-heading before the form
+    var sep = document.createElement('div');
+    sep.style.cssText = 'border-top:1px solid rgba(255,255,255,.08);margin:16px 0 14px';
+    panel.appendChild(sep);
+
+    var addHdr = document.createElement('div');
+    addHdr.style.cssText = 'font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#6b87ad;margin-bottom:10px';
+    addHdr.textContent = 'Add another event';
+    panel.appendChild(addHdr);
+
+    // Insert the panel before the first form row inside the modal
+    var firstFrow = box.querySelector('.frow');
+    if (firstFrow) box.insertBefore(panel, firstFrow);
+    else box.appendChild(panel);
+  };
+
+  // ── Delete handler — Supabase DELETE + in-memory splice + re-render
+  window.glDeleteCalEvent = async function(id, type, date) {
+    if (!window.supa) { alert('Cloud sync unavailable — try reloading.'); return; }
+
+    var r = await window.supa.from('cal_events').delete().eq('id', id);
+    if (r.error) { alert('Could not delete event: ' + r.error.message); return; }
+
+    // Remove from shared in-memory cache
+    try {
+      if (typeof calEvents !== 'undefined' && Array.isArray(calEvents)) {
+        var idx = calEvents.findIndex(function(e) { return e.id === id; });
+        if (idx !== -1) calEvents.splice(idx, 1);
+      }
+    } catch(e) {}
+
+    // Close modal and refresh the calendar view
+    if (typeof closeCalEventModal === 'function') closeCalEventModal();
+    if (typeof renderCal === 'function') renderCal(type);
+    try {
+      if (typeof calViewMode !== 'undefined' && calViewMode === 'list' && typeof renderCalList === 'function') {
+        renderCalList(type);
+      }
+    } catch(e) {}
+
+    if (typeof addNotification === 'function') {
+      addNotification('🗑 Event deleted', 'Removed from your calendar.', 'success');
+    }
+  };
+
+  console.log('[GL] Calendar day-view + delete v1 loaded');
+}());
+
+/* ============================================================
+   AI CHAT ENHANCEMENT v2
+   - Markdown → HTML rendering so bold/bullets/headers display
+     correctly instead of raw symbols
+   - Comprehensive CRM how-to system prompt so the AI can
+     explain every feature in the admin area
+   - Top-bar "Chat" button now navigates to the AI Hub page
+     instead of opening the public-facing website chat widget
+   ============================================================ */
+(function(){
+  'use strict';
+
+  /* ── Markdown → safe HTML converter ──────────────────────── */
+  function mdToHtml(text) {
+    if (!text) return '';
+    var h = String(text)
+      // Escape HTML entities first so the AI can't inject HTML
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    // Headers (must run before bold so ** in headers still works)
+    h = h.replace(/^### (.+)$/gm,
+      '<div style="font-size:11px;letter-spacing:1.5px;color:var(--teal,#00e5c0);font-weight:700;margin:14px 0 4px;text-transform:uppercase">$1</div>');
+    h = h.replace(/^## (.+)$/gm,
+      '<div style="font-size:13px;color:var(--teal,#00e5c0);font-weight:700;margin:12px 0 4px">$1</div>');
+    h = h.replace(/^# (.+)$/gm,
+      '<div style="font-size:14px;color:var(--teal,#00e5c0);font-weight:700;margin:14px 0 6px">$1</div>');
+
+    // Bold and italic
+    h = h.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    h = h.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+    // Inline code
+    h = h.replace(/`([^`]+)`/g, '<code style="background:rgba(255,255,255,.08);padding:1px 5px;border-radius:3px;font-size:12px">$1</code>');
+
+    // Unordered lists — collect consecutive lines into one <ul>
+    h = h.replace(/((?:^[-•] .+\n?)+)/gm, function(block) {
+      var items = block.replace(/^[-•] (.+)$/gm, '<li>$1</li>');
+      return '<ul style="margin:6px 0 8px 0;padding-left:18px;list-style:disc">' + items + '</ul>';
+    });
+
+    // Ordered lists
+    h = h.replace(/((?:^\d+\. .+\n?)+)/gm, function(block) {
+      var items = block.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+      return '<ol style="margin:6px 0 8px 0;padding-left:18px">' + items + '</ol>';
+    });
+
+    // Horizontal rule
+    h = h.replace(/^---+$/gm, '<hr style="border:none;border-top:1px solid rgba(255,255,255,.08);margin:12px 0">');
+
+    // Paragraph breaks and line breaks
+    h = h.replace(/\n{2,}/g, '<br><br>');
+    h = h.replace(/\n/g, '<br>');
+
+    return h;
+  }
+
+  /* ── CRM how-to system prompt ─────────────────────────────── */
+  var CRM_SYSTEM_PROMPT =
+    'You are the Good Liquid Bev Co CRM assistant. Your primary job is to help ' +
+    'admin users navigate and use the CRM. Give clear, step-by-step instructions. ' +
+    'Use markdown: **bold** for button names and field labels, bullet lists for steps, ' +
+    '## for section headings.\n\n' +
+
+    '## About Good Liquid\n' +
+    'Family-run beverage co-packer, Palmetto FL (Est. 2017). Services: small-batch canning ' +
+    '(12oz/16oz), bottle filling (750ml), beverage R&D/formulation, consulting. ' +
+    'Min order 150 cases. R&D from $1,000/SKU. Canning from $0.28/can. ' +
+    'Contact: Mike@GoodLiquid.com | (803) 493-5065.\n\n' +
+
+    '## CRM Sections & How to Use Them\n\n' +
+
+    '**Dashboard** — Live business overview. Shows total revenue, active clients, ' +
+    'overdue invoice count, recent activity, and revenue charts. Data auto-loads on login.\n\n' +
+
+    '**Clients** — Full client directory.\n' +
+    '- Add a client: click **+ Add Client** → fill in company name, contact, email, phone, address, then Save.\n' +
+    '- Edit a client: click any client row to open the detail panel. Edit any field and click Save.\n' +
+    '- Client detail has tabs: Contact Info, Billing/Shipping address, COI status, W-9 on file, ' +
+    'tax-exempt status, Stripe/QuickBooks IDs, and notes.\n\n' +
+
+    '**Pipeline** — Kanban sales board.\n' +
+    '- Stages: New Lead → Qualified → Proposal Sent → In Negotiation → Won / Lost.\n' +
+    '- Add a deal: click **+ New Deal** in any column, fill in company, contact, value, notes.\n' +
+    '- Click a deal card to view full details, edit stage, or link an invoice.\n\n' +
+
+    '**Invoices** — Manage all invoices.\n' +
+    '- Filter by status: All, Draft, Pending, Paid, Overdue.\n' +
+    '- Click any row to open the invoice detail view.\n' +
+    '- Mark paid: open invoice → click **✓ Mark Paid**.\n' +
+    '- Send payment link: open invoice → click **Send Payment Link** (requires Stripe setup).\n\n' +
+
+    '**New Invoice** — Build a new invoice.\n' +
+    '- Select a client, add line items (description, qty, rate), set payment terms and due date.\n' +
+    '- Click **Save Invoice** to create it. It appears immediately in the Invoices list.\n\n' +
+
+    '**Referrals** — Track client referrals and commissions.\n' +
+    '- Add referral: click **+ New Referral** → select referrer and client, set commission rate.\n' +
+    '- Mark commission paid: open referral → click **Mark Commission Paid**.\n\n' +
+
+    '**Activity** — Full team activity log.\n' +
+    '- Filter by type: All, Emails, Calls, Notes, Deals, Invoices.\n' +
+    '- Click any row to jump to the related record.\n\n' +
+
+    '**Calendar** — Schedule and manage general events (tours, calls, meetings).\n' +
+    '- Click any date to add an event (title, time, notes, reminder).\n' +
+    '- Events show as colored dots. Click a date with events to see them and delete if needed.\n' +
+    '- Use the **Month / List** toggle to switch views.\n\n' +
+
+    '**Production Calendar** — Schedule production runs.\n' +
+    '- Click a date to add a production run with product, batch size, and run details.\n' +
+    '- Color-coded by product type. Click any event to view or delete it.\n\n' +
+
+    '**Tasks** — Team task management.\n' +
+    '- Add task: click **+ New Task** → set title, due date, assignee, priority (High/Medium/Low), and client link.\n' +
+    '- Mark done: click the checkbox on any task row.\n' +
+    '- Filter by status (open/completed) or by assignee.\n\n' +
+
+    '**Documents** — Secure client file storage.\n' +
+    '- Upload: select a client, choose document type (W-9, COI, Contract, Other), then upload a file.\n' +
+    '- Download: click any document row. Files are stored in Supabase Storage.\n\n' +
+
+    '**Inventory** — Track raw materials and finished goods.\n' +
+    '- Add item: click **+ Add Item** → name, category, quantity, unit, reorder threshold.\n' +
+    '- Update quantity: click any row and edit the quantity. Low-stock items are highlighted.\n\n' +
+
+    '**Announcements** — Company-wide posts for all staff.\n' +
+    '- New post: click **+ New Announcement** → title and body → Save.\n' +
+    '- All logged-in staff see current announcements.\n\n' +
+
+    '**AI Chat (this page)** — Ask anything. 14 quick-access AI tools are below the chat:\n' +
+    '💰 Estimate Quote, 🧾 Draft Invoice, ✉️ Draft Email, 📝 Meeting Notes, ' +
+    '📈 Revenue Forecast, 📣 Social Post, 🎯 Cross-sell Ideas, 📊 Win-Loss, ' +
+    '🔮 Churn Risk, 🎨 Image Prompts, 📊 Reports, ⏱️ Time Tracker, ' +
+    '💼 LinkedIn Outreach, 🧮 Recipe Cost.\n\n' +
+
+    '**Users** (admin only) — Manage staff accounts.\n' +
+    '- Add user: click **+ Add User** → name, email, role (Admin/Sales/Viewer), set password.\n' +
+    '- Roles: **Admin** = full access; **Sales** = no Users or Customers pages; **Viewer** = read-only.\n' +
+    '- Deactivate: open user → set Status to Inactive.\n\n' +
+
+    '**Customers** (admin only) — Customer portal access.\n' +
+    '- Grant access: click **+ Add Customer** → link to a client → set email and temporary password.\n' +
+    '- Customers log in at /portal to view their own invoices and documents.\n\n' +
+
+    '## Tips\n' +
+    '- **↻ Refresh** in the top bar reloads all data without leaving your current page.\n' +
+    '- The **💬 Chat button** in the top bar opens this AI Chat page.\n' +
+    '- AI Settings (⚙️ in sidebar) is where you configure your AI API key (OpenAI, Anthropic, etc.).\n' +
+    '- Compliance, Holds, CIP, Audit, Formulas, Yield, Content, Defects, Vendors, Samples, ' +
+    'and Production Runs are all available in the sidebar under their respective sections.';
+
+  /* ── Replace glAIHubSend with markdown-rendering version ───── */
+  window.glAIHubSend = async function() {
+    var input = document.getElementById('ai-hub-input');
+    var msgs  = document.getElementById('ai-hub-messages');
+    if (!input || !msgs) return;
+    var msg = input.value.trim();
+    if (!msg) return;
+    input.value = '';
+
+    // Remove placeholder greeting if present
+    var ph = msgs.querySelector('[style*="text-align:center"]');
+    if (ph) ph.remove();
+
+    // User message bubble
+    var userEl = document.createElement('div');
+    userEl.className = 'chat-msg user';
+    userEl.textContent = msg;
+    msgs.appendChild(userEl);
+
+    // Thinking indicator
+    var thinkEl = document.createElement('div');
+    thinkEl.className = 'chat-msg bot';
+    thinkEl.innerHTML = '<em style="color:#6b87ad">Thinking…</em>';
+    msgs.appendChild(thinkEl);
+    msgs.scrollTop = msgs.scrollHeight;
+
+    var reply = '';
+    try {
+      if (typeof window.callAI === 'function') {
+        reply = await window.callAI(CRM_SYSTEM_PROMPT, msg);
+      } else {
+        reply = 'AI not configured. Go to **⚙️ AI Settings** in the sidebar to add your API key.';
+      }
+    } catch(e) {
+      reply = 'Error: ' + (e.message || 'AI call failed. Check your API key in AI Settings.');
+    }
+
+    // Render markdown → HTML for bot reply
+    thinkEl.innerHTML = mdToHtml(reply);
+    msgs.scrollTop = msgs.scrollHeight;
+  };
+
+  /* ── Redirect top-bar "Chat" button to AI Hub page ─────────── */
+  function redirectChatBtn() {
+    window.glToggleCRMChat = function() {
+      if (typeof window.cNav === 'function') {
+        window.cNav('ai', document.getElementById('nav-ai-hub') || null);
+      }
+    };
+    // Also update the button label if it says just 💬
+    var chatBtn = document.getElementById('crm-chat-btn');
+    if (chatBtn) {
+      chatBtn.title = 'Open AI Chat';
+      chatBtn.onclick = function() { window.glToggleCRMChat(); };
+    }
+  }
+
+  /* ── Add CSS so chat messages have proper line-height ─────── */
+  function injectChatCss() {
+    if (document.getElementById('gl-chat-css-v2')) return;
+    var s = document.createElement('style');
+    s.id = 'gl-chat-css-v2';
+    s.textContent =
+      '#ai-hub-messages .chat-msg.bot { line-height:1.7; font-size:13px; }' +
+      '#ai-hub-messages .chat-msg.bot ul, #ai-hub-messages .chat-msg.bot ol { margin:6px 0 8px 0; }' +
+      '#ai-hub-messages .chat-msg.bot li { margin-bottom:3px; }' +
+      '#ai-hub-messages .chat-msg.bot strong { color:#e8f0fe; }' +
+      /* Also improve public chat widget bot bubbles */
+      '#gl-chat-messages .chat-msg.bot { line-height:1.6; font-size:13px; }';
+    document.head.appendChild(s);
+  }
+
+  function boot() {
+    redirectChatBtn();
+    injectChatCss();
+  }
+
+  if (document.readyState !== 'loading') setTimeout(boot, 400);
+  else document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 400); });
+
+  /* Re-run after login in case the top bar re-renders */
+  window.GL_HOOKS.registerLoginHook(function(){ setTimeout(boot, 600); });
+
+  console.log('[GL] AI chat v2 — markdown rendering + CRM system prompt loaded');
+}());
+
+/* ============================================================
+   ACCOUNTING ENHANCEMENTS v1.0
+   14 features: PO numbers · void · quote expiry · late fees ·
+   payment receipts · credit limits · statement of account ·
+   revenue by client · cash flow forecast · partial payments ·
+   multi-step collections · recurring invoices · credit memos ·
+   expense tracking
+   ============================================================ */
+(function () {
+  'use strict';
+
+  // ── Shared helpers ─────────────────────────────────────────
+  function SB() { return window.supa; }
+  function fmt$(n) { return '$' + (Number(n) || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+  function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function todayStr() { return new Date().toISOString().slice(0,10); }
+  function notify(msg, type) {
+    var n = document.createElement('div');
+    n.textContent = msg;
+    n.style.cssText = 'position:fixed;top:70px;right:20px;z-index:99999;padding:10px 16px;border-radius:6px;font-size:14px;font-weight:600;color:#fff;background:' + (type==='error' ? '#e53e3e' : type==='warn' ? '#d69e2e' : '#38a169');
+    document.body.appendChild(n);
+    setTimeout(function(){ n.remove(); }, 3500);
+  }
+  function getInv(id) {
+    var arr = window.invoices || [];
+    return arr.find(function(x){ return x.invoice_number === id || x.id === id; }) || null;
+  }
+  function getClient(id) {
+    var arr = window.clients || [];
+    return arr.find(function(x){ return x.id === id || x.client_id === id; }) || null;
+  }
+
+  // ── Modal helper ───────────────────────────────────────────
+  function openModal(id, title, bodyHtml, onOpen) {
+    var existing = document.getElementById(id);
+    if (existing) existing.remove();
+    var m = document.createElement('div');
+    m.id = id;
+    m.style.cssText = 'position:fixed;inset:0;z-index:9990;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:20px';
+    m.innerHTML = '<div style="background:#fff;border-radius:10px;width:100%;max-width:760px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #e2e8f0">' +
+      '<h3 style="margin:0;font-size:18px">' + esc(title) + '</h3>' +
+      '<button id="' + id + '-close" style="background:none;border:none;font-size:22px;cursor:pointer;line-height:1">&times;</button></div>' +
+      '<div id="' + id + '-body" style="padding:20px">' + bodyHtml + '</div></div>';
+    document.body.appendChild(m);
+    document.getElementById(id + '-close').onclick = function(){ m.remove(); };
+    m.addEventListener('click', function(e){ if (e.target === m) m.remove(); });
+    if (typeof onOpen === 'function') onOpen(m);
+    return m;
+  }
+
+  // ── FEATURE 1: PO Number field in invoice builder ─────────
+  function injectPOField() {
+    var builder = document.getElementById('gl-inv-builder');
+    if (!builder || builder.dataset.poInjected) return;
+    builder.dataset.poInjected = '1';
+    var body = document.getElementById('gl-inv-body') || builder.querySelector('.inv-body, form');
+    if (!body) return;
+    var firstInput = body.querySelector('input, select, textarea');
+    if (!firstInput) return;
+    var row = document.createElement('div');
+    row.style.cssText = 'margin-bottom:12px';
+    row.innerHTML = '<label style="display:block;font-size:12px;font-weight:600;color:#718096;margin-bottom:4px">PO Number (optional)</label>' +
+      '<input id="gl-po-number" type="text" placeholder="Customer PO #" style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px">';
+    var parent = firstInput.closest('div') || body;
+    body.insertBefore(row, parent.firstChild);
+    var inv = window.currentInvId ? getInv(window.currentInvId) : null;
+    if (inv && inv.po_number) document.getElementById('gl-po-number').value = inv.po_number;
+  }
+
+  // Patch save to capture PO number
+  var _origSave = window.glSaveInvoice;
+  if (typeof _origSave === 'function' && !_origSave.__poPatched) {
+    window.glSaveInvoice = async function() {
+      var poEl = document.getElementById('gl-po-number');
+      if (window.INV && poEl) window.INV.poNumber = poEl.value.trim();
+      var result = await _origSave.apply(this, arguments);
+      if (window.INV && window.INV.poNumber && window.INV.invoice_number) {
+        await SB().from('invoices').update({ po_number: window.INV.poNumber }).eq('invoice_number', window.INV.invoice_number);
+      }
+      return result;
+    };
+    window.glSaveInvoice.__poPatched = true;
+  }
+
+  // ── FEATURE 2: Void Invoice button ────────────────────────
+  function injectVoidButton() {
+    var detail = document.getElementById('inv-detail');
+    if (!detail || !detail.classList.contains('show') || detail.dataset.voidInjected) return;
+    detail.dataset.voidInjected = '1';
+    var invId = window.currentInvId;
+    var inv = invId ? getInv(invId) : null;
+    if (!inv || inv.status === 'voided' || inv.is_credit_memo) return;
+    var btnRow = detail.querySelector('div[style*="display:flex"]');
+    if (!btnRow || btnRow.querySelector('.gl-void-btn')) return;
+    var btn = document.createElement('button');
+    btn.innerHTML = '🚫 Void';
+    btn.className = 'cbtn gl-void-btn';
+    btn.style.cssText = 'background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#e74c3c';
+    btn.onclick = async function() {
+      var reason = prompt('Reason for voiding this invoice:');
+      if (reason === null) return;
+      if (!reason.trim()) { notify('Please enter a void reason.', 'error'); return; }
+      if (!confirm('Void invoice ' + invId + '? This cannot be undone.')) return;
+      btn.disabled = true; btn.textContent = 'Voiding…';
+      var { error } = await SB().from('invoices').update({
+        status: 'voided', void_reason: reason.trim(), voided_at: new Date().toISOString()
+      }).eq('invoice_number', invId);
+      if (error) { notify('Error: ' + error.message, 'error'); btn.disabled = false; btn.innerHTML = '🚫 Void'; return; }
+      if (inv) { inv.status = 'voided'; inv.void_reason = reason; inv.voided_at = new Date().toISOString(); }
+      notify('Invoice voided.', 'success');
+      detail.dataset.voidInjected = '';
+      var badge = detail.querySelector('.inv-status-badge, [class*="status"]');
+      if (badge) { badge.textContent = 'VOIDED'; badge.style.background = '#718096'; badge.style.color = '#fff'; }
+      btn.remove();
+    };
+    btnRow.appendChild(btn);
+  }
+
+  // ── FEATURE 3: Quote Auto-Expiry (30 days) ────────────────
+  var QUOTE_EXPIRY_DAYS = 30;
+  function patchExpiredQuoteBadges() {
+    var today = Date.now();
+    document.querySelectorAll('[data-status="quote"], .status-quote').forEach(function(el) {
+      var row = el.closest('[data-inv-id], tr, .inv-row');
+      if (!row) return;
+      var invId = row.dataset.invId || row.dataset.invoiceNumber;
+      var inv = invId ? getInv(invId) : null;
+      if (!inv || inv.status !== 'quote') return;
+      var age = Math.floor((today - new Date(inv.date || inv.created_at)) / 86400000);
+      if (age >= QUOTE_EXPIRY_DAYS && !el.dataset.expiredTagged) {
+        el.dataset.expiredTagged = '1';
+        el.textContent = '⏰ Expired Quote';
+        el.style.background = '#c05621';
+      }
+    });
+  }
+
+  function injectQuoteExpiredBanner() {
+    var detail = document.getElementById('inv-detail');
+    if (!detail || !detail.classList.contains('show') || detail.dataset.expBannerInjected) return;
+    var invId = window.currentInvId;
+    var inv = invId ? getInv(invId) : null;
+    if (!inv || inv.status !== 'quote') return;
+    var age = Math.floor((Date.now() - new Date(inv.date || inv.created_at)) / 86400000);
+    if (age < QUOTE_EXPIRY_DAYS) return;
+    detail.dataset.expBannerInjected = '1';
+    var banner = document.createElement('div');
+    banner.style.cssText = 'background:rgba(245,200,66,.1);border:1px solid rgba(245,200,66,.35);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#f5c842';
+    banner.innerHTML = '⏰ <strong>This quote expired ' + age + ' days ago.</strong> Consider sending an updated quote or converting to an invoice.';
+    detail.insertBefore(banner, detail.firstChild);
+  }
+
+  // ── FEATURE 4: Late Fee Prompt ────────────────────────────
+  var LATE_FEE_RATE = 0.015;
+  function injectLateFeePrompt() {
+    var detail = document.getElementById('inv-detail');
+    if (!detail || !detail.classList.contains('show') || detail.dataset.lateFeeBannerInjected) return;
+    var invId = window.currentInvId;
+    var inv = invId ? getInv(invId) : null;
+    if (!inv || inv.status === 'paid' || inv.status === 'voided' || inv.is_credit_memo) return;
+    var due = inv.due_date || inv.dueDate;
+    if (!due) return;
+    var overdueDays = Math.floor((Date.now() - new Date(due)) / 86400000);
+    if (overdueDays < 1) return;
+    detail.dataset.lateFeeBannerInjected = '1';
+    var months = overdueDays / 30;
+    var fee = (Number(inv.amount) || 0) * LATE_FEE_RATE * months;
+    var banner = document.createElement('div');
+    banner.style.cssText = 'background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.35);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#e74c3c;display:flex;align-items:center;gap:12px';
+    banner.innerHTML = '<span>⚠️ <strong>' + overdueDays + ' days overdue.</strong> Suggested late fee (1.5%/mo): <strong>' + fmt$(fee) + '</strong></span>' +
+      '<button id="gl-add-late-fee" class="cbtn" style="margin-left:auto;background:rgba(231,76,60,.15);border-color:rgba(231,76,60,.4);color:#e74c3c;white-space:nowrap">Add to Invoice</button>';
+    detail.insertBefore(banner, detail.firstChild);
+    document.getElementById('gl-add-late-fee').onclick = async function() {
+      this.disabled = true; this.textContent = 'Adding…';
+      var currentAmount = Number(inv.amount) || 0;
+      var newAmount = currentAmount + fee;
+      var lineItems = Array.isArray(inv.line_items) ? inv.line_items.slice() : [];
+      lineItems.push({ desc: 'Late fee (' + overdueDays + ' days @ 1.5%/mo)', qty: 1, unitPrice: +fee.toFixed(2), total: +fee.toFixed(2), unit: '' });
+      var { error } = await SB().from('invoices').update({ amount: +newAmount.toFixed(2), line_items: lineItems }).eq('invoice_number', invId);
+      if (error) { notify('Error: ' + error.message, 'error'); this.disabled = false; this.textContent = 'Add to Invoice'; return; }
+      inv.amount = +newAmount.toFixed(2);
+      inv.line_items = lineItems;
+      notify('Late fee ' + fmt$(fee) + ' added to invoice.', 'success');
+      banner.remove();
+    };
+  }
+
+  // ── FEATURE 5: Payment Receipt Email ─────────────────────
+  window.glSendPaymentReceipt = async function(invId) {
+    var inv = getInv(invId);
+    if (!inv) { notify('Invoice not found.', 'error'); return; }
+    var client = getClient(inv.client_id || inv.clientId);
+    var email = client && (client.email || client.contact_email);
+    if (!email) { notify('No client email on file.', 'warn'); return; }
+    var subject = 'Payment received — Invoice ' + invId;
+    var body = 'Hi ' + (client.name || client.company || 'there') + ',\n\nThank you! We\'ve received your payment of ' + fmt$(inv.amount) + ' for invoice ' + invId + '.\n\nThank you for your business.\n\nGood Liquid Bevco';
+    var sent = false;
+    if (typeof window.glSendEmail === 'function') {
+      try { await window.glSendEmail({ to: email, subject: subject, body: body }); sent = true; } catch(e) {}
+    }
+    if (!sent && typeof window.glMailgunSend === 'function') {
+      try { await window.glMailgunSend(email, subject, body); sent = true; } catch(e) {}
+    }
+    if (sent) notify('Receipt sent to ' + email, 'success');
+    else notify('Could not send email — check email config.', 'error');
+  };
+
+  // ── FEATURE 6: Credit Limit Warning ───────────────────────
+  function checkCreditLimit() {
+    var builder = document.getElementById('gl-inv-builder');
+    if (!builder) return;
+    var clientSel = builder.querySelector('[name="client_id"], #inv-client, select[name="client"]');
+    if (!clientSel) return;
+    var clientId = clientSel.value;
+    if (!clientId) return;
+    var client = getClient(clientId);
+    if (!client || !client.credit_limit) return;
+    var outstanding = (window.invoices || []).filter(function(x){
+      return (x.client_id === clientId || x.clientId === clientId) && (x.status === 'pending' || x.status === 'overdue');
+    }).reduce(function(sum, x){ return sum + (Number(x.amount) || 0); }, 0);
+    var limit = Number(client.credit_limit);
+    if (outstanding >= limit * 0.8) {
+      var existing = document.getElementById('gl-credit-limit-warn');
+      if (!existing) {
+        var w = document.createElement('div');
+        w.id = 'gl-credit-limit-warn';
+        w.style.cssText = 'background:#fffaf0;border:1px solid #f6ad55;border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#744210';
+        w.innerHTML = '⚠️ <strong>Credit limit alert:</strong> ' + (client.name || 'This client') + ' has ' + fmt$(outstanding) + ' outstanding of ' + fmt$(limit) + ' limit (' + Math.round(outstanding/limit*100) + '%)';
+        var body = document.getElementById('gl-inv-body') || builder.querySelector('form');
+        if (body) body.insertBefore(w, body.firstChild);
+      }
+    }
+  }
+
+  // ── FEATURE 7: Statement of Account ───────────────────────
+  window.glOpenStatement = async function(clientId) {
+    var client = getClient(clientId);
+    if (!client) { notify('Client not found.', 'error'); return; }
+    var invs = (window.invoices || []).filter(function(x){ return x.client_id === clientId || x.clientId === clientId; });
+    var totalBilled = invs.reduce(function(s,x){ return s + (Number(x.amount)||0); }, 0);
+    var totalPaid = invs.filter(function(x){ return x.status==='paid' && !x.is_credit_memo; }).reduce(function(s,x){ return s + (Number(x.amount)||0); }, 0);
+    var totalCredit = invs.filter(function(x){ return x.is_credit_memo; }).reduce(function(s,x){ return s + Math.abs(Number(x.amount)||0); }, 0);
+    var balance = totalBilled - totalPaid - totalCredit;
+    var rows = invs.map(function(x){
+      return '<tr><td style="padding:6px 8px">' + esc(x.invoice_number) + '</td><td style="padding:6px 8px">' + esc(x.date||'') + '</td>' +
+        '<td style="padding:6px 8px">' + esc(x.due_date||x.dueDate||'') + '</td>' +
+        '<td style="padding:6px 8px;text-transform:capitalize">' + esc(x.status||'') + (x.is_credit_memo?' (CM)':'') + '</td>' +
+        '<td style="padding:6px 8px;text-align:right">' + fmt$(x.amount) + '</td></tr>';
+    }).join('');
+    var summaryItems = ['Total Billed|'+fmt$(totalBilled),'Total Paid|'+fmt$(totalPaid),'Credits|'+fmt$(totalCredit),'Balance Due|'+fmt$(balance)];
+    var html = '<p style="margin:0 0 12px;color:#4a5568">Account: <strong>' + esc(client.name||client.company||clientId) + '</strong> — as of ' + new Date().toLocaleDateString() + '</p>' +
+      '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">' +
+      summaryItems.map(function(p){
+        var parts = p.split('|');
+        return '<div style="background:#f7fafc;border-radius:6px;padding:10px;text-align:center"><div style="font-size:11px;color:#718096">' + parts[0] + '</div><div style="font-size:18px;font-weight:700;color:#2d3748">' + parts[1] + '</div></div>';
+      }).join('') + '</div>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+      '<thead><tr style="background:#edf2f7">' +
+      ['Invoice #','Date','Due Date','Status','Amount'].map(function(h){ return '<th style="padding:6px 8px;text-align:left;font-weight:600">' + h + '</th>'; }).join('') +
+      '</tr></thead><tbody>' +
+      (rows || '<tr><td colspan="5" style="padding:12px;text-align:center;color:#a0aec0">No invoices</td></tr>') +
+      '</tbody></table>' +
+      '<div style="margin-top:16px;text-align:right"><button onclick="window.print()" style="padding:8px 18px;background:#3182ce;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px">🖨️ Print Statement</button></div>';
+    openModal('gl-statement-modal', 'Statement of Account', html);
+  };
+
+  function injectStmtBtn() {
+    // Client detail is a dynamically-created #client-detail-overlay
+    var ov = document.getElementById('client-detail-overlay');
+    if (!ov || ov.dataset.stmtBtn) return;
+    ov.dataset.stmtBtn = '1';
+    // Extract clientId from one of the existing button onclick strings
+    var editBtn = ov.querySelector('button[onclick*="glOpenEditClient"]');
+    if (!editBtn) return;
+    var match = editBtn.getAttribute('onclick').match(/glOpenEditClient\('([^']+)'\)/);
+    if (!match) return;
+    var clientId = match[1];
+    var btnRow = ov.querySelector('div[style*="flex-wrap:wrap"], div[style*="flex-wrap: wrap"]');
+    if (!btnRow) return;
+    var btn = document.createElement('button');
+    btn.className = 'cbtn';
+    btn.innerHTML = '📄 Statement';
+    btn.onclick = function(){ window.glOpenStatement(clientId); };
+    btnRow.appendChild(btn);
+  }
+
+  // ── FEATURE 8: Revenue by Client chart ────────────────────
+  window.glOpenRevenueByClient = function() {
+    var paid = (window.invoices || []).filter(function(x){ return x.status === 'paid' && !x.is_credit_memo; });
+    var map = {};
+    paid.forEach(function(x){
+      var cid = x.client_id || x.clientId || 'Unknown';
+      var client = getClient(cid);
+      var name = (client && (client.name || client.company)) || cid;
+      map[name] = (map[name] || 0) + (Number(x.amount) || 0);
+    });
+    var sorted = Object.keys(map).map(function(k){ return { name: k, amt: map[k] }; })
+      .sort(function(a,b){ return b.amt - a.amt; }).slice(0, 12);
+    if (!sorted.length) { notify('No paid invoices found.', 'warn'); return; }
+    var maxAmt = sorted[0].amt;
+    var bars = sorted.map(function(d){
+      var pct = Math.round(d.amt / maxAmt * 100);
+      return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">' +
+        '<div style="width:140px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right" title="' + esc(d.name) + '">' + esc(d.name) + '</div>' +
+        '<div style="flex:1;background:#ebf8ff;border-radius:4px;overflow:hidden">' +
+        '<div style="width:' + pct + '%;background:#3182ce;height:24px;border-radius:4px;transition:width .4s"></div></div>' +
+        '<div style="width:80px;font-size:12px;font-weight:600;color:#2d3748">' + fmt$(d.amt) + '</div></div>';
+    }).join('');
+    openModal('gl-revenue-modal', 'Revenue by Client (Paid Invoices)', '<div style="padding:4px 0">' + bars + '</div>');
+  };
+
+  // ── FEATURE 9: Cash Flow Forecast ─────────────────────────
+  window.glOpenCashFlow = function() {
+    var pending = (window.invoices || []).filter(function(x){ return (x.status === 'pending' || x.status === 'overdue') && !x.is_credit_memo; });
+    var map = {};
+    pending.forEach(function(x){
+      var due = x.due_date || x.dueDate;
+      var key = due ? due.slice(0,7) : 'Unknown';
+      map[key] = (map[key] || 0) + (Number(x.amount) || 0);
+    });
+    var keys = Object.keys(map).sort();
+    if (!keys.length) { notify('No pending invoices.', 'warn'); return; }
+    var maxAmt = Math.max.apply(null, keys.map(function(k){ return map[k]; }));
+    var bars = keys.map(function(k){
+      var pct = Math.round(map[k] / maxAmt * 100);
+      var label = k === 'Unknown' ? 'No due date' : new Date(k + '-01').toLocaleDateString('en-US',{month:'short',year:'numeric'});
+      return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">' +
+        '<div style="width:100px;font-size:12px;text-align:right">' + esc(label) + '</div>' +
+        '<div style="flex:1;background:#f0fff4;border-radius:4px;overflow:hidden">' +
+        '<div style="width:' + pct + '%;background:#38a169;height:24px;border-radius:4px"></div></div>' +
+        '<div style="width:80px;font-size:12px;font-weight:600;color:#2d3748">' + fmt$(map[k]) + '</div></div>';
+    }).join('');
+    openModal('gl-cashflow-modal', 'Cash Flow Forecast (Pending + Overdue)', '<p style="margin:0 0 14px;color:#718096;font-size:13px">Grouped by due date month</p>' + bars);
+  };
+
+  // ── FEATURE 10: Partial Payments ──────────────────────────
+  window.glRecordPayment = async function(invId) {
+    if (!invId) invId = window.currentInvId;
+    var inv = getInv(invId);
+    if (!inv) { notify('Invoice not found.', 'error'); return; }
+    var { data: payments, error } = await SB().from('invoice_payments').select('*').eq('invoice_number', invId).order('paid_at');
+    if (error) { notify('Error loading payments: ' + error.message, 'error'); return; }
+    payments = payments || [];
+    var totalPaid = payments.reduce(function(s,p){ return s + Number(p.amount); }, 0);
+    var remaining = (Number(inv.amount) || 0) - totalPaid;
+    var pmtRows = payments.map(function(p){
+      return '<tr><td style="padding:6px 8px">' + esc(p.paid_at) + '</td><td style="padding:6px 8px">' + esc(p.method) + '</td>' +
+        '<td style="padding:6px 8px">' + esc(p.reference||'') + '</td><td style="padding:6px 8px;text-align:right;font-weight:600">' + fmt$(p.amount) + '</td></tr>';
+    }).join('') || '<tr><td colspan="4" style="padding:10px;text-align:center;color:#a0aec0">No payments recorded</td></tr>';
+    var newPmtForm = remaining > 0.01 ? (
+      '<div style="background:#f7fafc;border-radius:8px;padding:16px">' +
+      '<h4 style="margin:0 0 12px;font-size:15px">Record New Payment</h4>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">' +
+      '<div><label style="display:block;font-size:12px;color:#718096;margin-bottom:4px">Amount</label>' +
+      '<input id="gl-pmt-amount" type="number" step="0.01" min="0.01" max="' + remaining.toFixed(2) + '" value="' + remaining.toFixed(2) + '" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:5px"></div>' +
+      '<div><label style="display:block;font-size:12px;color:#718096;margin-bottom:4px">Method</label>' +
+      '<select id="gl-pmt-method" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:5px">' +
+      '<option>Check</option><option>Wire transfer</option><option>ACH</option><option>Cash</option><option>Stripe</option><option>Other</option></select></div>' +
+      '</div>' +
+      '<div style="margin-bottom:10px"><label style="display:block;font-size:12px;color:#718096;margin-bottom:4px">Reference / Check # (optional)</label>' +
+      '<input id="gl-pmt-ref" type="text" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:5px"></div>' +
+      '<button id="gl-pmt-save" style="padding:8px 18px;background:#3182ce;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600">Save Payment</button></div>'
+    ) : '<div style="text-align:center;color:#38a169;font-weight:600;padding:12px">✅ Fully Paid</div>';
+    var html = '<div style="display:flex;gap:12px;margin-bottom:16px">' +
+      '<div style="flex:1;background:#f7fafc;border-radius:6px;padding:10px;text-align:center"><div style="font-size:11px;color:#718096">Invoice Total</div><div style="font-size:18px;font-weight:700">' + fmt$(inv.amount) + '</div></div>' +
+      '<div style="flex:1;background:#f0fff4;border-radius:6px;padding:10px;text-align:center"><div style="font-size:11px;color:#718096">Paid</div><div style="font-size:18px;font-weight:700;color:#38a169">' + fmt$(totalPaid) + '</div></div>' +
+      '<div style="flex:1;background:' + (remaining > 0.01 ? '#fff5f5' : '#f0fff4') + ';border-radius:6px;padding:10px;text-align:center"><div style="font-size:11px;color:#718096">Remaining</div><div style="font-size:18px;font-weight:700;color:' + (remaining > 0.01 ? '#e53e3e' : '#38a169') + '">' + fmt$(remaining) + '</div></div>' +
+      '</div>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px">' +
+      '<thead><tr style="background:#edf2f7"><th style="padding:6px 8px;text-align:left">Date</th><th style="padding:6px 8px;text-align:left">Method</th><th style="padding:6px 8px;text-align:left">Reference</th><th style="padding:6px 8px;text-align:right">Amount</th></tr></thead>' +
+      '<tbody>' + pmtRows + '</tbody></table>' + newPmtForm;
+    var modal = openModal('gl-payment-modal', 'Record Payment — ' + invId, html);
+    var saveBtn = document.getElementById('gl-pmt-save');
+    if (saveBtn) {
+      saveBtn.onclick = async function() {
+        var amt = parseFloat(document.getElementById('gl-pmt-amount').value);
+        var method = document.getElementById('gl-pmt-method').value;
+        var ref = document.getElementById('gl-pmt-ref').value.trim();
+        if (!amt || amt <= 0) { notify('Enter a valid amount.', 'error'); return; }
+        saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+        var { data: pmt, error: pErr } = await SB().from('invoice_payments')
+          .insert({ invoice_number: invId, amount: amt, method: method, reference: ref || null, paid_at: todayStr() })
+          .select().single();
+        if (pErr) { notify('Error: ' + pErr.message, 'error'); saveBtn.disabled = false; saveBtn.textContent = 'Save Payment'; return; }
+        payments.push(pmt);
+        totalPaid += amt;
+        remaining -= amt;
+        notify('Payment of ' + fmt$(amt) + ' recorded.', 'success');
+        if (remaining <= 0.01) {
+          await SB().from('invoices').update({ status: 'paid' }).eq('invoice_number', invId);
+          if (inv) inv.status = 'paid';
+          modal.remove();
+          if (confirm('Invoice fully paid! Send payment receipt to client?')) window.glSendPaymentReceipt(invId);
+          return;
+        }
+        modal.remove();
+        window.glRecordPayment(invId);
+      };
+    }
+  };
+
+  function injectPartialPayBtn() {
+    var detail = document.getElementById('inv-detail');
+    if (!detail || !detail.classList.contains('show') || detail.dataset.payBtnInjected) return;
+    detail.dataset.payBtnInjected = '1';
+    var inv = window.currentInvId ? getInv(window.currentInvId) : null;
+    if (!inv || inv.status === 'voided' || inv.is_credit_memo) return;
+    var btnRow = detail.querySelector('div[style*="display:flex"]');
+    if (!btnRow || btnRow.querySelector('.gl-pay-btn')) return;
+    var btn = document.createElement('button');
+    btn.innerHTML = '💵 Record Payment';
+    btn.className = 'cbtn gl-pay-btn';
+    btn.style.cssText = 'background:rgba(95,207,158,.12);border-color:rgba(95,207,158,.35);color:#5fcf9e';
+    btn.onclick = function(){ window.glRecordPayment(window.currentInvId); };
+    btnRow.appendChild(btn);
+  }
+
+  // ── FEATURE 11: Multi-Step Collections ────────────────────
+  var COLLECTION_STEPS = [
+    { delay: 3,  label: 'Gentle reminder', tone: 'gentle' },
+    { delay: 14, label: 'Firm reminder',   tone: 'firm' },
+    { delay: 30, label: 'Urgent notice',   tone: 'urgent' },
+    { delay: 45, label: 'Final notice',    tone: 'final' }
+  ];
+
+  window.glSetupCollections = async function(invId) {
+    if (!invId) invId = window.currentInvId;
+    var inv = getInv(invId);
+    if (!inv) { notify('Invoice not found.', 'error'); return; }
+    var client = getClient(inv.client_id || inv.clientId);
+    var email = client && (client.email || client.contact_email);
+    var stepRows = COLLECTION_STEPS.map(function(s){
+      var d = new Date(); d.setDate(d.getDate() + s.delay);
+      return '<tr><td style="padding:6px 8px">' + esc(s.label) + '</td><td style="padding:6px 8px">' + d.toLocaleDateString() + '</td><td style="padding:6px 8px;text-transform:capitalize">' + esc(s.tone) + '</td></tr>';
+    }).join('');
+    var html = '<p style="margin:0 0 14px;color:#4a5568">This will schedule a 4-step email sequence for <strong>' + esc(invId) + '</strong>:</p>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px">' +
+      '<thead><tr style="background:#edf2f7"><th style="padding:6px 8px;text-align:left">Step</th><th style="padding:6px 8px;text-align:left">Send Date</th><th style="padding:6px 8px;text-align:left">Type</th></tr></thead>' +
+      '<tbody>' + stepRows + '</tbody></table>' +
+      (email ? '<p style="color:#718096;font-size:13px">Emails will be sent to: <strong>' + esc(email) + '</strong></p>' :
+               '<p style="color:#e53e3e;font-size:13px">⚠️ No email on file for this client.</p>') +
+      '<button id="gl-coll-confirm" style="padding:8px 18px;background:#e53e3e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600">Schedule Collection Sequence</button>';
+    var modal = openModal('gl-collections-modal', 'Collections Sequence — ' + invId, html);
+    document.getElementById('gl-coll-confirm').onclick = async function() {
+      this.disabled = true; this.textContent = 'Scheduling…';
+      var rows = COLLECTION_STEPS.map(function(s){
+        var d = new Date(); d.setDate(d.getDate() + s.delay);
+        return { invoice_number: invId, client_id: inv.client_id || inv.clientId, scheduled_date: d.toISOString().slice(0,10), email_type: 'collection_' + s.tone, status: 'pending' };
+      });
+      var { error } = await SB().from('email_schedule').insert(rows);
+      if (error && error.code !== '42P01') {
+        notify('Error scheduling: ' + error.message, 'error');
+        this.disabled = false; this.textContent = 'Schedule Collection Sequence';
+        return;
+      }
+      if (error && error.code === '42P01') notify('email_schedule table not found — run the SQL migration first.', 'warn');
+      else notify('4-step collection sequence scheduled for ' + invId, 'success');
+      modal.remove();
+    };
+  };
+
+  function injectCollectBtn() {
+    var detail = document.getElementById('inv-detail');
+    if (!detail || !detail.classList.contains('show') || detail.dataset.collectBtnInjected) return;
+    detail.dataset.collectBtnInjected = '1';
+    var inv = window.currentInvId ? getInv(window.currentInvId) : null;
+    if (!inv || inv.status === 'paid' || inv.status === 'voided' || inv.is_credit_memo) return;
+    var due = inv.due_date || inv.dueDate;
+    if (!due || new Date(due) > new Date()) return;
+    var btnRow = detail.querySelector('div[style*="display:flex"]');
+    if (!btnRow || btnRow.querySelector('.gl-collect-btn')) return;
+    var btn = document.createElement('button');
+    btn.innerHTML = '📋 Collect';
+    btn.className = 'cbtn gl-collect-btn';
+    btn.style.cssText = 'background:rgba(245,200,66,.12);border-color:rgba(245,200,66,.35);color:#f5c842';
+    btn.onclick = function(){ window.glSetupCollections(window.currentInvId); };
+    btnRow.appendChild(btn);
+  }
+
+  // ── FEATURE 12: Recurring Invoices ────────────────────────
+  window.glOpenRecurring = async function() {
+    var { data: templates } = await SB().from('recurring_invoices').select('*').order('created_at', { ascending: false });
+    templates = templates || [];
+    var clientOpts = (window.clients || []).map(function(c){
+      return '<option value="' + esc(c.id||c.client_id||'') + '">' + esc(c.name||c.company||c.id) + '</option>';
+    }).join('');
+    var tRows = templates.map(function(t){
+      var client = getClient(t.client_id);
+      var statusColor = t.status==='active' ? '#c6f6d5' : t.status==='paused' ? '#fefcbf' : '#fed7d7';
+      return '<tr><td style="padding:6px 8px">' + esc((client&&(client.name||client.company))||t.client_id) + '</td>' +
+        '<td style="padding:6px 8px">' + esc(t.description) + '</td>' +
+        '<td style="padding:6px 8px">' + fmt$(t.amount) + '</td>' +
+        '<td style="padding:6px 8px;text-transform:capitalize">' + esc(t.frequency) + '</td>' +
+        '<td style="padding:6px 8px">' + esc(t.next_run||'') + '</td>' +
+        '<td style="padding:6px 8px"><span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:' + statusColor + '">' + esc(t.status) + '</span></td>' +
+        '<td style="padding:6px 8px"><button onclick="window.glPauseRecurring(\'' + esc(t.id) + '\',\'' + esc(t.status) + '\')" style="font-size:11px;padding:2px 8px;border-radius:4px;border:1px solid #718096;background:#fff;cursor:pointer">' + (t.status==='active'?'Pause':'Resume') + '</button></td></tr>';
+    }).join('') || '<tr><td colspan="7" style="padding:12px;text-align:center;color:#a0aec0">No templates yet</td></tr>';
+    var html = '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px">' +
+      '<thead><tr style="background:#edf2f7"><th style="padding:6px 8px;text-align:left">Client</th><th style="padding:6px 8px;text-align:left">Description</th>' +
+      '<th style="padding:6px 8px;text-align:left">Amount</th><th style="padding:6px 8px;text-align:left">Frequency</th>' +
+      '<th style="padding:6px 8px;text-align:left">Next Run</th><th style="padding:6px 8px;text-align:left">Status</th><th style="padding:6px 8px"></th></tr></thead>' +
+      '<tbody>' + tRows + '</tbody></table>' +
+      '<div style="background:#f7fafc;border-radius:8px;padding:16px"><h4 style="margin:0 0 12px;font-size:15px">New Template</h4>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">' +
+      '<div><label style="display:block;font-size:12px;color:#718096;margin-bottom:4px">Client</label><select id="gl-rec-client" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:5px"><option value="">Select client…</option>' + clientOpts + '</select></div>' +
+      '<div><label style="display:block;font-size:12px;color:#718096;margin-bottom:4px">Amount</label><input id="gl-rec-amount" type="number" step="0.01" min="0.01" placeholder="0.00" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:5px"></div>' +
+      '</div><div style="margin-bottom:10px"><label style="display:block;font-size:12px;color:#718096;margin-bottom:4px">Description</label>' +
+      '<input id="gl-rec-desc" type="text" placeholder="e.g. Monthly retainer" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:5px"></div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px">' +
+      '<div><label style="display:block;font-size:12px;color:#718096;margin-bottom:4px">Frequency</label><select id="gl-rec-freq" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:5px"><option>monthly</option><option>weekly</option><option>quarterly</option><option>annually</option></select></div>' +
+      '<div><label style="display:block;font-size:12px;color:#718096;margin-bottom:4px">Start Date</label><input id="gl-rec-start" type="date" value="' + todayStr() + '" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:5px"></div>' +
+      '<div><label style="display:block;font-size:12px;color:#718096;margin-bottom:4px">End Date (opt.)</label><input id="gl-rec-end" type="date" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:5px"></div>' +
+      '</div><button id="gl-rec-save" style="padding:8px 18px;background:#38a169;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600">Save Template</button></div>';
+    var modal = openModal('gl-recurring-modal', '🔄 Recurring Invoices', html);
+    document.getElementById('gl-rec-save').onclick = async function() {
+      var clientId = document.getElementById('gl-rec-client').value;
+      var desc = document.getElementById('gl-rec-desc').value.trim();
+      var amount = parseFloat(document.getElementById('gl-rec-amount').value);
+      var freq = document.getElementById('gl-rec-freq').value;
+      var start = document.getElementById('gl-rec-start').value;
+      var end = document.getElementById('gl-rec-end').value;
+      if (!clientId || !desc || !amount || !start) { notify('Fill in all required fields.', 'error'); return; }
+      this.disabled = true; this.textContent = 'Saving…';
+      var { error } = await SB().from('recurring_invoices').insert({ client_id: clientId, description: desc, amount: amount, frequency: freq, start_date: start, end_date: end || null, next_run: start, status: 'active' });
+      if (error) { notify('Error: ' + error.message, 'error'); this.disabled = false; this.textContent = 'Save Template'; return; }
+      notify('Recurring template saved.', 'success');
+      modal.remove(); window.glOpenRecurring();
+    };
+  };
+
+  window.glPauseRecurring = async function(id, currentStatus) {
+    var newStatus = currentStatus === 'active' ? 'paused' : 'active';
+    var { error } = await SB().from('recurring_invoices').update({ status: newStatus }).eq('id', id);
+    if (error) { notify('Error: ' + error.message, 'error'); return; }
+    notify('Template ' + newStatus + '.', 'success');
+    window.glOpenRecurring();
+  };
+
+  // ── FEATURE 13: Credit Memos ──────────────────────────────
+  window.glOpenCreditMemo = function() {
+    var clientOpts = (window.clients || []).map(function(c){
+      return '<option value="' + esc(c.id||c.client_id||'') + '">' + esc(c.name||c.company||c.id) + '</option>';
+    }).join('');
+    var html = '<p style="margin:0 0 14px;color:#4a5568;font-size:14px">A credit memo reduces a client\'s balance. It will be recorded as a paid invoice with a negative amount.</p>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">' +
+      '<div><label style="display:block;font-size:12px;color:#718096;margin-bottom:4px">Client</label><select id="gl-cm-client" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:5px"><option value="">Select client…</option>' + clientOpts + '</select></div>' +
+      '<div><label style="display:block;font-size:12px;color:#718096;margin-bottom:4px">Amount (credit)</label><input id="gl-cm-amount" type="number" step="0.01" min="0.01" placeholder="0.00" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:5px"></div>' +
+      '</div><div style="margin-bottom:10px"><label style="display:block;font-size:12px;color:#718096;margin-bottom:4px">Reason</label>' +
+      '<input id="gl-cm-reason" type="text" placeholder="e.g. Return, discount, overcharge correction" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:5px"></div>' +
+      '<div style="margin-bottom:14px"><label style="display:block;font-size:12px;color:#718096;margin-bottom:4px">Date</label><input id="gl-cm-date" type="date" value="' + todayStr() + '" style="width:160px;padding:7px 10px;border:1px solid #e2e8f0;border-radius:5px"></div>' +
+      '<button id="gl-cm-save" style="padding:8px 18px;background:#805ad5;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600">Issue Credit Memo</button>';
+    var modal = openModal('gl-cm-modal', '📝 Issue Credit Memo', html);
+    document.getElementById('gl-cm-save').onclick = async function() {
+      var clientId = document.getElementById('gl-cm-client').value;
+      var amount = parseFloat(document.getElementById('gl-cm-amount').value);
+      var reason = document.getElementById('gl-cm-reason').value.trim();
+      var date = document.getElementById('gl-cm-date').value;
+      if (!clientId || !amount || !reason || !date) { notify('Fill in all fields.', 'error'); return; }
+      this.disabled = true; this.textContent = 'Creating…';
+      var year = new Date().getFullYear();
+      var { data: existing } = await SB().from('invoices').select('invoice_number').like('invoice_number', 'CM-' + year + '-%').order('invoice_number', { ascending: false }).limit(1);
+      var seq = 1;
+      if (existing && existing.length) { seq = (parseInt(existing[0].invoice_number.split('-')[2], 10) || 0) + 1; }
+      var invNum = 'CM-' + year + '-' + String(seq).padStart(4, '0');
+      var { error } = await SB().from('invoices').insert({
+        invoice_number: invNum, client_id: clientId, amount: -amount, status: 'paid',
+        is_credit_memo: true, date: date, due_date: date, payment_terms: 'Credit Memo',
+        notes: reason, line_items: [{ desc: reason, qty: 1, unitPrice: -amount, total: -amount, unit: '' }]
+      });
+      if (error) { notify('Error: ' + error.message, 'error'); this.disabled = false; this.textContent = 'Issue Credit Memo'; return; }
+      notify('Credit memo ' + invNum + ' issued for ' + fmt$(amount), 'success');
+      modal.remove();
+    };
+  };
+
+  // ── FEATURE 14: Expense Tracking ─────────────────────────
+  window.glOpenExpenses = async function() {
+    var { data: expenses } = await SB().from('expenses').select('*').order('expense_date', { ascending: false }).limit(50);
+    expenses = expenses || [];
+    var thisMonth = todayStr().slice(0,7);
+    var monthTotal = expenses.filter(function(e){ return (e.expense_date||'').slice(0,7) === thisMonth; }).reduce(function(s,e){ return s + Number(e.amount); }, 0);
+    var clientOpts = '<option value="">No client</option>' + (window.clients || []).map(function(c){
+      return '<option value="' + esc(c.id||c.client_id||'') + '">' + esc(c.name||c.company||c.id) + '</option>';
+    }).join('');
+    var categories = ['Ingredients','Packaging','Equipment','Labor','Shipping','Marketing','Office','Travel','Utilities','Other'];
+    var catOpts = categories.map(function(c){ return '<option>' + c + '</option>'; }).join('');
+    var eRows = expenses.map(function(e){
+      return '<tr><td style="padding:5px 8px">' + esc(e.expense_date||'') + '</td><td style="padding:5px 8px">' + esc(e.vendor) + '</td>' +
+        '<td style="padding:5px 8px">' + esc(e.category) + '</td><td style="padding:5px 8px">' + esc(e.notes||'') + '</td>' +
+        '<td style="padding:5px 8px;text-align:right;font-weight:600">' + fmt$(e.amount) + '</td></tr>';
+    }).join('') || '<tr><td colspan="5" style="padding:12px;text-align:center;color:#a0aec0">No expenses yet</td></tr>';
+    var html = '<div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;background:#f7fafc;border-radius:8px;padding:12px 16px">' +
+      '<div><div style="font-size:11px;color:#718096">This Month</div><div style="font-size:22px;font-weight:700;color:#e53e3e">' + fmt$(monthTotal) + '</div></div>' +
+      '<div style="margin-left:auto;font-size:13px;color:#718096">' + expenses.length + ' expenses tracked</div></div>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px">' +
+      '<thead><tr style="background:#edf2f7"><th style="padding:5px 8px;text-align:left">Date</th><th style="padding:5px 8px;text-align:left">Vendor</th><th style="padding:5px 8px;text-align:left">Category</th><th style="padding:5px 8px;text-align:left">Notes</th><th style="padding:5px 8px;text-align:right">Amount</th></tr></thead>' +
+      '<tbody>' + eRows + '</tbody></table>' +
+      '<div style="background:#f7fafc;border-radius:8px;padding:16px"><h4 style="margin:0 0 12px;font-size:15px">Add Expense</h4>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">' +
+      '<div><label style="display:block;font-size:12px;color:#718096;margin-bottom:4px">Vendor</label><input id="gl-exp-vendor" type="text" placeholder="Vendor name" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:5px"></div>' +
+      '<div><label style="display:block;font-size:12px;color:#718096;margin-bottom:4px">Amount</label><input id="gl-exp-amount" type="number" step="0.01" min="0.01" placeholder="0.00" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:5px"></div>' +
+      '<div><label style="display:block;font-size:12px;color:#718096;margin-bottom:4px">Category</label><select id="gl-exp-cat" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:5px">' + catOpts + '</select></div>' +
+      '</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">' +
+      '<div><label style="display:block;font-size:12px;color:#718096;margin-bottom:4px">Date</label><input id="gl-exp-date" type="date" value="' + todayStr() + '" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:5px"></div>' +
+      '<div><label style="display:block;font-size:12px;color:#718096;margin-bottom:4px">Client (opt.)</label><select id="gl-exp-client" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:5px">' + clientOpts + '</select></div>' +
+      '</div><div style="margin-bottom:12px"><label style="display:block;font-size:12px;color:#718096;margin-bottom:4px">Notes</label>' +
+      '<input id="gl-exp-notes" type="text" placeholder="Optional notes" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:5px"></div>' +
+      '<button id="gl-exp-save" style="padding:8px 18px;background:#e53e3e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600">Save Expense</button></div>';
+    var modal = openModal('gl-expenses-modal', '💸 Expense Tracker', html);
+    document.getElementById('gl-exp-save').onclick = async function() {
+      var vendor = document.getElementById('gl-exp-vendor').value.trim();
+      var amount = parseFloat(document.getElementById('gl-exp-amount').value);
+      var cat = document.getElementById('gl-exp-cat').value;
+      var date = document.getElementById('gl-exp-date').value;
+      var clientId = document.getElementById('gl-exp-client').value;
+      var notes = document.getElementById('gl-exp-notes').value.trim();
+      if (!vendor || !amount || !date) { notify('Fill in vendor, amount, and date.', 'error'); return; }
+      this.disabled = true; this.textContent = 'Saving…';
+      var { error } = await SB().from('expenses').insert({ vendor: vendor, amount: amount, category: cat, expense_date: date, client_id: clientId || null, notes: notes || null });
+      if (error) { notify('Error: ' + error.message, 'error'); this.disabled = false; this.textContent = 'Save Expense'; return; }
+      notify('Expense saved.', 'success');
+      modal.remove(); window.glOpenExpenses();
+    };
+  };
+
+  // ── Invoices page accounting toolbar ─────────────────────
+  // Injected as its own row AFTER the .cph header, before the search bar.
+  function injectInvAcctBtns() {
+    var invPage = document.getElementById('cpg-invoices');
+    if (!invPage || document.getElementById('gl-acct-toolbar')) return;
+    var cph = invPage.querySelector('.cph');
+    if (!cph) return;
+    var wrap = document.createElement('div');
+    wrap.id = 'gl-acct-toolbar';
+    wrap.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px';
+    var btns = [
+      ['💰 Revenue by Client', function(){ window.glOpenRevenueByClient(); }],
+      ['📈 Cash Flow',          function(){ window.glOpenCashFlow(); }],
+      ['🔄 Recurring',           function(){ window.glOpenRecurring(); }],
+      ['📝 Credit Memo',         function(){ window.glOpenCreditMemo(); }],
+      ['💸 Expenses',            function(){ window.glOpenExpenses(); }]
+    ];
+    btns.forEach(function(pair){
+      var btn = document.createElement('button');
+      btn.textContent = pair[0];
+      btn.className = 'cbtn';
+      btn.onclick = pair[1];
+      wrap.appendChild(btn);
+    });
+    // Insert after .cph, before the search row
+    cph.insertAdjacentElement('afterend', wrap);
+  }
+
+  function injectInvAcctBtnsFallback() { /* superseded by injectInvAcctBtns */ }
+
+  // ── Bootstrap: MutationObserver ───────────────────────────
+  function resetDetailDatasets() {
+    // When the invoice detail closes or reopens for a different invoice,
+    // clear injector flags so they re-run for the new invoice.
+    var detail = document.getElementById('inv-detail');
+    if (detail && !detail.classList.contains('show')) {
+      delete detail.dataset.voidInjected;
+      delete detail.dataset.payBtnInjected;
+      delete detail.dataset.collectBtnInjected;
+      delete detail.dataset.expBannerInjected;
+      delete detail.dataset.lateFeeBannerInjected;
+    }
+  }
+
+  function runInjectors() {
+    resetDetailDatasets();
+    injectInvAcctBtns();
+    injectVoidButton();
+    injectPartialPayBtn();
+    injectCollectBtn();
+    injectQuoteExpiredBanner();
+    injectLateFeePrompt();
+    injectPOField();
+    patchExpiredQuoteBadges();
+    injectStmtBtn();
+    checkCreditLimit();
+  }
+
+  var _acctObs = new MutationObserver(function(){ setTimeout(runInjectors, 300); });
+  _acctObs.observe(document.getElementById('crm-panel') || document.body, { childList: true, subtree: true });
+  setTimeout(runInjectors, 800);
+
+  console.log('[GL] Accounting enhancements v1.0 — 14 features loaded');
+}());
+
+/* ============================================================
+   INVITE MODAL — direct button wiring
+   The preset-hook IIFE earlier intercepts the invite button via
+   new Function(origHandler) which silently drops async errors.
+   This IIFE fires AFTER everything else and re-wires the button
+   with a plain onclick so the invite flow is guaranteed to run.
+   ============================================================ */
+(function(){
+  var SUPA_URL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co';
+
+  async function doInvite(){
+    var nameEl = document.getElementById('inv-name');
+    var emailEl = document.getElementById('inv-email');
+    var roleEl  = document.getElementById('inv-role');
+    var errEl   = document.getElementById('inv-err');
+    var okEl    = document.getElementById('inv-ok');
+    var btn     = document.querySelector('#invite-user-modal button[data-invite-btn]');
+
+    function showErr(m){
+      if(errEl){ errEl.textContent=m; errEl.style.display='block'; }
+      else { alert(m); }
+    }
+    function showOk(m){
+      if(okEl){ okEl.textContent=m; okEl.style.display='block'; }
+    }
+    function resetBtn(){
+      if(btn){ btn.disabled=false; btn.textContent='Send Invite'; }
+    }
+
+    if(errEl) errEl.style.display='none';
+    if(okEl)  okEl.style.display='none';
+
+    if(!nameEl||!emailEl||!roleEl){ showErr('Form elements missing — reload the page.'); return; }
+
+    var name  = nameEl.value.trim();
+    var email = emailEl.value.trim().toLowerCase();
+    var role  = roleEl.value || 'sales';
+
+    if(!name)                     { showErr('Name is required.'); return; }
+    if(email.indexOf('@')<0)      { showErr('Valid email is required.'); return; }
+
+    // Give immediate visual feedback
+    if(btn){ btn.disabled=true; btn.textContent='Sending…'; }
+
+    // Get session token from whichever supa client is available
+    var token = null;
+    try {
+      var sb = window.supa;
+      if(sb && sb.auth && typeof sb.auth.getSession === 'function'){
+        var sess = await sb.auth.getSession();
+        token = sess && sess.data && sess.data.session && sess.data.session.access_token;
+      }
+    } catch(e){ console.warn('[GL invite] getSession error', e); }
+
+    if(!token){
+      showErr('Not signed in. Please log in and try again.');
+      resetBtn();
+      return;
+    }
+
+    try {
+      var res = await fetch(SUPA_URL + '/functions/v1/invite-staff-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify({ email: email, name: name, role: role, redirectTo: window.location.origin })
+      });
+      var data = await res.json();
+      if(!res.ok || !data.ok){
+        showErr((data && data.error) || 'Invite failed (HTTP ' + res.status + ')');
+        resetBtn();
+        return;
+      }
+      showOk('✓ Invite sent! ' + name + ' will receive an email to set their password.');
+      if(typeof addNotification==='function') addNotification('👤 Invite sent: '+name, email+' — link emailed', 'success');
+      setTimeout(function(){
+        if(typeof closeInviteModal==='function') closeInviteModal();
+      }, 3500);
+    } catch(e){
+      console.error('[GL invite] fetch error', e);
+      showErr('Error: ' + (e.message || 'unknown'));
+      resetBtn();
+    }
+  }
+
+  function wireInviteModal(){
+    var modal = document.getElementById('invite-user-modal');
+    if(!modal || modal.querySelector('button[data-invite-btn]')) return;
+    // Find the primary button and re-wire it completely
+    var btns = modal.querySelectorAll('button');
+    var sendBtn = null;
+    btns.forEach(function(b){
+      if(!sendBtn && b.textContent.trim().toLowerCase().indexOf('cancel') < 0 &&
+         b.textContent.trim().toLowerCase().indexOf('✕') < 0){
+        sendBtn = b;
+      }
+    });
+    if(!sendBtn) return;
+    // Replace with a clean button (removes ALL prior event listeners)
+    var fresh = document.createElement('button');
+    fresh.className     = sendBtn.className;
+    fresh.style.cssText = sendBtn.style.cssText;
+    fresh.textContent   = 'Send Invite';
+    fresh.setAttribute('data-invite-btn', '1');
+    fresh.onclick = doInvite;
+    sendBtn.parentNode.replaceChild(fresh, sendBtn);
+  }
+
+  // Watch for modal appearing
+  if(typeof MutationObserver !== 'undefined'){
+    var obs = new MutationObserver(function(){
+      if(document.getElementById('invite-user-modal')) wireInviteModal();
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+  }
+
+  console.log('[GL] Invite button wiring loaded');
+}());
+
+/* ============================================================
+   TWO-STEP INVOICE DELETE
+   ============================================================
+   Prevents accidental hard-deletes by requiring two separate
+   clicks to confirm. Flow:
+     1st click → button arms: shows "⚠ Confirm delete?" + Cancel
+     2nd click → fires the actual delete (skipConfirm=true)
+     5 s timeout / click-outside / Cancel → disarms, no action
+
+   Uses replaceChild so the armed button has ZERO prior event
+   listeners (the original button's addEventListener would
+   re-trigger arm() on the second click, preventing delete).
+   ============================================================ */
+(function(){
+  var _orig  = null;
+  var _armed = null; // { id, orig, btn, cancelBtn, timer }
+
+  function disarm(){
+    if(!_armed) return;
+    clearTimeout(_armed.timer);
+    try {
+      // Restore the original button (with its addEventListener intact)
+      if(_armed.btn && _armed.btn.parentNode)
+        _armed.btn.parentNode.replaceChild(_armed.orig, _armed.btn);
+      if(_armed.cancelBtn && _armed.cancelBtn.parentNode)
+        _armed.cancelBtn.parentNode.removeChild(_armed.cancelBtn);
+    } catch(e){}
+    _armed = null;
+  }
+
+  function arm(id, btn){
+    disarm();
+
+    // Fresh button with NO prior event listeners — avoids addEventListener conflict
+    var fresh = document.createElement('button');
+    fresh.className     = btn.className;
+    fresh.innerHTML     = '⚠ Confirm delete?';
+    fresh.style.cssText = 'background:rgba(231,76,60,.45);border:1px solid #ff5555;color:#fff;font-size:10px;padding:3px 10px;border-radius:5px;cursor:pointer;white-space:nowrap';
+    fresh.onclick = function(e){
+      e.stopPropagation();
+      var del_id = _armed ? _armed.id : null;
+      disarm();
+      if(del_id && typeof _orig === 'function') _orig(del_id, { skipConfirm: true });
+    };
+
+    var cancelBtn = document.createElement('button');
+    cancelBtn.className   = 'cbtn';
+    cancelBtn.style.cssText = 'font-size:10px;padding:3px 7px;margin-left:4px';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.onclick = function(e){ e.stopPropagation(); disarm(); };
+
+    if(btn.parentNode){
+      btn.parentNode.replaceChild(fresh, btn);
+      fresh.insertAdjacentElement('afterend', cancelBtn);
+    }
+
+    var timer = setTimeout(disarm, 5000);
+    _armed = { id: id, orig: btn, btn: fresh, cancelBtn: cancelBtn, timer: timer };
+  }
+
+  function patch(){
+    if(typeof window.deleteInvoice !== 'function'){ setTimeout(patch, 200); return; }
+    if(window.deleteInvoice._gl2step) return;
+    _orig = window.deleteInvoice;
+
+    window.deleteInvoice = function(id, opts){
+      opts = opts || {};
+      if(opts.skipConfirm) return _orig.call(this, id, opts);
+
+      var ev  = window.event || null;
+      var btn = null;
+      if(ev){
+        var t = ev.currentTarget || ev.target;
+        while(t && t.tagName !== 'BUTTON' && t !== document.body) t = t.parentNode;
+        if(t && t.tagName === 'BUTTON') btn = t;
+      }
+      if(!btn && document.activeElement && document.activeElement.tagName === 'BUTTON')
+        btn = document.activeElement;
+
+      if(btn){
+        arm(id, btn);
+      } else {
+        _orig.call(this, id, opts);
+      }
+    };
+    window.deleteInvoice._gl2step = true;
+    console.log('[GL] Two-step invoice delete ready');
+  }
+
+  document.addEventListener('click', function(e){
+    if(!_armed) return;
+    if(e.target !== _armed.btn && e.target !== _armed.cancelBtn) disarm();
+  }, true);
+
+  if(document.readyState !== 'loading') patch();
+  else document.addEventListener('DOMContentLoaded', patch);
 }());

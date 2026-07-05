@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Request a Quote | Good Liquid Bev Co</title>
+<meta name="description" content="Tell us about your beverage concept. We'll respond within 1 business day with an honest read on fit, timeline, and pricing.">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#060d1a;--ink2:#0a1628;--ink3:#0d1e38;
+  --teal:#00e5c0;--teal2:#00b89a;--gold:#f5c842;--muted:#6b87ad;
+  --white:#eef4ff;
+  --ff-disp:'Anton',sans-serif;--ff-body:'Plus Jakarta Sans',sans-serif;--ff-mono:'Space Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--ink);color:var(--white);font-family:var(--ff-body);line-height:1.7;min-height:100vh}
+a{color:var(--teal);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* ── NAV ── */
+nav{position:fixed;top:0;left:0;right:0;z-index:200;display:flex;align-items:center;justify-content:space-between;padding:0 48px;height:66px;background:rgba(6,13,26,.93);backdrop-filter:blur(16px);border-bottom:1px solid rgba(0,229,192,.1)}
+.logo-text{font-family:var(--ff-disp);font-size:17px;letter-spacing:3px;color:var(--white)}
+.logo-sub{font-size:9px;letter-spacing:3px;text-transform:uppercase;color:var(--teal)}
+.nav-back{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px;transition:color .2s}
+.nav-back:hover{color:var(--white);text-decoration:none}
+
+/* ── HERO ── */
+.page-hero{padding:110px 24px 56px;text-align:center;background:linear-gradient(180deg,rgba(0,229,192,.04) 0%,transparent 100%);border-bottom:1px solid rgba(255,255,255,.06)}
+.page-hero h1{font-family:var(--ff-disp);font-size:clamp(32px,5vw,56px);letter-spacing:2px;line-height:1.05;margin:0 auto 16px;max-width:680px}
+.page-hero h1 em{font-style:normal;color:var(--teal)}
+.page-hero p{font-size:16px;color:rgba(238,244,255,.65);max-width:520px;margin:0 auto;line-height:1.7}
+
+/* ── LAYOUT ── */
+.wrap{max-width:860px;margin:0 auto;padding:60px 24px 100px;display:grid;grid-template-columns:1fr 360px;gap:48px;align-items:start}
+@media(max-width:768px){.wrap{grid-template-columns:1fr;gap:32px;padding:40px 20px 80px}}
+
+/* ── FORM CARD ── */
+.form-card{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.08);border-radius:20px;padding:36px 32px}
+.form-title{font-family:var(--ff-disp);font-size:22px;letter-spacing:1.5px;color:var(--teal);margin-bottom:24px}
+
+.frow2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+@media(max-width:520px){.frow2{grid-template-columns:1fr}}
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.field label,.field-label{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:2px}
+.field input,.field select,.field textarea{
+  width:100%;padding:11px 14px;
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);
+  border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body);
+  transition:border-color .2s;outline:none;
+}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:rgba(0,229,192,.4);background:rgba(0,229,192,.03)}
+.field select option{background:var(--ink2);color:var(--white)}
+
+/* ── PILL CHECKBOXES ── */
+.pill-group{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.pill-group input[type="checkbox"]{position:absolute;opacity:0;width:0;height:0;pointer-events:none}
+.pill-group label{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:7px 15px;border-radius:24px;cursor:pointer;
+  border:1px solid rgba(255,255,255,.13);background:rgba(255,255,255,.04);
+  font-size:13px;color:rgba(238,244,255,.75);
+  transition:all .15s;user-select:none;
+}
+.pill-group label:hover{border-color:rgba(0,229,192,.3);background:rgba(0,229,192,.05);color:var(--white)}
+.pill-group input[type="checkbox"]:checked + label{
+  background:rgba(0,229,192,.12);border-color:rgba(0,229,192,.45);
+  color:var(--teal);font-weight:600;
+}
+.pill-group input[type="checkbox"]:checked + label::before{content:'✓ '}
+
+/* "Other" free-text reveal */
+.other-reveal{
+  display:none;margin-top:10px;
+}
+.other-reveal.show{display:block}
+.other-reveal input{
+  width:100%;padding:10px 14px;
+  background:rgba(255,255,255,.04);border:1px solid rgba(0,229,192,.25);
+  border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body);
+  outline:none;transition:border-color .2s;
+}
+.other-reveal input:focus{border-color:rgba(0,229,192,.5);background:rgba(0,229,192,.03)}
+.other-reveal input::placeholder{color:var(--muted)}
+
+.check-section{margin-bottom:20px}
+
+/* ── MISC ── */
+.req-note{font-size:11px;color:var(--muted);margin-bottom:20px}
+.req-note span{color:#f87171}
+
+.sub-btn{
+  width:100%;padding:15px;margin-top:8px;
+  background:var(--teal);color:var(--ink);border:none;border-radius:10px;
+  font-size:15px;font-weight:800;letter-spacing:.5px;cursor:pointer;
+  transition:all .25s;font-family:var(--ff-body);
+}
+.sub-btn:hover:not(:disabled){background:var(--teal2);transform:translateY(-2px);box-shadow:0 12px 30px rgba(0,229,192,.3)}
+.sub-btn:disabled{opacity:.6;cursor:not-allowed;transform:none}
+
+.form-ok{
+  display:none;margin-top:20px;padding:28px 20px;
+  background:rgba(0,229,192,.06);border:1px solid rgba(0,229,192,.2);
+  border-radius:10px;text-align:center;
+}
+.form-ok-icon{font-size:36px;margin-bottom:10px}
+.form-ok-title{font-family:var(--ff-disp);font-size:20px;color:var(--teal);letter-spacing:1px;margin-bottom:8px}
+.form-ok-body{font-size:14px;color:rgba(238,244,255,.75);line-height:1.6}
+.form-err{display:none;margin-top:12px;padding:12px 16px;background:rgba(248,113,113,.06);border:1px solid rgba(248,113,113,.2);border-radius:8px;font-size:13px;color:#f87171}
+
+/* ── SIDEBAR ── */
+.contact-block{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:16px;padding:28px;margin-bottom:20px}
+.contact-block h3{font-family:var(--ff-disp);font-size:16px;letter-spacing:1.5px;color:var(--white);margin-bottom:16px}
+.ci{display:flex;gap:12px;margin-bottom:14px;align-items:flex-start}
+.ci-ic{font-size:18px;line-height:1;padding-top:2px}
+.ci-lbl{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+.ci-val{font-size:13px;color:var(--white);line-height:1.5}
+.trust-block{background:rgba(0,229,192,.04);border:1px solid rgba(0,229,192,.1);border-radius:16px;padding:24px}
+.trust-block h3{font-family:var(--ff-disp);font-size:15px;letter-spacing:1.5px;color:var(--teal);margin-bottom:14px}
+.trust-item{display:flex;gap:10px;align-items:flex-start;margin-bottom:12px;font-size:13px;color:rgba(238,244,255,.8);line-height:1.5}
+.trust-item:last-child{margin-bottom:0}
+.trust-ic{color:var(--teal);font-size:15px;flex-shrink:0;padding-top:1px}
+
+footer{border-top:1px solid rgba(255,255,255,.06);padding:28px 48px;display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--muted)}
+@media(max-width:640px){nav{padding:0 20px}footer{flex-direction:column;gap:8px;text-align:center;padding:20px}}
+</style>
+</head>
+<body>
+
+<nav>
+  <div>
+    <div class="logo-text">GOOD LIQUID</div>
+    <div class="logo-sub">Bev Co</div>
+  </div>
+  <a href="/" class="nav-back">← Back to site</a>
+</nav>
+
+<div class="page-hero">
+  <h1>Let's Make Something <em>Good.</em></h1>
+  <p>Tell us about your beverage concept. We'll give you an honest read on fit, timeline, and pricing — within 1 business day, from a real person.</p>
+</div>
+
+<div class="wrap">
+
+  <!-- FORM -->
+  <div class="form-card">
+    <div class="form-title">REQUEST A QUOTE</div>
+    <p class="req-note"><span>*</span> Required fields</p>
+
+    <div class="frow2">
+      <div class="field"><label>Brand name <span style="color:#f87171">*</span></label><input id="qf-brand" type="text" placeholder="Your Beverage Co." autocomplete="organization"></div>
+      <div class="field"><label>Your name <span style="color:#f87171">*</span></label><input id="qf-name" type="text" placeholder="First &amp; last" autocomplete="name"></div>
+    </div>
+    <div class="frow2">
+      <div class="field"><label>Email <span style="color:#f87171">*</span></label><input id="qf-email" type="email" placeholder="you@brand.com" autocomplete="email"></div>
+      <div class="field"><label>Phone</label><input id="qf-phone" type="tel" placeholder="(555) 555-0100" autocomplete="tel"></div>
+    </div>
+    <div class="frow2">
+      <div class="field"><label>City</label><input id="qf-city" type="text" placeholder="Tampa" autocomplete="address-level2"></div>
+      <div class="field"><label>State</label><input id="qf-state" type="text" maxlength="2" placeholder="FL" style="text-transform:uppercase" autocomplete="address-level1"></div>
+    </div>
+
+    <!-- SERVICE — multi-select pills -->
+    <div class="check-section">
+      <div class="field-label">Service <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:11px">— select all that apply</span></div>
+      <div class="pill-group" id="qf-service-group">
+        <input type="checkbox" id="svc-rd"       value="Beverage R&D"><label for="svc-rd">Beverage R&amp;D</label>
+        <input type="checkbox" id="svc-can"      value="Small batch canning"><label for="svc-can">Small batch canning</label>
+        <input type="checkbox" id="svc-bottle"   value="Bottle filling"><label for="svc-bottle">Bottle filling</label>
+        <input type="checkbox" id="svc-copak"    value="Co-packing"><label for="svc-copak">Co-packing</label>
+        <input type="checkbox" id="svc-consult"  value="Consulting"><label for="svc-consult">Consulting</label>
+        <input type="checkbox" id="svc-unsure"   value="Not sure yet"><label for="svc-unsure">Not sure yet</label>
+      </div>
+    </div>
+
+    <!-- PRODUCT TYPE — multi-select pills + free-text Other -->
+    <div class="check-section">
+      <div class="field-label">Product type <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:11px">— select all that apply</span></div>
+      <div class="pill-group" id="qf-product-group">
+        <input type="checkbox" id="pt-seltzer"   value="Seltzer"><label for="pt-seltzer">Seltzer</label>
+        <input type="checkbox" id="pt-kombucha"  value="Kombucha"><label for="pt-kombucha">Kombucha</label>
+        <input type="checkbox" id="pt-coldbrew"  value="Cold brew"><label for="pt-coldbrew">Cold brew</label>
+        <input type="checkbox" id="pt-juice"     value="Juice"><label for="pt-juice">Juice</label>
+        <input type="checkbox" id="pt-rtd"       value="RTD cocktail"><label for="pt-rtd">RTD cocktail</label>
+        <input type="checkbox" id="pt-energy"    value="Energy drink"><label for="pt-energy">Energy drink</label>
+        <input type="checkbox" id="pt-mocktail"  value="Mocktail"><label for="pt-mocktail">Mocktail</label>
+        <input type="checkbox" id="pt-sparkling" value="Sparkling water"><label for="pt-sparkling">Sparkling water</label>
+        <input type="checkbox" id="pt-sports"    value="Sports drink"><label for="pt-sports">Sports drink</label>
+        <input type="checkbox" id="pt-other"     value="Other" onchange="toggleOtherProduct(this)"><label for="pt-other">Other</label>
+      </div>
+      <div class="other-reveal" id="pt-other-reveal">
+        <input type="text" id="pt-other-text" placeholder="Describe your product type…">
+      </div>
+    </div>
+
+    <div class="frow2">
+      <div class="field"><label>Volume / yr</label>
+        <select id="qf-volume">
+          <option value="">Select…</option>
+          <option>150–339 cases (pilot)</option>
+          <option>340–500 cases</option>
+          <option>501–999 cases</option>
+          <option>1,000–2,499 cases</option>
+          <option>2,500+ cases</option>
+        </select>
+      </div>
+      <div class="field"><label>Timeline</label>
+        <select id="qf-timeline">
+          <option value="">When?</option>
+          <option value="asap">As soon as possible</option>
+          <option value="1-3mo">1–3 months</option>
+          <option value="3-6mo">3–6 months</option>
+          <option value="6-12mo">6–12 months</option>
+          <option value="12mo+">12+ months / just exploring</option>
+        </select>
+      </div>
+    </div>
+    <div class="frow2">
+      <div class="field"><label>Funding stage</label>
+        <select id="qf-funding">
+          <option value="">Select…</option>
+          <option value="self">Self-funded / bootstrapped</option>
+          <option value="pre-launch">Pre-launch (raising)</option>
+          <option value="funded">Funded round closed</option>
+          <option value="revenue">Generating revenue</option>
+          <option value="prefer-not">Prefer not to say</option>
+        </select>
+      </div>
+      <div class="field"><label>How did you find us?</label>
+        <select id="qf-source">
+          <option value="">Select…</option>
+          <option value="google">Google search</option>
+          <option value="instagram">Instagram</option>
+          <option value="linkedin">LinkedIn</option>
+          <option value="trade_show">Trade show</option>
+          <option value="industry_pub">Industry publication</option>
+          <option value="customer_referral">Customer referral</option>
+          <option value="word_of_mouth">Word of mouth</option>
+          <option value="article">Good Liquid article</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="field"><label>Project details</label>
+      <textarea id="qf-details" rows="4" placeholder="Product concept, flavor, packaging vision, certifications needed, questions…"></textarea>
+    </div>
+
+    <button class="sub-btn" id="qf-submit" onclick="submitQuote(this)">Send Inquiry →</button>
+    <div class="form-err" id="qf-err"></div>
+    <div class="form-ok" id="qf-ok">
+      <div class="form-ok-icon">✅</div>
+      <div class="form-ok-title">GOT IT — THANK YOU!</div>
+      <div class="form-ok-body">Mike or Sandra will respond within 1 business day.<br>In the meantime, feel free to browse our <a href="/resources/">resource library</a>.</div>
+    </div>
+  </div>
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="contact-block">
+      <h3>CONTACT US DIRECTLY</h3>
+      <div class="ci"><div class="ci-ic">📍</div><div><div class="ci-lbl">Address</div><div class="ci-val">2011 51st Ave E, Unit 100<br>Palmetto, FL 34221</div></div></div>
+      <div class="ci"><div class="ci-ic">✉️</div><div><div class="ci-lbl">Sales &amp; Strategy</div><div class="ci-val"><a href="mailto:Mike@GoodLiquid.com">Mike@GoodLiquid.com</a></div></div></div>
+      <div class="ci"><div class="ci-ic">⚙️</div><div><div class="ci-lbl">Operations</div><div class="ci-val"><a href="mailto:Sandra@GoodLiquid.com">Sandra@GoodLiquid.com</a></div></div></div>
+      <div class="ci"><div class="ci-ic">⏱️</div><div><div class="ci-lbl">Response time</div><div class="ci-val">Within 1 business day — from a real person.</div></div></div>
+    </div>
+    <div class="trust-block">
+      <h3>WHAT HAPPENS NEXT</h3>
+      <div class="trust-item"><div class="trust-ic">1.</div><div>We review your submission and check schedule availability.</div></div>
+      <div class="trust-item"><div class="trust-ic">2.</div><div>Mike or Sandra replies with an honest fit assessment and ballpark pricing.</div></div>
+      <div class="trust-item"><div class="trust-ic">3.</div><div>If it's a match, we schedule a 20-minute call or facility tour in Palmetto, FL.</div></div>
+      <div class="trust-item"><div class="trust-ic">4.</div><div>You receive a formal itemized quote within 48 hours of the call.</div></div>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <span>© 2026 Good Liquid Bev Co — Palmetto, FL</span>
+  <a href="/">goodliquidbev.com</a>
+</footer>
+
+<script>
+const SUPA_URL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co';
+const SUPA_KEY = 'sb_publishable_-37mkPw8uLzEJM21T9jJOA_YQRQ7ikB';
+
+function gv(id){ var el=document.getElementById(id); return el ? el.value.trim() : ''; }
+function showErr(msg){ var el=document.getElementById('qf-err'); el.textContent=msg; el.style.display='block'; }
+function clearErr(){ document.getElementById('qf-err').style.display='none'; }
+
+// Get all checked values from a pill-group container
+function getChecked(groupId){
+  var boxes = document.querySelectorAll('#' + groupId + ' input[type="checkbox"]:checked');
+  return Array.prototype.map.call(boxes, function(cb){ return cb.value; });
+}
+
+// Show / hide the "Other" product type text field
+function toggleOtherProduct(cb){
+  var reveal = document.getElementById('pt-other-reveal');
+  if(cb.checked){
+    reveal.classList.add('show');
+    document.getElementById('pt-other-text').focus();
+  } else {
+    reveal.classList.remove('show');
+    document.getElementById('pt-other-text').value = '';
+  }
+}
+
+async function submitQuote(btn){
+  clearErr();
+
+  // Collect multi-select fields
+  var services     = getChecked('qf-service-group');
+  var productTypes = getChecked('qf-product-group');
+
+  // If "Other" is checked for product type, replace the placeholder with the typed value
+  var otherText = gv('pt-other-text');
+  if(productTypes.indexOf('Other') !== -1 && otherText){
+    productTypes[productTypes.indexOf('Other')] = 'Other: ' + otherText;
+  }
+
+  var vals = {
+    brand_name:    gv('qf-brand'),
+    contact_name:  gv('qf-name'),
+    email:         gv('qf-email'),
+    phone:         gv('qf-phone'),
+    city:          gv('qf-city'),
+    state:         gv('qf-state').toUpperCase(),
+    service:       services.join(', ')     || '',
+    product_type:  productTypes.join(', ') || '',
+    volume:        gv('qf-volume'),
+    timeline:      gv('qf-timeline'),
+    funding_stage: gv('qf-funding'),
+    lead_source:   gv('qf-source'),
+    details:       gv('qf-details')
+  };
+
+  if(!vals.brand_name || !vals.contact_name || !vals.email){
+    showErr('Brand name, your name, and email are required.'); return;
+  }
+  if(!vals.email.includes('@')){
+    showErr('Please enter a valid email address.'); return;
+  }
+
+  btn.textContent = 'Sending…';
+  btn.disabled = true;
+
+  var noteBlock = [
+    'Brand: '        + vals.brand_name,
+    'Contact: '      + vals.contact_name + ' (' + vals.email + (vals.phone ? ', ' + vals.phone : '') + ')',
+    (vals.city || vals.state) ? 'Location: ' + [vals.city, vals.state].filter(Boolean).join(', ') : null,
+    'Service(s): '   + (vals.service      || '—'),
+    'Product(s): '   + (vals.product_type || '—'),
+    'Volume: '       + (vals.volume        || '—'),
+    'Timeline: '     + (vals.timeline      || '—'),
+    'Funding stage: '+ (vals.funding_stage || '—'),
+    'Lead source: '  + (vals.lead_source   || '—'),
+    '',
+    vals.details || '(no project details given)'
+  ].filter(function(x){ return x !== null; }).join('\n');
+
+  var anyOk = false;
+
+  // 1 — Formspree email notification
+  try {
+    var res = await fetch('https://formspree.io/f/mykolyee', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(Object.assign({}, vals, {
+        _subject: '[Good Liquid] New quote request: ' + vals.brand_name,
+        _source: 'request-a-quote.html',
+        summary: noteBlock
+      }))
+    });
+    if(res.ok) anyOk = true;
+  } catch(e){ console.warn('Formspree error', e); }
+
+  // 2 — Supabase contact_submissions
+  try {
+    var supaRes = await fetch(SUPA_URL + '/rest/v1/contact_submissions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPA_KEY,
+        'Authorization': 'Bearer ' + SUPA_KEY,
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify({
+        brand_name:    vals.brand_name,
+        contact_name:  vals.contact_name,
+        email:         vals.email,
+        phone:         vals.phone         || null,
+        city:          vals.city          || null,
+        state:         vals.state         || null,
+        service:       vals.service       || null,
+        product_type:  vals.product_type  || null,
+        volume:        vals.volume        || null,
+        timeline:      vals.timeline      || null,
+        funding_stage: vals.funding_stage || null,
+        lead_source:   vals.lead_source   || null,
+        notes:         vals.details       || null,
+        source_page:   'request-a-quote'
+      })
+    });
+    if(supaRes.ok || supaRes.status === 201) anyOk = true;
+  } catch(e){ console.warn('Supabase error', e); }
+
+  if(anyOk){
+    // Hide the entire form body, show success
+    var card = document.querySelector('.form-card');
+    card.querySelectorAll('.frow2, .field, .check-section, .sub-btn, .form-err').forEach(function(el){ el.style.display='none'; });
+    document.getElementById('qf-ok').style.display = 'block';
+    document.querySelector('.form-title').textContent = '🎉 Inquiry received!';
+  } else {
+    btn.textContent = 'Send Inquiry →';
+    btn.disabled = false;
+    showErr('Something went wrong. Please email Mike@GoodLiquid.com directly.');
+  }
+}
+</script>
+
+</body>
+</html>
