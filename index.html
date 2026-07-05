@@ -3596,6 +3596,8 @@ function renderDash(){
   window.GL_HOOKS = window.GL_HOOKS || {};
   window.GL_HOOKS._dashPatches = [];
   window.GL_HOOKS.registerDashPatch = function(fn){ window.GL_HOOKS._dashPatches.push(fn); };
+  window.GL_HOOKS._loginHooks = [];
+  window.GL_HOOKS.registerLoginHook = function(fn){ window.GL_HOOKS._loginHooks.push(fn); };
   var _base = renderDash;
   renderDash = window.renderDash = function(){
     var r = _base.apply(this, arguments);

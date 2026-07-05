@@ -287,6 +287,9 @@
     if(typeof checkStaleDeals==='function')checkStaleDeals();
     if(typeof loadNotifications==='function')loadNotifications();
     setTimeout(function(){var n=document.querySelector('.cnav');if(n)n.scrollTop=0;},150);
+    if(window.GL_HOOKS && window.GL_HOOKS._loginHooks){
+      window.GL_HOOKS._loginHooks.forEach(function(fn){ try{ fn(u); }catch(e){ console.warn('[GL] login hook threw',e); } });
+    }
   };
 
   /* ── Supabase Auth (bcrypt passwords managed by Supabase) ── */
@@ -495,11 +498,7 @@
   }
 
   /* Hook into loginUser so settings load immediately on auth */
-  var _origLoginUser = window.loginUser;
-  window.loginUser = function(u){
-    if(typeof _origLoginUser === 'function') _origLoginUser(u);
-    window.glLoadAppSettings(); // non-blocking; cache fills in background
-  };
+  window.GL_HOOKS.registerLoginHook(function(){ window.glLoadAppSettings(); });
 
   /* ══════════════════════════════════════════════
      ADMIN USER MANAGEMENT (Supabase Auth-backed)
@@ -8163,18 +8162,10 @@
 
   // Auto-open on first admin login: hook loginUser. Skip if already done
   // or if the user isn't an admin.
-  (function(){
-    var orig = window.loginUser;
-    if(typeof orig !== 'function') return;
-    window.loginUser = function(u){
-      var r = orig.apply(this, arguments);
-      if(u && u.role === 'admin' && !isDone()){
-        // Delay so the CRM panel renders first
-        setTimeout(function(){ window.openSetupWizard({ auto: true }); }, 600);
-      }
-      return r;
-    };
-  })();
+  window.GL_HOOKS.registerLoginHook(function(u){
+    if(u && u.role === 'admin' && !isDone())
+      setTimeout(function(){ window.openSetupWizard({ auto: true }); }, 600);
+  });
 
   console.log('[GL] First-run setup wizard loaded');
 }());
@@ -16371,16 +16362,8 @@
     });
   }
 
-  // Wrap loginUser so post-login (any path) triggers a data refresh
-  (function wrap(){
-    var orig = window.loginUser;
-    if(typeof orig !== 'function'){ setTimeout(wrap, 400); return; }
-    window.loginUser = function(){
-      var r = orig.apply(this, arguments);
-      setTimeout(ensureDataLoaded, 60);
-      return r;
-    };
-  })();
+  // Trigger a data refresh on every login
+  window.GL_HOOKS.registerLoginHook(function(){ setTimeout(ensureDataLoaded, 60); });
 
   // Also watch for the CRM panel becoming visible — covers any other entry path
   function watchPanel(){
@@ -25085,30 +25068,20 @@
   if(document.readyState !== 'loading') boot();
   else document.addEventListener('DOMContentLoaded', boot);
 
-  // Wrap loginUser so non-admin users get gating applied the moment permissions
-  // finish loading — eliminates the flash where the dashboard is visible for
-  // ~500-800ms while DB calls are in flight.
-  (function(){
-    var _orig = window.loginUser;
-    window.loginUser = function(u){
-      _orig.apply(this, arguments);
-      if(u && u.role !== 'admin'){
-        if(perms.loaded){
-          applyGating();
-        } else {
-          var maxTries = 50; // 5s max
-          var tries = 0;
-          var iv = setInterval(function(){
-            tries++;
-            if(perms.loaded || tries >= maxTries){
-              clearInterval(iv);
-              if(perms.loaded) applyGating();
-            }
-          }, 100);
-        }
+  // Apply permissions gating for non-admin users on login
+  window.GL_HOOKS.registerLoginHook(function(u){
+    if(u && u.role !== 'admin'){
+      if(perms.loaded){
+        applyGating();
+      } else {
+        var maxTries = 50, tries = 0;
+        var iv = setInterval(function(){
+          tries++;
+          if(perms.loaded || tries >= maxTries){ clearInterval(iv); if(perms.loaded) applyGating(); }
+        }, 100);
       }
-    };
-  })();
+    }
+  });
 
   // Hook into cNav so the Users page (re)renders the permissions panel each time.
   function wireUsersPageRender(){
@@ -25784,14 +25757,7 @@
   }
 
   /* ── hook into loginUser ── */
-  var origLoginUser = window.loginUser;
-  if(typeof origLoginUser !== 'function') return;
-  window.loginUser = function(u){
-    var result = origLoginUser.apply(this, arguments);
-    /* defer so the rest of the login flow completes first */
-    setTimeout(function(){ recordLoginEvent(u); }, 1500);
-    return result;
-  };
+  window.GL_HOOKS.registerLoginHook(function(u){ setTimeout(function(){ recordLoginEvent(u); }, 1500); });
 
   console.log('[GL] login IP alert loaded');
 }());
@@ -26035,15 +26001,7 @@
   else document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 350); });
 
   /* Re-run after login so the nav items survive re-mounts */
-  var _origLogin = window.loginUser;
-  if(typeof _origLogin === 'function' && !_origLogin.__aiHubHooked){
-    window.loginUser = function(){
-      var r = _origLogin.apply(this, arguments);
-      setTimeout(boot, 500);
-      return r;
-    };
-    window.loginUser.__aiHubHooked = true;
-  }
+  window.GL_HOOKS.registerLoginHook(function(){ setTimeout(boot, 500); });
 
   console.log('[GL] AI hub loaded');
 }());
@@ -26557,15 +26515,7 @@
   if(document.readyState !== 'loading') setTimeout(boot, 400);
   else document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 400); });
 
-  var _origLoginSched = window.loginUser;
-  if(typeof _origLoginSched === 'function' && !_origLoginSched.__schedHooked){
-    window.loginUser = function(){
-      var r = _origLoginSched.apply(this, arguments);
-      setTimeout(boot, 600);
-      return r;
-    };
-    window.loginUser.__schedHooked = true;
-  }
+  window.GL_HOOKS.registerLoginHook(function(){ setTimeout(boot, 600); });
 
   console.log('[GL] Scheduling link loaded');
 }());
@@ -26736,10 +26686,8 @@
     }
   };
 
-  // ── 2. Wrap loginUser to restore saved page after F5 → re-login ──
-  var _loginOrig = window.loginUser;
-  window.loginUser = function(u) {
-    if (typeof _loginOrig === 'function') _loginOrig.apply(this, arguments);
+  // ── 2. Restore saved page after F5 → re-login ──
+  window.GL_HOOKS.registerLoginHook(function(){
     setTimeout(function() {
       try {
         var saved = sessionStorage.getItem(PAGE_KEY);
@@ -26752,7 +26700,7 @@
         window.cNav(saved, navEl);
       } catch(e) {}
     }, 300);
-  };
+  });
 
   // ── 3. Soft-refresh: reload Supabase data, re-render current page ──
   function softRefresh(btn) {
@@ -27084,15 +27032,7 @@
   else document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 400); });
 
   /* Re-run after login in case the top bar re-renders */
-  var _origLU = window.loginUser;
-  if (typeof _origLU === 'function' && !_origLU.__aiChatV2Hooked) {
-    window.loginUser = function() {
-      var r = _origLU.apply(this, arguments);
-      setTimeout(boot, 600);
-      return r;
-    };
-    window.loginUser.__aiChatV2Hooked = true;
-  }
+  window.GL_HOOKS.registerLoginHook(function(){ setTimeout(boot, 600); });
 
   console.log('[GL] AI chat v2 — markdown rendering + CRM system prompt loaded');
 }());
