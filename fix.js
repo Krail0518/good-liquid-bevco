@@ -209,8 +209,9 @@
      Page-name convention matches index.html cNav calls (e.g. 'newinv', not 'new-invoice').
      window.PERMISSIONS is bridged from index.html so both the role-filter UI and can() share one table. */
   var ALL=['dashboard','clients','pipeline','invoices','invoice-detail','newinv','referrals','referrers','activity','users','customers','calendar','production-cal','production-runs','samples','formulas','yield','content','compliance','holds','cip','audit','defects','vendors','tasks','documents','inventory','announcements','time-tracker','reports','ai-settings'];
-  if(window.PERMISSIONS){window.PERMISSIONS.admin=ALL;window.PERMISSIONS.sales=['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','content','cip','defects','vendors','tasks','announcements','reports'];}
-  else{window.PERMISSIONS={admin:ALL,sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','content','cip','defects','vendors','tasks','announcements','reports'],viewer:['dashboard','clients','invoices','activity']};}
+  var WAREHOUSE=['dashboard','production-runs','production-cal','inventory','cip','defects','yield','samples','tasks','announcements'];
+  if(window.PERMISSIONS){window.PERMISSIONS.admin=ALL;window.PERMISSIONS.sales=['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','content','cip','defects','vendors','tasks','announcements','reports'];window.PERMISSIONS.warehouse=WAREHOUSE;}
+  else{window.PERMISSIONS={admin:ALL,sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','content','cip','defects','vendors','tasks','announcements','reports'],warehouse:WAREHOUSE,viewer:['dashboard','clients','invoices','activity']};}
   window.can=function(page){var u=window.currentUser;if(!u)return false;if(u.role==='admin')return true;return(window.PERMISSIONS[u.role]||[]).includes(page);};
   /* Single cNav wrap: perm-gate first, then dispatch new-invoice variants
      to the builder, otherwise hand off to the original cNav from index.html. */
@@ -277,7 +278,7 @@
     if($('crm-av-init'))$('crm-av-init').textContent=u.initials||u.name[0].toUpperCase();
     if($('crm-user-name'))$('crm-user-name').textContent=u.name;
     var rb=$('crm-role-badge');
-    if(rb){rb.textContent=u.role.charAt(0).toUpperCase()+u.role.slice(1);rb.style.cssText=u.role==='admin'?'background:rgba(245,200,66,.12);color:#d4a200;border:1px solid rgba(245,200,66,.25)':u.role==='sales'?'background:rgba(26,111,255,.12);color:#6b9fff;border:1px solid rgba(26,111,255,.25)':'background:rgba(255,255,255,.06);color:#6b87ad';}
+    if(rb){rb.textContent=u.role.charAt(0).toUpperCase()+u.role.slice(1);rb.style.cssText=u.role==='admin'?'background:rgba(245,200,66,.12);color:#d4a200;border:1px solid rgba(245,200,66,.25)':u.role==='sales'?'background:rgba(26,111,255,.12);color:#6b9fff;border:1px solid rgba(26,111,255,.25)':u.role==='warehouse'?'background:rgba(168,85,247,.12);color:#c4a4f8;border:1px solid rgba(168,85,247,.25)':'background:rgba(255,255,255,.06);color:#6b87ad';}
     if(u.role==='admin'){var nu=$('nav-users'),nc=$('nav-customers');if(nu)nu.style.display='flex';if(nc)nc.style.display='flex';var tbu=$('top-btn-users'),tbb=$('top-btn-backup'),tbd=$('top-btn-digest');if(tbu)tbu.style.display='';if(tbb)tbb.style.display='';if(tbd)tbd.style.display='';}
     var panel=$('crm-panel');if(panel)panel.classList.add('show');document.body.style.overflow='hidden';
     if(!window.crmInited&&typeof initCRM==='function')initCRM();
@@ -2266,6 +2267,7 @@
         : '<select onchange="window.glAdminChangeRole(\''+u.id+'\',this.value)" style="background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer">'
           +'<option value="admin"'+(u.role==='admin'?' selected':'')+'>admin</option>'
           +'<option value="sales"'+(u.role==='sales'?' selected':'')+'>sales</option>'
+          +'<option value="warehouse"'+(u.role==='warehouse'?' selected':'')+'>warehouse</option>'
           +'<option value="viewer"'+(u.role==='viewer'?' selected':'')+'>viewer</option>'
         +'</select>';
       var actions=isOwner
@@ -2290,7 +2292,7 @@
   window.glAdminChangeRole=async function(uid,newRole){
     var u=(window.users||[]).find(function(x){return x.id===uid;});
     if(!u){alert('User not found.');return;}
-    if(!['admin','sales','viewer'].includes(newRole)){alert('Invalid role.');return;}
+    if(!['admin','sales','warehouse','viewer'].includes(newRole)){alert('Invalid role.');return;}
     var sb=window.supa;
     if(sb&&uuidish(u.id)){
       try{
@@ -24779,7 +24781,11 @@
       var u = staff.find(function(x){ return x.id === userId; });
       if(!u) return '<div style="color:var(--muted);padding:20px 0">User not found.</div>';
       var userOverrides = byUser[userId] || {};
-      function rowHtml(c){
+      var B = 'border:1px solid rgba(255,255,255,.28)';
+      var HOVER_ON  = "this.style.background='rgba(0,229,192,.08)'";
+      var HOVER_OFF_EVEN = "this.style.background=''";
+      var HOVER_OFF_ODD  = "this.style.background='rgba(255,255,255,.05)'";
+      function rowHtml(c, idx){
         var hasOverride = Object.prototype.hasOwnProperty.call(userOverrides, c.id);
         var effective = hasOverride ? userOverrides[c.id] : c.default_on;
         var note = u.role === 'admin'
@@ -24787,24 +24793,36 @@
           : (hasOverride
               ? '<span style="font-size:10px;color:#6b9fff;cursor:pointer" onclick="window.glClearPerm(\'' + userId + '\',\'' + c.id + '\')" title="Click to revert to default">overridden — revert</span>'
               : '<span style="font-size:10px;color:var(--muted)">default (' + (c.default_on ? 'on' : 'off') + ')</span>');
-        return '<tr>' +
-          '<td style="padding:6px 8px;font-weight:600">' + esc(c.label) + '</td>' +
-          '<td style="padding:6px 8px;color:var(--muted);font-size:11px">' + esc(c.description||'') + '</td>' +
-          '<td style="padding:6px 8px;text-align:center"><label style="cursor:pointer"><input type="checkbox"' + (effective?' checked':'') + (u.role==='admin'?' disabled':'') + ' onchange="window.glTogglePerm(\'' + userId + '\',\'' + c.id + '\',this.checked)"></label></td>' +
-          '<td style="padding:6px 8px">' + note + '</td>' +
+        var isOdd = idx % 2;
+        var rowBg = isOdd ? 'background:rgba(255,255,255,.05)' : '';
+        var hoverOff = isOdd ? HOVER_OFF_ODD : HOVER_OFF_EVEN;
+        var checked = effective ? ' checked' : '';
+        var disabled = u.role === 'admin' ? ' disabled' : '';
+        return '<tr style="' + rowBg + ';transition:background .1s" onmouseover="' + HOVER_ON + '" onmouseout="' + hoverOff + '">' +
+          '<td style="padding:10px 12px;font-weight:600;' + B + '">' +
+            esc(c.label) +
+            (c.description ? '<div style="font-size:11px;color:var(--muted);font-weight:400;margin-top:3px;white-space:normal">' + esc(c.description) + '</div>' : '') +
+          '</td>' +
+          '<td style="padding:10px 12px;text-align:center;width:72px;' + B + '">' +
+            '<label style="cursor:' + (u.role==='admin'?'default':'pointer') + ';display:block">' +
+              '<input type="checkbox"' + checked + disabled +
+                ' onchange="window.glTogglePerm(\'' + userId + '\',\'' + c.id + '\',this.checked)"' +
+                ' style="width:18px;height:18px;cursor:' + (u.role==='admin'?'default':'pointer') + ';accent-color:var(--teal)">' +
+            '</label>' +
+          '</td>' +
+          '<td style="padding:10px 12px;width:150px;' + B + '">' + note + '</td>' +
         '</tr>';
       }
       function sectionTable(title, color, items){
         if(!items.length) return '';
-        return '<div style="margin-top:14px;padding:6px 0 4px;font-size:11px;letter-spacing:2px;color:' + color + ';font-weight:700">' + title + '</div>' +
-          '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:6px">' +
-            '<thead><tr style="border-bottom:1px solid rgba(255,255,255,.08);text-align:left">' +
-              '<th style="padding:8px;color:var(--muted);font-size:10px;letter-spacing:1px;width:24%">COMPONENT</th>' +
-              '<th style="padding:8px;color:var(--muted);font-size:10px;letter-spacing:1px">DESCRIPTION</th>' +
-              '<th style="padding:8px;color:var(--muted);font-size:10px;letter-spacing:1px;text-align:center;width:80px">ACCESS</th>' +
-              '<th style="padding:8px;color:var(--muted);font-size:10px;letter-spacing:1px;width:160px">STATE</th>' +
+        return '<div style="margin-top:18px;padding:6px 0 5px;font-size:11px;letter-spacing:2px;color:' + color + ';font-weight:700">' + title + '</div>' +
+          '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px;border:2px solid rgba(255,255,255,.28)">' +
+            '<thead><tr style="background:rgba(255,255,255,.08)">' +
+              '<th style="padding:10px 12px;color:#ccd6f6;font-size:10px;letter-spacing:1.5px;text-align:left;' + B + '">COMPONENT &amp; DESCRIPTION</th>' +
+              '<th style="padding:10px 12px;color:#ccd6f6;font-size:10px;letter-spacing:1.5px;text-align:center;width:72px;' + B + '">ACCESS</th>' +
+              '<th style="padding:10px 12px;color:#ccd6f6;font-size:10px;letter-spacing:1.5px;width:150px;' + B + '">STATE</th>' +
             '</tr></thead>' +
-            '<tbody>' + items.map(rowHtml).join('') + '</tbody>' +
+            '<tbody>' + items.map(function(c,i){ return rowHtml(c,i); }).join('') + '</tbody>' +
           '</table>';
       }
       var pages   = perms.components.filter(function(c){ return c.category === 'page'   || !c.category; });

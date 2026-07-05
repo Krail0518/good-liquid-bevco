@@ -919,6 +919,20 @@ select option, .fsel option {
   #crm-body { flex: 1 !important; overflow-y: auto !important; }
 }
 
+/* ── Bottom tab nav: hidden by default; all layout set in the phone media query ── */
+#crm-bottom-nav { display: none; }
+.crm-bnav-item {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 2px;
+  background: none; border: none; cursor: pointer;
+  color: var(--muted); transition: color .15s;
+  font-family: var(--ff-body); padding: 6px 2px 4px;
+}
+.crm-bnav-item.act { color: var(--teal); }
+.crm-bnav-item:active { background: rgba(0,229,192,.08); }
+.crm-bnav-ico { font-size: 20px; line-height: 1; }
+.crm-bnav-lbl { font-size: 9px; font-weight: 600; letter-spacing: .3px; text-transform: uppercase; }
+
 /* ═══════════════════════════════════════════
    MOBILE — Safe responsive CSS
    Only affects screens under 768px
@@ -1104,6 +1118,60 @@ select option, .fsel option {
 
   /* AI Tools FAB stays visible above mobile system bars */
   #gl-ai-fab, #gl-chat-bubble { bottom: 80px !important; }
+
+  /* ── Hide sidebar shell on phone (bottom tab bar handles navigation) ── */
+  #crm-sidebar { display: none !important; }
+
+  /* ── Bottom tab bar ── */
+  #crm-bottom-nav {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: stretch !important;
+    position: fixed !important;
+    bottom: 0 !important; left: 0 !important; right: 0 !important;
+    z-index: 800 !important;
+    height: 60px !important;
+    background: #0d1e38 !important;
+    border-top: 1px solid rgba(255,255,255,.1) !important;
+    padding-bottom: env(safe-area-inset-bottom) !important;
+  }
+  /* Pad content area so last row isn't hidden behind the tab bar */
+  .crm-main { padding-bottom: 68px !important; }
+
+  /* ── Compact top bar: collapse to icons only ── */
+  #crm-top { height: 48px !important; padding: 0 10px !important; gap: 6px !important; }
+  /* Back button: icon only */
+  .crm-back { font-size: 0 !important; width: 34px !important; height: 34px !important;
+    display: flex !important; align-items: center !important; justify-content: center !important;
+    background: rgba(255,255,255,.06) !important; border: 1px solid rgba(255,255,255,.1) !important;
+    border-radius: 8px !important; }
+  .crm-back::before { content: '←'; font-size: 16px !important; color: var(--muted); }
+  /* Hide brand name text, keep logo */
+  .crm-brand-name, .crm-brand-sub { display: none !important; }
+  /* Hide search & help text labels — keep them as icon-only circles */
+  .gl-kbd-hint span:not(:first-child), .gl-help-btn span:not(:first-child) { display: none !important; }
+  .gl-kbd-hint kbd { display: none !important; }
+  .gl-kbd-hint, .gl-help-btn { padding: 6px !important; border-radius: 8px !important; }
+  /* Hide Password and Refresh buttons entirely on phone */
+  .crm-usr button[onclick*="openChangePwModal"],
+  #gl-refresh-btn { display: none !important; }
+  /* User info: avatar only, no name/role */
+  #crm-user-name, #crm-role-badge { display: none !important; }
+  /* Hamburger: hide on phone since sidebar replaced by bottom nav */
+  #mobile-crm-menu { display: none !important; }
+
+  /* ── Fix horizontal overflow on phone ── */
+  #crm-panel, .crm-main, .cpg { overflow-x: hidden !important; }
+  /* Compliance alert card items */
+  #dash-compliance-alert { word-break: break-word; }
+  #dash-compliance-alert > div { min-width: 0 !important; }
+
+  /* ── Tighter page padding on phone ── */
+  .cpg { padding: 14px 12px !important; }
+
+  /* ── Page headings: stack title + buttons vertically ── */
+  .cph { flex-direction: column !important; align-items: stretch !important; gap: 6px !important; }
+  .cph .cbtn, .cph button { width: 100% !important; justify-content: center !important; min-height: 44px !important; }
 }
 
 /* ═══════════════════════════════════════════
@@ -1112,8 +1180,26 @@ select option, .fsel option {
    spacing for finger use on iPad / Android tablet
 ═══════════════════════════════════════════ */
 @media (min-width: 769px) and (max-width: 1080px) {
-  /* Narrower sidebar so content has more room */
-  #crm-sidebar { width: 168px !important; min-width: 168px !important; }
+  /* Sidebar: wide enough for "Production Schedule" without wrapping */
+  #crm-sidebar { width: 210px !important; min-width: 210px !important; }
+  /* Prevent nav labels from wrapping — clip with ellipsis if still too long */
+  .cni { white-space: nowrap !important; overflow: hidden !important; }
+  .cni span:last-child { overflow: hidden !important; text-overflow: ellipsis !important; }
+
+  /* ── Compact top bar on tablet ── */
+  /* Back button: shorter text */
+  .crm-back { font-size: 11px !important; }
+  /* Hide brand name sub-label to save space */
+  .crm-brand-sub { display: none !important; }
+  /* Hide user name/role — show avatar only */
+  #crm-user-name, #crm-role-badge { display: none !important; }
+  /* Hide Password button — accessible from sidebar settings */
+  .crm-usr button[onclick*="openChangePwModal"] { display: none !important; }
+  /* Refresh button: icon only */
+  #gl-refresh-btn { font-size: 0 !important; padding: 0 !important;
+    width: 34px !important; height: 34px !important; display: flex !important;
+    align-items: center !important; justify-content: center !important; }
+  #gl-refresh-btn::before { content: '↻'; font-size: 16px !important; }
 
   /* Bigger tap targets on sidebar nav items */
   .cni { padding: 11px 13px !important; margin-bottom: 4px !important; font-size: 13px !important; }
@@ -2754,7 +2840,7 @@ select option, .fsel option {
           <div><div class="cpt">USERS &amp; PERMISSIONS</div><div class="cps" id="users-sub">Manage team access</div></div>
           <button class="cbtn pri" onclick="openInviteModal()">+ Invite user</button>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-bottom:18px">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin-bottom:18px">
           <div style="background:rgba(0,229,192,.06);border:1px solid rgba(0,229,192,.18);border-radius:11px;padding:14px">
             <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px"><span style="font-size:15px">👑</span><span style="font-family:var(--ff-disp);font-size:13px;letter-spacing:1px;color:var(--teal)">ADMIN</span></div>
             <div style="font-size:11px;color:var(--muted);line-height:1.65">Full access — users, invoices, commissions, referrals. Can add &amp; remove team members.</div>
@@ -2762,6 +2848,10 @@ select option, .fsel option {
           <div style="background:rgba(26,111,255,.06);border:1px solid rgba(26,111,255,.18);border-radius:11px;padding:14px">
             <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px"><span style="font-size:15px">💼</span><span style="font-family:var(--ff-disp);font-size:13px;letter-spacing:1px;color:#6b9fff">SALES</span></div>
             <div style="font-size:11px;color:var(--muted);line-height:1.65">Clients, pipeline, invoices, referrals &amp; activity. Cannot manage users or pay commissions.</div>
+          </div>
+          <div style="background:rgba(168,85,247,.06);border:1px solid rgba(168,85,247,.18);border-radius:11px;padding:14px">
+            <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px"><span style="font-size:15px">📦</span><span style="font-family:var(--ff-disp);font-size:13px;letter-spacing:1px;color:#c4a4f8">WAREHOUSE</span></div>
+            <div style="font-size:11px;color:var(--muted);line-height:1.65">Production runs, production calendar, inventory, CIP logs, defects, yield, samples &amp; tasks. No clients, invoices or referrals.</div>
           </div>
           <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:11px;padding:14px">
             <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px"><span style="font-size:15px">👁</span><span style="font-family:var(--ff-disp);font-size:13px;letter-spacing:1px;color:var(--muted)">VIEWER</span></div>
@@ -2780,6 +2870,7 @@ select option, .fsel option {
             <select class="fsel" id="role-select">
               <option value="admin">Admin — full access</option>
               <option value="sales">Sales — clients, invoices, referrals</option>
+              <option value="warehouse">Warehouse — production, inventory, CIP</option>
               <option value="viewer">Viewer — read only</option>
             </select>
           </div>
@@ -3014,6 +3105,30 @@ select option, .fsel option {
   </div><!-- /crm-body -->
 </div><!-- /crm-panel -->
 
+<!-- ═══ PHONE BOTTOM TAB BAR — outside crm-panel so position:fixed works cleanly ═══ -->
+<div id="crm-bottom-nav" role="navigation" aria-label="Quick navigation">
+  <button class="crm-bnav-item act" data-page="dash" onclick="cNav('dash');crmBnavSet(this)">
+    <span class="crm-bnav-ico">📊</span>
+    <span class="crm-bnav-lbl">Dashboard</span>
+  </button>
+  <button class="crm-bnav-item" data-page="clients" onclick="cNav('clients');crmBnavSet(this)">
+    <span class="crm-bnav-ico">👥</span>
+    <span class="crm-bnav-lbl">Clients</span>
+  </button>
+  <button class="crm-bnav-item" data-page="invoices" onclick="cNav('invoices');crmBnavSet(this)">
+    <span class="crm-bnav-ico">🧾</span>
+    <span class="crm-bnav-lbl">Invoices</span>
+  </button>
+  <button class="crm-bnav-item" data-page="pipeline" onclick="cNav('pipeline');crmBnavSet(this)">
+    <span class="crm-bnav-ico">📋</span>
+    <span class="crm-bnav-lbl">Pipeline</span>
+  </button>
+  <button class="crm-bnav-item" onclick="toggleCRMSidebar()">
+    <span class="crm-bnav-ico">☰</span>
+    <span class="crm-bnav-lbl">More</span>
+  </button>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 <script>
 /* ── Global HTML escaper — used everywhere DB fields are interpolated into innerHTML ── */
@@ -3032,6 +3147,7 @@ let currentUser=null;
 const PERMISSIONS=window.PERMISSIONS={
   admin:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','users'],
   sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity'],
+  warehouse:['dashboard','production-runs','production-cal','inventory','cip','defects','yield','samples','tasks','announcements'],
   viewer:['dashboard','clients','announcements']
 };
 function can(page){return currentUser&&PERMISSIONS[currentUser.role]?.includes(page)}
@@ -3380,6 +3496,10 @@ function cNav(page,el){
   document.querySelectorAll('.cni').forEach(n=>n.classList.remove('act'));
   if(el)el.classList.add('act');
   document.querySelectorAll('.cpg').forEach(p=>p.classList.remove('act'));
+  // Sync bottom nav tab highlight
+  document.querySelectorAll('.crm-bnav-item[data-page]').forEach(function(b){
+    b.classList.toggle('act', b.dataset.page === page);
+  });
   // Some sidebar entries (Reports / Time Tracker / AI Settings) open modals
   // instead of pages and don't have a #cpg-X container. Guard so a stray
   // programmatic cNav() with one of those IDs doesn't crash the app.
@@ -4351,6 +4471,7 @@ function updateCRMForUser(){
   const roleStyles = {
     admin:{bg:'rgba(0,229,192,.15)',color:'var(--teal)',text:'Admin'},
     sales:{bg:'rgba(26,111,255,.15)',color:'#6b9fff',text:'Sales'},
+    warehouse:{bg:'rgba(168,85,247,.15)',color:'#c4a4f8',text:'Warehouse'},
     viewer:{bg:'rgba(255,255,255,.08)',color:'var(--muted)',text:'Viewer'}
   };
   const rs = roleStyles[u.role]||roleStyles.viewer;
@@ -4386,6 +4507,7 @@ function renderUsers(){
     const roleStyles = {
       admin:{bg:'rgba(0,229,192,.12)',color:'var(--teal)',border:'rgba(0,229,192,.25)',label:'Admin'},
       sales:{bg:'rgba(26,111,255,.12)',color:'#6b9fff',border:'rgba(26,111,255,.25)',label:'Sales'},
+      warehouse:{bg:'rgba(168,85,247,.12)',color:'#c4a4f8',border:'rgba(168,85,247,.25)',label:'Warehouse'},
       viewer:{bg:'rgba(255,255,255,.06)',color:'var(--muted)',border:'rgba(255,255,255,.12)',label:'Viewer'}
     };
     const rs = roleStyles[u.role]||roleStyles.viewer;
@@ -4416,8 +4538,8 @@ let changeRoleUserId=null;
 function openChangeRole(uid){
   changeRoleUserId=uid;
   const u=users.find(x=>x.id===uid);if(!u)return;
-  const roleStyles={admin:{bg:'rgba(0,229,192,.12)',color:'var(--teal)',label:'Admin'},sales:{bg:'rgba(26,111,255,.12)',color:'#6b9fff',label:'Sales'},viewer:{bg:'rgba(255,255,255,.06)',color:'var(--muted)',label:'Viewer'}};
-  const rs=roleStyles[u.role];
+  const roleStyles={admin:{bg:'rgba(0,229,192,.12)',color:'var(--teal)',label:'Admin'},sales:{bg:'rgba(26,111,255,.12)',color:'#6b9fff',label:'Sales'},warehouse:{bg:'rgba(168,85,247,.12)',color:'#c4a4f8',label:'Warehouse'},viewer:{bg:'rgba(255,255,255,.06)',color:'var(--muted)',label:'Viewer'}};
+  const rs=roleStyles[u.role]||roleStyles.viewer;
   document.getElementById('role-modal-user').innerHTML=`
     <div style="width:36px;height:36px;border-radius:50%;background:${u.color};color:${u.tc};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${u.initials}</div>
     <div><div style="font-size:13px;font-weight:600;color:var(--white)">${u.name}</div>
@@ -9945,6 +10067,7 @@ function openInviteModal(){
         <select class="fsel" id="inv-role">
           <option value="sales">Sales</option>
           <option value="admin">Admin</option>
+          <option value="warehouse">Warehouse</option>
           <option value="viewer">Viewer</option>
         </select>
       </div>
@@ -10539,6 +10662,11 @@ function toggleCRMSidebar(){
   if(!nav) return;
   nav.classList.toggle('mobile-open');
   if(overlay) overlay.classList.toggle('show');
+}
+
+function crmBnavSet(el){
+  document.querySelectorAll('.crm-bnav-item').forEach(function(b){ b.classList.remove('act'); });
+  if(el) el.classList.add('act');
 }
 
 // Close CRM sidebar when a nav item is clicked on mobile
