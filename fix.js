@@ -24781,7 +24781,10 @@
       var u = staff.find(function(x){ return x.id === userId; });
       if(!u) return '<div style="color:var(--muted);padding:20px 0">User not found.</div>';
       var userOverrides = byUser[userId] || {};
-      var B = 'border:1px solid rgba(255,255,255,.1)';  // shared cell border
+      var B = 'border:1px solid rgba(255,255,255,.28)';
+      var HOVER_ON  = "this.style.background='rgba(0,229,192,.08)'";
+      var HOVER_OFF_EVEN = "this.style.background=''";
+      var HOVER_OFF_ODD  = "this.style.background='rgba(255,255,255,.05)'";
       function rowHtml(c, idx){
         var hasOverride = Object.prototype.hasOwnProperty.call(userOverrides, c.id);
         var effective = hasOverride ? userOverrides[c.id] : c.default_on;
@@ -24790,32 +24793,34 @@
           : (hasOverride
               ? '<span style="font-size:10px;color:#6b9fff;cursor:pointer" onclick="window.glClearPerm(\'' + userId + '\',\'' + c.id + '\')" title="Click to revert to default">overridden — revert</span>'
               : '<span style="font-size:10px;color:var(--muted)">default (' + (c.default_on ? 'on' : 'off') + ')</span>');
-        var rowBg = idx % 2 ? 'background:rgba(255,255,255,.025)' : '';
+        var isOdd = idx % 2;
+        var rowBg = isOdd ? 'background:rgba(255,255,255,.05)' : '';
+        var hoverOff = isOdd ? HOVER_OFF_ODD : HOVER_OFF_EVEN;
         var checked = effective ? ' checked' : '';
         var disabled = u.role === 'admin' ? ' disabled' : '';
-        return '<tr style="' + rowBg + '">' +
-          '<td style="padding:9px 12px;font-weight:600;' + B + '">' +
+        return '<tr style="' + rowBg + ';transition:background .1s" onmouseover="' + HOVER_ON + '" onmouseout="' + hoverOff + '">' +
+          '<td style="padding:10px 12px;font-weight:600;' + B + '">' +
             esc(c.label) +
-            (c.description ? '<div style="font-size:11px;color:var(--muted);font-weight:400;margin-top:2px;white-space:normal">' + esc(c.description) + '</div>' : '') +
+            (c.description ? '<div style="font-size:11px;color:var(--muted);font-weight:400;margin-top:3px;white-space:normal">' + esc(c.description) + '</div>' : '') +
           '</td>' +
-          '<td style="padding:9px 12px;text-align:center;width:72px;' + B + '">' +
+          '<td style="padding:10px 12px;text-align:center;width:72px;' + B + '">' +
             '<label style="cursor:' + (u.role==='admin'?'default':'pointer') + ';display:block">' +
               '<input type="checkbox"' + checked + disabled +
                 ' onchange="window.glTogglePerm(\'' + userId + '\',\'' + c.id + '\',this.checked)"' +
-                ' style="width:16px;height:16px;cursor:' + (u.role==='admin'?'default':'pointer') + ';accent-color:var(--teal)">' +
+                ' style="width:18px;height:18px;cursor:' + (u.role==='admin'?'default':'pointer') + ';accent-color:var(--teal)">' +
             '</label>' +
           '</td>' +
-          '<td style="padding:9px 12px;width:150px;' + B + '">' + note + '</td>' +
+          '<td style="padding:10px 12px;width:150px;' + B + '">' + note + '</td>' +
         '</tr>';
       }
       function sectionTable(title, color, items){
         if(!items.length) return '';
-        return '<div style="margin-top:16px;padding:6px 0 5px;font-size:11px;letter-spacing:2px;color:' + color + ';font-weight:700">' + title + '</div>' +
-          '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px;border:1px solid rgba(255,255,255,.1)">' +
-            '<thead><tr style="background:rgba(255,255,255,.04)">' +
-              '<th style="padding:9px 12px;color:var(--muted);font-size:10px;letter-spacing:1px;text-align:left;' + B + '">COMPONENT &amp; DESCRIPTION</th>' +
-              '<th style="padding:9px 12px;color:var(--muted);font-size:10px;letter-spacing:1px;text-align:center;width:72px;' + B + '">ACCESS</th>' +
-              '<th style="padding:9px 12px;color:var(--muted);font-size:10px;letter-spacing:1px;width:150px;' + B + '">STATE</th>' +
+        return '<div style="margin-top:18px;padding:6px 0 5px;font-size:11px;letter-spacing:2px;color:' + color + ';font-weight:700">' + title + '</div>' +
+          '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px;border:2px solid rgba(255,255,255,.28)">' +
+            '<thead><tr style="background:rgba(255,255,255,.08)">' +
+              '<th style="padding:10px 12px;color:#ccd6f6;font-size:10px;letter-spacing:1.5px;text-align:left;' + B + '">COMPONENT &amp; DESCRIPTION</th>' +
+              '<th style="padding:10px 12px;color:#ccd6f6;font-size:10px;letter-spacing:1.5px;text-align:center;width:72px;' + B + '">ACCESS</th>' +
+              '<th style="padding:10px 12px;color:#ccd6f6;font-size:10px;letter-spacing:1.5px;width:150px;' + B + '">STATE</th>' +
             '</tr></thead>' +
             '<tbody>' + items.map(function(c,i){ return rowHtml(c,i); }).join('') + '</tbody>' +
           '</table>';
