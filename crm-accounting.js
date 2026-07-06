@@ -77,7 +77,7 @@
     row.innerHTML = '<label style="display:block;font-size:12px;font-weight:600;color:#718096;margin-bottom:4px">PO Number (optional)</label>' +
       '<input id="gl-po-number" type="text" placeholder="Customer PO #" style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px">';
     var parent = firstInput.closest('div') || body;
-    body.insertBefore(row, parent.firstChild);
+    body.insertBefore(row, body.firstChild);
     var inv = window.currentInvId ? getInv(window.currentInvId) : null;
     if (inv && inv.po_number) document.getElementById('gl-po-number').value = inv.po_number;
   }
