@@ -234,4 +234,13 @@
   window.GL_HOOKS.registerLoginHook(function(){ setTimeout(boot, 600); });
 
   console.log('[GL] AI chat v2 — markdown rendering + CRM system prompt loaded');
+
+  /* ── CHAT BUBBLE — admin only ── */
+  setTimeout(function(){
+    var b=document.getElementById('gl-chat-bubble'),w=document.getElementById('gl-chat-window'),p=document.getElementById('crm-panel');
+    if(!b||!p)return;b.style.display='none';
+    new MutationObserver(function(){b.style.display='none';if(!p.classList.contains('show')&&w)w.classList.remove('show');}).observe(p,{attributes:true,attributeFilter:['class']});
+    window.glToggleCRMChat=function(){if(!w)return;w.style.top='54px';w.style.bottom='auto';w.style.right='12px';if(typeof toggleChat==='function')toggleChat();else w.classList.toggle('show');};
+  },200);
+
 }());

@@ -443,6 +443,42 @@
     }
   };
 
+  /* ── FIX DOM STRUCTURE ── */
+  function fixDOMStructure(){
+    if(fixDOMStructure._done)return;
+    var panel=document.getElementById('crm-panel'),top=document.getElementById('crm-top'),body=document.getElementById('crm-body'),notif=document.getElementById('notif-panel'),ov=document.getElementById('cnav-overlay');
+    if(!panel||!top||!body)return;
+    if(notif&&notif.parentElement===top)panel.appendChild(notif);
+    if(ov&&ov.parentElement===top)panel.appendChild(ov);
+    if(body.parentElement===top)panel.appendChild(body);
+    fixDOMStructure._done=true;
+  }
+  fixDOMStructure();
+  if(!fixDOMStructure._done) document.addEventListener('DOMContentLoaded',fixDOMStructure);
+  if(!fixDOMStructure._done) setTimeout(fixDOMStructure,100);
+
+  /* ── LOGIN USER ── */
+  window.loginUser=function(u){
+    window.currentUser=u;u.lastLogin='Just now';fixDOMStructure();
+    if(typeof closePw==='function')closePw();
+    var $=function(id){return document.getElementById(id);};
+    if($('crm-av-init'))$('crm-av-init').textContent=u.initials||u.name[0].toUpperCase();
+    if($('crm-user-name'))$('crm-user-name').textContent=u.name;
+    var rb=$('crm-role-badge');
+    if(rb){rb.textContent=u.role.charAt(0).toUpperCase()+u.role.slice(1);rb.style.cssText=u.role==='admin'?'background:rgba(245,200,66,.12);color:#d4a200;border:1px solid rgba(245,200,66,.25)':u.role==='sales'?'background:rgba(26,111,255,.12);color:#6b9fff;border:1px solid rgba(26,111,255,.25)':u.role==='warehouse'?'background:rgba(168,85,247,.12);color:#c4a4f8;border:1px solid rgba(168,85,247,.25)':'background:rgba(255,255,255,.06);color:#6b87ad';}
+    if(u.role==='admin'){var nu=$('nav-users'),nc=$('nav-customers');if(nu)nu.style.display='flex';if(nc)nc.style.display='flex';var tbu=$('top-btn-users'),tbb=$('top-btn-backup'),tbd=$('top-btn-digest');if(tbu)tbu.style.display='';if(tbb)tbb.style.display='';if(tbd)tbd.style.display='';}
+    var panel=$('crm-panel');if(panel)panel.classList.add('show');document.body.style.overflow='hidden';
+    if(!window.crmInited&&typeof initCRM==='function')initCRM();
+    if(typeof addAIToolbar==='function')addAIToolbar();
+    if(typeof addNotifBadge==='function')addNotifBadge();
+    if(typeof checkStaleDeals==='function')checkStaleDeals();
+    if(typeof loadNotifications==='function')loadNotifications();
+    setTimeout(function(){var n=document.querySelector('.cnav');if(n)n.scrollTop=0;},150);
+    if(window.GL_HOOKS && window.GL_HOOKS._loginHooks){
+      window.GL_HOOKS._loginHooks.forEach(function(fn){ try{ fn(u); }catch(e){ console.warn('[GL] login hook threw',e); } });
+    }
+  };
+
   /* Expose Supabase factory so external modules can call window.glGetSupa() if needed */
   window.glGetSupa = getSupa;
 

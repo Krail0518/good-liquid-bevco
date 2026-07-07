@@ -5,6 +5,29 @@
   /* glEnsureClients: inline guard (was a private fn in fix.js) */
   function glEnsureClients(){ window.clients = window.clients || []; }
 
+  /* ── CSS: ensure dynamic modals always appear above CRM panel ── */
+  (function(){
+    var s = document.createElement('style');
+    s.textContent =
+      '#gl-inv-builder{position:fixed!important;inset:0!important;z-index:650!important;background:rgba(6,13,26,.95)!important;backdrop-filter:blur(16px);display:none;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto}' +
+      '#gl-inv-builder.show{display:flex!important}' +
+      '#gl-fmt-picker,#gl-rd-picker{position:fixed!important;inset:0!important;z-index:700!important}' +
+      '.gl-picker-btn{width:100%;text-align:left;padding:14px 16px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:10px;color:var(--white);cursor:pointer;margin-bottom:8px;display:block;transition:border-color .2s}' +
+      '.gl-picker-btn:hover{border-color:var(--teal);background:rgba(0,229,192,.06)}';
+    document.head.appendChild(s);
+  })();
+
+  /* ── INTERCEPT ALL NEW INVOICE ENTRY POINTS ── */
+  window.openNewInvoice = function(){ window.openNewInvoiceBuilder(); };
+  document.addEventListener('click', function(e){
+    var el = e.target.closest('button,a,.cni');
+    if(!el) return;
+    if((el.textContent||'').trim().includes('New Invoice')){
+      e.preventDefault(); e.stopImmediatePropagation();
+      window.openNewInvoiceBuilder();
+    }
+  }, true);
+
   /* ── AI CHAT CONTEXT ── */
   window.sendChatMsg=async function(){
     var inp=document.getElementById('gl-chat-input'),msgs=document.getElementById('gl-chat-messages');if(!inp||!msgs)return;
