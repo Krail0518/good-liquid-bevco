@@ -12,7 +12,7 @@
   'use strict';
   var esc = window.glEsc;
 
-  var REPLY_TO = 'mike@goodliquid.com';
+  var REPLY_TO = 'reply@mail.goodliquidbevco.com';
 
   var INPUT_STYLE = 'width:100%;padding:9px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#fff;font-size:13px;font-family:var(--ff-body);box-sizing:border-box';
   var LABEL_STYLE = 'font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px';
@@ -46,8 +46,8 @@
     // expand _ as a single-char wildcard and return cross-client rows.
     var safe = clientEmail.replace(/%/g,'\\%').replace(/_/g,'\\_');
     var r = await sb.from('email_log')
-      .select('to_email, subject, body_preview, status, sent_at, created_at')
-      .ilike('to_email', '%' + safe + '%')
+      .select('to_email, from_email, subject, body_preview, status, direction, sent_at, created_at')
+      .or('to_email.ilike.%' + safe + '%,from_email.ilike.%' + safe + '%')
       .order('created_at', { ascending: false })
       .limit(30);
 
@@ -61,10 +61,19 @@
       return;
     }
     histEl.innerHTML = rows.map(function(row){
-      return '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:6px;padding:10px">' +
+      var isInbound = row.direction === 'inbound';
+      var bg     = isInbound ? 'rgba(26,111,255,.07)'  : 'rgba(255,255,255,.02)';
+      var border = isInbound ? 'rgba(26,111,255,.25)'  : 'rgba(255,255,255,.06)';
+      var label  = isInbound
+        ? '<span style="font-size:10px;letter-spacing:1.5px;color:#6b9fff">← FROM CLIENT</span>'
+        : '<span style="font-size:10px;letter-spacing:1.5px;color:var(--muted)">→ SENT</span>';
+      return '<div style="background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;padding:10px">' +
         '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px">' +
-          '<div style="font-size:12px;color:var(--white);font-weight:600;line-height:1.3">' + esc(row.subject) + '</div>' +
-          '<div style="font-size:10px;color:' + statusColor(row.status) + ';white-space:nowrap;flex-shrink:0">' + esc(row.status||'') + '</div>' +
+          '<div style="display:flex;align-items:center;gap:8px;min-width:0">' +
+            label +
+            '<div style="font-size:12px;color:var(--white);font-weight:600;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(row.subject) + '</div>' +
+          '</div>' +
+          '<div style="font-size:10px;color:' + statusColor(row.status) + ';white-space:nowrap;flex-shrink:0">' + esc(isInbound ? 'received' : (row.status||'')) + '</div>' +
         '</div>' +
         (row.body_preview ? '<div style="font-size:11px;color:#9aa7bd;line-height:1.4;margin-bottom:4px;white-space:pre-wrap">' + esc(row.body_preview) + '</div>' : '') +
         '<div style="font-size:10px;color:rgba(154,167,189,.5)">' + fmt(row.sent_at || row.created_at) + '</div>' +
@@ -96,7 +105,7 @@
         '<textarea id="gl-ce-body" rows="5" placeholder="Hi [name],&#10;&#10;" style="' + INPUT_STYLE + ';resize:vertical;margin-bottom:10px"></textarea>' +
         '<div style="display:flex;gap:10px;align-items:center">' +
           '<button id="gl-ce-send" class="cbtn pri" style="font-size:12px;padding:8px 18px">📤 Send</button>' +
-          '<span style="font-size:10px;color:rgba(154,167,189,.5)">Replies → ' + REPLY_TO + '</span>' +
+          '<span style="font-size:10px;color:rgba(154,167,189,.5)">Client replies appear above automatically</span>' +
           '<span id="gl-ce-status" style="font-size:11px;margin-left:auto"></span>' +
         '</div>' +
       '</div>';

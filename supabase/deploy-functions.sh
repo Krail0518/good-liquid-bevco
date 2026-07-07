@@ -119,6 +119,11 @@ FUNCS=(
   qbo-push-invoice
   mailgun-send
   mailgun-webhook
+  mailgun-inbound
+  booking-confirm
+  email-scheduler
+  ai-proxy
+  daily-digest
 )
 
 echo ""
@@ -140,7 +145,7 @@ for fn in "${FUNCS[@]}"; do
   # qbo-connect / qbo-push-invoice / qbo-disconnect need the user's JWT.
   NO_VERIFY_JWT=""
   case "$fn" in
-    qbo-callback|mailgun-webhook) NO_VERIFY_JWT="--no-verify-jwt" ;;
+    qbo-callback|mailgun-webhook|mailgun-inbound) NO_VERIFY_JWT="--no-verify-jwt" ;;
   esac
   if supabase functions deploy "$fn" $NO_VERIFY_JWT; then
     DEPLOYED+=("$fn")
