@@ -2675,7 +2675,8 @@
   // Silently skips if not configured — never blocks the compliance flow.
   async function sendComplianceAlertSms(text){
     try {
-      var phone = localStorage.getItem('gl_sms_alert_phone') || localStorage.getItem('gl_sms_to_phone');
+      var phone = localStorage.getItem('gl_sms_alert_phone') || localStorage.getItem('gl_sms_to_phone')
+               || (window.GL_APP_SETTINGS && window.GL_APP_SETTINGS.sms_alert_phone) || '';
       var fnUrl = localStorage.getItem('gl_sms_fn_url');
       if(!phone || !fnUrl) return;  // not configured yet
       var token = null;
@@ -2710,7 +2711,7 @@
   // SMS settings modal extension — adds an "Alert phone" field on top of existing
   // SMS settings. We don't override the existing openSmsSettings; we just save to the same key.
   window.glSetSmsAlertPhone = function(){
-    var cur = localStorage.getItem('gl_sms_alert_phone') || '';
+    var cur = localStorage.getItem('gl_sms_alert_phone') || (window.GL_APP_SETTINGS && window.GL_APP_SETTINGS.sms_alert_phone) || '';
     // Strip the +1 if present so the prompt shows the cleaner 10-digit format
     var curDisplay = cur.replace(/^\+1/, '').replace(/\D+/g, '');
     var raw = prompt('Phone number for compliance critical-failure SMS\n(10-digit US, e.g. 8135550100 — or full international like +447700900123).\nLeave blank to disable.', curDisplay);

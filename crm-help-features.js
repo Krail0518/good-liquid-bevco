@@ -215,7 +215,47 @@
       'Add ingredients: name, qty per gallon, unit (oz/g/ml), cost per unit.',
       'Total updates live as you type. Click <b>Copy summary</b> to paste into a quote.'
     ]) +
-    whereToFind('AI toolbar → Recipe cost calc (admin only)');
+    whereToFind('AI toolbar → Recipe cost calc (admin only)') +
+    subhead('📸', 'LOT SCANNER (QR / BARCODE TRACE)') +
+    intro('Scan a QR code or barcode on an ingredient lot tag directly from the phone camera. Looks up the lot in your compliance records and opens the trace page.') +
+    bullets([
+      'Uses the native BarcodeDetector API (Chrome on Android + desktop). Falls back to a text field on unsupported browsers.',
+      'Opens the Trace Lot record for the scanned lot number so you can see every run it was used in.'
+    ]) +
+    whereToFind('Compliance → Trace Lot page → "📸 Scan QR" button') +
+    subhead('🔬', 'OCR — RECEIVING CERTIFICATE OF ANALYSIS') +
+    intro('Photograph a paper Certificate of Analysis (COA) with your phone. Claude Vision reads it and auto-fills the COA fields (lot number, test date, analyte values) into the Trace Lot form — no manual typing.') +
+    steps([
+      'Compliance → Trace Lot → "📄 Read COA photo".',
+      'Take or upload a photo of the paper COA.',
+      'Claude Vision extracts the data. Review and confirm.',
+      'Save — fields are pre-filled in the COA record.'
+    ]) +
+    whereToFind('Compliance → Trace Lot → "📄 Read COA photo" button') +
+    subhead('🧠', 'AI ROOT-CAUSE SUGGESTER') +
+    intro('When you log a Defect or Non-Conformance Report (NCR), Claude reviews the defect description + recent CIP logs and suggests likely root causes with corrective action language you can paste directly into the FDA form.') +
+    bullets([
+      'Shows ranked root-cause hypotheses based on your defect category (micro, physical, chemical).',
+      'Includes suggested corrective action text for the NCR narrative.'
+    ]) +
+    whereToFind('Quality & Supply → Defect Tracker → open any defect → "🧠 AI root cause" button') +
+    subhead('📊', 'MONTHLY COMPLIANCE TREND REPORT') +
+    intro('One-page printable PDF of your compliance KPIs for the month: CIP cycles logged, defects opened vs. closed, COA receipt rate, hold tags issued, audit log activity. Share it at monthly reviews.') +
+    steps([
+      'Compliance sidebar → "📊 Monthly report" button (or via Admin Quick Actions → Monthly Report).',
+      'Pick the month (defaults to last complete month).',
+      'PDF opens in a new tab. Print or save.'
+    ]) +
+    whereToFind('Compliance sidebar → "📊 Monthly report" button') +
+    subhead('🔒', 'INSPECTOR ACCESS LINK GENERATOR') +
+    intro('Generate a time-limited, read-only access link for an FDA or third-party inspector so they can view your compliance records without a CRM login. The link expires at the time you set (1–72 hours).') +
+    bullets([
+      'Enter inspector name, agency, purpose, and expiry window. A unique token URL is created and shown for copying.',
+      'Inspector sees Trace Lot, CIP logs, Defects, and COAs — nothing else.',
+      'Revoke early from the same modal if the inspection ends ahead of schedule.',
+      '<b>Access URL pattern:</b> <code>goodliquidbevco.com?inspector=&lt;token&gt;</code>'
+    ]) +
+    whereToFind('Compliance sidebar → "🔒 Inspector link" button');
 
   /* SECTION 3 — MARKETING ENGINE */
   var MOCK_MARKETING = wf(620, 240,
@@ -431,7 +471,7 @@
     ]) +
     whereToFind('Sidebar → Operations → Production Runs → "Ship" column → card action button') +
     subhead('📈', 'WEIGHTED PIPELINE FORECAST') +
-    intro('Shows total deal value weighted by stage probability (Prospecting 20% / Proposal 50% / Negotiation 70% / Closing 80%). Updates when you move deals between stages.') +
+    intro('Shows total deal value weighted by stage probability (Prospecting 20% / Proposal 50% / Negotiation 75% / Closed Won 100%). Updates when you move deals between stages.') +
     bullets([
       'Sits on the Dashboard, right next to AR Aging (callout 2).',
       'Click through to the Pipeline page from the widget.'
@@ -490,12 +530,12 @@
     intro('Each client gets a private URL where they can see their invoices, pay (Stripe), accept quotes, and message you. No login = a magic-link in their email.') +
     bullets([
       '<b>What they see:</b> only invoices addressed to them, with Pay Now buttons (Stripe links you saved per-invoice), Accept Quote buttons (emails you on click), and a contact form.',
-      '<b>How they get in:</b> the Send Onboarding Email button on the Customer Logins page emails them a temp password.',
+      '<b>How they get in:</b> the Send Onboarding Email button on the Customer Logins page emails them a magic link to set their own password.',
       '<b>Route:</b> <code>#portal/&lt;client-uuid&gt;</code> — bookmarkable.'
     ]) +
     steps([
       'Sidebar → <b>Customer Logins (admin)</b>.',
-      'Find the client. Click <b>Send Onboarding Email</b>. They get the portal link + temp password.',
+      'Find the client. Click <b>Send Onboarding Email</b>. They get a magic link to set their own password.',
       'They log in, see their stuff, and can pay or message — no setup on their side.'
     ]) +
     whereToFind('Sidebar → Customer Logins → Onboarding column') +
@@ -539,7 +579,28 @@
       'Find the run. Click the <b>"Print sheet"</b> button on the card.',
       'PDF opens in a new tab. Print it for the floor. Operator signs at bottom.'
     ]) +
-    whereToFind('Sidebar → Operations → Production Runs → any card → "Print sheet" button');
+    whereToFind('Sidebar → Operations → Production Runs → any card → "Print sheet" button') +
+    subhead('📧', 'CLIENT EMAIL THREAD') +
+    intro('Compose and track emails to a client without leaving the CRM. The email panel lives at the bottom of the Edit Client modal — one thread per client, with scrollable history.') +
+    bullets([
+      '<b>Compose:</b> type subject + body → Send. Sent via Mailgun server-side. Replies from the client arrive at mike@goodliquid.com (reply-to header).',
+      '<b>History:</b> shows the last 30 emails sent to that client\'s address with status (sent / delivered / opened / clicked).',
+      'History is pulled live from the email_log table, so Email Activity and Client Email Thread always show the same data.'
+    ]) +
+    steps([
+      'Clients page → click any client row → "Edit" button (or edit icon).',
+      'Scroll to the bottom of the edit modal — the EMAIL THREAD section appears automatically.',
+      'Type subject + body → "📤 Send".'
+    ]) +
+    whereToFind('Clients → Edit Client modal → bottom section (EMAIL THREAD)') +
+    subhead('📅', 'BOOKING CANCELLATION') +
+    intro('Cancel a visitor\'s tour/tasting booking from inside the CRM. A Cancel button appears on each booking row in the Scheduling panel.') +
+    bullets([
+      'Cancelling updates the booking status to "cancelled" in Supabase.',
+      'The visitor\'s confirmation email is not automatically rescinded — email them separately if needed (the modal prompts you to do so).',
+      'Cancelled bookings drop off the upcoming list immediately.'
+    ]) +
+    whereToFind('AI toolbar → Scheduling → Upcoming bookings tab → Cancel button on any row');
 
   /* SECTION 7 — PUBLIC WEBSITE */
   var MOCK_PUBLIC = wf(620, 220,
@@ -604,6 +665,130 @@
     ]) +
     whereToFind('Public site → Capabilities, Facility, and Process sections');
 
+  /* SECTION 8 — ADMIN TOOLS */
+  var SEC_ADMIN =
+    subhead('💾', 'EXPORT EVERYTHING (FULL BACKUP)') +
+    intro('Download a ZIP of every CRM table as JSON — a complete point-in-time backup of all your Supabase data.') +
+    bullets([
+      'Exports 30 tables (clients, invoices, deals, compliance records, audit log, etc.). Each becomes its own .json file inside a date-stamped ZIP.',
+      'A _manifest.json lists row counts per table. A README.txt explains how to restore.',
+      'Admin-only. Button appears on the Users page toolbar.'
+    ]) +
+    whereToFind('Sidebar → Users (admin) → "💾 Backup all data" button in the page toolbar') +
+    subhead('📅', 'BILLING SCHEDULE QUEUE') +
+    intro('View and cancel pending scheduled email sends (follow-up emails queued by the AR Collection tool). A cron worker fires every 15 minutes to dispatch them.') +
+    bullets([
+      'Shows each scheduled send: recipient, subject, send-at time, and current status (pending / sent / failed / cancelled).',
+      'Click Cancel on any pending row to prevent it from sending. Safe to do right up until the cron fires.'
+    ]) +
+    whereToFind('Sidebar → Invoices → "📅 Queue" button in the toolbar') +
+    subhead('⏰', 'AR SNOOZE') +
+    intro('Skip an overdue invoice in the AR Collection panel for 5 days without cancelling the scheduled follow-up. Useful when a client says "check back Friday."') +
+    bullets([
+      '"⏰ Snooze 5d" button appears next to every action button in the AR Collection panel.',
+      'Snoozes are stored in localStorage per browser (not in the database). They reset if you clear browser data.'
+    ]) +
+    whereToFind('AI toolbar → AR Collection → "⏰ Snooze 5d" button on any invoice row') +
+    subhead('📋', 'QUOTE AUTO-EXPIRY') +
+    intro('Quotes more than 30 days old automatically flip to status=expired. No action needed — it runs on every CRM load and once per hour while you\'re logged in.') +
+    bullets([
+      'Affects invoices with status="quote" whose invoice_date is >30 days ago.',
+      'Expired quotes drop out of the active Invoices view.'
+    ]) +
+    whereToFind('Automatic — no UI required') +
+    subhead('📧', 'TEST MAILGUN SEND') +
+    intro('Send a test email to yourself (mike@goodliquid.com) to verify Mailgun is configured correctly. Useful after changing API keys or the Edge Function.') +
+    steps([
+      'AI toolbar → Quick Actions → "📧 Mailgun Settings".',
+      'In the settings modal, click "Test send".',
+      'A confirmation email lands at mike@goodliquid.com if Mailgun is wired up correctly.'
+    ]) +
+    whereToFind('AI toolbar → Quick Actions → Mailgun Settings → "Test send" button') +
+    subhead('📲', 'PWA INSTALLATION') +
+    intro('Install the Good Liquid CRM as a progressive web app (PWA) on your device — adds an icon to your home screen or taskbar. Works on Chrome (Android + desktop), Safari (iOS), and Edge.') +
+    bullets([
+      'A "📲 Install Good Liquid CRM" banner appears at the top of the page when the browser decides the app is installable (requires HTTPS, a web manifest, and a service worker — all already in place).',
+      'Click the banner to trigger the browser\'s native install prompt.',
+      'Once installed, the CRM opens in its own window without browser chrome.'
+    ]) +
+    whereToFind('Top-of-page banner (appears automatically when Chrome / Edge signals the app can be installed)') +
+    subhead('🔄', 'SOFT REFRESH / PAGE RESUME') +
+    intro('If you refresh or navigate away while inside the CRM, the app remembers which page you were on and returns you there after re-login. No need to navigate back manually.') +
+    bullets([
+      'Saved in localStorage as gl_active_page. Cleared on intentional logout.',
+      'Also fires 60ms after login on every session start — so deep-linking via ?page=invoices in the URL also restores correctly.'
+    ]) +
+    whereToFind('Automatic — no UI required') +
+    subhead('📈', 'GOOGLE ANALYTICS (GA4)') +
+    intro('Wire up a GA4 Measurement ID so page-view events from the CRM fire into your Google Analytics property. Useful if you want to see session activity in GA4 alongside your public site data.') +
+    steps([
+      'AI toolbar → Quick Actions → "📈 Google Analytics" (admin).',
+      'Paste your Measurement ID (format: G-XXXXXXXXXX).',
+      'Save. The gtag.js script loads on the next CRM page view.'
+    ]) +
+    whereToFind('AI toolbar → Quick Actions → Google Analytics (admin only)') +
+    subhead('🛡️', 'SENTRY ERROR MONITORING') +
+    intro('Forward unhandled JavaScript errors from the CRM to your Sentry project. Every crash that hits the built-in onerror boundary also writes to the Supabase error_log table — Sentry adds real-time alerts and stack traces.') +
+    steps([
+      'AI toolbar → Quick Actions → "🛡️ Sentry" (admin).',
+      'Paste your Sentry Data Source Name (DSN). Found in Sentry → Settings → Projects → [project] → Client Keys.',
+      'Save. Sentry initialises and begins capturing errors immediately.'
+    ]) +
+    whereToFind('AI toolbar → Quick Actions → Sentry (admin only)') +
+    subhead('🔒', 'TWO-FACTOR AUTHENTICATION (2FA)') +
+    intro('Add a Time-based One-Time Password (TOTP) second factor to your CRM login using any authenticator app (Google Authenticator, Authy, 1Password, etc.).') +
+    steps([
+      'AI toolbar → Quick Actions → "🔒 Two-Factor Auth".',
+      'Click "Set up 2FA". A QR code + base32 secret are shown.',
+      'Scan the QR code with your authenticator app.',
+      'Enter the 6-digit code to confirm enrollment.',
+      'From now on, every login prompts for your authenticator code after the password step.'
+    ]) +
+    bullets([
+      'To remove 2FA: open the same menu → "Remove 2FA" → enter a code to confirm.',
+      'Admin or personal — each user manages their own 2FA independently.'
+    ]) +
+    whereToFind('AI toolbar → Quick Actions → Two-Factor Auth');
+
+  /* SECTION 9 — INTEGRATIONS */
+  var SEC_INTEGRATIONS =
+    subhead('💼', 'QUICKBOOKS ONLINE') +
+    intro('Sync Good Liquid invoices to QuickBooks Online (QBO). Once connected, any invoice you push creates a matching QBO invoice in your books so AR lives in both systems.') +
+    bullets([
+      '<b>Connect:</b> OAuth flow — you log in to QuickBooks and grant access. Access + refresh tokens are stored in Supabase.',
+      '<b>Push one invoice:</b> Invoices page → open an invoice → "Push to QBO" button.',
+      '<b>Bulk push:</b> QuickBooks settings modal → "Push all unpushed" (all invoices not yet in QBO).',
+      'Pushed invoices are tagged with a qbo_id so they are not double-pushed.',
+      '<b>Disconnect:</b> settings modal → "Disconnect" (revokes the token, does not delete QBO data).'
+    ]) +
+    whereToFind('AI toolbar → Quick Actions → "💼 QuickBooks" (admin)') +
+    subhead('📝', 'E-SIGNATURES (DROPBOX SIGN)') +
+    intro('Send service agreements, NDAs, and custom contracts for e-signature via the Dropbox Sign (formerly HelloSign) API. Signed documents are stored as a URL reference on the client record.') +
+    bullets([
+      '<b>Templates:</b> upload your contract PDFs as Dropbox Sign templates, then paste the Template IDs into the E-Signatures settings.',
+      '<b>Send for signature:</b> open a Client record → "Send for signature" → pick a template → recipient email is pre-filled from the client.',
+      'Signed document URL is written back to the client record when Dropbox Sign fires the completion webhook.',
+      'Requires a Dropbox Sign API key (saved in E-Signatures settings).'
+    ]) +
+    whereToFind('AI toolbar → Quick Actions → "📝 E-Signatures" (admin)') +
+    subhead('📱', 'SMS NOTIFICATIONS (TWILIO)') +
+    intro('Send yourself an SMS when key events happen in the CRM: a new invoice is paid, a deal is won, a customer accepts a quote, a tour request comes in via the public site, or an invoice goes overdue.') +
+    bullets([
+      '<b>Configure:</b> paste your Twilio serverless function URL + your mobile number into SMS Alerts settings. Enable the events you want.',
+      '<b>Compliance alerts:</b> a separate "Alert phone" setting sends an SMS when a critical compliance failure is logged (held lot, failed CIP, etc.).',
+      'SMS toggles are per-event — enable only the events that matter to you.'
+    ]) +
+    whereToFind('AI toolbar → Quick Actions → "📱 SMS Alerts"') +
+    subhead('📧', 'MAILGUN — EMAIL SETUP') +
+    intro('All outbound CRM emails (AR dunning drafts, onboarding invites, client email threads, compliance digests) go through the mailgun-send Supabase Edge Function. The API key and from-address live server-side — no browser exposure.') +
+    bullets([
+      '<b>From address:</b> <code>noreply@mail.goodliquidbevco.com</code> (the verified Mailgun domain).',
+      '<b>Reply-To:</b> outbound emails set <code>Reply-To: mike@goodliquid.com</code> so client replies land in your inbox.',
+      '<b>Change API key:</b> Supabase Dashboard → Edge Functions → Secrets → MAILGUN_API_KEY.',
+      '<b>Test the connection:</b> AI toolbar → Quick Actions → Mailgun Settings → "Test send".'
+    ]) +
+    whereToFind('AI toolbar → Quick Actions → "📧 Mailgun Settings"');
+
   /* ──────────────────────────────────────────────────────────
      PATCH: wrap glOpenHelp to inject new sections + TOC entries
      ────────────────────────────────────────────────────────── */
@@ -611,13 +796,15 @@
     // Label spans three sidebar sections (Operations, Operations Pro, Compliance)
     // because production workflow crosses them — see the locator block at the top
     // of SEC_OPS_PRO for the exact mapping.
-    { id:'help-ops-pro',   icon:'🏭', label:'Production & Operations', html:SEC_OPS_PRO },
-    { id:'help-qs',        icon:'✅',       label:'Quality & Supply',   html:SEC_QS },
-    { id:'help-marketing', icon:'📣', label:'Marketing & Content',html:SEC_MARKETING },
-    { id:'help-growth',    icon:'🚀', label:'Growth Tools',       html:SEC_GROWTH },
-    { id:'help-revops',    icon:'💰', label:'Revenue Ops',        html:SEC_REVOPS },
-    { id:'help-cr',        icon:'🌐', label:'Customer-Facing Tools', html:SEC_CR },
-    { id:'help-public',    icon:'🏠', label:'Public Website',     html:SEC_PUBLIC }
+    { id:'help-ops-pro',      icon:'🏭', label:'Production & Operations', html:SEC_OPS_PRO },
+    { id:'help-qs',           icon:'✅', label:'Quality & Supply',        html:SEC_QS },
+    { id:'help-marketing',    icon:'📣', label:'Marketing & Content',     html:SEC_MARKETING },
+    { id:'help-growth',       icon:'🚀', label:'Growth Tools',            html:SEC_GROWTH },
+    { id:'help-revops',       icon:'💰', label:'Revenue Ops',             html:SEC_REVOPS },
+    { id:'help-cr',           icon:'🌐', label:'Customer-Facing Tools',   html:SEC_CR },
+    { id:'help-public',       icon:'🏠', label:'Public Website',          html:SEC_PUBLIC },
+    { id:'help-admin',        icon:'⚙️', label:'Admin Tools',             html:SEC_ADMIN },
+    { id:'help-integrations', icon:'🔗', label:'Integrations',            html:SEC_INTEGRATIONS }
   ];
 
   // Map new CRM pages to the right new help section so context-aware open works
@@ -680,7 +867,7 @@
       var iv = setInterval(function(){
         if(injectIntoModal() || ++tries > 8) clearInterval(iv);
       }, 60);
-      if(scrollTo && /^help-(ops-pro|qs|marketing|growth|revops|cr|public)$/.test(scrollTo)){
+      if(scrollTo && /^help-(ops-pro|qs|marketing|growth|revops|cr|public|admin|integrations)$/.test(scrollTo)){
         setTimeout(function(){
           var t = document.getElementById(scrollTo);
           if(t) t.scrollIntoView({ behavior:'smooth', block:'start' });
@@ -690,7 +877,7 @@
   }
   wrapHelp();
 
-  console.log('[GL] help — new-features addon loaded (7 sections)');
+  console.log('[GL] help — new-features addon loaded (9 sections)');
 }());
 
 

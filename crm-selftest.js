@@ -36,7 +36,7 @@
       ok('GL_HOOKS exists',                 h && typeof h === 'object');
       if(h){
         ok('_dashPatches: 8',              (h._dashPatches||[]).length === 8);
-        ok('_loginHooks: 9',              (h._loginHooks||[]).length === 9);
+        ok('_loginHooks: 10',             (h._loginHooks||[]).length === 10);
         ok('_navGuards: 3',               (h._navGuards||[]).length === 3);
         ok('_navHooks: 4',                (h._navHooks||[]).length === 4);
       }

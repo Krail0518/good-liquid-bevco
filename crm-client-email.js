@@ -23,10 +23,15 @@
     catch(e){ return s; }
   }
 
+  // Matches the STATUS_COLOR map in crm-email.js so the same row looks
+  // identical in the Email Activity modal and the per-client thread.
   function statusColor(s){
-    return s === 'opened'  ? '#1D9E75'
-         : s === 'clicked' ? '#00e5c0'
-         : s === 'failed'  ? '#ff8579'
+    return s === 'opened'    ? '#1a6fff'
+         : s === 'clicked'   ? '#7c3aed'
+         : s === 'delivered' ? '#5fcf9e'
+         : s === 'sent'      ? '#5fcf9e'
+         : s === 'failed'    ? '#ff8579'
+         : s === 'bounced'   ? '#ff8579'
          : '#6b87ad';
   }
 
@@ -37,12 +42,19 @@
       histEl.innerHTML = '<div style="font-size:11px;color:var(--muted);text-align:center;padding:8px">Not connected.</div>';
       return;
     }
+    // Escape LIKE wildcards so an address like mike_jones@co.com doesn't
+    // expand _ as a single-char wildcard and return cross-client rows.
+    var safe = clientEmail.replace(/%/g,'\\%').replace(/_/g,'\\_');
     var r = await sb.from('email_log')
       .select('to_email, subject, body_preview, status, sent_at, created_at')
-      .ilike('to_email', '%' + clientEmail + '%')
+      .ilike('to_email', '%' + safe + '%')
       .order('created_at', { ascending: false })
       .limit(30);
 
+    if(r.error){
+      histEl.innerHTML = '<div style="font-size:11px;color:#ff8579;text-align:center;padding:12px">Could not load history.</div>';
+      return;
+    }
     var rows = r.data || [];
     if(!rows.length){
       histEl.innerHTML = '<div style="font-size:11px;color:var(--muted);text-align:center;padding:12px">No emails sent yet.</div>';
@@ -134,13 +146,12 @@
     });
   }
 
-  // Wrap glOpenEditClient — same pattern as crm-portal.js wraps openCustomerPortal
-  (function wrap(){
+  // Wrap glOpenEditClient to inject the email panel after the modal opens.
+  // crm-edit-client.js always loads before this file, so glOpenEditClient
+  // is guaranteed to be defined synchronously at this point.
+  (function(){
     var orig = window.glOpenEditClient;
-    if(typeof orig !== 'function'){
-      setTimeout(wrap, 800);
-      return;
-    }
+    if(typeof orig !== 'function') return; // defensive only; should never be false
     window.glOpenEditClient = function(clientId){
       var r = orig.apply(this, arguments);
       setTimeout(function(){
@@ -151,7 +162,7 @@
       }, 80);
       return r;
     };
-  })();
+  }());
 
   console.log('[GL] client email thread loaded');
 }());

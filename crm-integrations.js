@@ -492,7 +492,7 @@
     { key:'gl_sms_overdue', label:'An invoice ages past due' }
   ];
 
-  function getPhone(){ return (localStorage.getItem('gl_sms_to') || '').trim(); }
+  function getPhone(){ return (localStorage.getItem('gl_sms_to') || (window.GL_APP_SETTINGS && window.GL_APP_SETTINGS.sms_to) || '').trim(); }
   function getEnabled(key){ return localStorage.getItem(key) === '1'; }
   function getFnUrl(){ return (localStorage.getItem('gl_sms_fn_url') || DEFAULT_FN_URL).trim(); }
 
@@ -1018,9 +1018,19 @@
     document.head.appendChild(s);
   }
 
-  // Auto-load on page load if a DSN is set
+  // Auto-load on page load if a DSN is still in localStorage (pre-migration browsers).
   var saved = localStorage.getItem('gl_sentry_dsn');
   if(saved) loadSentry(saved);
+
+  // Post-migration: gl_sentry_dsn was moved to GL_APP_SETTINGS. Load from there after
+  // glLoadAppSettings has had time to fetch from DB (registered as the first login hook).
+  window.GL_HOOKS.registerLoginHook(function(){
+    setTimeout(function(){
+      if(!window.Sentry && window.GL_APP_SETTINGS && window.GL_APP_SETTINGS.sentry_dsn){
+        loadSentry(window.GL_APP_SETTINGS.sentry_dsn);
+      }
+    }, 1500);
+  });
 
   window.openSentrySettings = function(){
     var prior = document.getElementById('gl-sentry-modal'); if(prior) prior.remove();
