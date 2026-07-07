@@ -182,6 +182,8 @@
      in-memory cache so the rest of the app doesn't need to change yet.
      Org admins can then update settings via the UI to persist to DB. */
   function _bridgeLegacySettings(){
+    /* One-time migration: run exactly once, then never again. */
+    if(localStorage.getItem('gl_settings_migrated') === '1') return;
     var map = {
       sms_to:          'gl_sms_to',
       sms_alert_phone: 'gl_sms_alert_phone',
@@ -203,8 +205,10 @@
         }
       }
     });
-    // Remove the dead dead-code key that the audit flagged
+    /* Delete all legacy keys — DB is now the sole source of truth. */
+    Object.keys(map).forEach(function(k){ localStorage.removeItem(map[k]); });
     localStorage.removeItem('gl_supabase_key');
+    localStorage.setItem('gl_settings_migrated', '1');
   }
 
   /* Hook into loginUser so settings load immediately on auth */

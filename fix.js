@@ -21,6 +21,22 @@
     // Keep console.warn and console.error so real problems still surface.
   }
 
+  /* ── Global error boundary ──
+     Catches uncaught errors and unhandled promise rejections.
+     Pipes to Sentry when the SDK has loaded (crm-integrations.js
+     initializes it after login); logs to console.error otherwise
+     (console.error is always enabled, even in production mode). */
+  window.onerror = function(msg, src, line, col, err){
+    if(window.Sentry && typeof window.Sentry.captureException === 'function' && err){
+      try{ window.Sentry.captureException(err); }catch(_){}
+    }
+  };
+  window.addEventListener('unhandledrejection', function(e){
+    if(window.Sentry && typeof window.Sentry.captureException === 'function'){
+      try{ window.Sentry.captureException(e.reason || new Error(String(e))); }catch(_){}
+    }
+  });
+
   /* ── Shared runtime arrays ── */
   window.users   = window.users   || [];
   window.clients = window.clients || [];

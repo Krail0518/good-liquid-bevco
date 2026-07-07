@@ -9,7 +9,7 @@
 (function(){
 
   function uuidish(s){return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s||'');}
-  function esc(s){return (s||'').replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  var esc = window.glEsc;
 
   window.renderUsersPanel=function(){
     var el=document.getElementById('users-list');

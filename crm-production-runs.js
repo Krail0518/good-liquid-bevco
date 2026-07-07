@@ -14,7 +14,7 @@
     Discovery:'#9aa7bd', Formulation:'#7fc6f5', Sample:'#c4a4f8',
     COA:'#f5c842', Production:'#5fcf9e', Ship:'#00e5c0'
   };
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
   window.glProductionRuns = window.glProductionRuns || [];
   window.glProductionLines = window.glProductionLines || [];
 

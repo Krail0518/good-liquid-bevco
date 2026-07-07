@@ -24,7 +24,7 @@
     final_pH_fermented: 4.6 // CCP-A
   };
 
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
   function fmtDate(d){
     if(!d) return '';
     var x = (d instanceof Date) ? d : new Date(d);
@@ -2178,7 +2178,7 @@
    (7) Editable CCP Critical Limits (settings modal, localStorage override)
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
   function fmtDate(d){ if(!d) return '—'; var x = new Date(d); if(isNaN(x.getTime())) return String(d); return x.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
   function fmtTime(d){ if(!d) return ''; var x = new Date(d); if(isNaN(x.getTime())) return ''; return x.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
   function fmtTs(d){ if(!d) return ''; return fmtDate(d) + ' ' + fmtTime(d); }
@@ -2664,7 +2664,7 @@
    (13) Glass breakage workflow (GMP-GHP-001) — 10-ft radius
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
   function fmtDate(d){ if(!d) return ''; var x = new Date(d); return isNaN(x.getTime()) ? String(d) : x.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
   function fmtTs(d){ if(!d) return ''; var x = new Date(d); return isNaN(x.getTime()) ? String(d) : x.toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}); }
   function nowISO(){ return new Date().toISOString(); }
@@ -3338,7 +3338,7 @@
    G. Annual FSP review auto-reminder (12 months out)
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
   function fmtDate(d){ if(!d) return ''; var x = new Date(d); return isNaN(x.getTime()) ? String(d) : x.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
   function fmtTs(d){ if(!d) return ''; var x = new Date(d); return isNaN(x.getTime()) ? String(d) : x.toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}); }
   function nowISO(){ return new Date().toISOString(); }
@@ -3938,7 +3938,7 @@
    multi-tenant schema, etc.) and are documented in the PR.
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
   function fmtDate(d){ if(!d) return ''; var x = new Date(d); return isNaN(x.getTime()) ? String(d) : x.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
   function fmtTs(d){ if(!d) return ''; var x = new Date(d); return isNaN(x.getTime()) ? String(d) : x.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); }
   function nowISO(){ return new Date().toISOString(); }

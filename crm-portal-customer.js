@@ -958,7 +958,7 @@
    ============================================================ */
 (function(){
   function getSB(){ return window.supa || null; }
-  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  var esc = window.glEsc;
   function fmtDate(s){ if(!s) return ''; try { return new Date(s).toLocaleDateString(); } catch(e){ return String(s).split('T')[0]; } }
   function fmtDateTime(s){ if(!s) return ''; try { return new Date(s).toLocaleString(); } catch(e){ return String(s); } }
 

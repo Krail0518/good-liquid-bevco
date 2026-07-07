@@ -240,7 +240,7 @@
    - Backed by Supabase `formulas` table; localStorage fallback.
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
   var ALLERGENS = [
     ['gluten','🌾 Gluten'],['dairy','🥛 Dairy'],['soy','🌱 Soy'],
     ['eggs','🥚 Eggs'],['tree_nuts','🌰 Tree nuts'],['peanuts','🥜 Peanuts'],
@@ -488,7 +488,7 @@
    - Backed by Supabase `yield_logs` table; localStorage fallback.
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
   window.glYieldLogs = window.glYieldLogs || [];
 
   async function loadFromSupabase(){
@@ -673,7 +673,7 @@
    All output is copyable; nothing auto-publishes.
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
 
   function modal(id, title, bodyHtml, opts){
     opts = opts || {};
@@ -899,7 +899,7 @@
    - Backed by Supabase `sample_shipments`; falls back to localStorage.
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
   var KINDS = ['Formula sample','COA / lab','Mock-up label','Finished product','Other'];
   window.glSamples = window.glSamples || [];
 
@@ -1205,7 +1205,7 @@
    CROSS-SELL SUGGESTER (rules-based)
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
 
   function lastInvoiceDate(clientId){
     var invs = (window.invoices||[]).filter(function(i){ return i.client === clientId; });
@@ -1332,7 +1332,7 @@
    - openWinLossAnalytics aggregates won/lost/win-rate/top reasons.
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
   var WON_REASONS  = ['Price competitive','Speed/timeline','Capability fit','Personal relationship','Referral','Other'];
   var LOST_REASONS = ['Price too high','Capability mismatch','Timeline too long','Picked competitor','Lost to in-house','Project paused','No response','Other'];
 

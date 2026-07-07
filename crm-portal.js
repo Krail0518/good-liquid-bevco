@@ -10,7 +10,7 @@
    Falls back gracefully if Mailgun isn't configured.
    ============================================================ */
 (function(){
-  function esc(s){ return String(s||'').replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  var esc = window.glEsc;
 
   function enhancePortal(customer){
     if(!customer) return;

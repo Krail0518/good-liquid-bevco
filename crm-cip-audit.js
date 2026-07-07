@@ -7,7 +7,7 @@
    run that ran before and after if known.
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
   window.glCipLogs = window.glCipLogs || [];
 
   var METHODS = ['CIP (closed-loop)','Manual scrub','CIP + manual'];
@@ -224,7 +224,7 @@
    the existing loginUser flow (matches users/customers admin-only items).
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
   window.glAuditRows = window.glAuditRows || [];
 
   async function refresh(){

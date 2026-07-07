@@ -74,7 +74,7 @@
    when, root cause, corrective action, status. Linked to a run.
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
   window.glDefects = window.glDefects || [];
   var CATEGORIES = ['Fill weight','Carbonation','pH / brix off-spec','Foam-over','Can dent','Label misregister','Coding error','Contamination suspected','Allergen exposure','Other'];
   var SEVERITY = [['low','Low — cosmetic'],['medium','Medium — recoverable'],['high','High — hold + investigate'],['critical','Critical — recall risk']];
@@ -233,7 +233,7 @@
    Suppliers + lead times + COI expiration + contact info.
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
   window.glVendors = window.glVendors || [];
   var CATEGORIES = ['Cans / Bottles','Caps / Closures','Labels / Packaging','Ingredients — Sweeteners','Ingredients — Flavors','Ingredients — Actives','CO2 / Gases','PakTech / Handles','Pallets / Shipping','Sanitation chemicals','Lab / COA testing','Freight / 3PL','Other'];
 

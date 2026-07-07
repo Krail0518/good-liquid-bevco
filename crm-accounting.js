@@ -26,7 +26,7 @@
   // ── Shared helpers ─────────────────────────────────────────
   function SB() { return window.supa; }
   function fmt$(n) { return '$' + (Number(n) || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
-  function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
   function todayStr() { return new Date().toISOString().slice(0,10); }
   function notify(msg, type) {
     var n = document.createElement('div');

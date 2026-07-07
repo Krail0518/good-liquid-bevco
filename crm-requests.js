@@ -9,7 +9,7 @@
    ============================================================ */
 (function(){
   function getSB(){ return window.supa || null; }
-  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  var esc = window.glEsc;
   function fmtTs(d){ if(!d) return ''; try { return new Date(d).toLocaleString(); } catch(e){ return String(d); } }
 
   var KIND_LABEL = { sample:'🧪 Sample request', reorder:'📦 Reorder', quote:'💬 Quote request', question:'❓ Question', other:'📩 Other' };

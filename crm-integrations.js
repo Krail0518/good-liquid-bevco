@@ -407,7 +407,7 @@
     if(ms < 86400000) return Math.floor(ms/3600000) + 'h ago';
     return d.toLocaleDateString();
   }
-  function esc(s){ return String(s||'').replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  var esc = window.glEsc;
 
   window.glOpenErrorLog = async function(){
     if(!window.currentUser || window.currentUser.role !== 'admin'){ alert('Admin only.'); return; }

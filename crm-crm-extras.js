@@ -280,11 +280,7 @@
    right next to "Invite User".
    ============================================================ */
 (function(){
-  function esc(s){
-    return String(s||'').replace(/[&<>"]/g, function(c){
-      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
-    });
-  }
+  var esc = window.glEsc;
   function fmtWhen(iso){
     if(!iso) return '';
     var d = new Date(iso);
@@ -1273,7 +1269,7 @@
    search-as-you-type, Enter to jump.
    ============================================================ */
 (function(){
-  function esc(s){ return String(s||'').replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  var esc = window.glEsc;
   function open(){
     if(document.getElementById('gl-search-modal')) return;  // already open
     if(!document.getElementById('crm-panel') || !document.getElementById('crm-panel').classList.contains('show')) return;  // CRM not open

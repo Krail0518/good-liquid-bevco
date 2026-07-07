@@ -19,7 +19,7 @@
   var BOOK_BASE   = window.location.origin + '/book';
 
   function getSB(){ return window.supa || null; }
-  function esc(v){ return v==null?'':String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
 
   var _page     = null;   // current user's booking_pages row
   var _bookings = [];     // upcoming confirmed bookings

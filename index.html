@@ -4857,11 +4857,11 @@ async function loadSupabaseData(){
   // (kind→type, name→name) in one place. The 6th slot here used to point at a
   // non-existent `activity` table and silently 404'd on every login.
   const [cR,iR,rrR,refR,dR] = await Promise.all([
-    supa.from('clients').select('*').order('created_at',{ascending:false}),
-    supa.from('invoices').select('*').order('created_at',{ascending:false}),
-    supa.from('referrers').select('*').order('name'),
-    supa.from('referrals').select('*').order('created_at',{ascending:false}),
-    supa.from('deals').select('*').order('created_at',{ascending:false})
+    supa.from('clients').select('*',{count:'exact'}).order('created_at',{ascending:false}).range(0,499),
+    supa.from('invoices').select('*',{count:'exact'}).order('created_at',{ascending:false}).range(0,499),
+    supa.from('referrers').select('*').order('name').range(0,499),
+    supa.from('referrals').select('*',{count:'exact'}).order('created_at',{ascending:false}).range(0,499),
+    supa.from('deals').select('*').order('created_at',{ascending:false}).range(0,499)
   ]);
   if(cR.data && cR.data.length>0){
     clients.length=0;
@@ -4956,6 +4956,21 @@ async function loadSupabaseData(){
       });
     });
   }
+  // Truncation guard: warn if any table was capped at the 500-row limit.
+  (function(){
+    var over = [];
+    if(cR.count  != null && cR.count  > 500) over.push(cR.count  + ' clients');
+    if(iR.count  != null && iR.count  > 500) over.push(iR.count  + ' invoices');
+    if(refR.count != null && refR.count > 500) over.push(refR.count + ' referrals');
+    if(over.length){
+      console.warn('[GL] Data load capped at 500 rows per table:', over.join(', '));
+      setTimeout(function(){
+        if(typeof addNotification === 'function')
+          addNotification('Data limit reached','Showing first 500 ' + over[0].split(' ')[1] + ' — use search to find more.','warning');
+      }, 1500);
+    }
+  })();
+
   // Activity feed: pull from `activity_feed` via loadActivities (kind→type mapping).
   try { await loadActivities(); } catch(e){ console.warn('[GL] loadActivities failed', e); }
   // Hydrate the follow-up log from Supabase (replaces the old gl_followup_log
@@ -10921,7 +10936,6 @@ window.addEventListener('appinstalled', () => {
 <script src="/crm-calendar.js"></script>
 <script src="/crm-aichat.js"></script>
 <script src="/crm-accounting.js"></script>
-<script src="/crm-invite.js"></script>
 <script src="/crm-invoice-delete.js"></script>
 <script src="/crm-portal.js"></script>
 <script src="/crm-production-runs.js"></script>

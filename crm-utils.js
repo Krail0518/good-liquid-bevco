@@ -89,6 +89,16 @@
      (post-migration). Falls back to the hardcoded owner email so
      the gate works against deployments that haven't applied the
      migration yet. */
+  /* ── HTML escaping — canonical implementation ──
+     All crm-*.js modules that previously defined a local esc() function
+     now alias this. Escapes the 5 characters that produce XSS when
+     user-controlled strings are interpolated into innerHTML templates.
+     Call as: var esc = window.glEsc; inside any IIFE that needs it. */
+  window.glEsc = window.glEsc || function(s){
+    if(s == null) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  };
+
   window.GL_SUPER_USER_EMAIL = 'mike@goodliquid.com';
   window.glIsSuperUser = window.glIsSuperUser || function(){
     var u = window.currentUser;

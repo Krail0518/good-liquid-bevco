@@ -178,10 +178,7 @@
   var INPUT_STYLE = 'width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)';
   var LABEL_STYLE = 'font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px';
 
-  function esc(v){
-    if(v == null) return '';
-    return String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
-  }
+  var esc = window.glEsc;
 
   window.glOpenEditClient = function(clientId){
     var c = (window.clients||[]).find(function(x){ return x.id === clientId; });

@@ -1075,7 +1075,7 @@
     n = Number(n || 0);
     return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
 
   function computeSurcharge(amount, pct){
     var base = Number(amount || 0);

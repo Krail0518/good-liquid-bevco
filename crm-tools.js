@@ -4,7 +4,7 @@
    so the section never renders empty.
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
 
   var DEMO = [
     { brand:'SunBurst Seltzers', tagline:'Pilot run → 12,000 cases / yr', headline:'From napkin to national', body:'Came in with a hop-water concept on a napkin. We helped formulate, ran the pilot in 4 weeks, and now produce monthly canning runs.', metric:'12,000 cases / yr', color:'#f5c842', tc:'#0a1628' },
@@ -56,7 +56,7 @@
    URL: <site>/#portal/<client-uuid>
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
   function fmt$(n){ return '$' + Math.round(n || 0).toLocaleString(); }
 
   function getClientIdFromHash(){
@@ -213,7 +213,7 @@
    specs) from glFormulas so the line crew has everything in one page.
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  var esc = window.glEsc;
 
   function buildHtml(run){
     var client = (window.clients||[]).find(function(c){ return c.id === run.client_id; }) || {};
@@ -336,7 +336,7 @@
    TRADE SHOW ROI TRACKER
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
   function fmt$(n){ return '$' + Math.round(n || 0).toLocaleString(); }
   window.glTradeShows = window.glTradeShows || [];
 
@@ -489,7 +489,7 @@
    PRODUCTIZED SERVICE PACKAGES
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
   function fmt$(n){ return '$' + Math.round(n || 0).toLocaleString(); }
 
   var SEED = [
@@ -615,7 +615,7 @@
    CHURN PREDICTOR (AI)
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
 
   function gatherSnapshot(){
     var clients = (window.clients||[]).filter(function(c){ return c.status === 'active'; });
@@ -783,7 +783,7 @@
    Backed by Supabase `content_calendar` table; localStorage fallback.
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
   var CHANNELS = [
     ['instagram','📷 Instagram','#E1306C'],
     ['linkedin','💼 LinkedIn','#0077B5'],
@@ -978,7 +978,7 @@
    Diffusion based on product type + scene + mood. Uses callAI.
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
 
   window.openAIImagePrompts = function(){
     var prior = document.getElementById('gl-img-modal'); if(prior) prior.remove();
@@ -1059,7 +1059,7 @@
    PUBLIC RESOURCE LIBRARY (blog grid)
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
 
   var DEMO = [
     { title:'How to launch a hard kombucha brand', tag:'Brand launch', excerpt:'From recipe to retail in 5 milestones. What to expect on cost, timeline, and the FDA paperwork no one warns you about.', read_time_min:6, url:'resources/launch-hard-kombucha-brand.html' },
@@ -1120,7 +1120,7 @@
    EMAIL DRIP CAMPAIGN GENERATOR (AI)
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
   var VERTICALS = ['RTD cocktail brand','Kombucha brand','Cold brew / coffee brand','Functional / wellness drink','Sparkling water brand','Energy drink brand','Hop water / NA beer brand','Sports / hydration brand','Generic — beverage startup'];
 
   window.openEmailDripGenerator = function(){
@@ -1213,7 +1213,7 @@
    LINKEDIN OUTREACH HELPER (AI)
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
 
   window.openLinkedInOutreach = function(){
     var prior = document.getElementById('gl-li-modal'); if(prior) prior.remove();
@@ -1306,7 +1306,7 @@
    Wraps renderDash like the compliance + AR aging widgets.
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
 
   function gather(){
     var items = window.inventory || [];
@@ -1358,7 +1358,7 @@
    RUN → INVOICE AUTO-DRAFT
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
   function ratePerCase(format){
     var map = { '12oz Standard can':9.12, '12oz Sleek can':9.12, '16oz Standard can':11.52, '750ml bottle':9.48 };
     return map[format] || 9.12;
@@ -1426,7 +1426,7 @@
    AR COLLECTION EMAILS (AI-drafted, Mailgun-sent)
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
   function fmt$(n){ return '$' + Math.round(n||0).toLocaleString(); }
 
   function gatherOverdue(){
@@ -1628,7 +1628,7 @@
    Public route #nps/<client-uuid>. Admin CRM modal for responses.
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
   async function mountSurvey(cid){
     var host = document.getElementById('gl-portal') || (function(){
       var d = document.createElement('div'); d.id = 'gl-portal';
@@ -1744,7 +1744,7 @@
    CLIENT ONBOARDING WIZARD (5-step modal)
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
 
   window.openOnboardingWizard = function(){
     var prior = document.getElementById('gl-wiz-modal'); if(prior) prior.remove();
@@ -1900,7 +1900,7 @@
    ANNIVERSARY / BIRTHDAY DASHBOARD TRACKER
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var esc = window.glEsc;
   function daysUntil(month, day){
     var today = new Date(); today.setHours(0,0,0,0);
     var y = today.getFullYear();
@@ -2063,7 +2063,7 @@
    PRODUCTION CAPACITY HEATMAP
    ============================================================ */
 (function(){
-  function esc(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  var esc = window.glEsc;
   var WEEKLY_CAPACITY_CASES = 8000;
   function weekKey(d){
     var dt = new Date(d);
