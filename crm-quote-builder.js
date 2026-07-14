@@ -123,11 +123,12 @@
   var OVER = 'position:fixed;inset:0;z-index:950;background:rgba(6,13,26,.9);backdrop-filter:blur(8px);display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto';
 
   /* ── Modal ──────────────────────────────────────────────────── */
-  window.glOpenQuoteBuilder = function(clientId, dealId){
+  window.glOpenQuoteBuilder = function(clientId, dealId, opts){
     if(!window.currentUser || window.currentUser.role !== 'admin'){
       alert('Admin only.');
       return;
     }
+    opts = opts || {};
     var prior = document.getElementById('gl-qb-modal');
     if(prior) prior.remove();
 
@@ -154,9 +155,12 @@
         '<datalist id="gl-qb-clients-list">' +
           (window.clients||[]).map(function(c){ return '<option value="'+esc(c.name||'')+'">'; }).join('') +
         '</datalist>' +
-        '<div style="display:grid;grid-template-columns:1fr 1fr 120px 80px;gap:12px;margin-bottom:18px">' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 120px 80px;gap:12px;margin-bottom:18px">' +
           '<div><div style="'+LBL+'">PREPARED FOR</div>' +
-            '<input id="gl-qb-client-name" list="gl-qb-clients-list" placeholder="Type company name…" style="'+INP+'" value="'+esc(client.name||'')+'">' +
+            '<input id="gl-qb-client-name" list="gl-qb-clients-list" placeholder="Type company name…" style="'+INP+'" value="'+esc(opts.prefillCompany||client.name||'')+'">' +
+          '</div>' +
+          '<div><div style="'+LBL+'">EMAIL</div>' +
+            '<input id="gl-qb-client-email" type="email" placeholder="contact@brand.com" style="'+INP+'" value="'+esc(opts.prefillEmail||client.email||'')+'">' +
           '</div>' +
           '<div><div style="'+LBL+'">QUOTE NUMBER</div>' +
             '<input id="gl-qb-num" style="'+INP+'" value="'+esc(qn)+'">' +
@@ -483,7 +487,8 @@
         addons:        addons,
         inclusions:    inclusionsForType(productType),
         notes:         notes,
-        clientName:    (ov.querySelector('#gl-qb-client-name')||{}).value || client.name || ''
+        clientName:    (ov.querySelector('#gl-qb-client-name')||{}).value || client.name || '',
+        clientEmail:   (ov.querySelector('#gl-qb-client-email')||{}).value || client.email || ''
       };
     }
 
@@ -673,6 +678,7 @@
         '<div>' +
           '<div class="client-label">PREPARED FOR</div>' +
           '<div class="client-name">'+esc(data.clientName||'')+'</div>' +
+          (data.clientEmail ? '<div style="font-size:12px;color:#4a5568;margin-top:3px">'+esc(data.clientEmail)+'</div>' : '') +
         '</div>' +
         '<div style="text-align:right">' +
           '<div class="client-label">PACKAGE FORMAT</div>' +
@@ -707,65 +713,32 @@
     w.onload = function(){ w.focus(); w.print(); };
   }
 
-  /* ── "New Quote" + "Close Job" buttons in deal detail panel ─── */
-  function injectDealButtons(){
-    var panel = document.getElementById('deal-detail-panel');
-    if(!panel) return;
-    if(panel.querySelector('.gl-deal-quote-btn')) return;
-
-    // Find the Save button row
-    var saveBtn = Array.from(panel.querySelectorAll('button')).find(function(b){
-      return /Save|Update/i.test(b.textContent);
+  /* ── Deal panel footer buttons (hardcoded in index.html, called from onclick) ── */
+  window.glQuoteFromDeal = function(){
+    if(!window.currentUser || window.currentUser.role !== 'admin'){ alert('Admin only.'); return; }
+    var co       = (document.getElementById('ddp-co')||{}).value || '';
+    var email    = (document.getElementById('ddp-email')||{}).value || '';
+    var client   = (window.clients||[]).find(function(c){ return c.name && c.name.toLowerCase() === co.toLowerCase(); });
+    var clientId = client ? client.id : null;
+    var nameEl   = document.getElementById('ddp-name');
+    var deals    = window.deals || {};
+    var found    = null;
+    Object.keys(deals).forEach(function(s){
+      (deals[s]||[]).forEach(function(d){ if(d && d.name === (nameEl ? nameEl.value : '')) found = d; });
     });
-    if(!saveBtn) return;
-    var row = saveBtn.parentElement;
-    if(!row) return;
+    window.glOpenQuoteBuilder(clientId, found ? found.id : null, { prefillCompany: co, prefillEmail: email });
+  };
 
-    // New Quote button
-    var qBtn = document.createElement('button');
-    qBtn.className = 'cbtn gl-deal-quote-btn';
-    qBtn.setAttribute('style','flex:1;font-size:13px;background:rgba(26,111,255,.08);border:1px solid rgba(26,111,255,.3);color:#6b9fff');
-    qBtn.innerHTML = '📋 New Quote';
-    qBtn.addEventListener('click', function(){
-      var nameEl  = document.getElementById('ddp-name');
-      var coEl    = document.getElementById('ddp-company');
-      var co = coEl ? coEl.value.trim() : (nameEl ? nameEl.value.trim() : '');
-      var client  = (window.clients||[]).find(function(c){ return c.name && c.name.toLowerCase() === co.toLowerCase(); });
-      var clientId = client ? client.id : null;
-      var stageEl  = document.getElementById('ddp-stage');
-      var stage    = stageEl ? stageEl.value : '';
-      var deals    = window.deals || {};
-      var found    = null;
-      Object.keys(deals).forEach(function(s){ (deals[s]||[]).forEach(function(d){ if(d&&d.name===(nameEl?nameEl.value:'')) found=d; }); });
-      window.glOpenQuoteBuilder(clientId, found ? found.id : null);
-    });
-
-    // Close Job button
-    var closeBtn = document.createElement('button');
-    closeBtn.className = 'cbtn gl-deal-close-btn';
-    closeBtn.setAttribute('style','flex:1;font-size:13px;background:rgba(29,158,117,.08);border:1px solid rgba(29,158,117,.3);color:#5fcf9e');
-    closeBtn.innerHTML = '✅ Close Job';
-    closeBtn.addEventListener('click', function(){
-      var stageEl = document.getElementById('ddp-stage');
-      if(!stageEl) return;
-      if(!confirm('Mark this deal as Closed Won?')) return;
-      stageEl.value = 'Closed Won';
-      stageEl.dispatchEvent(new Event('change'));
-      if(saveBtn) saveBtn.click();
-    });
-
-    row.appendChild(qBtn);
-    row.appendChild(closeBtn);
-  }
-
-  (function startDealObs(){
-    var panel = document.getElementById('deal-detail-panel');
-    if(panel){
-      new MutationObserver(function(){ setTimeout(injectDealButtons, 60); })
-        .observe(panel, {childList:true, subtree:true, attributes:true, attributeFilter:['style']});
-      injectDealButtons();
-    } else setTimeout(startDealObs, 600);
-  })();
+  window.glCloseJobFromDeal = function(){
+    if(!window.currentUser || window.currentUser.role !== 'admin'){ alert('Admin only.'); return; }
+    var stageEl = document.getElementById('ddp-stage');
+    if(!stageEl) return;
+    if(!confirm('Mark this deal as Closed Won?')) return;
+    stageEl.value = 'Closed Won';
+    stageEl.dispatchEvent(new Event('change'));
+    var saveBtn = document.querySelector('[onclick="saveDealDetail()"]');
+    if(saveBtn) saveBtn.click();
+  };
 
   /* ── Quotes history section in Edit Client modal ─────────────── */
   async function loadClientQuotes(clientId, container){
