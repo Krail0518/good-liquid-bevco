@@ -789,6 +789,97 @@
     ]) +
     whereToFind('AI toolbar → Quick Actions → "📧 Mailgun Settings"');
 
+  /* SECTION 10 — PRODUCTION QUOTE BUILDER */
+  var MOCK_QUOTES = wf(620, 270,
+    box(0,0,620,40,'#142238') +
+    txt(15,26,'QUOTE BUILDER  ·  admin only',12,'#fff') +
+    box(15,55,185,200,'#1c2e48') +
+    txt(25,78,'Product Type',9,'#9aa7bd') +
+    box(25,85,165,26,'#243a56') + txt(35,102,'Canning',11,'#fff') +
+    txt(25,126,'Format',9,'#9aa7bd') +
+    box(25,133,165,26,'#243a56') + txt(35,150,'12oz Sleek',11,'#fff') +
+    txt(25,177,'Add-ons',9,'#9aa7bd') +
+    txt(35,195,'✓ Nitrogen dosing',10,'#cfd9e6') +
+    txt(35,211,'✓ Case tray',10,'#cfd9e6') +
+    txt(35,227,'✓ Palletizing',10,'#cfd9e6') +
+    box(210,55,395,200,'#1c2e48') +
+    txt(220,78,'TIERS',9,'#9aa7bd') + txt(360,78,'Cases',9,'#9aa7bd') + txt(430,78,'$/can',9,'#9aa7bd') + txt(500,78,'Total',9,'#9aa7bd') + txt(570,78,'',9,'#9aa7bd') +
+    box(210,88,395,30,'#0f1d2e') +
+    txt(220,108,'Tier 1',11,'#cfd9e6') + txt(360,108,'500',11,'#fff') + txt(430,108,'$0.38',11,'#00e5c0') + txt(500,108,'$4,560',11,'#5fcf9e') + tag(595,103,1) +
+    box(210,120,395,26) +
+    txt(220,137,'Tier 2',11,'#cfd9e6') + txt(360,137,'1,000',11,'#fff') + txt(430,137,'$0.35',11,'#fff') + txt(500,137,'$8,400',11,'#5fcf9e') +
+    box(210,148,395,26) +
+    txt(220,165,'Tier 3',11,'#cfd9e6') + txt(360,165,'5,000',11,'#fff') + txt(430,165,'$0.28',11,'#fff') + txt(500,165,'$33,600',11,'#5fcf9e') +
+    txt(220,198,'+ Add tier',10,'#00e5c0') + txt(395,198,'⚡ Load Standard Tiers',10,'#f5c842') + tag(595,200,2) +
+    box(210,215,395,34,'#243a56') +
+    txt(220,230,'GLQ-202507-001',10,'#9aa7bd') + txt(350,233,'SAVE',11,'#00e5c0') + txt(425,233,'PDF',11,'#9aa7bd') + txt(480,233,'SAVE + PDF',11,'#f5c842') + tag(595,231,3)
+  );
+
+  var SEC_QUOTES = MOCK_QUOTES +
+    locator(
+      '<b>New Quote button</b> &rarr; Pipeline page &rarr; click any deal &rarr; deal detail panel &rarr; <b>📋 New Quote</b> button.<br>' +
+      '<b>Quote history</b> &rarr; Clients page &rarr; click a client &rarr; Edit &rarr; <b>📋 PRODUCTION QUOTES</b> section &rarr; <b>+ New Quote</b>.<br>' +
+      '<b>Close Job button</b> &rarr; same deal detail panel &rarr; <b>✅ Close Job</b> button (right of "📋 New Quote").'
+    ) +
+    intro('Admin-only tool for generating professional production quotes and saving them under the client record. The quote uses the current price deck with editable tier overrides, generates a PDF in the Good Liquid format, and saves to Supabase so the history is always visible.') +
+    subhead('📋', 'OPENING THE QUOTE BUILDER') +
+    bullets([
+      '<b>From a deal:</b> Pipeline → click the deal card → deal detail panel slides open → click <b>📋 New Quote</b>. The deal and client are pre-loaded.',
+      '<b>From a client record:</b> Clients → find the client → Edit → scroll to <b>📋 PRODUCTION QUOTES</b> → click <b>+ New Quote</b>.',
+      '<b>Admin gate:</b> both entry points are hidden for non-admin users.'
+    ]) +
+    subhead('⚙️', 'CONFIGURING THE QUOTE') +
+    steps([
+      'Choose <b>Product Type:</b> Canning, Bottling, or Keg. This sets the available formats and tier structure.',
+      '<b>Canning formats:</b> 12oz Standard, 12oz Sleek, 16oz Standard. <b>Bottling:</b> 750ml. <b>Keg:</b> Half-barrel (15.5 gal).',
+      'Set a <b>Quote Date</b> and <b>Valid for (days)</b> — defaults to today + 30 days.',
+      'Add <b>Notes</b> (optional) — these appear on the PDF footer.'
+    ]) +
+    subhead('📊', 'BUILDING TIERS') +
+    intro('Each quote has one or more quantity tiers so the client can see how price drops with volume.') +
+    bullets([
+      '<b>⚡ Load Standard Tiers</b> (callout 2) — one click to pre-fill the three standard canning tiers: 501, 1,000, 5,000 cases at deck rates. Start here for most quotes.',
+      '<b>+ Add Tier</b> — add a custom tier manually. Set the case quantity and $/can rate.',
+      '<b>Rate override (amber border):</b> if you type directly into a tier\'s rate cell, the border turns amber to flag that pricing is custom, not from the standard deck. Useful for giving a client a special deal — overrides are visible at a glance.',
+      '<b>Delete a tier</b> by clicking the × on the right of any tier row.',
+      '<b>Canning rates include:</b> filling, seaming, CO₂, quality checks. Add-ons are billed on top.'
+    ]) +
+    whereToFind('Quote builder → Tiers table (callout 1 = first tier, callout 2 = Load Standard Tiers button)') +
+    subhead('➕', 'ADD-ONS') +
+    intro('Checked add-ons are automatically included in the per-can price. Each add-on appears as a separate line item on the PDF.') +
+    bullets([
+      '<b>Nitrogen dosing:</b> $0.03/can — checked by default.',
+      '<b>Case tray (PakTech):</b> $0.03/can — checked by default.',
+      '<b>Palletizing:</b> $20/pallet — checked by default.',
+      '<b>Pasteurization:</b> $0.07/can — unchecked by default (add only if client requests it).',
+      'Uncheck any add-on to remove it from the quote. The tier totals update live.'
+    ]) +
+    subhead('💾', 'SAVING AND GENERATING THE PDF') +
+    steps([
+      '<b>Save</b> (callout 3) — saves the quote to Supabase under the client record. Assigns a quote number (e.g., GLQ-202507-001).',
+      '<b>Download PDF</b> — generates the PDF in a new window and opens the browser print dialog. Does not save to Supabase.',
+      '<b>Save + Download PDF</b> — saves first, then immediately opens the PDF. Use this for your normal workflow.',
+      'The generated PDF matches the Good Liquid quote format: company header, client info, tier pricing table, add-on line items, inclusions, and a signature block.'
+    ]) +
+    whereToFind('Quote builder modal → bottom action bar (Save / Download PDF / Save + Download PDF)') +
+    subhead('📁', 'VIEWING SAVED QUOTES') +
+    bullets([
+      'All saved quotes for a client appear in the <b>📋 PRODUCTION QUOTES</b> panel inside the Edit Client modal.',
+      'Each row shows: quote number, format, date, status badge (Draft / Sent / Accepted / Declined).',
+      '<b>Re-download PDF:</b> click the PDF button on any saved quote row to regenerate and open it. The stored HTML is used — no internet required.',
+      '<b>Status:</b> you can update the quote status (e.g., to Accepted) directly from the list row.'
+    ]) +
+    whereToFind('Clients → Edit Client → 📋 PRODUCTION QUOTES section') +
+    subhead('✅', 'CLOSING A JOB') +
+    intro('When a deal converts, mark it Closed Won in one click from the deal detail panel.') +
+    steps([
+      'Pipeline → click the deal card → deal detail panel opens.',
+      'Click <b>✅ Close Job</b> (next to the 📋 New Quote button).',
+      'Confirm the prompt: "Mark this deal as Closed Won?"',
+      'The deal stage moves to Closed Won and saves automatically. The win-loss tracker fires and records the outcome.'
+    ]) +
+    whereToFind('Pipeline → deal detail panel → ✅ Close Job button (admin only)');
+
   /* ──────────────────────────────────────────────────────────
      PATCH: wrap glOpenHelp to inject new sections + TOC entries
      ────────────────────────────────────────────────────────── */
@@ -804,7 +895,8 @@
     { id:'help-cr',           icon:'🌐', label:'Customer-Facing Tools',   html:SEC_CR },
     { id:'help-public',       icon:'🏠', label:'Public Website',          html:SEC_PUBLIC },
     { id:'help-admin',        icon:'⚙️', label:'Admin Tools',             html:SEC_ADMIN },
-    { id:'help-integrations', icon:'🔗', label:'Integrations',            html:SEC_INTEGRATIONS }
+    { id:'help-integrations', icon:'🔗', label:'Integrations',            html:SEC_INTEGRATIONS },
+    { id:'help-quotes',       icon:'📋', label:'Production Quotes',       html:SEC_QUOTES }
   ];
 
   // Map new CRM pages to the right new help section so context-aware open works
@@ -867,7 +959,7 @@
       var iv = setInterval(function(){
         if(injectIntoModal() || ++tries > 8) clearInterval(iv);
       }, 60);
-      if(scrollTo && /^help-(ops-pro|qs|marketing|growth|revops|cr|public|admin|integrations)$/.test(scrollTo)){
+      if(scrollTo && /^help-(ops-pro|qs|marketing|growth|revops|cr|public|admin|integrations|quotes)$/.test(scrollTo)){
         setTimeout(function(){
           var t = document.getElementById(scrollTo);
           if(t) t.scrollIntoView({ behavior:'smooth', block:'start' });
@@ -877,7 +969,7 @@
   }
   wrapHelp();
 
-  console.log('[GL] help — new-features addon loaded (9 sections)');
+  console.log('[GL] help — new-features addon loaded (10 sections)');
 }());
 
 
