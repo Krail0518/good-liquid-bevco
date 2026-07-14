@@ -2365,6 +2365,7 @@ select option, .fsel option {
           <div style="display:flex;gap:8px">
             <button class="cbtn" onclick="openBulkOutreach()" style="background:rgba(245,200,66,.08);border-color:rgba(245,200,66,.25);color:#d4a200">📤 Bulk Outreach</button>
             <button class="cbtn" onclick="openAddDealModal()" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)">+ Add Deal</button>
+            <button id="gl-pipeline-quote-btn" class="cbtn" onclick="if(typeof glOpenQuoteBuilder==='function')glOpenQuoteBuilder(null,null)" style="background:rgba(26,111,255,.1);border-color:rgba(26,111,255,.35);color:#5a9fff">📋 Quote Builder</button>
           </div>
         </div>
         <div class="pipeline-switch">
