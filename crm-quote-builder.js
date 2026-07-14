@@ -901,16 +901,46 @@
     Object.keys(deals).forEach(function(s){
       (deals[s]||[]).forEach(function(d){ if(d && d.name === (nameEl ? nameEl.value : '')) found = d; });
     });
-    var productType = 'canning';
-    if(/bottle/i.test(service)) productType = 'bottling';
-    else if(/keg/i.test(service)) productType = 'keg';
-    var suggestCases = null;
-    if(/150/.test(volume))      suggestCases = 339;
-    else if(/340/.test(volume)) suggestCases = 500;
-    else if(/501/.test(volume)) suggestCases = 501;
-    else if(/1.000|1,000/.test(volume)) suggestCases = 1000;
-    else if(/2.500|2,500/.test(volume)) suggestCases = 2500;
     var dealNotes = (document.getElementById('ddp-notes')||{}).value || '';
+
+    /* ── Product type: service field first, then fall back to notes ── */
+    var productType = 'canning';
+    if(/bottle/i.test(service))         productType = 'bottling';
+    else if(/keg/i.test(service))       productType = 'keg';
+    else if(/bottle/i.test(dealNotes))  productType = 'bottling';
+    else if(/keg/i.test(dealNotes))     productType = 'keg';
+
+    /* ── Volume: dropdown mappings → raw number in field → parse notes ── */
+    var suggestCases = null;
+    if(/150/.test(volume))             suggestCases = 339;
+    else if(/340/.test(volume))        suggestCases = 500;
+    else if(/501/.test(volume))        suggestCases = 501;
+    else if(/1[.,]000/.test(volume))   suggestCases = 1000;
+    else if(/2[.,]500/.test(volume))   suggestCases = 2500;
+
+    /* Raw number in volume field (e.g. free-text entry) */
+    if(!suggestCases){
+      var rawVol = volume.match(/(\d[\d,]*)/);
+      if(rawVol){ var rv = parseInt(rawVol[1].replace(/,/g,'')); if(rv > 0) suggestCases = rv; }
+    }
+
+    /* Parse notes for volume keywords when field didn't resolve */
+    if(!suggestCases && dealNotes){
+      var casesM = dealNotes.match(/(\d[\d,]*)\s*[-–]?\s*cases?/i);
+      if(casesM) suggestCases = parseInt(casesM[1].replace(/,/g,''));
+    }
+    if(!suggestCases && dealNotes){
+      var cansM = dealNotes.match(/(\d[\d,]*)\s*cans?/i);
+      if(cansM){ var nc = parseInt(cansM[1].replace(/,/g,'')); if(nc > 0) suggestCases = Math.round(nc / 24); }
+    }
+    if(!suggestCases && dealNotes){
+      var kegsM = dealNotes.match(/(\d[\d,]*)\s*kegs?/i);
+      if(kegsM){ suggestCases = parseInt(kegsM[1].replace(/,/g,'')); productType = 'keg'; }
+    }
+    if(!suggestCases && dealNotes){
+      var btlsM = dealNotes.match(/(\d[\d,]*)\s*bottles?/i);
+      if(btlsM){ var nb = parseInt(btlsM[1].replace(/,/g,'')); if(nb > 0){ suggestCases = Math.round(nb / 12); productType = 'bottling'; } }
+    }
     window.glOpenQuoteBuilder(clientId, found ? found.id : null, {
       prefillCompany: co,
       prefillEmail:   email,
