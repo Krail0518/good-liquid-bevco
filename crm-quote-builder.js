@@ -639,8 +639,9 @@
 
       /* Build email HTML from the editable textarea, then append auto-generated quote summary */
       var rawBody   = ((ov.querySelector('#gl-qb-email-body')||{}).value || '').trim();
-      var bodyHtml  = rawBody.split('\n').map(function(line){
-        return line.trim() ? '<p style="margin:0 0 10px 0">'+esc(line)+'</p>' : '<p style="margin:0 0 10px 0">&nbsp;</p>';
+      /* Split on blank lines for paragraphs; within each paragraph \n becomes <br> */
+      var bodyHtml  = rawBody.split(/\n\n+/).map(function(para){
+        return '<p style="margin:0 0 14px 0">' + para.split('\n').map(esc).join('<br>') + '</p>';
       }).join('');
 
       var emailHtml =
@@ -888,20 +889,27 @@
   /* ── Deal panel footer buttons (hardcoded in index.html, called from onclick) ── */
   window.glQuoteFromDeal = function(){
     if(!window.currentUser || window.currentUser.role !== 'admin'){ alert('Admin only.'); return; }
-    var co      = (document.getElementById('ddp-co')||{}).value || '';
-    var email   = (document.getElementById('ddp-email')||{}).value || '';
-    var contact = (document.getElementById('ddp-contact')||{}).value || '';
-    var service = (document.getElementById('ddp-service')||{}).value || '';
-    var volume  = (document.getElementById('ddp-volume')||{}).value || '';
-    var client  = (window.clients||[]).find(function(c){ return c.name && c.name.toLowerCase() === co.toLowerCase(); });
-    var clientId = client ? client.id : null;
+
+    /* Find the deal object first — form inputs are inside #ddp-edit-mode (hidden in view mode)
+       so they have no values when New Quote is clicked without entering edit mode. */
     var nameEl  = document.getElementById('ddp-name');
+    var dealName = nameEl ? nameEl.value : '';
     var deals   = window.deals || {};
     var found   = null;
     Object.keys(deals).forEach(function(s){
-      (deals[s]||[]).forEach(function(d){ if(d && d.name === (nameEl ? nameEl.value : '')) found = d; });
+      (deals[s]||[]).forEach(function(d){ if(d && d.name === dealName) found = d; });
     });
-    var dealNotes = (document.getElementById('ddp-notes')||{}).value || '';
+
+    /* Read from in-memory deal object; hidden form fields are unreliable in view mode */
+    var co      = (found && found.co)          || (document.getElementById('ddp-co')||{}).value      || '';
+    var email   = (found && found.email)       || (document.getElementById('ddp-email')||{}).value   || '';
+    var contact = (found && found.contactName) || (document.getElementById('ddp-contact')||{}).value || '';
+    var service = (found && found.service)     || (document.getElementById('ddp-service')||{}).value || '';
+    var volume  = (found && found.volume)      || (document.getElementById('ddp-volume')||{}).value  || '';
+    var dealNotes = (found && found.notes)     || (document.getElementById('ddp-notes')||{}).value   || '';
+
+    var client  = (window.clients||[]).find(function(c){ return c.name && c.name.toLowerCase() === co.toLowerCase(); });
+    var clientId = client ? client.id : null;
 
     /* ── Product type: service field first, then fall back to notes ── */
     var productType = 'canning';
