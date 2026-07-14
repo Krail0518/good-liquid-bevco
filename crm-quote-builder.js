@@ -199,8 +199,24 @@
         '<div id="gl-qb-addons" style="margin-bottom:18px"></div>' +
 
         /* ── Notes ── */
-        '<div style="'+LBL+'">NOTES / TERMS (optional override)</div>' +
-        '<textarea id="gl-qb-notes" rows="3" placeholder="Leave blank to use standard terms…" style="'+INP+';resize:vertical;margin-bottom:20px"></textarea>' +
+        /* ── Client request from website ── */
+        (opts.dealNotes ? (
+          '<div style="margin-bottom:18px">' +
+            '<div style="'+LBL+'">CLIENT REQUEST (from website submission)</div>' +
+            '<div style="padding:12px 14px;background:rgba(245,200,66,.05);border:1px solid rgba(245,200,66,.2);border-left:3px solid #f5c842;border-radius:0 8px 8px 0;font-size:12.5px;color:#cfd9e6;line-height:1.7;white-space:pre-wrap;max-height:120px;overflow-y:auto">'+esc(opts.dealNotes)+'</div>' +
+          '</div>'
+        ) : '') +
+
+        /* ── Email body preview / editor ── */
+        '<div style="margin-bottom:18px">' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">' +
+            '<div style="'+LBL+'">EMAIL TO CLIENT (editable before sending)</div>' +
+          '</div>' +
+          '<textarea id="gl-qb-email-body" rows="9" style="'+INP+';resize:vertical;font-size:12.5px;line-height:1.7"></textarea>' +
+        '</div>' +
+
+        '<div style="'+LBL+'">INTERNAL NOTES / TERMS OVERRIDE (optional)</div>' +
+        '<textarea id="gl-qb-notes" rows="2" placeholder="Leave blank to use standard terms…" style="'+INP+';resize:vertical;margin-bottom:20px"></textarea>' +
 
         /* ── Footer buttons ── */
         '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
@@ -213,6 +229,26 @@
       '</div>';
 
     host.appendChild(ov);
+
+    /* ── Pre-fill email body textarea ── */
+    var emailBodyEl = ov.querySelector('#gl-qb-email-body');
+    if(emailBodyEl){
+      var greetName     = opts.contactName || opts.prefillCompany || 'there';
+      var notesSentence = opts.dealNotes
+        ? 'We\'ve reviewed your request and are excited to partner with you on this. '
+        : '';
+      emailBodyEl.value =
+        'Hi ' + greetName + ',\n\n' +
+        'Thank you for your interest in working with Good Liquid Beverage Co. ' +
+        notesSentence +
+        'Please find your production quote attached. A pricing summary is included at the bottom of this email for quick reference.\n\n' +
+        'If you\'d like any adjustments — different volumes, formats, or add-ons — just reply and we\'ll get you an updated version quickly. We\'d love to connect and walk you through the details.\n\n' +
+        'Looking forward to working together!\n\n' +
+        'Best,\n' +
+        'Mike Krail\n' +
+        'Good Liquid Beverage Co.\n' +
+        'mike@goodliquidbevco.com';
+    }
 
     /* ── Local state ── */
     var state = { productType:'canning', format:'12oz Sleek', tiers:[], savedId:null };
@@ -585,17 +621,19 @@
         }
       }).join('');
 
+      /* Build email HTML from the editable textarea, then append auto-generated quote summary */
+      var rawBody   = ((ov.querySelector('#gl-qb-email-body')||{}).value || '').trim();
+      var bodyHtml  = rawBody.split('\n').map(function(line){
+        return line.trim() ? '<p style="margin:0 0 10px 0">'+esc(line)+'</p>' : '<p style="margin:0 0 10px 0">&nbsp;</p>';
+      }).join('');
+
       var emailHtml =
         '<div style="font-family:Arial,sans-serif;font-size:15px;color:#222;max-width:640px;line-height:1.7">' +
-        '<p>Hi '+esc(contact)+',</p>' +
-        '<p>Thank you for your interest in working with <strong>Good Liquid Beverage Co.</strong> We\'re excited about the opportunity to partner with <strong>'+esc(data.clientName)+'</strong> and bring your vision to life.</p>' +
-        '<p>Please find your production quote attached (<strong>'+esc(data.quoteNumber)+'</strong>). Here\'s a quick summary of what\'s included:</p>' +
-        '<ul style="margin:12px 0;padding-left:22px">'+tierLines+'</ul>' +
-        '<p><strong>Format:</strong> '+esc(data.packageFormat)+'<br><strong>Valid through:</strong> '+validThru+'</p>' +
-        '<p>Open the attached file in your browser to view the full quote with detailed line-item pricing. If you\'d like to make any adjustments — different volumes, formats, or add-ons — just reply to this email and we\'ll get you an updated quote quickly.</p>' +
-        '<p>We\'d love to connect and walk through the details. Feel free to reply here or grab a time that works for you.</p>' +
-        '<p>Looking forward to working together!</p>' +
-        '<p>Best,<br><strong>Mike Krail</strong><br>Good Liquid Beverage Co.<br>mike@goodliquidbevco.com</p>' +
+        bodyHtml +
+        '<hr style="border:none;border-top:1px solid #ddd;margin:24px 0">' +
+        '<p style="margin:0 0 6px 0;font-size:13px;color:#555"><strong>Quote Reference: '+esc(data.quoteNumber)+'</strong></p>' +
+        '<ul style="margin:6px 0 10px 0;padding-left:22px;font-size:13px;color:#555">'+tierLines+'</ul>' +
+        '<p style="margin:0;font-size:13px;color:#555"><strong>Package:</strong> '+esc(data.packageFormat)+'<br><strong>Valid through:</strong> '+validThru+'</p>' +
         '</div>';
 
       var sb   = window.supa;
@@ -856,12 +894,14 @@
     else if(/501/.test(volume)) suggestCases = 501;
     else if(/1.000|1,000/.test(volume)) suggestCases = 1000;
     else if(/2.500|2,500/.test(volume)) suggestCases = 2500;
+    var dealNotes = (document.getElementById('ddp-notes')||{}).value || '';
     window.glOpenQuoteBuilder(clientId, found ? found.id : null, {
       prefillCompany: co,
       prefillEmail:   email,
       contactName:    contact,
       productType:    productType,
-      suggestCases:   suggestCases
+      suggestCases:   suggestCases,
+      dealNotes:      dealNotes
     });
   };
 
