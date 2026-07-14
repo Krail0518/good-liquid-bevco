@@ -7000,6 +7000,7 @@ function openClientDetail(cid) {
         <button onclick="(function(){var ov=document.getElementById('client-detail-overlay');if(ov)ov.remove();if(window.glOpenEditClient)window.glOpenEditClient('${c.id}');})()" style="flex:1;min-width:140px;padding:11px;background:rgba(245,200,66,.12);border:1px solid rgba(245,200,66,.35);border-radius:8px;color:#f5c842;cursor:pointer;font-weight:700;font-size:13px">✏️ Edit Client</button>
         <button onclick="createForClient('${c.id}');document.getElementById('client-detail-overlay').remove()" style="flex:1;min-width:140px;padding:11px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:800;cursor:pointer;font-size:13px">+ New Invoice</button>
         <button onclick="aiSummarizeClient('${c.name}','${c.billed}','${c.service}','${c.status}','${c.notes||''}')" style="flex:1;min-width:140px;padding:11px;background:rgba(0,229,192,.1);border:1px solid rgba(0,229,192,.3);border-radius:8px;color:var(--teal);cursor:pointer;font-weight:700;font-size:13px">🤖 AI Summary</button>
+        <button onclick="window.glQuoteFromClient&&window.glQuoteFromClient('${c.id}')" style="flex:1;min-width:140px;padding:11px;background:rgba(26,111,255,.1);border:1px solid rgba(26,111,255,.35);border-radius:8px;color:#6b9fff;cursor:pointer;font-weight:700;font-size:13px">📋 Quote Builder</button>
         <button onclick="document.getElementById('client-detail-overlay').remove()" style="padding:11px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer;font-size:13px">Close</button>
       </div>
     </div>`;
@@ -10008,6 +10009,7 @@ function viewClientEnhanced(clientId) {
         <button onclick="openAICommModal();document.getElementById('ai-comm-client').value='${clientId}';document.getElementById('client-detail-overlay').remove()" class="cbtn">✉️ Draft Email</button>
         <button onclick="openTimeTracker();document.getElementById('tt-client').value='${clientId}';document.getElementById('client-detail-overlay').remove()" class="cbtn">⏱️ Log Time</button>
         <button onclick="openTaskModal();document.getElementById('task-client-link').value='${clientId}';document.getElementById('client-detail-overlay').remove()" class="cbtn">✅ Add Task</button>
+        <button onclick="window.glQuoteFromClient&&window.glQuoteFromClient('${clientId}')" class="cbtn" style="background:rgba(26,111,255,.1);border-color:rgba(26,111,255,.35);color:#6b9fff">📋 Quote Builder</button>
       </div>
     </div>`;
   ov.addEventListener('click', e => { if(e.target === ov) ov.remove(); });

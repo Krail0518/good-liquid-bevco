@@ -997,6 +997,21 @@
     });
   };
 
+  /* ── Client Quote Builder — called from Clients section ─────── */
+  window.glQuoteFromClient = function(clientId){
+    if(!window.currentUser || window.currentUser.role !== 'admin'){ alert('Admin only.'); return; }
+    var c = (window.clients||[]).find(function(x){ return x.id === clientId; });
+    if(!c){ alert('Client not found.'); return; }
+    var ov = document.getElementById('client-detail-overlay');
+    if(ov) ov.remove();
+    /* Pass only contact info — no productType/dealNotes so tiers stay blank for manual selection */
+    window.glOpenQuoteBuilder(clientId, null, {
+      prefillCompany: c.name  || '',
+      prefillEmail:   c.email || '',
+      contactName:    c.contact || ''
+    });
+  };
+
   window.glCloseJobFromDeal = function(){
     if(!window.currentUser || window.currentUser.role !== 'admin'){ alert('Admin only.'); return; }
     var stageEl = document.getElementById('ddp-stage');

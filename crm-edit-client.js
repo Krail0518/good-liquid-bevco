@@ -449,6 +449,7 @@
           '<div id="gl-ec-err" style="display:none;color:#e74c3c;font-size:12px"></div>' +
           '<div style="display:flex;gap:8px;margin-top:6px">' +
             '<button id="gl-ec-save" class="cbtn pri" style="flex:1;padding:13px;font-weight:800">💾 Save changes</button>' +
+            '<button id="gl-ec-quote" class="cbtn" style="padding:13px 16px;background:rgba(26,111,255,.1);border-color:rgba(26,111,255,.35);color:#6b9fff">📋 Quote</button>' +
             '<button id="gl-ec-cancel" class="cbtn" style="padding:13px 20px">Cancel</button>' +
           '</div>' +
         '</div>' +
@@ -457,6 +458,10 @@
     ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
     ov.querySelector('#gl-ec-close').addEventListener('click', function(){ ov.remove(); });
     ov.querySelector('#gl-ec-cancel').addEventListener('click', function(){ ov.remove(); });
+    ov.querySelector('#gl-ec-quote').addEventListener('click', function(){
+      ov.remove();
+      if(window.glQuoteFromClient) window.glQuoteFromClient(clientId);
+    });
 
     // ── Pricing overrides ──────────────────────────────────────
     var RATE_SERVICES = [
