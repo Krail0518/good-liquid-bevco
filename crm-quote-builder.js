@@ -204,9 +204,10 @@
 
         /* ── Footer buttons ── */
         '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
-          '<button id="gl-qb-save" class="cbtn pri" style="flex:1;min-width:140px">💾 Save Quote</button>' +
-          '<button id="gl-qb-pdf" class="cbtn" style="flex:1;min-width:140px;background:rgba(26,111,255,.1);border-color:rgba(26,111,255,.4);color:#6b9fff">📄 Download PDF</button>' +
-          '<button id="gl-qb-save-pdf" class="cbtn" style="flex:2;min-width:180px;background:rgba(29,158,117,.1);border-color:rgba(29,158,117,.4);color:#5fcf9e">💾 Save + Download PDF</button>' +
+          '<button id="gl-qb-save" class="cbtn pri" style="flex:1;min-width:120px">💾 Save</button>' +
+          '<button id="gl-qb-pdf" class="cbtn" style="flex:1;min-width:120px;background:rgba(26,111,255,.1);border-color:rgba(26,111,255,.4);color:#6b9fff">📄 PDF</button>' +
+          '<button id="gl-qb-save-pdf" class="cbtn" style="flex:1;min-width:140px;background:rgba(29,158,117,.1);border-color:rgba(29,158,117,.4);color:#5fcf9e">💾 Save + PDF</button>' +
+          '<button id="gl-qb-send-email" class="cbtn" style="flex:2;min-width:180px;background:rgba(245,200,66,.1);border-color:rgba(245,200,66,.4);color:#f5c842">📧 Save + Email Quote</button>' +
         '</div>' +
         '<div id="gl-qb-status" style="font-size:11px;color:var(--muted);margin-top:10px;min-height:16px"></div>' +
       '</div>';
@@ -235,6 +236,22 @@
     typeEl.addEventListener('change', function(){ rebuildFormats(); state.tiers=[]; renderTiers(); });
     fmtEl.addEventListener('change', function(){ state.format = fmtEl.value; rerenderTiers(); });
     rebuildFormats();
+    if(opts.productType && DECK[opts.productType]){
+      typeEl.value = opts.productType;
+      rebuildFormats();
+    }
+    if(opts.suggestCases){
+      var sc = opts.suggestCases;
+      var t2 = state.productType;
+      if(t2==='canning'){
+        state.tiers = [{ cases:sc, cans:sc*CANS_PER_CASE, fillPerCan:autoRate(sc), nitrogenPerCan:0.03, trayPerCan:0.03 }];
+      } else if(t2==='bottling'){
+        state.tiers = [{ cases:sc, bottles:sc*BTLS_PER_CASE, ratePerBtl:autoRate(sc) }];
+      } else {
+        state.tiers = [{ kegs:Math.max(50,sc), laborPerKeg:15, kegCostPerKeg:20 }];
+      }
+      renderTiers();
+    }
 
     /* ── Add-ons ── */
     function rebuildAddons(){
@@ -488,7 +505,8 @@
         inclusions:    inclusionsForType(productType),
         notes:         notes,
         clientName:    (ov.querySelector('#gl-qb-client-name')||{}).value || client.name || '',
-        clientEmail:   (ov.querySelector('#gl-qb-client-email')||{}).value || client.email || ''
+        clientEmail:   (ov.querySelector('#gl-qb-client-email')||{}).value || client.email || '',
+        contactName:   opts.contactName || ''
       };
     }
 
@@ -541,6 +559,66 @@
       var saved = await doSave();
       if(!saved) return;
       openPrintWindow(buildQuoteData());
+    });
+
+    ov.querySelector('#gl-qb-send-email').addEventListener('click', async function(){
+      var saved = await doSave();
+      if(!saved) return;
+      var data = buildQuoteData();
+      var st   = ov.querySelector('#gl-qb-status');
+      if(!data.clientEmail){ st.style.color='#ff8579'; st.textContent='Add an email address first.'; return; }
+      st.style.color='var(--muted)'; st.textContent='Sending email…';
+
+      var quoteHtml = generateQuoteHTML(data);
+      var b64;
+      try { b64 = btoa(unescape(encodeURIComponent(quoteHtml))); }
+      catch(e){ b64 = btoa(quoteHtml.replace(/[^\x00-\x7F]/g,'?')); }
+
+      var contact   = data.contactName || data.clientName || 'there';
+      var validThru = fmtDate(addDays(data.quoteDate, data.validDays));
+      var tierLines = data.tiers.map(function(t){
+        if(data.productType==='canning'){
+          var ai = ((t.fillPerCan||0)+(t.nitrogenPerCan||0)+(t.trayPerCan||0)).toFixed(2);
+          return '<li>'+fmtNum(t.cases)+' cases ('+fmtNum(t.cans||0)+' cans) — $'+ai+'/can all-in</li>';
+        } else if(data.productType==='bottling'){
+          return '<li>'+fmtNum(t.cases)+' cases ('+fmtNum(t.bottles||0)+' bottles) — '+fmtUsd(t.ratePerBtl||0)+'/bottle</li>';
+        } else {
+          return '<li>'+fmtNum(t.kegs||0)+' kegs — '+fmtUsd((t.laborPerKeg||0)+(t.kegCostPerKeg||0))+'/keg</li>';
+        }
+      }).join('');
+
+      var emailHtml =
+        '<div style="font-family:Arial,sans-serif;font-size:15px;color:#222;max-width:640px;line-height:1.7">' +
+        '<p>Hi '+esc(contact)+',</p>' +
+        '<p>Thank you for your interest in working with <strong>Good Liquid Beverage Co.</strong> We\'re excited about the opportunity to partner with <strong>'+esc(data.clientName)+'</strong> and bring your vision to life.</p>' +
+        '<p>Please find your production quote attached (<strong>'+esc(data.quoteNumber)+'</strong>). Here\'s a quick summary of what\'s included:</p>' +
+        '<ul style="margin:12px 0;padding-left:22px">'+tierLines+'</ul>' +
+        '<p><strong>Format:</strong> '+esc(data.packageFormat)+'<br><strong>Valid through:</strong> '+validThru+'</p>' +
+        '<p>Open the attached file in your browser to view the full quote with detailed line-item pricing. If you\'d like to make any adjustments — different volumes, formats, or add-ons — just reply to this email and we\'ll get you an updated quote quickly.</p>' +
+        '<p>We\'d love to connect and walk through the details. Feel free to reply here or grab a time that works for you.</p>' +
+        '<p>Looking forward to working together!</p>' +
+        '<p>Best,<br><strong>Mike Krail</strong><br>Good Liquid Beverage Co.<br>mike@goodliquidbevco.com</p>' +
+        '</div>';
+
+      var sb   = window.supa;
+      if(!sb){ st.style.color='#ff8579'; st.textContent='Not connected.'; return; }
+      var resp = await sb.functions.invoke('mailgun-send', {
+        body: {
+          to:          data.clientEmail,
+          subject:     'Good Liquid Production Quote — '+data.quoteNumber+' — '+data.clientName,
+          html:        emailHtml,
+          text:        'Hi '+contact+', please see the attached production quote '+data.quoteNumber+' for '+data.clientName+'. Valid through '+validThru+'. Reply to discuss details.',
+          attachments: [{ filename:'GoodLiquid-'+data.quoteNumber+'.html', contentBase64:b64, contentType:'text/html' }]
+        }
+      });
+
+      if(resp.error || (resp.data && resp.data.ok===false)){
+        st.style.color='#ff8579';
+        st.textContent='Email failed — '+(resp.error ? resp.error.message : 'check Mailgun config.');
+      } else {
+        st.style.color='#5fcf9e';
+        st.textContent='Quote emailed to '+data.clientEmail+' ✓';
+      }
     });
 
     renderTiers();
@@ -716,17 +794,35 @@
   /* ── Deal panel footer buttons (hardcoded in index.html, called from onclick) ── */
   window.glQuoteFromDeal = function(){
     if(!window.currentUser || window.currentUser.role !== 'admin'){ alert('Admin only.'); return; }
-    var co       = (document.getElementById('ddp-co')||{}).value || '';
-    var email    = (document.getElementById('ddp-email')||{}).value || '';
-    var client   = (window.clients||[]).find(function(c){ return c.name && c.name.toLowerCase() === co.toLowerCase(); });
+    var co      = (document.getElementById('ddp-co')||{}).value || '';
+    var email   = (document.getElementById('ddp-email')||{}).value || '';
+    var contact = (document.getElementById('ddp-contact')||{}).value || '';
+    var service = (document.getElementById('ddp-service')||{}).value || '';
+    var volume  = (document.getElementById('ddp-volume')||{}).value || '';
+    var client  = (window.clients||[]).find(function(c){ return c.name && c.name.toLowerCase() === co.toLowerCase(); });
     var clientId = client ? client.id : null;
-    var nameEl   = document.getElementById('ddp-name');
-    var deals    = window.deals || {};
-    var found    = null;
+    var nameEl  = document.getElementById('ddp-name');
+    var deals   = window.deals || {};
+    var found   = null;
     Object.keys(deals).forEach(function(s){
       (deals[s]||[]).forEach(function(d){ if(d && d.name === (nameEl ? nameEl.value : '')) found = d; });
     });
-    window.glOpenQuoteBuilder(clientId, found ? found.id : null, { prefillCompany: co, prefillEmail: email });
+    var productType = 'canning';
+    if(/bottle/i.test(service)) productType = 'bottling';
+    else if(/keg/i.test(service)) productType = 'keg';
+    var suggestCases = null;
+    if(/150/.test(volume))      suggestCases = 339;
+    else if(/340/.test(volume)) suggestCases = 500;
+    else if(/501/.test(volume)) suggestCases = 501;
+    else if(/1.000|1,000/.test(volume)) suggestCases = 1000;
+    else if(/2.500|2,500/.test(volume)) suggestCases = 2500;
+    window.glOpenQuoteBuilder(clientId, found ? found.id : null, {
+      prefillCompany: co,
+      prefillEmail:   email,
+      contactName:    contact,
+      productType:    productType,
+      suggestCases:   suggestCases
+    });
   };
 
   window.glCloseJobFromDeal = function(){
