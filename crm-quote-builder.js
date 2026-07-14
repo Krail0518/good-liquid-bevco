@@ -288,19 +288,57 @@
     typeEl.addEventListener('change', function(){ rebuildFormats(); state.tiers=[]; renderTiers(); });
     fmtEl.addEventListener('change', function(){ state.format = fmtEl.value; rerenderTiers(); });
     rebuildFormats();
+
+    /* ── Auto-select product type from deal ── */
     if(opts.productType && DECK[opts.productType]){
       typeEl.value = opts.productType;
       rebuildFormats();
     }
+
+    /* ── Auto-select package format from notes (e.g. "16oz Sleek", "12oz Standard") ── */
+    if(opts.dealNotes){
+      var fmtOpts = Array.from(fmtEl.options).map(function(o){ return o.value; });
+      var pickedFmt = null;
+      if(/32\s*oz|crowler/i.test(opts.dealNotes))       pickedFmt = fmtOpts.find(function(f){ return /32/i.test(f); });
+      else if(/19\.2\s*oz/i.test(opts.dealNotes))       pickedFmt = fmtOpts.find(function(f){ return /19/i.test(f); });
+      else if(/16\s*oz/i.test(opts.dealNotes))          pickedFmt = fmtOpts.find(function(f){ return /16/i.test(f); });
+      else if(/8\s*oz/i.test(opts.dealNotes))           pickedFmt = fmtOpts.find(function(f){ return /^8/i.test(f); });
+      else if(/slim/i.test(opts.dealNotes))             pickedFmt = fmtOpts.find(function(f){ return /slim/i.test(f); });
+      else if(/standard/i.test(opts.dealNotes))         pickedFmt = fmtOpts.find(function(f){ return /standard/i.test(f); });
+      else if(/sleek/i.test(opts.dealNotes))            pickedFmt = fmtOpts.find(function(f){ return /sleek/i.test(f); });
+      else if(/12\s*oz/i.test(opts.dealNotes))          pickedFmt = fmtOpts.find(function(f){ return /12/i.test(f); });
+      if(pickedFmt){ fmtEl.value = pickedFmt; state.format = pickedFmt; }
+    }
+
+    /* ── Auto-populate volume pricing tiers ── */
+    var t2 = state.productType;
     if(opts.suggestCases){
+      /* Specific volume parsed from deal notes/volume field */
       var sc = opts.suggestCases;
-      var t2 = state.productType;
       if(t2==='canning'){
         state.tiers = [{ cases:sc, cans:sc*CANS_PER_CASE, fillPerCan:autoRate(sc), nitrogenPerCan:0.03, trayPerCan:0.03 }];
       } else if(t2==='bottling'){
         state.tiers = [{ cases:sc, bottles:sc*BTLS_PER_CASE, ratePerBtl:autoRate(sc) }];
       } else {
         state.tiers = [{ kegs:Math.max(50,sc), laborPerKeg:15, kegCostPerKeg:20 }];
+      }
+      renderTiers();
+    } else if(opts.productType){
+      /* Opening from a deal but no specific volume — load standard tiers so quote isn't blank */
+      if(t2==='canning'){
+        state.tiers = [
+          { cases:501,  cans:501*CANS_PER_CASE,  fillPerCan:autoRate(501),  nitrogenPerCan:0.03, trayPerCan:0.03 },
+          { cases:1000, cans:1000*CANS_PER_CASE, fillPerCan:autoRate(1000), nitrogenPerCan:0.03, trayPerCan:0.03 },
+          { cases:5000, cans:5000*CANS_PER_CASE, fillPerCan:autoRate(5000), nitrogenPerCan:0.03, trayPerCan:0.03 }
+        ];
+      } else if(t2==='bottling'){
+        state.tiers = [
+          { cases:220,  bottles:220*BTLS_PER_CASE,  ratePerBtl:autoRate(220) },
+          { cases:660,  bottles:660*BTLS_PER_CASE,  ratePerBtl:autoRate(660) },
+          { cases:1320, bottles:1320*BTLS_PER_CASE, ratePerBtl:autoRate(1320) }
+        ];
+      } else {
+        state.tiers = [{ kegs:50, laborPerKeg:15, kegCostPerKeg:20 }];
       }
       renderTiers();
     }
