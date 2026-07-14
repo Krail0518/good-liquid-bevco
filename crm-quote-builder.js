@@ -151,9 +151,12 @@
         '</div>' +
 
         /* ── Row 1: Client / Quote info ── */
+        '<datalist id="gl-qb-clients-list">' +
+          (window.clients||[]).map(function(c){ return '<option value="'+esc(c.name||'')+'">'; }).join('') +
+        '</datalist>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr 120px 80px;gap:12px;margin-bottom:18px">' +
           '<div><div style="'+LBL+'">PREPARED FOR</div>' +
-            '<div style="font-size:15px;font-weight:700;color:#fff;padding:9px 0">' + esc(client.name||'—') + '</div>' +
+            '<input id="gl-qb-client-name" list="gl-qb-clients-list" placeholder="Type company name…" style="'+INP+'" value="'+esc(client.name||'')+'">' +
           '</div>' +
           '<div><div style="'+LBL+'">QUOTE NUMBER</div>' +
             '<input id="gl-qb-num" style="'+INP+'" value="'+esc(qn)+'">' +
@@ -463,7 +466,12 @@
       });
 
       return {
-        clientId:      clientId,
+        clientId:      (function(){
+          var typed = (ov.querySelector('#gl-qb-client-name')||{}).value||'';
+          if(clientId) return clientId;
+          var match = (window.clients||[]).find(function(c){ return c.name && c.name.toLowerCase()===typed.toLowerCase(); });
+          return match ? match.id : null;
+        })(),
         dealId:        dealId || null,
         savedId:       state.savedId,
         quoteNumber:   quoteNumber,
@@ -475,7 +483,7 @@
         addons:        addons,
         inclusions:    inclusionsForType(productType),
         notes:         notes,
-        clientName:    client.name || ''
+        clientName:    (ov.querySelector('#gl-qb-client-name')||{}).value || client.name || ''
       };
     }
 
