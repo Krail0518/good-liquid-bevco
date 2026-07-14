@@ -570,9 +570,7 @@
       st.style.color='var(--muted)'; st.textContent='Sending email…';
 
       var quoteHtml = generateQuoteHTML(data);
-      var b64;
-      try { b64 = btoa(unescape(encodeURIComponent(quoteHtml))); }
-      catch(e){ b64 = btoa(quoteHtml.replace(/[^\x00-\x7F]/g,'?')); }
+      var b64 = await htmlToPdfBase64(quoteHtml, st);
 
       var contact   = data.contactName || data.clientName || 'there';
       var validThru = fmtDate(addDays(data.quoteDate, data.validDays));
@@ -608,7 +606,7 @@
           subject:     'Good Liquid Production Quote — '+data.quoteNumber+' — '+data.clientName,
           html:        emailHtml,
           text:        'Hi '+contact+', please see the attached production quote '+data.quoteNumber+' for '+data.clientName+'. Valid through '+validThru+'. Reply to discuss details.',
-          attachments: [{ filename:'GoodLiquid-'+data.quoteNumber+'.html', contentBase64:b64, contentType:'text/html' }]
+          attachments: [{ filename:'GoodLiquid-'+data.quoteNumber+'.pdf', contentBase64:b64, contentType:'application/pdf' }]
         }
       });
 
@@ -781,6 +779,48 @@
   var PTH      = 'background:#0a1628;color:#9aa7bd;padding:10px 12px;text-align:left;font-size:11px;letter-spacing:1px';
   var PTDC     = 'padding:12px;border-bottom:1px solid #eee;font-size:13px;color:#1a2240';
   var PTD_BLUE = 'padding:12px;border-bottom:1px solid #eee;font-size:13px;color:#1a6fff;font-weight:700';
+
+  function loadScriptOnce(src){
+    return new Promise(function(res, rej){
+      if(document.querySelector('script[src="'+src+'"]')){ res(); return; }
+      var s = document.createElement('script'); s.src = src;
+      s.onload = res; s.onerror = rej; document.head.appendChild(s);
+    });
+  }
+
+  async function htmlToPdfBase64(html, statusEl){
+    if(statusEl) statusEl.textContent = 'Loading PDF engine…';
+    await Promise.all([
+      loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'),
+      loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js')
+    ]);
+    if(statusEl) statusEl.textContent = 'Rendering quote…';
+    var iframe = document.createElement('iframe');
+    iframe.setAttribute('style','position:fixed;left:-99999px;top:0;width:900px;height:1200px;border:none;visibility:hidden');
+    document.body.appendChild(iframe);
+    iframe.contentDocument.open();
+    iframe.contentDocument.write(html);
+    iframe.contentDocument.close();
+    await new Promise(function(r){ setTimeout(r, 900); });
+    if(statusEl) statusEl.textContent = 'Generating PDF…';
+    var canvas = await window.html2canvas(iframe.contentDocument.body, {
+      scale:2, useCORS:true, allowTaint:true, width:900, windowWidth:900
+    });
+    document.body.removeChild(iframe);
+    var jspdfNS = window.jspdf;
+    var pdf = new jspdfNS.jsPDF({ orientation:'portrait', unit:'pt', format:'letter' });
+    var pW = pdf.internal.pageSize.getWidth();
+    var pH = pdf.internal.pageSize.getHeight();
+    var imgH = canvas.height * pW / canvas.width;
+    var imgData = canvas.toDataURL('image/jpeg', 0.92);
+    var posY = 0;
+    while(posY < imgH){
+      if(posY > 0) pdf.addPage();
+      pdf.addImage(imgData, 'JPEG', 0, -posY, pW, imgH);
+      posY += pH;
+    }
+    return pdf.output('datauristring').split(',')[1];
+  }
 
   function openPrintWindow(data){
     var html = generateQuoteHTML(data);
