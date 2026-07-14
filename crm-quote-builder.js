@@ -233,21 +233,37 @@
     /* ── Pre-fill email body textarea ── */
     var emailBodyEl = ov.querySelector('#gl-qb-email-body');
     if(emailBodyEl){
-      var greetName     = opts.contactName || opts.prefillCompany || 'there';
-      var notesSentence = opts.dealNotes
-        ? 'We\'ve reviewed your request and are excited to partner with you on this. '
+      var greetName = opts.contactName || opts.prefillCompany || 'there';
+
+      /* Product type label */
+      var ptLabel = opts.productType === 'bottling' ? 'bottle filling'
+                  : opts.productType === 'keg'      ? 'keg filling'
+                  : 'canning';
+
+      /* Specific request line referencing volume + product type */
+      var requestLine;
+      if(opts.suggestCases && opts.productType){
+        requestLine = 'Based on your request for approximately ' + opts.suggestCases +
+          ' cases of ' + ptLabel + ' services, we\'ve put together a tailored production quote for your review.';
+      } else if(opts.productType){
+        requestLine = 'Based on your inquiry about ' + ptLabel +
+          ' services, we\'ve prepared a production quote tailored to your project.';
+      } else {
+        requestLine = 'We\'ve reviewed your request and prepared a tailored production quote for your review.';
+      }
+
+      /* If notes exist, acknowledge the specifics they mentioned */
+      var notesAck = opts.dealNotes
+        ? ' We\'ve gone through your project details and our pricing reflects what you\'re looking for — but we\'re happy to adjust volumes, formats, or add-ons to better fit your needs.'
         : '';
+
       emailBodyEl.value =
         'Hi ' + greetName + ',\n\n' +
-        'Thank you for your interest in working with Good Liquid Beverage Co. ' +
-        notesSentence +
-        'Please find your production quote attached. A pricing summary is included at the bottom of this email for quick reference.\n\n' +
-        'If you\'d like any adjustments — different volumes, formats, or add-ons — just reply and we\'ll get you an updated version quickly. We\'d love to connect and walk you through the details.\n\n' +
+        'Thank you for reaching out to Good Liquid Beverage Co. ' + requestLine + notesAck + '\n\n' +
+        'Please find your production quote attached. A detailed pricing summary is included at the bottom of this email for quick reference.\n\n' +
+        'We\'d love to schedule a call to walk you through the details and discuss your project further. Just reply here with a few times that work for you and we\'ll make it happen.\n\n' +
         'Looking forward to working together!\n\n' +
-        'Best,\n' +
-        'Mike Krail\n' +
-        'Good Liquid Beverage Co.\n' +
-        'mike@goodliquidbevco.com';
+        'Best,\nMike Krail\nGood Liquid Beverage Co.\nmike@goodliquidbevco.com';
     }
 
     /* ── Local state ── */
