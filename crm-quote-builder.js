@@ -312,24 +312,23 @@
 
     /* ── Auto-populate volume pricing tiers ── */
     var t2 = state.productType;
-    if(opts.suggestCases){
-      /* Specific volume parsed from deal notes/volume field */
-      var sc = opts.suggestCases;
-      if(t2==='canning'){
-        state.tiers = [{ cases:sc, cans:sc*CANS_PER_CASE, fillPerCan:autoRate(sc), nitrogenPerCan:0.03, trayPerCan:0.03 }];
-      } else if(t2==='bottling'){
-        state.tiers = [{ cases:sc, bottles:sc*BTLS_PER_CASE, ratePerBtl:autoRate(sc) }];
-      } else {
-        state.tiers = [{ kegs:Math.max(50,sc), laborPerKeg:15, kegCostPerKeg:20 }];
-      }
+    var caseList = (opts.suggestCasesList && opts.suggestCasesList.length) ? opts.suggestCasesList : (opts.suggestCases ? [opts.suggestCases] : []);
+
+    if(caseList.length){
+      /* One tier per selected volume — matches exactly what the client checked on the form */
+      state.tiers = caseList.map(function(sc){
+        if(t2==='canning')  return { cases:sc, cans:sc*CANS_PER_CASE, fillPerCan:autoRate(sc), nitrogenPerCan:0.03, trayPerCan:0.03 };
+        if(t2==='bottling') return { cases:sc, bottles:sc*BTLS_PER_CASE, ratePerBtl:autoRate(sc) };
+        return { kegs:Math.max(50,sc), laborPerKeg:15, kegCostPerKeg:20 };
+      });
       renderTiers();
     } else if(opts.productType){
       /* Opening from a deal but no specific volume — load standard tiers so quote isn't blank */
       if(t2==='canning'){
         state.tiers = [
+          { cases:150,  cans:150*CANS_PER_CASE,  fillPerCan:autoRate(150),  nitrogenPerCan:0.03, trayPerCan:0.03 },
           { cases:501,  cans:501*CANS_PER_CASE,  fillPerCan:autoRate(501),  nitrogenPerCan:0.03, trayPerCan:0.03 },
-          { cases:1000, cans:1000*CANS_PER_CASE, fillPerCan:autoRate(1000), nitrogenPerCan:0.03, trayPerCan:0.03 },
-          { cases:5000, cans:5000*CANS_PER_CASE, fillPerCan:autoRate(5000), nitrogenPerCan:0.03, trayPerCan:0.03 }
+          { cases:1000, cans:1000*CANS_PER_CASE, fillPerCan:autoRate(1000), nitrogenPerCan:0.03, trayPerCan:0.03 }
         ];
       } else if(t2==='bottling'){
         state.tiers = [
@@ -956,44 +955,63 @@
     else if(/bottle/i.test(dealNotes))  productType = 'bottling';
     else if(/keg/i.test(dealNotes))     productType = 'keg';
 
-    /* ── Volume: dropdown mappings → raw number in field → parse notes ── */
-    var suggestCases = null;
-    if(/150/.test(volume))             suggestCases = 339;
-    else if(/340/.test(volume))        suggestCases = 500;
-    else if(/501/.test(volume))        suggestCases = 501;
-    else if(/1[.,]000/.test(volume))   suggestCases = 1000;
-    else if(/2[.,]500/.test(volume))   suggestCases = 2500;
-
-    /* Raw number in volume field (e.g. free-text entry) */
-    if(!suggestCases){
-      var rawVol = volume.match(/(\d[\d,]*)/);
-      if(rawVol){ var rv = parseInt(rawVol[1].replace(/,/g,'')); if(rv > 0) suggestCases = rv; }
+    /* ── Volume: read exactly what the client selected ──────────────────
+       Website form checkboxes can produce comma-separated values like "150, 501".
+       We parse every value and create one quote tier per selection.
+       Mapping uses the ACTUAL numbers selected — 150 means 150, not 339. */
+    function parseSingleCaseVal(str){
+      var s = (str||'').trim();
+      if(/2[.,]?500/.test(s))   return 2500;
+      if(/1[.,]?000/.test(s))   return 1000;
+      if(/501/.test(s))         return 501;
+      if(/340/.test(s))         return 340;
+      if(/150/.test(s))         return 150;
+      var m = s.match(/(\d[\d,]*)/);
+      if(m){ var n = parseInt(m[1].replace(/,/g,'')); if(n >= 50) return n; }
+      return null;
     }
 
-    /* Parse notes for volume keywords when field didn't resolve */
-    if(!suggestCases && dealNotes){
+    var suggestCasesList = [];
+    /* Split volume field on commas/semicolons in case multiple boxes were checked */
+    (volume||'').split(/[,;]/).forEach(function(part){
+      var v = parseSingleCaseVal(part);
+      if(v && suggestCasesList.indexOf(v) < 0) suggestCasesList.push(v);
+    });
+    suggestCasesList.sort(function(a,b){ return a-b; });
+
+    /* Fallback: parse notes for explicit quantities */
+    if(!suggestCasesList.length && dealNotes){
       var casesM = dealNotes.match(/(\d[\d,]*)\s*[-–]?\s*cases?/i);
-      if(casesM) suggestCases = parseInt(casesM[1].replace(/,/g,''));
+      if(casesM){ var cv = parseInt(casesM[1].replace(/,/g,'')); if(cv >= 1) suggestCasesList = [cv]; }
     }
-    if(!suggestCases && dealNotes){
+    if(!suggestCasesList.length && dealNotes){
       var cansM = dealNotes.match(/(\d[\d,]*)\s*cans?/i);
-      if(cansM){ var nc = parseInt(cansM[1].replace(/,/g,'')); if(nc > 0) suggestCases = Math.round(nc / 24); }
+      if(cansM){ var nc = parseInt(cansM[1].replace(/,/g,'')); if(nc > 0) suggestCasesList = [Math.round(nc/24)]; }
     }
-    if(!suggestCases && dealNotes){
+    if(!suggestCasesList.length && dealNotes){
       var kegsM = dealNotes.match(/(\d[\d,]*)\s*kegs?/i);
-      if(kegsM){ suggestCases = parseInt(kegsM[1].replace(/,/g,'')); productType = 'keg'; }
+      if(kegsM){ var nk = parseInt(kegsM[1].replace(/,/g,'')); if(nk > 0){ suggestCasesList = [nk]; productType = 'keg'; } }
     }
-    if(!suggestCases && dealNotes){
+    if(!suggestCasesList.length && dealNotes){
       var btlsM = dealNotes.match(/(\d[\d,]*)\s*bottles?/i);
-      if(btlsM){ var nb = parseInt(btlsM[1].replace(/,/g,'')); if(nb > 0){ suggestCases = Math.round(nb / 12); productType = 'bottling'; } }
+      if(btlsM){ var nb = parseInt(btlsM[1].replace(/,/g,'')); if(nb > 0){ suggestCasesList = [Math.round(nb/12)]; productType = 'bottling'; } }
     }
+
+    /* "minimum run", "smallest batch", "get started", "first run" → use minimum */
+    if(!suggestCasesList.length && /minimum|smallest|starter|get\s*started|first\s*run|start\s*small/i.test((volume||'')+' '+(dealNotes||''))){
+      suggestCasesList = [ productType === 'bottling' ? 220 : productType === 'keg' ? 50 : 150 ];
+    }
+
+    var suggestCases = suggestCasesList.length ? suggestCasesList[0] : null;
+
     window.glOpenQuoteBuilder(clientId, found ? found.id : null, {
-      prefillCompany: co,
-      prefillEmail:   email,
-      contactName:    contact,
-      productType:    productType,
-      suggestCases:   suggestCases,
-      dealNotes:      dealNotes
+      prefillCompany:   co,
+      prefillEmail:     email,
+      contactName:      contact,
+      productType:      productType,
+      suggestCases:     suggestCases,
+      suggestCasesList: suggestCasesList,
+      dealNotes:        dealNotes
     });
   };
 
