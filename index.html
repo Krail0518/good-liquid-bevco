@@ -2363,6 +2363,7 @@ select option, .fsel option {
         <div class="cph">
           <div><div class="cpt">PIPELINE</div><div class="cps" id="pipe-sub">Active brand engagements</div></div>
           <div style="display:flex;gap:8px">
+            <input id="gl-pipeline-search" type="text" placeholder="Search leads…" oninput="glFilterPipeline(this.value)" style="padding:6px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#fff;font-size:12px;width:200px;outline:none" />
             <button class="cbtn" onclick="openBulkOutreach()" style="background:rgba(245,200,66,.08);border-color:rgba(245,200,66,.25);color:#d4a200">📤 Bulk Outreach</button>
             <button class="cbtn" onclick="openAddDealModal()" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)">+ Add Deal</button>
             <button id="gl-pipeline-quote-btn" class="cbtn" onclick="if(typeof glOpenQuoteBuilder==='function')glOpenQuoteBuilder(null,null)" style="background:rgba(26,111,255,.1);border-color:rgba(26,111,255,.35);color:#5a9fff">📋 Quote Builder</button>
@@ -3043,6 +3044,13 @@ select option, .fsel option {
             <div class="frow" id="fu-cc-row" style="display:none"><div class="flbl">Cc</div><input class="finp" id="fu-cc" readonly></div>
             <div class="frow"><div class="flbl">Subject</div><input class="finp" id="fu-subject"></div>
             <div class="frow"><div class="flbl">Message</div><textarea class="finp" id="fu-body" rows="10" style="resize:vertical"></textarea></div>
+            <div id="fu-refine-row" style="display:none;padding:10px 12px;background:rgba(0,229,192,.04);border:1px solid rgba(0,229,192,.15);border-radius:8px;margin-bottom:12px">
+              <div style="font-size:10px;letter-spacing:1px;color:var(--muted);margin-bottom:7px">REFINE WITH CLAUDE</div>
+              <div style="display:flex;gap:8px">
+                <input id="fu-refine" type="text" class="finp" placeholder="e.g. make it firmer, shorter, add a payment link…" style="flex:1;font-size:12px">
+                <button class="cbtn" onclick="refineFollowupEmail()" style="font-size:12px;white-space:nowrap;background:rgba(0,229,192,.12);border-color:rgba(0,229,192,.3);color:var(--teal)">✨ Apply</button>
+              </div>
+            </div>
             <div style="background:rgba(245,200,66,.06);border:1px solid rgba(245,200,66,.2);border-radius:8px;padding:11px;font-size:11px;color:#f5c842;margin-bottom:14px">
               ⚠ Review before sending. Email will be sent via Mailgun from noreply@goodliquid.com
             </div>
@@ -3099,6 +3107,13 @@ select option, .fsel option {
           <div id="ai-comm-output" style="display:none">
             <div class="frow"><div class="flbl">Subject</div><input class="finp" id="ai-comm-subj"></div>
             <div class="frow"><div class="flbl">Email body</div><textarea class="finp" id="ai-comm-body" rows="8" style="resize:vertical"></textarea></div>
+            <div class="frow" style="padding:10px 12px;background:rgba(0,229,192,.04);border:1px solid rgba(0,229,192,.15);border-radius:8px;margin:0 0 4px">
+              <div style="font-size:10px;letter-spacing:1px;color:var(--muted);margin-bottom:7px">REFINE WITH CLAUDE</div>
+              <div style="display:flex;gap:8px">
+                <input class="finp" id="ai-comm-refine" type="text" placeholder="e.g. more formal, mention pricing, add call to action…" style="flex:1;font-size:12px">
+                <button class="cbtn" onclick="refineAIComm()" style="font-size:12px;white-space:nowrap;background:rgba(0,229,192,.12);border-color:rgba(0,229,192,.3);color:var(--teal)">✨ Apply</button>
+              </div>
+            </div>
           </div>
           <div style="display:flex;gap:8px;margin-top:10px">
             <button class="cbtn pri" onclick="generateAIComm()" style="flex:1">🤖 Draft Email</button>
@@ -5504,6 +5519,22 @@ async function moveDeal(dealId, fromStage, toStage, fallbackIdx){
   renderKanban(); renderDash();
 }
 
+window.glFilterPipeline = function(query){
+  var q = (query||'').toLowerCase().trim();
+  var cards = document.querySelectorAll('.kcard');
+  cards.forEach(function(card){
+    if(!q){ card.style.display = ''; return; }
+    var text = card.innerText.toLowerCase();
+    card.style.display = text.indexOf(q) > -1 ? '' : 'none';
+  });
+  // Also show/hide empty-column messages
+  document.querySelectorAll('[id^="gl-pipeline-col-"]').forEach(function(col){
+    var visible = Array.from(col.querySelectorAll('.kcard')).filter(function(c){ return c.style.display !== 'none'; });
+    var emptyMsg = col.querySelector('.gl-pipeline-empty');
+    if(emptyMsg) emptyMsg.style.display = (!q || visible.length) ? 'none' : 'block';
+  });
+};
+
 // Enhanced renderKanban with move buttons and deal count
 function renderKanban(){
   const sc={'Prospecting':'#6b87ad','Proposal':'#1a6fff','Negotiation':'#f5c842','Closed Won':'#00c4a7','Closed Lost':'#e74c3c'};
@@ -5658,6 +5689,14 @@ function openLeadEmailComposer(){
 
       <div id="gl-lem-ai-status" style="font-size:12px;color:var(--teal);min-height:16px;margin-bottom:10px;display:none">🤖 Claude is drafting your email…</div>
 
+      <div id="gl-lem-refine-row" style="display:none;padding:10px 12px;background:rgba(0,229,192,.04);border:1px solid rgba(0,229,192,.15);border-radius:8px;margin-bottom:12px">
+        <div style="font-size:10px;letter-spacing:1px;color:var(--muted);margin-bottom:7px">REFINE WITH CLAUDE</div>
+        <div style="display:flex;gap:8px">
+          <input id="gl-lem-refine" type="text" class="finp" placeholder="e.g. make it shorter, more casual, add pricing details…" style="flex:1;font-size:12px">
+          <button id="gl-lem-refine-btn" class="cbtn" style="font-size:12px;white-space:nowrap;background:rgba(0,229,192,.12);border-color:rgba(0,229,192,.3);color:var(--teal)">✨ Apply</button>
+        </div>
+      </div>
+
       <div style="display:flex;gap:8px;justify-content:flex-end">
         <button id="gl-lem-cancel" class="cbtn" style="font-size:13px">Cancel</button>
         <button id="gl-lem-send" class="cbtn pri" style="font-size:13px">📤 Send via Mailgun</button>
@@ -5722,6 +5761,31 @@ Greet them by first name (${firstName}). Acknowledge what they're building and w
     const body = bodyStart > -1 ? raw.slice(bodyStart).trim() : raw.replace(/^SUBJECT:.*\n?/im,'').trim();
     ov.querySelector('#gl-lem-body').value = body;
     ov.querySelector('#gl-lem-result').textContent = '';
+    ov.querySelector('#gl-lem-refine-row').style.display = 'block';
+  };
+
+  ov.querySelector('#gl-lem-refine-btn').onclick = async function(){
+    var instrEl = ov.querySelector('#gl-lem-refine');
+    var instruction = instrEl.value.trim();
+    if(!instruction) return;
+    var subjEl  = ov.querySelector('#gl-lem-subject');
+    var bodyEl  = ov.querySelector('#gl-lem-body');
+    var aiStatus = ov.querySelector('#gl-lem-ai-status');
+    var btn = this;
+    btn.disabled = true; btn.textContent = '🤖 Refining…';
+    aiStatus.style.display = 'block'; aiStatus.textContent = '🤖 Claude is refining your email…';
+    var refined = await callAI(
+      'You are helping Mike at Good Liquid Bev Co revise a draft email. Apply the requested changes precisely. Return the complete revised email: Subject line first (starting with "SUBJECT: "), blank line, then the email body only — no extra labels.',
+      'Current email:\nSUBJECT: ' + (subjEl ? subjEl.value.trim() : '') + '\n\n' + bodyEl.value.trim() + '\n\n---\nRevise per this instruction: ' + instruction
+    );
+    aiStatus.style.display = 'none';
+    btn.disabled = false; btn.textContent = '✨ Apply';
+    if(!refined) return;
+    var lines = refined.split('\n');
+    var subjLine = lines.find(function(l){ return /^SUBJECT:/i.test(l); });
+    if(subjEl && subjLine) subjEl.value = subjLine.replace(/^SUBJECT:\s*/i,'').trim();
+    bodyEl.value = lines.filter(function(l){ return !/^SUBJECT:/i.test(l); }).join('\n').trim();
+    instrEl.value = '';
   };
 
   // ── Send button ──
@@ -8963,6 +9027,7 @@ function openFollowUpModal(){
       document.getElementById('fu-body').value=body;
       document.getElementById('followup-loading').style.display='none';
       document.getElementById('followup-content').style.display='block';
+      document.getElementById('fu-refine-row').style.display='block';
     }).catch(()=>{
       document.getElementById('fu-body').value=`Dear ${inv.clientName},\n\nThis is a friendly reminder that Invoice ${inv.id} for $${inv.amount.toLocaleString()} remains unpaid.\n\nPlease remit payment at your earliest convenience.\n\nBest regards,\nGood Liquid Accounting\nMike@GoodLiquid.com | (803) 493-5065`;
       document.getElementById('followup-loading').style.display='none';
@@ -9093,6 +9158,50 @@ document.addEventListener('change',e=>{
     document.getElementById('ai-comm-custom-row').style.display=e.target.value==='custom'?'block':'none';
   }
 });
+
+async function refineFollowupEmail(){
+  var instrEl = document.getElementById('fu-refine');
+  var instruction = instrEl ? instrEl.value.trim() : '';
+  if(!instruction) return;
+  var subjEl = document.getElementById('fu-subject');
+  var bodyEl = document.getElementById('fu-body');
+  var btn = document.querySelector('#fu-refine-row button');
+  var origText = btn ? btn.textContent : '✨ Apply';
+  if(btn){ btn.disabled = true; btn.textContent = '🤖 Refining…'; }
+  var refined = await callAI(
+    'You are helping Mike at Good Liquid Bev Co revise a follow-up invoice email. Apply the requested changes precisely. Return the complete revised email: Subject line first (starting with "Subject: "), blank line, then email body only.',
+    'Current email:\nSubject: ' + (subjEl ? subjEl.value.trim() : '') + '\n\n' + (bodyEl ? bodyEl.value.trim() : '') + '\n\n---\nRevise per this instruction: ' + instruction
+  );
+  if(btn){ btn.disabled = false; btn.textContent = origText; }
+  if(!refined) return;
+  var lines = refined.split('\n');
+  var subjLine = lines.find(function(l){ return /^subject:/i.test(l); });
+  if(subjEl && subjLine) subjEl.value = subjLine.replace(/^subject:\s*/i,'').trim();
+  if(bodyEl) bodyEl.value = lines.filter(function(l){ return !/^subject:/i.test(l); }).join('\n').trim();
+  if(instrEl) instrEl.value = '';
+}
+
+async function refineAIComm(){
+  var instrEl = document.getElementById('ai-comm-refine');
+  var instruction = instrEl ? instrEl.value.trim() : '';
+  if(!instruction) return;
+  var subjEl = document.getElementById('ai-comm-subj');
+  var bodyEl = document.getElementById('ai-comm-body');
+  var btn = document.querySelector('#ai-comm-output button');
+  var origText = btn ? btn.textContent : '✨ Apply';
+  if(btn){ btn.disabled = true; btn.textContent = '🤖 Refining…'; }
+  var refined = await callAI(
+    'You are helping Mike at Good Liquid Bev Co revise a draft email. Apply the requested changes precisely. Return the complete revised email: Subject line first (starting with "Subject: "), blank line, then email body only.',
+    'Current email:\nSubject: ' + (subjEl ? subjEl.value.trim() : '') + '\n\n' + (bodyEl ? bodyEl.value.trim() : '') + '\n\n---\nRevise per this instruction: ' + instruction
+  );
+  if(btn){ btn.disabled = false; btn.textContent = origText; }
+  if(!refined) return;
+  var lines = refined.split('\n');
+  var subjLine = lines.find(function(l){ return /^subject:/i.test(l); });
+  if(subjEl && subjLine) subjEl.value = subjLine.replace(/^subject:\s*/i,'').trim();
+  if(bodyEl) bodyEl.value = lines.filter(function(l){ return !/^subject:/i.test(l); }).join('\n').trim();
+  if(instrEl) instrEl.value = '';
+}
 
 async function generateAIComm(){
   const clientId=document.getElementById('ai-comm-client').value;
