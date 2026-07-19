@@ -1360,7 +1360,7 @@ select option, .fsel option {
   <div class="sb rv">
     <div class="sv tall"><div class="sg sg-t">🧪</div><h3>BEVERAGE FORMULATION</h3><p>Full lifecycle R&amp;D from early-stage recipe to full-scale formula. Expert guidance on ingredients, shelf stability, nutritional planning, and labeling.</p>
       <ul class="svbuls"><li>Functional beverages, seltzers, wellness drinks</li><li>Shelf stability &amp; nutritional planning</li><li>Full IP ownership options available</li></ul>
-      <div class="spt"><span class="sn">$1,000</span><span class="ss">starting / 3 iterations</span></div><div class="sbgn">01</div></div>
+      <div class="spt"><span class="sn">$2,500</span><span class="ss">starting / 3 iterations</span></div><div class="sbgn">01</div></div>
     <div class="sv"><div class="sg sg-b">🥫</div><h3>SMALL BATCH CANNING</h3><p>High-efficiency cold-fill canning. Three formats, PakTech handles, custom lid colors, optional add-ons.</p>
       <div class="spt"><span class="sn">$0.28</span><span class="ss">/ can at volume</span></div><div class="sbgn">02</div></div>
     <div class="sv"><div class="sg sg-g">🍾</div><h3>BOTTLE FILLING</h3><p>750ml bottle services — filling, corking, shrink sleeving, labeling, case building, palletizing.</p>
@@ -1521,7 +1521,7 @@ select option, .fsel option {
         <div class="pt-wrap"><div class="pt-head"><h4>R&amp;D &amp; IP pricing</h4><span class="tg">PER SKU</span></div>
         <table class="ptbl"><thead><tr><th>Service</th><th>Price</th><th>Details</th></tr></thead>
         <tbody>
-          <tr><td>R&amp;D Formulation</td><td class="mn">$1,000/SKU</td><td>Starting · 3 iterations</td></tr>
+          <tr><td>R&amp;D Formulation</td><td class="mn">$2,500/SKU</td><td>Starting · 3 iterations</td></tr>
           <tr><td>Benchtop Verification</td><td class="mn">$500/SKU</td><td>Required for co-packing</td></tr>
           <tr><td>IP License</td><td class="mn">$6,000/yr</td><td>Annual licensing</td></tr>
           <tr><td>IP Purchase <span class="bv">POPULAR</span></td><td class="mn">$15,000</td><td>Full ownership</td></tr>
@@ -4407,7 +4407,7 @@ function svcChange(){
     </select></div>`;
   }else if(svc==='rd'){
     html=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-      <div class="frow"><div class="flbl">R&D package</div><select class="fsel" id="rd-pkg" onchange="updatePreview()"><option value="rd">R&D Only ($1,000)</option><option value="rd-lic">R&D + IP License ($7,000)</option><option value="rd-buy">R&D + IP Purchase ($16,000)</option></select></div>
+      <div class="frow"><div class="flbl">R&D package</div><select class="fsel" id="rd-pkg" onchange="updatePreview()"><option value="rd">R&D Only ($2,500)</option><option value="rd-lic">R&D + IP License ($7,000)</option><option value="rd-buy">R&D + IP Purchase ($16,000)</option></select></div>
       <div class="frow"><div class="flbl">SKUs</div><input type="number" class="finp" id="rd-skus" value="1" min="1" oninput="updatePreview()"></div>
     </div>`;
   }else{
@@ -4461,7 +4461,7 @@ function calcTotal(){
   }else if(svc==='rd'){
     const pkg=document.getElementById('rd-pkg')?.value||'rd';
     const skus=parseInt(document.getElementById('rd-skus')?.value)||1;
-    lines.push({d:`R&D Formulation — ${skus} SKU(s)`,a:1000*skus});total=1000*skus;
+    lines.push({d:`R&D Formulation — ${skus} SKU(s)`,a:2500*skus});total=2500*skus;
     if(pkg==='rd-lic'){lines.push({d:'IP Licensing (annual)',a:6000});total+=6000}
     if(pkg==='rd-buy'){lines.push({d:'IP Purchase (outright)',a:15000});total+=15000}
     desc=pkg==='rd'?'R&D Formulation':pkg==='rd-lic'?'R&D + IP License':'R&D + IP Purchase';
@@ -6517,7 +6517,7 @@ async function aiEstimateQuote() {
     `You are a pricing expert for Good Liquid Bev Co. Use these rates:
     CANNING: 150-299 cases=$28/case + $0.32/can + $0.055/can packaging. 300-499=$24. 500-999=$20. 1000+=$16. Cans per case=24.
     BOTTLING: 100-199 cases=$10.50/case. 200-399=$9.25. 400-699=$8.50. 700+=$custom.
-    R&D: From $1,000. IP License=$6,000. Full IP=$15,000.
+    R&D: From $2,500. IP License=$6,000. Full IP=$15,000.
     ADD-ONS: Flash Pasteurization=$0.015/can. Nitrogen Dosing=$0.008/can.`,
     `Estimate the cost for this project: ${desc}
     
@@ -9315,7 +9315,7 @@ async function sendChatMsg(){
     - We are a family-run beverage co-packer in Palmetto, FL (Est. 2017)
     - Services: Small-batch canning (12oz & 16oz), Bottle filling (750ml), Beverage R&D/formulation, Consulting
     - Minimum order: 150 cases (3,600 units)
-    - R&D starting at $1,000/SKU (3 iterations)
+    - R&D starting at $2,500/SKU (3 iterations)
     - Canning from $0.28/can at volume
     - Typical timeline: 8 weeks concept to pallet
     - GMP, PCQI, HACCP certified
