@@ -1403,7 +1403,7 @@ select option, .fsel option {
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:24px">
       <div style="background:rgba(0,229,192,.04);border:1px solid rgba(0,229,192,.18);border-radius:10px;padding:16px">
         <div style="font-family:var(--ff-disp);font-size:11px;letter-spacing:2px;color:var(--teal);margin-bottom:6px">PRODUCT TYPES</div>
-        <div style="color:var(--white);font-size:13px;line-height:1.7">Seltzer · Kombucha · Cold brew · Juice<br>RTD cocktail · Energy · Mocktail · Sports</div>
+        <div style="color:var(--white);font-size:13px;line-height:1.7">Seltzer · Soda · Cold brew · Juice<br>RTD cocktail · Energy · Mocktail · Sport drinks</div>
       </div>
       <div style="background:rgba(0,229,192,.04);border:1px solid rgba(0,229,192,.18);border-radius:10px;padding:16px">
         <div style="font-family:var(--ff-disp);font-size:11px;letter-spacing:2px;color:var(--teal);margin-bottom:6px">FACILITY</div>
@@ -1779,14 +1779,14 @@ select option, .fsel option {
         <label>Product type <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:11px">— select all that apply</span></label>
         <div class="pill-group" id="qf-product-group">
           <input type="checkbox" id="pt-seltzer"   value="Seltzer"><label for="pt-seltzer">Seltzer</label>
-          <input type="checkbox" id="pt-kombucha"  value="Kombucha"><label for="pt-kombucha">Kombucha</label>
+          <input type="checkbox" id="pt-soda"      value="Soda"><label for="pt-soda">Soda</label>
           <input type="checkbox" id="pt-coldbrew"  value="Cold brew"><label for="pt-coldbrew">Cold brew</label>
           <input type="checkbox" id="pt-juice"     value="Juice"><label for="pt-juice">Juice</label>
           <input type="checkbox" id="pt-rtd"       value="RTD cocktail"><label for="pt-rtd">RTD cocktail</label>
           <input type="checkbox" id="pt-energy"    value="Energy drink"><label for="pt-energy">Energy drink</label>
           <input type="checkbox" id="pt-mocktail"  value="Mocktail"><label for="pt-mocktail">Mocktail</label>
           <input type="checkbox" id="pt-sparkling" value="Sparkling water"><label for="pt-sparkling">Sparkling water</label>
-          <input type="checkbox" id="pt-sports"    value="Sports drink"><label for="pt-sports">Sports drink</label>
+          <input type="checkbox" id="pt-sports"    value="Sport drinks"><label for="pt-sports">Sport drinks</label>
           <input type="checkbox" id="pt-other"     value="Other" onchange="toggleOtherProductMain(this)"><label for="pt-other">Other</label>
         </div>
         <div class="other-reveal" id="pt-other-reveal-main">
@@ -2256,14 +2256,14 @@ select option, .fsel option {
               <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">PRODUCT TYPES</div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;padding:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:8px">
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="nc-pt-seltzer" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">🥤 Seltzer</label>
-                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="nc-pt-kombucha" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">🍵 Kombucha</label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="nc-pt-soda" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">🥤 Soda</label>
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="nc-pt-coldbrew" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">☕ Cold Brew</label>
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="nc-pt-juice" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">🧃 Juice</label>
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="nc-pt-rtd" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">🍸 RTD Cocktail</label>
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="nc-pt-energy" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">⚡ Energy</label>
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="nc-pt-mocktail" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">🍹 Mocktail</label>
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="nc-pt-sparkling" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">💧 Sparkling Water</label>
-                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="nc-pt-sports" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">🏃 Sports Drink</label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="nc-pt-sports" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">🏃 Sport Drinks</label>
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="nc-pt-other" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">📦 Other</label>
               </div>
             </div>
@@ -2441,11 +2441,11 @@ select option, .fsel option {
                 <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">PRODUCT TYPE</div>
                 <select id="ddp-product" style="width:100%;padding:10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)">
                   <option value="">—</option>
-                  <option value="seltzer">Seltzer</option><option value="kombucha">Kombucha</option>
+                  <option value="seltzer">Seltzer</option><option value="soda">Soda</option>
                   <option value="coldbrew">Cold brew</option><option value="juice">Juice</option>
                   <option value="rtd">RTD cocktail</option><option value="energy">Energy drink</option>
                   <option value="mocktail">Mocktail</option><option value="sparkling">Sparkling water</option>
-                  <option value="sports">Sports drink</option><option value="other">Other</option>
+                  <option value="sports">Sport drinks</option><option value="other">Other</option>
                 </select>
               </div>
             </div>
@@ -7001,7 +7001,7 @@ function openClientDetail(cid) {
         <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:10px">PRODUCT TYPES</div>
         <div style="display:flex;flex-wrap:wrap;gap:6px">
           ${c.productTypes.map(p => {
-            const lbl = {seltzer:'🥤 Seltzer', kombucha:'🍵 Kombucha', coldbrew:'☕ Cold Brew', juice:'🧃 Juice', rtd:'🍸 RTD Cocktail', energy:'⚡ Energy', mocktail:'🍹 Mocktail', sparkling:'💧 Sparkling Water', sports:'🏃 Sports Drink', other:'📦 Other'}[p] || p;
+            const lbl = {seltzer:'🥤 Seltzer', soda:'🥤 Soda', kombucha:'🍵 Kombucha', coldbrew:'☕ Cold Brew', juice:'🧃 Juice', rtd:'🍸 RTD Cocktail', energy:'⚡ Energy', mocktail:'🍹 Mocktail', sparkling:'💧 Sparkling Water', sports:'🏃 Sport Drinks', other:'📦 Other'}[p] || p;
             return `<span style="padding:4px 11px;border-radius:20px;font-size:12px;font-weight:600;background:rgba(168,85,247,.12);color:#c4a4f8;border:1px solid rgba(168,85,247,.3)">${lbl}</span>`;
           }).join('')}
         </div>
@@ -10058,7 +10058,7 @@ function viewClientEnhanced(clientId) {
         <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">PRODUCT TYPES</div>
         <div style="display:flex;flex-wrap:wrap;gap:6px">
           ${client.productTypes.map(p => {
-            const lbl = {seltzer:'🥤 Seltzer', kombucha:'🍵 Kombucha', coldbrew:'☕ Cold Brew', juice:'🧃 Juice', rtd:'🍸 RTD Cocktail', energy:'⚡ Energy', mocktail:'🍹 Mocktail', sparkling:'💧 Sparkling Water', sports:'🏃 Sports Drink', other:'📦 Other'}[p] || p;
+            const lbl = {seltzer:'🥤 Seltzer', soda:'🥤 Soda', kombucha:'🍵 Kombucha', coldbrew:'☕ Cold Brew', juice:'🧃 Juice', rtd:'🍸 RTD Cocktail', energy:'⚡ Energy', mocktail:'🍹 Mocktail', sparkling:'💧 Sparkling Water', sports:'🏃 Sport Drinks', other:'📦 Other'}[p] || p;
             return `<span style="padding:4px 11px;border-radius:20px;font-size:12px;font-weight:600;background:rgba(168,85,247,.12);color:#c4a4f8;border:1px solid rgba(168,85,247,.3)">${lbl}</span>`;
           }).join('')}
         </div>
