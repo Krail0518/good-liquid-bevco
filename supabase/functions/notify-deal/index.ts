@@ -39,7 +39,7 @@
 import { corsHeaders, jsonResponse, handlePreflight } from '../_shared/cors.ts';
 
 const MIKE_PHONE  = '+18034935065';
-const MIKE_EMAIL  = 'mike@goodliquid.com';
+const MIKE_EMAILS = ['mike@goodliquid.com', 'mike@krail.us'];
 const EMOJI_MAP   = { tour_booked: '📅', new_deal: '📋', new_quote: '📩' } as Record<string, string>;
 
 async function sendSMS(body: string): Promise<boolean> {
@@ -62,24 +62,23 @@ async function sendSMS(body: string): Promise<boolean> {
   }
 }
 
-async function sendEmail(subject: string, text: string): Promise<void> {
-  const apiKey = Deno.env.get('MAILGUN_API_KEY');
-  const domain = Deno.env.get('MAILGUN_DOMAIN');
-  const from   = Deno.env.get('MAILGUN_FROM') || 'Good Liquid Alerts <noreply@goodliquidbevco.com>';
-  if (!apiKey || !domain) return;
+async function sendEmail(subject: string, text: string): Promise<boolean> {
+  const supaUrl    = Deno.env.get('SUPABASE_URL');
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!supaUrl || !serviceKey) { console.error('[notify-deal] missing SUPABASE_URL or SERVICE_ROLE_KEY'); return false; }
   try {
-    const form = new FormData();
-    form.set('from', from);
-    form.set('to', MIKE_EMAIL);
-    form.set('subject', subject);
-    form.set('text', text);
-    await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
+    const r = await fetch(`${supaUrl}/functions/v1/mailgun-send`, {
       method: 'POST',
-      headers: { Authorization: 'Basic ' + btoa('api:' + apiKey) },
-      body: form,
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${serviceKey}` },
+      body: JSON.stringify({ to: MIKE_EMAILS, subject, text }),
     });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) { console.error('[notify-deal] mailgun-send error:', r.status, JSON.stringify(body)); return false; }
+    console.log('[notify-deal] email sent ok, id:', body.id);
+    return true;
   } catch (e) {
-    console.error('[notify-deal] email fallback error:', e);
+    console.error('[notify-deal] email error:', e);
+    return false;
   }
 }
 
@@ -151,14 +150,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const { sms, subject, body } = buildMessage(event, data);
 
-  // Send SMS (primary); if it fails, send email (backup)
-  const smsSent = await sendSMS(sms);
-  if (!smsSent) {
-    await sendEmail(subject, body);
-  }
+  const smsSent   = await sendSMS(sms);
+  const emailSent = await sendEmail(subject, body);
+  console.log('[notify-deal]', event, '→ sms:', smsSent, 'email:', emailSent);
 
-  // Always send email too for a paper trail
-  sendEmail(subject, body).catch(() => {});
-
-  return jsonResponse({ ok: true, smsSent });
+  return jsonResponse({ ok: true, smsSent, emailSent });
 });
