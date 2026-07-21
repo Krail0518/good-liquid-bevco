@@ -497,7 +497,10 @@
       cell.textContent = d;
       var dateStr = viewYear + '-' + pad(viewMonth + 1) + '-' + pad(d);
       var dow = new Date(dateStr + 'T12:00:00Z').getUTCDay(); // use UTC noon to avoid DST shift
-      var isPast = dateStr <= todayStr; // same-day bookings not allowed; first slot is tomorrow
+      // Block same-day AND any date within 24 hours of now (first slot is at least 24h away)
+      var minBookDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      var minDateStr  = isoDate(minBookDate);
+      var isPast = dateStr <= minDateStr;
       var isAvail = !isPast && avail.indexOf(dow) >= 0;
 
       cell.className = 'cal-day' +
@@ -583,10 +586,9 @@
     var startMin   = Number(startParts[0]) * 60 + Number(startParts[1]);
     var endMin     = Number(endParts[0])   * 60 + Number(endParts[1]);
 
-    // Determine if dateStr is today in the page's timezone so we can hide past slots
     var now = new Date();
-    var todayInTz = now.toLocaleString('sv-SE', { timeZone: tz }).slice(0, 10);
-    var isToday = (dateStr === todayInTz);
+    // 24-hour advance notice: hide any slot whose start is within 24 hours of now
+    var minSlotTime = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
     var slots = [];
     for(var m = startMin; m + dur <= endMin; m += stride){
@@ -598,8 +600,8 @@
       var utcStart = localToUTC(dateStr, time, tz);
       var utcEnd   = new Date(utcStart.getTime() + dur * 60000);
 
-      // Hide slots that have already started today
-      if(isToday && utcStart <= now){ continue; }
+      // Skip slots within 24 hours of right now
+      if(utcStart < minSlotTime){ continue; }
 
       var taken = isSlotTaken(utcStart, utcEnd);
 

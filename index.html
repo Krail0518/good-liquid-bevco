@@ -4765,6 +4765,7 @@ function copyEmail(){
    ═══════════════════════════════════════════════ */
 const SUPA_URL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co';
 const SUPA_KEY = 'sb_publishable_-37mkPw8uLzEJM21T9jJOA_YQRQ7ikB';
+const GL_NOTIFY_SECRET = 'gl-notify-2026-abc123';
 
 /* If the URL carries ?inspector=TOKEN, inject the X-Inspector-Token
    header on every supabase-js request. The new RLS policies on the
@@ -5382,6 +5383,9 @@ async function saveNewDeal(){
   const total = Object.values(deals).flat().length;
   const el = document.getElementById('pipe-sub');
   if(el) el.textContent = total + ' active deals';
+
+  // SMS alert to Mike
+  glNotifyDeal('new_deal', {name, company:co, stage});
 
   closeAddDealModal();
 }
@@ -9390,42 +9394,59 @@ function updateBkInfo(){
   }
 }
 
+// SMS/email alert to Mike via notify-deal edge function
+async function glNotifyDeal(event, data){
+  try {
+    await fetch(SUPA_URL+'/functions/v1/notify-deal',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({event, secret:GL_NOTIFY_SECRET, data})
+    });
+  } catch(e){ console.warn('notify-deal:', e); }
+}
+
 async function submitBooking(){
   if(!bkSelectedDate||!bkSelectedTime){alert('Please select a date and time');return;}
   const name=document.getElementById('bk-name').value.trim();
   const email=document.getElementById('bk-email').value.trim();
   if(!name||!email){alert('Please enter your name and email');return;}
   const notes=document.getElementById('bk-notes').value;
-  
+
+  // Validate: Mon-Fri only
+  const dow=new Date(bkSelectedDate+'T12:00:00Z').getUTCDay();
+  if(dow===0||dow===6){alert('Tours are available Monday–Friday only.');return;}
+
+  // Validate: 10am–2pm only
+  const [bkH,bkM]=bkSelectedTime.split(':').map(Number);
+  const bkMin=bkH*60+bkM;
+  if(bkMin<600||bkMin>=840){alert('Tours run between 10:00 AM and 2:00 PM.');return;}
+
+  // Validate: 24-hour advance notice
+  const slotMs=new Date(bkSelectedDate+'T'+bkSelectedTime+':00').getTime();
+  if(slotMs<Date.now()+24*60*60*1000){alert('Tours require at least 24 hours advance notice. Please select a later date.');return;}
+
   // Add to calendar
-  calEvents.push({id:'bk'+Date.now(),type:'general',title:'Tour: '+name,date:bkSelectedDate,time:bkSelectedTime,notes:`Visitor: ${name} (${email})
-${notes}`,remind:'1d'});
+  calEvents.push({id:'bk'+Date.now(),type:'general',title:'Tour: '+name,date:bkSelectedDate,time:bkSelectedTime,notes:`Visitor: ${name} (${email})\n${notes}`,remind:'1d'});
   saveCalEvents();
-  
+
+  // Also persist to Supabase bookings table so it survives a page reload
+  try {
+    await supa.from('bookings').insert([{
+      booker_name: name, booker_email: email,
+      start_at: new Date(bkSelectedDate+'T'+bkSelectedTime+':00').toISOString(),
+      status: 'confirmed', notes
+    }]);
+  } catch(e){ console.warn('bookings insert:', e); }
+
   // Send confirmation emails
   await sendMailgunEmail('mike@goodliquid.com','[Booking] Tour Request: '+name,
-    `New tour request!
-
-Name: ${name}
-Email: ${email}
-Date: ${bkSelectedDate} at ${bkSelectedTime}
-Notes: ${notes||'None'}
-
-Added to your calendar.`);
+    `New tour request!\n\nName: ${name}\nEmail: ${email}\nDate: ${bkSelectedDate} at ${bkSelectedTime}\nNotes: ${notes||'None'}\n\nAdded to your calendar.`);
   await sendMailgunEmail(email,'Your Good Liquid Bev Co Tour Confirmation',
-    `Hi ${name},
+    `Hi ${name},\n\nYour tour request has been submitted!\n\nDate: ${bkSelectedDate} at ${bkSelectedTime}\nLocation: 2011 51st Ave E, Unit 100, Palmetto, FL 34221\n\nMike will confirm within 1 business day.\n\nBest,\nGood Liquid Bev Co\nMike@GoodLiquid.com | (803) 493-5065`);
 
-Your tour request has been submitted!
+  // SMS alert to Mike
+  glNotifyDeal('tour_booked', {name, email, date:bkSelectedDate, time:bkSelectedTime});
 
-Date: ${bkSelectedDate} at ${bkSelectedTime}
-Location: 2011 51st Ave E, Unit 100, Palmetto, FL 34221
-
-Mike will confirm within 1 business day.
-
-Best,
-Good Liquid Bev Co
-Mike@GoodLiquid.com | (803) 493-5065`);
-  
   addNotification('📅 Tour booked: '+name,bkSelectedDate+' at '+bkSelectedTime,'success');
   document.getElementById('bk-success').style.display='block';
   setTimeout(()=>closeBooking(),3000);

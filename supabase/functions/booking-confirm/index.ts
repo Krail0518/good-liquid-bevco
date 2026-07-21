@@ -256,6 +256,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return errorResponse('That slot is in the past', 400);
   }
 
+  // Require 24-hour advance notice
+  if (startAt.getTime() < Date.now() + 24 * 60 * 60 * 1000) {
+    return errorResponse('Bookings require at least 24 hours advance notice.', 400);
+  }
+
   const dow = new Date(slot_date + 'T12:00:00Z').getUTCDay();
   if (!availDays.includes(dow)) {
     return errorResponse('That day is not available', 400);
@@ -462,6 +467,31 @@ Deno.serve(async (req: Request): Promise<Response> => {
       text:       hostText,
       icsContent,
     });
+  }
+
+  // SMS alert to Mike via notify-deal
+  const notifySecret = Deno.env.get('GL_NOTIFY_SECRET');
+  const supaUrl      = Deno.env.get('SUPABASE_URL');
+  const serviceKey   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (notifySecret && supaUrl && serviceKey) {
+    fetch(`${supaUrl}/functions/v1/notify-deal`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${serviceKey}`,
+      },
+      body: JSON.stringify({
+        event:  'tour_booked',
+        secret: notifySecret,
+        data: {
+          name:    booker_name,
+          company: booker_company || '',
+          email:   booker_email,
+          date:    dateLabel,
+          time:    startLabel,
+        },
+      }),
+    }).catch(() => {}); // fire-and-forget
   }
 
   return jsonResponse({ ok: true, booking_id: booking.id });

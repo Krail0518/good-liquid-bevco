@@ -284,6 +284,7 @@ footer{border-top:1px solid rgba(255,255,255,.06);padding:28px 48px;display:flex
 <script>
 const SUPA_URL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co';
 const SUPA_KEY = 'sb_publishable_-37mkPw8uLzEJM21T9jJOA_YQRQ7ikB';
+const GL_NOTIFY_SECRET = 'gl-notify-2026-abc123';
 
 function gv(id){ var el=document.getElementById(id); return el ? el.value.trim() : ''; }
 function showErr(msg){ var el=document.getElementById('qf-err'); el.textContent=msg; el.style.display='block'; }
@@ -405,6 +406,25 @@ async function submitQuote(btn){
     });
     if(supaRes.ok || supaRes.status === 201) anyOk = true;
   } catch(e){ console.warn('Supabase error', e); }
+
+  // 3 — SMS alert to Mike
+  if(anyOk){
+    fetch(SUPA_URL + '/functions/v1/notify-deal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event: 'new_quote',
+        secret: GL_NOTIFY_SECRET,
+        data: {
+          name:    vals.contact_name || '',
+          company: vals.brand_name   || '',
+          email:   vals.email        || '',
+          phone:   vals.phone        || '',
+          service: vals.service      || ''
+        }
+      })
+    }).catch(function(){});
+  }
 
   if(anyOk){
     // Hide the entire form body, show success
