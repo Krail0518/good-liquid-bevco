@@ -36,7 +36,7 @@
 
 import { corsHeaders, jsonResponse, handlePreflight } from '../_shared/cors.ts';
 
-const MIKE_EMAILS = ['mike@goodliquid.com', 'mike@krail.us'];
+const MIKE_EMAILS = ['mike@goodliquid.com'];
 const EMOJI_MAP: Record<string, string> = {
   tour_booked:        '📅',
   new_deal:           '📋',
