@@ -2761,7 +2761,7 @@ select option, .fsel option {
           <div style="flex:1"></div>
           <button class="cbtn grn" id="btn-paid" onclick="markStatus(&#39;paid&#39;)">✓ Mark paid</button>
           <button class="cbtn amber" id="btn-overdue" onclick="markStatus(&#39;overdue&#39;)">⚠ Mark overdue</button>
-          <button class="cbtn" onclick="openFollowUp()">✉ AI Follow-Up</button>
+          <button class="cbtn" onclick="openFollowUpModal()">✉ AI Follow-Up</button>
           <button class="cbtn" style="background:rgba(26,111,255,.12);border-color:rgba(26,111,255,.35);color:#6b9fff" onclick="if(currentInvId)openSendInvoiceModal(currentInvId)">📧 Send Invoice</button>
           <button class="cbtn" style="background:rgba(245,200,66,.12);border-color:rgba(245,200,66,.35);color:#f5c842" onclick="if(currentInvId && window.openEditInvoice)window.openEditInvoice(currentInvId)">✏️ Edit</button>
           <button class="cbtn" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)" onclick="if(currentInvId)downloadInvoicePDF(currentInvId)">⬇ PDF</button>
@@ -4058,7 +4058,18 @@ function renderInvoices(){
 }
 function setInvFilter(el,f){document.querySelectorAll('#inv-pills .cpill').forEach(p=>p.classList.remove('act'));el.classList.add('act');invFilter=f;renderInvoices()}
 function filterInvoices(q){invSearch=q.toLowerCase();renderInvoices()}
-function quickPaid(id){const i=invoices.find(x=>x.id===id);if(i){i.status='paid';renderInvoices();renderDash()}}
+async function quickPaid(id){
+  const i=invoices.find(x=>x.id===id);
+  if(!i)return;
+  i.status='paid';
+  i.paid_at=new Date().toISOString();
+  renderInvoices();renderDash();
+  try{
+    await supa.from('invoices').update({status:'paid',paid_at:i.paid_at})
+      .or(`invoice_number.eq.${id},id.eq.${id}`);
+  }catch(e){console.warn('[GL] quickPaid persist failed',e);}
+  glNotifyDeal('invoice_paid_manual',{invoice_number:id,client:i.clientName||'',amount:String(i.amount||'')});
+}
 
 /* Invoice detail */
 function viewInvoice(id){
@@ -4626,16 +4637,22 @@ let currentTone = 'friendly';
 
 function openFollowUp(){
   if(!currentInvId)return;
-  // Email is sent server-side via the mailgun-send Edge Function;
-  // legacy API key localStorage check removed. The send itself
-  // returns a clear error if the secret is unset.
   const inv = invoices.find(i=>i.id===currentInvId);
   if(!inv)return;
   const c = clients.find(x=>x.id===inv.client)||{name:inv.clientName,email:''};
-  document.getElementById('fu-to').value = c.email||'';
+  const toEl = document.getElementById('fu-to');
+  toEl.value = c.email||'';
+  toEl.removeAttribute('readonly');
+  if(!toEl.value || toEl.value.indexOf('@')<0){
+    toEl.style.borderColor='#ff8579';
+    toEl.placeholder='No email on file — type one to send';
+  }
   // Auto-select tone based on status
   const tone = inv.status==='overdue' ? 'firm' : 'friendly';
   setTone(tone, inv);
+  // Show content, hide loading spinner
+  document.getElementById('followup-loading').style.display='none';
+  document.getElementById('followup-content').style.display='block';
   document.getElementById('followup-modal').classList.add('show');
 }
 
@@ -4995,11 +5012,14 @@ async function saveInvoice(status){
   const notes=document.getElementById('inv-notes')?.value||'';
   const num='GL-'+new Date().getFullYear()+'-'+(Math.floor(Math.random()*9000)+1000);
   // Write to Supabase
-  await supa.from('invoices').insert([{
-    invoice_number:num, client_id:cid.startsWith('c')?null:cid, client_name:c?.name||'',
-    service:desc, amount:total, status, invoice_date:date,
-    due_date:new Date(Date.now()+30*86400000).toISOString().split('T')[0], notes, line_items:[]
-  }]);
+  try {
+    const {error} = await supa.from('invoices').insert([{
+      invoice_number:num, client_id:cid.startsWith('c')?null:cid, client_name:c?.name||'',
+      service:desc, amount:total, status, invoice_date:date,
+      due_date:new Date(Date.now()+30*86400000).toISOString().split('T')[0], notes, line_items:[]
+    }]);
+    if(error) console.error('[GL] saveInvoice insert error', error.message);
+  } catch(e){ console.error('[GL] saveInvoice threw', e); }
   // Update local array
   invoices.push({id:num,client:cid,clientName:c?.name||'',svc:desc,amount:total,date,status,notes});
   if(c) c.billed+=total;
@@ -5008,8 +5028,6 @@ async function saveInvoice(status){
   setTimeout(()=>viewInvoice(num),150);
 }
 
-// Override saveReferral to also write to Supabase
-const _origSaveReferral = saveReferral;
 async function saveReferral(){
   const refId=document.getElementById('ref-referrer-sel').value;
   const clientName=document.getElementById('ref-client-name').value.trim();
@@ -8949,13 +8967,6 @@ let currentFollowupInvId = null;
 
 function openFollowUpModal(){
   if(!currentInvId) return;
-  // Pre-flight: AI key needed to draft, email credentials needed to send.
-  if(!AI_KEY){
-    if(typeof addNotification==='function') addNotification('AI key required','Paste your Anthropic API key in AI Settings before drafting a follow-up.','warning');
-    openAISettings();
-    return;
-  }
-  // Email credentials live server-side in the mailgun-send Edge Function.
   const inv=invoices.find(i=>i.id===currentInvId);
   if(!inv) return;
   currentFollowupInvId=currentInvId;
