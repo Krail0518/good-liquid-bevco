@@ -4593,19 +4593,26 @@ function openChangeRole(uid){
   document.getElementById('role-modal').classList.add('show');
 }
 function closeRoleModal(){document.getElementById('role-modal').classList.remove('show');changeRoleUserId=null}
-function saveRole(){
+async function saveRole(){
   if(!changeRoleUserId)return;
   const u=users.find(x=>x.id===changeRoleUserId);
-  if(u){u.role=document.getElementById('role-select').value;renderUsers();}
+  if(u){
+    u.role=document.getElementById('role-select').value;
+    renderUsers();
+    try{ await supa.from('profiles').update({role:u.role}).eq('id',changeRoleUserId); }
+    catch(e){ console.warn('[GL] saveRole persist failed',e); }
+  }
   closeRoleModal();
 }
 
-function deactivateUser(uid){
+async function deactivateUser(uid){
   const u=users.find(x=>x.id===uid);if(!u)return;
   const action=u.status==='active'?'deactivate':'reactivate';
   if(confirm(`${action.charAt(0).toUpperCase()+action.slice(1)} ${u.name}? ${action==='deactivate'?'They will no longer be able to log in.':'They will be able to log in again.'}`)){
     u.status=u.status==='active'?'inactive':'active';
     renderUsers();
+    try{ await supa.from('profiles').update({status:u.status}).eq('id',uid); }
+    catch(e){ console.warn('[GL] deactivateUser persist failed',e); }
   }
 }
 
@@ -4999,6 +5006,8 @@ async function loadSupabaseData(){
   // Hydrate the follow-up log from Supabase (replaces the old gl_followup_log
   // localStorage store — see migration 20260519_followup_acks_waivers.sql).
   try { await loadFollowupLog(); } catch(e){ console.warn('[GL] loadFollowupLog failed', e); }
+  // Deal activity timestamps — must load before checkStaleDeals() runs at login.
+  try { await loadDealActivity(); } catch(e){ console.warn('[GL] loadDealActivity failed', e); }
 }
 
 // Override saveInvoice to also write to Supabase
