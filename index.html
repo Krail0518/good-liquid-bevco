@@ -4304,26 +4304,6 @@ function calcRefComm(){
   if(el)el.textContent='$'+comm.toLocaleString();
 }
 
-function saveReferral(){
-  const refId=document.getElementById('ref-referrer-sel').value;
-  const clientName=document.getElementById('ref-client-name').value.trim();
-  if(!refId||!clientName){alert('Please fill in referrer and client name.');return}
-  const ref=referrers.find(r=>r.id===refId);
-  const deal=parseFloat(document.getElementById('ref-deal').value)||0;
-  const rate=parseFloat(document.getElementById('ref-rate').value)||5;
-  const comm=Math.round(deal*rate/100);
-  const status=document.getElementById('ref-status-sel').value;
-  const notes=document.getElementById('ref-notes').value;
-  const id='ref'+(referrals.length+1);
-  referrals.push({id,referrerId:refId,referrerName:ref.name,clientName,dealValue:deal,rate,commAmount:comm,status,datePaid:null,notes,date:new Date().toISOString().split('T')[0]});
-  activities.unshift({type:'ref',icon:'🤝',name:`New referral from ${ref.name}`,detail:`${clientName} — potential $${comm.toLocaleString()} commission`,time:'Just now'});saveActivities();
-  renderReferrals();renderDash();renderActivity();
-  closeRefModal();
-  // Clear form
-  document.getElementById('ref-client-name').value='';
-  document.getElementById('ref-notes').value='';
-}
-
 /* Referrers */
 function renderReferrers(){
   document.getElementById('referrers-list').innerHTML=referrers.map(r=>{
@@ -5150,7 +5130,7 @@ function closeAddClientModal(){
   ['nc-comm-email','nc-comm-sms','nc-comm-whatsapp','nc-comm-wechat'].forEach((id,i)=>{
     const el=document.getElementById(id); if(el) el.checked = (i===0); // re-default to Email only
   });
-  ['nc-pt-seltzer','nc-pt-kombucha','nc-pt-coldbrew','nc-pt-juice','nc-pt-rtd',
+  ['nc-pt-seltzer','nc-pt-soda','nc-pt-coldbrew','nc-pt-juice','nc-pt-rtd',
    'nc-pt-energy','nc-pt-mocktail','nc-pt-sparkling','nc-pt-sports','nc-pt-other',
    'nc-coi-on-file','nc-w9-on-file','nc-tax-exempt','nc-pa-letter','nc-lift-gate',
    'nc-dock-mon','nc-dock-tue','nc-dock-wed','nc-dock-thu','nc-dock-fri','nc-dock-sat','nc-dock-sun'].forEach(id=>{
@@ -5228,7 +5208,7 @@ async function saveNewClient(){
 
   const productTypes = [
     ck('nc-pt-seltzer')   ? 'seltzer'   : null,
-    ck('nc-pt-kombucha')  ? 'kombucha'  : null,
+    ck('nc-pt-soda')      ? 'soda'      : null,
     ck('nc-pt-coldbrew')  ? 'coldbrew'  : null,
     ck('nc-pt-juice')     ? 'juice'     : null,
     ck('nc-pt-rtd')       ? 'rtd'       : null,
@@ -5374,9 +5354,13 @@ async function saveNewDeal(){
   const notes = document.getElementById('nd-notes').value.trim();
 
   // Save to Supabase
-  const {data:newD} = await supa.from('deals').insert([{
-    name, client_name:co, value:val, stage, probability:prob, notes
-  }]).select().single();
+  let newD = null;
+  try {
+    const {data} = await supa.from('deals').insert([{
+      name, client_name:co, value:val, stage, probability:prob, notes
+    }]).select().single();
+    newD = data;
+  } catch(e){ console.warn('[GL] saveNewDeal insert failed', e); }
 
   const did = newD ? newD.id : 'd'+(Date.now());
   if(!deals[stage]) deals[stage]=[];
