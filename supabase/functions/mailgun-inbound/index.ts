@@ -67,10 +67,12 @@ Deno.serve(async (req) => {
   const signature  = form.get("signature")?.toString() ?? "";
   const signingKey = Deno.env.get("MAILGUN_WEBHOOK_SIGNING_KEY");
 
-  if (signingKey && timestamp && token && signature) {
-    const ok = await verifySignature(timestamp, token, signature, signingKey);
-    if (!ok) return new Response("bad signature", { status: 401 });
+  if (!signingKey) {
+    console.error('[GL inbound] MAILGUN_WEBHOOK_SIGNING_KEY not configured');
+    return new Response('signing key not configured', { status: 500 });
   }
+  const ok = await verifySignature(timestamp, token, signature, signingKey);
+  if (!ok) return new Response('bad signature', { status: 401 });
 
   // Mailgun sends `sender` (clean address) and `from` (display name + address).
   const fromRaw   = form.get("from")?.toString() ?? "";

@@ -39,7 +39,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   catch { return errorResponse('Invalid JSON body', 400); }
 
   const systemPrompt = String(payload.systemPrompt || '').trim();
-  const model     = String(payload.model     || 'claude-haiku-4-5-20251001');
+  const model     = String(payload.model     || 'claude-haiku-4-5');
   const maxTokens = Math.max(1, Math.min(4096, Number(payload.maxTokens) || 1024));
 
   // Two input shapes:

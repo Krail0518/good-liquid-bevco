@@ -266,8 +266,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return errorResponse('That day is not available', 400);
   }
 
-  const [sh, sm] = (page.start_time || '09:00').split(':').map(Number);
-  const [eh, em] = (page.end_time   || '17:00').split(':').map(Number);
+  const [sh, sm] = (page.start_time || '10:00').split(':').map(Number);
+  const [eh, em] = (page.end_time   || '14:00').split(':').map(Number);
   const [rh, rm] = slot_time.split(':').map(Number);
   const slotMin  = rh * 60 + rm;
   if (slotMin < sh * 60 + sm || slotMin + duration > eh * 60 + em) {

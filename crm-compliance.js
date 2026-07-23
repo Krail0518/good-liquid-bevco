@@ -296,7 +296,8 @@
       pcqi_notified: true,
       pcqi_notified_at: nowISO(),
       source_record_id: opts.record_id || null,
-      status: 'open'
+      status: 'open',
+      hold_date: new Date().toISOString().split('T')[0]
     });
 
     // NC report draft in defects table
@@ -631,7 +632,7 @@
       field('Media pressure (PSI)', 'media_psi', 'number', { step: '0.1' }) +
       field('FDD status', 'fdd', 'select', { options: [['ok','OK — forward flow'],['divert','DIVERT — flow diverted']], required: true }) +
       field('Corrective action (if deviation)', 'corrective', 'textarea') +
-      '<div style="font-size:11px;color:#f5c842;background:rgba(245,200,66,.08);padding:8px 12px;border-radius:6px;margin-top:8px">Critical limit (hot side): hold-tube temp ≥ ' + DEFAULT_LIMITS.htst_temp_f + '°F. Cold side typically ≤ 40°F for refrigerated storage (confirm your FSP). FDD DIVERT or hot-side temp drop = STOP production, hold lot, auto-NC.</div>';
+      '<div style="font-size:11px;color:#f5c842;background:rgba(245,200,66,.08);padding:8px 12px;border-radius:6px;margin-top:8px">Critical limit (hot side): hold-tube temp ≥ ' + (window.glGetLimits ? window.glGetLimits().htst_temp_f : DEFAULT_LIMITS.htst_temp_f) + '°F. Cold side typically ≤ 40°F for refrigerated storage (confirm your FSP). FDD DIVERT or hot-side temp drop = STOP production, hold lot, auto-NC.</div>';
     var modal = modalShell('FSP-PC-001 · HTST Pasteurization Reading (CCP-1)', 'Log every 30 minutes during pasteurization', body, formFooter());
     wireYn(modal);
     modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
@@ -647,7 +648,7 @@
         fdd: getVal(modal,'fdd'),
         corrective: getVal(modal,'corrective')
       };
-      var tempFail = (data.temp_f || 0) < DEFAULT_LIMITS.htst_temp_f;
+      var tempFail = (data.temp_f || 0) < (window.glGetLimits ? window.glGetLimits().htst_temp_f : DEFAULT_LIMITS.htst_temp_f);
       var fddFail = data.fdd === 'divert';
       // Cold-side check is informational unless explicitly above 40°F — FSP
       // confirmation needed to escalate this to a hard CCP failure. For now
@@ -657,11 +658,11 @@
       var coldBit = data.cold_temp_f != null ? ' · cold ' + data.cold_temp_f + '°F' + (coldWarn ? ' ⚠' : '') : '';
       await saveRecord('FSP-PC-001', data, {
         signed: signed, complete: signed,
-        task_id: null, run_id: task.run_id,
+        task_id: task.id, run_id: task.run_id,
         has_deviation: hasFailure,
         deviation_notes: hasFailure ? (
           'HTST CCP-1 deviation at ' + data.time + ' — ' +
-          (tempFail ? 'hold-tube ' + data.temp_f + '°F < ' + DEFAULT_LIMITS.htst_temp_f + '°F. ' : '') +
+          (tempFail ? 'hold-tube ' + data.temp_f + '°F < ' + (window.glGetLimits ? window.glGetLimits().htst_temp_f : DEFAULT_LIMITS.htst_temp_f) + '°F. ' : '') +
           (fddFail ? 'FDD DIVERT. ' : '') +
           (coldWarn ? 'Cold-side ' + data.cold_temp_f + '°F > 40°F (chill verification needed). ' : '') +
           (data.corrective || '')
@@ -1062,7 +1063,7 @@
       field('Lamp status', 'lamp', 'select', { options: [['ok','OK'],['replace','Replace soon'],['fault','Fault — replace now']] }) +
       field('Alarm triggered?', 'alarm', 'yn') +
       field('Corrective action', 'corrective', 'textarea') +
-      '<div style="font-size:11px;color:#f5c842;background:rgba(245,200,66,.08);padding:8px 12px;border-radius:6px;margin-top:8px">CL: dose ≥ '+DEFAULT_LIMITS.uv_dose_mj_cm2+' mJ/cm². Below CL or alarm = stop water use, do not use for product until verified.</div>';
+      '<div style="font-size:11px;color:#f5c842;background:rgba(245,200,66,.08);padding:8px 12px;border-radius:6px;margin-top:8px">CL: dose ≥ '+(window.glGetLimits ? window.glGetLimits().uv_dose_mj_cm2 : DEFAULT_LIMITS.uv_dose_mj_cm2)+' mJ/cm². Below CL or alarm = stop water use, do not use for product until verified.</div>';
     var modal = modalShell('FSP-PC-004 · UV Water Treatment (CCP-3)', 'Hourly during production runs', body, formFooter());
     wireYn(modal);
     modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
@@ -1070,11 +1071,11 @@
       var dose = parseFloat(getVal(modal,'dose')) || 0;
       var alarm = getVal(modal,'alarm');
       var data = { product: getVal(modal,'product'), time: getVal(modal,'time'), intensity: getVal(modal,'intensity'), flow: getVal(modal,'flow'), dose: dose, lamp: getVal(modal,'lamp'), alarm: alarm, corrective: getVal(modal,'corrective') };
-      var hasFailure = dose < DEFAULT_LIMITS.uv_dose_mj_cm2 || alarm === 'Y';
+      var hasFailure = dose < (window.glGetLimits ? window.glGetLimits().uv_dose_mj_cm2 : DEFAULT_LIMITS.uv_dose_mj_cm2) || alarm === 'Y';
       await saveRecord('FSP-PC-004', data, {
         signed: signed, complete: signed, task_id: task.id, run_id: task.run_id,
         has_deviation: hasFailure,
-        deviation_notes: hasFailure ? ('UV dose ' + dose + ' mJ/cm² < ' + DEFAULT_LIMITS.uv_dose_mj_cm2 + ' or alarm triggered at ' + data.time) : null,
+        deviation_notes: hasFailure ? ('UV dose ' + dose + ' mJ/cm² < ' + (window.glGetLimits ? window.glGetLimits().uv_dose_mj_cm2 : DEFAULT_LIMITS.uv_dose_mj_cm2) + ' or alarm triggered at ' + data.time) : null,
         corrective_action: data.corrective, spawn_hold: hasFailure,
         product_name: 'UV-treated water', hazard_type: 'biological',
         summary: data.time + ' · ' + dose + ' mJ/cm² · ' + (hasFailure ? 'CCP FAIL' : 'OK')
@@ -1103,7 +1104,7 @@
       '</div>' +
       field('ABV meets spec?', 'abv_spec', 'yn') +
       field('Package date', 'pkg_date', 'date') +
-      '<div style="font-size:11px;color:#f5c842;background:rgba(245,200,66,.08);padding:8px 12px;border-radius:6px;margin-top:8px">CL: final pH ≤ '+DEFAULT_LIMITS.final_pH_fermented+' AND ABV ≥ product spec. Fail = hold batch, do not package.</div>';
+      '<div style="font-size:11px;color:#f5c842;background:rgba(245,200,66,.08);padding:8px 12px;border-radius:6px;margin-top:8px">CL: final pH ≤ '+(window.glGetLimits ? window.glGetLimits().final_pH_fermented : DEFAULT_LIMITS.final_pH_fermented)+' AND ABV ≥ product spec. Fail = hold batch, do not package.</div>';
     var modal = modalShell('FSP-PC-005 · Fermentation Monitoring (CCP-A)', 'Multiple readings per batch — log when each is taken', body, formFooter());
     wireYn(modal);
     modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
@@ -1111,7 +1112,7 @@
       var phFinal = parseFloat(getVal(modal,'ph_final')) || 999;
       var abvSpec = getVal(modal,'abv_spec');
       var data = { batch_no: getVal(modal,'batch_no'), product: getVal(modal,'product'), pitch_date: getVal(modal,'pitch_date'), yeast: getVal(modal,'yeast'), og: getVal(modal,'og'), fg: getVal(modal,'fg'), ph_d3: getVal(modal,'ph_d3'), ph_d7: getVal(modal,'ph_d7'), ph_final: phFinal, abv: getVal(modal,'abv'), abv_spec: abvSpec, pkg_date: getVal(modal,'pkg_date') };
-      var hasFailure = phFinal > DEFAULT_LIMITS.final_pH_fermented || abvSpec === 'N';
+      var hasFailure = phFinal > (window.glGetLimits ? window.glGetLimits().final_pH_fermented : DEFAULT_LIMITS.final_pH_fermented) || abvSpec === 'N';
       await saveRecord('FSP-PC-005', data, {
         signed: signed, complete: signed, task_id: task.id,
         has_deviation: hasFailure,
@@ -2981,6 +2982,7 @@
             pcqi_notified: true, pcqi_notified_at: nowISO(),
             source_record_id: rec.data.id,
             status: 'open',
+            hold_date: new Date().toISOString().split('T')[0],
             notes: 'Auto-created from GMP-GHP-001 glass breakage event.'
           }]);
           if(typeof addNotification === 'function') addNotification('🚨 Glass breakage logged — Hold Tag ' + nextTag, data.location, 'warning');
@@ -3789,6 +3791,7 @@
         status: 'signed',
         signed_by: user.id || null, signed_at: nowISO(),
         signature_name: user.name || user.email || 'PCQI',
+        recorded_at: new Date().toISOString(),
         signature_meaning: 'PCQI acknowledgement of plan version'
       }]).select().single();
       if(typeof window.glAudit === 'function') window.glAudit('document_uploaded', rec.data ? rec.data.id : '', { name: name, version: ver });

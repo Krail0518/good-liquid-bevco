@@ -120,5 +120,30 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return errorResponse('Mailgun rejected: ' + errText, r.status);
   }
   const data = await r.json().catch(() => ({}));
+
+  // Fire-and-forget: insert a row into email_log so we have an outbound record.
+  const supaUrl    = Deno.env.get('SUPABASE_URL') || '';
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+  if (supaUrl && serviceKey) {
+    fetch(`${supaUrl}/rest/v1/email_log`, {
+      method: 'POST',
+      headers: {
+        'apikey': serviceKey,
+        'Authorization': `Bearer ${serviceKey}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal',
+      },
+      body: JSON.stringify({
+        mailgun_id:   data.id || '',
+        to_email:     to.join ? to.join(',') : String(to),
+        subject:      subject,
+        body_preview: (text || '').slice(0, 280),
+        status:       'sent',
+        sent_at:      new Date().toISOString(),
+        direction:    'outbound',
+      }),
+    }).catch(e => console.warn('[mailgun-send] email_log insert failed:', e));
+  }
+
   return jsonResponse({ ok: true, id: data.id || null, message: data.message || null });
 });

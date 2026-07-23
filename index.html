@@ -3443,37 +3443,7 @@ function sendOnboardingEmail(){
   if(!email) return;
   const name = prompt('Customer name:');
   if(!name) return;
-  
-  // Generate a policy-compliant temp password (12 chars, uppercase + digit + special).
-  const tempPw = (window.glGenerateTempPassword ? window.glGenerateTempPassword() : ('GL' + Math.random().toString(36).substring(2,8).toUpperCase() + '!1'));
-  // NOTE: This legacy sendOnboardingEmail flow doesn't write the password
-  // to localStorage anymore (was a security hole — plaintext creds on
-  // every device the admin opened the CRM on). The canonical invite
-  // flow is window.glInviteCustomerLogin which provisions a real
-  // Supabase auth user with this temp password and creates the
-  // customer_users row. This function is preserved only so any
-  // existing UI buttons that call it keep firing.
-  
-  // Send via mailgun-send edge function
-  sendMailgunEmail(email, 'Welcome to Good Liquid Bev Co — Your Portal Access',
-    `Hi ${name},
-
-Welcome to Good Liquid Bev Co! Your client portal is ready.
-
-Login at: goodliquidbevco.com
-Email: ${email}
-Temporary Password: ${tempPw}
-
-Please change your password after first login.
-
-Best,
-Mike Krail
-Good Liquid Bev Co
-Mike@GoodLiquid.com | (803) 493-5065`
-  );
-  
-  addNotification('📧 Onboarding email sent to '+name,'Customer portal access created','success');
-  alert('✓ Onboarding email sent to '+email+'\nTemp password: '+tempPw);
+  window.glInviteCustomerLogin(null, name, email);
 }
 
 function renderCustomerLogins(){
@@ -4275,6 +4245,7 @@ function payComm(id){
     renderReferrals();renderDash();
     activities.unshift({type:'ref',icon:'🤝',name:`Commission paid — ${r.referrerName}`,detail:`$${r.commAmount.toLocaleString()} for ${r.clientName} referral`,time:'Just now'});saveActivities();
     renderActivity();
+    supa.from('referrals').update({status:'paid', date_paid: r.datePaid}).eq('id', id).then(function(res){ if(res.error) console.warn('payComm Supabase error:', res.error.message); });
   }
 }
 
@@ -4598,7 +4569,7 @@ async function saveRole(){
   const u=users.find(x=>x.id===changeRoleUserId);
   if(u){
     u.role=document.getElementById('role-select').value;
-    renderUsers();
+    renderPermissionsPanel();
     try{ await supa.from('profiles').update({role:u.role}).eq('id',changeRoleUserId); }
     catch(e){ console.warn('[GL] saveRole persist failed',e); }
   }
@@ -4610,7 +4581,7 @@ async function deactivateUser(uid){
   const action=u.status==='active'?'deactivate':'reactivate';
   if(confirm(`${action.charAt(0).toUpperCase()+action.slice(1)} ${u.name}? ${action==='deactivate'?'They will no longer be able to log in.':'They will be able to log in again.'}`)){
     u.status=u.status==='active'?'inactive':'active';
-    renderUsers();
+    renderPermissionsPanel();
     try{ await supa.from('profiles').update({status:u.status}).eq('id',uid); }
     catch(e){ console.warn('[GL] deactivateUser persist failed',e); }
   }
@@ -5023,14 +4994,14 @@ async function saveInvoice(status){
   // Write to Supabase
   try {
     const {error} = await supa.from('invoices').insert([{
-      invoice_number:num, client_id:cid.startsWith('c')?null:cid, client_name:c?.name||'',
+      invoice_number:num, client_id:/^[0-9a-f-]{36}$/i.test(cid)?cid:null, client_name:c?.name||'',
       service:desc, amount:total, status, invoice_date:date,
-      due_date:new Date(Date.now()+30*86400000).toISOString().split('T')[0], notes, line_items:[]
+      due_date:new Date(Date.now()+30*86400000).toISOString().split('T')[0], notes, line_items:lines.map(l=>({desc:l.d,qty:1,unitPrice:l.a,total:l.a}))
     }]);
     if(error) console.error('[GL] saveInvoice insert error', error.message);
   } catch(e){ console.error('[GL] saveInvoice threw', e); }
   // Update local array
-  invoices.push({id:num,client:cid,clientName:c?.name||'',svc:desc,amount:total,date,status,notes});
+  invoices.push({id:num,client:cid,clientName:c?.name||'',svc:desc,amount:total,date,status,notes,lineItems:lines.map(l=>({desc:l.d,qty:1,unitPrice:l.a,total:l.a}))});
   if(c) c.billed+=total;
   renderInvoices();renderDash();renderClients();
   cNav('invoices',document.querySelectorAll('.cni')[4]);
@@ -5091,6 +5062,7 @@ async function saveReferrer(){
 // Override logoutCRM to sign out of Supabase
 const _origLogout = logoutCRM;
 function logoutCRM(){
+  crmInited = false;
   supa.auth.signOut();
   currentUser=null;
   exitCRM();
@@ -5391,7 +5363,7 @@ async function saveNewDeal(){
 
   const did = newD ? newD.id : 'd'+(Date.now());
   if(!deals[stage]) deals[stage]=[];
-  deals[stage].push({id:did, name, co, val:'$'+val.toLocaleString(), prob});
+  deals[stage].push({id:did, name, co, val:'$'+val.toLocaleString(), prob, notes, stageEnteredAt: newD?.stage_entered_at || new Date().toISOString()});
   renderKanban(); renderDash();
 
   // Update pipeline subtitle
@@ -5536,6 +5508,7 @@ async function moveDeal(dealId, fromStage, toStage, fallbackIdx){
   if(dealId && !String(dealId).startsWith('tmp_')){
     try { await supa.from('deals').update({stage:toStage, stage_entered_at:now}).eq('id',dealId); } catch(e){ console.warn('Move save failed',e); }
   }
+  touchDeal(deal.name || deal.co || dealId);
   renderKanban(); renderDash();
   if(toStage === 'Closed Won') glNotifyDeal('deal_closed_won', {name: deal.name||'', company: deal.co||'', stage:'Closed Won', value: String(deal.val||''), email: deal.email||'', phone: deal.phone||''});
 }
@@ -5621,6 +5594,7 @@ async function setDealOutreach(dealId, stage, idx, status){
   const d = stageArr[idx];
   if(!d) return;
   d.outreachStatus = status;
+  touchDeal(d.name || d.co || dealId);
   renderKanban();
   // Persist to Supabase only for real (UUID) deal IDs
   if(dealId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(dealId))){
@@ -6401,6 +6375,7 @@ async function saveDealDetail(){
     } catch(e){ console.warn('Deal save failed:', e); }
   }
 
+  touchDeal(d.name || d.co || d.id);
   closeDealDetail();
   renderKanban();
   renderDash();
@@ -6431,7 +6406,7 @@ document.getElementById('deal-detail-panel').addEventListener('click', function(
 
 /* AI calls now route through the `ai-proxy` Edge Function. The Anthropic
    API key lives in Supabase secrets only — never exposed to the browser. */
-const AI_MODEL = 'claude-haiku-4-5-20251001';
+const AI_MODEL = 'claude-haiku-4-5';
 
 function openAISettings(){
   const existing = document.getElementById('ai-settings-overlay');
@@ -6499,6 +6474,7 @@ function showAIModal(title, content, loading=false) {
   m.addEventListener('click', e=>{ if(e.target===m) m.remove(); });
   document.body.appendChild(m);
 }
+function closeAIModal(){ var m=document.getElementById('ai-modal'); if(m) m.remove(); }
 
 // ─── AI: DRAFT FOLLOW-UP EMAIL ───
 async function aiDraftEmail(clientName, invoiceNum, amount, status) {
@@ -7436,6 +7412,7 @@ async function addNotification(title, sub, type='info'){
         // Swap the temp id for the real one so future read/delete by id
         // hits the right row.
         localN.id = r.data.id;
+        renderNotifList();
       }
     } catch(_e){}
   }
@@ -7535,22 +7512,26 @@ async function loadDealActivity(){
 function checkStaleDeals(){
   const STALE_DAYS=7;
   const now=Date.now();
-  const allDeals=[...Object.values(deals)].flat();
-  allDeals.forEach(d=>{
-    if(d.name&&!['Closed Won','Closed Lost'].includes(d.stage)){
+  Object.entries(deals).forEach(([stage, arr]) => arr.forEach(d => {
+    if(['Closed Won','Closed Lost'].includes(stage)) return;
+    if(d.name){
       const key=d.name;
       const last=dealLastActivity[key]||now;
       const daysDiff=Math.floor((now-last)/(1000*60*60*24));
       if(daysDiff>=STALE_DAYS){
         addNotification('⚠️ Stale Deal: '+d.name,`${daysDiff} days without activity — ${d.co||''}. Follow up now!`,'stale');
+        // Dedup guard — only send one email alert per deal per day
+        var _staleKey = 'gl_stale_alerted_' + (d.name||'') + '_' + new Date().toISOString().slice(0,10);
+        if(localStorage.getItem(_staleKey)) return;
         // Send email notification
         sendMailgunEmail('mike@goodliquid.com','[Good Liquid CRM] Stale Deal Alert: '+d.name,
           `Hi Mike,\n\nThe deal "${d.name}" for ${d.co||''} has been inactive for ${daysDiff} days.\n\nDeal value: ${d.val||'N/A'}\n\nPlease follow up to keep this deal moving.\n\n— Good Liquid CRM`);
         sendMailgunEmail('sandra@goodliquid.com','[Good Liquid CRM] Stale Deal Alert: '+d.name,
           `Hi Sandra,\n\nThe deal "${d.name}" for ${d.co||''} has been inactive for ${daysDiff} days.\n\nDeal value: ${d.val||'N/A'}\n\nPlease follow up.\n\n— Good Liquid CRM`);
+        localStorage.setItem(_staleKey, '1');
       }
     }
-  });
+  }));
 }
 
 function touchDeal(dealName){
@@ -9249,15 +9230,16 @@ Format: Subject: on first line, then blank line, then email body. Sign off as Go
 }
 
 async function sendAIComm(){
-  const to=document.getElementById('ai-comm-client').value;
-  const clientId=to;
-  const client=clients.find(c=>c.id===clientId);
+  var _clientId = document.getElementById('ai-comm-client').value;
+  var _client = clients.find(function(c){ return c.id === _clientId; });
+  if(!_client){ alert('Please select a client.'); return; }
+  if(!_client.email){ alert('No email address on file for this client.'); return; }
   const subject=document.getElementById('ai-comm-subj').value;
   const body=document.getElementById('ai-comm-body').value;
-  const sent=await sendMailgunEmail(client?client.email:to,subject,body);
-  addNotification('📧 Email sent','To: '+(client?client.name:to),'email');
+  const sent=await sendMailgunEmail(_client.email,subject,body);
+  addNotification('📧 Email sent','To: '+_client.name,'email');
   closeAICommModal();
-  alert(sent?'✓ Email sent!':'✓ Logged. (Email sending not configured.)');
+  alert(sent?'✓ Email sent!':'✗ Send failed — check the browser console.');
 }
 
 /* ═══════════════════════════════════════════
@@ -9448,6 +9430,7 @@ async function submitBooking(){
       start_at: new Date(bkSelectedDate+'T'+bkSelectedTime+':00').toISOString(),
       status: 'confirmed', notes
     }]);
+    supa.from('cal_events').insert([{event_type:'general',title:'Tour: '+(name||''),event_date:bkSelectedDate,event_time:bkSelectedTime||'',notes:'Booked via public form'}]).then(function(){});
   } catch(e){ console.warn('bookings insert:', e); }
 
   // Send confirmation emails
@@ -9496,8 +9479,8 @@ initCRM=function(){
    ENHANCED renderClients — add tags + health
 ═══════════════════════════════════════════ */
 const origRenderClients=renderClients;
-renderClients=function(){
-  origRenderClients();
+renderClients=function(list){
+  origRenderClients(list);
   // Add health dots and tags to client rows after render
   setTimeout(()=>{
     const rows=document.querySelectorAll('#client-body tr');
@@ -10339,10 +10322,6 @@ async function removeUser(id){
   addNotification('👤 User removed: ' + u.name, u.email, 'warning');
 }
 
-// Render users panel on navigation to users page
-window.GL_HOOKS.registerNavHook(function(page){
-  if(page === 'users') setTimeout(renderUsersPanel, 100);
-});
 
 /* ═══════════════════════════════════════════
    FAVICON FIX

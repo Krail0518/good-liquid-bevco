@@ -30,7 +30,7 @@
     if(!token) return false;
     var sb = getSB(); if(!sb) return false;
     var r = await sb.from('invoices')
-      .select('id, invoice_number, line_items, amount, status, invoice_date, due_date, payment_terms, notes, client_name, client_id')
+      .select('id, invoice_number, line_items, amount, status, invoice_date, due_date, payment_terms, notes, client_name, client_id, client_email')
       .eq('share_token', token).maybeSingle();
     if(r.error || !r.data){
       document.body.innerHTML = '<div style="padding:40px;font:16px system-ui;text-align:center;color:#444">Invoice not found or revoked.</div>';

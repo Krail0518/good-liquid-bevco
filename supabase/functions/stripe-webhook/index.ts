@@ -166,14 +166,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
   }
 
-  // charge.refunded → optional: mark refunded
+  // charge.refunded → reset invoice to overdue
   if (type === 'charge.refunded') {
-    const sessionId = (obj.payment_intent && obj.payment_intent_data?.metadata?.session_id) || null;
-    // Best-effort: look up by stripe_session_id and reset to overdue.
-    // Skip the lookup if we don't have a session_id reference.
-    if (sessionId) {
-      const url = `${SUPABASE_URL}/rest/v1/invoices?stripe_session_id=eq.${encodeURIComponent(sessionId)}`;
-      const r = await fetch(url, {
+    // Stripe Charge objects carry metadata directly (no payment_intent_data property)
+    const invoiceNumber = (obj.metadata?.invoice_id || obj.metadata?.invoice_number || '').trim();
+    if (invoiceNumber) {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/invoices?invoice_number=eq.${encodeURIComponent(invoiceNumber)}`, {
         method: 'PATCH',
         headers: {
           'apikey': SERVICE_KEY,
@@ -182,7 +180,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
         },
         body: JSON.stringify({ status: 'overdue', paid_at: null, paid_amount: null }),
       });
-      console.log('[stripe-webhook] refund handled, PATCH status:', r.status);
+      console.log('[stripe-webhook] refund handled, PATCH status:', r.status, 'invoice:', invoiceNumber);
+    } else {
+      console.warn('[stripe-webhook] charge.refunded: no invoice_number in charge metadata, skipping reset');
     }
     return new Response(JSON.stringify({ ok: true, type: 'refund' }), {
       status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
