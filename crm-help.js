@@ -471,7 +471,7 @@
       '<b>(5) Status filter pills</b> — All / Draft / Pending / Paid / Overdue / Quote.',
       '<b>(6) Row actions</b> — 💳 opens the Stripe pay link for that invoice; 👁 opens the invoice detail.',
       '<b>(7) → Invoice button</b> — appears on quote-status rows. One-click conversion from "quote" to billable "pending".',
-      '<b>On the invoice detail header</b> you now also have: ✏️ <b>Edit</b> (reopens the builder), 📧 <b>Send Invoice</b> (composer with To/Cc/Bcc + Stripe pay link), 📊 <b>Activity</b> (this invoice\'s sends only), 📅 <b>Schedule</b> (queue a future reminder). See the relevant sections in this guide.'
+      '<b>Invoice detail action buttons</b>: open any invoice to see the full action row. <b>✓ Mark Paid</b> — immediately marks status=paid and records paid_at (use for offline receipts; Stripe payments auto-mark via webhook). <b>✗ Mark Overdue</b> — manually flips to overdue before the nightly cron catches it. <b>✉ AI Follow-Up</b> — Claude generates a tone-matched follow-up email (friendly for pending, firm for overdue), lets you edit it, and sends via the mailgun-send function. Also: ✏️ <b>Edit</b> (reopens the builder), 📧 <b>Send Invoice</b> (full composer), 📊 <b>Activity</b> (this invoice\'s send history), 📅 <b>Schedule</b> (queue a reminder). See the relevant sections in this guide.'
     ]) +
     '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">💳 ACCOUNTING TOOLBAR (NEW)</h4>' +
     bullets([
@@ -572,7 +572,7 @@
       box(20,200,240,22,'#142238','rgba(245,200,66,.25)') + txt(30,215,'📝 Apply a template…',10,'#f5c842') +
       box(270,200,160,22,'#1a2c48','rgba(0,229,192,.2)') + txt(280,215,'🔗 Stripe pay link ✓',10,'#00e5c0') +
       box(440,200,80,22,'rgba(0,229,192,.1)','rgba(0,229,192,.4)') + txt(480,215,'🔗 Get link',10,'#00e5c0','middle') +
-      box(440,228,160,18,'#1a6fff','none') + txt(520,240,'📤 Send via Mailgun',10,'#fff','middle') +
+      box(440,228,160,18,'#1a6fff','none') + txt(520,240,'📤 Send Email',10,'#fff','middle') +
       tag(50,44,1) + tag(50,74,2) + tag(70,104,3) + tag(270,200,4) + tag(440,228,5)
     ) +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
@@ -583,7 +583,7 @@
     '<b>Subject + Message</b> — auto-generated defaults but fully editable. The message is added <i>above</i> the invoice in the email body.',
     '<b>▶ Preview embedded invoice</b> — collapsible pane that shows the invoice exactly as the recipient will see it (header, line items, totals, wire instructions, Pay button).',
     '<b>🔗 Get public link</b> — copies the customer portal URL to your clipboard without sending an email. Useful for posting the invoice link in Slack / Twilio / a follow-up text message.',
-    '<b>📤 Send via Mailgun</b> — fires the email. Every send is logged to the Email Activity view automatically. The customer receives an HTML invoice with a green <b>💳 View Invoice & Pay Online</b> CTA button at the top and the wire instructions at the bottom.'
+    '<b>📤 Send Email</b> — fires the email. Every send is logged to the Email Activity view automatically. The customer receives an HTML invoice with a green <b>💳 View Invoice & Pay Online</b> CTA button at the top and the wire instructions at the bottom.'
   ]);
 
   // ────────────────────────────────────────────────────────────
@@ -753,7 +753,7 @@
     '<b>Card vs ACH</b>: the surcharge only applies to card payments (per Visa / MC rules — that\'s why ACH is shown separately). The customer sees the surcharge broken out on Stripe\'s checkout page, so it\'s never a surprise charge.',
     '<b>From the admin side</b>: open any unpaid invoice → click <b>💳 Charge via Stripe</b> on the detail header. A picker lets you choose card / ACH / both and per-invoice surcharge override.',
     '<b>Test mode vs live</b>: currently using <code>sk_test_…</code> keys. To go live, register Visa/MC, swap in <code>sk_live_…</code> in the <code>STRIPE_SECRET_KEY</code> Edge Function secret, and redeploy the function. Stripe\'s test card <code>4242 4242 4242 4242</code> works for any expiry/CVC in test mode.',
-    '<b>Marking the invoice paid</b>: <i>currently manual</i>. When you see a Stripe payout, click <b>✓ Mark paid</b> on the invoice detail header. Auto-marking via Stripe webhook is on the roadmap.',
+    '<b>Marking the invoice paid</b>: <b>automatic via Stripe webhook</b>. When a customer completes Stripe checkout, the <code>stripe-webhook</code> Edge Function is called by Stripe, marks the invoice paid in Supabase, and sends a WhatsApp + email notification. You can also manually click <b>✓ Mark Paid</b> on the invoice detail header for offline payments (cash / check / wire).',
     '<b>Receipts</b>: Stripe emails the customer a receipt automatically. They can also save the invoice as PDF from the customer portal.'
   ]);
 
