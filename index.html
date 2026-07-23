@@ -9407,7 +9407,7 @@ async function glNotifyDeal(event, data){
   try {
     await fetch(SUPA_URL+'/functions/v1/notify-deal',{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+SUPA_KEY},
       body:JSON.stringify({event, secret:GL_NOTIFY_SECRET, data})
     });
   } catch(e){ console.warn('notify-deal:', e); }
