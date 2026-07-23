@@ -2761,7 +2761,7 @@ select option, .fsel option {
           <div style="flex:1"></div>
           <button class="cbtn grn" id="btn-paid" onclick="markStatus(&#39;paid&#39;)">✓ Mark paid</button>
           <button class="cbtn amber" id="btn-overdue" onclick="markStatus(&#39;overdue&#39;)">⚠ Mark overdue</button>
-          <button class="cbtn" onclick="openFollowUpModal()">✉ AI Follow-Up</button>
+          <button class="cbtn" onclick="openFollowUp()">✉ AI Follow-Up</button>
           <button class="cbtn" style="background:rgba(26,111,255,.12);border-color:rgba(26,111,255,.35);color:#6b9fff" onclick="if(currentInvId)openSendInvoiceModal(currentInvId)">📧 Send Invoice</button>
           <button class="cbtn" style="background:rgba(245,200,66,.12);border-color:rgba(245,200,66,.35);color:#f5c842" onclick="if(currentInvId && window.openEditInvoice)window.openEditInvoice(currentInvId)">✏️ Edit</button>
           <button class="cbtn" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)" onclick="if(currentInvId)downloadInvoicePDF(currentInvId)">⬇ PDF</button>
