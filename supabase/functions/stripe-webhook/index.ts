@@ -151,6 +151,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
       });
     }
     console.log('[stripe-webhook] marked invoice paid:', invoiceNumber, '$' + amount);
+    // Fire-and-forget WhatsApp alert
+    fetch(`${SUPABASE_URL}/functions/v1/notify-deal`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SERVICE_KEY}` },
+      body: JSON.stringify({
+        event: 'invoice_paid_stripe',
+        secret: Deno.env.get('GL_NOTIFY_SECRET') || '',
+        data: { invoice_number: invoiceNumber, amount: String(amount ?? ''), paid_method: paidMethod || 'card' },
+      }),
+    }).catch(e => console.warn('[stripe-webhook] notify-deal error:', e));
     return new Response(JSON.stringify({ ok: true, invoice: invoiceNumber, amount }), {
       status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

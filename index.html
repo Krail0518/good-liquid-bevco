@@ -3454,7 +3454,7 @@ function sendOnboardingEmail(){
   // customer_users row. This function is preserved only so any
   // existing UI buttons that call it keep firing.
   
-  // Send via Mailgun
+  // Send via mailgun-send edge function
   sendMailgunEmail(email, 'Welcome to Good Liquid Bev Co — Your Portal Access',
     `Hi ${name},
 
@@ -4026,6 +4026,7 @@ Good Liquid Accounting
       : `✓ All ${sent} invoice${sent===1?'':'s'} sent successfully!`;
     btn.textContent = 'Done';
     if(typeof addNotification === 'function') addNotification('📧 Bulk send complete', `${sent} invoice${sent===1?'':'s'} sent`, sent&&!failed?'success':'warning');
+    if(sent > 0) glNotifyDeal('invoice_sent_bulk', {count: String(sent), failed: String(failed)});
     if(!failed) setTimeout(() => { ov.remove(); clearInvoiceSelection(); }, 2200);
   };
 }
@@ -4169,6 +4170,7 @@ async function markStatus(s){
     } else {
       await window.supa.from('invoices').update(patch).eq('invoice_number', i.id);
     }
+    if(s === 'paid') glNotifyDeal('invoice_paid_manual', {invoice_number: i.id, client: i.clientName || i.name || '', amount: String(i.amount||'')});
   } catch(e){ console.warn('[GL] markStatus save failed', e); }
 }
 
@@ -4644,8 +4646,8 @@ let currentTone = 'friendly';
 
 function openFollowUp(){
   if(!currentInvId)return;
-  // Mailgun is configured server-side in the mailgun-send Edge Function;
-  // legacy gl_mailgun_key localStorage check removed. The send itself
+  // Email is sent server-side via the mailgun-send Edge Function;
+  // legacy API key localStorage check removed. The send itself
   // returns a clear error if the secret is unset.
   const inv = invoices.find(i=>i.id===currentInvId);
   if(!inv)return;
@@ -5049,6 +5051,7 @@ async function saveReferral(){
   activities.unshift({type:'ref',icon:'🤝',name:`New referral from ${ref.name}`,detail:`${clientName} — potential $${comm.toLocaleString()} commission`,time:'Just now'});saveActivities();
   renderReferrals();renderDash();renderActivity();
   closeRefModal();
+  glNotifyDeal('new_referral', {name: clientName, company: ref.name, amount: String(comm)});
   document.getElementById('ref-client-name').value='';
   document.getElementById('ref-notes').value='';
 }
@@ -5342,7 +5345,8 @@ async function saveNewClient(){
   renderClients();
   renderDash();
   closeAddClientModal();
-  
+  glNotifyDeal('new_client', {name, contact, email, phone, service, lead_source: leadSource||''});
+
   // Show confirmation
   const toast = document.createElement('div');
   toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--teal);color:var(--ink);padding:12px 24px;border-radius:8px;font-weight:700;z-index:999;font-size:14px';
@@ -5384,7 +5388,7 @@ async function saveNewDeal(){
   const el = document.getElementById('pipe-sub');
   if(el) el.textContent = total + ' active deals';
 
-  // SMS alert to Mike
+  // WhatsApp alert to Mike via notify-deal
   glNotifyDeal('new_deal', {name, company:co, stage});
 
   closeAddDealModal();
@@ -5398,6 +5402,7 @@ async function quickPaid(id){
     // Update in Supabase by invoice_number
     await supa.from('invoices').update({status:'paid'}).eq('invoice_number',id);
     renderInvoices();renderDash();
+    glNotifyDeal('invoice_paid_manual', {invoice_number: id, client: i.clientName || i.name || '', amount: String(i.amount||'')});
   }
 }
 
@@ -5521,6 +5526,7 @@ async function moveDeal(dealId, fromStage, toStage, fallbackIdx){
     try { await supa.from('deals').update({stage:toStage, stage_entered_at:now}).eq('id',dealId); } catch(e){ console.warn('Move save failed',e); }
   }
   renderKanban(); renderDash();
+  if(toStage === 'Closed Won') glNotifyDeal('deal_closed_won', {name: deal.name||'', company: deal.co||'', stage:'Closed Won', value: String(deal.val||''), email: deal.email||'', phone: deal.phone||''});
 }
 
 window.glFilterPipeline = function(query){
@@ -5626,7 +5632,7 @@ window.setDealOutreach = setDealOutreach;
 
 // ─── LEAD EMAIL COMPOSER ───────────────────────────────────────────────────
 // Opened from the deal detail panel. Reads the current deal's data,
-// lets you draft with Claude AI, edit freely, then sends via Mailgun
+// lets you draft with Claude AI, edit freely, then sends via mailgun-send edge function
 // and auto-marks the deal's outreach_status as 'sent'.
 function openLeadEmailComposer(){
   if(currentDealStage === null || currentDealIdx === null) return;
@@ -5838,7 +5844,7 @@ window.openLeadEmailComposer = openLeadEmailComposer;
 
 // ─── BULK OUTREACH ─────────────────────────────────────────────────────────
 // Opens a modal listing all Prospecting leads with no outreach status and a
-// valid email. Drafts with Claude AI and sends via Mailgun for each checked lead.
+// valid email. Drafts with Claude AI and sends via mailgun-send edge function for each checked lead.
 async function openBulkOutreach(){
   const prior = document.getElementById('gl-bulk-outreach-modal');
   if(prior) prior.remove();
@@ -6358,6 +6364,7 @@ async function saveDealDetail(){
     deals[currentDealStage].splice(currentDealIdx, 1);
     if(!deals[newStage]) deals[newStage] = [];
     deals[newStage].push(d);
+    if(newStage === 'Closed Won') glNotifyDeal('deal_closed_won', {name: newName, company: newCo, stage:'Closed Won', value: String(newVal), email: newEmail, phone: newPhone});
   }
 
   // Save to Supabase if real id
@@ -6695,7 +6702,7 @@ async function downloadInvoicePDF(invId) {
 // ─── SEND INVOICE BY EMAIL ───
 // Builds an HTML email body for the invoice (same data as the PDF but
 // styled for email clients) and opens a composer with editable To / Cc /
-// Bcc / Subject / Message. Sends via Mailgun with the HTML as the body.
+// Bcc / Subject / Message. Sends via mailgun-send edge function with the HTML as the body.
 function buildInvoiceEmailHtml(invId, opts){
   opts = opts || {};
   const inv = invoices.find(i => i.id === invId);
@@ -6875,7 +6882,7 @@ function openSendInvoiceModal(invId){
     const message = ov.querySelector('#gl-si-message').value;
     if(!toRaw){ status.style.color = '#ff8579'; status.textContent = 'At least one To recipient required.'; return; }
     if(!subject){ status.style.color = '#ff8579'; status.textContent = 'Subject required.'; return; }
-    // Mailgun key lives server-side in the mailgun-send Edge Function.
+    // Email credentials live server-side in the mailgun-send Edge Function.
     btn.disabled = true; btn.textContent = 'Preparing PDF…';
     status.style.color = 'var(--muted)'; status.textContent = '';
     // Generate a public share token (if not already set) so the email can
@@ -6906,6 +6913,7 @@ function openSendInvoiceModal(invId){
       status.textContent = '✓ Sent. ' + recipients;
       if(typeof addNotification === 'function') addNotification('📧 Invoice sent', inv.id + ' → ' + toRaw + (ccRaw ? ' (+Cc)' : ''), 'email');
       if(typeof window.glAudit === 'function') window.glAudit('invoice_sent', invId, { to: toRaw, cc: ccRaw, bcc: bccRaw });
+      glNotifyDeal('invoice_sent', {invoice_number: inv.id, client: inv.clientName||'', amount: String(inv.amount||''), to: toRaw});
       setTimeout(() => ov.remove(), 1400);
     } else {
       status.style.color = '#ff8579';
@@ -8912,7 +8920,7 @@ async function sendMailgunEmail(to, subject, body, opts){
       console.error('[Mailgun] send rejected', resp.data.error);
       return false;
     }
-    // Stash the Mailgun message id on the function itself so the email_log
+    // Stash the message id on the function itself so the email_log
     // wrapper (fix.js wrapSend IIFE) can pull it for the row insert. Without
     // this, every email_log row has mailgun_id = null and the
     // mailgun-webhook function can't match incoming delivered/opened/clicked
@@ -8957,13 +8965,13 @@ let currentFollowupInvId = null;
 
 function openFollowUpModal(){
   if(!currentInvId) return;
-  // Pre-flight: AI key needed to draft, Mailgun key needed to send.
+  // Pre-flight: AI key needed to draft, email credentials needed to send.
   if(!AI_KEY){
     if(typeof addNotification==='function') addNotification('AI key required','Paste your Anthropic API key in AI Settings before drafting a follow-up.','warning');
     openAISettings();
     return;
   }
-  // Mailgun key lives server-side in the mailgun-send Edge Function.
+  // Email credentials live server-side in the mailgun-send Edge Function.
   const inv=invoices.find(i=>i.id===currentInvId);
   if(!inv) return;
   currentFollowupInvId=currentInvId;
@@ -8997,7 +9005,7 @@ function openFollowUpModal(){
       // Look up the freshest email from the clients array (covers the case
       // where the in-memory invoice has stale clientEmail). NEVER fall back
       // to the client name — that's what caused "Ceres14.com" to land in
-      // the To field and Mailgun reject the send.
+      // the To field and the send will be rejected.
       (function(){
         var client = (window.clients||[]).find(function(c){ return c.id === inv.client; });
         var toAddr = (client && client.email) ? client.email : (inv.clientEmail || '');
@@ -9046,7 +9054,7 @@ async function sendFollowupEmail(){
   const subject=document.getElementById('fu-subject').value;
   const body=document.getElementById('fu-body').value;
   // Guard against the "Ceres14.com" class of bug — if there's no '@' in
-  // the To field, Mailgun will reject the send and the user gets no feedback.
+  // the To field, the send will fail and the user gets no feedback.
   if(!to || to.indexOf('@') < 0){
     alert('No email address on file for this client. Type one in the To field, or add it via Edit Client first.');
     return;
@@ -9394,7 +9402,7 @@ function updateBkInfo(){
   }
 }
 
-// SMS/email alert to Mike via notify-deal edge function
+// WhatsApp/email alert to Mike via notify-deal edge function
 async function glNotifyDeal(event, data){
   try {
     await fetch(SUPA_URL+'/functions/v1/notify-deal',{
@@ -9444,7 +9452,7 @@ async function submitBooking(){
   await sendMailgunEmail(email,'Your Good Liquid Bev Co Tour Confirmation',
     `Hi ${name},\n\nYour tour request has been submitted!\n\nDate: ${bkSelectedDate} at ${bkSelectedTime}\nLocation: 2011 51st Ave E, Unit 100, Palmetto, FL 34221\n\nMike will confirm within 1 business day.\n\nBest,\nGood Liquid Bev Co\nMike@GoodLiquid.com | (803) 493-5065`);
 
-  // SMS alert to Mike
+  // WhatsApp alert to Mike via notify-deal
   glNotifyDeal('tour_booked', {name, email, date:bkSelectedDate, time:bkSelectedTime});
 
   addNotification('📅 Tour booked: '+name,bkSelectedDate+' at '+bkSelectedTime,'success');

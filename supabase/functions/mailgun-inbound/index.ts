@@ -118,6 +118,20 @@ Deno.serve(async (req) => {
     });
   }
 
+  // Fire-and-forget WhatsApp alert to Mike
+  const supaUrl    = Deno.env.get("SUPABASE_URL")!;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const notifySecret = Deno.env.get("GL_NOTIFY_SECRET") || "";
+  fetch(`${supaUrl}/functions/v1/notify-deal`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceKey}` },
+    body: JSON.stringify({
+      event: "client_email_reply",
+      secret: notifySecret,
+      data: { from_email: fromEmail, subject, body_preview: bodyPreview },
+    }),
+  }).catch(e => console.warn("[GL inbound] notify-deal error:", e));
+
   return new Response(JSON.stringify({ ok: true, from: fromEmail, client_id: clientId }), {
     status: 200,
     headers: { "Content-Type": "application/json" },
