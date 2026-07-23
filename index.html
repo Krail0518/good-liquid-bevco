@@ -3052,10 +3052,10 @@ select option, .fsel option {
               </div>
             </div>
             <div style="background:rgba(245,200,66,.06);border:1px solid rgba(245,200,66,.2);border-radius:8px;padding:11px;font-size:11px;color:#f5c842;margin-bottom:14px">
-              ⚠ Review before sending. Email will be sent via Mailgun from noreply@goodliquid.com
+              ⚠ Review before sending. Email will be sent from noreply@goodliquid.com
             </div>
             <div style="display:flex;gap:8px">
-              <button class="cbtn pri" onclick="sendFollowupEmail()" style="flex:1">📤 Send via Mailgun</button>
+              <button class="cbtn pri" onclick="sendFollowupEmail()" style="flex:1">📤 Send Email</button>
               <button class="cbtn" onclick="regenFollowup()">🔄 Regenerate</button>
               <button class="cbtn" onclick="closeFollowupModal()">Cancel</button>
             </div>
@@ -3117,7 +3117,7 @@ select option, .fsel option {
           </div>
           <div style="display:flex;gap:8px;margin-top:10px">
             <button class="cbtn pri" onclick="generateAIComm()" style="flex:1">🤖 Draft Email</button>
-            <button class="cbtn" id="ai-comm-send-btn" style="display:none" onclick="sendAIComm()">📤 Send via Mailgun</button>
+            <button class="cbtn" id="ai-comm-send-btn" style="display:none" onclick="sendAIComm()">📤 Send Email</button>
             <button class="cbtn" onclick="closeAICommModal()">Cancel</button>
           </div>
         </div>
@@ -3939,7 +3939,7 @@ Good Liquid Accounting
       <div style="display:flex;gap:8px;justify-content:flex-end">
         <button id="gl-bsm-cancel" class="cbtn" style="font-size:13px">Cancel</button>
         <button id="gl-bsm-send" class="cbtn pri" style="font-size:13px" ${sendable.length===0?'disabled':''}>
-          📤 Send ${sendable.length} Invoice${sendable.length===1?'':'s'} via Mailgun
+          📤 Send ${sendable.length} Invoice${sendable.length===1?'':'s'}
         </button>
       </div>
       <div id="gl-bsm-result" style="margin-top:10px;font-size:12px;color:var(--muted);min-height:18px"></div>
@@ -5709,7 +5709,7 @@ function openLeadEmailComposer(){
 
       <div style="display:flex;gap:8px;justify-content:flex-end">
         <button id="gl-lem-cancel" class="cbtn" style="font-size:13px">Cancel</button>
-        <button id="gl-lem-send" class="cbtn pri" style="font-size:13px">📤 Send via Mailgun</button>
+        <button id="gl-lem-send" class="cbtn pri" style="font-size:13px">📤 Send Email</button>
       </div>
       <div id="gl-lem-result" style="margin-top:10px;font-size:12px;color:var(--muted);min-height:18px"></div>
     </div>`;
@@ -5825,7 +5825,7 @@ Greet them by first name (${firstName}). Acknowledge what they're building and w
 
     const ok = await sendMailgunEmail(toRaw, subject, body, { bcc: bccRaw, html });
 
-    btn.disabled = false; btn.textContent = '📤 Send via Mailgun';
+    btn.disabled = false; btn.textContent = '📤 Send Email';
     if(ok){
       result.style.color = '#5fcf9e';
       result.textContent = '✓ Sent to ' + toRaw;
@@ -5836,7 +5836,7 @@ Greet them by first name (${firstName}). Acknowledge what they're building and w
       setTimeout(() => { ov.remove(); }, 1600);
     } else {
       result.style.color = '#ff8579';
-      result.textContent = '✗ Mailgun rejected the send. Check browser console.';
+      result.textContent = '✗ Send failed. Check browser console.';
     }
   };
 }
@@ -6864,7 +6864,7 @@ function openSendInvoiceModal(invId){
       </details>
       <div style="display:flex;gap:8px;margin-top:18px;justify-content:flex-end">
         <button id="gl-si-cancel" class="cbtn" style="font-size:13px">Cancel</button>
-        <button id="gl-si-send" class="cbtn pri" style="font-size:13px">📤 Send via Mailgun</button>
+        <button id="gl-si-send" class="cbtn pri" style="font-size:13px">📤 Send Email</button>
       </div>
       <div id="gl-si-status" style="margin-top:10px;font-size:12px;color:var(--muted);min-height:18px"></div>
     </div>`;
@@ -6906,7 +6906,7 @@ function openSendInvoiceModal(invId){
       cc: ccRaw, bcc: bccRaw, html: html,
       attachments: pdfAttachment ? [pdfAttachment] : []
     });
-    btn.disabled = false; btn.textContent = '📤 Send via Mailgun';
+    btn.disabled = false; btn.textContent = '📤 Send Email';
     if(ok){
       status.style.color = '#5fcf9e';
       const recipients = [toRaw, ccRaw, bccRaw].filter(Boolean).join(' · ');
@@ -6917,7 +6917,7 @@ function openSendInvoiceModal(invId){
       setTimeout(() => ov.remove(), 1400);
     } else {
       status.style.color = '#ff8579';
-      status.textContent = '✗ Mailgun rejected the send. Check the browser console for details.';
+      status.textContent = '✗ Send failed. Check the browser console for details.';
     }
   };
 }
@@ -9087,8 +9087,8 @@ async function sendFollowupEmail(){
   addNotification('📧 Follow-up sent','Invoice '+currentFollowupInvId+' — '+to+ccNote,'email');
   closeFollowupModal();
 
-  if(sent) alert('✓ Follow-up email sent via Mailgun!' + (cc.length ? '\n\nCc: ' + cc.map(c => c.email).join(', ') : ''));
-  else alert('✓ Follow-up logged. (Configure Mailgun API key in AI Settings to send.)');
+  if(sent) alert('✓ Follow-up email sent!' + (cc.length ? '\n\nCc: ' + cc.map(c => c.email).join(', ') : ''));
+  else alert('✓ Follow-up logged. (Email sending not configured.)');
 }
 
 function regenFollowup(){
@@ -9103,7 +9103,7 @@ function getFollowupLog(invId){
   return `<div style="margin-top:16px"><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">FOLLOW-UP HISTORY</div>
     ${log.map(l=>`<div class="fu-log-item">
       <div class="fu-log-icon">📧</div>
-      <div style="flex:1"><div class="fu-log-text">${l.subject}</div><div class="fu-log-time">${l.date} · ${l.sent?'Sent via Mailgun':'Logged only'}</div></div>
+      <div style="flex:1"><div class="fu-log-text">${l.subject}</div><div class="fu-log-time">${l.date} · ${l.sent?'Sent':'Logged only'}</div></div>
     </div>`).join('')}
   </div>`;
 }
@@ -9253,7 +9253,7 @@ async function sendAIComm(){
   const sent=await sendMailgunEmail(client?client.email:to,subject,body);
   addNotification('📧 Email sent','To: '+(client?client.name:to),'email');
   closeAICommModal();
-  alert(sent?'✓ Email sent via Mailgun!':'✓ Logged. Configure Mailgun key in AI Settings to send.');
+  alert(sent?'✓ Email sent!':'✓ Logged. (Email sending not configured.)');
 }
 
 /* ═══════════════════════════════════════════
