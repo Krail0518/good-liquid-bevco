@@ -1,5 +1,5 @@
 // gmail-send — sends email via Gmail API using OAuth2 refresh token.
-// Drop-in replacement for mailgun-send for notification emails.
+// Sends internal notification emails for the Good Liquid CRM.
 //
 // Request body (POST JSON):
 //   {

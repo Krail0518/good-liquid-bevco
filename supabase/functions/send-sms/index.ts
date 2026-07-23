@@ -1,5 +1,5 @@
 // send-sms — sends a single SMS via Twilio.
-// Used by the CRM's "📱 SMS Alerts" feature to text clients about production
+// Used by the CRM's "SMS Alerts" feature to text clients about production
 // milestones, overdue invoices, or anything else the admin chooses.
 //
 // Request body (POST JSON):

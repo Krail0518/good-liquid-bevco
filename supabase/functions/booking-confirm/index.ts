@@ -469,7 +469,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
   }
 
-  // SMS alert to Mike via notify-deal
+  // WhatsApp alert to Mike via notify-deal
   const notifySecret = Deno.env.get('GL_NOTIFY_SECRET');
   const supaUrl      = Deno.env.get('SUPABASE_URL');
   const serviceKey   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');

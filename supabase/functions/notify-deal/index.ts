@@ -1,5 +1,5 @@
 // notify-deal — internal notification dispatcher for pipeline deals and tour bookings.
-// Sends a WhatsApp message to Mike via CallMeBot, plus a Mailgun email backup.
+// Sends a WhatsApp message to Mike via CallMeBot and a Gmail notification email.
 //
 // Called from:
 //   • booking-confirm  (tour booked via public book.html)
@@ -29,9 +29,6 @@
 //   CALLMEBOT_API_KEY         — API key from CallMeBot WhatsApp activation
 //   SUPABASE_URL              — auto-provided
 //   SUPABASE_SERVICE_ROLE_KEY — auto-provided
-//   MAILGUN_API_KEY           — for email backup
-//   MAILGUN_DOMAIN
-//   MAILGUN_FROM
 //
 // Deploy:
 //   supabase functions deploy notify-deal
@@ -86,7 +83,7 @@ async function sendEmail(subject: string, text: string): Promise<boolean> {
       body: JSON.stringify({ to: MIKE_EMAILS, subject, text }),
     });
     const body = await r.json().catch(() => ({}));
-    if (!r.ok) { console.error('[notify-deal] mailgun-send error:', r.status, JSON.stringify(body)); return false; }
+    if (!r.ok) { console.error('[notify-deal] gmail-send error:', r.status, JSON.stringify(body)); return false; }
     console.log('[notify-deal] email sent ok, id:', body.id);
     return true;
   } catch (e) {
