@@ -71,20 +71,36 @@
     }
     // Render the portal shell — login first, then dashboard if signed in
     document.body.innerHTML = '<div id="gl-cp" style="min-height:100vh;background:#0a1628;font-family:Arial,Helvetica,sans-serif;color:#eef4ff">Loading…</div>';
-    var sess = await sb.auth.getSession();
-    if(sess.data && sess.data.session){
-      // Verify the user is a customer (has a customer_users row)
-      var u = await sb.from('customer_users')
-        .select('id, client_id, email, display_name, active, role, notify_run_stage_changes')
-        .eq('auth_user_id', sess.data.session.user.id)
-        .eq('active', true)
-        .maybeSingle();
-      if(u.data){
-        renderDashboard(u.data);
-      } else {
-        // Authenticated but not a customer — could be a staff member
-        // visiting ?portal=1 by mistake. Show login.
-        renderLogin('Account is not a customer portal account. Sign in with the email your account manager invited.');
+    // getSession() silently tries to refresh an expired token over the network,
+    // which can stall indefinitely on flaky WiFi. Never let that leave the
+    // customer stuck on "Loading…" — race it against a timeout and fall back to
+    // the login form. Any error does the same.
+    var sess;
+    try {
+      sess = await Promise.race([
+        sb.auth.getSession(),
+        new Promise(function(resolve){ setTimeout(function(){ resolve({ data:{ session:null }, _timedOut:true }); }, 3500); })
+      ]);
+    } catch(e){ sess = { data:{ session:null } }; }
+    if(sess && sess.data && sess.data.session){
+      try {
+        // Verify the user is a customer (has a customer_users row)
+        var u = await Promise.race([
+          sb.from('customer_users')
+            .select('id, client_id, email, display_name, active, role, notify_run_stage_changes')
+            .eq('auth_user_id', sess.data.session.user.id)
+            .eq('active', true)
+            .maybeSingle(),
+          new Promise(function(resolve){ setTimeout(function(){ resolve({ data:null, _timedOut:true }); }, 6000); })
+        ]);
+        if(u && u.data){
+          renderDashboard(u.data);
+        } else {
+          // Authenticated but not a customer (or the lookup stalled) — show login.
+          renderLogin('Account is not a customer portal account. Sign in with the email your account manager invited.');
+        }
+      } catch(e){
+        renderLogin('');
       }
     } else {
       renderLogin('');
@@ -810,11 +826,21 @@
     _recoveryEventSeen = false;
   };
 
-  // Boot — only when ?portal is on the URL
+  // Boot — only when ?portal is on the URL. Guard the fire-and-forget call so
+  // an unexpected throw can never leave the page stuck on "Loading…".
+  function _bootPortal(){
+    try {
+      var p = checkPortalMode();
+      if(p && typeof p.catch === 'function') p.catch(function(e){
+        console.warn('[GL portal] checkPortalMode failed', e);
+        try { if(typeof renderLogin === 'function') renderLogin(''); } catch(_e){}
+      });
+    } catch(e){ console.warn('[GL portal] boot threw', e); }
+  }
   if(document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', function(){ checkPortalMode(); });
+    document.addEventListener('DOMContentLoaded', _bootPortal);
   } else {
-    checkPortalMode();
+    _bootPortal();
   }
 
   // ────────────────────────────────────────────────────────────

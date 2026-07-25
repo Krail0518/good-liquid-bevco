@@ -455,10 +455,22 @@
       '<button id="gl-coll-confirm" style="padding:8px 18px;background:#e53e3e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600">Schedule Collection Sequence</button>';
     var modal = openModal('gl-collections-modal', 'Collections Sequence — ' + invId, html);
     document.getElementById('gl-coll-confirm').onclick = async function() {
+      if (!email) { notify('No email on file for this client — cannot schedule.', 'error'); return; }
       this.disabled = true; this.textContent = 'Scheduling…';
+      // Map to the actual email_schedule schema (to_email/subject/body/send_at
+      // are NOT NULL). invoice_id is a uuid FK, but the in-memory invoice uses
+      // its invoice_number as its id, so we reference the number in the subject
+      // and leave invoice_id null rather than sending a non-uuid.
       var rows = COLLECTION_STEPS.map(function(s){
         var d = new Date(); d.setDate(d.getDate() + s.delay);
-        return { invoice_number: invId, client_id: inv.client_id || inv.clientId, scheduled_date: d.toISOString().slice(0,10), email_type: 'collection_' + s.tone, status: 'pending' };
+        return {
+          invoice_id: null,
+          to_email: email,
+          subject: 'Payment reminder — Invoice ' + invId,
+          body: 'This is a ' + s.tone + ' reminder that invoice ' + invId + ' is currently outstanding. Please arrange payment at your earliest convenience.\n\n— Good Liquid Bev Co',
+          send_at: d.toISOString(),
+          status: 'pending'
+        };
       });
       var { error } = await SB().from('email_schedule').insert(rows);
       if (error && error.code !== '42P01') {

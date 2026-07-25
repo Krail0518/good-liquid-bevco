@@ -96,12 +96,16 @@
   }
 
   /* ── Quote number ───────────────────────────────────────────── */
+  var _pendingQuoteSeq = null;
   function nextQuoteNumber(){
     var d   = new Date();
     var ym  = d.getFullYear() + String(d.getMonth()+1).padStart(2,'0');
-    var seq = String(parseInt(localStorage.getItem('gl_quote_seq')||'0') + 1).padStart(3,'0');
-    localStorage.setItem('gl_quote_seq', parseInt(seq,10));
-    return 'GLQ-' + ym + '-' + seq;
+    var seqNum = parseInt(localStorage.getItem('gl_quote_seq')||'0') + 1;
+    // Do NOT persist here — advancing at modal-open time burned a number every
+    // time the builder was opened without saving, leaving gaps in GLQ numbering.
+    // The counter is committed in doSave() only when a quote is actually saved.
+    _pendingQuoteSeq = seqNum;
+    return 'GLQ-' + ym + '-' + String(seqNum).padStart(3,'0');
   }
 
   /* ── Formatters ─────────────────────────────────────────────── */
@@ -630,6 +634,8 @@
       }
       if(r.error){ st.style.color='#ff8579'; st.textContent='Save failed: '+r.error.message; return null; }
       state.savedId = r.data.id;
+      // Commit the quote-number sequence now that the quote is actually saved.
+      try { if(_pendingQuoteSeq != null){ localStorage.setItem('gl_quote_seq', _pendingQuoteSeq); _pendingQuoteSeq = null; } } catch(e){}
       st.style.color='#5fcf9e';
       st.textContent='✓ Saved as ' + data.quoteNumber;
       if(typeof window.glAudit==='function') window.glAudit('quote_saved', data.quoteNumber, { client:data.clientName, format:data.packageFormat });
@@ -795,9 +801,10 @@
     var terms = termsForType(data.productType);
     if(data.notes) terms = terms.concat(['<b>Additional Notes:</b> '+data.notes]);
 
-    var PTH = 'background:#0a1628;color:#9aa7bd;padding:10px 12px;text-align:left;font-size:11px;letter-spacing:1px';
-    var PTDC = 'padding:12px;border-bottom:1px solid #eee;font-size:13px;color:#1a2240';
-    var PTD_BLUE = 'padding:12px;border-bottom:1px solid #eee;font-size:13px;color:#1a6fff;font-weight:700';
+    // PTH/PTDC/PTD_BLUE are defined at module scope (below). Declaring them
+    // again here with `var` hoisted local `undefined` copies that shadowed the
+    // module ones for the pricing table built earlier in this function, so its
+    // cells rendered style="undefined". Use the module-scope constants instead.
 
     return '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Production Quote '+esc(data.quoteNumber)+'</title>' +
     '<style>' +
