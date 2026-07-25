@@ -1814,10 +1814,24 @@
     var orig = window.openAdmin;
     if(typeof orig !== 'function') return;
     window.openAdmin = async function(){
-      var ok = await autoLoginIfPossible();
-      if(ok) return;  // skipped the modal
-      orig.apply(this, arguments);
-      setTimeout(injectCheckbox, 30);
+      var self = this, args = arguments;
+      function showModal(){ orig.apply(self, args); setTimeout(injectCheckbox, 30); }
+      // Auto-login must NEVER block the password modal from opening. On a
+      // "remembered" device, autoLoginIfPossible() awaits Supabase getSession(),
+      // which silently tries to refresh an expired token over the network — and
+      // on flaky WiFi that request can stall indefinitely, leaving the Admin
+      // button doing nothing. Race it against a short timeout: if a cached
+      // session can't be confirmed quickly, show the login box instead. If the
+      // auto-login later succeeds, loginUser() closes the modal on its own.
+      var ok = false;
+      try {
+        ok = await Promise.race([
+          autoLoginIfPossible(),
+          new Promise(function(resolve){ setTimeout(function(){ resolve(false); }, 2500); })
+        ]);
+      } catch(e){ ok = false; }
+      if(ok) return;  // auto-login succeeded — CRM already open, skip the modal
+      showModal();
     };
   })();
 
