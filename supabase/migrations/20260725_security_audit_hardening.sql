@@ -60,6 +60,7 @@ grant execute on function public.link_customer_user_by_email(uuid, text) to auth
 
 -- ── 2. quotes — staff only (was auth.role()='authenticated') ────────────
 drop policy if exists "quotes_admin_all" on public.quotes;
+drop policy if exists "quotes staff all" on public.quotes;
 create policy "quotes staff all" on public.quotes
   for all to authenticated
   using (public.is_staff_user()) with check (public.is_staff_user());
@@ -71,16 +72,25 @@ drop policy if exists "Staff read"   on public.invoice_payments;
 drop policy if exists "Staff insert" on public.invoice_payments;
 drop policy if exists "Staff update" on public.invoice_payments;
 drop policy if exists "Staff delete" on public.invoice_payments;
+drop policy if exists "invoice_payments staff read"   on public.invoice_payments;
+drop policy if exists "invoice_payments staff insert" on public.invoice_payments;
+drop policy if exists "invoice_payments staff update" on public.invoice_payments;
+drop policy if exists "invoice_payments staff delete" on public.invoice_payments;
 create policy "invoice_payments staff read"   on public.invoice_payments for select using (public.is_staff_user());
 create policy "invoice_payments staff insert" on public.invoice_payments for insert with check (public.is_staff_user());
 create policy "invoice_payments staff update" on public.invoice_payments for update using (public.is_staff_user()) with check (public.is_staff_user());
 create policy "invoice_payments staff delete" on public.invoice_payments for delete using (public.is_super_user());
 
 drop policy if exists "Staff all" on public.recurring_invoices;
+drop policy if exists "recurring_invoices staff all" on public.recurring_invoices;
 create policy "recurring_invoices staff all" on public.recurring_invoices
   for all using (public.is_staff_user()) with check (public.is_staff_user());
 
 drop policy if exists "Staff all" on public.expenses;
+drop policy if exists "expenses staff read"   on public.expenses;
+drop policy if exists "expenses staff write"  on public.expenses;
+drop policy if exists "expenses staff update" on public.expenses;
+drop policy if exists "expenses staff delete" on public.expenses;
 create policy "expenses staff read"   on public.expenses for select using (public.is_staff_user());
 create policy "expenses staff write"  on public.expenses for insert with check (public.is_staff_user());
 create policy "expenses staff update" on public.expenses for update using (public.is_staff_user()) with check (public.is_staff_user());
@@ -89,6 +99,8 @@ create policy "expenses staff delete" on public.expenses for delete using (publi
 -- ── 4. company_docs — staff only (was using(true) read+write) ───────────
 drop policy if exists "authed read"  on public.company_docs;
 drop policy if exists "authed write" on public.company_docs;
+drop policy if exists "company_docs staff read"  on public.company_docs;
+drop policy if exists "company_docs staff write" on public.company_docs;
 create policy "company_docs staff read"  on public.company_docs for select using (public.is_staff_user());
 create policy "company_docs staff write" on public.company_docs for all using (public.is_staff_user()) with check (public.is_staff_user());
 
