@@ -19,6 +19,15 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 Deno.serve(async (req) => {
+  // Optional cron auth (non-breaking): if CRON_SECRET is set, require it as an
+  // x-cron-secret header or Bearer token so the endpoint can't be triggered
+  // anonymously to force-send queued email.
+  const cronSecret = Deno.env.get("CRON_SECRET");
+  if (cronSecret) {
+    const provided = req.headers.get("x-cron-secret")
+      || (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+    if (provided !== cronSecret) return new Response("unauthorized", { status: 401 });
+  }
   const supa = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!

@@ -24,12 +24,18 @@
 //   supabase secrets set TWILIO_FROM=+18135550199
 
 import { jsonResponse, errorResponse, handlePreflight } from '../_shared/cors.ts';
+import { requireStaff } from '../_shared/auth.ts';
 
 Deno.serve(async (req: Request): Promise<Response> => {
   const pre = handlePreflight(req);
   if (pre) return pre;
 
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
+
+  // Authorize the caller: staff user JWT (or an internal service-role call).
+  // A valid JWT alone is not enough — portal customers hold one too.
+  const _auth = await requireStaff(req);
+  if (!_auth.ok) return errorResponse(_auth.error || 'Forbidden', _auth.status);
 
   const sid   = Deno.env.get('TWILIO_ACCOUNT_SID');
   const token = Deno.env.get('TWILIO_AUTH_TOKEN');

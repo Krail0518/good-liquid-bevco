@@ -33,7 +33,15 @@ Deno.serve(async (req) => {
   const signing = body.signature;
   const event   = body["event-data"] || body;
   const signingKey = Deno.env.get("MAILGUN_WEBHOOK_SIGNING_KEY");
-  if (signingKey && signing) {
+  // Fail CLOSED: require the signing key and a valid signature. The old code
+  // only verified `if (signingKey && signing)`, so an attacker could omit the
+  // signature object (or exploit an unset key) to POST forged delivered/opened/
+  // bounced events and corrupt email_log tracking state.
+  if (!signingKey) return new Response("webhook signing key not configured", { status: 500 });
+  if (!signing || !signing.signature || !signing.timestamp || !signing.token) {
+    return new Response("missing signature", { status: 401 });
+  }
+  {
     const ok = await verifyMailgunSignature(signing.timestamp, signing.token, signing.signature, signingKey);
     if (!ok) return new Response("bad signature", { status: 401 });
   }

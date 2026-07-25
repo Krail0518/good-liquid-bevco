@@ -30,7 +30,17 @@ const fmtMoney = (n: number) => {
   return "$" + (n / 1_000_000).toFixed(2) + "M";
 };
 
-Deno.serve(async (_req) => {
+Deno.serve(async (req) => {
+  // Optional cron auth: if CRON_SECRET is set, require it (as x-cron-secret
+  // header or Bearer token). Non-breaking — until the secret is configured the
+  // endpoint behaves as before. Set CRON_SECRET and add the header to the
+  // pg_cron job to stop anonymous invocations.
+  const cronSecret = Deno.env.get("CRON_SECRET");
+  if (cronSecret) {
+    const provided = req.headers.get("x-cron-secret")
+      || (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+    if (provided !== cronSecret) return new Response("unauthorized", { status: 401 });
+  }
   const supa = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,

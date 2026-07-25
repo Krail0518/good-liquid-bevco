@@ -30,6 +30,9 @@
 
 import { corsHeaders, jsonResponse, errorResponse, handlePreflight } from '../_shared/cors.ts';
 
+const SUPABASE_URL     = Deno.env.get('SUPABASE_URL')              || '';
+const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+
 Deno.serve(async (req: Request): Promise<Response> => {
   const pre = handlePreflight(req);
   if (pre) return pre;
@@ -63,9 +66,32 @@ Deno.serve(async (req: Request): Promise<Response> => {
   } = payload as Record<string, string | number>;
 
   if (!invoice_id) return errorResponse('invoice_id is required', 400);
-  if (typeof amount !== 'number' || amount <= 0) return errorResponse('amount must be a positive number (dollars)', 400);
   if (!success_url) return errorResponse('success_url is required', 400);
   if (!cancel_url)  return errorResponse('cancel_url is required', 400);
+
+  // ── Charge the invoice's REAL amount from the database — never the amount
+  //    sent by the browser (a client could POST amount:0.01 to clear a $10k
+  //    invoice). invoice_id is the human-readable invoice_number.
+  let dbAmount: number | null = null;
+  let dbStatus = '';
+  try {
+    const invRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/invoices?select=amount,status&invoice_number=eq.${encodeURIComponent(String(invoice_id))}&limit=1`,
+      { headers: { apikey: SERVICE_ROLE_KEY, Authorization: `Bearer ${SERVICE_ROLE_KEY}` } },
+    );
+    const rows = await invRes.json();
+    if (Array.isArray(rows) && rows.length) {
+      dbAmount = Number(rows[0].amount);
+      dbStatus = String(rows[0].status || '');
+    }
+  } catch (e) {
+    console.error('[stripe-checkout-session] invoice lookup failed', e);
+    return errorResponse('Could not verify invoice', 502);
+  }
+  if (dbAmount == null || !(dbAmount > 0)) return errorResponse('Invoice not found', 404);
+  if (dbStatus === 'paid')   return errorResponse('This invoice is already paid', 409);
+  if (dbStatus === 'voided') return errorResponse('This invoice has been voided', 409);
+  const chargeAmount = dbAmount;
 
   const pm = String(payment_method).toLowerCase();
   if (pm !== 'card' && pm !== 'ach' && pm !== 'both') {
@@ -76,8 +102,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const surchargePctNum = pm === 'card' ? Math.max(0, Number(surcharge_pct) || 0) : 0;
   // Compute fee in cents directly to avoid floating-point drift.
   // amount(dollars) * pct% → fee(cents) = round(amount * pct).
-  const baseCents = Math.round((amount as number) * 100);
-  const feeCents  = surchargePctNum > 0 ? Math.round((amount as number) * surchargePctNum) : 0;
+  const baseCents = Math.round(chargeAmount * 100);
+  const feeCents  = surchargePctNum > 0 ? Math.round(chargeAmount * surchargePctNum) : 0;
 
   // Build the form-encoded body Stripe's REST API expects.
   const form = new URLSearchParams();

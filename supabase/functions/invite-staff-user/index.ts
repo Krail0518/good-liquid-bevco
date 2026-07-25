@@ -27,6 +27,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders, jsonResponse, errorResponse, handlePreflight } from '../_shared/cors.ts';
+import { requireStaff } from '../_shared/auth.ts';
 
 const SUPABASE_URL        = Deno.env.get('SUPABASE_URL')              || '';
 const SERVICE_ROLE_KEY    = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
@@ -47,23 +48,11 @@ Deno.serve(async (req: Request) => {
 
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
-  // ── 1. Verify caller is authenticated ──────────────────────────────────
-  const authHeader = req.headers.get('Authorization') || '';
-  const token = authHeader.replace(/^Bearer\s+/i, '');
-  if (!token) return errorResponse('Unauthorized — no token', 401);
-
-  // Build a caller-scoped client (anon key + caller's JWT) to get their user
-  const callerClient = createClient(SUPABASE_URL, ANON_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
-    global: { headers: { Authorization: `Bearer ${token}` } },
-  });
-
-  const { data: { user: caller }, error: userErr } = await callerClient.auth.getUser();
-  if (userErr || !caller) return errorResponse('Unauthorized — invalid token', 401);
-
-  // ── 2. Caller is authenticated — that's sufficient.
-  //    The invite button is only reachable by admins via the CRM page-permission
-  //    system, so any valid JWT here can be trusted to have gotten through that gate.
+  // ── 1+2. Verify the caller is an ADMIN (server-side). A valid JWT alone is
+  //    NOT enough — a portal customer or a non-admin staffer holds one too and
+  //    could otherwise POST { role:'admin' } to grant themselves admin.
+  const auth = await requireStaff(req, { role: 'admin' });
+  if (!auth.ok) return errorResponse(auth.error || 'Forbidden', auth.status);
 
   // ── 3. Parse + validate request body ────────────────────────────────────
   let body: { email?: string; name?: string; role?: string; redirectTo?: string };
