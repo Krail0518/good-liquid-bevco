@@ -29,9 +29,11 @@
     var token = url.searchParams.get(PARAM);
     if(!token) return false;
     var sb = getSB(); if(!sb) return false;
-    var r = await sb.from('invoices')
-      .select('id, invoice_number, line_items, amount, status, invoice_date, due_date, payment_terms, notes, client_name, client_id, client_email')
-      .eq('share_token', token).maybeSingle();
+    // Exact-match lookup via SECURITY DEFINER RPC. (The old anon RLS policy
+    // matched "share_token is not null", which let anyone enumerate every
+    // shared invoice; get_shared_invoice returns only the token's own row.)
+    var rr = await sb.rpc('get_shared_invoice', { p_token: token });
+    var r = { data: (rr && rr.data && rr.data[0]) || null, error: rr && rr.error };
     if(r.error || !r.data){
       document.body.innerHTML = '<div style="padding:40px;font:16px system-ui;text-align:center;color:#444">Invoice not found or revoked.</div>';
       return true;
