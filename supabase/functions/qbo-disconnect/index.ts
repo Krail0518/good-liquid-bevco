@@ -8,6 +8,7 @@
 //   SUPABASE_SERVICE_ROLE_KEY — auto-injected
 
 import { jsonResponse, errorResponse, handlePreflight } from '../_shared/cors.ts';
+import { requireStaff } from '../_shared/auth.ts';
 
 const REVOKE_URL = 'https://developer.api.intuit.com/v2/oauth2/tokens/revoke';
 
@@ -16,6 +17,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (pre) return pre;
 
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
+
+  // Authorize the caller: staff user JWT (or an internal service-role call).
+  // A valid JWT alone is not enough — portal customers hold one too.
+  const _auth = await requireStaff(req);
+  if (!_auth.ok) return errorResponse(_auth.error || 'Forbidden', _auth.status);
 
   const clientId     = Deno.env.get('INTUIT_CLIENT_ID');
   const clientSecret = Deno.env.get('INTUIT_CLIENT_SECRET');

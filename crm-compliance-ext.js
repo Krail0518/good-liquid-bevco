@@ -854,9 +854,18 @@
       setTimeout(checkAllergenDeclMode, 300);
       return true;
     }
-    var r = await sb.from('client_allergen_declarations')
-      .select('id, product_name, allergens, claims, declared_by, declared_at, effective_date, notes, client_id')
-      .eq('share_token', token).maybeSingle();
+    // Exact-match lookup via SECURITY DEFINER RPC (the old anon RLS policy
+    // matched "share_token is not null" and let anyone enumerate every
+    // declaration; get_shared_allergen_declaration returns only this token's row).
+    var rr = await sb.rpc('get_shared_allergen_declaration', { p_token: token });
+    var r = { data: (rr && rr.data && rr.data[0]) || null, error: rr && rr.error };
+    if(rr && rr.error){
+      // RPC not deployed yet — fall back to the direct token query so shared
+      // declaration links keep working until the security migration is applied.
+      r = await sb.from('client_allergen_declarations')
+        .select('id, product_name, allergens, claims, declared_by, declared_at, effective_date, notes, client_id')
+        .eq('share_token', token).maybeSingle();
+    }
     if(r.error || !r.data){ document.body.innerHTML = '<div style="padding:40px;font:16px system-ui">Declaration not found or revoked.</div>'; return true; }
     renderAllergenDeclPage(r.data);
     return true;

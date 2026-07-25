@@ -452,6 +452,11 @@
         method: 'PATCH',
         headers: { apikey: SKEY, Authorization: 'Bearer ' + SKEY, 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'quote' })
+      }).then(function(res){
+        if(!res.ok){
+          console.error('[GL quote] status patch HTTP ' + res.status);
+          if(typeof addNotification === 'function') addNotification('⚠ Quote status not saved', 'The server rejected the change (HTTP ' + res.status + '). It may revert to pending on reload.', 'error');
+        }
       }).catch(function(e){ console.warn('[GL quote] status patch failed', e); });
     }
     // Update the visible row

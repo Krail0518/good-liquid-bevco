@@ -25,6 +25,7 @@
 //   supabase functions deploy gmail-send
 
 import { corsHeaders, jsonResponse, errorResponse, handlePreflight } from '../_shared/cors.ts';
+import { requireStaff } from '../_shared/auth.ts';
 
 async function getAccessToken(): Promise<string> {
   const r = await fetch('https://oauth2.googleapis.com/token', {
@@ -95,6 +96,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const pre = handlePreflight(req);
   if (pre) return pre;
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
+
+  // Authorize the caller: staff user JWT (or an internal service-role call).
+  // A valid JWT alone is not enough — portal customers hold one too.
+  const _auth = await requireStaff(req);
+  if (!_auth.ok) return errorResponse(_auth.error || 'Forbidden', _auth.status);
 
   if (!Deno.env.get('GMAIL_CLIENT_ID') || !Deno.env.get('GMAIL_REFRESH_TOKEN')) {
     return errorResponse('Gmail OAuth credentials not configured', 500);

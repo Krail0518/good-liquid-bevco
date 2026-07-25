@@ -5654,14 +5654,14 @@ function openLeadEmailComposer(){
 
       <!-- Header -->
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
-        <div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:#6b9fff">✉️ EMAIL LEAD — ${(d.name||d.co||'').toUpperCase()}</div>
+        <div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:#6b9fff">✉️ EMAIL LEAD — ${esc((d.name||d.co||'').toUpperCase())}</div>
         <button id="gl-lem-close" style="background:none;border:none;color:#9aa7bd;font-size:22px;cursor:pointer;line-height:1">✕</button>
       </div>
 
       <!-- Lead context card -->
       <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:12px;color:var(--muted);line-height:1.7">
         <div style="font-size:10px;letter-spacing:2px;color:#6b87ad;margin-bottom:6px;font-weight:600">THEIR INQUIRY</div>
-        ${details.length ? details.map(l=>`<div>• ${l}</div>`).join('') : '<div style="font-style:italic">No additional details on file.</div>'}
+        ${details.length ? details.map(l=>`<div>• ${esc(l)}</div>`).join('') : '<div style="font-style:italic">No additional details on file.</div>'}
       </div>
 
       <!-- Fields -->
@@ -6540,7 +6540,12 @@ async function aiDraftInvoice() {
 }
 
 // ─── AI: SUMMARIZE CLIENT ───
-async function aiSummarizeClient(clientName, billed, service, status, notes) {
+async function aiSummarizeClient(clientId) {
+  // Look the client up by id instead of receiving name/notes as string args —
+  // those were interpolated raw into the button's onclick, allowing a client
+  // name/note to break out and run script in the staff/admin browser (XSS).
+  const c = (window.clients||[]).find(x=>x.id===clientId) || {};
+  const clientName = c.name||'', billed = c.billed, service = c.service, status = c.status, notes = c.notes||'';
   showAIModal('Client Summary', '', true);
   const clientInvoices = invoices.filter(i=>i.clientName===clientName);
   const invSummary = clientInvoices.map(i=>`${i.id}: $$${i.amount} (${i.status})`).join(', ');
@@ -6931,9 +6936,9 @@ function openClientDetail(cid) {
         <div style="display:flex;align-items:center;gap:14px">
           <div style="width:56px;height:56px;border-radius:50%;background:${c.color};color:${c.tc};display:flex;align-items:center;justify-content:center;font-weight:900;font-size:18px;flex-shrink:0">${c.init}</div>
           <div>
-            <div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:2px;color:var(--white)">${c.name}</div>
-            <div style="font-size:13px;color:var(--muted)">${c.contact} · ${c.email}</div>
-            <span style="display:inline-block;margin-top:4px;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(0,229,192,.1);color:var(--teal);border:1px solid rgba(0,229,192,.3)">${c.service}</span>
+            <div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:2px;color:var(--white)">${esc(c.name)}</div>
+            <div style="font-size:13px;color:var(--muted)">${esc(c.contact)} · ${esc(c.email)}</div>
+            <span style="display:inline-block;margin-top:4px;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(0,229,192,.1);color:var(--teal);border:1px solid rgba(0,229,192,.3)">${esc(c.service)}</span>
           </div>
         </div>
         <button onclick="document.getElementById('client-detail-overlay').remove()" style="background:none;border:none;color:var(--muted);font-size:24px;cursor:pointer">✕</button>
@@ -6959,8 +6964,8 @@ function openClientDetail(cid) {
       ${(c.phone || c.street || c.city || c.zip || (c.commPrefs && c.commPrefs.length)) ? `<div style="margin-bottom:20px">
         <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:10px">CONTACT</div>
         <div style="background:rgba(255,255,255,.04);border-radius:10px;padding:14px;font-size:13px;color:var(--white);line-height:1.9">
-          ${c.contact ? `👤 ${c.contact}${c.contactType ? ` <span style="color:var(--muted);font-size:11px">(${({owner:'Owner',executive:'Executive',purchasing:'Purchasing',freight:'Freight / Logistics',sales:'Sales',other:'Other'}[c.contactType]||c.contactType)})</span>` : ''}<br>` : ''}
-          ${c.phone ? `📞 <a href="tel:${c.phone}" style="color:var(--teal)">${c.phone}</a><br>` : ''}
+          ${c.contact ? `👤 ${esc(c.contact)}${c.contactType ? ` <span style="color:var(--muted);font-size:11px">(${({owner:'Owner',executive:'Executive',purchasing:'Purchasing',freight:'Freight / Logistics',sales:'Sales',other:'Other'}[c.contactType]||c.contactType)})</span>` : ''}<br>` : ''}
+          ${c.phone ? `📞 <a href="tel:${esc(c.phone)}" style="color:var(--teal)">${esc(c.phone)}</a><br>` : ''}
           ${(c.street || c.city || c.state || c.zip) ? `📍 ${[c.street, [c.city, c.state].filter(Boolean).join(', '), c.zip].filter(Boolean).join(' · ')}` : ''}
           ${(c.billingSame === false && (c.billingStreet || c.billingCity || c.billingZip)) ? `<br>💳 <span style="color:var(--muted)">Billing:</span> ${[c.billingStreet, [c.billingCity, c.billingState].filter(Boolean).join(', '), c.billingZip].filter(Boolean).join(' · ')}` : ''}
           ${(c.shippingSame === false && (c.shippingStreet || c.shippingCity || c.shippingZip)) ? `<br>📦 <span style="color:var(--muted)">Shipping:</span> ${[c.shippingStreet, [c.shippingCity, c.shippingState].filter(Boolean).join(', '), c.shippingZip].filter(Boolean).join(' · ')}` : ''}
@@ -6977,9 +6982,9 @@ function openClientDetail(cid) {
       ${(c.legalName || c.ein || c.website || c.paymentTerms || c.paymentMethod || c.leadSource || c.accountOwner) ? `<div style="margin-bottom:20px">
         <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:10px">BUSINESS INFO</div>
         <div style="background:rgba(255,255,255,.04);border-radius:10px;padding:14px;font-size:13px;color:var(--white);line-height:1.9">
-          ${c.legalName ? `<div><span style="color:var(--muted)">Legal name:</span> ${c.legalName}</div>` : ''}
-          ${c.ein ? `<div><span style="color:var(--muted)">EIN:</span> <code style="font-family:var(--ff-mono);font-size:12px">${c.ein}</code></div>` : ''}
-          ${c.website ? `<div><span style="color:var(--muted)">Web:</span> <a href="${c.website.startsWith('http')?c.website:'https://'+c.website}" target="_blank" rel="noopener" style="color:var(--teal)">${c.website}</a></div>` : ''}
+          ${c.legalName ? `<div><span style="color:var(--muted)">Legal name:</span> ${esc(c.legalName)}</div>` : ''}
+          ${c.ein ? `<div><span style="color:var(--muted)">EIN:</span> <code style="font-family:var(--ff-mono);font-size:12px">${esc(c.ein)}</code></div>` : ''}
+          ${c.website ? `<div><span style="color:var(--muted)">Web:</span> <a href="${esc(c.website.startsWith('http')?c.website:'https://'+c.website)}" target="_blank" rel="noopener" style="color:var(--teal)">${esc(c.website)}</a></div>` : ''}
           ${c.paymentTerms ? `<div><span style="color:var(--muted)">Terms:</span> ${c.paymentTerms}</div>` : ''}
           ${c.paymentMethod ? `<div><span style="color:var(--muted)">Pays via:</span> ${({ach:'ACH',wire:'Wire',credit_card:'Credit card (3% fee)',check:'Check'}[c.paymentMethod]||c.paymentMethod)}</div>` : ''}
           ${c.leadSource ? `<div><span style="color:var(--muted)">Found us via:</span> ${({google:'Google search',instagram:'Instagram',linkedin:'LinkedIn',trade_show:'Trade show',industry_pub:'Industry publication',customer_referral:'Customer referral',word_of_mouth:'Word of mouth',cold_outreach:'Cold outreach',returning:'Returning customer',other:'Other'}[c.leadSource]||c.leadSource)}</div>` : ''}
@@ -7062,7 +7067,7 @@ function openClientDetail(cid) {
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button onclick="(function(){var ov=document.getElementById('client-detail-overlay');if(ov)ov.remove();if(window.glOpenEditClient)window.glOpenEditClient('${c.id}');})()" style="flex:1;min-width:140px;padding:11px;background:rgba(245,200,66,.12);border:1px solid rgba(245,200,66,.35);border-radius:8px;color:#f5c842;cursor:pointer;font-weight:700;font-size:13px">✏️ Edit Client</button>
         <button onclick="createForClient('${c.id}');document.getElementById('client-detail-overlay').remove()" style="flex:1;min-width:140px;padding:11px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:800;cursor:pointer;font-size:13px">+ New Invoice</button>
-        <button onclick="aiSummarizeClient('${c.name}','${c.billed}','${c.service}','${c.status}','${c.notes||''}')" style="flex:1;min-width:140px;padding:11px;background:rgba(0,229,192,.1);border:1px solid rgba(0,229,192,.3);border-radius:8px;color:var(--teal);cursor:pointer;font-weight:700;font-size:13px">🤖 AI Summary</button>
+        <button onclick="aiSummarizeClient('${c.id}')" style="flex:1;min-width:140px;padding:11px;background:rgba(0,229,192,.1);border:1px solid rgba(0,229,192,.3);border-radius:8px;color:var(--teal);cursor:pointer;font-weight:700;font-size:13px">🤖 AI Summary</button>
         <button onclick="window.glQuoteFromClient&&window.glQuoteFromClient('${c.id}')" style="flex:1;min-width:140px;padding:11px;background:rgba(26,111,255,.1);border:1px solid rgba(26,111,255,.35);border-radius:8px;color:#6b9fff;cursor:pointer;font-weight:700;font-size:13px">📋 Quote Builder</button>
         <button onclick="document.getElementById('client-detail-overlay').remove()" style="padding:11px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer;font-size:13px">Close</button>
       </div>
@@ -8324,7 +8329,7 @@ function renderInventory(){
     const pct=Math.round(i.qty/maxQty*100);
     const color=i.qty<=i.lowAt?'#e74c3c':i.qty<=i.lowAt*2?'#f5c842':'#1D9E75';
     return `<div class="inv-item-row">
-      <div style="min-width:180px;font-size:13px;font-weight:600;color:var(--white)">${i.name}</div>
+      <div style="min-width:180px;font-size:13px;font-weight:600;color:var(--white)">${esc(i.name)}</div>
       <div class="inv-stock-bar"><div class="inv-stock-fill" style="width:${pct}%;background:${color}"></div></div>
       <div style="min-width:100px;text-align:right;font-size:12px;font-weight:700;color:${color}">${i.qty} ${i.unit}</div>
       <div style="min-width:80px;text-align:right;font-size:10px;color:var(--muted)">low@${i.lowAt}</div>
@@ -9088,7 +9093,7 @@ function getFollowupLog(invId){
   return `<div style="margin-top:16px"><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">FOLLOW-UP HISTORY</div>
     ${log.map(l=>`<div class="fu-log-item">
       <div class="fu-log-icon">📧</div>
-      <div style="flex:1"><div class="fu-log-text">${l.subject}</div><div class="fu-log-time">${l.date} · ${l.sent?'Sent':'Logged only'}</div></div>
+      <div style="flex:1"><div class="fu-log-text">${esc(l.subject)}</div><div class="fu-log-time">${l.date} · ${l.sent?'Sent':'Logged only'}</div></div>
     </div>`).join('')}
   </div>`;
 }
@@ -9128,10 +9133,22 @@ async function generateMeetingNotes(){
   document.getElementById('mn-save-btn').style.display='inline-flex';
 }
 
-function saveMeetingNotes(){
+async function saveMeetingNotes(){
   const clientId=document.getElementById('mn-client').value;
   const notes=document.getElementById('mn-result').textContent;
   const client=clients.find(c=>c.id===clientId);
+  // Persist the FULL note to the database — the activity feed only keeps an
+  // 80-char preview, so previously the note body was lost on refresh.
+  if(window.supa && /^[0-9a-f-]{36}$/i.test(clientId||'') && notes && notes.trim()){
+    try {
+      const r = await window.supa.from('client_notes').insert([{
+        client_id: clientId, body: notes,
+        author_name:  (window.currentUser&&window.currentUser.name)||null,
+        author_email: (window.currentUser&&window.currentUser.email)||null
+      }]);
+      if(r.error){ addNotification('⚠ Meeting notes NOT saved', r.error.message, 'error'); return; }
+    } catch(e){ addNotification('⚠ Meeting notes NOT saved', e.message||'error', 'error'); return; }
+  }
   activities.unshift({type:'note',icon:'📝',name:'Meeting notes: '+(client?client.name:'General'),detail:notes.substring(0,80)+'…',time:'Just now'});saveActivities();
   addNotification('📝 Meeting notes saved','Notes saved for '+(client?client.name:'General'),'success');
   closeMeetingNotesModal();
@@ -10005,8 +10022,8 @@ function viewClientEnhanced(clientId) {
         <div style="display:flex;align-items:center;gap:14px">
           <div style="width:54px;height:54px;border-radius:50%;background:${client.color};color:${client.tc};display:flex;align-items:center;justify-content:center;font-family:var(--ff-disp);font-size:18px;font-weight:900">${client.init}</div>
           <div>
-            <div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:1px;color:var(--white)">${client.name}</div>
-            <div style="font-size:11px;color:var(--muted)">${client.contact} · ${client.service}</div>
+            <div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:1px;color:var(--white)">${esc(client.name)}</div>
+            <div style="font-size:11px;color:var(--muted)">${esc(client.contact)} · ${esc(client.service)}</div>
           </div>
         </div>
         <button onclick="document.getElementById('client-detail-overlay').remove()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer">✕</button>
@@ -10030,7 +10047,7 @@ function viewClientEnhanced(clientId) {
       <div style="margin-bottom:18px">
         <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">CONTACT INFO</div>
         <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:14px;font-size:13px;color:var(--white);line-height:1.9">
-          ${client.contact ? `👤 ${client.contact}${client.contactType ? ` <span style="color:var(--muted);font-size:11px">(${({owner:'Owner',executive:'Executive',purchasing:'Purchasing',freight:'Freight / Logistics',sales:'Sales',other:'Other'}[client.contactType]||client.contactType)})</span>` : ''}<br>` : ''}
+          ${client.contact ? `👤 ${esc(client.contact)}${client.contactType ? ` <span style="color:var(--muted);font-size:11px">(${({owner:'Owner',executive:'Executive',purchasing:'Purchasing',freight:'Freight / Logistics',sales:'Sales',other:'Other'}[client.contactType]||client.contactType)})</span>` : ''}<br>` : ''}
           ${client.email ? `📧 <a href="mailto:${client.email}" style="color:var(--teal)">${client.email}</a><br>` : ''}
           ${(Array.isArray(client.additionalEmails) && client.additionalEmails.length) ? client.additionalEmails.map(em => `📧 <a href="mailto:${em.email}" style="color:var(--teal)">${em.email}</a>${em.label ? ` <span style="color:var(--muted);font-size:11px">(${em.label})</span>` : ''}<br>`).join('') : ''}
           ${client.phone ? `📞 <a href="tel:${client.phone}" style="color:var(--teal)">${client.phone}</a><br>` : ''}
@@ -10051,9 +10068,9 @@ function viewClientEnhanced(clientId) {
       ${(client.legalName || client.ein || client.website || client.paymentTerms || client.paymentMethod || client.leadSource || client.accountOwner) ? `<div style="margin-bottom:18px">
         <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">BUSINESS INFO</div>
         <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:14px;font-size:13px;color:var(--white);line-height:1.9">
-          ${client.legalName ? `<div><span style="color:var(--muted)">Legal name:</span> ${client.legalName}</div>` : ''}
-          ${client.ein ? `<div><span style="color:var(--muted)">EIN:</span> <code style="font-family:var(--ff-mono);font-size:12px">${client.ein}</code></div>` : ''}
-          ${client.website ? `<div><span style="color:var(--muted)">Web:</span> <a href="${client.website.startsWith('http')?client.website:'https://'+client.website}" target="_blank" rel="noopener" style="color:var(--teal)">${client.website}</a></div>` : ''}
+          ${client.legalName ? `<div><span style="color:var(--muted)">Legal name:</span> ${esc(client.legalName)}</div>` : ''}
+          ${client.ein ? `<div><span style="color:var(--muted)">EIN:</span> <code style="font-family:var(--ff-mono);font-size:12px">${esc(client.ein)}</code></div>` : ''}
+          ${client.website ? `<div><span style="color:var(--muted)">Web:</span> <a href="${esc(client.website.startsWith('http')?client.website:'https://'+client.website)}" target="_blank" rel="noopener" style="color:var(--teal)">${esc(client.website)}</a></div>` : ''}
           ${client.paymentTerms ? `<div><span style="color:var(--muted)">Terms:</span> ${client.paymentTerms}</div>` : ''}
           ${client.paymentMethod ? `<div><span style="color:var(--muted)">Pays via:</span> ${({ach:'ACH',wire:'Wire',credit_card:'Credit card (3% fee)',check:'Check'}[client.paymentMethod]||client.paymentMethod)}</div>` : ''}
           ${client.leadSource ? `<div><span style="color:var(--muted)">Found us via:</span> ${({google:'Google search',instagram:'Instagram',linkedin:'LinkedIn',trade_show:'Trade show',industry_pub:'Industry publication',customer_referral:'Customer referral',word_of_mouth:'Word of mouth',cold_outreach:'Cold outreach',returning:'Returning customer',other:'Other'}[client.leadSource]||client.leadSource)}</div>` : ''}
@@ -10405,7 +10422,7 @@ async function openClientNote(clientId){
   modal.className = 'modal-ov show';
   modal.innerHTML = `
     <div class="modal-box" style="width:500px">
-      <div class="modal-title">📝 Notes — ${client.name} <span class="modal-close" onclick="this.closest('.modal-ov').remove()">✕</span></div>
+      <div class="modal-title">📝 Notes — ${esc(client.name)} <span class="modal-close" onclick="this.closest('.modal-ov').remove()">✕</span></div>
       <div style="max-height:280px;overflow-y:auto;margin-bottom:12px" id="cn-list">
         <div style="color:var(--muted);font-size:13px">Loading…</div>
       </div>
@@ -10677,7 +10694,7 @@ async function openTimeTrackingReport(){
       <div style="margin-bottom:14px">
         <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">HOURS BY CLIENT</div>
         ${reportData.byClient.map(c=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05)">
-          <div style="font-size:13px;color:var(--white)">${c.name}</div>
+          <div style="font-size:13px;color:var(--white)">${esc(c.name)}</div>
           <div style="font-family:var(--ff-disp);font-size:16px;color:var(--teal)">${c.hours}h</div>
         </div>`).join('')}
       </div>

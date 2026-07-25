@@ -351,7 +351,7 @@
           } else {
             var r = await window.supa.from('production_runs').insert([data]).select().single();
             if(r && r.data){ window.glProductionRuns.push(r.data); }
-            else            { data.id = 'local_' + Date.now(); window.glProductionRuns.push(data); }
+            else            { data.id = 'local_' + Date.now(); window.glProductionRuns.push(data); if(r && r.error) alert('\u26a0 Production run did NOT save to the database \u2014 kept only on this device:\n' + r.error.message); }
           }
         } catch(e){
           console.warn('[GL] production_runs save failed; using local', e);

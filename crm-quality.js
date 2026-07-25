@@ -198,14 +198,14 @@
       if(window.supa){
         try {
           if(isEdit){ await window.supa.from('defects').update(data).eq('id', d.id); Object.assign(d, data); }
-          else { var r = await window.supa.from('defects').insert([data]).select().single(); if(r && r.data){ window.glDefects.unshift(r.data); } else { data.id = 'local_' + Date.now(); window.glDefects.unshift(data); } }
+          else { var r = await window.supa.from('defects').insert([data]).select().single(); if(r && r.data){ window.glDefects.unshift(r.data); } else { data.id = 'local_' + Date.now(); window.glDefects.unshift(data); if(r && r.error) alert('\u26a0 Record did NOT save to the database \u2014 kept only on this device:\n' + r.error.message); } }
         } catch(e){
           if(isEdit) Object.assign(d, data);
-          else { data.id = 'local_' + Date.now(); window.glDefects.unshift(data); }
+          else { data.id = 'local_' + Date.now(); window.glDefects.unshift(data); if(r && r.error) alert('\u26a0 Record did NOT save to the database \u2014 kept only on this device:\n' + r.error.message); }
         }
       } else {
         if(isEdit) Object.assign(d, data);
-        else { data.id = 'local_' + Date.now(); window.glDefects.unshift(data); }
+        else { data.id = 'local_' + Date.now(); window.glDefects.unshift(data); if(r && r.error) alert('\u26a0 Record did NOT save to the database \u2014 kept only on this device:\n' + r.error.message); }
       }
       saveLocal(); ov.remove(); render();
       if(typeof addNotification === 'function') addNotification('⚠️ NCR ' + (isEdit ? 'updated' : 'logged'), data.run_ref + ' — ' + data.severity.toUpperCase(), data.severity === 'critical' ? 'warning' : 'info');

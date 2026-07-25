@@ -464,7 +464,7 @@
       if(window.supa){
         try {
           if(isEdit){ await window.supa.from('trade_shows').update(data).eq('id', s.id); Object.assign(s, data); }
-          else { var r = await window.supa.from('trade_shows').insert([data]).select().single(); if(r && r.data){ window.glTradeShows.unshift(r.data); } else { data.id = 'local_' + Date.now(); window.glTradeShows.unshift(data); } }
+          else { var r = await window.supa.from('trade_shows').insert([data]).select().single(); if(r && r.data){ window.glTradeShows.unshift(r.data); } else { data.id = 'local_' + Date.now(); window.glTradeShows.unshift(data); if(r && r.error) alert('\u26a0 Trade show did NOT save to the database \u2014 kept only on this device:\n' + r.error.message); } }
         } catch(e){
           if(isEdit) Object.assign(s, data);
           else { data.id = 'local_' + Date.now(); window.glTradeShows.unshift(data); }

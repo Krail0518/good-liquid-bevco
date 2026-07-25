@@ -240,7 +240,7 @@
         var w = document.createElement('div');
         w.id = 'gl-credit-limit-warn';
         w.style.cssText = 'background:#fffaf0;border:1px solid #f6ad55;border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#744210';
-        w.innerHTML = '⚠️ <strong>Credit limit alert:</strong> ' + (client.name || 'This client') + ' has ' + fmt$(outstanding) + ' outstanding of ' + fmt$(limit) + ' limit (' + Math.round(outstanding/limit*100) + '%)';
+        w.innerHTML = '⚠️ <strong>Credit limit alert:</strong> ' + esc(client.name || 'This client') + ' has ' + fmt$(outstanding) + ' outstanding of ' + fmt$(limit) + ' limit (' + Math.round(outstanding/limit*100) + '%)';
         var body = document.getElementById('gl-inv-body') || builder.querySelector('form');
         if (body) body.insertBefore(w, body.firstChild);
       }

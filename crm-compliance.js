@@ -1842,7 +1842,7 @@
     document.body.appendChild(a); a.click();
     setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
   }
-  function escHtml(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function escHtml(v){ return v == null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
   // Form catalog — names for the export picker (mirror of FORMS in the compliance IIFE)
   var EXPORT_FORMS = [
@@ -2188,10 +2188,21 @@
   // ── (7) Critical Limits — read overrides from localStorage at boot ──
   var LIMITS_KEY = 'gl_ccp_limits';
   function readLimits(){
+    // Prefer the org-wide DB value (app_settings) so CCP limits are consistent
+    // across every device/operator; fall back to the local cache.
+    try {
+      var db = (window.GL_APP_SETTINGS && window.GL_APP_SETTINGS.ccp_limits) ||
+               (window.glGetSetting && window.glGetSetting('ccp_limits'));
+      if(db && typeof db === 'object') return Object.assign({}, db);
+    } catch(e){}
     try { return Object.assign({}, JSON.parse(localStorage.getItem(LIMITS_KEY) || '{}')); }
     catch(e){ return {}; }
   }
-  function writeLimits(obj){ localStorage.setItem(LIMITS_KEY, JSON.stringify(obj)); }
+  function writeLimits(obj){
+    localStorage.setItem(LIMITS_KEY, JSON.stringify(obj)); // keep a local cache
+    // Persist org-wide so other staff/devices judge forms against the same limits.
+    if(window.glSaveAppSetting) { try { window.glSaveAppSetting('ccp_limits', obj); } catch(e){} }
+  }
   // Push overrides into the compliance module's DEFAULT_LIMITS object
   // (it's hoisted via closure but we exposed nothing; mutate via a known global guard).
   // We expose a getter all forms can use going forward, plus apply overrides
@@ -2718,7 +2729,7 @@
     var raw = prompt('Phone number for compliance critical-failure SMS\n(10-digit US, e.g. 8135550100 — or full international like +447700900123).\nLeave blank to disable.', curDisplay);
     if(raw === null) return;
     raw = raw.trim();
-    if(!raw){ localStorage.removeItem('gl_sms_alert_phone'); alert('SMS alerts disabled.'); return; }
+    if(!raw){ localStorage.removeItem('gl_sms_alert_phone'); if(window.glSaveAppSetting){ try{ window.glSaveAppSetting('sms_alert_phone', ''); }catch(e){} } alert('SMS alerts disabled.'); return; }
     // Normalize: 10-digit US gets +1 auto-prefixed; 11-digit starting with 1 gets +;
     // anything already prefixed with + is treated as international E.164.
     var digits = raw.replace(/\D+/g, '');
@@ -2734,7 +2745,7 @@
       alert('Enter a 10-digit US number (e.g. 8135550100) or an international number starting with + (e.g. +447700900123).');
       return;
     }
-    localStorage.setItem('gl_sms_alert_phone', e164);
+    localStorage.setItem('gl_sms_alert_phone', e164); if(window.glSaveAppSetting){ try{ window.glSaveAppSetting('sms_alert_phone', e164); }catch(e){} }
     alert('Compliance SMS alerts will go to ' + e164 + '. (Requires deployed send-sms Edge Function + Twilio creds.)');
   };
 
@@ -3430,8 +3441,8 @@
   // a MutationObserver that hides "rendered" Today's-Task cards whose
   // task_type is in the hidden set.
   var APP_KEY = 'gl_compliance_hidden_task_types';
-  function readApp(){ try { return JSON.parse(localStorage.getItem(APP_KEY) || '[]'); } catch(e){ return []; } }
-  function writeApp(arr){ localStorage.setItem(APP_KEY, JSON.stringify(arr || [])); }
+  function readApp(){ try { var db=(window.GL_APP_SETTINGS&&window.GL_APP_SETTINGS.compliance_hidden_task_types)||(window.glGetSetting&&window.glGetSetting('compliance_hidden_task_types')); if(Array.isArray(db)) return db.slice(); } catch(e){} try { return JSON.parse(localStorage.getItem(APP_KEY) || '[]'); } catch(e){ return []; } }
+  function writeApp(arr){ localStorage.setItem(APP_KEY, JSON.stringify(arr || [])); if(window.glSaveAppSetting){ try{ window.glSaveAppSetting('compliance_hidden_task_types', arr || []); }catch(e){} } }
 
   window.glOpenApplicabilityConfig = function(){
     var prior = document.getElementById('gl-app-modal'); if(prior) prior.remove();

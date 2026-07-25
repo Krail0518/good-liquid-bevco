@@ -24,6 +24,7 @@
 //   supabase secrets set ANTHROPIC_API_KEY=sk-ant-api03-...
 
 import { corsHeaders, jsonResponse, errorResponse, handlePreflight } from '../_shared/cors.ts';
+import { requireStaff } from '../_shared/auth.ts';
 
 const API_KEY = Deno.env.get('ANTHROPIC_API_KEY') || '';
 
@@ -31,6 +32,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const pre = handlePreflight(req);
   if (pre) return pre;
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
+
+  // Authorize the caller: staff user JWT (or an internal service-role call).
+  // A valid JWT alone is not enough — portal customers hold one too.
+  const _auth = await requireStaff(req);
+  if (!_auth.ok) return errorResponse(_auth.error || 'Forbidden', _auth.status);
 
   if (!API_KEY) return errorResponse('ANTHROPIC_API_KEY not configured', 500);
 

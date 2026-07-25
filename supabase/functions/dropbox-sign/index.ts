@@ -21,6 +21,7 @@
 //   supabase secrets set HELLOSIGN_TEST_MODE=1
 
 import { jsonResponse, errorResponse, handlePreflight } from '../_shared/cors.ts';
+import { requireStaff } from '../_shared/auth.ts';
 
 const HS_BASE = 'https://api.hellosign.com/v3';
 
@@ -29,6 +30,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (pre) return pre;
 
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
+
+  // Authorize the caller: staff user JWT (or an internal service-role call).
+  // A valid JWT alone is not enough — portal customers hold one too.
+  const _auth = await requireStaff(req);
+  if (!_auth.ok) return errorResponse(_auth.error || 'Forbidden', _auth.status);
 
   const key = Deno.env.get('HELLOSIGN_API_KEY');
   if (!key) return errorResponse('HELLOSIGN_API_KEY not configured', 500);
