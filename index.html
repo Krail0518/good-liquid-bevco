@@ -9133,10 +9133,22 @@ async function generateMeetingNotes(){
   document.getElementById('mn-save-btn').style.display='inline-flex';
 }
 
-function saveMeetingNotes(){
+async function saveMeetingNotes(){
   const clientId=document.getElementById('mn-client').value;
   const notes=document.getElementById('mn-result').textContent;
   const client=clients.find(c=>c.id===clientId);
+  // Persist the FULL note to the database — the activity feed only keeps an
+  // 80-char preview, so previously the note body was lost on refresh.
+  if(window.supa && /^[0-9a-f-]{36}$/i.test(clientId||'') && notes && notes.trim()){
+    try {
+      const r = await window.supa.from('client_notes').insert([{
+        client_id: clientId, body: notes,
+        author_name:  (window.currentUser&&window.currentUser.name)||null,
+        author_email: (window.currentUser&&window.currentUser.email)||null
+      }]);
+      if(r.error){ addNotification('⚠ Meeting notes NOT saved', r.error.message, 'error'); return; }
+    } catch(e){ addNotification('⚠ Meeting notes NOT saved', e.message||'error', 'error'); return; }
+  }
   activities.unshift({type:'note',icon:'📝',name:'Meeting notes: '+(client?client.name:'General'),detail:notes.substring(0,80)+'…',time:'Just now'});saveActivities();
   addNotification('📝 Meeting notes saved','Notes saved for '+(client?client.name:'General'),'success');
   closeMeetingNotesModal();

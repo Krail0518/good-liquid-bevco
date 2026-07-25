@@ -421,7 +421,7 @@
         try {
           var r = await window.supa.from('formulas').insert([data]).select().single();
           if(r && r.data){ window.glFormulas.unshift(r.data); }
-          else            { data.id = 'local_' + Date.now(); window.glFormulas.unshift(data); }
+          else            { data.id = 'local_' + Date.now(); window.glFormulas.unshift(data); if(r && r.error) alert('\u26a0 Formula did NOT save to the database \u2014 kept only on this device:\n' + r.error.message); }
         } catch(e){ data.id = 'local_' + Date.now(); window.glFormulas.unshift(data); }
       } else {
         data.id = 'local_' + Date.now(); window.glFormulas.unshift(data);
@@ -442,7 +442,7 @@
           } else {
             var r = await window.supa.from('formulas').insert([data]).select().single();
             if(r && r.data){ window.glFormulas.unshift(r.data); }
-            else            { data.id = 'local_' + Date.now(); window.glFormulas.unshift(data); }
+            else            { data.id = 'local_' + Date.now(); window.glFormulas.unshift(data); if(r && r.error) alert('\u26a0 Formula did NOT save to the database \u2014 kept only on this device:\n' + r.error.message); }
           }
         } catch(e){
           console.warn('[GL] formula save failed; using local', e);
