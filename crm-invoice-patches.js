@@ -955,13 +955,21 @@
       }
       var payload = {
         invoice_number:invId,
-        client_id:(cid&&cid.charAt(0)==='c')?null:cid,
+        // Only null the client_id for offline-local IDs (minted as 'c_'+Date.now()).
+        // A genuine Supabase UUID must be kept — the old `charAt(0)==='c'` test
+        // also matched every real UUID starting with the hex digit 'c' (~1/16 of
+        // clients), silently orphaning those invoices from their client.
+        client_id:/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cid||'')?cid:null,
         client_name:client.name||'',
         service:inv.svc,
         amount:amount,
         invoice_date:date,
         due_date:dueIso||null,
         payment_terms: inv.paymentTerms,
+        // Persist the PO Number field (injected by crm-accounting.js). The
+        // PGRST204 retry below strips it if the column is missing, so this is
+        // safe on deployments that haven't run the accounting migration.
+        po_number:(function(){ var el=document.getElementById('gl-po-number'); return el&&el.value.trim()?el.value.trim():null; })(),
         line_items:combinedLines
       };
       // Fallback: if we're editing but lost the supa row id, look it up by

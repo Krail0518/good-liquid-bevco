@@ -33,9 +33,18 @@
       getSession:async function(){return{data:{session:null},error:null};}},
       from:function(t){
         var _f=[];var _sel='*';var _si=false;
+        // Writes aren't supported in this degraded fetch-only fallback; return a
+        // chainable thenable that resolves to an error instead of throwing.
+        function _wErr(){var w={select:function(){return w;},eq:function(){return w;},maybeSingle:function(){return w;},single:function(){return w;},then:function(res){return Promise.resolve(res({data:null,error:{message:'Offline — Supabase SDK not loaded'}}));}};return w;}
         var q={select:function(c){_sel=c||'*';return q;},
           eq:function(c,v){_f.push(c+'=eq.'+encodeURIComponent(v));return q;},
           is:function(c,v){_f.push(c+'=is.'+v);return q;},
+          neq:function(c,v){_f.push(c+'=neq.'+encodeURIComponent(v));return q;},
+          gte:function(c,v){_f.push(c+'=gte.'+encodeURIComponent(v));return q;},
+          lte:function(c,v){_f.push(c+'=lte.'+encodeURIComponent(v));return q;},
+          in:function(c,a){_f.push(c+'=in.('+[].concat(a||[]).map(encodeURIComponent).join(',')+')');return q;},
+          or:function(){return q;},order:function(){return q;},limit:function(){return q;},range:function(){return q;},
+          insert:function(){return _wErr();},update:function(){return _wErr();},upsert:function(){return _wErr();},delete:function(){return _wErr();},
           maybeSingle:function(){_si=true;return q;},single:function(){_si=true;return q;},
           then:function(res){
             var u=_GL_SUPA_URL+'/rest/v1/'+t+'?select='+encodeURIComponent(_sel)+(_f.length?'&'+_f.join('&'):'');

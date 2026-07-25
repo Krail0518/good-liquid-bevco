@@ -506,7 +506,10 @@
     catch(e){ return null; }
   })();
 
-  function getSB(){ return sb || window.supabase || null; }
+  // window.supa is the Supabase *client* (has .from/.auth). window.supabase is
+  // only the UMD *library* namespace (createClient, no .from), so returning it
+  // made every sb.from(...) in this file throw. Prefer the real client.
+  function getSB(){ return window.supa || (sb && typeof sb.from === 'function' ? sb : null); }
   function $(q, root){ return (root||document).querySelector(q); }
   function $$(q, root){ return Array.prototype.slice.call((root||document).querySelectorAll(q)); }
   function toast(msg, kind){

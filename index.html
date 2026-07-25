@@ -5361,7 +5361,7 @@ async function saveNewDeal(){
     newD = data;
   } catch(e){ console.warn('[GL] saveNewDeal insert failed', e); }
 
-  const did = newD ? newD.id : 'd'+(Date.now());
+  const did = newD ? newD.id : 'tmp_'+(Date.now());
   if(!deals[stage]) deals[stage]=[];
   deals[stage].push({id:did, name, co, val:'$'+val.toLocaleString(), prob, notes, stageEnteredAt: newD?.stage_entered_at || new Date().toISOString()});
   renderKanban(); renderDash();
