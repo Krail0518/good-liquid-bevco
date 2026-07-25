@@ -836,15 +836,21 @@
   var MAJOR_ALLERGENS = ['milk','eggs','fish','shellfish','tree_nuts','peanuts','wheat','soybeans','sesame'];
 
   async function checkAllergenDeclMode(){
-    if(!window.sb || typeof window.sb.from !== 'function'){
+    // Only public allergen-declaration links (?allergen_decl=<token>) take over
+    // the page. Check the URL FIRST — for every normal visitor there is no token,
+    // so we must return without ever touching the DOM. (Previously this wiped
+    // document.body to "Loading…" before the token check, and gated on the
+    // never-defined window.sb, so the whole site was stuck on "Loading…".)
+    var url = new URL(window.location.href);
+    var token = url.searchParams.get(ALLERGEN_PARAM);
+    if(!token) return false;
+    // Genuine allergen link: wait for the Supabase client to come up, then render.
+    var sb = window.supa || getSB();
+    if(!sb || typeof sb.from !== 'function'){
       document.body.innerHTML = '<div style="padding:40px;text-align:center;font-family:sans-serif">Loading…</div>';
       setTimeout(checkAllergenDeclMode, 300);
       return true;
     }
-    var url = new URL(window.location.href);
-    var token = url.searchParams.get(ALLERGEN_PARAM);
-    if(!token) return false;
-    var sb = getSB(); if(!sb) return false;
     var r = await sb.from('client_allergen_declarations')
       .select('id, product_name, allergens, claims, declared_by, declared_at, effective_date, notes, client_id')
       .eq('share_token', token).maybeSingle();
