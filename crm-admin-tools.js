@@ -31,7 +31,7 @@
           +' <button class="cbtn red" style="font-size:10px;padding:3px 8px" onclick="window.removeUser(\''+u.id+'\')">Remove</button>';
       return '<tr>'
         +'<td style="font-weight:600;display:flex;align-items:center;gap:8px">'
-          +'<div style="width:28px;height:28px;border-radius:50%;background:'+(u.color||'#1a6fff')+';color:'+(u.tc||'#fff')+';display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">'+esc(u.initials||'?')+'</div>'
+          +'<div style="width:28px;height:28px;border-radius:50%;background:'+(/^#[0-9a-fA-F]{3,8}$/.test(u.color||'')?u.color:'#1a6fff')+';color:'+(/^#[0-9a-fA-F]{3,8}$/.test(u.tc||'')?u.tc:'#fff')+';display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">'+esc(u.initials||'?')+'</div>'
           +esc(u.name||'')
         +'</td>'
         +'<td style="font-family:var(--ff-mono);font-size:11px">'+esc(u.email||'')+'</td>'
