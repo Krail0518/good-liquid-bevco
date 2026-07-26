@@ -6448,7 +6448,7 @@ window.ddpNudgeLead = ddpNudgeLead;
 // Returns true when the sync succeeded so callers can reload their panel.
 async function glSyncGmail(email, opts){
   opts = opts || {};
-  if(!window.supa){ if(typeof addNotification==='function') addNotification('Sync unavailable','Not connected to the server.','warning'); return false; }
+  if(!window.supa){ if(typeof addNotification==='function') addNotification('Sync unavailable','Not connected to the server.','warning'); return null; }
   var body = email ? { email: email, days: opts.days || 90, max: opts.max || 200 }
                    : { days: opts.days || 90, max: opts.max || 400 };
   try {
@@ -6463,16 +6463,20 @@ async function glSyncGmail(email, opts){
         : errMsg;
       console.error('[GL] gmail-sync failed', errMsg);
       if(typeof addNotification==='function') addNotification('Email sync failed', friendly, 'warning');
-      return false;
+      glSyncGmail.lastError = friendly;
+      return null;
     }
     var d = (r && r.data) || {};
     var msg = (d.inserted || 0) + ' new, ' + (d.skipped || 0) + ' already logged';
     if(typeof addNotification==='function') addNotification('📧 Email sync complete', msg, 'success');
-    return true;
+    // Return the payload so callers can show the real counts. Truthy on
+    // success, null on failure, so existing truthiness checks still work.
+    return d;
   } catch(e){
     console.error('[GL] gmail-sync threw', e);
-    if(typeof addNotification==='function') addNotification('Email sync failed', String(e && e.message || e), 'warning');
-    return false;
+    glSyncGmail.lastError = String(e && e.message || e);
+    if(typeof addNotification==='function') addNotification('Email sync failed', glSyncGmail.lastError, 'warning');
+    return null;
   }
 }
 window.glSyncGmail = glSyncGmail;

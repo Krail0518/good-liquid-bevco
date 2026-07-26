@@ -196,7 +196,9 @@
         '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:12px;margin-bottom:18px;font-size:12px;color:#cfd9e6;line-height:1.7">' +
           'Sync reads your Gmail and files every message to or from a client or lead into their correspondence panel — including replies and mail you sent from your phone. Needs the <code style="color:var(--teal)">gmail.readonly</code> scope on <code style="color:var(--teal)">GMAIL_REFRESH_TOKEN</code> (see GMAIL_SYNC_SETUP.md).' +
         '</div>' +
-        '<button id="gl-sync-all-btn" onclick="window.glSyncAllEmail(this)" style="width:100%;padding:13px;background:rgba(0,229,192,.1);color:var(--teal);border:1px solid rgba(0,229,192,.3);border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;margin-bottom:12px">🔄 Sync email history from Gmail</button>' +
+        '<button id="gl-sync-all-btn" onclick="window.glSyncAllEmail(this)" style="width:100%;padding:13px;background:rgba(0,229,192,.1);color:var(--teal);border:1px solid rgba(0,229,192,.3);border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;margin-bottom:10px">🔄 Sync email history from Gmail</button>' +
+        // Persistent result line — stays put so the outcome can't be missed.
+        '<div id="gl-sync-result" style="display:none;font-size:12px;line-height:1.55;margin-bottom:12px;padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px"></div>' +
         '<div style="display:flex;gap:10px">' +
           '<button onclick="window.glTestMailgun()" style="flex:1;padding:13px;background:rgba(245,200,66,.08);color:#f5c842;border:1px solid rgba(245,200,66,.3);border-radius:8px;cursor:pointer;font-size:13px">Test send</button>' +
           '<button onclick="document.getElementById(\'mg-settings-overlay\').remove()" style="padding:13px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer">Close</button>' +
@@ -215,13 +217,40 @@
       alert('Email sync is not available in this build.');
       return;
     }
+    // The result is written into a panel line that STAYS until the panel is
+    // closed. The first version only flipped the button label for 6 seconds,
+    // which is useless for a job that runs for a minute — you look away and
+    // miss it, with no way to tell whether anything happened.
+    var out = document.getElementById('gl-sync-result');
     var orig = btn ? btn.textContent : '';
-    if(btn){ btn.disabled = true; btn.textContent = '🔄 Syncing your email… this can take a minute'; }
-    var ok = await window.glSyncGmail(null, { days: 180, max: 400 });
-    if(btn){
-      btn.disabled = false;
-      btn.textContent = ok ? '✓ Synced — open a client to see the history' : '⚠ Sync failed — see the notification';
-      setTimeout(function(){ if(btn) btn.textContent = orig; }, 6000);
+    if(out){
+      out.style.display = 'block';
+      out.style.color = '#9aa7bd';
+      out.textContent = 'Reading your Gmail… this can take a minute. You can leave this open.';
+    }
+    if(btn){ btn.disabled = true; btn.textContent = '🔄 Syncing…'; }
+
+    var res = await window.glSyncGmail(null, { days: 180, max: 400 });
+
+    if(btn){ btn.disabled = false; btn.textContent = orig; }
+    if(!out) return;
+    if(!res){
+      out.style.color = '#ff8579';
+      out.textContent = '⚠ Sync failed. ' + (window.glSyncGmail.lastError || 'See the notification for details.');
+      return;
+    }
+    var filed   = res.inserted || 0;
+    var already = res.skipped  || 0;
+    if(filed || already){
+      out.style.color = '#5fcf9e';
+      out.textContent = '✓ Done — ' + filed + ' new email' + (filed === 1 ? '' : 's') + ' filed, ' +
+        already + ' already had. Open a client or lead and scroll to CORRESPONDENCE.';
+    } else {
+      // Succeeded but found nothing — say why rather than looking broken.
+      out.style.color = '#f5c842';
+      out.textContent = '✓ Ran fine, but found no matching email. Checked ' +
+        (res.scanned || 0) + ' recent message(s) against ' + (res.contacts || 0) +
+        ' client/lead address(es). Likely means no email in the last 180 days with an address saved in the CRM.';
     }
   };
 
