@@ -3748,7 +3748,19 @@ async function deleteClient(cid, cname){
   addNotification('🗑️ Client deleted', cname, 'warning');
   if(typeof glAudit === 'function') glAudit('client_deleted', cname, counts);
 }
-function createForClient(cid){cNav('newinv',document.querySelectorAll('.cni')[5]);setTimeout(()=>{document.getElementById('inv-client').value=cid;updatePreview()},100)}
+function createForClient(cid){
+  // Open the current invoice builder with this client pre-selected. (The old
+  // path relied on cNav('newinv') + a hardcoded nav index + the legacy
+  // #inv-client element — all fragile after the invoice builder was migrated,
+  // which is why "New Invoice" from a client stopped working.)
+  if(typeof window.openNewInvoiceBuilder === 'function'){
+    try { window.openNewInvoiceBuilder(cid); return; }
+    catch(e){ console.error('[GL] openNewInvoiceBuilder threw', e); }
+  }
+  // Legacy fallback (only if the new builder isn't loaded)
+  cNav('newinv', document.querySelectorAll('.cni')[4]);
+  setTimeout(()=>{ var el=document.getElementById('inv-client'); if(el){ el.value=cid; if(typeof updatePreview==='function') updatePreview(); } }, 100);
+}
 
 /* Kanban */
 /* renderKanban defined below */
@@ -10165,6 +10177,7 @@ function viewClientEnhanced(clientId) {
         <button onclick="openAICommModal();document.getElementById('ai-comm-client').value='${clientId}';document.getElementById('client-detail-overlay').remove()" class="cbtn">✉️ Draft Email</button>
         <button onclick="openTimeTracker();document.getElementById('tt-client').value='${clientId}';document.getElementById('client-detail-overlay').remove()" class="cbtn">⏱️ Log Time</button>
         <button onclick="openTaskModal();document.getElementById('task-client-link').value='${clientId}';document.getElementById('client-detail-overlay').remove()" class="cbtn">✅ Add Task</button>
+        <button onclick="createForClient('${clientId}');document.getElementById('client-detail-overlay').remove()" class="cbtn" style="background:var(--teal);border:none;color:var(--ink);font-weight:800">+ New Invoice</button>
         <button onclick="window.glQuoteFromClient&&window.glQuoteFromClient('${clientId}')" class="cbtn" style="background:rgba(26,111,255,.1);border-color:rgba(26,111,255,.35);color:#6b9fff">📋 Quote Builder</button>
       </div>
     </div>`;

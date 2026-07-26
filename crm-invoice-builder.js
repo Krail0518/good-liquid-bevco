@@ -262,9 +262,11 @@
   }
 
   /* ── OPEN BUILDER ── */
-  window.openNewInvoiceBuilder = function(){
+  window.openNewInvoiceBuilder = function(preClientId){
     glEnsureClients();
     INV = freshState();
+    // Optional: pre-select a client (e.g. "New Invoice" from a client's page).
+    if(preClientId) INV.clientId = preClientId;
     window.INV = INV; // expose for oninput handlers
     var existing = document.getElementById('gl-inv-builder');
     if(!existing){
