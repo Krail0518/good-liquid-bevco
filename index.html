@@ -5543,6 +5543,20 @@ window.glFilterPipeline = function(query){
 
 // Enhanced renderKanban with move buttons and deal count
 function renderKanban(){
+  // Load the outreach summary once, then repaint so the follow-up badges
+  // appear. Guarded so the repaint cannot loop, and refreshed on a later
+  // render only if the data has gone stale (5 min).
+  (function ensureOutreachIndex(){
+    if(!window.supa || typeof glLoadOutreachIndex !== 'function') return;
+    var fresh = renderKanban._outreachAt && (Date.now() - renderKanban._outreachAt) < 300000;
+    if(fresh || renderKanban._outreachLoading) return;
+    renderKanban._outreachLoading = true;
+    glLoadOutreachIndex().then(function(ok){
+      renderKanban._outreachLoading = false;
+      renderKanban._outreachAt = Date.now();
+      if(ok) renderKanban();
+    }).catch(function(){ renderKanban._outreachLoading = false; });
+  })();
   const sc={'Prospecting':'#6b87ad','Proposal':'#1a6fff','Negotiation':'#f5c842','Closed Won':'#00c4a7','Closed Lost':'#e74c3c'};
   const allStages=['Prospecting','Proposal','Negotiation','Closed Won','Closed Lost'];
   const totalDeals = Object.values(deals).flat().length;
@@ -5580,12 +5594,19 @@ function renderKanban(){
         ${(d.service||d.productType) ? `<div style="font-size:10px;color:var(--teal);margin-top:4px;opacity:.8">${[d.service,d.productType].filter(Boolean).join(' · ')}</div>` : ''}
         <div class="kc-val">${d.val}</div>
         ${(()=>{
+          // Stage age and outreach state sit on one line, so a glance at the
+          // board answers "how long has this sat?" and "did I already nudge?".
           const daysInStage = d.stageEnteredAt
             ? Math.floor((Date.now() - new Date(d.stageEnteredAt).getTime()) / 86400000)
             : null;
-          if(daysInStage === null || daysInStage < 3) return '';
-          const badge = daysInStage > 14 ? '#e74c3c' : daysInStage > 7 ? '#f5c842' : '#6b87ad';
-          return `<div style="display:inline-block;margin-top:4px;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;background:${badge}22;color:${badge};border:1px solid ${badge}55">${daysInStage}d in stage</div>`;
+          let stagePill = '';
+          if(daysInStage !== null && daysInStage >= 3){
+            const badge = daysInStage > 14 ? '#e74c3c' : daysInStage > 7 ? '#f5c842' : '#6b87ad';
+            stagePill = `<span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;background:${badge}22;color:${badge};border:1px solid ${badge}55;white-space:nowrap">${daysInStage}d in stage</span>`;
+          }
+          const outreachPill = (typeof glOutreachBadge === 'function') ? glOutreachBadge(d.email) : '';
+          if(!stagePill && !outreachPill) return '';
+          return `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px">${stagePill}${outreachPill}</div>`;
         })()}
         <div class="kc-prog"><div class="kc-pf" style="width:${d.prob}%;background:${sc[stage]}"></div></div>
         <div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap" onclick="event.stopPropagation()">
@@ -6468,6 +6489,8 @@ async function glSyncGmail(email, opts){
       return null;
     }
     var d = (r && r.data) || {};
+    // New mail means the pipeline badges are stale; force a reload next render.
+    if(typeof renderKanban === 'function') renderKanban._outreachAt = 0;
     var msg = (d.inserted || 0) + ' new, ' + (d.skipped || 0) + ' already logged';
     // Say when existing entries were filled out, otherwise a sync that only
     // repaired truncated bodies looks like it did nothing.
@@ -6645,6 +6668,63 @@ function glNoReplyFor(rows){
   return days >= 3 ? { days: days } : null;
 }
 window.glNoReplyFor = glNoReplyFor;
+
+// OUTREACH INDEX (for the pipeline board)
+// One query builds a per-contact summary of email_log, so a kanban card can
+// show follow-up state at a glance without a query per card (32 deals would
+// otherwise mean 32 round trips on every render).
+window.GL_OUTREACH = window.GL_OUTREACH || {};
+async function glLoadOutreachIndex(){
+  if(!window.supa) return false;
+  var r = await window.supa.from('email_log')
+    .select('to_email, from_email, direction, sent_at, created_at')
+    .order('created_at', { ascending: false }).limit(2000);
+  if(r.error){ console.warn('[GL] outreach index failed', r.error); return false; }
+  var idx = {};
+  (r.data || []).forEach(function(row){
+    var inbound = row.direction === 'inbound';
+    var raw = String((inbound ? row.from_email : row.to_email) || '');
+    var t = glCorrTime(row);
+    // to_email may hold several recipients; index the contact under each.
+    raw.split(/[,;]/).forEach(function(part){
+      var a = part.trim().replace(/^[^<]*</, '').replace(/>.*$/, '').toLowerCase();
+      if(!a || a.indexOf('@') < 0) return;
+      var e = idx[a] || (idx[a] = { lastOut: 0, lastIn: 0, outTimes: [] });
+      if(inbound){ if(t > e.lastIn) e.lastIn = t; }
+      else { if(t > e.lastOut) e.lastOut = t; e.outTimes.push(t); }
+    });
+  });
+  // How many emails we have sent since their most recent reply.
+  Object.keys(idx).forEach(function(a){
+    var e = idx[a];
+    e.sinceReply = e.outTimes.filter(function(t){ return t > e.lastIn; }).length;
+  });
+  window.GL_OUTREACH = idx;
+  return true;
+}
+window.glLoadOutreachIndex = glLoadOutreachIndex;
+
+// Compact kanban badge answering "where does this lead stand?" without opening
+// it: whether they replied, whether we already nudged, and how long ago.
+function glOutreachBadge(email){
+  if(!email) return '';
+  var e = (window.GL_OUTREACH || {})[String(email).trim().toLowerCase()];
+  if(!e || !e.lastOut) return '';
+  var pill = function(color, label){
+    return '<span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;' +
+      'background:' + color + '22;color:' + color + ';border:1px solid ' + color + '55;white-space:nowrap">' +
+      label + '</span>';
+  };
+  if(e.lastIn > e.lastOut) return pill('#1D9E75', '\u2713 replied');
+  var days = Math.floor((Date.now() - e.lastOut) / 86400000);
+  var ago = days <= 0 ? 'today' : (days === 1 ? '1d ago' : days + 'd ago');
+  if(e.sinceReply >= 2){
+    // First email plus at least one follow-up: they have been nudged.
+    return pill('#c4a4f8', '\u270D\uFE0F nudged ' + ago + (e.sinceReply > 2 ? ' \u00D7' + e.sinceReply : ''));
+  }
+  return pill('#6b87ad', '\u2709\uFE0F sent ' + ago);
+}
+window.glOutreachBadge = glOutreachBadge;
 window.glDedupeEmailRows = glDedupeEmailRows;
 
 async function glLoadEmailLog(email){
