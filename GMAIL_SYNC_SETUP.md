@@ -14,19 +14,23 @@ You do this once. Takes about 5 minutes.
 ## Step 1 — Allow read access in Google Cloud
 
 1. Go to https://console.cloud.google.com/apis/credentials/consent
-2. Make sure the project selected at the top is the same one you used to set up
-   Gmail sending (the one holding your `GMAIL_CLIENT_ID`).
-3. Click **Edit App**, then **Save and Continue** until you reach the
-   **Scopes** step.
-4. Click **Add or Remove Scopes**, then paste this into the
+2. Select the project used for Gmail sending — for this account that is
+   **CRM2026** (`crm2026-503223`, org `goodliquid.com`).
+3. Open the scopes screen. Google renamed this, so you will see one of two
+   layouts:
+   - **Current layout** — the sidebar reads *Google Auth Platform*. Click
+     **Data access**.
+   - **Older layout** — click **Edit App**, then **Save and Continue** until
+     you reach the **Scopes** step.
+4. Click **Add or remove scopes**, then paste this into the
    "Manually add scopes" box:
 
    ```
    https://www.googleapis.com/auth/gmail.readonly
    ```
 
-5. Click **Add to Table**, then **Update**, then **Save and Continue** to the
-   end and **Back to Dashboard**.
+5. Click **Add to table**, tick it, then **Update**, then **Save**. (Older
+   layout: **Save and Continue** to the end, then **Back to Dashboard**.)
 
 > If Google warns the scope is "sensitive" and mentions verification: that
 > applies to apps published to the public. Because this app is only used by
@@ -35,6 +39,27 @@ You do this once. Takes about 5 minutes.
 
 ---
 
+## Step 1b — Get your Client ID and a usable Client secret
+
+You cannot read these back out of Supabase (secrets there are write-only), and
+Google no longer lets you view an existing client secret either — the console
+says *"Viewing and downloading client secrets is no longer available."*
+
+So get them from Google Cloud, adding a **second** secret rather than resetting
+the existing one (Google supports multiple active secrets so you can rotate
+without downtime):
+
+1. Google Cloud → **Google Auth Platform → Clients** → open the
+   **Web application** client (`CRM2026 Web`).
+2. Copy the **Client ID** (public; safe to keep in a notepad).
+3. Under **Client secrets**, click **+ Add secret** and copy the new value
+   immediately — it is shown only once.
+4. **Leave the old secret in place for now.** It is what the live app is still
+   using; deleting it before Step 3 would break invoice sending instantly.
+5. Under **Authorized redirect URIs**, add
+   `https://developers.google.com/oauthplayground` and **Save**. Without this
+   the OAuth Playground fails with `redirect_uri_mismatch`.
+
 ## Step 2 — Get a new refresh token (with both permissions)
 
 The existing token only carries send permission, so it must be regenerated.
@@ -42,8 +67,7 @@ The existing token only carries send permission, so it must be regenerated.
 1. Go to https://developers.google.com/oauthplayground/
 2. Click the **gear icon** (⚙️) at the top right.
 3. Check **Use your own OAuth credentials**.
-4. Enter your **`GMAIL_CLIENT_ID`** and **`GMAIL_CLIENT_SECRET`**
-   (the same values already stored in Supabase).
+4. Enter the **Client ID** and the **new Client secret** from Step 1b.
 5. In the left "Input your own scopes" box, paste **both** scopes,
    separated by a space:
 
@@ -60,28 +84,44 @@ The existing token only carries send permission, so it must be regenerated.
 
 ---
 
-## Step 3 — Save the new token in Supabase
+## Step 3 — Save the new credentials in Supabase
+
+Update **both**, so the secret and the refresh token stay a matched pair:
 
 1. Go to your Supabase project → **Project Settings** → **Edge Functions** →
    **Secrets** (or **Configuration → Secrets**).
-2. Find **`GMAIL_REFRESH_TOKEN`** and replace its value with the new refresh
-   token from Step 2.
-3. Save.
+2. Set **`GMAIL_CLIENT_SECRET`** to the new secret from Step 1b.
+3. Set **`GMAIL_REFRESH_TOKEN`** to the refresh token from Step 2.
+4. Save.
+
+### Step 3b — Verify sending still works, THEN retire the old secret
+
+Do this in order; it is the safe rotation sequence Google's own warning
+("disable and delete the old secret once you have verified...") refers to:
+
+1. In the CRM: **AI toolbar → Quick Actions → 📧 Email Delivery → Test send**.
+2. Confirm the test email arrives. If it does not, the old secret is still live
+   in Google, so revert `GMAIL_CLIENT_SECRET` and investigate before going on —
+   outbound email matters more than history.
+3. Only once Test send succeeds: back in Google Cloud, **disable and then delete
+   the old client secret**. You are down to one secret and Google's
+   "more than one secret" warning clears.
 
 ---
 
-## Step 4 — Run the first sync
+## Step 4 — Run the first sync (from inside the CRM)
 
-The sync is a function called `gmail-sync`. Trigger it once to backfill history:
+No dashboard needed — the sync has a button in the app:
 
-1. Supabase → **Edge Functions** → **gmail-sync**.
-2. Use the **Invoke / Test** panel and send this body:
+1. Hard-refresh the CRM (`Ctrl + Shift + R`) so you have the latest build.
+2. **AI toolbar → Quick Actions → 📧 Email Delivery**.
+3. Click **🔄 Sync email history from Gmail** (180-day backfill). The button
+   reports the outcome on itself when it finishes.
+4. Afterwards, each client and lead has its own **🔄 Sync** button in the
+   correspondence panel for a quick top-up of just that contact.
 
-   ```json
-   { "days": 90, "max": 300 }
-   ```
-
-3. You should get a response like:
+If you would rather invoke the function directly, Supabase → **Edge Functions**
+→ **gmail-sync** → **Invoke** with body `{ "days": 90, "max": 300 }` returns:
 
    ```json
    { "ok": true, "scanned": 180, "matched": 24, "inserted": 24, "skipped": 0, "contacts": 37 }
