@@ -328,7 +328,7 @@
     steps([
       'AI toolbar → <b>Email drip generator</b> (callout 3).',
       'Describe the audience ("functional beverage founders pre-launch") + offer ("free pilot canning run").',
-      'Click Generate. Five email drafts appear, ready to load into Mailgun or HubSpot.',
+      'Click Generate. Five email drafts appear, ready to send or load into your email tool.',
       '<b>Copy all</b> to grab the whole sequence at once.'
     ]) +
     whereToFind('AI toolbar → Email drip generator') +
@@ -459,7 +459,7 @@
       'AI toolbar → <b>AR Collection</b>.',
       'See every overdue invoice with suggested tone + a one-click "Draft email" button.',
       'Click Draft. The email body is pre-written referencing invoice number + amount + days overdue.',
-      'Edit, then send via Mailgun.'
+      'Edit, then send from your Gmail.'
     ]) +
     whereToFind('AI toolbar → AR Collection (admin)') +
     subhead('🔄', 'RUN → INVOICE') +
@@ -583,7 +583,7 @@
     subhead('📧', 'CLIENT EMAIL THREAD') +
     intro('Compose and track emails to a client without leaving the CRM. The email panel lives at the bottom of the Edit Client modal — one thread per client, with scrollable history.') +
     bullets([
-      '<b>Compose:</b> type subject + body → Send. Sent via Mailgun server-side. Replies from the client arrive at mike@goodliquid.com (reply-to header).',
+      '<b>Compose:</b> type subject + body → Send. Sent from your Gmail server-side. Replies from the client arrive at mike@goodliquid.com (reply-to header).',
       '<b>History:</b> shows the last 30 emails sent to that client\'s address with status (sent / delivered / opened / clicked).',
       'History is pulled live from the email_log table, so Email Activity and Client Email Thread always show the same data.'
     ]) +
@@ -696,14 +696,14 @@
       'Expired quotes drop out of the active Invoices view.'
     ]) +
     whereToFind('Automatic — no UI required') +
-    subhead('📧', 'TEST MAILGUN SEND') +
-    intro('Send a test email to yourself (mike@goodliquid.com) to verify Mailgun is configured correctly. Useful after changing API keys or the Edge Function.') +
+    subhead('📧', 'TEST EMAIL SEND') +
+    intro('Send a test email to yourself (mike@goodliquid.com) to verify email (Gmail) is configured correctly. Useful after changing credentials or redeploying the Edge Function.') +
     steps([
-      'AI toolbar → Quick Actions → "📧 Mailgun Settings".',
+      'AI toolbar → Quick Actions → "📧 Email Delivery".',
       'In the settings modal, click "Test send".',
-      'A confirmation email lands at mike@goodliquid.com if Mailgun is wired up correctly.'
+      'A confirmation email lands at mike@goodliquid.com if email (Gmail) is wired up correctly.'
     ]) +
-    whereToFind('AI toolbar → Quick Actions → Mailgun Settings → "Test send" button') +
+    whereToFind('AI toolbar → Quick Actions → Email Delivery → "Test send" button') +
     subhead('📲', 'PWA INSTALLATION') +
     intro('Install the Good Liquid CRM as a progressive web app (PWA) on your device — adds an icon to your home screen or taskbar. Works on Chrome (Android + desktop), Safari (iOS), and Edge.') +
     bullets([
@@ -779,15 +779,15 @@
       'SMS toggles are per-event — enable only the events that matter to you.'
     ]) +
     whereToFind('AI toolbar → Quick Actions → "📱 SMS Alerts"') +
-    subhead('📧', 'MAILGUN — EMAIL SETUP') +
-    intro('All outbound CRM emails (AR dunning drafts, onboarding invites, client email threads, compliance digests) go through the mailgun-send Supabase Edge Function. The API key and from-address live server-side — no browser exposure.') +
+    subhead('📧', 'EMAIL SETUP (GMAIL)') +
+    intro('All outbound CRM emails (AR dunning drafts, onboarding invites, client email threads, compliance digests) go through the gmail-send Supabase Edge Function (from your Gmail, mike@goodliquid.com), with Mailgun as an automatic fallback. All credentials live server-side — no browser exposure.') +
     bullets([
-      '<b>From address:</b> <code>noreply@mail.goodliquidbevco.com</code> (the verified Mailgun domain).',
+      '<b>From address:</b> <code>mike@goodliquid.com</code> (your Gmail; the Mailgun fallback uses noreply@mail.goodliquidbevco.com).',
       '<b>Reply-To:</b> outbound emails set <code>Reply-To: mike@goodliquid.com</code> so client replies land in your inbox.',
-      '<b>Change API key:</b> Supabase Dashboard → Edge Functions → Secrets → MAILGUN_API_KEY.',
-      '<b>Test the connection:</b> AI toolbar → Quick Actions → Mailgun Settings → "Test send".'
+      '<b>Credentials:</b> Supabase Dashboard → Edge Functions → Secrets → GMAIL_CLIENT_ID / GMAIL_CLIENT_SECRET / GMAIL_REFRESH_TOKEN / GMAIL_FROM (fallback: MAILGUN_API_KEY).',
+      '<b>Test the connection:</b> AI toolbar → Quick Actions → Email Delivery → "Test send".'
     ]) +
-    whereToFind('AI toolbar → Quick Actions → "📧 Mailgun Settings"');
+    whereToFind('AI toolbar → Quick Actions → "📧 Email Delivery"');
 
   /* SECTION 10 — PRODUCTION QUOTE BUILDER */
   var MOCK_QUOTES = wf(620, 270,
@@ -1043,7 +1043,7 @@
       title:'Settings & Integrations', icon:'⚙️',
       items:[
         { label:'AI Settings',            icon:'🤖', fn:'openAISettings' },
-        { label:'Mailgun',                icon:'📧', fn:'openMailgunSettings' },
+        { label:'Email Delivery',         icon:'📧', fn:'openMailgunSettings' },
         { label:'Email Signature',        icon:'✍️', fn:'openEmailSignatureSettings' },
         { label:'SMS Alerts',             icon:'📱', fn:'openSmsSettings' },
         { label:'Stripe Checkout',        icon:'💳', fn:'openStripeSettings', admin:true },

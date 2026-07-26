@@ -366,7 +366,7 @@
     box(432,116,156,22,'rgba(0,229,192,.06)') + txt(440,131,'🧾 Draft Invoice',10,'#00e5c0') +
     box(432,142,156,22,'rgba(0,229,192,.06)') + txt(440,157,'📝 Meeting Notes',10,'#00e5c0') +
     box(432,168,156,22,'rgba(0,229,192,.06)') + txt(440,183,'✉️ Draft Email',10,'#00e5c0') +
-    box(432,194,156,22,'rgba(0,229,192,.06)') + txt(440,209,'📧 Mailgun Settings',10,'#00e5c0') +
+    box(432,194,156,22,'rgba(0,229,192,.06)') + txt(440,209,'📧 Email Delivery',10,'#00e5c0') +
     box(432,220,156,22,'rgba(0,229,192,.06)') + txt(440,235,'🤖 AI Settings',10,'#00e5c0') +
     box(432,246,156,22,'rgba(231,76,60,.08)','rgba(231,76,60,.3)') + txt(440,261,'🗑️ Clear cache',10,'#ff8579') +
     // Arrow from popout to FAB
@@ -413,7 +413,7 @@
       '<b>(2) Second KPI row</b> — Avg invoice value, Outstanding ($ pending + overdue), Avg days to paid, Quotes pending.',
       '<b>(3) Revenue by service chart</b> — bar chart split by Canning / R&D / Bottling / Consulting. Mixed-service invoices split per line item.',
       '<b>(4) Recent activity feed</b> — last few CRM actions; click to jump to the related screen.',
-      '<b>(5) System Health widget</b> (admin only) — ✓ or ✗ for Supabase Auth, Mailgun key, AI key, audit_log table, client-docs bucket. Each ✗ has a one-click fix button.'
+      '<b>(5) System Health widget</b> (admin only) — ✓ or ✗ for Supabase Auth, email (Gmail), AI key, audit_log table, client-docs bucket. Each ✗ has a one-click fix button.'
     ]) +
     '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">📊 OPEN PIPELINE WIDGET (NEW)</h4>' +
     wf(400, 140,
@@ -467,11 +467,11 @@
       '<b>(1) + New invoice</b> — opens the builder modal.',
       '<b>(2) 📊 Export CSV</b> — downloads every non-quote invoice as CSV (drop into QuickBooks or hand to your accountant).',
       '<b>(3) 📊 Activity</b> — opens the Email Activity view across <i>every</i> invoice (sent / delivered / opened / clicked / bounced). See the <a href="#help-email-activity" style="color:#00e5c0">Email Activity</a> section for details.',
-      '<b>(4) 📧 Send overdue reminders</b> — confirms, then emails every overdue client at once using Mailgun + your email signature.',
+      '<b>(4) 📧 Send overdue reminders</b> — confirms, then emails every overdue client at once from your Gmail + your email signature.',
       '<b>(5) Status filter pills</b> — All / Draft / Pending / Paid / Overdue / Quote.',
       '<b>(6) Row actions</b> — 💳 opens the Stripe pay link for that invoice; 👁 opens the invoice detail.',
       '<b>(7) → Invoice button</b> — appears on quote-status rows. One-click conversion from "quote" to billable "pending".',
-      '<b>Invoice detail action buttons</b>: open any invoice to see the full action row. <b>✓ Mark Paid</b> — immediately marks status=paid and records paid_at (use for offline receipts; Stripe payments auto-mark via webhook). <b>✗ Mark Overdue</b> — manually flips to overdue before the nightly cron catches it. <b>✉ AI Follow-Up</b> — Claude generates a tone-matched follow-up email (friendly for pending, firm for overdue), lets you edit it, and sends via the mailgun-send function. Also: ✏️ <b>Edit</b> (reopens the builder), 📧 <b>Send Invoice</b> (full composer), 📊 <b>Activity</b> (this invoice\'s send history), 📅 <b>Schedule</b> (queue a reminder). See the relevant sections in this guide.'
+      '<b>Invoice detail action buttons</b>: open any invoice to see the full action row. <b>✓ Mark Paid</b> — immediately marks status=paid and records paid_at (use for offline receipts; Stripe payments auto-mark via webhook). <b>✗ Mark Overdue</b> — manually flips to overdue before the nightly cron catches it. <b>✉ AI Follow-Up</b> — Claude generates a tone-matched follow-up email (friendly for pending, firm for overdue), lets you edit it, and sends from your Gmail (gmail-send function, Mailgun fallback). Also: ✏️ <b>Edit</b> (reopens the builder), 📧 <b>Send Invoice</b> (full composer), 📊 <b>Activity</b> (this invoice\'s send history), 📅 <b>Schedule</b> (queue a reminder). See the relevant sections in this guide.'
     ]) +
     '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">💳 ACCOUNTING TOOLBAR (NEW)</h4>' +
     bullets([
@@ -689,7 +689,7 @@
     bullets([
     '<b>What it is</b>: queue a follow-up email to send automatically on a future date / time. A Supabase Edge Function runs every 15 minutes and dispatches anything due.',
     '<b>How to schedule</b>: open any saved invoice → click the yellow <b>📅 Schedule</b> button on the header. A modal opens with To (pre-filled with client email), Send At (defaults to T+7 days, 9 AM), Subject, and Message (defaults to a reminder template).',
-    '<b>What happens next</b>: a row is inserted into the <code>email_schedule</code> table with status=pending. The cron job picks it up at the scheduled time, sends via Mailgun, marks it as sent, and logs an entry in Email Activity.',
+    '<b>What happens next</b>: a row is inserted into the <code>email_schedule</code> table with status=pending. The cron job picks it up at the scheduled time, sends from your Gmail, marks it as sent, and logs an entry in Email Activity.',
     '<b>If a send fails</b>: the worker retries twice before marking the row failed. The failure reason is stored on the row (<code>last_error</code> column).',
     '<b>To cancel a queued send</b>: open Supabase → <code>email_schedule</code> table → set the row\'s status to <code>cancelled</code>. (A UI for managing the queue is on the roadmap.)'
   ]);
@@ -721,8 +721,8 @@
     bullets([
     '<b>What it is</b>: a list of every email sent from the CRM with real-time status (sent → delivered → opened → clicked → bounced).',
     '<b>Two ways to open it</b>: <ol style="margin:4px 0 4px 18px;padding:0"><li>From the <b>Invoices</b> list page header: <b>📊 Activity</b> (shows every send across every invoice).</li><li>From a single invoice\'s detail header: <b>📊 Activity</b> (shows only that invoice\'s sends).</li></ol>',
-    '<b>Status meanings</b>: <code>sent</code> (Mailgun accepted) → <code>delivered</code> (recipient mail server accepted) → <code>opened</code> (recipient opened the email) → <code>clicked</code> (recipient clicked a link in the email). <code>bounced</code> = permanent delivery failure; <code>failed</code> = Mailgun rejected the request.',
-    '<b>How tracking works</b>: Mailgun fires webhooks at our <code>mailgun-webhook</code> Edge Function, which updates the matching row in <code>email_log</code>. Status changes are reflected the next time you open the Activity view (or refresh).',
+    '<b>Status meanings</b>: <code>sent</code> (accepted for delivery) → <code>delivered</code> (recipient mail server accepted) → <code>opened</code> (recipient opened the email) → <code>clicked</code> (recipient clicked a link in the email). <code>bounced</code> = permanent delivery failure; <code>failed</code> = the provider rejected the request. (Note: delivered/opened/clicked tracking only populates for Mailgun-fallback sends; Gmail has no open/click webhook, so Gmail sends stay at <code>sent</code>.)',
+    '<b>How tracking works</b>: for Mailgun-sent mail, Mailgun fires webhooks at our <code>mailgun-webhook</code> Edge Function, which updates the matching row in <code>email_log</code>. Status changes are reflected the next time you open the Activity view (or refresh).',
     '<b>Auto-tagging</b>: when an email subject or body contains <code>GL-####</code>, the log row is automatically linked to that invoice. So sends from the Send Invoice composer show up in their invoice\'s Activity tab.',
     '<b>What\'s logged</b>: To, Cc, Bcc, subject, body preview (first 280 chars), status, sent timestamp, delivered timestamp, first open timestamp, open count, click count, bounce reason. Stored in the <code>email_log</code> table.'
   ]);
@@ -1327,7 +1327,7 @@
   var SEC_CUSTOMERS = MOCK_CUSTOMERS +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
-      '<b>(1) 📧 Send Onboarding Email</b> — opens the invite picker (client dropdown + email field). Behind the scenes it calls Supabase to create a real auth user, links them to the picked client, and fires a password-reset email so the customer sets their own password. Mailgun is configured server-side in the <code>mailgun-send</code> Edge Function — no per-browser API key needed anymore.',
+      '<b>(1) 📧 Send Onboarding Email</b> — opens the invite picker (client dropdown + email field). Behind the scenes it calls Supabase to create a real auth user, links them to the picked client, and fires a password-reset email so the customer sets their own password. Email is sent from your Gmail (the <code>gmail-send</code> Edge Function, with Mailgun as fallback), configured server-side — no per-browser API key needed.',
       '<b>(2) Row actions</b> — <span style="color:#f5c842">reset</span> sends a Supabase password recovery email; <span style="color:#e74c3c">remove</span> deletes the portal login.',
       'Customers who log in see invoices addressed to them, 💳 Pay Now buttons (using Stripe links you saved per-invoice), ✓ Accept Quote buttons (emails Mike on click), and a contact form to message you.'
     ]) +
@@ -1346,10 +1346,10 @@
     bullets([
       '<b>What it is</b>: the Settings &amp; Integrations panel, accessed via the floating <b>🤖</b> button in the bottom-right corner of any CRM page. The same menu also provides quick access to AI Tools (see the AI Chat &amp; AI Tools section for those).',
       '<b>(1) Floating 🤖 FAB button</b> — a teal-to-blue gradient circle fixed to the bottom-right corner on every CRM page. Click it to open the popout menu.',
-      '<b>(2) Popout menu — Settings items</b> (scroll down below the AI tools to find these):<ul style="margin:4px 0 4px 18px;padding:0"><li><b>📧 Mailgun Settings</b> — paste your Mailgun private API key (starts with <code>key-</code>). Required for all outgoing email (send invoice, follow-up, schedules). After pasting, click <b>Test send</b> to verify it works. The key is saved to localStorage on this device.</li><li><b>🤖 AI Settings</b> — paste your Anthropic API key (starts with <code>sk-ant-</code>). Required for all AI features: quote estimates, invoice drafting, meeting notes, AI chat, NCR root-cause suggester, COA parser, formula generation. Saved to localStorage.</li><li><b>✍️ Email Signature</b> — your name, title, phone, and any footer text. Auto-appended to the bottom of every outgoing follow-up email. Edit directly in the text area and click Save.</li><li><b>🗑️ Clear local cache</b> (admin only, shown in red) — opens a checklist of all <code>gl_*</code> localStorage keys (tasks, inventory, announcements, activity, Mailgun key, AI key, etc.). Check the ones you want to delete, click Confirm. Use when handing a device to a new team member.</li></ul>',
+      '<b>(2) Popout menu — Settings items</b> (scroll down below the AI tools to find these):<ul style="margin:4px 0 4px 18px;padding:0"><li><b>📧 Email Delivery</b> — shows how outbound email is sent: from your Gmail (mike@goodliquid.com) via the <code>gmail-send</code> Edge Function, with Mailgun as an automatic fallback. Credentials live in Supabase secrets (not the browser). Click <b>Test send</b> to verify it works.</li><li><b>🤖 AI Settings</b> — paste your Anthropic API key (starts with <code>sk-ant-</code>). Required for all AI features: quote estimates, invoice drafting, meeting notes, AI chat, NCR root-cause suggester, COA parser, formula generation. Saved to localStorage.</li><li><b>✍️ Email Signature</b> — your name, title, phone, and any footer text. Auto-appended to the bottom of every outgoing follow-up email. Edit directly in the text area and click Save.</li><li><b>🗑️ Clear local cache</b> (admin only, shown in red) — opens a checklist of all <code>gl_*</code> localStorage keys (tasks, inventory, announcements, activity, AI key, etc.). Check the ones you want to delete, click Confirm. Use when handing a device to a new team member.</li></ul>',
       '<b>Where settings are stored</b>: API keys, signatures, and per-device preferences are stored in <code>localStorage</code> on your current browser. They are not synced to Supabase. Each device or browser profile needs its own keys set.',
       '<b>QuickBooks Online (QBO)</b>: connect your QBO account from the 🤖 menu → <b>⚙ Settings → QuickBooks → Connect</b>. This opens the Intuit OAuth flow. Once connected, invoices can be pushed to QBO as bills with one click from the invoice detail page.',
-      '<b>System Health widget</b>: the dashboard\'s System Health section surfaces missing integrations (no Mailgun key, no AI key, missing Storage bucket, missing database tables) with one-click fix buttons. Always check System Health after first login on a new device.'
+      '<b>System Health widget</b>: the dashboard\'s System Health section surfaces missing integrations (no email/Gmail configured, no AI key, missing Storage bucket, missing database tables) with one-click fix buttons. Always check System Health after first login on a new device.'
     ]);
   var SEC_SHORTCUTS = bullets([
     '<kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">Ctrl+K</kbd> / <kbd style="background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.1)">⌘K</kbd> — open Global Search across invoices / clients / deals / referrers / users.',
@@ -1706,7 +1706,7 @@
       '<b>How to find it</b>: Pipeline page → header → <b>📤 Bulk Outreach</b> button. Only appears for admin/sales roles.',
       '<b>(1) Lead checklist</b> — all deals in Prospecting are listed with checkboxes. Tick the ones you want to email. Unticked deals are skipped.',
       '<b>(2) AI-drafted preview</b> — the right pane shows an AI-generated cold-outreach email personalised to the selected lead\'s company name. You can edit the subject and body before sending.',
-      '<b>(3) Send X emails</b> — fires one email per selected deal via Mailgun, marks each deal as "outreach sent" in the pipeline (a small badge appears on the card), and logs the sends to Email Activity.',
+      '<b>(3) Send X emails</b> — fires one email per selected deal from your Gmail, marks each deal as "outreach sent" in the pipeline (a small badge appears on the card), and logs the sends to Email Activity.',
       '<b>Variables used</b>: company name, deal value (if set), and your email signature. The AI adjusts the tone based on the deal stage.'
     ]);
 
@@ -1832,7 +1832,7 @@
       '<b>Payment methods</b>: Check, Wire transfer, ACH, Cash, Stripe, Other.',
       '<b>Full payment</b>: when the payment brings the balance to $0 the invoice status automatically flips to <b>paid</b> and you\'re offered the option to send a receipt email to the client.',
       '<b>Payment history</b>: every prior payment appears in the table above the "Record New Payment" form — date, method, reference, and amount.',
-      '<b>Receipt email</b>: call <code>window.glSendPaymentReceipt(invId)</code> from the console, or just confirm when prompted after a full payment. Routes through your configured email provider (Mailgun).'
+      '<b>Receipt email</b>: call <code>window.glSendPaymentReceipt(invId)</code> from the console, or just confirm when prompted after a full payment. Routes through your Gmail (gmail-send; Mailgun fallback).'
     ]);
 
   var SEC_COLLECTIONS_SEQ =
@@ -1851,7 +1851,7 @@
     bullets([
       '<b>Where to find it</b>: on any overdue invoice detail, click the <b>📋 Collect</b> button in the action row (only appears on past-due invoices).',
       '<b>The 4-step sequence</b>: Gentle reminder (day 3) → Firm reminder (day 14) → Urgent notice (day 30) → Final notice (day 45). All dates computed from today.',
-      '<b>Scheduling</b>: steps are inserted into the <code>email_schedule</code> table. A separate job picks them up and sends them at the right time via Mailgun.',
+      '<b>Scheduling</b>: steps are inserted into the <code>email_schedule</code> table. A separate job picks them up and sends them at the right time from your Gmail.',
       '<b>Client email required</b>: the modal shows the client\'s email on file. If none exists, add the email via Client Edit before scheduling.',
       '<b>Cancelling</b>: delete rows from the <code>email_schedule</code> table in Supabase directly, or mark the invoice paid (pending steps won\'t fire for paid invoices).'
     ]);
