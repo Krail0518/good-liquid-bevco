@@ -6872,10 +6872,38 @@ function openAISettings(){
   document.body.appendChild(ov);
 }
 
+// House writing style, appended to every AI request. Applied here rather than
+// in each individual prompt so a new AI feature inherits it automatically.
+// The owner's ask: stop using dashes where a comma belongs.
+const GL_AI_STYLE = '\n\nWriting style rules (follow strictly):\n' +
+  '- Never use an em dash or en dash as punctuation. Use a comma, a period, ' +
+  'or parentheses instead.\n' +
+  '- For number ranges write "2 to 6 weeks", not "2-6 weeks".\n' +
+  '- Hyphens inside hyphenated words are fine (co-packing, small-batch, shelf-stable).\n' +
+  '- Write plainly, the way a person speaks. No filler and no marketing padding.';
+
+// Models ignore style instructions often enough that the rule alone is not
+// enough, so the output is also cleaned deterministically. A dash between two
+// numbers is a range ("440-1,320") and becomes "to"; anywhere else it becomes a
+// comma. Hyphens are left completely alone, so "co-packing" and invoice numbers
+// like GL-1042 are untouched.
+function glStripDashes(text) {
+  if (!text) return text;
+  return String(text)
+    .replace(/(\d)\s*[\u2014\u2013]\s*(\d)/g, '$1 to $2')
+    .replace(/\s*[\u2014\u2013]\s*/g, ', ')
+    .replace(/,\s*,+/g, ',')            // collapse doubled commas
+    .replace(/,\s*([.!?;:])/g, '$1')    // ", ." -> "."
+    .replace(/([(\[])\s*,\s*/g, '$1')  // "( ," -> "("
+    .replace(/\s+,/g, ',')              // " ," -> ","
+    .replace(/[ \t]{2,}/g, ' ');
+}
+window.glStripDashes = glStripDashes;
+
 async function callAI(systemPrompt, userPrompt) {
   try {
     const resp = await supa.functions.invoke('ai-proxy', {
-      body: { systemPrompt, userPrompt, model: AI_MODEL, maxTokens: 1024 }
+      body: { systemPrompt: (systemPrompt || '') + GL_AI_STYLE, userPrompt, model: AI_MODEL, maxTokens: 1024 }
     });
     if(resp.error){
       console.error('[ai-proxy] error', resp.error);
@@ -6887,7 +6915,7 @@ async function callAI(systemPrompt, userPrompt) {
       if(typeof addNotification==='function') addNotification('AI request failed', resp.data.error || 'See console', 'warning');
       return '';
     }
-    return (resp.data && resp.data.text) || 'AI response unavailable.';
+    return glStripDashes((resp.data && resp.data.text) || '') || 'AI response unavailable.';
   } catch(e){
     console.error('[ai-proxy] threw', e);
     return '';
