@@ -326,7 +326,11 @@
             cc_emails: ccArr.length ? ccArr : null,
             bcc_emails: bccArr.length ? bccArr : null,
             subject: subject || '',
-            body_preview: (body || '').slice(0, 280),
+            // Keep a generous chunk of the message, not a 280-char teaser: the
+            // correspondence panels let you open a logged email and read it,
+            // and a short cap made every email look cut off mid-sentence.
+            // The column is unlimited `text`, so this costs nothing structural.
+            body_preview: (body || '').slice(0, 4000),
             invoice_id: invSupaId,
             invoice_number: invNum,
             status: ok ? 'sent' : 'failed',
