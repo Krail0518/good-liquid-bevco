@@ -828,7 +828,7 @@
       // Pre-populate skeletons in case the user is staring at an empty list.
       try {
         if(document.getElementById('inv-body') && !(window.invoices||[]).length) injectSkeleton('inv-body', 5);
-        if(document.getElementById('clients-body') && !(window.clients||[]).length) injectSkeleton('clients-body', 4);
+        if(document.getElementById('client-body') && !(window.clients||[]).length) injectSkeleton('client-body', 4);
       } catch(e){}
       try { return await origLoad.apply(this, arguments); }
       catch(e){ console.error('[GL] loadSupabaseData threw', e); throw e; }
@@ -1309,7 +1309,7 @@
       ov.remove();
       try {
         if(item.kind === 'invoice'){
-          if(typeof window.cNav === 'function') window.cNav('invoices', document.querySelectorAll('.cni')[4] || null);
+          if(typeof window.cNav === 'function') window.cNav('invoices', document.querySelector('.cni[onclick*="invoices"]') || null);
           setTimeout(function(){ if(typeof window.viewInvoice === 'function') window.viewInvoice(item.id); }, 80);
         } else if(item.kind === 'client'){
           if(typeof window.cNav === 'function') window.cNav('clients', null);

@@ -1308,7 +1308,15 @@
           window.openAICommModal();
           setTimeout(function(){
             var sel = document.getElementById('ai-comm-client'); if(sel) sel.value = cid;
-            var ctx = document.getElementById('ai-comm-context');
+            // The AI Comm modal's free-text field is #ai-comm-custom, and it's
+            // only revealed when the message-type is "custom" (see the
+            // #ai-comm-type change handler). Set the type, reveal the row, then
+            // fill it — otherwise the cross-sell reasoning silently goes nowhere.
+            var typeSel = document.getElementById('ai-comm-type');
+            if(typeSel){ typeSel.value = 'custom'; typeSel.dispatchEvent(new Event('change')); }
+            var customRow = document.getElementById('ai-comm-custom-row');
+            if(customRow) customRow.style.display = 'block';
+            var ctx = document.getElementById('ai-comm-custom');
             if(ctx) ctx.value = 'Cross-sell opportunity: ' + title + '\n\nWhy: ' + why + '\n\nDraft a short, friendly email pitching this to the client.';
           }, 200);
         } else {
