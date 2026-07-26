@@ -51,6 +51,48 @@ async function getAccessToken(): Promise<string> {
 
 interface Attachment { filename: string; contentBase64: string; contentType?: string }
 
+// Email headers must be plain ASCII. Any non-ASCII text (em-dash "—",
+// accented customer names like "Café", emoji, etc.) has to be wrapped in an
+// RFC 2047 "encoded-word" or the mail client mis-decodes the raw UTF-8 bytes
+// and shows mojibake (e.g. "—" rendered as "Ã¢Â€Â"). Without this, subjects
+// and display names built anywhere in the app arrive garbled.
+function isAscii(s: string): boolean { return /^[\x00-\x7F]*$/.test(s); }
+
+// Encode a header VALUE (e.g. a Subject) as one or more base64 encoded-words.
+// We accumulate whole UTF-8 characters so a multi-byte char is never split
+// across words, and cap each word so it stays within RFC 2047's 75-char limit.
+function encodeHeaderValue(s: string): string {
+  if (isAscii(s)) return s;
+  const enc = new TextEncoder();
+  const words: string[] = [];
+  let buf: number[] = [];
+  const flush = () => {
+    if (!buf.length) return;
+    let bin = '';
+    for (const b of buf) bin += String.fromCharCode(b);
+    words.push('=?UTF-8?B?' + btoa(bin) + '?=');
+    buf = [];
+  };
+  for (const ch of Array.from(s)) {
+    const bytes = Array.from(enc.encode(ch));
+    if (buf.length + bytes.length > 45) flush(); // 45 bytes → ≤60 base64 chars → word ≤72
+    for (const b of bytes) buf.push(b);
+  }
+  flush();
+  return words.join('\r\n '); // fold multiple encoded-words with a space
+}
+
+// Encode a single address. If it has a display name ("Name <email>") we encode
+// only the name and leave the address untouched; a bare address is returned
+// as-is.
+function encodeAddress(addr: string): string {
+  const m = String(addr).match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
+  if (!m) return addr; // bare "email@host" — nothing to encode
+  const name = m[1].replace(/^"|"$/g, '');
+  if (!name || isAscii(name)) return addr;
+  return encodeHeaderValue(name) + ' <' + m[2] + '>';
+}
+
 function foldBase64(b64: string): string {
   return (String(b64).replace(/\s+/g, '').match(/.{1,76}/g) || []).join('\r\n');
 }
@@ -81,12 +123,17 @@ function buildMime(
   html?: string, replyTo?: string,
   cc?: string[], bcc?: string[], attachments?: Attachment[],
 ): string {
-  const headers: string[] = [`From: ${from}`, `To: ${to.join(', ')}`];
-  if (cc  && cc.length)  headers.push(`Cc: ${cc.join(', ')}`);
-  if (bcc && bcc.length) headers.push(`Bcc: ${bcc.join(', ')}`); // Gmail delivers to Bcc and strips the header
-  headers.push(`Subject: ${subject}`);
+  // RFC 2047 / RFC 2822: subjects and display names may contain non-ASCII,
+  // so encode them; bare email addresses stay as-is.
+  const headers: string[] = [
+    `From: ${encodeAddress(from)}`,
+    `To: ${to.map(encodeAddress).join(', ')}`,
+  ];
+  if (cc  && cc.length)  headers.push(`Cc: ${cc.map(encodeAddress).join(', ')}`);
+  if (bcc && bcc.length) headers.push(`Bcc: ${bcc.map(encodeAddress).join(', ')}`); // Gmail delivers to Bcc and strips the header
+  headers.push(`Subject: ${encodeHeaderValue(subject)}`);
   headers.push('MIME-Version: 1.0');
-  if (replyTo) headers.push(`Reply-To: ${replyTo}`);
+  if (replyTo) headers.push(`Reply-To: ${encodeAddress(replyTo)}`);
 
   const atts = (attachments || []).filter(a => a && a.filename && a.contentBase64);
   if (!atts.length) {
