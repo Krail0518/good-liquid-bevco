@@ -54,3 +54,12 @@ jobs:
           # Unset PW_CHROMIUM in CI so Playwright uses the browser it installed.
           REPO_ROOT: ${{ github.workspace }}
         run: node tests/smoke.test.cjs
+
+      # The wider sweep: every page, every modal opener, the invoice flow, and
+      # the correspondence / nudge / AI-style logic. Runs after the smoke test so
+      # a failure here is clearly the broad net, not a critical path.
+      - name: Run full sweep
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/full-sweep.cjs
