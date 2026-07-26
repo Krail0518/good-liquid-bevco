@@ -5727,14 +5727,9 @@ function openLeadEmailComposer(){
     var box = ov.querySelector('#gl-lem-corr');
     if(!box || !window.supa || !d.email) return;
     box.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:6px 2px">Loading correspondence…</div>';
-    var safe = String(d.email).replace(/%/g,'\\%').replace(/_/g,'\\_');
-    var r = await window.supa.from('email_log')
-      .select('to_email, from_email, subject, body_preview, status, direction, sent_at, created_at')
-      .or('to_email.ilike.%' + safe + '%,from_email.ilike.%' + safe + '%')
-      .order('created_at', { ascending: false })
-      .limit(30);
-    if(r.error){ box.innerHTML = '<div style="font-size:11px;color:#ff8579;padding:6px 2px">Could not load correspondence.</div>'; return; }
-    var rows = r.data || [];
+    var _res = await window.glLoadEmailLog(d.email);
+    if(_res.error){ box.innerHTML = '<div style="font-size:11px;color:#ff8579;padding:6px 2px">Could not load correspondence.</div>'; return; }
+    var rows = _res.rows;
 
     // Nudge check: newest outbound with no inbound reply after it, ≥3 days old.
     var nudgeHtml = '';
@@ -5845,29 +5840,14 @@ Greet them by first name (${firstName}). Acknowledge what they're building and w
   };
 
   ov.querySelector('#gl-lem-refine-btn').onclick = async function(){
-    var row     = ov.querySelector('#gl-lem-refine-row');
-    var instrEl = ov.querySelector('#gl-lem-refine');
-    var instruction = instrEl.value.trim();
-    if(!instruction){ window.glRefineFeedback(row, 'Type an instruction first (e.g. "make it shorter") — or just edit the message above directly.', true); instrEl.focus(); return; }
-    var subjEl  = ov.querySelector('#gl-lem-subject');
-    var bodyEl  = ov.querySelector('#gl-lem-body');
-    var aiStatus = ov.querySelector('#gl-lem-ai-status');
-    var btn = this;
-    btn.disabled = true; btn.textContent = '🤖 Refining…';
-    aiStatus.style.display = 'block'; aiStatus.textContent = '🤖 Claude is refining your email…';
-    var refined = await callAI(
-      'You are helping Mike at Good Liquid Bev Co revise a draft email. Apply the requested changes precisely. Return the complete revised email: Subject line first (starting with "SUBJECT: "), blank line, then the email body only — no extra labels.',
-      'Current email:\nSUBJECT: ' + (subjEl ? subjEl.value.trim() : '') + '\n\n' + bodyEl.value.trim() + '\n\n---\nRevise per this instruction: ' + instruction
-    );
-    aiStatus.style.display = 'none';
-    btn.disabled = false; btn.textContent = '✨ Apply';
-    if(!refined){ window.glRefineFeedback(row, '⚠ Couldn’t reach Claude to refine. Try again in a moment, or edit the message directly.', true); return; }
-    var lines = refined.split('\n');
-    var subjLine = lines.find(function(l){ return /^SUBJECT:/i.test(l); });
-    if(subjEl && subjLine) subjEl.value = subjLine.replace(/^SUBJECT:\s*/i,'').trim();
-    bodyEl.value = lines.filter(function(l){ return !/^SUBJECT:/i.test(l); }).join('\n').trim();
-    instrEl.value = '';
-    window.glRefineFeedback(row, '✓ Applied.', false);
+    return window.glRunRefine({
+      row:      ov.querySelector('#gl-lem-refine-row'),
+      instrEl:  ov.querySelector('#gl-lem-refine'),
+      subjEl:   ov.querySelector('#gl-lem-subject'),
+      bodyEl:   ov.querySelector('#gl-lem-body'),
+      btn:      this,
+      statusEl: ov.querySelector('#gl-lem-ai-status')
+    });
   };
 
   // ── Send button ──
@@ -6364,6 +6344,32 @@ function openDealDetail(stage, idx){
 // read-only thread inside the Deal Details view, so past correspondence is
 // visible right in the lead's account. Flags leads with no reply after 3+
 // days and offers a one-click jump to the Email Lead composer to nudge them.
+// Resilient email_log loader shared by the lead (Deal Details), lead composer,
+// and client correspondence panels. Older databases may not have run the
+// inbound-email migration (the `direction` / `from_email` columns), which made
+// the strict column-list + OR-filter query fail outright ("Could not load
+// correspondence"). This selects `*` (so a missing column can't break the
+// SELECT) and, if the two-direction OR filter errors, falls back to matching
+// on `to_email` alone — the always-present core column — so outbound history
+// still shows. Returns { rows, error }.
+async function glLoadEmailLog(email){
+  var sb = window.supa;
+  if(!sb || !email) return { rows: [], error: null };
+  var safe = String(email).replace(/%/g,'\\%').replace(/_/g,'\\_');
+  var r = await sb.from('email_log').select('*')
+    .or('to_email.ilike.%' + safe + '%,from_email.ilike.%' + safe + '%')
+    .order('created_at', { ascending: false }).limit(30);
+  if(!r.error) return { rows: r.data || [], error: null };
+  console.warn('[GL] email_log OR query failed; retrying on to_email only', r.error);
+  var r2 = await sb.from('email_log').select('*')
+    .ilike('to_email', '%' + safe + '%')
+    .order('created_at', { ascending: false }).limit(30);
+  if(!r2.error) return { rows: r2.data || [], error: null };
+  console.error('[GL] email_log load failed', r2.error);
+  return { rows: [], error: r2.error };
+}
+window.glLoadEmailLog = glLoadEmailLog;
+
 async function ddpLoadCorrespondence(d){
   var box = document.getElementById('ddp-corr');
   if(!box) return;
@@ -6373,14 +6379,9 @@ async function ddpLoadCorrespondence(d){
   }
   if(!window.supa){ box.innerHTML = ''; return; }
   box.innerHTML = '<div style="font-size:11px;color:var(--muted)">Loading correspondence…</div>';
-  var safe = String(d.email).replace(/%/g,'\\%').replace(/_/g,'\\_');
-  var r = await window.supa.from('email_log')
-    .select('to_email, from_email, subject, body_preview, status, direction, sent_at, created_at')
-    .or('to_email.ilike.%' + safe + '%,from_email.ilike.%' + safe + '%')
-    .order('created_at', { ascending: false })
-    .limit(30);
-  if(r.error){ box.innerHTML = '<div style="font-size:11px;color:#ff8579">Could not load correspondence.</div>'; return; }
-  var rows = r.data || [];
+  var _res = await glLoadEmailLog(d.email);
+  if(_res.error){ box.innerHTML = '<div style="font-size:11px;color:#ff8579">Could not load correspondence.</div>'; return; }
+  var rows = _res.rows;
 
   var header = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
       '<span style="font-size:10px;letter-spacing:2px;color:var(--teal)">📧 CORRESPONDENCE' + (rows.length ? ' (' + rows.length + ')' : '') + '</span>' +
@@ -9364,52 +9365,63 @@ function glRefineFeedback(rowEl, msg, isError){
 }
 window.glRefineFeedback = glRefineFeedback;
 
-async function refineFollowupEmail(){
-  var row = document.getElementById('fu-refine-row');
-  var instrEl = document.getElementById('fu-refine');
+// One hardened path for every "Refine with Claude" button (lead composer,
+// AI Comm, invoice follow-up). Guarantees the button is NEVER left hung and
+// ALWAYS gives visible feedback — the try/catch/finally means even an
+// unexpected throw re-enables the button and surfaces an error, and the
+// 'AI response unavailable.' sentinel from callAI is treated as a failure
+// (not pasted into the email). opts: {row, instrEl, subjEl, bodyEl, btn, statusEl}.
+async function glRunRefine(opts){
+  var row = opts.row, instrEl = opts.instrEl, subjEl = opts.subjEl, bodyEl = opts.bodyEl, btn = opts.btn, statusEl = opts.statusEl;
   var instruction = instrEl ? instrEl.value.trim() : '';
   if(!instruction){ glRefineFeedback(row, 'Type an instruction first (e.g. "make it shorter") — or just edit the message above directly.', true); if(instrEl) instrEl.focus(); return; }
-  var subjEl = document.getElementById('fu-subject');
-  var bodyEl = document.getElementById('fu-body');
-  var btn = document.querySelector('#fu-refine-row button');
   var origText = btn ? btn.textContent : '✨ Apply';
-  if(btn){ btn.disabled = true; btn.textContent = '🤖 Refining…'; }
-  var refined = await callAI(
-    'You are helping Mike at Good Liquid Bev Co revise a follow-up invoice email. Apply the requested changes precisely. Return the complete revised email: Subject line first (starting with "Subject: "), blank line, then email body only.',
-    'Current email:\nSubject: ' + (subjEl ? subjEl.value.trim() : '') + '\n\n' + (bodyEl ? bodyEl.value.trim() : '') + '\n\n---\nRevise per this instruction: ' + instruction
-  );
-  if(btn){ btn.disabled = false; btn.textContent = origText; }
-  if(!refined){ glRefineFeedback(row, '⚠ Couldn’t reach Claude to refine. Try again in a moment, or edit the message directly.', true); return; }
-  var lines = refined.split('\n');
-  var subjLine = lines.find(function(l){ return /^subject:/i.test(l); });
-  if(subjEl && subjLine) subjEl.value = subjLine.replace(/^subject:\s*/i,'').trim();
-  if(bodyEl) bodyEl.value = lines.filter(function(l){ return !/^subject:/i.test(l); }).join('\n').trim();
-  if(instrEl) instrEl.value = '';
-  glRefineFeedback(row, '✓ Applied.', false);
+  try {
+    if(btn){ btn.disabled = true; btn.textContent = '🤖 Refining…'; }
+    if(statusEl){ statusEl.style.display = 'block'; statusEl.textContent = '🤖 Claude is refining your email…'; }
+    var refined = await callAI(
+      'You are helping Mike at Good Liquid Bev Co revise a draft email. Apply the requested changes precisely. Return the complete revised email: Subject line first (starting with "Subject: "), blank line, then email body only — no extra labels.',
+      'Current email:\nSubject: ' + (subjEl ? subjEl.value.trim() : '') + '\n\n' + (bodyEl ? bodyEl.value.trim() : '') + '\n\n---\nRevise per this instruction: ' + instruction
+    );
+    if(!refined || refined === 'AI response unavailable.'){
+      glRefineFeedback(row, '⚠ Couldn’t reach Claude to refine. Try again in a moment, or just edit the message directly.', true);
+      return;
+    }
+    var lines = refined.split('\n');
+    var subjLine = lines.find(function(l){ return /^subject:/i.test(l); });
+    if(subjEl && subjLine) subjEl.value = subjLine.replace(/^subject:\s*/i,'').trim();
+    if(bodyEl) bodyEl.value = lines.filter(function(l){ return !/^subject:/i.test(l); }).join('\n').trim();
+    if(instrEl) instrEl.value = '';
+    glRefineFeedback(row, '✓ Applied.', false);
+  } catch(e){
+    console.error('[GL] refine threw', e);
+    glRefineFeedback(row, '⚠ Something went wrong applying the refine. Please try again.', true);
+  } finally {
+    if(btn){ btn.disabled = false; btn.textContent = origText; }
+    if(statusEl){ statusEl.style.display = 'none'; }
+  }
+}
+window.glRunRefine = glRunRefine;
+
+async function refineFollowupEmail(){
+  return glRunRefine({
+    row:     document.getElementById('fu-refine-row'),
+    instrEl: document.getElementById('fu-refine'),
+    subjEl:  document.getElementById('fu-subject'),
+    bodyEl:  document.getElementById('fu-body'),
+    btn:     document.querySelector('#fu-refine-row button')
+  });
 }
 
 async function refineAIComm(){
-  var row = document.getElementById('ai-comm-refine') ? document.getElementById('ai-comm-refine').closest('.frow') : null;
   var instrEl = document.getElementById('ai-comm-refine');
-  var instruction = instrEl ? instrEl.value.trim() : '';
-  if(!instruction){ glRefineFeedback(row, 'Type an instruction first (e.g. "more formal") — or just edit the email above directly.', true); if(instrEl) instrEl.focus(); return; }
-  var subjEl = document.getElementById('ai-comm-subj');
-  var bodyEl = document.getElementById('ai-comm-body');
-  var btn = document.querySelector('#ai-comm-output button');
-  var origText = btn ? btn.textContent : '✨ Apply';
-  if(btn){ btn.disabled = true; btn.textContent = '🤖 Refining…'; }
-  var refined = await callAI(
-    'You are helping Mike at Good Liquid Bev Co revise a draft email. Apply the requested changes precisely. Return the complete revised email: Subject line first (starting with "Subject: "), blank line, then email body only.',
-    'Current email:\nSubject: ' + (subjEl ? subjEl.value.trim() : '') + '\n\n' + (bodyEl ? bodyEl.value.trim() : '') + '\n\n---\nRevise per this instruction: ' + instruction
-  );
-  if(btn){ btn.disabled = false; btn.textContent = origText; }
-  if(!refined){ glRefineFeedback(row, '⚠ Couldn’t reach Claude to refine. Try again in a moment, or edit the email directly.', true); return; }
-  var lines = refined.split('\n');
-  var subjLine = lines.find(function(l){ return /^subject:/i.test(l); });
-  if(subjEl && subjLine) subjEl.value = subjLine.replace(/^subject:\s*/i,'').trim();
-  if(bodyEl) bodyEl.value = lines.filter(function(l){ return !/^subject:/i.test(l); }).join('\n').trim();
-  if(instrEl) instrEl.value = '';
-  glRefineFeedback(row, '✓ Applied.', false);
+  return glRunRefine({
+    row:     instrEl ? instrEl.closest('.frow') : null,
+    instrEl: instrEl,
+    subjEl:  document.getElementById('ai-comm-subj'),
+    bodyEl:  document.getElementById('ai-comm-body'),
+    btn:     document.querySelector('#ai-comm-output button')
+  });
 }
 
 async function generateAIComm(){
@@ -10349,10 +10361,90 @@ function viewClientEnhanced(clientId) {
         <button onclick="createForClient('${clientId}');document.getElementById('client-detail-overlay').remove()" class="cbtn" style="background:var(--teal);border:none;color:var(--ink);font-weight:800">+ New Invoice</button>
         <button onclick="window.glQuoteFromClient&&window.glQuoteFromClient('${clientId}')" class="cbtn" style="background:rgba(26,111,255,.1);border-color:rgba(26,111,255,.35);color:#6b9fff">📋 Quote Builder</button>
       </div>
+      <div id="cde-corr" style="margin-top:20px;border-top:1px solid rgba(255,255,255,.07);padding-top:16px"></div>
     </div>`;
   ov.addEventListener('click', e => { if(e.target === ov) ov.remove(); });
   document.body.appendChild(ov);
+  // Load this client's email correspondence into the panel above.
+  cdeLoadCorrespondence(client);
 }
+
+// Loads every email to/from a client (from email_log) and renders a read-only
+// thread inside the client detail view, so all correspondence is visible in
+// their account. Flags clients with no reply after 3+ days and offers a
+// one-click "Draft nudge" that opens the AI email drafter pre-set to a
+// friendly follow-up. Mirrors the lead (Deal Details) correspondence panel.
+async function cdeLoadCorrespondence(client){
+  var box = document.getElementById('cde-corr');
+  if(!box) return;
+  if(!client || !client.email){
+    box.innerHTML = '<div style="font-size:11px;color:var(--muted)">Add an email address to this client (Edit Client) to track correspondence.</div>';
+    return;
+  }
+  if(!window.supa){ box.innerHTML = ''; return; }
+  box.innerHTML = '<div style="font-size:11px;color:var(--muted)">Loading correspondence…</div>';
+  var _res = await glLoadEmailLog(client.email);
+  if(_res.error){ box.innerHTML = '<div style="font-size:11px;color:#ff8579">Could not load correspondence.</div>'; return; }
+  var rows = _res.rows;
+
+  var header = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
+      '<span style="font-size:10px;letter-spacing:2px;color:var(--teal)">📧 CORRESPONDENCE' + (rows.length ? ' (' + rows.length + ')' : '') + '</span>' +
+      '<button onclick="openAICommModal();document.getElementById(\'ai-comm-client\').value=\'' + client.id + '\';document.getElementById(\'client-detail-overlay\').remove()" style="font-size:11px;padding:4px 12px;background:rgba(0,229,192,.12);color:var(--teal);border:1px solid rgba(0,229,192,.3);border-radius:6px;cursor:pointer">✉️ New email</button>' +
+    '</div>';
+
+  if(!rows.length){
+    box.innerHTML = header + '<div style="font-size:11px;color:var(--muted)">No emails logged for this client yet. Only mail sent through the CRM is tracked — messages sent from an outside email app won’t appear here.</div>';
+    return;
+  }
+
+  // Nudge: newest outbound with no inbound reply after it, 3+ days old.
+  var nudge = '';
+  var lastOut = rows.find(function(x){ return x.direction !== 'inbound'; });
+  if(lastOut){
+    var t = new Date(lastOut.sent_at || lastOut.created_at).getTime();
+    var replied = rows.some(function(x){ return x.direction === 'inbound' && new Date(x.sent_at || x.created_at).getTime() > t; });
+    var days = Math.floor((Date.now() - t) / 86400000);
+    if(!replied && days >= 3){
+      nudge = '<div style="background:rgba(245,200,66,.08);border:1px solid rgba(245,200,66,.3);border-radius:8px;padding:10px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:10px">' +
+        '<span style="font-size:12px;color:#f5c842;line-height:1.4">⏰ No reply in ' + days + ' days.</span>' +
+        '<button onclick="cdeNudge(\'' + client.id + '\')" style="font-size:11px;white-space:nowrap;padding:4px 12px;background:rgba(245,200,66,.15);color:#f5c842;border:1px solid rgba(245,200,66,.4);border-radius:6px;cursor:pointer">✍️ Draft nudge</button>' +
+      '</div>';
+    }
+  }
+
+  var e = window.glEsc || function(s){ return String(s==null?'':s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }); };
+  var list = rows.map(function(row){
+    var inb = row.direction === 'inbound';
+    var lbl = inb ? '<span style="font-size:10px;letter-spacing:1px;color:#6b9fff">← FROM CLIENT</span>'
+                  : '<span style="font-size:10px;letter-spacing:1px;color:var(--muted)">→ SENT</span>';
+    var when = '';
+    try { when = new Date(row.sent_at || row.created_at).toLocaleDateString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); } catch(err){}
+    return '<div style="background:' + (inb?'rgba(26,111,255,.07)':'rgba(255,255,255,.02)') + ';border:1px solid ' + (inb?'rgba(26,111,255,.25)':'rgba(255,255,255,.06)') + ';border-radius:6px;padding:8px 10px">' +
+      '<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:3px">' + lbl +
+        '<span style="font-size:10px;color:rgba(154,167,189,.6)">' + e(when) + '</span></div>' +
+      '<div style="font-size:12px;color:#fff;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + e(row.subject||'(no subject)') + '</div>' +
+      (row.body_preview ? '<div style="font-size:11px;color:#9aa7bd;line-height:1.4;margin-top:2px;white-space:pre-wrap">' + e(row.body_preview) + '</div>' : '') +
+    '</div>';
+  }).join('');
+
+  box.innerHTML = header + nudge + '<div style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto">' + list + '</div>';
+}
+
+// Opens the AI email drafter pre-set to write a friendly follow-up nudge for
+// a client who hasn't replied. Reached from the client detail nudge banner.
+function cdeNudge(clientId){
+  var c = (window.clients||[]).find(function(x){ return x.id === clientId; });
+  if(typeof openAICommModal !== 'function') return;
+  openAICommModal();
+  var sel = document.getElementById('ai-comm-client'); if(sel) sel.value = clientId;
+  var typeSel = document.getElementById('ai-comm-type');
+  if(typeSel){ typeSel.value = 'custom'; typeSel.dispatchEvent(new Event('change')); }
+  var crow = document.getElementById('ai-comm-custom-row'); if(crow) crow.style.display = 'block';
+  var cust = document.getElementById('ai-comm-custom');
+  if(cust) cust.value = 'Write a short, warm follow-up nudge to ' + ((c && c.name) || 'the client') + '. We emailed earlier and haven’t heard back — politely check whether they’re still interested and offer to help with next steps. Keep it friendly and low-pressure.';
+  var cd = document.getElementById('client-detail-overlay'); if(cd) cd.remove();
+}
+window.cdeNudge = cdeNudge;
 
 /* ═══════════════════════════════════════════
    WIRE TIME TRACKER INTO SIDEBAR
