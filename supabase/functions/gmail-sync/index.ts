@@ -83,6 +83,62 @@ function header(headers: { name: string; value: string }[], name: string): strin
   return h ? h.value : '';
 }
 
+// Gmail encodes body data as base64url. Decode to real UTF-8 text (a plain atob
+// would mangle any accented character or emoji).
+function b64urlToText(data: string): string {
+  try {
+    const b64 = String(data).replace(/-/g, '+').replace(/_/g, '/');
+    const pad = b64.length % 4 ? '='.repeat(4 - (b64.length % 4)) : '';
+    const bin = atob(b64 + pad);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new TextDecoder('utf-8').decode(bytes);
+  } catch { return ''; }
+}
+
+// Last resort when a message carries no text/plain part: turn the HTML body
+// into something readable rather than showing markup.
+function htmlToText(html: string): string {
+  return String(html)
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|tr|li|h[1-6]|table)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>').replace(/&quot;/gi, '"').replace(/&#39;/gi, "'")
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+// Pull the readable body out of a Gmail message payload. Walks the whole MIME
+// tree (messages are often multipart/alternative inside multipart/mixed) and
+// prefers text/plain, falling back to de-tagged HTML.
+//
+// This exists because fetching format=metadata only yields Gmail's ~200-char
+// `snippet`, which made every synced email look cut off mid-sentence.
+function extractBody(payload: unknown): string {
+  const plain: string[] = [];
+  const html:  string[] = [];
+  const walk = (part: Record<string, unknown> | null | undefined) => {
+    if (!part) return;
+    const mime = String(part.mimeType || '');
+    const body = part.body as Record<string, unknown> | undefined;
+    const data = body && typeof body.data === 'string' ? body.data : '';
+    if (data) {
+      if (mime === 'text/plain')     plain.push(b64urlToText(data));
+      else if (mime === 'text/html') html.push(b64urlToText(data));
+    }
+    const parts = part.parts as Record<string, unknown>[] | undefined;
+    if (Array.isArray(parts)) parts.forEach(walk);
+  };
+  walk(payload as Record<string, unknown>);
+  if (plain.length) return plain.join('\n').trim();
+  if (html.length)  return htmlToText(html.join('\n'));
+  return '';
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   const pre = handlePreflight(req);
   if (pre) return pre;
@@ -190,9 +246,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
   let scanned = 0;
 
   for (const id of ids) {
-    const mRes = await gFetch(
-      `/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=To` +
-      `&metadataHeaders=Cc&metadataHeaders=Subject&metadataHeaders=Date`);
+    // format=full (not metadata) so the actual body comes back, not just a snippet.
+    const mRes = await gFetch(`/messages/${id}?format=full`);
     if (!mRes.ok) continue;
     const msg = await mRes.json();
     scanned++;
@@ -216,7 +271,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
       from_email:   inboundMatch ? contactEmail : null,
       to_email:     inboundMatch ? (toAddrs[0] || '') : contactEmail,
       subject:      header(headers, 'Subject') || '(no subject)',
-      body_preview: String(msg.snippet || '').slice(0, 280),
+      // The real message text, falling back to Gmail's snippet only if the body
+      // could not be decoded. Generous cap — the column is unlimited `text` and
+      // the correspondence popup scrolls.
+      body_preview: (extractBody(msg.payload) || String(msg.snippet || '')).slice(0, 8000),
       status:       'delivered',
       client_id:    contacts.get(contactEmail) || null,
       mailgun_id:   String(id),
@@ -235,13 +293,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
   let inserted = 0, skipped = 0;
   if (candidates.length) {
     // (a) Precise: the Gmail message id is already stored.
-    const existingIds = new Set<string>();
+    const byId = new Map<string, { id: string; len: number }>();
     for (let i = 0; i < candidates.length; i += 100) {
       const chunk = candidates.slice(i, i + 100).map((c) => c.mailgun_id);
-      const eRes = await supa.from('email_log').select('mailgun_id').in('mailgun_id', chunk);
+      const eRes = await supa.from('email_log').select('id, mailgun_id, body_preview').in('mailgun_id', chunk);
       for (const row of eRes.data || []) {
-        const id = (row as Record<string, string>).mailgun_id;
-        if (id) existingIds.add(id);
+        const r = row as Record<string, string>;
+        if (r.mailgun_id) byId.set(r.mailgun_id, { id: r.id, len: (r.body_preview || '').length });
       }
     }
 
@@ -252,7 +310,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       const lo = new Date(Math.min(...times) - 15 * 60000).toISOString();
       const hi = new Date(Math.max(...times) + 15 * 60000).toISOString();
       const pRes = await supa.from('email_log')
-        .select('subject, to_email, from_email, sent_at, created_at')
+        .select('id, subject, to_email, from_email, sent_at, created_at, body_preview')
         .gte('sent_at', lo).lte('sent_at', hi).limit(2000);
       if (!pRes.error) priorRows = (pRes.data || []) as Record<string, unknown>[];
       else console.warn('[gmail-sync] content-dedup lookup failed:', pRes.error.message);
@@ -262,24 +320,51 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const normSubject = (v: unknown) =>
       String(v || '').replace(/^\s*(re|fwd|fw)\s*:\s*/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
 
-    const alreadyLogged = (c: Row) => {
-      if (existingIds.has(c.mailgun_id)) return true;
+    // Returns the existing row this candidate duplicates, or null if it's new.
+    const findExisting = (c: Row): { id: string; len: number } | null => {
+      const hit = byId.get(c.mailgun_id);
+      if (hit) return hit;
       const cSub = normSubject(c.subject);
       const cAt = Date.parse(c.sent_at);
       const contact = String((c.direction === 'inbound' ? c.from_email : c.to_email) || '').toLowerCase();
-      return priorRows.some((e) => {
-        if (normSubject(e.subject) !== cSub) return false;
+      for (const e of priorRows) {
+        if (normSubject(e.subject) !== cSub) continue;
         const eAt = Date.parse(String(e.sent_at || e.created_at || ''));
-        if (!Number.isFinite(eAt) || !Number.isFinite(cAt)) return false;
-        if (Math.abs(eAt - cAt) > 10 * 60000) return false;
+        if (!Number.isFinite(eAt) || !Number.isFinite(cAt)) continue;
+        if (Math.abs(eAt - cAt) > 10 * 60000) continue;
         // Direction is intentionally not compared: older rows predate the column.
         const addrs = (String(e.to_email || '') + ' ' + String(e.from_email || '')).toLowerCase();
-        return !contact || addrs.includes(contact);
-      });
+        if (contact && !addrs.includes(contact)) continue;
+        return { id: String(e.id), len: String(e.body_preview || '').length };
+      }
+      return null;
     };
 
-    const fresh = candidates.filter((c) => !alreadyLogged(c));
+    // Rows logged before this function extracted real message bodies hold only
+    // Gmail's ~200-char snippet (or a 280-char truncation from an old send), so
+    // they read as cut off mid-sentence. When we now have substantially more
+    // text for a message we already have, upgrade the stored copy in place
+    // instead of skipping it. That backfills old entries on the next sync with
+    // no manual cleanup.
+    const upgrades: { id: string; body: string }[] = [];
+    const fresh: Row[] = [];
+    for (const c of candidates) {
+      const existing = findExisting(c);
+      if (!existing) { fresh.push(c); continue; }
+      if (c.body_preview.length > existing.len + 200) {
+        upgrades.push({ id: existing.id, body: c.body_preview });
+      }
+    }
     skipped = candidates.length - fresh.length;
+
+    let upgraded = 0;
+    for (const u of upgrades) {
+      const uRes = await supa.from('email_log').update({ body_preview: u.body }).eq('id', u.id);
+      if (uRes.error) console.warn('[gmail-sync] body upgrade failed:', uRes.error.message);
+      else upgraded++;
+    }
+    if (upgraded) console.log(`[gmail-sync] filled in the full text of ${upgraded} existing email(s)`);
+    (globalThis as Record<string, unknown>).__glUpgraded = upgraded;
 
     for (let i = 0; i < fresh.length; i += 50) {
       const batch = fresh.slice(i, i + 50);
@@ -303,7 +388,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   console.log(`[gmail-sync] scanned=${scanned} matched=${candidates.length} inserted=${inserted} skipped=${skipped}`);
+  const upgradedCount = Number((globalThis as Record<string, unknown>).__glUpgraded || 0);
   return jsonResponse({
-    ok: true, scanned, matched: candidates.length, inserted, skipped, contacts: contacts.size,
+    ok: true, scanned, matched: candidates.length, inserted, skipped,
+    upgraded: upgradedCount, contacts: contacts.size,
   });
 });
