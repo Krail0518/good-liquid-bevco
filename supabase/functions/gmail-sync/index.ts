@@ -129,6 +129,64 @@ function decodeEntities(t: string): string {
     .replace(/&amp;/gi, '&');   // last, so "&amp;lt;" doesn't become "<"
 }
 
+// A real email body carries the whole thread beneath the new message: the
+// quoted reply chain, the sender's signature block, "Get Outlook for Mac", and
+// (behind corporate mail filters) enormous urldefense.proofpoint.com link
+// wrappers. Storing all of that made the correspondence popup unreadable after
+// the first few lines. We keep the new message and drop the tail.
+
+// Markers that begin quoted history or a mail-client footer. The EARLIEST match
+// wins, since the junk always follows the message.
+function replyTailIndex(t: string): number {
+  const cuts: number[] = [];
+  const push = (m: RegExpMatchArray | null) => { if (m && m.index !== undefined) cuts.push(m.index); };
+
+  push(t.match(/^[ \t]*On\s[\s\S]{0,300}?\bwrote:[ \t]*$/im));      // Gmail / Apple Mail
+  push(t.match(/^[ \t]*-{2,}\s*Original Message\s*-{2,}/im));         // Outlook classic
+  push(t.match(/^[ \t]*_{10,}[ \t]*$/m));                             // Outlook divider rule
+  push(t.match(/^[ \t]*(Get Outlook for|Sent from my |Sent via |Get BlueMail)/im));
+  push(t.match(/^[ \t]*>{1,}[ \t]?\S/m));                             // ">" quoted block
+
+  // Outlook header block: "From:" only counts as quoted history when a
+  // Sent:/Date: line follows close behind — otherwise it could be real prose.
+  const fromRe = /^[ \t]*From:[ \t]*\S[^\n]*$/gim;
+  let m: RegExpExecArray | null;
+  while ((m = fromRe.exec(t)) !== null) {
+    if (/^[ \t]*(Sent|Date):[ \t]*\S/im.test(t.slice(m.index, m.index + 400))) { cuts.push(m.index); break; }
+  }
+
+  const valid = cuts.filter((i) => i > 0);
+  return valid.length ? Math.min(...valid) : -1;
+}
+
+// True when this text still carries a quoted tail — used to decide whether an
+// already-stored (untrimmed) copy is worth replacing with a trimmed one.
+function hasReplyTail(t: string): boolean {
+  return replyTailIndex(String(t || '')) > 0;
+}
+
+// Strip link wrappers and inline-image placeholders that carry no information.
+function tidyBody(t: string): string {
+  return String(t)
+    // Plain-text mail renders links as "Label<https://…>"; drop the giant URL,
+    // keep the label. Proofpoint wrappers are hundreds of characters each.
+    .replace(/<https?:\/\/[^>\s]{60,}>/g, '')
+    .replace(/\[(?:photo|image[^\]]*|cid:[^\]]*|__[a-z0-9_]+__)\]/gi, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+// Keep just the new message. Falls back to the full text if trimming would
+// leave almost nothing — better a noisy email than an empty one.
+function trimToNewMessage(raw: string): string {
+  const full = tidyBody(raw);
+  const cut = replyTailIndex(full);
+  if (cut <= 0) return full;
+  const head = tidyBody(full.slice(0, cut));
+  return head.length >= 20 ? head : full;
+}
+
 function extractBody(payload: unknown): string {
   const plain: string[] = [];
   const html:  string[] = [];
@@ -285,7 +343,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
       // The real message text, falling back to Gmail's snippet only if the body
       // could not be decoded. Generous cap — the column is unlimited `text` and
       // the correspondence popup scrolls.
-      body_preview: (extractBody(msg.payload) || decodeEntities(String(msg.snippet || ''))).slice(0, 8000),
+      body_preview: trimToNewMessage(
+        extractBody(msg.payload) || decodeEntities(String(msg.snippet || ''))).slice(0, 8000),
       status:       'delivered',
       client_id:    contacts.get(contactEmail) || null,
       mailgun_id:   String(id),
@@ -304,13 +363,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
   let inserted = 0, skipped = 0;
   if (candidates.length) {
     // (a) Precise: the Gmail message id is already stored.
-    const byId = new Map<string, { id: string; len: number }>();
+    const byId = new Map<string, { id: string; body: string }>();
     for (let i = 0; i < candidates.length; i += 100) {
       const chunk = candidates.slice(i, i + 100).map((c) => c.mailgun_id);
       const eRes = await supa.from('email_log').select('id, mailgun_id, body_preview').in('mailgun_id', chunk);
       for (const row of eRes.data || []) {
         const r = row as Record<string, string>;
-        if (r.mailgun_id) byId.set(r.mailgun_id, { id: r.id, len: (r.body_preview || '').length });
+        if (r.mailgun_id) byId.set(r.mailgun_id, { id: r.id, body: r.body_preview || '' });
       }
     }
 
@@ -332,7 +391,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       String(v || '').replace(/^\s*(re|fwd|fw)\s*:\s*/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
 
     // Returns the existing row this candidate duplicates, or null if it's new.
-    const findExisting = (c: Row): { id: string; len: number } | null => {
+    const findExisting = (c: Row): { id: string; body: string } | null => {
       const hit = byId.get(c.mailgun_id);
       if (hit) return hit;
       const cSub = normSubject(c.subject);
@@ -346,7 +405,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         // Direction is intentionally not compared: older rows predate the column.
         const addrs = (String(e.to_email || '') + ' ' + String(e.from_email || '')).toLowerCase();
         if (contact && !addrs.includes(contact)) continue;
-        return { id: String(e.id), len: String(e.body_preview || '').length };
+        return { id: String(e.id), body: String(e.body_preview || '') };
       }
       return null;
     };
@@ -357,12 +416,23 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // text for a message we already have, upgrade the stored copy in place
     // instead of skipping it. That backfills old entries on the next sync with
     // no manual cleanup.
+    // Worth replacing a stored copy when either we now have more of the real
+    // message, OR the stored copy still carries a quoted thread tail that we now
+    // trim away. The second case means the replacement is SHORTER, so it is
+    // gated on actually detecting a tail in the old copy and none in the new —
+    // otherwise a misfiring trim could quietly shorten good content.
+    const shouldReplace = (nb: string, sb: string): boolean => {
+      if (!nb || nb === sb || nb.length < 20) return false;
+      if (nb.length > sb.length + 20) return true;
+      return nb.length < sb.length && hasReplyTail(sb) && !hasReplyTail(nb);
+    };
+
     const upgrades: { id: string; body: string }[] = [];
     const fresh: Row[] = [];
     for (const c of candidates) {
       const existing = findExisting(c);
       if (!existing) { fresh.push(c); continue; }
-      if (c.body_preview.length > existing.len + 20) {
+      if (shouldReplace(c.body_preview, existing.body)) {
         upgrades.push({ id: existing.id, body: c.body_preview });
       }
     }
