@@ -5753,21 +5753,7 @@ function openLeadEmailComposer(){
     } else {
       histHtml =
         '<div style="font-size:10px;letter-spacing:2px;color:#6b87ad;margin-bottom:8px;font-weight:600">CORRESPONDENCE (' + rows.length + ')</div>' +
-        '<div style="max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">' +
-        rows.map(function(row){
-          var inb = row.direction === 'inbound';
-          var lbl = inb ? '<span style="font-size:10px;letter-spacing:1px;color:#6b9fff">← FROM LEAD</span>'
-                        : '<span style="font-size:10px;letter-spacing:1px;color:var(--muted)">→ SENT</span>';
-          var when = '';
-          try { when = new Date(row.sent_at || row.created_at).toLocaleDateString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); } catch(e){}
-          return '<div style="background:' + (inb?'rgba(26,111,255,.07)':'rgba(255,255,255,.02)') + ';border:1px solid ' + (inb?'rgba(26,111,255,.25)':'rgba(255,255,255,.06)') + ';border-radius:6px;padding:8px 10px">' +
-            '<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:3px">' + lbl +
-              '<span style="font-size:10px;color:rgba(154,167,189,.6)">' + esc(when) + '</span></div>' +
-            '<div style="font-size:12px;color:#fff;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(row.subject||'(no subject)') + '</div>' +
-            (row.body_preview ? '<div style="font-size:11px;color:#9aa7bd;line-height:1.4;margin-top:2px;white-space:pre-wrap">' + esc(row.body_preview) + '</div>' : '') +
-          '</div>';
-        }).join('') +
-        '</div>';
+        glRenderCorrespondence('lem', rows);
     }
     box.innerHTML = nudgeHtml + histHtml;
 
@@ -6340,10 +6326,119 @@ function openDealDetail(stage, idx){
   ddpLoadCorrespondence(d);
 }
 
-// Loads every email to/from this lead (from email_log) and renders a
-// read-only thread inside the Deal Details view, so past correspondence is
-// visible right in the lead's account. Flags leads with no reply after 3+
-// days and offers a one-click jump to the Email Lead composer to nudge them.
+/* ═══════════════════════════════════════════
+   SHARED CORRESPONDENCE RENDERING
+   One renderer for all three email-thread panels (lead / Deal Details,
+   lead email composer, client detail). They used to each build their own
+   copy of this markup, which is how they drifted apart — fix it here and
+   every panel gets the fix.
+═══════════════════════════════════════════ */
+
+// Rows are stashed per panel so the "open full email" popup can look one up
+// by index without re-querying Supabase.
+window.__glCorrRows = {};
+
+function glCorrEsc(s){
+  return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
+  });
+}
+
+function glCorrWhen(row){
+  try {
+    return new Date(row.sent_at || row.created_at)
+      .toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
+  } catch(e){ return ''; }
+}
+
+// Builds the scrollable thread list. Each entry is clickable and opens the
+// full stored message in a popup — the inline preview is deliberately clamped
+// to two lines so a long email can't push the rest of the panel off screen.
+function glRenderCorrespondence(key, rows){
+  window.__glCorrRows[key] = rows || [];
+  var inboundLabel = key === 'cde' ? '← FROM CLIENT' : '← FROM LEAD';
+  var list = (rows || []).map(function(row, i){
+    var inb = row.direction === 'inbound';
+    var lbl = inb
+      ? '<span style="font-size:10px;letter-spacing:1px;color:#6b9fff">' + inboundLabel + '</span>'
+      : '<span style="font-size:10px;letter-spacing:1px;color:var(--muted)">→ SENT</span>';
+    return '<div onclick="glShowEmailFull(\'' + key + '\',' + i + ')" title="Click to read the full message" ' +
+        'style="background:' + (inb?'rgba(26,111,255,.07)':'rgba(255,255,255,.02)') + ';border:1px solid ' +
+        (inb?'rgba(26,111,255,.25)':'rgba(255,255,255,.06)') + ';border-radius:6px;padding:8px 10px;cursor:pointer">' +
+      '<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:3px">' + lbl +
+        '<span style="font-size:10px;color:rgba(154,167,189,.6)">' + glCorrEsc(glCorrWhen(row)) + '</span></div>' +
+      '<div style="font-size:12px;color:#fff;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+        glCorrEsc(row.subject || '(no subject)') + '</div>' +
+      (row.body_preview
+        ? '<div style="font-size:11px;color:#9aa7bd;line-height:1.4;margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">' +
+            glCorrEsc(row.body_preview) + '</div>'
+        : '') +
+    '</div>';
+  }).join('');
+  // Fixed max height + overflow so a long thread scrolls inside the panel
+  // instead of being cut off by it.
+  return '<div style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto;' +
+    '-webkit-overflow-scrolling:touch;padding-right:2px">' + list + '</div>';
+}
+
+// Popup showing one message in full, scrollable. Sits above the client detail
+// overlay (z 650) and the deal panel so it's never hidden behind them.
+function glShowEmailFull(key, i){
+  var rows = window.__glCorrRows[key] || [];
+  var row = rows[i];
+  if(!row) return;
+  var prev = document.getElementById('gl-email-full');
+  if(prev) prev.remove();
+  var inb = row.direction === 'inbound';
+  var who = inb ? ('From: ' + glCorrEsc(row.from_email || 'client'))
+                : ('To: '   + glCorrEsc(row.to_email   || ''));
+  var ov = document.createElement('div');
+  ov.id = 'gl-email-full';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:900;background:rgba(6,13,26,.95);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML =
+    '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;width:100%;max-width:620px;max-height:85vh;display:flex;flex-direction:column;padding:22px 24px;color:#fff">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px">' +
+        '<div style="font-size:11px;letter-spacing:1.5px;color:' + (inb?'#6b9fff':'var(--teal)') + '">' +
+          (inb ? '← RECEIVED' : '→ SENT') + '</div>' +
+        '<button onclick="document.getElementById(\'gl-email-full\').remove()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1">&#x2715;</button>' +
+      '</div>' +
+      '<div style="font-size:16px;font-weight:700;line-height:1.35;margin-bottom:6px">' + glCorrEsc(row.subject || '(no subject)') + '</div>' +
+      '<div style="font-size:11px;color:var(--muted);margin-bottom:14px">' + who + ' &middot; ' + glCorrEsc(glCorrWhen(row)) + '</div>' +
+      '<div style="flex:1;overflow-y:auto;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:14px;font-size:13px;line-height:1.7;white-space:pre-wrap;color:#e8eef7">' +
+        (row.body_preview ? glCorrEsc(row.body_preview) : '<span style="color:var(--muted);font-style:italic">No message text was stored for this email.</span>') +
+      '</div>' +
+      '<div style="font-size:10px;color:rgba(154,167,189,.55);margin-top:10px;line-height:1.5">' +
+        'Note: the CRM stores the beginning of each message, so very long emails may be shortened here.' +
+      '</div>' +
+    '</div>';
+  ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+  document.body.appendChild(ov);
+}
+window.glShowEmailFull = glShowEmailFull;
+
+// Opens the Email Lead composer for the currently-selected deal and pre-fills
+// a friendly follow-up nudge. Wired to the "✍️ Draft nudge" button in the
+// Deal Details correspondence panel.
+function ddpNudgeLead(){
+  if(typeof openLeadEmailComposer !== 'function') return;
+  var d = (deals[currentDealStage]||[])[currentDealIdx];
+  openLeadEmailComposer();
+  setTimeout(function(){
+    var subjEl = document.getElementById('gl-lem-subject');
+    var bodyEl = document.getElementById('gl-lem-body');
+    if(!subjEl || !bodyEl || !d) return;
+    var firstName = (d.contactName || '').split(' ')[0] || 'there';
+    subjEl.value = 'Following up — Good Liquid Bev Co' + (d.co ? ' × ' + d.co : '');
+    bodyEl.value =
+      'Hi ' + firstName + ',\n\n' +
+      'Just circling back on my last note — I know things get busy! I wanted to make sure it reached you and see if you’re still exploring co-packing for ' + (d.co || 'your brand') + '.\n\n' +
+      'If now’s a good time, I’d be happy to set up a quick 20-minute call or a tour of our Palmetto facility. And if the timing isn’t right, just let me know and I’ll check back down the road.\n\n' +
+      'Best,\nMike\nGood Liquid Bev Co\n(803) 493-5065';
+    bodyEl.focus();
+  }, 250);
+}
+window.ddpNudgeLead = ddpNudgeLead;
+
 // Resilient email_log loader shared by the lead (Deal Details), lead composer,
 // and client correspondence panels. Older databases may not have run the
 // inbound-email migration (the `direction` / `from_email` columns), which made
@@ -6401,27 +6496,14 @@ async function ddpLoadCorrespondence(d){
     var replied = rows.some(function(x){ return x.direction === 'inbound' && new Date(x.sent_at || x.created_at).getTime() > t; });
     var days = Math.floor((Date.now() - t) / 86400000);
     if(!replied && days >= 3){
-      nudge = '<div style="background:rgba(245,200,66,.08);border:1px solid rgba(245,200,66,.3);border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:#f5c842;line-height:1.4">' +
-        '⏰ No reply in ' + days + ' days. Open ✉️ Email Lead to send a follow-up nudge.</div>';
+      nudge = '<div style="background:rgba(245,200,66,.08);border:1px solid rgba(245,200,66,.3);border-radius:8px;padding:10px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
+        '<span style="font-size:12px;color:#f5c842;line-height:1.4">⏰ No reply in ' + days + ' days.</span>' +
+        '<button onclick="ddpNudgeLead()" style="font-size:12px;white-space:nowrap;padding:5px 13px;background:rgba(245,200,66,.18);color:#f5c842;border:1px solid rgba(245,200,66,.45);border-radius:6px;cursor:pointer;font-weight:700">✍️ Draft nudge</button>' +
+      '</div>';
     }
   }
 
-  var esc = window.glEsc || function(s){ return String(s==null?'':s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); };
-  var list = rows.map(function(row){
-    var inb = row.direction === 'inbound';
-    var lbl = inb ? '<span style="font-size:10px;letter-spacing:1px;color:#6b9fff">← FROM LEAD</span>'
-                  : '<span style="font-size:10px;letter-spacing:1px;color:var(--muted)">→ SENT</span>';
-    var when = '';
-    try { when = new Date(row.sent_at || row.created_at).toLocaleDateString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); } catch(e){}
-    return '<div style="background:' + (inb?'rgba(26,111,255,.07)':'rgba(255,255,255,.02)') + ';border:1px solid ' + (inb?'rgba(26,111,255,.25)':'rgba(255,255,255,.06)') + ';border-radius:6px;padding:8px 10px">' +
-      '<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:3px">' + lbl +
-        '<span style="font-size:10px;color:rgba(154,167,189,.6)">' + esc(when) + '</span></div>' +
-      '<div style="font-size:12px;color:#fff;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(row.subject||'(no subject)') + '</div>' +
-      (row.body_preview ? '<div style="font-size:11px;color:#9aa7bd;line-height:1.4;margin-top:2px;white-space:pre-wrap">' + esc(row.body_preview) + '</div>' : '') +
-    '</div>';
-  }).join('');
-
-  box.innerHTML = header + nudge + '<div style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto">' + list + '</div>';
+  box.innerHTML = header + nudge + glRenderCorrespondence('ddp', rows);
 }
 
 function editDealDetail(){
@@ -10412,22 +10494,7 @@ async function cdeLoadCorrespondence(client){
     }
   }
 
-  var e = window.glEsc || function(s){ return String(s==null?'':s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }); };
-  var list = rows.map(function(row){
-    var inb = row.direction === 'inbound';
-    var lbl = inb ? '<span style="font-size:10px;letter-spacing:1px;color:#6b9fff">← FROM CLIENT</span>'
-                  : '<span style="font-size:10px;letter-spacing:1px;color:var(--muted)">→ SENT</span>';
-    var when = '';
-    try { when = new Date(row.sent_at || row.created_at).toLocaleDateString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); } catch(err){}
-    return '<div style="background:' + (inb?'rgba(26,111,255,.07)':'rgba(255,255,255,.02)') + ';border:1px solid ' + (inb?'rgba(26,111,255,.25)':'rgba(255,255,255,.06)') + ';border-radius:6px;padding:8px 10px">' +
-      '<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:3px">' + lbl +
-        '<span style="font-size:10px;color:rgba(154,167,189,.6)">' + e(when) + '</span></div>' +
-      '<div style="font-size:12px;color:#fff;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + e(row.subject||'(no subject)') + '</div>' +
-      (row.body_preview ? '<div style="font-size:11px;color:#9aa7bd;line-height:1.4;margin-top:2px;white-space:pre-wrap">' + e(row.body_preview) + '</div>' : '') +
-    '</div>';
-  }).join('');
-
-  box.innerHTML = header + nudge + '<div style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto">' + list + '</div>';
+  box.innerHTML = header + nudge + glRenderCorrespondence('cde', rows);
 }
 
 // Opens the AI email drafter pre-set to write a friendly follow-up nudge for
