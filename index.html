@@ -8604,14 +8604,9 @@ function sendResetLink(){
   }
 }
 
-/* ═══════════════════════════════════════════
-   MAILGUN EMAIL SERVICE
-   Domain matches the Supabase-verified Mailgun subdomain
-   (mail.goodliquidbevco.com). To override at runtime, set
-   localStorage.gl_mailgun_domain.
-═══════════════════════════════════════════ */
-const MAILGUN_DOMAIN_DEFAULT = 'mail.goodliquidbevco.com';
-const MAILGUN_FROM_DEFAULT = 'Good Liquid Bev Co <noreply@mail.goodliquidbevco.com>';
+// (Removed dead MAILGUN_DOMAIN_DEFAULT / MAILGUN_FROM_DEFAULT constants —
+//  outbound email now sends via Gmail; the from-address is set server-side in
+//  the gmail-send / mailgun-send Edge Functions.)
 
 // Lazily load jsPDF (only when the user actually sends an invoice with
 // PDF attached). Bundle stays small at ~0KB for users who never send.

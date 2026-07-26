@@ -158,10 +158,11 @@
 }());
 
 /* ============================================================
-   MAILGUN SETTINGS
-   - openMailgunSettings: modal to paste/view the Mailgun API key
-   - Fixes sendOnboardingEmail so it actually checks Mailgun before
-     reporting success, opens Settings when key is missing.
+   EMAIL DELIVERY SETTINGS
+   Outbound email sends via GMAIL (gmail-send Edge Function); Mailgun is
+   only an automatic fallback. This panel documents where the credentials
+   live (Supabase secrets) and offers a "Test send". Function name
+   openMailgunSettings kept for back-compat.
    ============================================================ */
 (function(){
   /* Wipe any legacy gl_mailgun_key on load. Per the security audit
@@ -180,13 +181,13 @@
     ov.setAttribute('style','position:fixed;inset:0;z-index:900;background:rgba(6,13,26,.95);backdrop-filter:blur(16px);display:flex;align-items:center;justify-content:center;padding:20px');
     ov.innerHTML =
       '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:36px;width:100%;max-width:560px">' +
-        '<div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:2px;color:var(--teal);margin-bottom:8px">📧 MAILGUN SETTINGS</div>' +
-        '<div style="font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.6">Mailgun sends onboarding emails, follow-ups, and tour confirmations. The API key lives <b>server-side in Supabase secrets</b> — the browser never sees it.</div>' +
-        '<div style="background:rgba(29,158,117,.1);border:1px solid rgba(29,158,117,.3);border-radius:8px;padding:12px 16px;font-size:13px;color:#5fcf9e;margin-bottom:20px;line-height:1.6">✅ Sends route through the <code>mailgun-send</code> Edge Function. The function reads <code>MAILGUN_API_KEY</code> from Supabase secrets at run time.</div>' +
-        '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">TO ROTATE THE KEY</div>' +
+        '<div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:2px;color:var(--teal);margin-bottom:8px">📧 EMAIL DELIVERY</div>' +
+        '<div style="font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.6">All outbound email (onboarding, follow-ups, quotes, tour confirmations) sends from your <b>Gmail (mike@goodliquid.com)</b>. All credentials live <b>server-side in Supabase secrets</b> — the browser never sees them.</div>' +
+        '<div style="background:rgba(29,158,117,.1);border:1px solid rgba(29,158,117,.3);border-radius:8px;padding:12px 16px;font-size:13px;color:#5fcf9e;margin-bottom:20px;line-height:1.6">✅ Primary: <code>gmail-send</code> Edge Function (Gmail OAuth). Fallback: <code>mailgun-send</code> if Gmail errors, so mail is never lost.</div>' +
+        '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">CREDENTIALS (Supabase secrets)</div>' +
         '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:12px;margin-bottom:18px;font-size:12px;color:#cfd9e6;line-height:1.7">' +
-          'Run in PowerShell: <code style="background:#0a1628;padding:2px 6px;border-radius:4px;color:var(--teal);font-family:var(--ff-mono);font-size:11px">supabase secrets set MAILGUN_API_KEY=key-...</code><br>' +
-          'Then redeploy the function (or it will pick up the new value on next cold start). No frontend change needed.' +
+          'Gmail: <code style="background:#0a1628;padding:2px 6px;border-radius:4px;color:var(--teal);font-family:var(--ff-mono);font-size:11px">GMAIL_CLIENT_ID / GMAIL_CLIENT_SECRET / GMAIL_REFRESH_TOKEN / GMAIL_FROM</code><br>' +
+          'Fallback: <code style="background:#0a1628;padding:2px 6px;border-radius:4px;color:var(--teal);font-family:var(--ff-mono);font-size:11px">MAILGUN_API_KEY</code>. Set via <code style="color:var(--teal)">supabase secrets set ...</code>; picked up on next cold start.' +
         '</div>' +
         '<div style="display:flex;gap:10px">' +
           '<button onclick="window.glTestMailgun()" style="flex:1;padding:13px;background:rgba(245,200,66,.08);color:#f5c842;border:1px solid rgba(245,200,66,.3);border-radius:8px;cursor:pointer;font-size:13px">Test send</button>' +

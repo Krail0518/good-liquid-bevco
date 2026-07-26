@@ -57,7 +57,9 @@ async function sendWhatsApp(message: string): Promise<boolean> {
   const apiKey = Deno.env.get('CALLMEBOT_API_KEY');
   if (!phone || !apiKey) { console.error('[notify-deal] CALLMEBOT_PHONE or CALLMEBOT_API_KEY not set'); return false; }
   try {
-    const url = `https://api.callmebot.com/whatsapp.php?phone=${phone}&text=${encodeURIComponent(message)}&apikey=${apiKey}`;
+    // URL-encode every value — a phone stored with a leading '+' would otherwise
+    // be read as a space by the receiver and the message would never arrive.
+    const url = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(message)}&apikey=${encodeURIComponent(apiKey)}`;
     const r = await fetch(url);
     const text = await r.text();
     if (!r.ok || text.toLowerCase().includes('error')) {

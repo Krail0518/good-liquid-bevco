@@ -22,7 +22,6 @@
   // closed instead of leaking credentials.
   function getMailgunKey(){ return ''; }
   function getMailgunDomain(){ return 'mail.goodliquidbevco.com'; }
-  function getMailgunFrom(){ return 'Good Liquid Bev Co <noreply@mail.goodliquidbevco.com>'; }
   function getAiKey(){ return ''; }
 
   // Sends email from the company Gmail (mike@goodliquid.com) via the gmail-send
