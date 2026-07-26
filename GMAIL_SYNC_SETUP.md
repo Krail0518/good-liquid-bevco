@@ -141,11 +141,42 @@ means Step 2 didn't include both scopes — redo Step 2 and Step 3.
 
 ---
 
-## Step 5 (optional) — Keep it up to date automatically
+## Step 5 — Syncing while the CRM is closed (optional)
 
-Run the sync on a schedule so history stays current without you doing anything.
-In Supabase → **SQL Editor**, run this (replace `YOUR_CRON_SECRET` with the
-value of the `CRON_SECRET` secret):
+You do **not** need this for normal use. The CRM already syncs itself:
+
+- a quick check of the last 3 days shortly after you open it, then every 15
+  minutes while the tab is open;
+- opening a client or lead refreshes just that contact.
+
+So if the CRM gets opened most days, history stays current on its own. Set up a
+schedule only if you want replies filed even on days you never open the CRM.
+
+### Easiest: Supabase's Cron UI (no keys to handle)
+
+1. Supabase dashboard → **Integrations** → **Cron** (older projects: **Database
+   → Cron Jobs**) → **Create job**.
+2. Name: `gmail-sync-hourly`. Schedule: `0 * * * *` (every hour).
+3. Type: **Supabase Edge Function** → choose **gmail-sync**.
+4. Method **POST**, body:
+
+   ```json
+   { "days": 3, "max": 150 }
+   ```
+
+5. Create. Supabase attaches the authorization itself, so no key is copied
+   anywhere.
+
+Why this rather than a GitHub Action: the scheduler needs a credential, and the
+only one that works from outside is the service-role key — which bypasses every
+security rule in the database. Running the schedule inside Supabase keeps that
+key in the one place it belongs.
+
+### Alternative: SQL (if your project has no Cron UI)
+
+In Supabase → **SQL Editor**. Replace `YOUR_CRON_SECRET` with the value of your
+`CRON_SECRET` edge-function secret (set one if you haven't — any long random
+string, saved in Supabase → Edge Functions → Secrets):
 
 ```sql
 select cron.schedule(
@@ -179,3 +210,18 @@ lead's email. Both directions.
 is deliberate — the sync ignores your personal and unrelated email, and only
 ever *reads* mail to build the history. It never sends, deletes, or modifies
 anything in your mailbox.
+
+## Duplicates
+
+An email the CRM sent is logged twice in principle — once by the CRM at send
+time, once when the sync reads it back out of Gmail. Two things prevent you
+seeing that:
+
+1. `gmail-sync` skips a message that is already logged, matching on the Gmail
+   message id and, failing that, on subject + time + contact.
+2. The correspondence panels merge any remaining same-message pairs on display
+   (`glDedupeEmailRows`), keeping whichever copy has more of the body text.
+
+That second layer means rows logged twice *before* the fix still display once,
+so no database cleanup is required. A genuine reply on the same subject line is
+never merged — it is on the other side of the conversation.

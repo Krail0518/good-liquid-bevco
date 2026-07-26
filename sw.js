@@ -1,4 +1,4 @@
-const CACHE = 'gl-crm-v21';
+const CACHE = 'gl-crm-v22';
 const STATIC = ['/'];
 
 self.addEventListener('install', e => {
