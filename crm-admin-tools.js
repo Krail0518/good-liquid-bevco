@@ -241,10 +241,13 @@
     }
     var filed   = res.inserted || 0;
     var already = res.skipped  || 0;
-    if(filed || already){
+    var fixed   = res.upgraded || 0;
+    if(filed || already || fixed){
       out.style.color = '#5fcf9e';
       out.textContent = '✓ Done — ' + filed + ' new email' + (filed === 1 ? '' : 's') + ' filed, ' +
-        already + ' already had. Open a client or lead and scroll to CORRESPONDENCE.';
+        already + ' already had' +
+        (fixed ? ', ' + fixed + ' had their full text filled in' : '') +
+        '. Open a client or lead and scroll to CORRESPONDENCE.';
     } else {
       // Succeeded but found nothing — say why rather than looking broken.
       out.style.color = '#f5c842';

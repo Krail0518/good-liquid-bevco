@@ -6468,6 +6468,9 @@ async function glSyncGmail(email, opts){
     }
     var d = (r && r.data) || {};
     var msg = (d.inserted || 0) + ' new, ' + (d.skipped || 0) + ' already logged';
+    // Say when existing entries were filled out, otherwise a sync that only
+    // repaired truncated bodies looks like it did nothing.
+    if(d.upgraded) msg += ', ' + d.upgraded + ' filled out in full';
     // Background/automatic syncs stay quiet unless they actually found something,
     // so the notification bell isn't full of "0 new" every 15 minutes.
     var announce = !opts.silent || (d.inserted || 0) > 0;
