@@ -5676,6 +5676,9 @@ function openLeadEmailComposer(){
         ${details.length ? details.map(l=>`<div>• ${esc(l)}</div>`).join('') : '<div style="font-style:italic">No additional details on file.</div>'}
       </div>
 
+      <!-- Correspondence history + nudge (populated after the modal opens) -->
+      <div id="gl-lem-corr" style="margin-bottom:16px"></div>
+
       <!-- Fields -->
       <div style="display:grid;grid-template-columns:60px 1fr;gap:8px 12px;align-items:center;font-size:13px;margin-bottom:12px">
         <label style="color:var(--muted);font-size:11px;letter-spacing:1px">TO</label>
@@ -5715,6 +5718,76 @@ function openLeadEmailComposer(){
   ov.addEventListener('click', e => { if(e.target === ov) ov.remove(); });
   ov.querySelector('#gl-lem-close').onclick  = () => ov.remove();
   ov.querySelector('#gl-lem-cancel').onclick = () => ov.remove();
+
+  // ── Correspondence history + follow-up nudge ──
+  // Loads every email to/from this lead from email_log so Mike can see the
+  // full back-and-forth without leaving the composer, and flags leads who
+  // were emailed but never replied so they can be nudged.
+  async function glLemLoadHistory(){
+    var box = ov.querySelector('#gl-lem-corr');
+    if(!box || !window.supa || !d.email) return;
+    box.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:6px 2px">Loading correspondence…</div>';
+    var safe = String(d.email).replace(/%/g,'\\%').replace(/_/g,'\\_');
+    var r = await window.supa.from('email_log')
+      .select('to_email, from_email, subject, body_preview, status, direction, sent_at, created_at')
+      .or('to_email.ilike.%' + safe + '%,from_email.ilike.%' + safe + '%')
+      .order('created_at', { ascending: false })
+      .limit(30);
+    if(r.error){ box.innerHTML = '<div style="font-size:11px;color:#ff8579;padding:6px 2px">Could not load correspondence.</div>'; return; }
+    var rows = r.data || [];
+
+    // Nudge check: newest outbound with no inbound reply after it, ≥3 days old.
+    var nudgeHtml = '';
+    var lastOut = rows.find(function(x){ return x.direction !== 'inbound'; });
+    if(lastOut){
+      var lastOutT = new Date(lastOut.sent_at || lastOut.created_at).getTime();
+      var replied = rows.some(function(x){ return x.direction === 'inbound' && new Date(x.sent_at || x.created_at).getTime() > lastOutT; });
+      var days = Math.floor((Date.now() - lastOutT) / 86400000);
+      if(!replied && days >= 3){
+        nudgeHtml =
+          '<div style="background:rgba(245,200,66,.08);border:1px solid rgba(245,200,66,.3);border-radius:8px;padding:11px 13px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:10px">' +
+            '<div style="font-size:12px;color:#f5c842;line-height:1.4">⏰ No reply in ' + days + ' days. Send a friendly nudge to check if they’re still interested.</div>' +
+            '<button id="gl-lem-nudge" class="cbtn" style="font-size:12px;white-space:nowrap;background:rgba(245,200,66,.15);border-color:rgba(245,200,66,.4);color:#f5c842">✍️ Draft nudge</button>' +
+          '</div>';
+      }
+    }
+
+    var histHtml;
+    if(!rows.length){
+      histHtml = '<div style="font-size:11px;color:var(--muted);padding:4px 2px">No emails sent to this lead yet.</div>';
+    } else {
+      histHtml =
+        '<div style="font-size:10px;letter-spacing:2px;color:#6b87ad;margin-bottom:8px;font-weight:600">CORRESPONDENCE (' + rows.length + ')</div>' +
+        '<div style="max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">' +
+        rows.map(function(row){
+          var inb = row.direction === 'inbound';
+          var lbl = inb ? '<span style="font-size:10px;letter-spacing:1px;color:#6b9fff">← FROM LEAD</span>'
+                        : '<span style="font-size:10px;letter-spacing:1px;color:var(--muted)">→ SENT</span>';
+          var when = '';
+          try { when = new Date(row.sent_at || row.created_at).toLocaleDateString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); } catch(e){}
+          return '<div style="background:' + (inb?'rgba(26,111,255,.07)':'rgba(255,255,255,.02)') + ';border:1px solid ' + (inb?'rgba(26,111,255,.25)':'rgba(255,255,255,.06)') + ';border-radius:6px;padding:8px 10px">' +
+            '<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:3px">' + lbl +
+              '<span style="font-size:10px;color:rgba(154,167,189,.6)">' + esc(when) + '</span></div>' +
+            '<div style="font-size:12px;color:#fff;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(row.subject||'(no subject)') + '</div>' +
+            (row.body_preview ? '<div style="font-size:11px;color:#9aa7bd;line-height:1.4;margin-top:2px;white-space:pre-wrap">' + esc(row.body_preview) + '</div>' : '') +
+          '</div>';
+        }).join('') +
+        '</div>';
+    }
+    box.innerHTML = nudgeHtml + histHtml;
+
+    var nudgeBtn = ov.querySelector('#gl-lem-nudge');
+    if(nudgeBtn) nudgeBtn.onclick = function(){
+      ov.querySelector('#gl-lem-subject').value = 'Following up — Good Liquid Bev Co' + (d.co ? ' × ' + d.co : '');
+      ov.querySelector('#gl-lem-body').value =
+        'Hi ' + firstName + ',\n\n' +
+        'Just circling back on my note below — I know things get busy! I wanted to make sure it reached you and see if you’re still exploring co-packing for ' + (d.co || 'your brand') + '.\n\n' +
+        'If now’s a good time, I’d be happy to set up a quick 20-minute call or a tour of our Palmetto facility. And if the timing isn’t right, just let me know and I’ll check back down the road.\n\n' +
+        'Best,\nMike\nGood Liquid Bev Co\n(803) 493-5065';
+      ov.querySelector('#gl-lem-body').focus();
+    };
+  }
+  glLemLoadHistory();
 
   // ── Claude draft button ──
   ov.querySelector('#gl-lem-draft').onclick = async function(){
@@ -5772,9 +5845,10 @@ Greet them by first name (${firstName}). Acknowledge what they're building and w
   };
 
   ov.querySelector('#gl-lem-refine-btn').onclick = async function(){
+    var row     = ov.querySelector('#gl-lem-refine-row');
     var instrEl = ov.querySelector('#gl-lem-refine');
     var instruction = instrEl.value.trim();
-    if(!instruction) return;
+    if(!instruction){ window.glRefineFeedback(row, 'Type an instruction first (e.g. "make it shorter") — or just edit the message above directly.', true); instrEl.focus(); return; }
     var subjEl  = ov.querySelector('#gl-lem-subject');
     var bodyEl  = ov.querySelector('#gl-lem-body');
     var aiStatus = ov.querySelector('#gl-lem-ai-status');
@@ -5787,12 +5861,13 @@ Greet them by first name (${firstName}). Acknowledge what they're building and w
     );
     aiStatus.style.display = 'none';
     btn.disabled = false; btn.textContent = '✨ Apply';
-    if(!refined) return;
+    if(!refined){ window.glRefineFeedback(row, '⚠ Couldn’t reach Claude to refine. Try again in a moment, or edit the message directly.', true); return; }
     var lines = refined.split('\n');
     var subjLine = lines.find(function(l){ return /^SUBJECT:/i.test(l); });
     if(subjEl && subjLine) subjEl.value = subjLine.replace(/^SUBJECT:\s*/i,'').trim();
     bodyEl.value = lines.filter(function(l){ return !/^SUBJECT:/i.test(l); }).join('\n').trim();
     instrEl.value = '';
+    window.glRefineFeedback(row, '✓ Applied.', false);
   };
 
   // ── Send button ──
@@ -5825,12 +5900,16 @@ Greet them by first name (${firstName}). Acknowledge what they're building and w
     btn.disabled = false; btn.textContent = '📤 Send Email';
     if(ok){
       result.style.color = '#5fcf9e';
-      result.textContent = '✓ Sent to ' + toRaw;
+      result.textContent = '✓ Sent to ' + toRaw + ' — logged in correspondence below.';
       // Auto-mark outreach status as 'sent'
       if(d.id) await setDealOutreach(d.id, currentDealStage, currentDealIdx, 'sent');
       if(typeof addNotification === 'function') addNotification('📧 Lead emailed', (d.name||d.co) + ' → ' + toRaw, 'email');
       if(typeof window.glAudit === 'function') window.glAudit('lead_emailed', d.id, { to: toRaw, subject });
-      setTimeout(() => { ov.remove(); }, 1600);
+      // Keep the composer open and refresh the thread so the sent message shows
+      // up immediately under this lead (the email_log insert is async — give it
+      // a moment to land before re-querying).
+      ov.querySelector('#gl-lem-body').value = '';
+      setTimeout(glLemLoadHistory, 900);
     } else {
       result.style.color = '#ff8579';
       result.textContent = '✗ Send failed. Check browser console.';
@@ -9199,10 +9278,31 @@ document.addEventListener('change',e=>{
   }
 });
 
+// Shows a small inline note inside a "Refine with Claude" row so clicking
+// ✨ Apply never silently does nothing. Two dead-ends this fixes: an empty
+// instruction box (nothing to refine) and a failed AI call — both used to
+// return with zero feedback, which reads as "the button is broken".
+function glRefineFeedback(rowEl, msg, isError){
+  if(!rowEl) return;
+  var note = rowEl.querySelector('.gl-refine-note');
+  if(!note){
+    note = document.createElement('div');
+    note.className = 'gl-refine-note';
+    note.style.cssText = 'font-size:11px;margin-top:7px;line-height:1.4';
+    rowEl.appendChild(note);
+  }
+  note.style.color = isError ? '#ff8579' : 'var(--teal)';
+  note.textContent = msg;
+  if(note._t) clearTimeout(note._t);
+  note._t = setTimeout(function(){ if(note) note.textContent = ''; }, 5000);
+}
+window.glRefineFeedback = glRefineFeedback;
+
 async function refineFollowupEmail(){
+  var row = document.getElementById('fu-refine-row');
   var instrEl = document.getElementById('fu-refine');
   var instruction = instrEl ? instrEl.value.trim() : '';
-  if(!instruction) return;
+  if(!instruction){ glRefineFeedback(row, 'Type an instruction first (e.g. "make it shorter") — or just edit the message above directly.', true); if(instrEl) instrEl.focus(); return; }
   var subjEl = document.getElementById('fu-subject');
   var bodyEl = document.getElementById('fu-body');
   var btn = document.querySelector('#fu-refine-row button');
@@ -9213,18 +9313,20 @@ async function refineFollowupEmail(){
     'Current email:\nSubject: ' + (subjEl ? subjEl.value.trim() : '') + '\n\n' + (bodyEl ? bodyEl.value.trim() : '') + '\n\n---\nRevise per this instruction: ' + instruction
   );
   if(btn){ btn.disabled = false; btn.textContent = origText; }
-  if(!refined) return;
+  if(!refined){ glRefineFeedback(row, '⚠ Couldn’t reach Claude to refine. Try again in a moment, or edit the message directly.', true); return; }
   var lines = refined.split('\n');
   var subjLine = lines.find(function(l){ return /^subject:/i.test(l); });
   if(subjEl && subjLine) subjEl.value = subjLine.replace(/^subject:\s*/i,'').trim();
   if(bodyEl) bodyEl.value = lines.filter(function(l){ return !/^subject:/i.test(l); }).join('\n').trim();
   if(instrEl) instrEl.value = '';
+  glRefineFeedback(row, '✓ Applied.', false);
 }
 
 async function refineAIComm(){
+  var row = document.getElementById('ai-comm-refine') ? document.getElementById('ai-comm-refine').closest('.frow') : null;
   var instrEl = document.getElementById('ai-comm-refine');
   var instruction = instrEl ? instrEl.value.trim() : '';
-  if(!instruction) return;
+  if(!instruction){ glRefineFeedback(row, 'Type an instruction first (e.g. "more formal") — or just edit the email above directly.', true); if(instrEl) instrEl.focus(); return; }
   var subjEl = document.getElementById('ai-comm-subj');
   var bodyEl = document.getElementById('ai-comm-body');
   var btn = document.querySelector('#ai-comm-output button');
@@ -9235,12 +9337,13 @@ async function refineAIComm(){
     'Current email:\nSubject: ' + (subjEl ? subjEl.value.trim() : '') + '\n\n' + (bodyEl ? bodyEl.value.trim() : '') + '\n\n---\nRevise per this instruction: ' + instruction
   );
   if(btn){ btn.disabled = false; btn.textContent = origText; }
-  if(!refined) return;
+  if(!refined){ glRefineFeedback(row, '⚠ Couldn’t reach Claude to refine. Try again in a moment, or edit the email directly.', true); return; }
   var lines = refined.split('\n');
   var subjLine = lines.find(function(l){ return /^subject:/i.test(l); });
   if(subjEl && subjLine) subjEl.value = subjLine.replace(/^subject:\s*/i,'').trim();
   if(bodyEl) bodyEl.value = lines.filter(function(l){ return !/^subject:/i.test(l); }).join('\n').trim();
   if(instrEl) instrEl.value = '';
+  glRefineFeedback(row, '✓ Applied.', false);
 }
 
 async function generateAIComm(){
