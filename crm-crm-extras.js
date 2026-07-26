@@ -1508,7 +1508,7 @@
      QuickBooks / accountant handoff).
    - "📧 Send overdue reminders" in the same header. Iterates
      all status='overdue' invoices and fires a follow-up email
-     to each client via Mailgun. Skips invoices without a
+     to each client via Gmail. Skips invoices without a
      client email; reports count at the end.
    ============================================================ */
 (function(){
