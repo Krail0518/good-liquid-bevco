@@ -1,0 +1,56 @@
+# Smoke test — critical-path regression guard for the CRM.
+#
+# Runs the headless-browser checks in tests/smoke.test.cjs on every push to
+# main and on every pull request. If a change breaks a critical button
+# (login shell, New Invoice, nav, modals) this job goes red and blocks the
+# merge — catching the "you keep breaking things when we add features" class
+# of bug BEFORE it reaches production.
+#
+# It does NOT touch Supabase or any real credentials: the test serves the
+# static site locally and forces a fake admin session in the browser.
+#
+# Playwright is installed into a temp dir (NOT the repo) so it can never add a
+# package.json/node_modules that would interfere with Vercel's static deploy.
+
+name: Smoke Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+# Cancel superseded runs on the same ref to save minutes.
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the site
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Playwright (into a temp dir, not the repo)
+        run: |
+          mkdir -p /tmp/pw
+          cd /tmp/pw
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.48.0 >/dev/null 2>&1
+          # Download the Chromium browser Playwright will drive.
+          npx playwright install chromium
+
+      - name: Run smoke test
+        env:
+          # Let `require('playwright')` in the .cjs resolve from the temp install.
+          NODE_PATH: /tmp/pw/node_modules
+          # Unset PW_CHROMIUM in CI so Playwright uses the browser it installed.
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/smoke.test.cjs

@@ -3129,7 +3129,7 @@ select option, .fsel option {
 
 <!-- ═══ PHONE BOTTOM TAB BAR — outside crm-panel so position:fixed works cleanly ═══ -->
 <div id="crm-bottom-nav" role="navigation" aria-label="Quick navigation">
-  <button class="crm-bnav-item act" data-page="dash" onclick="cNav('dash');crmBnavSet(this)">
+  <button class="crm-bnav-item act" data-page="dashboard" onclick="cNav('dashboard');crmBnavSet(this)">
     <span class="crm-bnav-ico">📊</span>
     <span class="crm-bnav-lbl">Dashboard</span>
   </button>
@@ -5016,7 +5016,7 @@ async function saveInvoice(status){
   invoices.push({id:num,client:cid,clientName:c?.name||'',svc:desc,amount:total,date,status,notes,lineItems:lines.map(l=>({desc:l.d,qty:1,unitPrice:l.a,total:l.a}))});
   if(c) c.billed+=total;
   renderInvoices();renderDash();renderClients();
-  cNav('invoices',document.querySelectorAll('.cni')[4]);
+  cNav('invoices',document.querySelector('.cni[onclick*="invoices"]'));
   setTimeout(()=>viewInvoice(num),150);
 }
 
