@@ -698,19 +698,23 @@
 
       var sb   = window.supa;
       if(!sb){ st.style.color='#ff8579'; st.textContent='Not connected.'; return; }
-      var resp = await sb.functions.invoke('mailgun-send', {
-        body: {
-          to:          data.clientEmail,
-          subject:     'Good Liquid Production Quote — '+data.quoteNumber+' — '+data.clientName,
-          html:        emailHtml,
-          text:        'Hi '+contact+', please see the attached production quote '+data.quoteNumber+' for '+data.clientName+'. Valid through '+validThru+'. Reply to discuss details.',
-          attachments: [{ filename:'GoodLiquid-'+data.quoteNumber+'.pdf', contentBase64:b64, contentType:'application/pdf' }]
-        }
-      });
+      // Send the quote (with its PDF attachment) from the company Gmail via the
+      // gmail-send Edge Function; fall back to mailgun-send only if Gmail errors.
+      var _mail = {
+        to:          data.clientEmail,
+        subject:     'Good Liquid Production Quote — '+data.quoteNumber+' — '+data.clientName,
+        html:        emailHtml,
+        text:        'Hi '+contact+', please see the attached production quote '+data.quoteNumber+' for '+data.clientName+'. Valid through '+validThru+'. Reply to discuss details.',
+        attachments: [{ filename:'GoodLiquid-'+data.quoteNumber+'.pdf', contentBase64:b64, contentType:'application/pdf' }]
+      };
+      var resp = await sb.functions.invoke('gmail-send', { body: _mail });
+      if(resp.error || (resp.data && resp.data.ok===false)){
+        resp = await sb.functions.invoke('mailgun-send', { body: _mail }); // fallback
+      }
 
       if(resp.error || (resp.data && resp.data.ok===false)){
         st.style.color='#ff8579';
-        st.textContent='Email failed — '+(resp.error ? resp.error.message : 'check Mailgun config.');
+        st.textContent='Email failed — '+(resp.error ? resp.error.message : 'check email config.');
       } else {
         st.style.color='#5fcf9e';
         st.textContent='Quote emailed to '+data.clientEmail+' ✓';

@@ -8844,9 +8844,21 @@ async function generateInvoicePdfBlob(invId){
   }
 }
 
-/* Mailgun send — routes through the `mailgun-send` Edge Function so the
-   API key stays in Supabase secrets and is never exposed to the browser.
-   Attachments are base64-encoded for JSON transport and decoded server-side. */
+/* ⚠️ EMAIL SEND — READ ME (future devs) ⚠️
+   Despite the historical name `sendMailgunEmail`, this is THE single wrapper
+   for ALL outbound CRM email, and as of 2026-07-25 it sends via GMAIL
+   (the company account mike@goodliquid.com) through the `gmail-send` Edge
+   Function — NOT Mailgun. We moved off Mailgun for deliverability (mail wasn't
+   reaching clients). `mailgun-send` is kept only as an automatic fallback that
+   fires if gmail-send errors, so email is never lost.
+   • Credentials (Gmail OAuth / Mailgun key) live in Supabase secrets — never
+     in the browser. Invoked via supa.functions.invoke so the staff JWT is
+     attached and the function authorizes the caller.
+   • Attachments are base64-encoded for JSON transport, decoded server-side.
+   • The name and the `_lastMailgunId` / email_log.mailgun_id fields are legacy
+     and now just hold whichever provider's message id was returned.
+   To fully retire Mailgun later: remove the fallback branch below + the
+   mailgun-* Edge Functions. */
 async function sendMailgunEmail(to, subject, body, opts){
   opts = opts || {};
   function normalizeList(list, primary){
@@ -8927,18 +8939,15 @@ async function sendMailgunEmail(to, subject, body, opts){
       console.error('[email] send rejected ('+via+')', resp.data.error);
       return false;
     }
-    // Stash the message id on the function itself so the email_log
-    // wrapper (fix.js wrapSend IIFE) can pull it for the row insert. Without
-    // this, every email_log row has mailgun_id = null and the
-    // mailgun-webhook function can't match incoming delivered/opened/clicked
-    // events back to the row — so emails sit stuck on "sent" forever
-    // despite the webhook firing correctly. The id arrives in resp.data.id
-    // from the mailgun-send Edge Function. Caught via Playwright runtime
-    // audit on 2026-05-21.
-    var mailgunId = resp.data && resp.data.id ? String(resp.data.id) : null;
-    try { sendMailgunEmail._lastMailgunId = mailgunId; } catch(e){}
+    // Stash the returned provider message id so the email_log wrapper
+    // (crm-email.js wrapSend IIFE) can record it on the row. For Gmail sends
+    // this is the Gmail message id; for a Mailgun fallback send it's the
+    // Mailgun id. (Note: Gmail has no open/click webhook like Mailgun, so
+    // delivered/opened/clicked tracking only populates for Mailgun-sent mail.)
+    var msgId = resp.data && resp.data.id ? String(resp.data.id) : null;
+    try { sendMailgunEmail._lastMailgunId = msgId; } catch(e){}
     return true;
-  } catch(e){ console.error('[Mailgun] threw',e); return false; }
+  } catch(e){ console.error('[email] send threw',e); return false; }
 }
 
 /* ═══════════════════════════════════════════

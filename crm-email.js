@@ -276,15 +276,14 @@
     setTimeout(function(){ d.remove(); }, 4500);
   }
 
-  // Wrap sendMailgunEmail to log every send to email_log.
-  // The underlying sendMailgunEmail (index.html) now stashes the Mailgun
-  // message id on `sendMailgunEmail._lastMailgunId` after each successful
-  // send. We grab it here and write it as `mailgun_id` on the email_log
-  // row so the mailgun-webhook Edge Function can match incoming
-  // delivered/opened/clicked events back to the right row. Without that
-  // link, every email got stuck on "sent" status forever even when the
-  // webhook fired correctly (caught via Playwright runtime audit
-  // 2026-05-21 — GL-1003 send was 1d old with no Delivered/Opened state).
+  // Wrap the email sender (window.sendMailgunEmail — legacy name; it now sends
+  // via GMAIL/gmail-send, Mailgun only as fallback — see index.html) to log
+  // every send to email_log. The sender stashes the returned provider message
+  // id on `sendMailgunEmail._lastMailgunId`; we write it to the (legacy-named)
+  // `mailgun_id` column so the mailgun-webhook can match delivered/opened/
+  // clicked events back to the row. Those tracking events only arrive for
+  // Mailgun-sent mail; Gmail has no equivalent webhook, so Gmail sends simply
+  // stay at "sent" (which is expected, not the old stuck-forever bug).
   (function wrapSend(){
     var orig = window.sendMailgunEmail;
     if(typeof orig !== 'function') { setTimeout(wrapSend, 500); return; }

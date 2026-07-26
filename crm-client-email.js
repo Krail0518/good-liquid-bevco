@@ -4,8 +4,9 @@
    modal so Mike can send and track emails per client without
    leaving the CRM.
 
-   Sends via window.sendMailgunEmail (Mailgun edge function) with
-   replyTo: mike@goodliquid.com so client replies land in the inbox.
+   Sends via window.sendMailgunEmail (legacy name — now sends from the
+   company GMAIL via the gmail-send edge function, Mailgun only as fallback)
+   with replyTo: mike@goodliquid.com so client replies land in the inbox.
    History loads from email_log filtered by the client's email.
    ============================================================ */
 (function(){
