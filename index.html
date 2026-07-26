@@ -6408,7 +6408,8 @@ function glShowEmailFull(key, i){
         (row.body_preview ? glCorrEsc(row.body_preview) : '<span style="color:var(--muted);font-style:italic">No message text was stored for this email.</span>') +
       '</div>' +
       '<div style="font-size:10px;color:rgba(154,167,189,.55);margin-top:10px;line-height:1.5">' +
-        'Note: the CRM stores the beginning of each message, so very long emails may be shortened here.' +
+        'Shows the new message only — the quoted thread below a reply is not stored. ' +
+        'Hit \u{1F504} Sync if an older entry still looks cluttered.' +
       '</div>' +
     '</div>';
   ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
