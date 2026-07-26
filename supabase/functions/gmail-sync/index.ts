@@ -351,7 +351,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     for (const c of candidates) {
       const existing = findExisting(c);
       if (!existing) { fresh.push(c); continue; }
-      if (c.body_preview.length > existing.len + 200) {
+      if (c.body_preview.length > existing.len + 20) {
         upgrades.push({ id: existing.id, body: c.body_preview });
       }
     }
