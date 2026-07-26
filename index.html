@@ -8906,15 +8906,25 @@ async function sendMailgunEmail(to, subject, body, opts){
       }
     }
 
-    // Call the Edge Function via the Supabase client so the user's JWT is
-    // attached automatically (the function checks auth before sending).
-    const resp = await supa.functions.invoke('mailgun-send', { body: payload });
+    // Send from the company Gmail (mike@goodliquid.com) via the gmail-send Edge
+    // Function. gmail-send accepts the same payload shape (to/subject/text/html/
+    // cc/bcc/attachments). Invoked through the Supabase client so the staff JWT
+    // is attached automatically (the function checks auth before sending).
+    // If Gmail fails or isn't configured, fall back to mailgun-send so outbound
+    // email is never lost.
+    let resp = await supa.functions.invoke('gmail-send', { body: payload });
+    let via = 'gmail';
+    if(resp.error || (resp.data && resp.data.ok === false)){
+      console.warn('[email] gmail-send failed, falling back to mailgun-send', resp.error || (resp.data && resp.data.error));
+      resp = await supa.functions.invoke('mailgun-send', { body: payload });
+      via = 'mailgun';
+    }
     if(resp.error){
-      console.error('[Mailgun] edge function error', resp.error);
+      console.error('[email] send failed ('+via+')', resp.error);
       return false;
     }
     if(resp.data && resp.data.ok === false){
-      console.error('[Mailgun] send rejected', resp.data.error);
+      console.error('[email] send rejected ('+via+')', resp.data.error);
       return false;
     }
     // Stash the message id on the function itself so the email_log

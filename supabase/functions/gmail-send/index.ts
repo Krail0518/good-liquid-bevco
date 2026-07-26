@@ -9,6 +9,9 @@
 //     html?:    string              optional HTML alternative
 //     from?:    string              optional override; defaults to GMAIL_FROM
 //     replyTo?: string              optional Reply-To header
+//     cc?:      string | string[]   optional
+//     bcc?:     string | string[]   optional
+//     attachments?: { filename, contentBase64, contentType? }[]   optional
 //   }
 //
 // Response:
@@ -46,37 +49,70 @@ async function getAccessToken(): Promise<string> {
   return d.access_token as string;
 }
 
-function buildMime(
-  from: string, to: string[], subject: string,
-  text: string, html?: string, replyTo?: string,
-): string {
-  const lines: string[] = [
-    `From: ${from}`,
-    `To: ${to.join(', ')}`,
-    `Subject: ${subject}`,
-    'MIME-Version: 1.0',
-  ];
-  if (replyTo) lines.push(`Reply-To: ${replyTo}`);
+interface Attachment { filename: string; contentBase64: string; contentType?: string }
 
+function foldBase64(b64: string): string {
+  return (String(b64).replace(/\s+/g, '').match(/.{1,76}/g) || []).join('\r\n');
+}
+
+// The message body as a MIME part (multipart/alternative when HTML is present).
+function bodyPart(text: string, html?: string): string {
   if (html) {
-    const boundary = 'gl_boundary_' + Date.now();
-    lines.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
-    lines.push('');
-    lines.push(`--${boundary}`);
-    lines.push('Content-Type: text/plain; charset=UTF-8');
-    lines.push('');
-    lines.push(text);
-    lines.push(`--${boundary}`);
-    lines.push('Content-Type: text/html; charset=UTF-8');
-    lines.push('');
-    lines.push(html);
-    lines.push(`--${boundary}--`);
-  } else {
-    lines.push('Content-Type: text/plain; charset=UTF-8');
-    lines.push('');
-    lines.push(text);
+    const alt = 'gl_alt_' + Date.now();
+    return [
+      `Content-Type: multipart/alternative; boundary="${alt}"`,
+      '',
+      `--${alt}`,
+      'Content-Type: text/plain; charset=UTF-8',
+      '',
+      text,
+      `--${alt}`,
+      'Content-Type: text/html; charset=UTF-8',
+      '',
+      html,
+      `--${alt}--`,
+    ].join('\r\n');
   }
-  return lines.join('\r\n');
+  return ['Content-Type: text/plain; charset=UTF-8', '', text].join('\r\n');
+}
+
+function buildMime(
+  from: string, to: string[], subject: string, text: string,
+  html?: string, replyTo?: string,
+  cc?: string[], bcc?: string[], attachments?: Attachment[],
+): string {
+  const headers: string[] = [`From: ${from}`, `To: ${to.join(', ')}`];
+  if (cc  && cc.length)  headers.push(`Cc: ${cc.join(', ')}`);
+  if (bcc && bcc.length) headers.push(`Bcc: ${bcc.join(', ')}`); // Gmail delivers to Bcc and strips the header
+  headers.push(`Subject: ${subject}`);
+  headers.push('MIME-Version: 1.0');
+  if (replyTo) headers.push(`Reply-To: ${replyTo}`);
+
+  const atts = (attachments || []).filter(a => a && a.filename && a.contentBase64);
+  if (!atts.length) {
+    // Headers + body part share one header block (bodyPart begins with Content-Type).
+    return headers.join('\r\n') + '\r\n' + bodyPart(text, html);
+  }
+
+  // multipart/mixed: the body part, then each attachment.
+  const mixed = 'gl_mixed_' + Date.now();
+  const out: string[] = [
+    headers.join('\r\n'),
+    `Content-Type: multipart/mixed; boundary="${mixed}"`,
+    '',
+    `--${mixed}`,
+    bodyPart(text, html),
+  ];
+  for (const a of atts) {
+    out.push(`--${mixed}`);
+    out.push(`Content-Type: ${a.contentType || 'application/octet-stream'}; name="${a.filename}"`);
+    out.push('Content-Transfer-Encoding: base64');
+    out.push(`Content-Disposition: attachment; filename="${a.filename}"`);
+    out.push('');
+    out.push(foldBase64(a.contentBase64));
+  }
+  out.push(`--${mixed}--`);
+  return out.join('\r\n');
 }
 
 function toBase64url(str: string): string {
@@ -120,6 +156,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!from) return errorResponse('GMAIL_FROM not configured', 500);
   const html    = payload.html    ? String(payload.html)    : undefined;
   const replyTo = payload.replyTo ? String(payload.replyTo) : undefined;
+  const cc  = normalizeList(payload.cc);
+  const bcc = normalizeList(payload.bcc);
+  const attachments = Array.isArray(payload.attachments) ? (payload.attachments as Attachment[]) : [];
 
   let accessToken: string;
   try {
@@ -129,7 +168,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return errorResponse('Token error: ' + String(e), 500);
   }
 
-  const raw = toBase64url(buildMime(from, to, subject, text, html, replyTo));
+  const raw = toBase64url(buildMime(from, to, subject, text, html, replyTo, cc, bcc, attachments));
 
   const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
     method: 'POST',
