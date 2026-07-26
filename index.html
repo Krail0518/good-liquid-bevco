@@ -6448,7 +6448,7 @@ window.ddpNudgeLead = ddpNudgeLead;
 // Returns true when the sync succeeded so callers can reload their panel.
 async function glSyncGmail(email, opts){
   opts = opts || {};
-  if(!window.supa){ if(typeof addNotification==='function') addNotification('Sync unavailable','Not connected to the server.','warning'); return false; }
+  if(!window.supa){ if(typeof addNotification==='function') addNotification('Sync unavailable','Not connected to the server.','warning'); return null; }
   var body = email ? { email: email, days: opts.days || 90, max: opts.max || 200 }
                    : { days: opts.days || 90, max: opts.max || 400 };
   try {
@@ -6462,20 +6462,57 @@ async function glSyncGmail(email, opts){
         ? 'Gmail read access isn’t enabled yet — see GMAIL_SYNC_SETUP.md (steps 1–3).'
         : errMsg;
       console.error('[GL] gmail-sync failed', errMsg);
-      if(typeof addNotification==='function') addNotification('Email sync failed', friendly, 'warning');
-      return false;
+      if(!opts.silent && typeof addNotification==='function') addNotification('Email sync failed', friendly, 'warning');
+      glSyncGmail.lastError = friendly;
+      return null;
     }
     var d = (r && r.data) || {};
     var msg = (d.inserted || 0) + ' new, ' + (d.skipped || 0) + ' already logged';
-    if(typeof addNotification==='function') addNotification('📧 Email sync complete', msg, 'success');
-    return true;
+    // Background/automatic syncs stay quiet unless they actually found something,
+    // so the notification bell isn't full of "0 new" every 15 minutes.
+    var announce = !opts.silent || (d.inserted || 0) > 0;
+    if(announce && typeof addNotification==='function') addNotification('📧 Email sync complete', msg, 'success');
+    // Return the payload so callers can show the real counts. Truthy on
+    // success, null on failure, so existing truthiness checks still work.
+    return d;
   } catch(e){
     console.error('[GL] gmail-sync threw', e);
-    if(typeof addNotification==='function') addNotification('Email sync failed', String(e && e.message || e), 'warning');
-    return false;
+    glSyncGmail.lastError = String(e && e.message || e);
+    if(!opts.silent && typeof addNotification==='function') addNotification('Email sync failed', glSyncGmail.lastError, 'warning');
+    return null;
   }
 }
 window.glSyncGmail = glSyncGmail;
+
+// Throttle for automatic syncing: returns true at most once per `minutes` for a
+// given key, and records the attempt. Keeps the background sync from firing on
+// every render (and stops the panel reload below from looping).
+function glAutoSyncDue(key, minutes){
+  try {
+    var k = 'gl_sync_' + key;
+    var last = parseFloat(localStorage.getItem(k) || '0');
+    if(Date.now() - last < minutes * 60000) return false;
+    localStorage.setItem(k, String(Date.now()));
+    return true;
+  } catch(e){ return true; }  // private mode / no storage: just allow it
+}
+window.glAutoSyncDue = glAutoSyncDue;
+
+// AUTOMATIC EMAIL SYNC
+// Keeps correspondence current without anyone pressing a button: a small recent
+// sweep shortly after the CRM opens, then every 15 minutes while the tab is
+// open. Deliberately narrow (last 3 days, capped) so it stays cheap; the manual
+// button remains for a deep backfill. Silent unless it actually files something.
+(function glAutoSyncBoot(){
+  function tick(){
+    if(!window.currentUser || !window.supa) return;      // only for signed-in staff
+    if(document.hidden) return;                          // don't work in a background tab
+    if(!glAutoSyncDue('recent', 15)) return;
+    glSyncGmail(null, { days: 3, max: 120, silent: true });
+  }
+  setTimeout(tick, 8000);
+  setInterval(tick, 15 * 60000);
+})();
 
 // Click handler for the 🔄 Sync button in a correspondence panel header:
 // syncs just this contact, then reloads whichever panel asked for it.
@@ -6495,6 +6532,27 @@ async function glSyncCorrPanel(btn, email, panel, id){
   }
 }
 window.glSyncCorrPanel = glSyncCorrPanel;
+
+// Opening a client or lead quietly refreshes just that contact's mail in the
+// background, so the thread is current the moment you look at it — no button.
+// Throttled per contact, and the panel is only re-rendered if something new
+// was actually filed (which also stops a render -> sync -> render loop).
+function glAutoSyncContact(email, panel, id){
+  if(!email || !window.supa || !window.currentUser) return;
+  if(!glAutoSyncDue('c_' + String(email).toLowerCase(), 15)) return;
+  glSyncGmail(email, { days: 90, max: 100, silent: true }).then(function(res){
+    if(!res || !(res.inserted > 0)) return;
+    if(panel === 'cde'){
+      var c = (window.clients||[]).find(function(x){ return x.id === id; });
+      // Only refresh if the user is still looking at this client.
+      if(c && document.getElementById('client-detail-overlay')) cdeLoadCorrespondence(c);
+    } else if(panel === 'ddp'){
+      var d = (deals[currentDealStage]||[])[currentDealIdx];
+      if(d && d.email === email) ddpLoadCorrespondence(d);
+    }
+  });
+}
+window.glAutoSyncContact = glAutoSyncContact;
 
 // Attaches the Sync handler to a freshly-rendered correspondence panel. Values
 // are captured in this closure rather than written into an HTML attribute, so
@@ -6560,6 +6618,7 @@ async function ddpLoadCorrespondence(d){
   if(!rows.length){
     box.innerHTML = header + '<div style="font-size:11px;color:var(--muted)">No emails logged for this lead yet. Use 🔄 Sync to pull history in from Gmail.</div>';
     glWireCorrSync(box, d.email, 'ddp');
+    glAutoSyncContact(d.email, 'ddp');
     return;
   }
 
@@ -6580,6 +6639,7 @@ async function ddpLoadCorrespondence(d){
 
   box.innerHTML = header + nudge + glRenderCorrespondence('ddp', rows);
   glWireCorrSync(box, d.email, 'ddp');
+  glAutoSyncContact(d.email, 'ddp');
 }
 
 function editDealDetail(){
@@ -10557,6 +10617,7 @@ async function cdeLoadCorrespondence(client){
   if(!rows.length){
     box.innerHTML = header + '<div style="font-size:11px;color:var(--muted)">No emails logged for this client yet. Use 🔄 Sync to pull history in from Gmail.</div>';
     glWireCorrSync(box, client.email, 'cde', client.id);
+    glAutoSyncContact(client.email, 'cde', client.id);
     return;
   }
 
@@ -10577,6 +10638,7 @@ async function cdeLoadCorrespondence(client){
 
   box.innerHTML = header + nudge + glRenderCorrespondence('cde', rows);
   glWireCorrSync(box, client.email, 'cde', client.id);
+  glAutoSyncContact(client.email, 'cde', client.id);
 }
 
 // Opens the AI email drafter pre-set to write a friendly follow-up nudge for

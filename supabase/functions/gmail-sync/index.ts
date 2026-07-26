@@ -225,18 +225,60 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   // ── 4) Skip anything already logged, insert the rest ──
+  //
+  // Two dedup passes, because matching on the provider id alone is not enough.
+  // The CRM records the Gmail message id when it sends, but rows written before
+  // that capture existed (or by any path that didn't record an id) have none —
+  // and those showed up as a second copy of an email the CRM had already
+  // logged. So we also match on content: same subject, sent within ten minutes,
+  // same contact on the row.
   let inserted = 0, skipped = 0;
   if (candidates.length) {
-    const existing = new Set<string>();
-    // Chunk the id lookup so a large sync doesn't build an oversized filter.
+    // (a) Precise: the Gmail message id is already stored.
+    const existingIds = new Set<string>();
     for (let i = 0; i < candidates.length; i += 100) {
       const chunk = candidates.slice(i, i + 100).map((c) => c.mailgun_id);
       const eRes = await supa.from('email_log').select('mailgun_id').in('mailgun_id', chunk);
       for (const row of eRes.data || []) {
-        if ((row as Record<string, string>).mailgun_id) existing.add((row as Record<string, string>).mailgun_id);
+        const id = (row as Record<string, string>).mailgun_id;
+        if (id) existingIds.add(id);
       }
     }
-    const fresh = candidates.filter((c) => !existing.has(c.mailgun_id));
+
+    // (b) Content: rows already logged around the same time as our candidates.
+    const times = candidates.map((c) => Date.parse(c.sent_at)).filter((t) => Number.isFinite(t));
+    let priorRows: Record<string, unknown>[] = [];
+    if (times.length) {
+      const lo = new Date(Math.min(...times) - 15 * 60000).toISOString();
+      const hi = new Date(Math.max(...times) + 15 * 60000).toISOString();
+      const pRes = await supa.from('email_log')
+        .select('subject, to_email, from_email, sent_at, created_at')
+        .gte('sent_at', lo).lte('sent_at', hi).limit(2000);
+      if (!pRes.error) priorRows = (pRes.data || []) as Record<string, unknown>[];
+      else console.warn('[gmail-sync] content-dedup lookup failed:', pRes.error.message);
+    }
+
+    // "Re: x" and "x" are the same conversation for dedup purposes.
+    const normSubject = (v: unknown) =>
+      String(v || '').replace(/^\s*(re|fwd|fw)\s*:\s*/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+    const alreadyLogged = (c: Row) => {
+      if (existingIds.has(c.mailgun_id)) return true;
+      const cSub = normSubject(c.subject);
+      const cAt = Date.parse(c.sent_at);
+      const contact = String((c.direction === 'inbound' ? c.from_email : c.to_email) || '').toLowerCase();
+      return priorRows.some((e) => {
+        if (normSubject(e.subject) !== cSub) return false;
+        const eAt = Date.parse(String(e.sent_at || e.created_at || ''));
+        if (!Number.isFinite(eAt) || !Number.isFinite(cAt)) return false;
+        if (Math.abs(eAt - cAt) > 10 * 60000) return false;
+        // Direction is intentionally not compared: older rows predate the column.
+        const addrs = (String(e.to_email || '') + ' ' + String(e.from_email || '')).toLowerCase();
+        return !contact || addrs.includes(contact);
+      });
+    };
+
+    const fresh = candidates.filter((c) => !alreadyLogged(c));
     skipped = candidates.length - fresh.length;
 
     for (let i = 0; i < fresh.length; i += 50) {
