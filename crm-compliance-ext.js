@@ -25,19 +25,27 @@
   function getMailgunFrom(){ return 'Good Liquid Bev Co <noreply@mail.goodliquidbevco.com>'; }
   function getAiKey(){ return ''; }
 
-  async function sendMailgun(to, subject, text, html){
+  // Sends email from the company Gmail (mike@goodliquid.com) via the gmail-send
+  // Edge Function. Falls back to mailgun-send only if Gmail errors, so mail is
+  // never lost. (Named sendMailgun for historical reasons — the app moved off
+  // Mailgun to Gmail on 2026-07-25 for deliverability; kept the name to avoid
+  // touching call sites.)
+  async function sendEmail(to, subject, text, html){
     if(!window.supa || !window.supa.functions){
       return { ok:false, error:'Supabase client not ready' };
     }
+    var payload = { to: to, subject: subject, text: text || '', html: html || undefined };
     try {
-      var resp = await window.supa.functions.invoke('mailgun-send', {
-        body: { to: to, subject: subject, text: text || '', html: html || undefined }
-      });
-      if(resp.error){ return { ok:false, error: resp.error.message || 'Mailgun call failed' }; }
-      if(resp.data && resp.data.ok === false){ return { ok:false, error: resp.data.error || 'Mailgun rejected' }; }
+      var resp = await window.supa.functions.invoke('gmail-send', { body: payload });
+      if(resp.error || (resp.data && resp.data.ok === false)){
+        resp = await window.supa.functions.invoke('mailgun-send', { body: payload }); // fallback
+      }
+      if(resp.error){ return { ok:false, error: resp.error.message || 'email send failed' }; }
+      if(resp.data && resp.data.ok === false){ return { ok:false, error: resp.data.error || 'email rejected' }; }
       return { ok:true };
     } catch(e){ return { ok:false, error: e.message || 'send failed' }; }
   }
+  var sendMailgun = sendEmail; // back-compat alias for existing call sites
 
   async function askClaude(prompt, opts){
     opts = opts || {};

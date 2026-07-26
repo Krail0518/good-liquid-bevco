@@ -240,11 +240,13 @@
     host.appendChild(ov);
   };
 
+  // Sends a test email through the standard sender (now Gmail via gmail-send,
+  // Mailgun fallback). Function name kept for back-compat.
   window.glTestMailgun = async function(){
-    if(typeof window.sendMailgunEmail !== 'function'){ alert('sendMailgunEmail unavailable.'); return; }
-    var ok = await window.sendMailgunEmail('mike@goodliquid.com','Mailgun test from Good Liquid CRM','This is a test email confirming Mailgun is wired up. — Good Liquid CRM');
+    if(typeof window.sendMailgunEmail !== 'function'){ alert('Email sender unavailable.'); return; }
+    var ok = await window.sendMailgunEmail('mike@goodliquid.com','Test email from Good Liquid CRM','This is a test email confirming outbound email (Gmail) is wired up. — Good Liquid CRM');
     if(ok) alert('✓ Test email sent to mike@goodliquid.com');
-    else alert('✗ Test failed. Check that MAILGUN_API_KEY is set in Supabase secrets (run `supabase secrets list`) and that the mailgun-send Edge Function is deployed.');
+    else alert('✗ Test failed. Check the gmail-send Edge Function is deployed and the GMAIL_* secrets are set (run `supabase secrets list`). Mailgun fallback also failed or is unconfigured.');
   };
 
   /* sendOnboardingEmail (called by the "📧 Send Onboarding Email" button on

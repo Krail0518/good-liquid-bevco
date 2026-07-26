@@ -222,8 +222,8 @@
       var sb = window.supa;
       if(!sb) return;
       var name = (user.name || user.email || 'there').split(' ')[0];
-      await sb.functions.invoke('mailgun-send', {
-        body: {
+      // Send from the company Gmail (gmail-send); mailgun-send is only a fallback.
+      var _ipMail = {
           to: user.email,
           subject: 'New sign-in location detected — Good Liquid CRM',
           html: [
@@ -238,8 +238,11 @@
             '<p style="font-size:12px;color:#6b7280">Good Liquid Beverage Co. CRM — automated security alert</p>',
             '</div>'
           ].join('')
-        }
-      });
+      };
+      var resp = await sb.functions.invoke('gmail-send', { body: _ipMail });
+      if(resp.error || (resp.data && resp.data.ok===false)){
+        await sb.functions.invoke('mailgun-send', { body: _ipMail }); // fallback
+      }
     } catch(e){ console.warn('[GL] new-IP email failed:', e); }
   }
 
