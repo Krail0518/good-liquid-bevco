@@ -118,6 +118,17 @@ function htmlToText(html: string): string {
 //
 // This exists because fetching format=metadata only yields Gmail's ~200-char
 // `snippet`, which made every synced email look cut off mid-sentence.
+// Gmail's `snippet` field is HTML-escaped, so a raw fallback stored text like
+// "you&#39;re" and "&gt; wrote:". Decode the entities before storing.
+function decodeEntities(t: string): string {
+  return String(t)
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&lt;/gi, '<').replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"').replace(/&#0?39;/gi, "'").replace(/&apos;/gi, "'")
+    .replace(/&#(\d+);/g, (_m, d) => { try { return String.fromCodePoint(Number(d)); } catch { return _m; } })
+    .replace(/&amp;/gi, '&');   // last, so "&amp;lt;" doesn't become "<"
+}
+
 function extractBody(payload: unknown): string {
   const plain: string[] = [];
   const html:  string[] = [];
@@ -274,7 +285,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       // The real message text, falling back to Gmail's snippet only if the body
       // could not be decoded. Generous cap — the column is unlimited `text` and
       // the correspondence popup scrolls.
-      body_preview: (extractBody(msg.payload) || String(msg.snippet || '')).slice(0, 8000),
+      body_preview: (extractBody(msg.payload) || decodeEntities(String(msg.snippet || ''))).slice(0, 8000),
       status:       'delivered',
       client_id:    contacts.get(contactEmail) || null,
       mailgun_id:   String(id),
