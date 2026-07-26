@@ -6348,13 +6348,79 @@ function openDealDetail(stage, idx){
       <button onclick="editDealDetail()" style="flex:1;padding:10px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:800;font-size:13px;cursor:pointer">✏️ Edit</button>
       <button onclick="openLeadEmailComposer()" style="flex:1;padding:10px;background:rgba(26,111,255,.15);color:#6b9fff;border:1px solid rgba(26,111,255,.35);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">✉️ Email Lead</button>
       <button onclick="deleteDeal()" style="padding:10px 16px;background:rgba(231,76,60,.15);color:#e74c3c;border:1px solid rgba(231,76,60,.3);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">Delete</button>
-    </div>`;
+    </div>
+    <div id="ddp-corr" style="margin-top:18px;border-top:1px solid rgba(255,255,255,.07);padding-top:16px"></div>`;
 
   document.getElementById('ddp-view-mode').innerHTML = viewHTML;
   document.getElementById('ddp-view-mode').style.display = 'flex';
   document.getElementById('ddp-edit-mode').style.display = 'none';
   document.getElementById('ddp-title').textContent = 'DEAL DETAILS';
   document.getElementById('deal-detail-panel').classList.add('show');
+  // Load the email correspondence for this lead into the panel above.
+  ddpLoadCorrespondence(d);
+}
+
+// Loads every email to/from this lead (from email_log) and renders a
+// read-only thread inside the Deal Details view, so past correspondence is
+// visible right in the lead's account. Flags leads with no reply after 3+
+// days and offers a one-click jump to the Email Lead composer to nudge them.
+async function ddpLoadCorrespondence(d){
+  var box = document.getElementById('ddp-corr');
+  if(!box) return;
+  if(!d || !d.email){
+    box.innerHTML = '<div style="font-size:11px;color:var(--muted)">Add an email address to this lead to track correspondence.</div>';
+    return;
+  }
+  if(!window.supa){ box.innerHTML = ''; return; }
+  box.innerHTML = '<div style="font-size:11px;color:var(--muted)">Loading correspondence…</div>';
+  var safe = String(d.email).replace(/%/g,'\\%').replace(/_/g,'\\_');
+  var r = await window.supa.from('email_log')
+    .select('to_email, from_email, subject, body_preview, status, direction, sent_at, created_at')
+    .or('to_email.ilike.%' + safe + '%,from_email.ilike.%' + safe + '%')
+    .order('created_at', { ascending: false })
+    .limit(30);
+  if(r.error){ box.innerHTML = '<div style="font-size:11px;color:#ff8579">Could not load correspondence.</div>'; return; }
+  var rows = r.data || [];
+
+  var header = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
+      '<span style="font-size:10px;letter-spacing:2px;color:var(--teal)">📧 CORRESPONDENCE' + (rows.length ? ' (' + rows.length + ')' : '') + '</span>' +
+      '<button onclick="openLeadEmailComposer()" style="font-size:11px;padding:4px 12px;background:rgba(26,111,255,.15);color:#6b9fff;border:1px solid rgba(26,111,255,.35);border-radius:6px;cursor:pointer">✉️ New email</button>' +
+    '</div>';
+
+  if(!rows.length){
+    box.innerHTML = header + '<div style="font-size:11px;color:var(--muted)">No emails logged for this lead yet. Older emails sent before tracking was added won’t appear here — new ones will.</div>';
+    return;
+  }
+
+  // Nudge: newest outbound with no inbound reply after it, 3+ days old.
+  var nudge = '';
+  var lastOut = rows.find(function(x){ return x.direction !== 'inbound'; });
+  if(lastOut){
+    var t = new Date(lastOut.sent_at || lastOut.created_at).getTime();
+    var replied = rows.some(function(x){ return x.direction === 'inbound' && new Date(x.sent_at || x.created_at).getTime() > t; });
+    var days = Math.floor((Date.now() - t) / 86400000);
+    if(!replied && days >= 3){
+      nudge = '<div style="background:rgba(245,200,66,.08);border:1px solid rgba(245,200,66,.3);border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:#f5c842;line-height:1.4">' +
+        '⏰ No reply in ' + days + ' days. Open ✉️ Email Lead to send a follow-up nudge.</div>';
+    }
+  }
+
+  var esc = window.glEsc || function(s){ return String(s==null?'':s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); };
+  var list = rows.map(function(row){
+    var inb = row.direction === 'inbound';
+    var lbl = inb ? '<span style="font-size:10px;letter-spacing:1px;color:#6b9fff">← FROM LEAD</span>'
+                  : '<span style="font-size:10px;letter-spacing:1px;color:var(--muted)">→ SENT</span>';
+    var when = '';
+    try { when = new Date(row.sent_at || row.created_at).toLocaleDateString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); } catch(e){}
+    return '<div style="background:' + (inb?'rgba(26,111,255,.07)':'rgba(255,255,255,.02)') + ';border:1px solid ' + (inb?'rgba(26,111,255,.25)':'rgba(255,255,255,.06)') + ';border-radius:6px;padding:8px 10px">' +
+      '<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:3px">' + lbl +
+        '<span style="font-size:10px;color:rgba(154,167,189,.6)">' + esc(when) + '</span></div>' +
+      '<div style="font-size:12px;color:#fff;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(row.subject||'(no subject)') + '</div>' +
+      (row.body_preview ? '<div style="font-size:11px;color:#9aa7bd;line-height:1.4;margin-top:2px;white-space:pre-wrap">' + esc(row.body_preview) + '</div>' : '') +
+    '</div>';
+  }).join('');
+
+  box.innerHTML = header + nudge + '<div style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto">' + list + '</div>';
 }
 
 function editDealDetail(){
