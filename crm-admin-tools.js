@@ -189,12 +189,40 @@
           'Gmail: <code style="background:#0a1628;padding:2px 6px;border-radius:4px;color:var(--teal);font-family:var(--ff-mono);font-size:11px">GMAIL_CLIENT_ID / GMAIL_CLIENT_SECRET / GMAIL_REFRESH_TOKEN / GMAIL_FROM</code><br>' +
           'Fallback: <code style="background:#0a1628;padding:2px 6px;border-radius:4px;color:var(--teal);font-family:var(--ff-mono);font-size:11px">MAILGUN_API_KEY</code>. Set via <code style="color:var(--teal)">supabase secrets set ...</code>; picked up on next cold start.' +
         '</div>' +
+        // Incoming side: pull real Gmail history into the CRM. This is the
+        // in-app equivalent of invoking gmail-sync from the Supabase dashboard,
+        // so the initial backfill never requires a trip there.
+        '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">INCOMING MAIL</div>' +
+        '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:12px;margin-bottom:18px;font-size:12px;color:#cfd9e6;line-height:1.7">' +
+          'Sync reads your Gmail and files every message to or from a client or lead into their correspondence panel — including replies and mail you sent from your phone. Needs the <code style="color:var(--teal)">gmail.readonly</code> scope on <code style="color:var(--teal)">GMAIL_REFRESH_TOKEN</code> (see GMAIL_SYNC_SETUP.md).' +
+        '</div>' +
+        '<button id="gl-sync-all-btn" onclick="window.glSyncAllEmail(this)" style="width:100%;padding:13px;background:rgba(0,229,192,.1);color:var(--teal);border:1px solid rgba(0,229,192,.3);border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;margin-bottom:12px">🔄 Sync email history from Gmail</button>' +
         '<div style="display:flex;gap:10px">' +
           '<button onclick="window.glTestMailgun()" style="flex:1;padding:13px;background:rgba(245,200,66,.08);color:#f5c842;border:1px solid rgba(245,200,66,.3);border-radius:8px;cursor:pointer;font-size:13px">Test send</button>' +
           '<button onclick="document.getElementById(\'mg-settings-overlay\').remove()" style="padding:13px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer">Close</button>' +
         '</div>' +
       '</div>';
     document.body.appendChild(ov);
+  };
+
+  /* Full Gmail history sync, triggered from the Email Delivery panel. Runs the
+     gmail-sync edge function over every client/lead address and reports the
+     result inline on the button so the outcome is obvious without opening the
+     console. Deliberately a wide sweep (180 days) since this is the one-time
+     backfill; the per-client 🔄 Sync buttons handle day-to-day top-ups. */
+  window.glSyncAllEmail = async function(btn){
+    if(typeof window.glSyncGmail !== 'function'){
+      alert('Email sync is not available in this build.');
+      return;
+    }
+    var orig = btn ? btn.textContent : '';
+    if(btn){ btn.disabled = true; btn.textContent = '🔄 Syncing your email… this can take a minute'; }
+    var ok = await window.glSyncGmail(null, { days: 180, max: 400 });
+    if(btn){
+      btn.disabled = false;
+      btn.textContent = ok ? '✓ Synced — open a client to see the history' : '⚠ Sync failed — see the notification';
+      setTimeout(function(){ if(btn) btn.textContent = orig; }, 6000);
+    }
   };
 
   /* Reusable masked-credential reveal modal — used by onboarding to surface
