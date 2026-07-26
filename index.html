@@ -6573,19 +6573,57 @@ window.glWireCorrSync = glWireCorrSync;
 // SELECT) and, if the two-direction OR filter errors, falls back to matching
 // on `to_email` alone — the always-present core column — so outbound history
 // still shows. Returns { rows, error }.
+// Collapses rows that are the SAME message logged twice — one written by the
+// CRM when it sent the mail, one pulled back out of Gmail by gmail-sync. The
+// sync now avoids creating these, but rows logged before that fix are already
+// in the table, so we also merge them on the way out: same subject (ignoring a
+// Re:/Fwd: prefix), same side of the conversation, within ten minutes.
+//
+// Doing it here rather than deleting rows means no destructive cleanup is
+// needed, and the counts, nudge logic and thread all agree because every panel
+// reads through this one loader.
+function glDedupeEmailRows(rows){
+  var norm = function(v){
+    return String(v == null ? '' : v).replace(/^\s*(re|fwd|fw)\s*:\s*/gi, '')
+      .replace(/\s+/g, ' ').trim().toLowerCase();
+  };
+  var when = function(x){ return Date.parse(x && (x.sent_at || x.created_at) || '') || 0; };
+  var kept = [];
+  (rows || []).forEach(function(row){
+    var rSub = norm(row.subject);
+    var rIn  = row.direction === 'inbound';
+    var rAt  = when(row);
+    var dupOf = null;
+    for(var i = 0; i < kept.length; i++){
+      var k = kept[i];
+      if(norm(k.subject) !== rSub) continue;
+      if((k.direction === 'inbound') !== rIn) continue;   // a reply is NOT a duplicate
+      if(Math.abs(when(k) - rAt) > 10 * 60000) continue;
+      dupOf = i; break;
+    }
+    if(dupOf === null){ kept.push(row); return; }
+    // Same message twice: keep whichever copy has more of the body, since the
+    // CRM stores the full text while Gmail only gives a short snippet.
+    var a = kept[dupOf], aLen = (a.body_preview || '').length, bLen = (row.body_preview || '').length;
+    if(bLen > aLen) kept[dupOf] = row;
+  });
+  return kept;
+}
+window.glDedupeEmailRows = glDedupeEmailRows;
+
 async function glLoadEmailLog(email){
   var sb = window.supa;
   if(!sb || !email) return { rows: [], error: null };
   var safe = String(email).replace(/%/g,'\\%').replace(/_/g,'\\_');
   var r = await sb.from('email_log').select('*')
     .or('to_email.ilike.%' + safe + '%,from_email.ilike.%' + safe + '%')
-    .order('created_at', { ascending: false }).limit(30);
-  if(!r.error) return { rows: r.data || [], error: null };
+    .order('created_at', { ascending: false }).limit(50);
+  if(!r.error) return { rows: glDedupeEmailRows(r.data || []), error: null };
   console.warn('[GL] email_log OR query failed; retrying on to_email only', r.error);
   var r2 = await sb.from('email_log').select('*')
     .ilike('to_email', '%' + safe + '%')
-    .order('created_at', { ascending: false }).limit(30);
-  if(!r2.error) return { rows: r2.data || [], error: null };
+    .order('created_at', { ascending: false }).limit(50);
+  if(!r2.error) return { rows: glDedupeEmailRows(r2.data || []), error: null };
   console.error('[GL] email_log load failed', r2.error);
   return { rows: [], error: r2.error };
 }
