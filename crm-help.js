@@ -724,7 +724,8 @@
     '<b>Status meanings</b>: <code>sent</code> (accepted for delivery) → <code>delivered</code> (recipient mail server accepted) → <code>opened</code> (recipient opened the email) → <code>clicked</code> (recipient clicked a link in the email). <code>bounced</code> = permanent delivery failure; <code>failed</code> = the provider rejected the request. (Note: delivered/opened/clicked tracking only populates for Mailgun-fallback sends; Gmail has no open/click webhook, so Gmail sends stay at <code>sent</code>.)',
     '<b>How tracking works</b>: for Mailgun-sent mail, Mailgun fires webhooks at our <code>mailgun-webhook</code> Edge Function, which updates the matching row in <code>email_log</code>. Status changes are reflected the next time you open the Activity view (or refresh).',
     '<b>Auto-tagging</b>: when an email subject or body contains <code>GL-####</code>, the log row is automatically linked to that invoice. So sends from the Send Invoice composer show up in their invoice\'s Activity tab.',
-    '<b>What\'s logged</b>: To, Cc, Bcc, subject, body preview (first 280 chars), status, sent timestamp, delivered timestamp, first open timestamp, open count, click count, bounce reason. Stored in the <code>email_log</code> table.'
+    '<b>What\'s logged</b>: To, Cc, Bcc, subject, the message text, status, sent timestamp, delivered timestamp, first open timestamp, open count, click count, bounce reason. Stored in the <code>email_log</code> table.',
+    '<b>Incoming mail too</b>: the Gmail sync files replies from clients and leads into the same table (direction = inbound), which is what powers the two-way CORRESPONDENCE panel on each client and deal. See the <b>📧 Email &amp; Correspondence</b> help section for the panel, the no-reply nudge, and the pipeline follow-up badges.'
   ]);
 
   // ────────────────────────────────────────────────────────────

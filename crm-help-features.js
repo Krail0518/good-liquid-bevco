@@ -584,8 +584,9 @@
     intro('Compose and track emails to a client without leaving the CRM. The email panel lives at the bottom of the Edit Client modal — one thread per client, with scrollable history.') +
     bullets([
       '<b>Compose:</b> type subject + body → Send. Sent from your Gmail server-side. Replies from the client arrive at mike@goodliquid.com (reply-to header).',
-      '<b>History:</b> shows the last 30 emails sent to that client\'s address with status (sent / delivered / opened / clicked).',
-      'History is pulled live from the email_log table, so Email Activity and Client Email Thread always show the same data.'
+      '<b>History:</b> the emails logged against that client\'s address, with status (sent / delivered / opened / clicked).',
+      'History is pulled live from the email_log table, so Email Activity and Client Email Thread always show the same data.',
+      '<b>For the full two-way thread</b> (their replies included, plus the follow-up nudge) use the CORRESPONDENCE panel on the client detail view or the pipeline deal — see the <b>📧 Email &amp; Correspondence</b> help section.'
     ]) +
     steps([
       'Clients page → click any client row → "Edit" button (or edit icon).',
@@ -880,6 +881,98 @@
     ]) +
     whereToFind('Pipeline → deal detail panel → ✅ Close Job button (admin only)');
 
+  /* SECTION 11 — EMAIL & CORRESPONDENCE */
+  var MOCK_CORR = wf(620, 250,
+    box(0,0,620,34,'#142238') + txt(15,23,'DEAL DETAILS — CORRESPONDENCE',11,'#fff') +
+    box(15,46,590,30,'rgba(245,200,66,.10)','rgba(245,200,66,.35)') +
+    txt(26,66,'⏰ No reply in 11 days.',11,'#f5c842') +
+    box(455,52,140,19,'rgba(245,200,66,.18)','rgba(245,200,66,.45)') +
+    txt(525,66,'✍️ Draft nudge',10,'#f5c842','middle') + tag(600,61,1) +
+    box(15,88,590,44,'rgba(26,111,255,.07)','rgba(26,111,255,.25)') +
+    txt(26,106,'← FROM LEAD',9,'#6b9fff') + txt(560,106,'Jul 24',9,'#6b7fa3','end') +
+    txt(26,122,'Re: Co-Packing Quote (3 SKUs)',11,'#fff') + tag(600,110,2) +
+    box(15,140,590,44,'rgba(255,255,255,.02)') +
+    txt(26,158,'→ SENT',9,'#9aa7bd') + txt(560,158,'Jul 21',9,'#6b7fa3','end') +
+    txt(26,174,'Good Liquid × Perico, Co-Packing Quote',11,'#fff') +
+    box(15,196,180,26,'rgba(255,255,255,.05)') + txt(105,213,'🔄 Sync',10,'#9aa7bd','middle') + tag(205,209,3) +
+    box(415,196,190,26,'rgba(0,229,192,.12)','rgba(0,229,192,.3)') +
+    txt(510,213,'✉️ New email',10,'#00e5c0','middle') +
+    txt(15,240,'Newest first, by the date the email was actually sent.',10,'#6b7fa3'));
+
+  var SEC_CORR = MOCK_CORR +
+    locator(
+      '<b>Lead correspondence</b> &rarr; <b>Pipeline</b> &rarr; click any deal card &rarr; scroll to <b>📧 CORRESPONDENCE</b>.<br>' +
+      '<b>Client correspondence</b> &rarr; <b>Clients</b> &rarr; click any client row &rarr; scroll to the bottom of the detail panel.<br>' +
+      '<b>Follow-up badges</b> &rarr; <b>Pipeline</b> board, on each card next to the "13d in stage" pill.<br>' +
+      '<b>Full email sync + backfill</b> &rarr; <b>🤖 AI toolbar</b> &rarr; Quick Actions &rarr; <b>📧 Email Delivery</b>.'
+    ) +
+
+    subhead('📧', 'CORRESPONDENCE PANEL (LEADS & CLIENTS)') +
+    intro('Every email to or from a lead or client, in one thread on their record. This includes their replies and mail you sent from the Gmail app on your phone, not just what you sent through the CRM.') +
+    bullets([
+      '<b>Two-way thread:</b> <span style="color:#6b9fff">← FROM LEAD</span> is something they sent you, <span style="color:#9aa7bd">→ SENT</span> is something you sent.',
+      '<b>Click any entry</b> to read the whole message in a popup. The list itself shows two lines per email so a long message cannot push the rest of the panel off screen.',
+      '<b>Quoted threads are trimmed.</b> Only the new message is stored, not the "On &lt;date&gt; ... wrote:" history, the Outlook footer, or the giant link wrappers some corporate mail filters add.',
+      '<b>Ordered by send date</b>, newest first — not by when the CRM happened to file it.',
+      'Duplicates are merged automatically: an email the CRM logged when sending and then read back from Gmail shows once, keeping whichever copy has more of the message.'
+    ]) +
+    whereToFind('Pipeline → any deal card → 📧 CORRESPONDENCE  ·  or  Clients → any client → bottom of the panel') +
+
+    subhead('⏰', 'NO-REPLY NUDGE') +
+    intro('When the last email you sent has gone 3 or more days without a reply, a yellow banner appears on that lead or client with a one-click follow-up.') +
+    bullets([
+      'Counts from the newest email <i>you</i> sent. If they replied after it, no banner — the ball is in your court, not theirs.',
+      '<b>✍️ Draft nudge</b> opens the email composer with a friendly follow-up already written. Review it, edit if you want, send.',
+      'On a client it opens the AI drafter instead, pre-set to write a warm check-in for that account.'
+    ]) +
+    steps([
+      'Pipeline → click the lead → look for the yellow "No reply in N days" banner.',
+      'Click <b>✍️ Draft nudge</b>.',
+      'Read the draft, adjust anything, then send.'
+    ]) +
+    whereToFind('Pipeline → deal detail → top of the CORRESPONDENCE section (only shown when 3+ days with no reply)') +
+
+    subhead('🏷️', 'FOLLOW-UP BADGES ON THE PIPELINE BOARD') +
+    intro('Answers "did I already chase this one?" without opening the card. Sits next to the stage-age pill.') +
+    bullets([
+      '<span style="color:#1D9E75;font-weight:700">✓ replied</span> — they answered after your last email.',
+      '<span style="color:#c4a4f8;font-weight:700">✍️ nudged 2d ago</span> — you have followed up. Shows <b>×N</b> when you have chased more than twice.',
+      '<span style="color:#6b87ad;font-weight:700">✉️ sent 4d ago</span> — one email out, nothing back yet.',
+      'Worked out from your email history, so a nudge you sent from your phone counts too once it has synced. No badge means no logged email for that address yet.'
+    ]) +
+    whereToFind('Pipeline board → every card, immediately right of the "13d in stage" pill') +
+
+    subhead('🔄', 'GMAIL SYNC') +
+    intro('Reads your Gmail and files any message involving a client or lead onto their record. This is what makes replies and phone-sent mail appear in the CRM.') +
+    bullets([
+      '<b>It runs on its own.</b> A quick check of the last 3 days shortly after you open the CRM, then every 15 minutes while it stays open. Opening a client or lead also refreshes just that contact.',
+      '<b>Quiet unless it finds something</b> — you only get a notification when new mail is actually filed.',
+      '<b>🔄 Sync</b> on a correspondence panel pulls just that one contact, which is quick.',
+      '<b>🔄 Sync email history from Gmail</b> in Email Delivery does a 180-day sweep of everyone. Use it for a first-time backfill, or to force a refresh.',
+      'Safe to run repeatedly — it recognises what it already has and never creates duplicates.',
+      '<b>Only client and lead email is touched.</b> Mail with anyone who is not in the CRM is ignored, and the sync only ever <i>reads</i> — it never sends, deletes or changes anything in your mailbox.'
+    ]) +
+    steps([
+      'AI toolbar → Quick Actions → 📧 Email Delivery.',
+      'Click <b>🔄 Sync email history from Gmail</b>.',
+      'The result stays on screen: how many were newly filed, how many you already had, and how many had their full text filled in.'
+    ]) +
+    bullets([
+      '<b>If it says Gmail read access is not enabled:</b> the Gmail token is missing the <code>gmail.readonly</code> permission. The one-time fix is in <code>GMAIL_SYNC_SETUP.md</code> in the repo.',
+      '<b>If it finds nothing:</b> the message tells you how many mails it checked against how many client addresses — usually it means no recent email matches an address saved in the CRM.'
+    ]) +
+    whereToFind('AI toolbar → Quick Actions → 📧 Email Delivery → INCOMING MAIL') +
+
+    subhead('✏️', 'HOW THE AI WRITES') +
+    intro('House style is applied to every AI-written email, everywhere in the CRM — lead composer, Draft Email, invoice follow-ups, cross-sell drafts.') +
+    bullets([
+      '<b>No dashes used as punctuation.</b> Commas instead. Ranges read "2 to 6 weeks", not "2-6 weeks".',
+      'Hyphenated words are untouched: co-packing, small-batch, shelf-stable, GL-1042, phone numbers.',
+      'Enforced twice — as an instruction to the AI and as a cleanup pass on what it returns, because models ignore style instructions often enough that the instruction alone is not reliable.',
+      '<b>✨ Apply</b> on "Refine with Claude" always responds now — success, an error, or a hint if the instruction box is empty. It can no longer look like nothing happened.'
+    ]) +
+    whereToFind('Any AI email drafter — Pipeline → ✉️ Email Lead, or Clients → ✉️ Draft Email');
+
   /* ──────────────────────────────────────────────────────────
      PATCH: wrap glOpenHelp to inject new sections + TOC entries
      ────────────────────────────────────────────────────────── */
@@ -896,7 +989,8 @@
     { id:'help-public',       icon:'🏠', label:'Public Website',          html:SEC_PUBLIC },
     { id:'help-admin',        icon:'⚙️', label:'Admin Tools',             html:SEC_ADMIN },
     { id:'help-integrations', icon:'🔗', label:'Integrations',            html:SEC_INTEGRATIONS },
-    { id:'help-quotes',       icon:'📋', label:'Production Quotes',       html:SEC_QUOTES }
+    { id:'help-quotes',       icon:'📋', label:'Production Quotes',       html:SEC_QUOTES },
+    { id:'help-corr',         icon:'📧', label:'Email & Correspondence',  html:SEC_CORR }
   ];
 
   // Map new CRM pages to the right new help section so context-aware open works
@@ -905,7 +999,9 @@
     'cpg-production-runs':'help-ops-pro', 'cpg-samples':'help-ops-pro',
     'cpg-cip':'help-ops-pro',
     'cpg-audit':'help-qs', 'cpg-defects':'help-qs', 'cpg-vendors':'help-qs',
-    'cpg-content':'help-marketing'
+    'cpg-content':'help-marketing',
+    // Correspondence lives on both the pipeline and the client record.
+    'cpg-pipeline':'help-corr', 'cpg-clients':'help-corr'
   };
 
   function injectIntoModal(){
