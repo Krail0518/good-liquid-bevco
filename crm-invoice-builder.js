@@ -9,7 +9,11 @@
   (function(){
     var s = document.createElement('style');
     s.textContent =
-      '#gl-inv-builder{position:fixed!important;inset:0!important;z-index:650!important;background:rgba(6,13,26,.95)!important;backdrop-filter:blur(16px);display:none;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto}' +
+      // z-index 700 (not 650): other full-screen overlays such as the client
+      // detail view also sit at 650, and with equal z-index the element later
+      // in the DOM wins — so the builder could be painted behind whichever
+      // overlay opened most recently. 700 keeps it reliably on top.
+      '#gl-inv-builder{position:fixed!important;inset:0!important;z-index:700!important;background:rgba(6,13,26,.95)!important;backdrop-filter:blur(16px);display:none;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto}' +
       '#gl-inv-builder.show{display:flex!important}' +
       '#gl-fmt-picker,#gl-rd-picker{position:fixed!important;inset:0!important;z-index:700!important}' +
       '.gl-picker-btn{width:100%;text-align:left;padding:14px 16px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:10px;color:var(--white);cursor:pointer;margin-bottom:8px;display:block;transition:border-color .2s}' +
@@ -19,13 +23,26 @@
 
   /* ── INTERCEPT ALL NEW INVOICE ENTRY POINTS ── */
   window.openNewInvoice = function(){ window.openNewInvoiceBuilder(); };
+  // Safety net for "New Invoice" controls that have NO handler of their own.
+  //
+  // IMPORTANT: this must not hijack a control that already carries its own
+  // onclick. It used to, and because it fires in the capture phase and calls
+  // stopImmediatePropagation(), it silently destroyed that handler. The client
+  // detail "+ New Invoice" button was the casualty: its onclick both
+  // pre-selects the client AND closes the client overlay, so killing it left
+  // the client overlay stacked on top of the builder (the builder looked like
+  // it never opened) and the invoice opened with no client selected.
+  //
+  // Elements with their own onclick are purpose-built and already route to
+  // openNewInvoiceBuilder correctly — including the sidebar nav item, which
+  // goes through cNav() and the 'newinv' nav guard in crm-permissions.js.
   document.addEventListener('click', function(e){
     var el = e.target.closest('button,a,.cni');
     if(!el) return;
-    if((el.textContent||'').trim().includes('New Invoice')){
-      e.preventDefault(); e.stopImmediatePropagation();
-      window.openNewInvoiceBuilder();
-    }
+    if(!(el.textContent||'').trim().includes('New Invoice')) return;
+    if(el.hasAttribute('onclick')) return;   // it handles itself — leave it alone
+    e.preventDefault(); e.stopImmediatePropagation();
+    window.openNewInvoiceBuilder();
   }, true);
 
   /* ── AI CHAT CONTEXT ── */

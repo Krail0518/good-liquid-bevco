@@ -182,13 +182,13 @@ function buildMessage(event: string, data: Record<string, string>): { whatsapp: 
   if (event === 'invoice_sent' || event === 'invoice_sent_bulk') {
     if (event === 'invoice_sent_bulk') {
       const whatsapp = `${emoji} BULK SEND: ${data.count} invoice${Number(data.count)===1?'':'s'} sent${data.failed && data.failed!=='0' ? ', ' + data.failed + ' failed' : ''}.`;
-      const body     = `${data.count} invoice${Number(data.count)===1?'':'s'} sent via Mailgun bulk send.`;
+      const body     = `${data.count} invoice${Number(data.count)===1?'':'s'} sent via Gmail bulk send.`;
       return { whatsapp, subject: `📤 ${data.count} invoices sent`, body };
     }
     const amt      = data.amount ? ` · $${parseFloat(data.amount).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2})}` : '';
     const whatsapp = `${emoji} INVOICE SENT: ${data.invoice_number || '—'} → ${data.client || co}${amt}. To: ${data.to || '—'}`;
     const body     = [
-      `Invoice sent via Mailgun.`,
+      `Invoice sent via Gmail.`,
       ``,
       `Invoice: ${data.invoice_number || '—'}`,
       `Client:  ${data.client || co}`,

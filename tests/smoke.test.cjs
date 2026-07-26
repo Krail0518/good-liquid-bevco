@@ -132,25 +132,57 @@ async function main() {
     });
     check('CRM shell opens for admin', crmShown);
 
-    // 3) THE regression: New Invoice from a client opens the builder with that
-    //    client pre-selected. We inject a fake client so no backend is needed.
-    const invOk = await page.evaluate(() => {
+    // 3) THE regression: New Invoice from a client. We CLICK THE REAL BUTTON
+    //    rather than calling createForClient() directly — an earlier version of
+    //    this test called the function, which bypassed a document-level click
+    //    interceptor that was silently killing the button's own handler. Test
+    //    the button the way a user presses it, or you test nothing.
+    const invOk = await page.evaluate(async () => {
       window.clients = window.clients || [];
       const cid = 'smoke-client-1';
       if (!window.clients.find(c => c.id === cid)) {
-        window.clients.push({ id: cid, name: 'Smoke Test Client', email: 'smoke@test.local' });
+        window.clients.push({ id: cid, name: 'Smoke Test Client', email: 'smoke@test.local',
+          init: 'SC', color: '#333', tc: '#fff', contact: 'Smoke', service: 'Co-pack', status: 'active' });
       }
-      if (typeof window.createForClient !== 'function') return { ok: false, why: 'createForClient missing' };
-      try { window.createForClient(cid); } catch (e) { return { ok: false, why: 'threw: ' + e.message }; }
+      if (typeof window.viewClientEnhanced !== 'function') return { ok: false, why: 'viewClientEnhanced missing' };
+      // Open the builder once and close it, so it already exists in the DOM —
+      // this is what exposed the stacking bug (builder painted behind the
+      // client overlay because the overlay was appended later).
+      try { window.openNewInvoiceBuilder(); document.getElementById('gl-inv-builder').classList.remove('show'); } catch (e) {}
+      try { window.viewClientEnhanced(cid); } catch (e) { return { ok: false, why: 'viewClientEnhanced threw: ' + e.message }; }
+      await new Promise(r => setTimeout(r, 300));
+      const btn = [...document.querySelectorAll('#client-detail-overlay button')]
+        .find(b => (b.textContent || '').includes('New Invoice'));
+      if (!btn) return { ok: false, why: 'no "+ New Invoice" button in the client detail view' };
+      btn.click();
+      await new Promise(r => setTimeout(r, 400));
       const builder = document.getElementById('gl-inv-builder');
       const shown = !!builder && (builder.classList.contains('show') || getComputedStyle(builder).display !== 'none');
       const sel = document.getElementById('ginv-client');
-      const preselected = !!sel && sel.value === cid;
-      return { ok: shown, preselected, why: shown ? '' : 'builder not shown' };
+      const overlay = document.getElementById('client-detail-overlay');
+      // The builder must actually be the thing on top, not merely "shown".
+      let topmost = 'none';
+      if (shown) {
+        const el = document.elementFromPoint(Math.floor(window.innerWidth / 2), 60);
+        topmost = el ? (el.closest('#gl-inv-builder') ? 'builder'
+                    : (el.closest('#client-detail-overlay') ? 'client-overlay' : 'other')) : 'none';
+      }
+      return {
+        ok: shown,
+        preselected: !!sel && sel.value === cid,
+        overlayClosed: !overlay,
+        onTop: topmost === 'builder',
+        topmost,
+        why: shown ? '' : 'builder not shown after clicking the real button',
+      };
     });
     check('New Invoice from client opens the invoice builder', invOk.ok, invOk.why);
     check('New Invoice pre-selects the chosen client', invOk.preselected,
-      'ginv-client value did not match the client id');
+      'ginv-client value did not match the client id — the button handler was likely bypassed');
+    check('client detail overlay closes when opening the invoice builder', invOk.overlayClosed,
+      'the client popup stayed open and would cover the builder');
+    check('invoice builder is the topmost overlay (not hidden behind another)', invOk.onTop,
+      'topmost element was: ' + invOk.topmost);
 
     // close builder before the next flow
     await page.evaluate(() => {
@@ -158,14 +190,19 @@ async function main() {
       if (b) b.classList.remove('show');
     });
 
-    // 4) Sidebar "New Invoice" opens the builder too.
-    const sidebarInvOk = await page.evaluate(() => {
-      if (typeof window.openNewInvoiceBuilder !== 'function') return false;
-      try { window.openNewInvoiceBuilder(); } catch (e) { return false; }
+    // 4) Sidebar "New Invoice" — again by clicking the real nav item, so the
+    //    cNav → 'newinv' nav-guard path is genuinely exercised.
+    const sidebarInvOk = await page.evaluate(async () => {
+      const nav = [...document.querySelectorAll('.cni')]
+        .find(el => (el.textContent || '').trim().includes('New Invoice'));
+      if (!nav) return { ok: false, why: 'no sidebar "New Invoice" item found' };
+      nav.click();
+      await new Promise(r => setTimeout(r, 400));
       const b = document.getElementById('gl-inv-builder');
-      return !!b && (b.classList.contains('show') || getComputedStyle(b).display !== 'none');
+      const shown = !!b && (b.classList.contains('show') || getComputedStyle(b).display !== 'none');
+      return { ok: shown, why: shown ? '' : 'clicking the sidebar item did not open the builder' };
     });
-    check('sidebar New Invoice opens the builder', sidebarInvOk);
+    check('sidebar New Invoice opens the builder', sidebarInvOk.ok, sidebarInvOk.why);
     await page.evaluate(() => { const b = document.getElementById('gl-inv-builder'); if (b) b.classList.remove('show'); });
 
     // 5) Nav coverage: every sidebar item switches page without throwing.
