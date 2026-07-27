@@ -29,6 +29,9 @@
 
 import { corsHeaders, jsonResponse, errorResponse, handlePreflight } from '../_shared/cors.ts';
 import { requireStaff } from '../_shared/auth.ts';
+// Header encoding lives in a shared plain-ESM module so it can be unit-tested
+// directly; see that module's header for the bug it exists to prevent.
+import { encodeHeaderValue, encodeAddress } from '../_shared/mime-headers.mjs';
 
 async function getAccessToken(): Promise<string> {
   const r = await fetch('https://oauth2.googleapis.com/token', {
@@ -50,48 +53,6 @@ async function getAccessToken(): Promise<string> {
 }
 
 interface Attachment { filename: string; contentBase64: string; contentType?: string }
-
-// Email headers must be plain ASCII. Any non-ASCII text (em-dash "—",
-// accented customer names like "Café", emoji, etc.) has to be wrapped in an
-// RFC 2047 "encoded-word" or the mail client mis-decodes the raw UTF-8 bytes
-// and shows mojibake (e.g. "—" rendered as "Ã¢Â€Â"). Without this, subjects
-// and display names built anywhere in the app arrive garbled.
-function isAscii(s: string): boolean { return /^[\x00-\x7F]*$/.test(s); }
-
-// Encode a header VALUE (e.g. a Subject) as one or more base64 encoded-words.
-// We accumulate whole UTF-8 characters so a multi-byte char is never split
-// across words, and cap each word so it stays within RFC 2047's 75-char limit.
-function encodeHeaderValue(s: string): string {
-  if (isAscii(s)) return s;
-  const enc = new TextEncoder();
-  const words: string[] = [];
-  let buf: number[] = [];
-  const flush = () => {
-    if (!buf.length) return;
-    let bin = '';
-    for (const b of buf) bin += String.fromCharCode(b);
-    words.push('=?UTF-8?B?' + btoa(bin) + '?=');
-    buf = [];
-  };
-  for (const ch of Array.from(s)) {
-    const bytes = Array.from(enc.encode(ch));
-    if (buf.length + bytes.length > 45) flush(); // 45 bytes → ≤60 base64 chars → word ≤72
-    for (const b of bytes) buf.push(b);
-  }
-  flush();
-  return words.join('\r\n '); // fold multiple encoded-words with a space
-}
-
-// Encode a single address. If it has a display name ("Name <email>") we encode
-// only the name and leave the address untouched; a bare address is returned
-// as-is.
-function encodeAddress(addr: string): string {
-  const m = String(addr).match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
-  if (!m) return addr; // bare "email@host" — nothing to encode
-  const name = m[1].replace(/^"|"$/g, '');
-  if (!name || isAscii(name)) return addr;
-  return encodeHeaderValue(name) + ' <' + m[2] + '>';
-}
 
 function foldBase64(b64: string): string {
   return (String(b64).replace(/\s+/g, '').match(/.{1,76}/g) || []).join('\r\n');
