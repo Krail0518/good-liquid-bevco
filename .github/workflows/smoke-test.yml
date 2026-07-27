@@ -47,6 +47,12 @@ jobs:
           # Download the Chromium browser Playwright will drive.
           npx playwright install chromium
 
+      # Pure-logic unit tests for the mail pipeline (header encoding, body
+      # extraction, quoted-thread trimming, entity decoding). No browser needed,
+      # so run them first — they fail fastest and pinpoint most precisely.
+      - name: Run email-text unit tests
+        run: node tests/email-text.test.mjs
+
       - name: Run smoke test
         env:
           # Let `require('playwright')` in the .cjs resolve from the temp install.

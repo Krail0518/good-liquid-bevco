@@ -100,6 +100,11 @@ const opened=await pg.evaluate(()=>{
   return {shown:!!p&&p.classList.contains('show')};
 });
 rec('Boot','CRM shell opens for admin',opened.shown,opened.err||'');
+// Snapshot the page's OWN top-level elements. Teardown between phases must only
+// remove layers this run created — #pw-ov (the admin password prompt) is a
+// fixed z-index-500 overlay that ships in index.html, and blanket-removing
+// fixed layers deleted it, making openAdmin() throw on null.
+await pg.evaluate(()=>{ window.__baseline=new Set([...document.body.children]); });
 await pg.waitForTimeout(1200);
 
 /* ---------- PHASE 2: every sidebar nav item ---------- */
@@ -163,19 +168,11 @@ const inv=await pg.evaluate(async()=>{
   // Remove ANY full-screen layer left by an earlier phase. Matching on id
   // patterns missed #gl-cip-equip-mgr (z-index 9500), so match on what actually
   // makes an element block clicks: fixed position with a stacking z-index.
-  const clearLayers=()=>{
-    [...document.body.children].forEach(el=>{
-      if(el.id==='crm-panel') return;
-      const cs=getComputedStyle(el);
-      if(cs.position==='fixed' && (parseInt(cs.zIndex,10)||0) >= 300) el.remove();
-    });
-  };
-  o.leftoverOverlays=[...document.body.children].filter(el=>{
-    if(el.id==='crm-panel') return false;
-    const cs=getComputedStyle(el);
-    return cs.position==='fixed' && (parseInt(cs.zIndex,10)||0) >= 300;
-  }).map(e=>e.id||e.className||e.tagName);
-  clearLayers();
+  const isRunCreated=el=>!(window.__baseline&&window.__baseline.has(el)) && el.id!=='crm-panel';
+  const isLayer=el=>{ const cs=getComputedStyle(el); return cs.position==='fixed' && (parseInt(cs.zIndex,10)||0)>=300; };
+  o.leftoverOverlays=[...document.body.children].filter(el=>isRunCreated(el)&&isLayer(el))
+    .map(e=>e.id||e.className||e.tagName);
+  [...document.body.children].filter(el=>isRunCreated(el)&&isLayer(el)).forEach(el=>el.remove());
   try{ window.openNewInvoiceBuilder(); document.getElementById('gl-inv-builder').classList.remove('show'); }catch(e){}
   try{ window.viewClientEnhanced('sweep-c1'); }catch(e){ return {err:e.message}; }
   await new Promise(r=>setTimeout(r,320));
@@ -304,6 +301,59 @@ rec('Help','help modal opens',!help.missing&&!help.threw,help.threw||'');
 rec('Help','new section in the contents',help.tocHasNewSection);
 rec('Help','new section mounted',help.sectionMounted);
 rec('Help','covers every new feature',(help.covers||[]).length===0,'missing: '+(help.covers||[]).join(', '));
+
+/* ---------- PHASE 7b: fixes that had no coverage ---------- */
+/* Each of these was fixed today and asserted nowhere, so a later change could
+   have silently undone it. */
+const gaps=await pg.evaluate(async()=>{
+  const o={};
+  // Mobile bottom-nav Dashboard tab: pointed at a page name that does not exist,
+  // so tapping it on a phone did nothing.
+  const dashTab=[...document.querySelectorAll('.crm-bnav-item')].find(b=>/Dashboard/i.test(b.textContent||''));
+  o.mobileTabFound=!!dashTab;
+  o.mobileTabTargetsRealPage=!!dashTab && /cNav\('dashboard'/.test(dashTab.getAttribute('onclick')||'');
+  if(dashTab){ try{ dashTab.click(); }catch(e){ o.mobileTabThrew=e.message; } }
+  await new Promise(r=>setTimeout(r,200));
+  o.mobileTabShowsPage=!!document.getElementById('cpg-dashboard');
+
+  // Admin button on the public site must open the password prompt.
+  if(typeof window.openAdmin==='function'){
+    try{ window.openAdmin(); }catch(e){ o.adminThrew=e.message; }
+    await new Promise(r=>setTimeout(r,200));
+    const pw=document.getElementById('pw-ov');
+    o.adminOpensPrompt=!!pw&&pw.classList.contains('show');
+    if(pw)pw.classList.remove('show');
+  } else o.adminOpensPrompt=null;
+
+  // Cross-sell "Draft email" wrote to an element that does not exist, so the
+  // reasoning never reached the AI modal.
+  o.crossSellFieldExists=!!document.getElementById('ai-comm-custom');
+  o.crossSellRowExists=!!document.getElementById('ai-comm-custom-row');
+  o.crossSellTypeHasCustom=[...(document.getElementById('ai-comm-type')||{options:[]}).options]
+    .some(op=>op.value==='custom');
+
+  // Automatic sync: throttled so it cannot fire on every render or loop.
+  o.autoSyncFns=['glAutoSyncDue','glAutoSyncContact'].filter(f=>typeof window[f]!=='function');
+  try{ localStorage.removeItem('gl_sync_probe'); }catch(e){}
+  o.throttleFirstCallAllowed=window.glAutoSyncDue('probe',15)===true;
+  o.throttleSecondCallBlocked=window.glAutoSyncDue('probe',15)===false;
+
+  // Clients-list loading skeleton targeted the wrong tbody id.
+  o.clientTbodyExists=!!document.getElementById('client-body');
+  return o;
+});
+rec('Previously untested','mobile Dashboard tab exists',gaps.mobileTabFound);
+rec('Previously untested','mobile Dashboard tab targets a real page',gaps.mobileTabTargetsRealPage,gaps.mobileTabThrew||'');
+rec('Previously untested','mobile Dashboard tab reaches the dashboard',gaps.mobileTabShowsPage);
+if(gaps.adminOpensPrompt===null) rec('Previously untested','admin button opens the password prompt',true,'skipped: openAdmin not defined');
+else rec('Previously untested','admin button opens the password prompt',gaps.adminOpensPrompt,gaps.adminThrew||'');
+rec('Previously untested','cross-sell target field exists',gaps.crossSellFieldExists);
+rec('Previously untested','cross-sell custom row exists',gaps.crossSellRowExists);
+rec('Previously untested','AI comm type offers "custom"',gaps.crossSellTypeHasCustom);
+rec('Previously untested','auto-sync helpers defined',gaps.autoSyncFns.length===0,'missing: '+gaps.autoSyncFns.join(', '));
+rec('Previously untested','auto-sync throttle allows the first call',gaps.throttleFirstCallAllowed);
+rec('Previously untested','auto-sync throttle blocks the repeat (no loop)',gaps.throttleSecondCallBlocked);
+rec('Previously untested','clients table body id is correct',gaps.clientTbodyExists);
 
 /* ---------- PHASE 8: no fatal errors overall ---------- */
 rec('Stability','no fatal JS error across the whole sweep',appErrors.length===0,appErrors.slice(0,4).join(' | '));
