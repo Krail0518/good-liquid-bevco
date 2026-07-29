@@ -382,6 +382,12 @@ const emailPanel=await pg.evaluate(async()=>{
   const tr=document.getElementById('gl-test-result');
   o.testResultShown=!!tr&&tr.style.display!=='none';
   o.testNamesChannel=/Gmail/i.test(tr?tr.textContent:'');
+  // Connect must mint a fresh per-attempt CSRF nonce (state) — a constant
+  // state would let a crafted link bind a stranger's mailbox to the CRM.
+  try{ sessionStorage.removeItem('gl_gmail_state'); }catch(e){}
+  await window.glGmailConnect();
+  let nonce=''; try{ nonce=sessionStorage.getItem('gl_gmail_state')||''; }catch(e){}
+  o.connectMintsNonce=/^glgmail\.[\w.-]{8,}$/.test(nonce);
   document.querySelectorAll('#mg-settings-overlay').forEach(x=>x.remove());
   return o;
 });
@@ -391,6 +397,7 @@ rec('Email delivery panel','scheduled-jobs health block present',emailPanel.heal
 rec('Email delivery panel','all connect/test functions defined',(emailPanel.fns||[]).length===0,'missing: '+(emailPanel.fns||[]).join(', '));
 rec('Email delivery panel','Test send tries Gmail directly (honest reporting)',emailPanel.testCallsGmailDirect);
 rec('Email delivery panel','Test send shows a visible result naming the channel',emailPanel.testResultShown&&emailPanel.testNamesChannel);
+rec('Email delivery panel','Connect mints a per-attempt security nonce',emailPanel.connectMintsNonce);
 
 /* ---------- PHASE 8: no fatal errors overall ---------- */
 rec('Stability','no fatal JS error across the whole sweep',appErrors.length===0,appErrors.slice(0,4).join(' | '));

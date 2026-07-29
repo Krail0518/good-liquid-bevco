@@ -41,24 +41,36 @@ export async function vaultGet(name: string): Promise<string> {
 export async function vaultSet(name: string, value: string): Promise<void> {
   const { error } = await admin().rpc('gl_secret_set', { p_name: name, p_value: value });
   if (error) throw new Error('vault write failed: ' + error.message);
+  _cache = null; // a write invalidates the resolved-credentials cache
 }
 
+// Short-lived module cache: gmail-send/gmail-sync each resolve creds twice per
+// request (configured-check + token fetch) and every resolve costs three Vault
+// RPCs. Positive results cache 30s, misses only 3s so a just-completed connect
+// isn't masked for long. Isolates are short-lived, so staleness is bounded.
+let _cache: { creds: GmailCreds | null; at: number } | null = null;
+
 export async function getGmailCreds(): Promise<GmailCreds | null> {
+  const now = Date.now();
+  if (_cache && (now - _cache.at) < (_cache.creds ? 30000 : 3000)) return _cache.creds;
+  let resolved: GmailCreds | null = null;
   const [id, secret, refresh] = await Promise.all([
     vaultGet('gl_gmail_client_id'),
     vaultGet('gl_gmail_client_secret'),
     vaultGet('gl_gmail_refresh_token'),
   ]);
   if (id && secret && refresh) {
-    return { clientId: id, clientSecret: secret, refreshToken: refresh, source: 'vault' };
+    resolved = { clientId: id, clientSecret: secret, refreshToken: refresh, source: 'vault' };
+  } else {
+    const eId = Deno.env.get('GMAIL_CLIENT_ID') || '';
+    const eSecret = Deno.env.get('GMAIL_CLIENT_SECRET') || '';
+    const eRefresh = Deno.env.get('GMAIL_REFRESH_TOKEN') || '';
+    if (eId && eSecret && eRefresh) {
+      resolved = { clientId: eId, clientSecret: eSecret, refreshToken: eRefresh, source: 'env' };
+    }
   }
-  const eId = Deno.env.get('GMAIL_CLIENT_ID') || '';
-  const eSecret = Deno.env.get('GMAIL_CLIENT_SECRET') || '';
-  const eRefresh = Deno.env.get('GMAIL_REFRESH_TOKEN') || '';
-  if (eId && eSecret && eRefresh) {
-    return { clientId: eId, clientSecret: eSecret, refreshToken: eRefresh, source: 'env' };
-  }
-  return null;
+  _cache = { creds: resolved, at: now };
+  return resolved;
 }
 
 export async function gmailConfigured(): Promise<boolean> {

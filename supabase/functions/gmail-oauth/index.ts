@@ -69,15 +69,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
     if (!secret) return jsonResponse({ ok: false, error: 'The Client Secret is empty.' });
     // A different client invalidates any refresh token minted under the old
-    // one, so clear it — stale token + fresh keys is exactly the mixed-pair
-    // state that broke sending before.
+    // one. Clear the token BEFORE the new keys land: if a write fails midway
+    // we're left cleanly disconnected, never with new keys + a stale token —
+    // the mixed-pair state that broke sending before.
     const prevId = await vaultGet('gl_gmail_client_id');
-    await vaultSet('gl_gmail_client_id', id);
-    await vaultSet('gl_gmail_client_secret', secret);
     if (prevId && prevId !== id) {
       await vaultSet('gl_gmail_refresh_token', '');
       await vaultSet('gl_gmail_connected_email', '');
     }
+    await vaultSet('gl_gmail_client_id', id);
+    await vaultSet('gl_gmail_client_secret', secret);
     return jsonResponse({ ok: true });
   }
 
@@ -122,6 +123,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (action === 'start') {
     const redirect = String(body.redirect_uri || '').trim();
     if (!redirect.startsWith('https://')) return errorResponse('redirect_uri must be https', 400);
+    // CSRF nonce: minted by the browser, held in its sessionStorage, echoed
+    // back by Google via `state`, and compared on return. A constant state
+    // would let an attacker-crafted URL bind a foreign mailbox to the CRM.
+    const state = String(body.state || '').trim();
+    if (!/^glgmail\.[A-Za-z0-9._-]{8,80}$/.test(state)) {
+      return errorResponse('invalid state nonce', 400);
+    }
     const pair = await clientPair();
     if (!pair) return jsonResponse({ ok: false, error: 'No OAuth client saved yet — paste the Client ID and Secret and Save first.' });
     const url = AUTH_URL + '?' + new URLSearchParams({
@@ -131,7 +139,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       access_type: 'offline',  // ask for a refresh token…
       prompt: 'consent',       // …every time, or Google omits it on re-grants
       scope: SCOPES,
-      state: 'glgmail',
+      state,
     }).toString();
     return jsonResponse({ ok: true, url });
   }

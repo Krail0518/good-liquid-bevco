@@ -391,6 +391,10 @@
 
   window.glGmailSaveCreds = async function(){
     var el = document.getElementById('gl-gmail-status');
+    if(!window.supa || !supa.functions || !supa.functions.invoke){
+      if(el){ el.style.color = '#ff8579'; el.textContent = 'Unavailable in this build.'; }
+      return;
+    }
     var cid = ((document.getElementById('gl-gm-cid')  || {}).value || '').trim();
     var sec = ((document.getElementById('gl-gm-csec') || {}).value || '').trim();
     if(!cid || !sec){
@@ -410,9 +414,22 @@
 
   window.glGmailConnect = async function(){
     var el = document.getElementById('gl-gmail-status');
+    if(!window.supa || !supa.functions || !supa.functions.invoke){
+      if(el){ el.style.color = '#ff8579'; el.textContent = 'Unavailable in this build.'; }
+      return;
+    }
     if(el){ el.style.color = '#9aa7bd'; el.textContent = 'Opening Google sign-in…'; }
+    // Per-attempt CSRF nonce: Google echoes it back via `state`, and the
+    // return handler only finishes a connect whose nonce THIS browser minted.
+    // A constant state would let a crafted link bind a stranger's mailbox.
+    var nonce = 'glgmail.';
+    try {
+      var a = new Uint32Array(4); crypto.getRandomValues(a);
+      nonce += Array.prototype.join.call(a, '-');
+    } catch(_e){ nonce += String(Date.now()) + '-' + Math.floor(Math.random() * 1e9); }
+    try { sessionStorage.setItem('gl_gmail_state', nonce); } catch(_e){}
     var resp = await supa.functions.invoke('gmail-oauth', {
-      body: { action: 'start', redirect_uri: location.origin + location.pathname }
+      body: { action: 'start', redirect_uri: location.origin + location.pathname, state: nonce }
     });
     if(resp.error || !resp.data || !resp.data.url){
       if(el){ el.style.color = '#ff8579'; el.textContent = '✗ ' + (await glInvokeErr(resp)); }
@@ -423,6 +440,9 @@
 
   window.glGmailTest = async function(){
     var el = document.getElementById('gl-gmail-status'); if(!el) return;
+    if(!window.supa || !supa.functions || !supa.functions.invoke){
+      el.style.color = '#ff8579'; el.textContent = 'Unavailable in this build.'; return;
+    }
     el.style.color = '#9aa7bd'; el.textContent = 'Testing the Gmail connection…';
     var resp = await supa.functions.invoke('gmail-oauth', { body: { action: 'test' } });
     var d = (resp && resp.data) || {};
@@ -447,21 +467,32 @@
       if(!d || !d.jobs){ el.textContent = 'Could not load job status.'; return; }
       var http = d.http || [];
       var bad = http.filter(function(h){ return !(h.status >= 200 && h.status < 300); });
+      var overdue = Number(d.overdue || 0);
       var lines = (d.jobs || []).map(function(j){
         var when = j.last_run ? new Date(j.last_run).toLocaleString() : 'never';
         return '• ' + glEsc(j.name) + ' (' + glEsc(j.schedule) + ') — last run ' + glEsc(when);
       });
-      if(http.length === 0){
+      // The decisive signal is `overdue`: follow-ups due >30 min ago and still
+      // unsent means the scheduler is NOT doing its job, whatever else looks
+      // fine. The raw http list is context only — the database's outbound
+      // call log is shared with deal alerts, so a failure there isn't
+      // necessarily an email job.
+      if(overdue > 0){
+        el.style.color = '#ff8579';
+        el.innerHTML = '✗ ' + overdue + ' follow-up email' + (overdue === 1 ? ' is' : 's are') +
+          ' due but unsent for over 30 minutes — the scheduler may be down.<br>' + lines.join('<br>');
+      } else if(http.length === 0){
         el.style.color = '#f5c842';
-        el.innerHTML = '⚠ No recent delivery records yet.<br>' + lines.join('<br>');
+        el.innerHTML = '⚠ No overdue follow-ups, but no recent delivery records to confirm either.<br>' + lines.join('<br>');
       } else if(bad.length === 0){
         el.style.color = '#5fcf9e';
-        el.innerHTML = '✓ Scheduled jobs are landing — last ' + http.length + ' deliveries all OK.<br>' + lines.join('<br>');
+        el.innerHTML = '✓ No overdue follow-ups; last ' + http.length + ' outbound calls all OK.<br>' + lines.join('<br>');
       } else {
-        el.style.color = '#ff8579';
-        el.innerHTML = '✗ ' + bad.length + ' of the last ' + http.length + ' deliveries failed (HTTP ' +
+        el.style.color = '#f5c842';
+        el.innerHTML = '⚠ No overdue follow-ups, but ' + bad.length + ' of the last ' + http.length +
+          ' outbound calls from the database failed (HTTP ' +
           bad.map(function(h){ return glEsc(h.status); }).join(', ') +
-          '). Scheduled email may not be going out — this needs attention.<br>' + lines.join('<br>');
+          '). This list includes deal-alert traffic, not just the email jobs.<br>' + lines.join('<br>');
       }
     } catch(e){
       el.textContent = 'Could not load job status: ' + e.message;
@@ -509,29 +540,51 @@
   (function glGmailReturnBoot(){
     var q;
     try { q = new URLSearchParams(location.search); } catch(_e){ return; }
-    if(q.get('state') !== 'glgmail' || !q.get('code')) return;
+    var state = q.get('state') || '';
+    if(state.indexOf('glgmail') !== 0 || !q.get('code')) return;
     var code = q.get('code');
     // Clean the URL immediately so a reload can't resend a used code.
     try { history.replaceState(null, '', location.origin + location.pathname); } catch(_e){}
+    // CSRF check: only finish a connect THIS browser started. glGmailConnect
+    // minted the nonce into sessionStorage; Google echoed it back as `state`.
+    var expected = '';
+    try {
+      expected = sessionStorage.getItem('gl_gmail_state') || '';
+      sessionStorage.removeItem('gl_gmail_state');
+    } catch(_e){}
+    if(!expected || expected !== state){
+      alert('Gmail connect ignored — this window did not start that connection (security check). Open Email Delivery and click Connect Gmail again.');
+      return;
+    }
+    // The redirect back from Google is a fresh page load, so don't wait for a
+    // full CRM login (currentUser) — the Supabase client restores its session
+    // from storage on its own, and functions.invoke attaches it.
     var tries = 0;
     (function wait(){
-      if(!window.supa || !window.currentUser){
-        if(++tries > 60){
-          alert('Gmail connect: you were signed out before the CRM could finish. Log in, then click Connect Gmail again.');
+      if(!window.supa || !window.supa.auth || typeof supa.auth.getSession !== 'function'){
+        if(++tries > 40){
+          alert('Gmail connect: the app did not finish loading. Reload the page, log in, and click Connect Gmail again.');
           return;
         }
-        setTimeout(wait, 500);
+        setTimeout(wait, 250);
         return;
       }
-      supa.functions.invoke('gmail-oauth', {
-        body: { action: 'callback', code: code, redirect_uri: location.origin + location.pathname }
-      }).then(async function(resp){
-        if(!resp.error && resp.data && resp.data.ok){
-          alert('✓ Gmail connected' + (resp.data.email ? ' as ' + resp.data.email : '') + '. Outbound email now sends from Gmail.');
-        } else {
-          alert('✗ Gmail connect failed: ' + (await glInvokeErr(resp)));
+      supa.auth.getSession().then(function(s){
+        var session = s && s.data && s.data.session;
+        if(!session){
+          alert('Gmail connect: you are signed out. Log in (Admin), then click Connect Gmail again.');
+          return;
         }
-        try { if(typeof window.glGmailStatus === 'function' && document.getElementById('gl-gmail-status')) window.glGmailStatus(); } catch(_e){}
+        supa.functions.invoke('gmail-oauth', {
+          body: { action: 'callback', code: code, redirect_uri: location.origin + location.pathname }
+        }).then(async function(resp){
+          if(!resp.error && resp.data && resp.data.ok){
+            alert('✓ Gmail connected' + (resp.data.email ? ' as ' + resp.data.email : '') + '. Outbound email now sends from Gmail.');
+          } else {
+            alert('✗ Gmail connect failed: ' + (await glInvokeErr(resp)));
+          }
+          try { if(typeof window.glGmailStatus === 'function' && document.getElementById('gl-gmail-status')) window.glGmailStatus(); } catch(_e){}
+        });
       });
     })();
   })();

@@ -47,11 +47,15 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: "Mailgun secrets not set" }), { status: 500, headers: JSON_HEADERS });
   }
 
+  // Due = pending, plus 'sending' rows whose claim went stale (a runner died
+  // mid-send >10 min ago) so no email is ever stranded.
+  const nowIso = new Date().toISOString();
+  const staleCutoff = new Date(Date.now() - 10 * 60000).toISOString();
   const { data: due, error } = await supa
     .from("email_schedule")
     .select("*")
-    .eq("status", "pending")
-    .lte("send_at", new Date().toISOString())
+    .or(`status.eq.pending,and(status.eq.sending,claimed_at.lt.${staleCutoff})`)
+    .lte("send_at", nowIso)
     .limit(50);
 
   if (error) {
@@ -61,8 +65,19 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ processed: 0 }), { status: 200, headers: JSON_HEADERS });
   }
 
-  let sent = 0, failed = 0;
+  let sent = 0, failed = 0, skippedClaimed = 0;
   for (const row of due) {
+    // Atomically claim the row (compare-and-set on status + claimed_at).
+    // This function now has concurrent callers — pg_cron every 15 min AND a
+    // ping from each open CRM tab — and without a claim step two runners
+    // both see 'pending' and the client gets the same follow-up twice.
+    let claim = supa.from("email_schedule")
+      .update({ status: "sending", claimed_at: nowIso })
+      .eq("id", row.id)
+      .eq("status", row.status);
+    claim = row.claimed_at == null ? claim.is("claimed_at", null) : claim.eq("claimed_at", row.claimed_at);
+    const { data: got, error: claimErr } = await claim.select("id");
+    if (claimErr || !got || !got.length) { skippedClaimed++; continue; } // another runner took it
     try {
       const fd = new FormData();
       fd.append("from", from);
@@ -115,5 +130,5 @@ Deno.serve(async (req) => {
     }
   }
 
-  return new Response(JSON.stringify({ processed: due.length, sent, failed }), { status: 200, headers: JSON_HEADERS });
+  return new Response(JSON.stringify({ processed: due.length, sent, failed, claimed_elsewhere: skippedClaimed }), { status: 200, headers: JSON_HEADERS });
 });
