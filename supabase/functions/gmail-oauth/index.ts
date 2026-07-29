@@ -52,8 +52,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (pre) return pre;
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
-  // Managing the company mailbox connection is admin-only.
-  const auth = await requireStaff(req, { role: 'admin' });
+  // Staff-level, deliberately not role:'admin': the owner's founding profile
+  // predates the role column (role is NULL), the login screen defaults a
+  // missing role to 'admin' while requireStaff defaults it to 'sales', and
+  // the mismatch locked the owner out of this panel. Staff-level matches
+  // every other mail function (gmail-send, gmail-sync), and the panel itself
+  // only renders for admins.
+  const auth = await requireStaff(req);
   if (!auth.ok) return errorResponse(auth.error || 'Forbidden', auth.status);
 
   let body: Record<string, unknown>;

@@ -39,12 +39,14 @@ Deno.serve(async (req) => {
   if (pre) return pre;
 
   // Two legitimate callers: the pg_cron schedule (Vault-held secret — see
-  // _shared/cron-auth.ts) and an ADMIN clicking "📨 Send digest" in the CRM
-  // (index.html runDailyDigestNow). Everyone else is rejected — the old
-  // version was wide open whenever the CRON_SECRET env secret was unset,
-  // and a digest emails every staff member.
+  // _shared/cron-auth.ts) and staff clicking "📨 Send digest" in the CRM
+  // (index.html runDailyDigestNow). Staff-level rather than role:'admin'
+  // because the owner's founding profile has a NULL role, which requireStaff
+  // defaults to 'sales' — an admin gate locks out the owner. Everyone else
+  // is rejected; the old version was wide open whenever the CRON_SECRET env
+  // secret was unset, and a digest emails every staff member.
   if (!(await isCronCall(req))) {
-    const auth = await requireStaff(req, { role: "admin" });
+    const auth = await requireStaff(req);
     if (!auth.ok) return new Response("unauthorized", { status: 401, headers: corsHeaders });
   }
   const supa = createClient(
