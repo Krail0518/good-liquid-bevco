@@ -428,8 +428,11 @@
       nonce += Array.prototype.join.call(a, '-');
     } catch(_e){ nonce += String(Date.now()) + '-' + Math.floor(Math.random() * 1e9); }
     try { sessionStorage.setItem('gl_gmail_state', nonce); } catch(_e){}
+    // Always the bare site root: launching from /index.html (or any path)
+    // must not change the return address, because Google only accepts
+    // exact-match URIs registered on the OAuth client.
     var resp = await supa.functions.invoke('gmail-oauth', {
-      body: { action: 'start', redirect_uri: location.origin + location.pathname, state: nonce }
+      body: { action: 'start', redirect_uri: location.origin + '/', state: nonce }
     });
     if(resp.error || !resp.data || !resp.data.url){
       if(el){ el.style.color = '#ff8579'; el.textContent = '✗ ' + (await glInvokeErr(resp)); }
@@ -575,8 +578,9 @@
           alert('Gmail connect: you are signed out. Log in (Admin), then click Connect Gmail again.');
           return;
         }
+        // Must byte-match the redirect_uri used in 'start' (origin + '/').
         supa.functions.invoke('gmail-oauth', {
-          body: { action: 'callback', code: code, redirect_uri: location.origin + location.pathname }
+          body: { action: 'callback', code: code, redirect_uri: location.origin + '/' }
         }).then(async function(resp){
           if(!resp.error && resp.data && resp.data.ok){
             alert('✓ Gmail connected' + (resp.data.email ? ' as ' + resp.data.email : '') + '. Outbound email now sends from Gmail.');
