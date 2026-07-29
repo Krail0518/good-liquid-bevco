@@ -61,6 +61,12 @@ export async function getGmailCreds(): Promise<GmailCreds | null> {
   ]);
   if (id && secret && refresh) {
     resolved = { clientId: id, clientSecret: secret, refreshToken: refresh, source: 'vault' };
+  } else if (id && secret) {
+    // Keys saved in Vault but Connect not completed yet. Deliberately do NOT
+    // fall back to env: saving new keys means the old credential set is dead,
+    // and testing/sending with it surfaced the OLD set's invalid_client as if
+    // the freshly saved keys were bad — which misled a real debugging session.
+    resolved = null;
   } else {
     const eId = Deno.env.get('GMAIL_CLIENT_ID') || '';
     const eSecret = Deno.env.get('GMAIL_CLIENT_SECRET') || '';
@@ -71,6 +77,17 @@ export async function getGmailCreds(): Promise<GmailCreds | null> {
   }
   _cache = { creds: resolved, at: now };
   return resolved;
+}
+
+// True when the Vault holds a saved key pair that has not completed Connect —
+// the "one click left" state the UI should name precisely.
+export async function gmailPendingConnect(): Promise<boolean> {
+  const [id, secret, refresh] = await Promise.all([
+    vaultGet('gl_gmail_client_id'),
+    vaultGet('gl_gmail_client_secret'),
+    vaultGet('gl_gmail_refresh_token'),
+  ]);
+  return !!(id && secret && !refresh);
 }
 
 export async function gmailConfigured(): Promise<boolean> {
