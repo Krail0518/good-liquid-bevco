@@ -370,7 +370,8 @@ const emailPanel=await pg.evaluate(async()=>{
   o.csec=!!document.getElementById('gl-gm-csec');
   o.secretMasked=(document.getElementById('gl-gm-csec')||{}).type==='password';
   o.health=!!document.getElementById('gl-cron-health');
-  o.fns=['glGmailStatus','glGmailSaveCreds','glGmailConnect','glGmailTest','glCronHealth','glTestMailgun']
+  o.backupCode=!!document.getElementById('gl-gm-code');
+  o.fns=['glGmailStatus','glGmailSaveCreds','glGmailConnect','glGmailTest','glCronHealth','glTestMailgun','glGmailManualStart','glGmailManualFinish']
     .filter(f=>typeof window[f]!=='function');
   // Phase 6 (refine) swaps supa.functions.invoke for stubs that don't record
   // calls — reinstall the recording stub so this phase can see who was called.
@@ -394,6 +395,7 @@ const emailPanel=await pg.evaluate(async()=>{
 rec('Email delivery panel','panel renders the Gmail connection block',emailPanel.status&&emailPanel.cid&&emailPanel.csec,emailPanel.err||'');
 rec('Email delivery panel','client secret field is masked',emailPanel.secretMasked);
 rec('Email delivery panel','scheduled-jobs health block present',emailPanel.health);
+rec('Email delivery panel','backup connect path present',emailPanel.backupCode);
 rec('Email delivery panel','all connect/test functions defined',(emailPanel.fns||[]).length===0,'missing: '+(emailPanel.fns||[]).join(', '));
 rec('Email delivery panel','Test send tries Gmail directly (honest reporting)',emailPanel.testCallsGmailDirect);
 rec('Email delivery panel','Test send shows a visible result naming the channel',emailPanel.testResultShown&&emailPanel.testNamesChannel);

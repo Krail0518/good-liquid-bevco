@@ -195,6 +195,16 @@
             '<button onclick="window.glGmailConnect()" style="flex:1;min-width:110px;padding:10px;background:rgba(0,229,192,.14);color:var(--teal);border:1px solid rgba(0,229,192,.35);border-radius:7px;cursor:pointer;font-size:12.5px;font-weight:700">🔗 Connect Gmail</button>' +
             '<button onclick="window.glGmailTest()" style="flex:1;min-width:110px;padding:10px;background:rgba(255,255,255,.05);color:#cfd9e6;border:1px solid rgba(255,255,255,.12);border-radius:7px;cursor:pointer;font-size:12.5px">🧪 Test connection</button>' +
           '</div>' +
+          // Backup connect path: routes the Google sign-in through the ONE
+          // redirect URI known to be registered on the OAuth client (the
+          // playground URL, saved 2026-07-28) so a redirect_uri_mismatch on
+          // the site URLs can never block connecting. The CRM still does the
+          // token exchange itself — the landing page is only a code display.
+          '<div style="font-size:11px;color:var(--muted);margin:12px 0 6px">IF GOOGLE BLOCKS THE NORMAL CONNECT — BACKUP PATH</div>' +
+          '<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;line-height:1.5">1) Click the button and approve on Google. 2) You land on a Google developer page — copy the <b>Authorization code</b> shown on the left. 3) Paste it below and click Finish.</div>' +
+          '<button onclick="window.glGmailManualStart()" style="width:100%;padding:10px;background:rgba(245,200,66,.08);color:#f5c842;border:1px solid rgba(245,200,66,.25);border-radius:7px;cursor:pointer;font-size:12.5px;margin-bottom:8px">🪪 Open Google sign-in (backup)</button>' +
+          '<input id="gl-gm-code" placeholder="Paste the Authorization code here (starts 4/…)" autocomplete="off" style="width:100%;margin-bottom:8px;padding:10px;background:#0a1628;border:1px solid rgba(255,255,255,.1);border-radius:6px;color:#fff;font-size:12px;font-family:var(--ff-mono)">' +
+          '<button onclick="window.glGmailManualFinish()" style="width:100%;padding:10px;background:rgba(0,229,192,.1);color:var(--teal);border:1px solid rgba(0,229,192,.3);border-radius:7px;cursor:pointer;font-size:12.5px">✅ Finish connection with pasted code</button>' +
         '</div>' +
 
         // Incoming side: pull real Gmail history into the CRM. This is the
@@ -439,6 +449,62 @@
       return;
     }
     location.href = resp.data.url;
+  };
+
+  /* Backup connect: Google returns the user to the OAuth Playground URL (the
+     one redirect URI reliably registered on the client), which displays the
+     authorization code; the user pastes it here and the CRM's own edge
+     function performs the exchange with the Vault-held key pair. Exists
+     because saving new redirect URIs in Google Console repeatedly failed to
+     stick, hard-blocking the normal same-tab flow. */
+  var GL_PLAYGROUND = 'https://developers.google.com/oauthplayground';
+
+  window.glGmailManualStart = async function(){
+    var el = document.getElementById('gl-gmail-status');
+    if(!window.supa || !supa.functions || !supa.functions.invoke){
+      if(el){ el.style.color = '#ff8579'; el.textContent = 'Unavailable in this build.'; }
+      return;
+    }
+    if(el){ el.style.color = '#9aa7bd'; el.textContent = 'Opening Google sign-in (backup path)…'; }
+    var resp = await supa.functions.invoke('gmail-oauth', {
+      body: { action: 'start', redirect_uri: GL_PLAYGROUND, state: 'glgmail.manual-' + Date.now() }
+    });
+    if(resp.error || !resp.data || !resp.data.url){
+      if(el){ el.style.color = '#ff8579'; el.textContent = '✗ ' + (await glInvokeErr(resp)); }
+      return;
+    }
+    window.open(resp.data.url, '_blank');
+    if(el){
+      el.style.color = '#f5c842';
+      el.textContent = 'Approve on Google in the new tab. You will land on a Google developer page — copy the "Authorization code" from its left panel, paste it in the box below, then click Finish.';
+    }
+  };
+
+  window.glGmailManualFinish = async function(){
+    var el = document.getElementById('gl-gmail-status');
+    if(!window.supa || !supa.functions || !supa.functions.invoke){
+      if(el){ el.style.color = '#ff8579'; el.textContent = 'Unavailable in this build.'; }
+      return;
+    }
+    var raw = ((document.getElementById('gl-gm-code') || {}).value || '').trim();
+    // Accept a bare code or a whole pasted URL containing ?code=…
+    var code = raw;
+    var m = raw.match(/[?&]code=([^&\s]+)/);
+    if(m){ try { code = decodeURIComponent(m[1]); } catch(_e){ code = m[1]; } }
+    if(!code){
+      if(el){ el.style.color = '#ff8579'; el.textContent = 'Paste the Authorization code first (it starts with 4/).'; }
+      return;
+    }
+    if(el){ el.style.color = '#9aa7bd'; el.textContent = 'Finishing the connection…'; }
+    var resp = await supa.functions.invoke('gmail-oauth', {
+      body: { action: 'callback', code: code, redirect_uri: GL_PLAYGROUND }
+    });
+    if(!resp.error && resp.data && resp.data.ok){
+      try { document.getElementById('gl-gm-code').value = ''; } catch(_e){}
+      if(el){ el.style.color = '#5fcf9e'; el.textContent = '✓ Gmail connected' + (resp.data.email ? ' as ' + resp.data.email : '') + '. Now click "Test send" below.'; }
+    } else {
+      if(el){ el.style.color = '#ff8579'; el.textContent = '✗ ' + (await glInvokeErr(resp)) + ' (Codes expire in minutes and work once — if it sat a while, click the backup sign-in again for a fresh one.)'; }
+    }
   };
 
   window.glGmailTest = async function(){
