@@ -376,9 +376,9 @@
           el.style.color = '#ff8579';
           el.textContent = '✗ Credentials are saved but BROKEN: ' + (td.error || (await glInvokeErr(t)));
         }
-      } else if(d.has_client_id && d.has_client_secret){
+      } else if(d.pending_connect || (d.has_client_id && d.has_client_secret)){
         el.style.color = '#f5c842';
-        el.textContent = '⚠ Keys saved. Now click "Connect Gmail" and approve access.';
+        el.textContent = '⚠ Keys saved — one step left: click "🔗 Connect Gmail" and approve access. (Test buttons have nothing to test until then.)';
       } else {
         el.style.color = '#ff8579';
         el.textContent = '✗ Not connected. Paste the Client ID and Client Secret from Google Console below, Save, then Connect.';

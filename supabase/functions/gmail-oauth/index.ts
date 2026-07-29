@@ -26,7 +26,7 @@
 
 import { jsonResponse, errorResponse, handlePreflight } from '../_shared/cors.ts';
 import { requireStaff } from '../_shared/auth.ts';
-import { vaultGet, vaultSet, getGmailCreds } from '../_shared/gmail-creds.ts';
+import { vaultGet, vaultSet, getGmailCreds, gmailPendingConnect } from '../_shared/gmail-creds.ts';
 import { friendlyOAuthError } from '../_shared/oauth-errors.mjs';
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -100,6 +100,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       has_client_id: !!(vId || Deno.env.get('GMAIL_CLIENT_ID')),
       has_client_secret: !!(vSec || Deno.env.get('GMAIL_CLIENT_SECRET')),
       has_refresh_token: !!(vRef || Deno.env.get('GMAIL_REFRESH_TOKEN')),
+      // Saved keys awaiting Connect override any legacy env set — see
+      // getGmailCreds for why the env fallback is dead once keys are saved.
+      pending_connect: !!(vId && vSec && !vRef),
       connected: creds !== null,
       source: creds ? creds.source : null,
       email: email || null,
@@ -107,6 +110,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   if (action === 'test') {
+    // Saved-but-not-connected must be named precisely: the old behavior fell
+    // back to testing the dead env credentials and reported THEIR failure as
+    // if the freshly saved keys were bad, which derailed a real debugging
+    // session. There is nothing to test until Connect has minted a token.
+    if (await gmailPendingConnect()) {
+      return jsonResponse({ ok: false, pending: true, error: 'Keys are saved — but Gmail is not connected yet. Click "🔗 Connect Gmail" (there is nothing to test until then).' });
+    }
     const creds = await getGmailCreds();
     if (!creds) return jsonResponse({ ok: false, error: 'Nothing to test yet — save the keys and connect first.' });
     const r = await fetch(TOKEN_URL, {
