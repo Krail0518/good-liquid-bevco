@@ -56,14 +56,21 @@ export async function requireStaff(
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  // A portal customer must never reach a staff function, even with a valid JWT.
-  const { data: cust } = await admin
-    .from('customer_users').select('id').eq('auth_user_id', user.id).eq('active', true).maybeSingle();
-  if (cust) return { ok: false, status: 403, error: 'Forbidden — staff only' };
-
+  // Staff profile FIRST. An active staff profile wins even when the same auth
+  // user also appears in customer_users: testing the portal invite flow on
+  // your own address links your account as a "customer", and checking
+  // customer_users first locked the owner's own admin panel with
+  // "Forbidden — staff only". A genuine portal customer has no profiles row,
+  // so the portal-must-never-reach-staff-functions guarantee still holds.
   const { data: profile } = await admin
     .from('profiles').select('role, is_super_user, status').eq('id', user.id).maybeSingle();
+
   if (!profile || profile.status === 'inactive') {
+    // No usable staff profile — distinguish a portal customer (clearer error)
+    // from a token that matches nothing at all.
+    const { data: cust } = await admin
+      .from('customer_users').select('id').eq('auth_user_id', user.id).eq('active', true).maybeSingle();
+    if (cust) return { ok: false, status: 403, error: 'Forbidden — staff only' };
     return { ok: false, status: 403, error: 'Forbidden — inactive or unknown account' };
   }
 
