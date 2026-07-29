@@ -1,14 +1,16 @@
 // Email scheduler — picks up due rows from email_schedule and sends via Mailgun.
 // Deploy:  supabase functions deploy email-scheduler --no-verify-jwt
-// Schedule: in Supabase Dashboard → Database → Scheduled Tasks (pg_cron), create
-//   a job that calls this function every 15 minutes:
-//   select net.http_post(
-//     url:='https://<project>.functions.supabase.co/email-scheduler',
-//     headers:=jsonb_build_object('Authorization', 'Bearer ' || current_setting('app.cron_secret', true)),
-//     body:=jsonb_build_object()
-//   );
-// Or, simpler, point cron-job.org at the function URL with a basic-auth header.
-
+//
+// CALLERS (both legitimate):
+//   * pg_cron every 15 minutes, authenticated with the Vault-held cron secret
+//     (see _shared/cron-auth.ts for why the secret lives in Vault), and
+//   * the CRM itself: while the app is open it pings this function with the
+//     signed-in staff JWT, so due follow-ups still go out on time even if the
+//     cron plumbing breaks. A broken cron once silently stopped ALL scheduled
+//     mail for hours — the redundancy is deliberate.
+// With neither credential the endpoint is closed: it can force-send queued
+// email, so it must never be anonymous.
+//
 // Required secrets (set in Supabase Dashboard → Project Settings → Edge Functions → Secrets):
 //   SUPABASE_URL                — pre-set
 //   SUPABASE_SERVICE_ROLE_KEY   — pre-set
@@ -17,17 +19,22 @@
 //   MAILGUN_FROM                — e.g. "Good Liquid Bev Co <noreply@mail.goodliquidbevco.com>"
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { corsHeaders, handlePreflight } from "../_shared/cors.ts";
+import { isCronCall } from "../_shared/cron-auth.ts";
+import { requireStaff } from "../_shared/auth.ts";
+
+const JSON_HEADERS = { ...corsHeaders, "Content-Type": "application/json" };
 
 Deno.serve(async (req) => {
-  // Optional cron auth (non-breaking): if CRON_SECRET is set, require it as an
-  // x-cron-secret header or Bearer token so the endpoint can't be triggered
-  // anonymously to force-send queued email.
-  const cronSecret = Deno.env.get("CRON_SECRET");
-  if (cronSecret) {
-    const provided = req.headers.get("x-cron-secret")
-      || (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
-    if (provided !== cronSecret) return new Response("unauthorized", { status: 401 });
+  // The CRM's belt-and-braces tick is a browser call, so preflight + CORS.
+  const pre = handlePreflight(req);
+  if (pre) return pre;
+
+  if (!(await isCronCall(req))) {
+    const auth = await requireStaff(req);
+    if (!auth.ok) return new Response("unauthorized", { status: 401, headers: corsHeaders });
   }
+
   const supa = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -37,7 +44,7 @@ Deno.serve(async (req) => {
   const domain = Deno.env.get("MAILGUN_DOMAIN");
   const from   = Deno.env.get("MAILGUN_FROM") || "Good Liquid Bev Co <noreply@goodliquidbevco.com>";
   if (!apiKey || !domain) {
-    return new Response(JSON.stringify({ error: "Mailgun secrets not set" }), { status: 500 });
+    return new Response(JSON.stringify({ error: "Mailgun secrets not set" }), { status: 500, headers: JSON_HEADERS });
   }
 
   const { data: due, error } = await supa
@@ -48,10 +55,10 @@ Deno.serve(async (req) => {
     .limit(50);
 
   if (error) {
-    return new Response(JSON.stringify({ error: error.message }), { status: 500 });
+    return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: JSON_HEADERS });
   }
   if (!due || due.length === 0) {
-    return new Response(JSON.stringify({ processed: 0 }), { status: 200 });
+    return new Response(JSON.stringify({ processed: 0 }), { status: 200, headers: JSON_HEADERS });
   }
 
   let sent = 0, failed = 0;
@@ -108,5 +115,5 @@ Deno.serve(async (req) => {
     }
   }
 
-  return new Response(JSON.stringify({ processed: due.length, sent, failed }), { status: 200 });
+  return new Response(JSON.stringify({ processed: due.length, sent, failed }), { status: 200, headers: JSON_HEADERS });
 });

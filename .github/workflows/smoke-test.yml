@@ -53,6 +53,9 @@ jobs:
       - name: Run email-text unit tests
         run: node tests/email-text.test.mjs
 
+      - name: Run OAuth error-mapping unit tests
+        run: node tests/oauth-errors.test.mjs
+
       - name: Run smoke test
         env:
           # Let `require('playwright')` in the .cjs resolve from the temp install.

@@ -22,6 +22,7 @@
 //   MAILGUN_FROM                — e.g. "Good Liquid Bev Co <noreply@mail.goodliquidbevco.com>"
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isCronCall } from "../_shared/cron-auth.ts";
 
 const fmtMoney = (n: number) => {
   if (!Number.isFinite(n)) return "$0";
@@ -31,16 +32,11 @@ const fmtMoney = (n: number) => {
 };
 
 Deno.serve(async (req) => {
-  // Optional cron auth: if CRON_SECRET is set, require it (as x-cron-secret
-  // header or Bearer token). Non-breaking — until the secret is configured the
-  // endpoint behaves as before. Set CRON_SECRET and add the header to the
-  // pg_cron job to stop anonymous invocations.
-  const cronSecret = Deno.env.get("CRON_SECRET");
-  if (cronSecret) {
-    const provided = req.headers.get("x-cron-secret")
-      || (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
-    if (provided !== cronSecret) return new Response("unauthorized", { status: 401 });
-  }
+  // Only the scheduled caller may trigger a digest — it emails every staff
+  // member. The secret is Vault-held (see _shared/cron-auth.ts). This also
+  // closes the old gap where the endpoint was wide open whenever the
+  // CRON_SECRET env secret happened to be unset.
+  if (!(await isCronCall(req))) return new Response("unauthorized", { status: 401 });
   const supa = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
