@@ -53,26 +53,12 @@ import { requireStaff } from '../_shared/auth.ts';
 import {
   decodeEntities, extractBody, hasReplyTail, trimToNewMessage,
 } from '../_shared/email-text.mjs';
+// Credentials resolve Vault-first (written by the in-app Connect Gmail flow),
+// falling back to the legacy GMAIL_* env secrets — see gmail-creds.ts.
+import { getGmailAccessToken as getAccessToken, gmailConfigured } from '../_shared/gmail-creds.ts';
+import { isCronCall } from '../_shared/cron-auth.ts';
 
 const GMAIL_API = 'https://gmail.googleapis.com/gmail/v1/users/me';
-
-async function getAccessToken(): Promise<string> {
-  const r = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id:     Deno.env.get('GMAIL_CLIENT_ID')!,
-      client_secret: Deno.env.get('GMAIL_CLIENT_SECRET')!,
-      refresh_token: Deno.env.get('GMAIL_REFRESH_TOKEN')!,
-      grant_type:    'refresh_token',
-    }),
-  });
-  if (!r.ok) {
-    const t = await r.text().catch(() => '');
-    throw new Error(`token refresh failed ${r.status}: ${t}`);
-  }
-  return (await r.json()).access_token as string;
-}
 
 // Pulls the bare address out of a header value like
 // `"Jane Doe" <jane@acme.com>, bob@acme.com` → ['jane@acme.com','bob@acme.com'].
@@ -100,17 +86,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (pre) return pre;
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405);
 
-  // Either the scheduled caller (CRON_SECRET) or a signed-in staff user.
-  const cronSecret = Deno.env.get('CRON_SECRET');
-  const provided = req.headers.get('x-cron-secret') || '';
-  const isCron = !!cronSecret && provided === cronSecret;
-  if (!isCron) {
+  // Either the scheduled caller (Vault-held cron secret — see
+  // _shared/cron-auth.ts) or a signed-in staff user.
+  if (!(await isCronCall(req))) {
     const auth = await requireStaff(req);
     if (!auth.ok) return errorResponse(auth.error || 'Forbidden', auth.status);
   }
 
-  if (!Deno.env.get('GMAIL_CLIENT_ID') || !Deno.env.get('GMAIL_REFRESH_TOKEN')) {
-    return errorResponse('Gmail OAuth credentials not configured', 500);
+  if (!(await gmailConfigured())) {
+    return errorResponse('Gmail is not connected — open Admin → 📧 Email Delivery and connect Gmail', 500);
   }
 
   let body: Record<string, unknown> = {};
@@ -180,8 +164,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       // A send-only refresh token fails here — say so plainly so the fix is obvious.
       if (listRes.status === 403) {
         return errorResponse(
-          'Gmail refused to read mail (403). The refresh token is missing the ' +
-          'gmail.readonly scope — regenerate GMAIL_REFRESH_TOKEN with read access. ' + errText,
+          'Gmail refused to read mail (403). The connection is missing the ' +
+          'gmail.readonly scope — reconnect Gmail from Admin → 📧 Email Delivery ' +
+          '(the connect flow requests read + send together). ' + errText,
           403);
       }
       return errorResponse(`Gmail list failed ${listRes.status}: ${errText}`, listRes.status);

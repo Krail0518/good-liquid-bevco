@@ -355,6 +355,50 @@ rec('Previously untested','auto-sync throttle allows the first call',gaps.thrott
 rec('Previously untested','auto-sync throttle blocks the repeat (no loop)',gaps.throttleSecondCallBlocked);
 rec('Previously untested','clients table body id is correct',gaps.clientTbodyExists);
 
+/* ---------- PHASE 7c: email delivery panel (Gmail connect + honest test) ---------- */
+/* The old Test send reported "✓ sent" when only the Mailgun fallback had
+   fired, hiding a dead Gmail connection behind a green checkmark for hours.
+   These checks pin the honest version: Gmail is tried DIRECTLY, the result is
+   visible, and it names the channel. */
+const emailPanel=await pg.evaluate(async()=>{
+  const o={};
+  document.querySelectorAll('#mg-settings-overlay').forEach(x=>x.remove());
+  try{ window.openMailgunSettings(); }catch(e){ return {err:e.message}; }
+  await new Promise(r=>setTimeout(r,250));
+  o.status=!!document.getElementById('gl-gmail-status');
+  o.cid=!!document.getElementById('gl-gm-cid');
+  o.csec=!!document.getElementById('gl-gm-csec');
+  o.secretMasked=(document.getElementById('gl-gm-csec')||{}).type==='password';
+  o.health=!!document.getElementById('gl-cron-health');
+  o.fns=['glGmailStatus','glGmailSaveCreds','glGmailConnect','glGmailTest','glCronHealth','glTestMailgun']
+    .filter(f=>typeof window[f]!=='function');
+  // Phase 6 (refine) swaps supa.functions.invoke for stubs that don't record
+  // calls — reinstall the recording stub so this phase can see who was called.
+  window.supa.functions.invoke=async(fn)=>{window.__invokes.push(fn);return {data:{ok:true,text:'AI text',inserted:0,skipped:0},error:null};};
+  window.__invokes.length=0;
+  await window.glTestMailgun();
+  await new Promise(r=>setTimeout(r,120));
+  o.testCallsGmailDirect=window.__invokes.includes('gmail-send');
+  const tr=document.getElementById('gl-test-result');
+  o.testResultShown=!!tr&&tr.style.display!=='none';
+  o.testNamesChannel=/Gmail/i.test(tr?tr.textContent:'');
+  // Connect must mint a fresh per-attempt CSRF nonce (state) — a constant
+  // state would let a crafted link bind a stranger's mailbox to the CRM.
+  try{ sessionStorage.removeItem('gl_gmail_state'); }catch(e){}
+  await window.glGmailConnect();
+  let nonce=''; try{ nonce=sessionStorage.getItem('gl_gmail_state')||''; }catch(e){}
+  o.connectMintsNonce=/^glgmail\.[\w.-]{8,}$/.test(nonce);
+  document.querySelectorAll('#mg-settings-overlay').forEach(x=>x.remove());
+  return o;
+});
+rec('Email delivery panel','panel renders the Gmail connection block',emailPanel.status&&emailPanel.cid&&emailPanel.csec,emailPanel.err||'');
+rec('Email delivery panel','client secret field is masked',emailPanel.secretMasked);
+rec('Email delivery panel','scheduled-jobs health block present',emailPanel.health);
+rec('Email delivery panel','all connect/test functions defined',(emailPanel.fns||[]).length===0,'missing: '+(emailPanel.fns||[]).join(', '));
+rec('Email delivery panel','Test send tries Gmail directly (honest reporting)',emailPanel.testCallsGmailDirect);
+rec('Email delivery panel','Test send shows a visible result naming the channel',emailPanel.testResultShown&&emailPanel.testNamesChannel);
+rec('Email delivery panel','Connect mints a per-attempt security nonce',emailPanel.connectMintsNonce);
+
 /* ---------- PHASE 8: no fatal errors overall ---------- */
 rec('Stability','no fatal JS error across the whole sweep',appErrors.length===0,appErrors.slice(0,4).join(' | '));
 

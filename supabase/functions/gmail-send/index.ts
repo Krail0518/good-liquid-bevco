@@ -18,11 +18,11 @@
 //   { ok: true, id }      on success
 //   { ok: false, error }  on failure
 //
-// Secrets required:
-//   GMAIL_CLIENT_ID      — OAuth2 Web application client ID
-//   GMAIL_CLIENT_SECRET  — OAuth2 Web application client secret
-//   GMAIL_REFRESH_TOKEN  — long-lived refresh token from OAuth Playground
-//   GMAIL_FROM           — default From, e.g. "Good Liquid Bev Co <mike@goodliquid.com>"
+// Credentials: Vault-first (written by the in-app Connect Gmail flow), with
+// the legacy env secrets as fallback — resolved in _shared/gmail-creds.ts:
+//   Vault: gl_gmail_client_id / gl_gmail_client_secret / gl_gmail_refresh_token
+//   Env:   GMAIL_CLIENT_ID / GMAIL_CLIENT_SECRET / GMAIL_REFRESH_TOKEN
+//   GMAIL_FROM — default From, e.g. "Good Liquid Bev Co <mike@goodliquid.com>"
 //
 // Deploy:
 //   supabase functions deploy gmail-send
@@ -32,25 +32,7 @@ import { requireStaff } from '../_shared/auth.ts';
 // Header encoding lives in a shared plain-ESM module so it can be unit-tested
 // directly; see that module's header for the bug it exists to prevent.
 import { encodeHeaderValue, encodeAddress } from '../_shared/mime-headers.mjs';
-
-async function getAccessToken(): Promise<string> {
-  const r = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id:     Deno.env.get('GMAIL_CLIENT_ID')!,
-      client_secret: Deno.env.get('GMAIL_CLIENT_SECRET')!,
-      refresh_token: Deno.env.get('GMAIL_REFRESH_TOKEN')!,
-      grant_type:    'refresh_token',
-    }),
-  });
-  if (!r.ok) {
-    const t = await r.text().catch(() => '');
-    throw new Error(`token refresh failed ${r.status}: ${t}`);
-  }
-  const d = await r.json();
-  return d.access_token as string;
-}
+import { getGmailAccessToken as getAccessToken, gmailConfigured } from '../_shared/gmail-creds.ts';
 
 interface Attachment { filename: string; contentBase64: string; contentType?: string }
 
@@ -146,8 +128,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const _auth = await requireStaff(req);
   if (!_auth.ok) return errorResponse(_auth.error || 'Forbidden', _auth.status);
 
-  if (!Deno.env.get('GMAIL_CLIENT_ID') || !Deno.env.get('GMAIL_REFRESH_TOKEN')) {
-    return errorResponse('Gmail OAuth credentials not configured', 500);
+  if (!(await gmailConfigured())) {
+    return errorResponse('Gmail is not connected — open Admin → 📧 Email Delivery and connect Gmail', 500);
   }
 
   let payload: Record<string, unknown>;

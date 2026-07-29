@@ -22,6 +22,9 @@
 //   MAILGUN_FROM                — e.g. "Good Liquid Bev Co <noreply@mail.goodliquidbevco.com>"
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { corsHeaders, handlePreflight } from "../_shared/cors.ts";
+import { isCronCall } from "../_shared/cron-auth.ts";
+import { requireStaff } from "../_shared/auth.ts";
 
 const fmtMoney = (n: number) => {
   if (!Number.isFinite(n)) return "$0";
@@ -31,15 +34,18 @@ const fmtMoney = (n: number) => {
 };
 
 Deno.serve(async (req) => {
-  // Optional cron auth: if CRON_SECRET is set, require it (as x-cron-secret
-  // header or Bearer token). Non-breaking — until the secret is configured the
-  // endpoint behaves as before. Set CRON_SECRET and add the header to the
-  // pg_cron job to stop anonymous invocations.
-  const cronSecret = Deno.env.get("CRON_SECRET");
-  if (cronSecret) {
-    const provided = req.headers.get("x-cron-secret")
-      || (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
-    if (provided !== cronSecret) return new Response("unauthorized", { status: 401 });
+  // The admin "📨 Send digest" button is a browser call — preflight + CORS.
+  const pre = handlePreflight(req);
+  if (pre) return pre;
+
+  // Two legitimate callers: the pg_cron schedule (Vault-held secret — see
+  // _shared/cron-auth.ts) and an ADMIN clicking "📨 Send digest" in the CRM
+  // (index.html runDailyDigestNow). Everyone else is rejected — the old
+  // version was wide open whenever the CRON_SECRET env secret was unset,
+  // and a digest emails every staff member.
+  if (!(await isCronCall(req))) {
+    const auth = await requireStaff(req, { role: "admin" });
+    if (!auth.ok) return new Response("unauthorized", { status: 401, headers: corsHeaders });
   }
   const supa = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -50,7 +56,7 @@ Deno.serve(async (req) => {
   const domain = Deno.env.get("MAILGUN_DOMAIN");
   const from   = Deno.env.get("MAILGUN_FROM") || "Good Liquid Bev Co <noreply@goodliquidbevco.com>";
   if (!apiKey || !domain) {
-    return new Response(JSON.stringify({ error: "Mailgun secrets not set" }), { status: 500 });
+    return new Response(JSON.stringify({ error: "Mailgun secrets not set" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -79,7 +85,7 @@ Deno.serve(async (req) => {
   }
 
   if (!recipients.length) {
-    return new Response(JSON.stringify({ skipped: "no recipients" }), { status: 200 });
+    return new Response(JSON.stringify({ skipped: "no recipients" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
   // ── 2) Pull the data in parallel ───────────────────────────────────────
@@ -108,7 +114,7 @@ Deno.serve(async (req) => {
   // If nothing happened, skip the email — no spam on quiet days.
   const totalActivity = paid.length + newInvoices.length + requests.length + runStages.length + newClients.length;
   if (totalActivity === 0) {
-    return new Response(JSON.stringify({ skipped: "no activity in last 24h", recipients: recipients.length }), { status: 200 });
+    return new Response(JSON.stringify({ skipped: "no activity in last 24h", recipients: recipients.length }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
   // ── 3) Build the HTML email body ───────────────────────────────────────
@@ -283,5 +289,5 @@ Deno.serve(async (req) => {
 
   return new Response(JSON.stringify({
     recipients: recipients.length, sent, failed, errors: errors.slice(0, 5),
-  }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 });

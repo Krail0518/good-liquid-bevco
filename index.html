@@ -6534,6 +6534,13 @@ window.glAutoSyncDue = glAutoSyncDue;
   function tick(){
     if(!window.currentUser || !window.supa) return;      // only for signed-in staff
     if(document.hidden) return;                          // don't work in a background tab
+    // Belt-and-braces for scheduled email: pg_cron fires email-scheduler every
+    // 15 minutes server-side, but if that plumbing ever breaks again (it has,
+    // silently, for hours) this ping keeps due follow-ups going out whenever
+    // the CRM is open. The function accepts a staff JWT precisely for this.
+    if(glAutoSyncDue('sched', 20)){
+      try { supa.functions.invoke('email-scheduler', { body: {} }).catch(function(){}); } catch(e){}
+    }
     if(!glAutoSyncDue('recent', 15)) return;
     glSyncGmail(null, { days: 3, max: 120, silent: true });
   }

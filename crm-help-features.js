@@ -698,11 +698,11 @@
     ]) +
     whereToFind('Automatic — no UI required') +
     subhead('📧', 'TEST EMAIL SEND') +
-    intro('Send a test email to yourself (mike@goodliquid.com) to verify email (Gmail) is configured correctly. Useful after changing credentials or redeploying the Edge Function.') +
+    intro('Send a test email to yourself (mike@goodliquid.com) to verify outbound email. The result is honest about the channel: it says whether Gmail itself sent it, or only the Mailgun fallback did (mail still going out, but from noreply@ instead of your Gmail).') +
     steps([
       'AI toolbar → Quick Actions → "📧 Email Delivery".',
       'In the settings modal, click "Test send".',
-      'A confirmation email lands at mike@goodliquid.com if email (Gmail) is wired up correctly.'
+      'Read the result line — it names which channel delivered. Reminder: your Gmail filter files CRM mail under "5 · Auto-Reports", not the inbox.'
     ]) +
     whereToFind('AI toolbar → Quick Actions → Email Delivery → "Test send" button') +
     subhead('📲', 'PWA INSTALLATION') +
@@ -785,8 +785,9 @@
     bullets([
       '<b>From address:</b> <code>mike@goodliquid.com</code> (your Gmail; the Mailgun fallback uses noreply@mail.goodliquidbevco.com).',
       '<b>Reply-To:</b> outbound emails set <code>Reply-To: mike@goodliquid.com</code> so client replies land in your inbox.',
-      '<b>Credentials:</b> Supabase Dashboard → Edge Functions → Secrets → GMAIL_CLIENT_ID / GMAIL_CLIENT_SECRET / GMAIL_REFRESH_TOKEN / GMAIL_FROM (fallback: MAILGUN_API_KEY).',
-      '<b>Test the connection:</b> AI toolbar → Quick Actions → Email Delivery → "Test send".'
+      '<b>Connecting Gmail:</b> all in-app now — Email Delivery → GMAIL CONNECTION: paste the Client ID + Secret from Google Console, Save, then "🔗 Connect Gmail" and approve. Credentials go straight into Supabase Vault; no OAuth Playground, no tokens to copy.',
+      '<b>Test the connection:</b> "🧪 Test connection" checks the Gmail credentials live with Google; "Test send" sends a real email and names the channel that delivered it.',
+      '<b>Scheduled jobs health:</b> the same panel shows whether the follow-up scheduler, daily digest and hourly sync are actually landing (their shared secret is generated inside the database — nothing to configure).'
     ]) +
     whereToFind('AI toolbar → Quick Actions → "📧 Email Delivery"');
 
@@ -945,7 +946,7 @@
     subhead('🔄', 'GMAIL SYNC') +
     intro('Reads your Gmail and files any message involving a client or lead onto their record. This is what makes replies and phone-sent mail appear in the CRM.') +
     bullets([
-      '<b>It runs on its own.</b> A quick check of the last 3 days shortly after you open the CRM, then every 15 minutes while it stays open. Opening a client or lead also refreshes just that contact.',
+      '<b>It runs on its own.</b> A quick check of the last 3 days shortly after you open the CRM, then every 15 minutes while it stays open — plus an hourly server-side sweep even when the CRM is closed. Opening a client or lead also refreshes just that contact.',
       '<b>Quiet unless it finds something</b> — you only get a notification when new mail is actually filed.',
       '<b>🔄 Sync</b> on a correspondence panel pulls just that one contact, which is quick.',
       '<b>🔄 Sync email history from Gmail</b> in Email Delivery does a 180-day sweep of everyone. Use it for a first-time backfill, or to force a refresh.',
@@ -958,7 +959,7 @@
       'The result stays on screen: how many were newly filed, how many you already had, and how many had their full text filled in.'
     ]) +
     bullets([
-      '<b>If it says Gmail read access is not enabled:</b> the Gmail token is missing the <code>gmail.readonly</code> permission. The one-time fix is in <code>GMAIL_SYNC_SETUP.md</code> in the repo.',
+      '<b>If it says Gmail read access is not enabled:</b> reconnect from Email Delivery → GMAIL CONNECTION → "🔗 Connect Gmail" — the connect flow asks for read + send together, so one approval fixes it.',
       '<b>If it finds nothing:</b> the message tells you how many mails it checked against how many client addresses — usually it means no recent email matches an address saved in the CRM.'
     ]) +
     whereToFind('AI toolbar → Quick Actions → 📧 Email Delivery → INCOMING MAIL') +

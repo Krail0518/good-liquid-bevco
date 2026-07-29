@@ -180,31 +180,48 @@
     ov.id = 'mg-settings-overlay';
     ov.setAttribute('style','position:fixed;inset:0;z-index:900;background:rgba(6,13,26,.95);backdrop-filter:blur(16px);display:flex;align-items:center;justify-content:center;padding:20px');
     ov.innerHTML =
-      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:36px;width:100%;max-width:560px">' +
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:32px;width:100%;max-width:600px;max-height:92vh;overflow-y:auto">' +
         '<div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:2px;color:var(--teal);margin-bottom:8px">📧 EMAIL DELIVERY</div>' +
-        '<div style="font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.6">All outbound email (onboarding, follow-ups, quotes, tour confirmations) sends from your <b>Gmail (mike@goodliquid.com)</b>. All credentials live <b>server-side in Supabase secrets</b> — the browser never sees them.</div>' +
-        '<div style="background:rgba(29,158,117,.1);border:1px solid rgba(29,158,117,.3);border-radius:8px;padding:12px 16px;font-size:13px;color:#5fcf9e;margin-bottom:20px;line-height:1.6">✅ Primary: <code>gmail-send</code> Edge Function (Gmail OAuth). Fallback: <code>mailgun-send</code> if Gmail errors, so mail is never lost.</div>' +
-        '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">CREDENTIALS (Supabase secrets)</div>' +
-        '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:12px;margin-bottom:18px;font-size:12px;color:#cfd9e6;line-height:1.7">' +
-          'Gmail: <code style="background:#0a1628;padding:2px 6px;border-radius:4px;color:var(--teal);font-family:var(--ff-mono);font-size:11px">GMAIL_CLIENT_ID / GMAIL_CLIENT_SECRET / GMAIL_REFRESH_TOKEN / GMAIL_FROM</code><br>' +
-          'Fallback: <code style="background:#0a1628;padding:2px 6px;border-radius:4px;color:var(--teal);font-family:var(--ff-mono);font-size:11px">MAILGUN_API_KEY</code>. Set via <code style="color:var(--teal)">supabase secrets set ...</code>; picked up on next cold start.' +
+        '<div style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.6">Outbound email sends from your <b>Gmail (mike@goodliquid.com)</b>, with Mailgun as an automatic fallback so mail is never lost. All credentials live server-side in <b>Supabase Vault</b> — the browser never keeps them.</div>' +
+
+        '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">GMAIL CONNECTION</div>' +
+        '<div id="gl-gmail-status" style="font-size:12.5px;line-height:1.55;margin-bottom:10px;padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;color:#9aa7bd">Checking…</div>' +
+        '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:12px;margin-bottom:14px">' +
+          '<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;line-height:1.5">One-time setup (or after changing the Google OAuth client): paste the <b>Client ID</b> and <b>Client Secret</b> from Google Console, Save, then Connect. No OAuth Playground, no copying tokens.</div>' +
+          '<input id="gl-gm-cid" placeholder="Client ID (…apps.googleusercontent.com)" autocomplete="off" style="width:100%;margin-bottom:8px;padding:10px;background:#0a1628;border:1px solid rgba(255,255,255,.1);border-radius:6px;color:#fff;font-size:12px;font-family:var(--ff-mono)">' +
+          '<input id="gl-gm-csec" type="password" placeholder="Client Secret (GOCSPX-…)" autocomplete="off" style="width:100%;margin-bottom:10px;padding:10px;background:#0a1628;border:1px solid rgba(255,255,255,.1);border-radius:6px;color:#fff;font-size:12px;font-family:var(--ff-mono)">' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+            '<button onclick="window.glGmailSaveCreds()" style="flex:1;min-width:110px;padding:10px;background:rgba(0,229,192,.08);color:var(--teal);border:1px solid rgba(0,229,192,.25);border-radius:7px;cursor:pointer;font-size:12.5px">💾 Save keys</button>' +
+            '<button onclick="window.glGmailConnect()" style="flex:1;min-width:110px;padding:10px;background:rgba(0,229,192,.14);color:var(--teal);border:1px solid rgba(0,229,192,.35);border-radius:7px;cursor:pointer;font-size:12.5px;font-weight:700">🔗 Connect Gmail</button>' +
+            '<button onclick="window.glGmailTest()" style="flex:1;min-width:110px;padding:10px;background:rgba(255,255,255,.05);color:#cfd9e6;border:1px solid rgba(255,255,255,.12);border-radius:7px;cursor:pointer;font-size:12.5px">🧪 Test connection</button>' +
+          '</div>' +
         '</div>' +
+
         // Incoming side: pull real Gmail history into the CRM. This is the
         // in-app equivalent of invoking gmail-sync from the Supabase dashboard,
         // so the initial backfill never requires a trip there.
         '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">INCOMING MAIL</div>' +
-        '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:12px;margin-bottom:18px;font-size:12px;color:#cfd9e6;line-height:1.7">' +
-          'Sync reads your Gmail and files every message to or from a client or lead into their correspondence panel — including replies and mail you sent from your phone. Needs the <code style="color:var(--teal)">gmail.readonly</code> scope on <code style="color:var(--teal)">GMAIL_REFRESH_TOKEN</code> (see GMAIL_SYNC_SETUP.md).' +
+        '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:12px;margin-bottom:12px;font-size:12px;color:#cfd9e6;line-height:1.7">' +
+          'Sync reads your Gmail and files every message to or from a client or lead into their correspondence panel — including replies and mail sent from your phone. It runs automatically while the CRM is open, and hourly on a schedule. The button below is for a deep backfill or an on-demand refresh.' +
         '</div>' +
         '<button id="gl-sync-all-btn" onclick="window.glSyncAllEmail(this)" style="width:100%;padding:13px;background:rgba(0,229,192,.1);color:var(--teal);border:1px solid rgba(0,229,192,.3);border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;margin-bottom:10px">🔄 Sync email history from Gmail</button>' +
         // Persistent result line — stays put so the outcome can't be missed.
         '<div id="gl-sync-result" style="display:none;font-size:12px;line-height:1.55;margin-bottom:12px;padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px"></div>' +
+
+        '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">SCHEDULED JOBS</div>' +
+        '<div id="gl-cron-health" style="font-size:12px;line-height:1.6;margin-bottom:14px;padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;color:#9aa7bd">Checking…</div>' +
+
+        '<div id="gl-test-result" style="display:none;font-size:12px;line-height:1.55;margin-bottom:12px;padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px"></div>' +
         '<div style="display:flex;gap:10px">' +
           '<button onclick="window.glTestMailgun()" style="flex:1;padding:13px;background:rgba(245,200,66,.08);color:#f5c842;border:1px solid rgba(245,200,66,.3);border-radius:8px;cursor:pointer;font-size:13px">Test send</button>' +
           '<button onclick="document.getElementById(\'mg-settings-overlay\').remove()" style="padding:13px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer">Close</button>' +
         '</div>' +
       '</div>';
     document.body.appendChild(ov);
+    // Live checks on open — each guarded so a stubbed/offline Supabase can
+    // never break the panel itself.
+    try { window.glGmailStatus(); } catch(_e){}
+    try { window.glCronHealth(); } catch(_e){}
   };
 
   /* Full Gmail history sync, triggered from the Email Delivery panel. Runs the
@@ -301,14 +318,276 @@
     host.appendChild(ov);
   };
 
-  // Sends a test email through the standard sender (now Gmail via gmail-send,
-  // Mailgun fallback). Function name kept for back-compat.
-  window.glTestMailgun = async function(){
-    if(typeof window.sendMailgunEmail !== 'function'){ alert('Email sender unavailable.'); return; }
-    var ok = await window.sendMailgunEmail('mike@goodliquid.com','Test email from Good Liquid CRM','This is a test email confirming outbound email (Gmail) is wired up. — Good Liquid CRM');
-    if(ok) alert('✓ Test email sent to mike@goodliquid.com');
-    else alert('✗ Test failed. Check the gmail-send Edge Function is deployed and the GMAIL_* secrets are set (run `supabase secrets list`). Mailgun fallback also failed or is unconfigured.');
+  /* ── Gmail connection (gmail-oauth Edge Function) ─────────────────────────
+     The in-app replacement for the OAuth Playground: keys are saved straight
+     into Supabase Vault server-side, Connect runs Google's consent flow, and
+     the refresh token never touches a clipboard. */
+
+  function glEsc(s){
+    return String(s == null ? '' : s).replace(/[<>&]/g, function(c){
+      return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];
+    });
+  }
+
+  // Pull the most useful error text out of a supa.functions.invoke result.
+  async function glInvokeErr(resp){
+    try {
+      if(resp && resp.data && resp.data.error) return String(resp.data.error);
+      if(resp && resp.error){
+        var ctx = resp.error.context;
+        if(ctx && typeof ctx.clone === 'function'){
+          try {
+            var j = await ctx.clone().json();
+            if(j && (j.error || j.message)) return String(j.error || j.message);
+          } catch(_e){}
+        }
+        return String(resp.error.message || resp.error);
+      }
+    } catch(_e){}
+    return 'Unknown error';
+  }
+  window.glInvokeErr = glInvokeErr;
+
+  window.glGmailStatus = async function(){
+    var el = document.getElementById('gl-gmail-status'); if(!el) return;
+    if(!window.supa || !supa.functions || !supa.functions.invoke){
+      el.textContent = 'Status unavailable in this build.'; return;
+    }
+    el.style.color = '#9aa7bd'; el.textContent = 'Checking Gmail connection…';
+    try {
+      var resp = await supa.functions.invoke('gmail-oauth', { body: { action: 'status' } });
+      var d = (resp && resp.data) || {};
+      if(resp.error || d.ok === false){
+        el.style.color = '#ff8579';
+        el.textContent = '⚠ Could not check: ' + (await glInvokeErr(resp));
+        return;
+      }
+      if(d.connected){
+        // Credentials exist — but existence isn't health. Verify live so a
+        // broken pair can never hide behind a green "connected".
+        el.textContent = 'Credentials found — verifying with Google…';
+        var t = await supa.functions.invoke('gmail-oauth', { body: { action: 'test' } });
+        var td = (t && t.data) || {};
+        if(!t.error && td.ok){
+          el.style.color = '#5fcf9e';
+          el.textContent = '✓ Connected' + (d.email ? ' as ' + d.email : '') +
+            (td.source === 'vault' ? ' — credentials held in Supabase Vault.' : ' — using legacy Supabase secrets.');
+        } else {
+          el.style.color = '#ff8579';
+          el.textContent = '✗ Credentials are saved but BROKEN: ' + (td.error || (await glInvokeErr(t)));
+        }
+      } else if(d.has_client_id && d.has_client_secret){
+        el.style.color = '#f5c842';
+        el.textContent = '⚠ Keys saved. Now click "Connect Gmail" and approve access.';
+      } else {
+        el.style.color = '#ff8579';
+        el.textContent = '✗ Not connected. Paste the Client ID and Client Secret from Google Console below, Save, then Connect.';
+      }
+    } catch(e){
+      el.style.color = '#ff8579';
+      el.textContent = '⚠ Could not check: ' + e.message;
+    }
   };
+
+  window.glGmailSaveCreds = async function(){
+    var el = document.getElementById('gl-gmail-status');
+    if(!window.supa || !supa.functions || !supa.functions.invoke){
+      if(el){ el.style.color = '#ff8579'; el.textContent = 'Unavailable in this build.'; }
+      return;
+    }
+    var cid = ((document.getElementById('gl-gm-cid')  || {}).value || '').trim();
+    var sec = ((document.getElementById('gl-gm-csec') || {}).value || '').trim();
+    if(!cid || !sec){
+      if(el){ el.style.color = '#ff8579'; el.textContent = 'Both fields are needed — Client ID and Client Secret.'; }
+      return;
+    }
+    if(el){ el.style.color = '#9aa7bd'; el.textContent = 'Saving keys to Supabase Vault…'; }
+    var resp = await supa.functions.invoke('gmail-oauth', { body: { action: 'save', client_id: cid, client_secret: sec } });
+    if(resp.error || (resp.data && resp.data.ok === false)){
+      if(el){ el.style.color = '#ff8579'; el.textContent = '✗ Save failed: ' + (await glInvokeErr(resp)); }
+      return;
+    }
+    // Clear the fields — the values now live server-side only.
+    try { document.getElementById('gl-gm-cid').value = ''; document.getElementById('gl-gm-csec').value = ''; } catch(_e){}
+    if(el){ el.style.color = '#f5c842'; el.textContent = '✓ Keys saved to Vault. Now click "Connect Gmail".'; }
+  };
+
+  window.glGmailConnect = async function(){
+    var el = document.getElementById('gl-gmail-status');
+    if(!window.supa || !supa.functions || !supa.functions.invoke){
+      if(el){ el.style.color = '#ff8579'; el.textContent = 'Unavailable in this build.'; }
+      return;
+    }
+    if(el){ el.style.color = '#9aa7bd'; el.textContent = 'Opening Google sign-in…'; }
+    // Per-attempt CSRF nonce: Google echoes it back via `state`, and the
+    // return handler only finishes a connect whose nonce THIS browser minted.
+    // A constant state would let a crafted link bind a stranger's mailbox.
+    var nonce = 'glgmail.';
+    try {
+      var a = new Uint32Array(4); crypto.getRandomValues(a);
+      nonce += Array.prototype.join.call(a, '-');
+    } catch(_e){ nonce += String(Date.now()) + '-' + Math.floor(Math.random() * 1e9); }
+    try { sessionStorage.setItem('gl_gmail_state', nonce); } catch(_e){}
+    var resp = await supa.functions.invoke('gmail-oauth', {
+      body: { action: 'start', redirect_uri: location.origin + location.pathname, state: nonce }
+    });
+    if(resp.error || !resp.data || !resp.data.url){
+      if(el){ el.style.color = '#ff8579'; el.textContent = '✗ ' + (await glInvokeErr(resp)); }
+      return;
+    }
+    location.href = resp.data.url;
+  };
+
+  window.glGmailTest = async function(){
+    var el = document.getElementById('gl-gmail-status'); if(!el) return;
+    if(!window.supa || !supa.functions || !supa.functions.invoke){
+      el.style.color = '#ff8579'; el.textContent = 'Unavailable in this build.'; return;
+    }
+    el.style.color = '#9aa7bd'; el.textContent = 'Testing the Gmail connection…';
+    var resp = await supa.functions.invoke('gmail-oauth', { body: { action: 'test' } });
+    var d = (resp && resp.data) || {};
+    if(!resp.error && d.ok){
+      el.style.color = '#5fcf9e';
+      el.textContent = '✓ Gmail connection works (' + (d.source || 'saved') + ' credentials).';
+    } else {
+      el.style.color = '#ff8579';
+      el.textContent = '✗ ' + (d.error || (await glInvokeErr(resp)));
+    }
+  };
+
+  /* Scheduled-jobs health — reads gl_cron_health() so a silent cron failure
+     (the thing that stopped follow-up email for hours) is visible in the app. */
+  window.glCronHealth = async function(){
+    var el = document.getElementById('gl-cron-health'); if(!el) return;
+    if(!window.supa || typeof supa.rpc !== 'function'){ el.textContent = 'Unavailable in this build.'; return; }
+    el.style.color = '#9aa7bd'; el.textContent = 'Checking scheduled jobs…';
+    try {
+      var res = await supa.rpc('gl_cron_health');
+      var d = res && res.data;
+      if(!d || !d.jobs){ el.textContent = 'Could not load job status.'; return; }
+      var http = d.http || [];
+      var bad = http.filter(function(h){ return !(h.status >= 200 && h.status < 300); });
+      var overdue = Number(d.overdue || 0);
+      var lines = (d.jobs || []).map(function(j){
+        var when = j.last_run ? new Date(j.last_run).toLocaleString() : 'never';
+        return '• ' + glEsc(j.name) + ' (' + glEsc(j.schedule) + ') — last run ' + glEsc(when);
+      });
+      // The decisive signal is `overdue`: follow-ups due >30 min ago and still
+      // unsent means the scheduler is NOT doing its job, whatever else looks
+      // fine. The raw http list is context only — the database's outbound
+      // call log is shared with deal alerts, so a failure there isn't
+      // necessarily an email job.
+      if(overdue > 0){
+        el.style.color = '#ff8579';
+        el.innerHTML = '✗ ' + overdue + ' follow-up email' + (overdue === 1 ? ' is' : 's are') +
+          ' due but unsent for over 30 minutes — the scheduler may be down.<br>' + lines.join('<br>');
+      } else if(http.length === 0){
+        el.style.color = '#f5c842';
+        el.innerHTML = '⚠ No overdue follow-ups, but no recent delivery records to confirm either.<br>' + lines.join('<br>');
+      } else if(bad.length === 0){
+        el.style.color = '#5fcf9e';
+        el.innerHTML = '✓ No overdue follow-ups; last ' + http.length + ' outbound calls all OK.<br>' + lines.join('<br>');
+      } else {
+        el.style.color = '#f5c842';
+        el.innerHTML = '⚠ No overdue follow-ups, but ' + bad.length + ' of the last ' + http.length +
+          ' outbound calls from the database failed (HTTP ' +
+          bad.map(function(h){ return glEsc(h.status); }).join(', ') +
+          '). This list includes deal-alert traffic, not just the email jobs.<br>' + lines.join('<br>');
+      }
+    } catch(e){
+      el.textContent = 'Could not load job status: ' + e.message;
+    }
+  };
+
+  /* Test send — HONEST version. The old one reported "✓ sent" when only the
+     Mailgun fallback had fired, which hid a dead Gmail connection behind a
+     green checkmark for hours. This one tries Gmail DIRECTLY first and names
+     the channel that actually delivered. */
+  window.glTestMailgun = async function(){
+    var out = document.getElementById('gl-test-result');
+    var show = function(color, html){
+      if(out){ out.style.display = 'block'; out.style.color = color; out.innerHTML = html; }
+      else alert(String(html).replace(/<[^>]+>/g, ''));
+    };
+    if(!window.supa || !supa.functions || !supa.functions.invoke){ show('#ff8579', 'Email sender unavailable.'); return; }
+    show('#9aa7bd', 'Sending a test email…');
+    var payload = {
+      to: 'mike@goodliquid.com',
+      subject: 'Test email from Good Liquid CRM',
+      text: 'This is a test email confirming outbound email is working. Sent ' + new Date().toLocaleString() + '. — Good Liquid CRM'
+    };
+    var g = await supa.functions.invoke('gmail-send', { body: payload });
+    var gOk = !g.error && g.data && g.data.ok !== false;
+    if(gOk){
+      show('#5fcf9e', '✓ Sent via <b>Gmail</b> (the primary channel). Check mike@goodliquid.com — remember your filter files CRM mail under "5 · Auto-Reports", not the inbox.');
+      return;
+    }
+    var gErr = glEsc(await glInvokeErr(g));
+    var m = await supa.functions.invoke('mailgun-send', { body: payload });
+    var mOk = !m.error && m.data && m.data.ok !== false;
+    if(mOk){
+      show('#f5c842', '⚠ Gmail failed (' + gErr + '), but the <b>Mailgun fallback delivered it</b> — mail IS going out, just from noreply@mail.goodliquidbevco.com instead of your Gmail. Fix Gmail with "Connect Gmail" above. The test lands under your "5 · Auto-Reports" label.');
+    } else {
+      var mErr = glEsc(await glInvokeErr(m));
+      show('#ff8579', '✗ BOTH channels failed — outbound email is down.<br>Gmail: ' + gErr + '<br>Mailgun: ' + mErr);
+    }
+  };
+
+  /* Landing back from Google after "Connect Gmail": the consent flow returns
+     to the CRM's own URL with ?code=…&state=glgmail. Finish the exchange
+     server-side (gmail-oauth stores the refresh token in Vault) and tell the
+     user how it went. */
+  (function glGmailReturnBoot(){
+    var q;
+    try { q = new URLSearchParams(location.search); } catch(_e){ return; }
+    var state = q.get('state') || '';
+    if(state.indexOf('glgmail') !== 0 || !q.get('code')) return;
+    var code = q.get('code');
+    // Clean the URL immediately so a reload can't resend a used code.
+    try { history.replaceState(null, '', location.origin + location.pathname); } catch(_e){}
+    // CSRF check: only finish a connect THIS browser started. glGmailConnect
+    // minted the nonce into sessionStorage; Google echoed it back as `state`.
+    var expected = '';
+    try {
+      expected = sessionStorage.getItem('gl_gmail_state') || '';
+      sessionStorage.removeItem('gl_gmail_state');
+    } catch(_e){}
+    if(!expected || expected !== state){
+      alert('Gmail connect ignored — this window did not start that connection (security check). Open Email Delivery and click Connect Gmail again.');
+      return;
+    }
+    // The redirect back from Google is a fresh page load, so don't wait for a
+    // full CRM login (currentUser) — the Supabase client restores its session
+    // from storage on its own, and functions.invoke attaches it.
+    var tries = 0;
+    (function wait(){
+      if(!window.supa || !window.supa.auth || typeof supa.auth.getSession !== 'function'){
+        if(++tries > 40){
+          alert('Gmail connect: the app did not finish loading. Reload the page, log in, and click Connect Gmail again.');
+          return;
+        }
+        setTimeout(wait, 250);
+        return;
+      }
+      supa.auth.getSession().then(function(s){
+        var session = s && s.data && s.data.session;
+        if(!session){
+          alert('Gmail connect: you are signed out. Log in (Admin), then click Connect Gmail again.');
+          return;
+        }
+        supa.functions.invoke('gmail-oauth', {
+          body: { action: 'callback', code: code, redirect_uri: location.origin + location.pathname }
+        }).then(async function(resp){
+          if(!resp.error && resp.data && resp.data.ok){
+            alert('✓ Gmail connected' + (resp.data.email ? ' as ' + resp.data.email : '') + '. Outbound email now sends from Gmail.');
+          } else {
+            alert('✗ Gmail connect failed: ' + (await glInvokeErr(resp)));
+          }
+          try { if(typeof window.glGmailStatus === 'function' && document.getElementById('gl-gmail-status')) window.glGmailStatus(); } catch(_e){}
+        });
+      });
+    })();
+  })();
 
   /* sendOnboardingEmail (called by the "📧 Send Onboarding Email" button on
      the Customer Logins page) is now a thin wrapper that opens the modern

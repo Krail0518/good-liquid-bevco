@@ -1,202 +1,77 @@
-# Turning on Gmail correspondence sync
+# Gmail connection & correspondence sync
 
-This makes the CRM show **all** email with a client or lead — including replies
-they send you, and messages you send from the Gmail app on your phone. Before
-this, the CRM could only show mail sent from inside the CRM itself.
+The CRM sends email from your Gmail (mike@goodliquid.com) and reads Gmail to
+file every client/lead conversation into their record. Connecting it is now
+done **entirely inside the CRM** — no OAuth Playground, no copying tokens, no
+Supabase dashboard.
 
-The code is already deployed. There is **one** thing left: Gmail currently only
-lets the CRM *send* mail. It needs permission to *read* it too.
-
-You do this once. Takes about 5 minutes.
-
----
-
-## Step 1 — Allow read access in Google Cloud
-
-1. Go to https://console.cloud.google.com/apis/credentials/consent
-2. Select the project used for Gmail sending — for this account that is
-   **CRM2026** (`crm2026-503223`, org `goodliquid.com`).
-3. Open the scopes screen. Google renamed this, so you will see one of two
-   layouts:
-   - **Current layout** — the sidebar reads *Google Auth Platform*. Click
-     **Data access**.
-   - **Older layout** — click **Edit App**, then **Save and Continue** until
-     you reach the **Scopes** step.
-4. Click **Add or remove scopes**, then paste this into the
-   "Manually add scopes" box:
-
-   ```
-   https://www.googleapis.com/auth/gmail.readonly
-   ```
-
-5. Click **Add to table**, tick it, then **Update**, then **Save**. (Older
-   layout: **Save and Continue** to the end, then **Back to Dashboard**.)
-
-> If Google warns the scope is "sensitive" and mentions verification: that
-> applies to apps published to the public. Because this app is only used by
-> you, keep the publishing status as **Testing** and make sure your own
-> Google account is listed under **Test users**. That's enough.
+> History note: the old process (Playground → Exchange → paste three secrets
+> into Supabase) is gone on purpose. Google only verifies the Client Secret at
+> the token exchange, so a mismatched paste could look fine right up until
+> sending died. The in-app flow does the exchange server-side and stores the
+> whole credential set together in Supabase Vault, so it can't half-succeed.
 
 ---
 
-## Step 1b — Get your Client ID and a usable Client secret
+## Connecting Gmail (one time, ~3 minutes)
 
-You cannot read these back out of Supabase (secrets there are write-only), and
-Google no longer lets you view an existing client secret either — the console
-says *"Viewing and downloading client secrets is no longer available."*
+**In Google Cloud Console** (console.cloud.google.com, project **CRM2026**):
 
-So get them from Google Cloud, adding a **second** secret rather than resetting
-the existing one (Google supports multiple active secrets so you can rotate
-without downtime):
+1. **APIs & Services → Credentials** → open the **Web application** OAuth
+   client (create one if none exists: *Create credentials → OAuth client ID →
+   Web application*).
+2. Under **Authorized redirect URIs** click **+ Add URI** and add exactly:
+   - `https://goodliquidbevco.com/`
+   - `https://www.goodliquidbevco.com/` (add both; whichever address you open
+     the CRM at must be listed)
 
-1. Google Cloud → **Google Auth Platform → Clients** → open the
-   **Web application** client (`CRM2026 Web`).
-2. Copy the **Client ID** (public; safe to keep in a notepad).
-3. Under **Client secrets**, click **+ Add secret** and copy the new value
-   immediately — it is shown only once.
-4. **Leave the old secret in place for now.** It is what the live app is still
-   using; deleting it before Step 3 would break invoice sending instantly.
-5. Under **Authorized redirect URIs**, add
-   `https://developers.google.com/oauthplayground` and **Save**. Without this
-   the OAuth Playground fails with `redirect_uri_mismatch`.
+   Then **Save**.
+3. Copy the **Client ID** (ends in `.apps.googleusercontent.com`). Under
+   **Client secrets**, click **+ Add secret** and copy it immediately — Google
+   shows it only once.
+4. One-time, if not already done: **APIs & Services → OAuth consent screen** →
+   **Publish app**. (Left in "Testing", Google expires the connection every
+   7 days.)
 
-## Step 2 — Get a new refresh token (with both permissions)
+**In the CRM:**
 
-The existing token only carries send permission, so it must be regenerated.
+5. AI toolbar → Quick Actions → **📧 Email Delivery**.
+6. Paste the Client ID and Client Secret into **GMAIL CONNECTION** →
+   **💾 Save keys**. They go straight into Supabase Vault server-side; the
+   browser keeps nothing.
+7. Click **🔗 Connect Gmail** → sign in as **mike@goodliquid.com** → **Allow**.
+   The consent asks for send + read together, so one approval covers both
+   sending and sync.
+8. You land back in the CRM with "✓ Gmail connected". Click **Test send** to
+   prove it end-to-end — the result names the channel that actually delivered.
 
-1. Go to https://developers.google.com/oauthplayground/
-2. Click the **gear icon** (⚙️) at the top right.
-3. Check **Use your own OAuth credentials**.
-4. Enter the **Client ID** and the **new Client secret** from Step 1b.
-5. In the left "Input your own scopes" box, paste **both** scopes,
-   separated by a space:
-
-   ```
-   https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly
-   ```
-
-6. Click **Authorize APIs** → sign in as **mike@goodliquid.com** → **Allow**.
-7. Click **Exchange authorization code for tokens**.
-8. Copy the **Refresh token** value (a long string starting with `1//`).
-
-> Important: include **both** scopes. If you only paste the read one, sending
-> email will break.
+Reconnecting later (revoked grant, new OAuth client, expired token) is the
+same flow. If the keys haven't changed, it's just steps 5, 7, 8.
 
 ---
 
-## Step 3 — Save the new credentials in Supabase
+## Scheduled jobs — nothing to configure, ever
 
-Update **both**, so the secret and the refresh token stay a matched pair:
+Three pg_cron jobs run server-side:
 
-1. Go to your Supabase project → **Project Settings** → **Edge Functions** →
-   **Secrets** (or **Configuration → Secrets**).
-2. Set **`GMAIL_CLIENT_SECRET`** to the new secret from Step 1b.
-3. Set **`GMAIL_REFRESH_TOKEN`** to the refresh token from Step 2.
-4. Save.
+| Job | Schedule | What it does |
+|---|---|---|
+| `email-scheduler-every-15min` | every 15 min | sends due scheduled follow-ups |
+| `daily-digest` | 11:00 UTC daily | emails the daily summary to staff |
+| `gmail-sync-hourly` | hourly | files new client/lead mail into the CRM |
 
-### Step 3b — Verify sending still works, THEN retire the old secret
+Their shared secret is **generated inside Postgres and stored in Supabase
+Vault**. The jobs read it from Vault at call time and the edge functions
+verify it through a service-role-only database function. There is no value
+for a human to copy, so there is no value for a human to mis-paste — the
+failure that once silently 401'd every scheduled run for hours.
 
-Do this in order; it is the safe rotation sequence Google's own warning
-("disable and delete the old secret once you have verified...") refers to:
+**Check they're landing:** Email Delivery → **SCHEDULED JOBS** shows each
+job's last run and whether recent deliveries returned OK.
 
-1. In the CRM: **AI toolbar → Quick Actions → 📧 Email Delivery → Test send**.
-2. Confirm the test email arrives. If it does not, the old secret is still live
-   in Google, so revert `GMAIL_CLIENT_SECRET` and investigate before going on —
-   outbound email matters more than history.
-3. Only once Test send succeeds: back in Google Cloud, **disable and then delete
-   the old client secret**. You are down to one secret and Google's
-   "more than one secret" warning clears.
-
----
-
-## Step 4 — Run the first sync (from inside the CRM)
-
-No dashboard needed — the sync has a button in the app:
-
-1. Hard-refresh the CRM (`Ctrl + Shift + R`) so you have the latest build.
-2. **AI toolbar → Quick Actions → 📧 Email Delivery**.
-3. Click **🔄 Sync email history from Gmail** (180-day backfill). The button
-   reports the outcome on itself when it finishes.
-4. Afterwards, each client and lead has its own **🔄 Sync** button in the
-   correspondence panel for a quick top-up of just that contact.
-
-If you would rather invoke the function directly, Supabase → **Edge Functions**
-→ **gmail-sync** → **Invoke** with body `{ "days": 90, "max": 300 }` returns:
-
-   ```json
-   { "ok": true, "scanned": 180, "matched": 24, "inserted": 24, "skipped": 0, "contacts": 37 }
-   ```
-
-   - **matched** = emails that involve one of your clients or leads
-   - **inserted** = new rows added to the history
-   - **skipped** = already logged (so re-running is safe)
-
-Now open a client or a pipeline lead — the **📧 CORRESPONDENCE** panel will
-show the real back-and-forth.
-
-### If you get a 403
-
-The response will say the token is missing the `gmail.readonly` scope. That
-means Step 2 didn't include both scopes — redo Step 2 and Step 3.
-
----
-
-## Step 5 — Syncing while the CRM is closed (optional)
-
-You do **not** need this for normal use. The CRM already syncs itself:
-
-- a quick check of the last 3 days shortly after you open it, then every 15
-  minutes while the tab is open;
-- opening a client or lead refreshes just that contact.
-
-So if the CRM gets opened most days, history stays current on its own. Set up a
-schedule only if you want replies filed even on days you never open the CRM.
-
-### Easiest: Supabase's Cron UI (no keys to handle)
-
-1. Supabase dashboard → **Integrations** → **Cron** (older projects: **Database
-   → Cron Jobs**) → **Create job**.
-2. Name: `gmail-sync-hourly`. Schedule: `0 * * * *` (every hour).
-3. Type: **Supabase Edge Function** → choose **gmail-sync**.
-4. Method **POST**, body:
-
-   ```json
-   { "days": 3, "max": 150 }
-   ```
-
-5. Create. Supabase attaches the authorization itself, so no key is copied
-   anywhere.
-
-Why this rather than a GitHub Action: the scheduler needs a credential, and the
-only one that works from outside is the service-role key — which bypasses every
-security rule in the database. Running the schedule inside Supabase keeps that
-key in the one place it belongs.
-
-### Alternative: SQL (if your project has no Cron UI)
-
-In Supabase → **SQL Editor**. Replace `YOUR_CRON_SECRET` with the value of your
-`CRON_SECRET` edge-function secret (set one if you haven't — any long random
-string, saved in Supabase → Edge Functions → Secrets):
-
-```sql
-select cron.schedule(
-  'gmail-sync-hourly',
-  '0 * * * *',
-  $$
-  select net.http_post(
-    url     := 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1/gmail-sync',
-    headers := jsonb_build_object(
-                 'Content-Type',   'application/json',
-                 'x-cron-secret',  'YOUR_CRON_SECRET'),
-    body    := jsonb_build_object('days', 3, 'max', 100)
-  );
-  $$
-);
-```
-
-That checks the last 3 days every hour — cheap, and plenty to catch replies.
-
-To stop it later: `select cron.unschedule('gmail-sync-hourly');`
+**Belt and braces:** while the CRM is open it also pings the follow-up
+scheduler itself every 20 minutes with your staff login, so even a broken
+cron can't stop due mail from going out on days you use the CRM.
 
 ---
 
@@ -207,8 +82,8 @@ address (including the extra addresses on the client record) or a pipeline
 lead's email. Both directions.
 
 **Not logged:** mail with people who aren't a client or lead in the CRM. This
-is deliberate — the sync ignores your personal and unrelated email, and only
-ever *reads* mail to build the history. It never sends, deletes, or modifies
+is deliberate — the sync ignores personal and unrelated email, and only ever
+*reads* mail to build the history. It never sends, deletes, or modifies
 anything in your mailbox.
 
 ## Duplicates
@@ -225,3 +100,9 @@ seeing that:
 That second layer means rows logged twice *before* the fix still display once,
 so no database cleanup is required. A genuine reply on the same subject line is
 never merged — it is on the other side of the conversation.
+
+## If sync says Gmail refused to read mail (403)
+
+The connection is missing read permission. Fix: Email Delivery →
+**🔗 Connect Gmail** and approve again — the flow requests read + send
+together.
