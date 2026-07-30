@@ -417,6 +417,53 @@ rec('Email delivery panel','Test send tries Gmail directly (honest reporting)',e
 rec('Email delivery panel','Test send shows a visible result naming the channel',emailPanel.testResultShown&&emailPanel.testNamesChannel);
 rec('Email delivery panel','Connect mints a per-attempt security nonce',emailPanel.connectMintsNonce);
 
+/* ---------- PHASE 7d: pipeline → client → onboarding conversion ---------- */
+const onb=await pg.evaluate(async()=>{
+  const o={};
+  o.fnDefined=typeof window.glConvertLeadToOnboarding==='function';
+  o.viewDefined=typeof window.glOpenOnboardings==='function';
+  // Restore a fully chainable from-stub FIRST: an earlier phase narrowed
+  // supa.from to select→order→limit only, and openDealDetail loads
+  // correspondence via .or(), which would otherwise throw.
+  function obChain(data){
+    const c={};
+    ['select','insert','update','upsert','delete','eq','neq','gt','gte','lt','lte','like','ilike','is','in','or','and','not','order','limit','range','match','filter']
+      .forEach(m=>c[m]=()=>obChain(data));
+    c.single=async()=>({data:data,error:null}); c.maybeSingle=async()=>({data:data,error:null});
+    const p=()=>Promise.resolve({data:Array.isArray(data)?data:[],error:null});
+    c.then=(a,b)=>p().then(a,b); c.catch=f=>p().catch(f);
+    return c;
+  }
+  window.supa.from=(t)=>obChain(t==='clients'?{id:'client-xyz'}:[]);
+  // The convert button must be on the deal-detail view.
+  window.deals=window.deals||{}; window.deals['Prospecting']=window.deals['Prospecting']||[];
+  if(!window.deals['Prospecting'].find(x=>x.id==='onb1'))
+    window.deals['Prospecting'].push({id:'onb1',name:'Onb Co',co:'Onb Co',email:'onb@test.local',contactName:'Ann Onb',city:'Palmetto',state:'FL',service:'Canning',notes:'wants seltzer',val:'$0',prob:20});
+  window.openDealDetail('Prospecting', window.deals['Prospecting'].findIndex(x=>x.id==='onb1'));
+  await new Promise(r=>setTimeout(r,200));
+  const panel=document.getElementById('deal-detail-panel');
+  o.buttonPresent=!!panel && [...panel.querySelectorAll('button')].some(b=>/Convert to Client/i.test(b.textContent||''));
+  // Drive the convert: confirm() is auto-yes in the sweep environment.
+  window.confirm=()=>true; window.alert=()=>{};
+  window.__sent=[];
+  window.sendMailgunEmail=async(to,subj,body,opts)=>{ window.__sent.push({to,subj,hasLink:/onboard\.html\?token=/.test((opts&&opts.html||'')+' '+(body||''))}); return true; };
+  window.glInviteCustomerLogin=async()=>true;
+  window.__rpcCalls=[];
+  window.supa.rpc=async(fn,args)=>{ window.__rpcCalls.push(fn); if(fn==='gl_onboarding_create') return {data:{ok:true,id:'ob1',token:'abcdef0123456789abcdef0123456789abcdef01'},error:null}; return {data:null,error:null}; };
+  await window.glConvertLeadToOnboarding();
+  await new Promise(r=>setTimeout(r,200));
+  o.calledCreateRpc=window.__rpcCalls.includes('gl_onboarding_create');
+  o.sentEmail=window.__sent.length>0;
+  o.emailHasOnboardLink=window.__sent.some(s=>s.hasLink);
+  return o;
+});
+rec('Onboarding','convert function defined',onb.fnDefined);
+rec('Onboarding','onboardings admin view defined',onb.viewDefined);
+rec('Onboarding','Convert button on the deal detail',onb.buttonPresent);
+rec('Onboarding','convert calls gl_onboarding_create',onb.calledCreateRpc);
+rec('Onboarding','convert emails the client',onb.sentEmail);
+rec('Onboarding','the email carries the onboarding link',onb.emailHasOnboardLink);
+
 /* ---------- PHASE 8: no fatal errors overall ---------- */
 rec('Stability','no fatal JS error across the whole sweep',appErrors.length===0,appErrors.slice(0,4).join(' | '));
 

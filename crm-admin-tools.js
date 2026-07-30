@@ -342,6 +342,63 @@
     });
   };
 
+  /* ── Onboarding status board ──────────────────────────────────────────────
+     Live view of every client onboarding: who was invited, who has opened it,
+     who has submitted. Each row can copy the finish-link (to re-send by hand)
+     for the ones still outstanding. Reads the onboarding table directly (staff
+     RLS), joining client names in one fetch. */
+  window.glOpenOnboardings = async function(){
+    var prior = document.getElementById('gl-onboardings-modal'); if(prior) prior.remove();
+    var ov = document.createElement('div');
+    ov.id = 'gl-onboardings-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:900;background:rgba(6,13,26,.95);backdrop-filter:blur(16px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:26px;width:100%;max-width:720px;max-height:92vh;overflow-y:auto">' +
+        '<div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:var(--teal);margin-bottom:6px">🚀 CLIENT ONBOARDINGS</div>' +
+        '<div style="font-size:12.5px;color:var(--muted);margin-bottom:16px;line-height:1.6">Every onboarding you\'ve started from the pipeline. <b>Invited</b> = sent, not opened. <b>Started</b> = they opened it. <b>Submitted</b> = done (their answers are on the client record).</div>' +
+        '<div id="gl-ob-list" style="font-size:13px;color:#9aa7bd">Loading…</div>' +
+        '<div style="display:flex;justify-content:flex-end;margin-top:16px"><button onclick="document.getElementById(\'gl-onboardings-modal\').remove()" style="padding:11px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer">Close</button></div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    var list = ov.querySelector('#gl-ob-list');
+    if(!window.supa){ list.textContent = 'Supabase not ready.'; return; }
+    try {
+      var r = await supa.from('onboarding').select('id, client_id, token, status, contact_email, created_at, submitted_at').order('created_at', { ascending: false }).limit(100);
+      if(r.error) throw r.error;
+      var rows = r.data || [];
+      if(!rows.length){ list.innerHTML = '<div style="padding:16px 0;color:var(--muted)">No onboardings yet. Start one from a pipeline lead with 🚀 Convert to Client &amp; Onboard.</div>'; return; }
+      var names = {};
+      var ids = rows.map(function(x){ return x.client_id; }).filter(Boolean);
+      if(ids.length){ var cr = await supa.from('clients').select('id,name').in('id', ids); (cr.data||[]).forEach(function(c){ names[c.id]=c.name; }); }
+      var badge = function(s){
+        var map = { invited:['#f5c842','rgba(245,200,66,.12)','Invited'], started:['#6b9fff','rgba(26,111,255,.15)','Opened'], submitted:['#5fcf9e','rgba(95,207,158,.14)','Submitted'], approved:['#5fcf9e','rgba(95,207,158,.14)','Approved'] };
+        var m = map[s] || ['#9aa7bd','rgba(255,255,255,.06)', s];
+        return '<span style="font-size:10.5px;font-weight:700;letter-spacing:.5px;color:'+m[0]+';background:'+m[1]+';border-radius:20px;padding:3px 10px">'+m[2]+'</span>';
+      };
+      list.innerHTML = rows.map(function(x){
+        var nm = glEsc(names[x.client_id] || x.contact_email || '(unknown)');
+        var when = x.created_at ? new Date(x.created_at).toLocaleDateString() : '';
+        var link = location.origin + '/onboard.html?token=' + encodeURIComponent(x.token);
+        var copyBtn = (x.status === 'invited' || x.status === 'started')
+          ? '<button data-link="'+glEsc(link)+'" class="gl-ob-copy" style="font-size:11px;padding:4px 10px;background:rgba(0,229,192,.1);color:var(--teal);border:1px solid rgba(0,229,192,.3);border-radius:6px;cursor:pointer">Copy link</button>'
+          : '';
+        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.06)">' +
+            '<div><div style="color:#eef4ff;font-size:13.5px;font-weight:600">'+nm+'</div><div style="font-size:11px;color:var(--muted)">'+when+'</div></div>' +
+            '<div style="display:flex;align-items:center;gap:8px">'+badge(x.status)+copyBtn+'</div>' +
+          '</div>';
+      }).join('');
+      list.querySelectorAll('.gl-ob-copy').forEach(function(b){
+        b.addEventListener('click', function(){
+          var lk = b.getAttribute('data-link');
+          navigator.clipboard.writeText(lk).then(function(){ b.textContent='✓ Copied'; setTimeout(function(){ b.textContent='Copy link'; },1500); })
+            .catch(function(){ prompt('Copy this onboarding link:', lk); });
+        });
+      });
+    } catch(e){
+      list.innerHTML = '<div style="color:#ff8579;padding:12px 0">Could not load onboardings: ' + glEsc(e.message || String(e)) + '</div>';
+    }
+  };
+
   /* Reusable masked-credential reveal modal — used by onboarding to surface
      a temp password without splashing it into a system alert.
      opts: { title, message, email, password, status: 'ok'|'warn' } */
@@ -788,6 +845,7 @@
       { label:'📊 Time Report',    fn:'openTimeTrackingReport' },
       { label:'🤖 AI Settings',    fn:'openAISettings' },
       { label:'📄 Pricing Doc (AI)', fn:'glOpenPricingDoc', admin:true },
+      { label:'🚀 Onboardings', fn:'glOpenOnboardings', admin:true },
       { label:'📧 Mailgun Settings', fn:'openMailgunSettings' },
       { label:'📈 Google Analytics', fn:'openGA4Settings', admin:true },
       { label:'🔒 Two-Factor Auth', fn:'openMFASettings' },

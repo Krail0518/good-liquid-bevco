@@ -55,6 +55,7 @@ const EMOJI_MAP: Record<string, string> = {
   invoice_sent_bulk:  '📤',
   client_email_reply: '📬',
   new_referral:       '🌟',
+  onboarding_complete:'🚀',
 };
 
 async function sendWhatsApp(message: string): Promise<boolean> {
@@ -221,6 +222,19 @@ function buildMessage(event: string, data: Record<string, string>): { whatsapp: 
       `Commission:  ${comm ? comm.replace(' · ', '') : '—'}`,
     ].join('\n');
     return { whatsapp, subject: `🌟 Referral: ${name} from ${data.company || '—'}`, body };
+  }
+
+  if (event === 'onboarding_complete') {
+    const whatsapp = `${emoji} ONBOARDING DONE: ${co} finished their intake form. Their client record is updated — review it and schedule production.`;
+    const body     = [
+      `A client completed their onboarding form.`,
+      ``,
+      `Client: ${co}`,
+      `Email:  ${data.email || '—'}`,
+      ``,
+      `Their answers have been written onto the client record in the CRM.`,
+    ].join('\n');
+    return { whatsapp, subject: `🚀 Onboarding complete: ${co}`, body };
   }
 
   // new_deal (manually added from CRM)
