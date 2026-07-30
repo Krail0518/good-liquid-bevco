@@ -79,3 +79,10 @@ jobs:
           NODE_PATH: /tmp/pw/node_modules
           REPO_ROOT: ${{ github.workspace }}
         run: node tests/onboard-page.test.cjs
+
+      # Daily GMP module — type-once fan-out to multiple registers.
+      - name: Run GMP module test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/gmp.test.cjs
