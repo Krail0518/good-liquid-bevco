@@ -86,6 +86,16 @@
     </div>
 
     <div class="card">
+      <div class="sec-title">Mock recalls</div>
+      <div id="recalls"></div>
+    </div>
+
+    <div class="card">
+      <div class="sec-title">Open GMP tasks</div>
+      <div id="opentasks"></div>
+    </div>
+
+    <div class="card">
       <div class="sec-title">Open deviations</div>
       <div id="deviations"></div>
     </div>
@@ -167,6 +177,8 @@
     var docs=[]; try{ docs=await rest('gmp_documents?active=eq.true&order=sort_order.asc&select=doc_code,title,category,description,file_url,file_type,rev'); }catch(e){}
     var suppliers=[]; try{ suppliers=await rest('vendors?order=name.asc&select=name,category,approval_status,food_safety_cert,cert_expires,risk_level,materials'); }catch(e){}
     var ncr=[]; try{ ncr=await rest('defects?order=reported_at.desc&limit=50&select=reported_at,run_ref,category,severity,status,owner,description,root_cause,corrective_action,preventive_action,due_date,verified_at,ncr_number'); }catch(e){}
+    var recalls=[]; try{ recalls=await rest('mock_recalls?order=initiated_at.desc&limit=20&select=lot_code,initiated_at,completed_at,units_produced,units_accounted,pct_reconciled,passed,conducted_by,time_to_complete'); }catch(e){}
+    var tasks=[]; try{ tasks=await rest('compliance_tasks?status=eq.open&order=due_date.asc&limit=50&select=title,due_date,due_time,task_type,status'); }catch(e){}
     TEMPLATES=tpls||[];
 
     // Per-register counts.
@@ -254,6 +266,39 @@
         (n.verified_at?'<div style="font-size:11.5px;color:var(--green);margin-top:3px">verified ✓ '+esc(fmtDate(n.verified_at))+'</div>':'')+
       '</div>';
     }).join('') : '<div class="sub" style="color:#5fcf9e">No non-conformances logged.</div>';
+
+    // Mock recalls (read-only).
+    el('recalls').innerHTML=(recalls&&recalls.length)? recalls.map(function(m){
+      var pass=(m.passed===true);
+      var badge='<span class="pill" style="color:'+(pass?'var(--green)':'var(--red)')+';background:'+(pass?'rgba(95,207,158,.12)':'rgba(231,70,70,.12)')+'">'+(pass?'PASS':'REVIEW')+'</span>';
+      var pct=(m.pct_reconciled==null)?'':(esc(String(m.pct_reconciled))+'%');
+      return '<div style="border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin-bottom:8px;background:var(--card2)">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'+
+          '<div style="font-weight:700;color:var(--white);font-size:12.5px">'+esc(m.lot_code||'Lot')+
+            ' <span style="color:#6b87ad;font-weight:400">'+esc(fmtDate(m.initiated_at))+'</span></div>'+
+          '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'+(pct?'<span style="font-size:12px;color:var(--white);font-weight:700">'+pct+' reconciled</span>':'')+badge+'</div>'+
+        '</div>'+
+        '<div class="sub" style="margin-top:5px">Units accounted: '+esc(String(m.units_accounted==null?'—':m.units_accounted))+' / '+esc(String(m.units_produced==null?'—':m.units_produced))+
+          (m.conducted_by?(' · by '+esc(m.conducted_by)):'')+'</div>'+
+        (m.time_to_complete?'<div class="sub" style="margin-top:3px">Time to complete: '+esc(String(m.time_to_complete))+'</div>':'')+
+      '</div>';
+    }).join('') : '<div class="sub">No mock recalls on record.</div>';
+
+    // Open GMP tasks (read-only).
+    var todayStr=new Date().toISOString().slice(0,10);
+    var overdue=(tasks||[]).filter(function(tk){return tk.due_date && String(tk.due_date).slice(0,10) < todayStr;}).length;
+    el('opentasks').innerHTML=(tasks&&tasks.length)?
+      '<div class="sub" style="margin-bottom:8px">'+esc(String(tasks.length))+' open'+(overdue?(' · <span style="color:var(--red)">'+esc(String(overdue))+' overdue</span>'):'')+'</div>'+
+      tasks.map(function(tk){
+        var isOver=tk.due_date && String(tk.due_date).slice(0,10) < todayStr;
+        return '<div style="border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin-bottom:8px;background:var(--card2)">'+
+          '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'+
+            '<div style="font-weight:700;color:var(--white);font-size:12.5px">'+esc(tk.title||'Task')+
+              (tk.task_type?' <span class="pill" style="color:var(--muted);background:rgba(107,135,173,.12)">'+esc(tk.task_type)+'</span>':'')+'</div>'+
+            (tk.due_date?'<span class="sub" style="color:'+(isOver?'var(--red)':'var(--muted)')+'">'+(isOver?'⚠ ':'')+'due '+esc(fmtDate(tk.due_date))+(tk.due_time?(' '+esc(String(tk.due_time).slice(0,5))):'')+'</span>':'')+
+          '</div>'+
+        '</div>';
+      }).join('') : '<div class="sub">No open tasks.</div>';
 
     // Deviations.
     el('deviations').innerHTML=(devs&&devs.length)? devs.map(function(r){
