@@ -76,6 +76,16 @@
     </div>
 
     <div class="card">
+      <div class="sec-title">Approved suppliers</div>
+      <div id="suppliers"></div>
+    </div>
+
+    <div class="card">
+      <div class="sec-title">Non-conformances / CAPA</div>
+      <div id="ncr"></div>
+    </div>
+
+    <div class="card">
       <div class="sec-title">Open deviations</div>
       <div id="deviations"></div>
     </div>
@@ -155,6 +165,8 @@
     try{ defects=await rest('defects?order=created_at.desc&limit=1&select=id'); }catch(e){}
     try{ holds=await rest('hold_tags?order=created_at.desc&limit=1&select=id'); }catch(e){}
     var docs=[]; try{ docs=await rest('gmp_documents?active=eq.true&order=sort_order.asc&select=doc_code,title,category,description,file_url,file_type,rev'); }catch(e){}
+    var suppliers=[]; try{ suppliers=await rest('vendors?order=name.asc&select=name,category,approval_status,food_safety_cert,cert_expires,risk_level,materials'); }catch(e){}
+    var ncr=[]; try{ ncr=await rest('defects?order=reported_at.desc&limit=50&select=reported_at,run_ref,category,severity,status,owner,description,root_cause,corrective_action,preventive_action,due_date,verified_at,ncr_number'); }catch(e){}
     TEMPLATES=tpls||[];
 
     // Per-register counts.
@@ -189,6 +201,59 @@
         (dc.description?'<div class="sub" style="margin-top:5px">'+esc(dc.description)+'</div>':'')+
       '</div>';
     }).join('') : '<div class="sub">No documents posted.</div>';
+
+    // Approved suppliers (read-only).
+    var DAY=864e5, now=Date.now();
+    el('suppliers').innerHTML=(suppliers&&suppliers.length)? suppliers.map(function(s){
+      var st=String(s.approval_status||'').toLowerCase(), bc, bt;
+      if(st==='approved'){ bc='var(--green)'; bt='rgba(95,207,158,.12)'; }
+      else if(st==='suspended'||st==='rejected'){ bc='var(--red)'; bt='rgba(231,70,70,.12)'; }
+      else { bc='var(--yellow)'; bt='rgba(245,200,66,.12)'; }
+      var badge='<span class="pill" style="color:'+bc+';background:'+bt+'">'+esc(s.approval_status||'unknown')+'</span>';
+      var mats=Array.isArray(s.materials)?s.materials.join(', '):(s.materials||'');
+      var certNote='';
+      if(s.cert_expires){
+        var exp=new Date(s.cert_expires).getTime();
+        if(!isNaN(exp)&&exp-now<60*DAY){
+          var col=exp<now?'var(--red)':'var(--yellow)';
+          certNote='<div style="font-size:11.5px;color:'+col+';margin-top:3px">⚠ cert expires '+esc(fmtDate(s.cert_expires))+'</div>';
+        }
+      }
+      return '<div style="border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin-bottom:8px;background:var(--card2)">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'+
+          '<div style="font-weight:700;color:var(--white);font-size:13px">'+esc(s.name)+
+            (s.category?' <span style="color:#6b87ad;font-size:11px;font-weight:400">('+esc(s.category)+')</span>':'')+'</div>'+
+          badge+
+        '</div>'+
+        (mats?'<div class="sub" style="margin-top:5px">Materials: '+esc(mats)+'</div>':'')+
+        (s.food_safety_cert?'<div class="sub" style="margin-top:3px">Food safety cert: '+esc(s.food_safety_cert)+'</div>':'')+
+        certNote+
+      '</div>';
+    }).join('') : '<div class="sub">No suppliers listed.</div>';
+
+    // Non-conformances / CAPA (read-only).
+    el('ncr').innerHTML=(ncr&&ncr.length)? ncr.map(function(n){
+      var sev=String(n.severity||'').toLowerCase(), sc, sbg;
+      if(sev==='critical'||sev==='high'){ sc='var(--red)'; sbg='rgba(231,70,70,.12)'; }
+      else if(sev==='medium'){ sc='var(--yellow)'; sbg='rgba(245,200,66,.12)'; }
+      else { sc='var(--muted)'; sbg='rgba(107,135,173,.12)'; }
+      var sevBadge=n.severity?'<span class="pill" style="color:'+sc+';background:'+sbg+'">'+esc(n.severity)+'</span>':'';
+      var closed=String(n.status||'').toLowerCase()==='closed';
+      var stBadge=n.status?'<span class="pill" style="color:'+(closed?'var(--green)':'var(--yellow)')+';background:'+(closed?'rgba(95,207,158,.12)':'rgba(245,200,66,.12)')+'">'+esc(n.status)+'</span>':'';
+      return '<div style="border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin-bottom:8px;background:var(--card2)">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'+
+          '<div style="font-weight:700;color:var(--white);font-size:12.5px">'+esc(n.ncr_number||n.run_ref||'NCR')+
+            ' <span style="color:#6b87ad;font-weight:400">'+esc(fmtDate(n.reported_at))+'</span></div>'+
+          '<div style="display:flex;gap:6px;flex-wrap:wrap">'+sevBadge+stBadge+'</div>'+
+        '</div>'+
+        (n.description?'<div style="font-size:12.5px;color:#eef4ff;margin-top:5px">'+esc(n.description)+'</div>':'')+
+        (n.root_cause?'<div class="sub" style="margin-top:3px">Root cause: '+esc(n.root_cause)+'</div>':'')+
+        (n.corrective_action?'<div style="font-size:12px;color:#5fcf9e;margin-top:3px">Corrective: '+esc(n.corrective_action)+'</div>':'')+
+        (n.preventive_action?'<div style="font-size:12px;color:#5fcf9e;margin-top:3px">Preventive: '+esc(n.preventive_action)+'</div>':'')+
+        (n.due_date?'<div class="sub" style="margin-top:3px">Due: '+esc(fmtDate(n.due_date))+'</div>':'')+
+        (n.verified_at?'<div style="font-size:11.5px;color:var(--green);margin-top:3px">verified ✓ '+esc(fmtDate(n.verified_at))+'</div>':'')+
+      '</div>';
+    }).join('') : '<div class="sub" style="color:#5fcf9e">No non-conformances logged.</div>';
 
     // Deviations.
     el('deviations').innerHTML=(devs&&devs.length)? devs.map(function(r){
