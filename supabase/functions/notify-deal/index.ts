@@ -35,6 +35,11 @@
 //   supabase secrets set CALLMEBOT_PHONE=18034935065 CALLMEBOT_API_KEY=<key>
 
 import { corsHeaders, jsonResponse, handlePreflight } from '../_shared/cors.ts';
+import { requireStaff } from '../_shared/auth.ts';
+// vaultGet is the generic service-role Vault reader (it lives in
+// gmail-creds.ts for historical reasons; the gl_notify_secret is unrelated
+// to Gmail).
+import { vaultGet } from '../_shared/gmail-creds.ts';
 
 const MIKE_EMAILS = ['mike@goodliquid.com'];
 const EMOJI_MAP: Record<string, string> = {
@@ -240,9 +245,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
   try { payload = await req.json(); }
   catch { return jsonResponse({ ok: false, error: 'Invalid JSON' }, 400); }
 
-  const expectedSecret = Deno.env.get('GL_NOTIFY_SECRET');
-  if (!expectedSecret || payload.secret !== expectedSecret) {
-    return jsonResponse({ ok: false, error: 'Unauthorized' }, 401);
+  // Two legitimate callers:
+  //   * DB triggers (new deal / public quote / tour booking) — they read the
+  //     shared secret from Vault at call time and send it in the body. The
+  //     Vault value is canonical; the env GL_NOTIFY_SECRET only counts while
+  //     no Vault value exists, so rotating the Vault value retires the old
+  //     secret that once shipped in the public page HTML.
+  //   * The CRM in a staff session — no secret at all; the staff JWT is the
+  //     authorization (requireStaff).
+  const vaultSecret = await vaultGet('gl_notify_secret');
+  const expectedSecret = vaultSecret || Deno.env.get('GL_NOTIFY_SECRET') || '';
+  const secretOk = !!expectedSecret && payload.secret === expectedSecret;
+  if (!secretOk) {
+    const auth = await requireStaff(req);
+    if (!auth.ok) return jsonResponse({ ok: false, error: 'Unauthorized' }, 401);
   }
 
   const event = String(payload.event || '');
