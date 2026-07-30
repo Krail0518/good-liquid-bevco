@@ -22,15 +22,18 @@ const rec=(n,ok,d)=>results.push({n,ok:!!ok,d:d||''});
 // resolve locally and record what the page sent to gl_onboarding_submit.
 function stubInit(scenario){
   window.__submitBody=null;
+  window.__setpwBody=null;
+  window.__setpwCalledBeforeSubmit=false;
   const PREFILL={company:'Onb Co',name:'Ann Onb',email:'ann@onb.test',phone:'8035550100',city:'Palmetto',state:'FL',service:'12oz seltzer canning',notes:'wants a test run'};
   window.fetch=async function(url,opts){
     const body=JSON.parse((opts&&opts.body)||'{}');
     if(/gl_onboarding_get/.test(url)){
       if(scenario==='bad') return {ok:true,json:async()=>({ok:false,error:'This onboarding link is not valid.'})};
       if(scenario==='done') return {ok:true,json:async()=>({ok:true,status:'submitted',submitted:true,client_name:'Onb Co',prefill:PREFILL,data:{}})};
-      return {ok:true,json:async()=>({ok:true,status:'started',submitted:false,client_name:'Onb Co',prefill:PREFILL,data:{}})};
+      return {ok:true,json:async()=>({ok:true,status:'started',submitted:false,client_name:'Onb Co',email:'ann@onb.test',prefill:PREFILL,data:{}})};
     }
-    if(/gl_onboarding_submit/.test(url)){ window.__submitBody=body; return {ok:true,json:async()=>({ok:true})}; }
+    if(/onboarding-set-password/.test(url)){ window.__setpwBody=body; return {ok:true,json:async()=>({ok:true,email:'ann@onb.test',portal_url:'/?portal=1'})}; }
+    if(/gl_onboarding_submit/.test(url)){ window.__submitBody=body; window.__setpwCalledBeforeSubmit=!!window.__setpwBody; return {ok:true,json:async()=>({ok:true})}; }
     return {ok:false,status:404,json:async()=>({})};
   };
 }
@@ -88,20 +91,49 @@ async function run(scenario, token){
   rec('form is prefilled from the lead (company)', r.company==='Onb Co', r.company);
   rec('form is prefilled from the lead (contact)', r.contact==='Ann Onb', r.contact);
   rec('form is prefilled from the lead (service)', r.service==='12oz seltzer canning', r.service);
+  const pwFields=await pg.evaluate(()=>({p:!!document.getElementById('f-password'),p2:!!document.getElementById('f-password2'),
+    masked:(document.getElementById('f-password')||{}).type==='password',
+    policyStated:/uppercase/i.test(document.body.innerText)&&/special character/i.test(document.body.innerText)}));
+  rec('password + confirm fields exist', pwFields.p && pwFields.p2);
+  rec('password field is masked', pwFields.masked);
+  rec('the complexity policy is stated on the page', pwFields.policyStated);
 
-  // 5) Fill a remaining field, submit, verify the payload went through.
-  const sub=await pg.evaluate(async()=>{
+  // 5a) A weak password must be rejected client-side — no submit, no set-password call.
+  const weak=await pg.evaluate(async()=>{
     document.getElementById('f-legal_name').value='Onb Co LLC';
-    document.getElementById('f-ein').value='12-3456789';
-    // billing/shipping "same" are checked by default → should mirror company address
+    document.getElementById('f-password').value='alllowercase';   // no upper/number/special
+    document.getElementById('f-password2').value='alllowercase';
     document.getElementById('form').dispatchEvent(new Event('submit',{cancelable:true}));
-    await new Promise(r=>setTimeout(r,300));
+    await new Promise(r=>setTimeout(r,150));
+    return { setpwCalled:!!window.__setpwBody, submitCalled:!!window.__submitBody, msg:document.getElementById('msg').textContent };
+  });
+  rec('weak password is blocked before any network call', !weak.setpwCalled && !weak.submitCalled, weak.msg);
+  rec('weak password shows a policy message', /uppercase|number|special|8 char/i.test(weak.msg||''), weak.msg);
+
+  // 5b) Mismatched confirm must be rejected.
+  const mism=await pg.evaluate(async()=>{
+    document.getElementById('f-password').value='Str0ng!pass';
+    document.getElementById('f-password2').value='Different1!';
+    document.getElementById('form').dispatchEvent(new Event('submit',{cancelable:true}));
+    await new Promise(r=>setTimeout(r,150));
+    return { setpwCalled:!!window.__setpwBody, msg:document.getElementById('msg').textContent };
+  });
+  rec('mismatched passwords are blocked', !mism.setpwCalled && /match/i.test(mism.msg||''), mism.msg);
+
+  // 5c) A strong, matching password → set-password called BEFORE submit, then done.
+  const sub=await pg.evaluate(async()=>{
+    document.getElementById('f-password').value='Str0ng!pass';
+    document.getElementById('f-password2').value='Str0ng!pass';
+    document.getElementById('form').dispatchEvent(new Event('submit',{cancelable:true}));
+    await new Promise(r=>setTimeout(r,350));
     return {
-      body:window.__submitBody,
+      body:window.__submitBody, setpw:window.__setpwBody, orderOk:window.__setpwCalledBeforeSubmit,
       doneShown:!document.getElementById('done').classList.contains('hidden'),
       formHidden:document.getElementById('form').classList.contains('hidden')
     };
   });
+  rec('set-password is called with the token + password', sub.setpw && sub.setpw.token && sub.setpw.password==='Str0ng!pass');
+  rec('login is created BEFORE the intake is finalized', sub.orderOk===true);
   rec('submit sends legal_name in the payload', sub.body && sub.body.p_data && sub.body.p_data.legal_name==='Onb Co LLC', JSON.stringify(sub.body&&sub.body.p_data||{}).slice(0,120));
   rec('submit mirrors company address into billing (same ticked)', sub.body && sub.body.p_data && sub.body.p_data.billing_city==='Palmetto', String(sub.body&&sub.body.p_data&&sub.body.p_data.billing_city));
   rec('submit passes the token', sub.body && sub.body.p_token==='abcdef0123456789abcdef0123456789abcdef01');

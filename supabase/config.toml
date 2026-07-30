@@ -1,0 +1,9 @@
+# Supabase CLI config. Only per-function overrides that the CI deploy
+# (`supabase functions deploy --project-ref …`) needs to read live here;
+# every other function keeps whatever verify_jwt it already has server-side.
+project_id = "ufjkeqmxwuyhbqyugcgg"
+
+# The public onboarding page (onboard.html) calls this anonymously, token-gated
+# in the function body — so the gateway JWT check must be off.
+[functions.onboarding-set-password]
+verify_jwt = false
