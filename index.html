@@ -2341,6 +2341,9 @@ select option, .fsel option {
           <div style="display:flex;flex-direction:column;gap:12px">
             <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">DEAL NAME *</div><input id="nd-name" placeholder="e.g. SunBurst Q3 Run" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)"></div>
             <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">BRAND / COMPANY</div><input id="nd-co" placeholder="e.g. SunBurst Seltzers" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)"></div>
+            <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">CONTACT NAME</div><input id="nd-contact" placeholder="e.g. Jordan Lee" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)"></div>
+            <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">EMAIL</div><input id="nd-email" type="email" placeholder="e.g. jordan@sunburst.com" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)"></div>
+            <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">PHONE</div><input id="nd-phone" placeholder="e.g. (803) 555-0100" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)"></div>
             <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">DEAL VALUE ($)</div><input id="nd-val" type="number" placeholder="e.g. 12000" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)"></div>
             <div><div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">STAGE</div>
               <select id="nd-stage" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)">
@@ -5358,23 +5361,28 @@ async function saveNewDeal(){
   const name = document.getElementById('nd-name').value.trim();
   if(!name){alert('Deal name is required.');return}
   const co = document.getElementById('nd-co').value.trim();
+  const contactName = (document.getElementById('nd-contact')||{}).value ? document.getElementById('nd-contact').value.trim() : '';
+  const email = (document.getElementById('nd-email')||{}).value ? document.getElementById('nd-email').value.trim() : '';
+  const phone = (document.getElementById('nd-phone')||{}).value ? document.getElementById('nd-phone').value.trim() : '';
   const val = parseFloat(document.getElementById('nd-val').value)||0;
   const stage = document.getElementById('nd-stage').value;
   const prob = parseInt(document.getElementById('nd-prob').value)||20;
   const notes = document.getElementById('nd-notes').value.trim();
 
-  // Save to Supabase
+  // Save to Supabase. contact_name/email/phone let a manually-added lead be
+  // emailed and converted to a client — the same columns the quote form fills.
   let newD = null;
   try {
     const {data} = await supa.from('deals').insert([{
-      name, client_name:co, value:val, stage, probability:prob, notes
+      name, client_name:co, contact_name:contactName||null, email:email||null, phone:phone||null,
+      value:val, stage, probability:prob, notes
     }]).select().single();
     newD = data;
   } catch(e){ console.warn('[GL] saveNewDeal insert failed', e); }
 
   const did = newD ? newD.id : 'tmp_'+(Date.now());
   if(!deals[stage]) deals[stage]=[];
-  deals[stage].push({id:did, name, co, val:'$'+val.toLocaleString(), prob, notes, stageEnteredAt: newD?.stage_entered_at || new Date().toISOString()});
+  deals[stage].push({id:did, name, co, contactName, email, phone, val:'$'+val.toLocaleString(), prob, notes, stageEnteredAt: newD?.stage_entered_at || new Date().toISOString()});
   renderKanban(); renderDash();
 
   // Update pipeline subtitle

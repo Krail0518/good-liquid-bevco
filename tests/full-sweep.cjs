@@ -467,6 +467,12 @@ const onb=await pg.evaluate(async()=>{
   // 'onboarding' would 400 against clients_status_check in production.
   o.clientStatus=window.__clientInsert&&window.__clientInsert.status;
   o.statusLegal=['lead','active','inactive'].includes(o.clientStatus);
+  // Add Deal must offer an email field — without it a manually-added lead
+  // can't be emailed or converted (the whole onboarding entry point).
+  try{ window.openAddDealModal(); }catch(e){}
+  await new Promise(r=>setTimeout(r,150));
+  o.addDealHasEmail=!!document.getElementById('nd-email');
+  try{ if(typeof window.closeAddDealModal==='function') window.closeAddDealModal(); }catch(e){}
   return o;
 });
 rec('Onboarding','convert function defined',onb.fnDefined);
@@ -476,6 +482,7 @@ rec('Onboarding','convert calls gl_onboarding_create',onb.calledCreateRpc);
 rec('Onboarding','convert emails the client',onb.sentEmail);
 rec('Onboarding','the email carries the onboarding link',onb.emailHasOnboardLink);
 rec('Onboarding','new client status is constraint-legal',onb.statusLegal,'status='+onb.clientStatus);
+rec('Onboarding','Add Deal has an email field (convert entry point)',onb.addDealHasEmail);
 
 /* ---------- PHASE 8: no fatal errors overall ---------- */
 rec('Stability','no fatal JS error across the whole sweep',appErrors.length===0,appErrors.slice(0,4).join(' | '));
