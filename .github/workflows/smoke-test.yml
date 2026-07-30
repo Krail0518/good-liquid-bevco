@@ -93,3 +93,10 @@ jobs:
           NODE_PATH: /tmp/pw/node_modules
           REPO_ROOT: ${{ github.workspace }}
         run: node tests/auditor-page.test.cjs
+
+      # GMP documents library — hub tile + auditor dashboard document links.
+      - name: Run GMP documents test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/gmp-documents.test.cjs
