@@ -43,6 +43,14 @@ function stubInit(validToken){
     {doc_code:'GMP-REG',title:'GMP Registers',category:'register',description:'Blank GMP register workbook.',file_url:'/docs/GMP-Registers.xlsx',file_type:'xlsx',rev:'A'},
     {doc_code:'LACF-ACID',title:'LACF Acidified Regulatory Guide',category:'regulatory',description:'LACF / acidified foods regulatory reference.',file_url:'/docs/LACF-Acidified-Regulatory-Guide.docx',file_type:'docx',rev:'A'}
   ];
+  const SUPPLIERS=[
+    {name:'Crown Closures',category:'packaging',approval_status:'approved',food_safety_cert:'SQF',cert_expires:'2027-01-15',risk_level:'low',materials:'Can ends, seams'},
+    {name:'Citrus Growers Co-op',category:'ingredient',approval_status:'conditional',food_safety_cert:'BRC',cert_expires:'2026-11-30',risk_level:'medium',materials:'Orange concentrate'}
+  ];
+  const NCRS=[
+    {reported_at:'2026-07-28',run_ref:'B-1',category:'seam',severity:'high',status:'open',owner:'Op A',description:'Seam visual failed',root_cause:'Worn seamer roll',corrective_action:'Held lot, replaced roll',preventive_action:'Added roll wear check',due_date:'2026-08-05',verified_at:null,ncr_number:'NCR-000123'},
+    {reported_at:'2026-07-20',run_ref:'B-9',category:'sanitation',severity:'medium',status:'closed',owner:'Op B',description:'Pre-op swab positive',root_cause:'Missed CIP step',corrective_action:'Re-cleaned, re-swabbed',preventive_action:'CIP retraining',due_date:'2026-07-25',verified_at:'2026-07-26',ncr_number:'NCR-000119'}
+  ];
   window.fetch=async function(url,opts){
     opts=opts||{};
     const method=(opts.method||'GET').toUpperCase();
@@ -59,7 +67,9 @@ function stubInit(validToken){
     if(/compliance_records\?form_code=eq\./.test(url)) return ok(RECENT.filter(r=>new RegExp('form_code=eq\\.'+r.form_code).test(url)));
     if(/compliance_records\?has_deviation=eq\.true/.test(url)) return ok(DEVS);
     if(/compliance_records/.test(url)) return ok(RECENT);
-    if(/cip_logs|defects|hold_tags/.test(url)) return ok([]);
+    if(/vendors/.test(url)) return ok(SUPPLIERS);
+    if(/defects/.test(url)) return ok(NCRS);
+    if(/cip_logs|hold_tags/.test(url)) return ok([]);
     return {ok:false,status:404,json:async()=>([])};
   };
 }
@@ -114,6 +124,8 @@ async function open(query){
     registers:document.getElementById('registers').innerText,
     deviations:document.getElementById('deviations').innerText,
     recent:document.getElementById('recent').innerText,
+    suppliers:(document.getElementById('suppliers')||{}).innerText||'',
+    ncr:(document.getElementById('ncr')||{}).innerText||'',
     bannerReadOnly:/read-only/i.test(document.querySelector('.banner').innerText)
   }));
   rec('valid token shows the dashboard', r.dash && !r.login, JSON.stringify({dash:r.dash,login:r.login}));
@@ -123,6 +135,8 @@ async function open(query){
   rec('registers list renders both forms', /Pre-Op Sanitation/.test(r.registers) && /Double-Seam/.test(r.registers), r.registers.slice(0,80));
   rec('open deviation is shown', /Visual OK|Deviation/.test(r.deviations), r.deviations.slice(0,80));
   rec('recent records table renders rows', /GMP-PREOP-001/.test(r.recent) && /GMP-SEAM-001/.test(r.recent), r.recent.slice(0,80));
+  rec('approved-supplier card renders a supplier + approval status', /Crown Closures|Citrus Growers Co-op/.test(r.suppliers) && /approved|conditional/i.test(r.suppliers), r.suppliers.slice(0,100));
+  rec('NCR card renders an ncr number or run ref', /NCR-000123|NCR-000119|B-1|B-9/.test(r.ncr), r.ncr.slice(0,100));
 
   // 3-docs) Documents library card renders the three documents as links.
   const docs=await pg.evaluate(()=>{

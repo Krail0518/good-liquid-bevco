@@ -100,3 +100,11 @@ jobs:
           NODE_PATH: /tmp/pw/node_modules
           REPO_ROOT: ${{ github.workspace }}
         run: node tests/gmp-documents.test.cjs
+
+      # Approved-supplier program + NCR/CAPA — supplier approval fields, defect
+      # modal CAPA fields, and NCR raised from a GMP deviation.
+      - name: Run SQF supplier/NCR test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/sqf-supplier-ncr.test.cjs

@@ -125,7 +125,10 @@
           '<td style="padding:11px;color:var(--muted)">' + esc(r.run_ref || '—') + '</td>' +
           '<td style="padding:11px;color:var(--muted)">' + esc(r.category || '—') + '</td>' +
           '<td style="padding:11px"><span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;background:' + severityColor(r.severity) + '22;color:' + severityColor(r.severity) + ';border:1px solid ' + severityColor(r.severity) + '55">' + esc(sevLabel) + '</span></td>' +
-          '<td style="padding:11px"><span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:' + statusColor(r.status) + '22;color:' + statusColor(r.status) + ';border:1px solid ' + statusColor(r.status) + '55">' + esc(statLabel) + '</span></td>' +
+          '<td style="padding:11px"><span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:' + statusColor(r.status) + '22;color:' + statusColor(r.status) + ';border:1px solid ' + statusColor(r.status) + '55">' + esc(statLabel) + '</span>' +
+            (r.due_date ? '<div style="font-size:10px;color:var(--muted);margin-top:3px">Due ' + esc(r.due_date) + '</div>' : '') +
+            (r.verified_at ? '<div style="font-size:10px;color:#5fcf9e;margin-top:3px">verified ✓</div>' : '') +
+          '</td>' +
           '<td style="padding:11px;color:var(--muted)">' + esc(r.owner || '—') + '</td>' +
         '</tr>';
       }).join('') + '</tbody></table>';
@@ -135,7 +138,7 @@
     var prior = document.getElementById('gl-def-modal'); if(prior) prior.remove();
     var host = document.getElementById('crm-panel') || document.body;
     var isEdit = !!existing;
-    var d = existing || { run_ref:'', category:'Fill weight', severity:'medium', status:'open', owner:'', description:'', root_cause:'', corrective_action:'', reported_at: new Date().toISOString().slice(0,16), closed_at:null };
+    var d = existing || { run_ref:'', category:'Fill weight', severity:'medium', status:'open', owner:'', description:'', root_cause:'', corrective_action:'', reported_at: new Date().toISOString().slice(0,16), closed_at:null, ncr_number:'', preventive_action:'', due_date:'', verified_by:'', verified_at:'', source:'', source_record_id:'' };
     var catOpts = CATEGORIES.map(function(c){ return '<option' + (c === d.category ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('');
     var sevOpts = SEVERITY.map(function(s){ return '<option value="' + s[0] + '"' + (s[0] === d.severity ? ' selected' : '') + '>' + esc(s[1]) + '</option>'; }).join('');
     var statOpts = STATUSES.map(function(s){ return '<option value="' + s[0] + '"' + (s[0] === d.status ? ' selected' : '') + '>' + esc(s[1]) + '</option>'; }).join('');
@@ -162,6 +165,15 @@
         '<div class="frow"><div class="flbl">What was observed</div><textarea class="finp" id="gl-def-desc" rows="3">' + esc(d.description) + '</textarea></div>' +
         '<div class="frow"><div class="flbl">Suspected root cause</div><textarea class="finp" id="gl-def-root" rows="2">' + esc(d.root_cause) + '</textarea></div>' +
         '<div class="frow"><div class="flbl">Corrective action taken</div><textarea class="finp" id="gl-def-corr" rows="2">' + esc(d.corrective_action) + '</textarea></div>' +
+        '<div class="frow"><div class="flbl">Preventive action (stop recurrence)</div><textarea class="finp" id="gl-def-prev" rows="2">' + esc(d.preventive_action) + '</textarea></div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+          '<div class="frow"><div class="flbl">NCR number</div><input class="finp" id="gl-def-ncr" value="' + esc(d.ncr_number) + '" placeholder="auto / e.g. NCR-042"></div>' +
+          '<div class="frow"><div class="flbl">Due date</div><input class="finp" id="gl-def-due" type="date" value="' + esc(d.due_date) + '"></div>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+          '<div class="frow"><div class="flbl">Verified by</div><input class="finp" id="gl-def-vby" value="' + esc(d.verified_by) + '"></div>' +
+          '<div class="frow"><div class="flbl">Verified at</div><input class="finp" id="gl-def-vat" type="datetime-local" value="' + esc(d.verified_at ? String(d.verified_at).slice(0,16) : '') + '"></div>' +
+        '</div>' +
         '<div style="display:flex;gap:8px;margin-top:6px">' +
           '<button id="gl-def-save" class="cbtn pri" style="flex:1">💾 Save</button>' +
           (isEdit ? '<button id="gl-def-del" class="cbtn" style="background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#ff8579">Delete</button>' : '') +
@@ -183,6 +195,9 @@
       var owner = ov.querySelector('#gl-def-owner').value.trim();
       if(!runRef || !owner){ alert('Run reference and owner are required.'); return; }
       var status = ov.querySelector('#gl-def-stat').value;
+      var correctiveAction = ov.querySelector('#gl-def-corr').value;
+      if(status === 'closed' && !correctiveAction.trim()){ alert('Corrective action is required to close an NCR.'); return; }
+      var vatVal = ov.querySelector('#gl-def-vat').value;
       var data = {
         reported_at:       ov.querySelector('#gl-def-when').value || new Date().toISOString(),
         run_ref:           runRef,
@@ -192,8 +207,13 @@
         owner:             owner,
         description:       ov.querySelector('#gl-def-desc').value,
         root_cause:        ov.querySelector('#gl-def-root').value,
-        corrective_action: ov.querySelector('#gl-def-corr').value,
-        closed_at:         status === 'closed' ? new Date().toISOString() : null
+        corrective_action: correctiveAction,
+        closed_at:         status === 'closed' ? new Date().toISOString() : null,
+        ncr_number:        ov.querySelector('#gl-def-ncr').value.trim(),
+        preventive_action: ov.querySelector('#gl-def-prev').value,
+        due_date:          ov.querySelector('#gl-def-due').value || null,
+        verified_by:       ov.querySelector('#gl-def-vby').value.trim(),
+        verified_at:       vatVal ? new Date(vatVal).toISOString() : null
       };
       if(window.supa){
         try {
@@ -262,6 +282,23 @@
     return '<span style="padding:2px 8px;border-radius:20px;font-size:10px;font-weight:600;background:rgba(29,158,117,.15);color:#5fcf9e;border:1px solid rgba(29,158,117,.35)">COI ' + v.coi_expires + '</span>';
   }
 
+  function approvalBadge(v){
+    var s = v.approval_status || 'pending';
+    var color = (s === 'approved') ? '#5fcf9e' : (s === 'pending' || s === 'conditional') ? '#f5c842' : '#ff8579';
+    var label = s.charAt(0).toUpperCase() + s.slice(1);
+    return '<span style="padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;background:' + color + '22;color:' + color + ';border:1px solid ' + color + '55">' + esc(label) + '</span>';
+  }
+
+  function certWarning(v){
+    if(!v.cert_expires) return '';
+    var today = new Date(); today.setHours(0,0,0,0);
+    var exp = new Date(v.cert_expires); exp.setHours(0,0,0,0);
+    var d = Math.round((exp - today) / 86400000);
+    if(d > 60) return '';
+    var color = d < 0 ? '#ff8579' : '#f5c842';
+    return '<div style="margin-top:4px"><span style="padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;background:' + color + '22;color:' + color + ';border:1px solid ' + color + '55">Cert expires ' + esc(v.cert_expires) + '</span></div>';
+  }
+
   function render(){
     var host = document.getElementById('ven-body');
     if(!host) return;
@@ -273,11 +310,12 @@
       host.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No vendors tracked yet. Add suppliers so you can see who has expiring COIs at a glance.</div>';
       return;
     }
-    host.innerHTML = '<table class="ctbl"><thead><tr><th>Vendor</th><th>Category</th><th>Lead time</th><th>Contact</th><th>COI</th></tr></thead><tbody>' +
+    host.innerHTML = '<table class="ctbl"><thead><tr><th>Vendor</th><th>Category</th><th>Approval</th><th>Lead time</th><th>Contact</th><th>COI</th></tr></thead><tbody>' +
       rows.map(function(v){
         return '<tr style="cursor:pointer" onclick="window.glOpenEditVendor(\'' + esc(v.id) + '\')">' +
           '<td style="padding:11px;color:var(--white);font-weight:600">' + esc(v.name) + '</td>' +
           '<td style="padding:11px;color:var(--muted)">' + esc(v.category || '—') + '</td>' +
+          '<td style="padding:11px">' + approvalBadge(v) + certWarning(v) + '</td>' +
           '<td style="padding:11px;color:var(--muted)">' + (v.lead_time_days ? v.lead_time_days + ' days' : '—') + '</td>' +
           '<td style="padding:11px;color:var(--muted);font-size:11px">' + esc(v.contact_name || '—') + (v.email ? ' · ' + esc(v.email) : '') + '</td>' +
           '<td style="padding:11px">' + coiBadge(v) + '</td>' +
@@ -289,7 +327,11 @@
     var prior = document.getElementById('gl-ven-modal'); if(prior) prior.remove();
     var host = document.getElementById('crm-panel') || document.body;
     var isEdit = !!existing;
-    var v = existing || { name:'', category:'Ingredients — Flavors', contact_name:'', email:'', phone:'', lead_time_days:'', moq:'', payment_terms:'', coi_expires:'', notes:'' };
+    var v = existing || { name:'', category:'Ingredients — Flavors', contact_name:'', email:'', phone:'', lead_time_days:'', moq:'', payment_terms:'', coi_expires:'', notes:'', approval_status:'pending', approved_by:'', approval_date:'', next_review:'', materials:'', food_safety_cert:'', cert_expires:'', risk_level:'low' };
+    var APPROVAL = [['pending','Pending'],['approved','Approved'],['conditional','Conditional'],['suspended','Suspended'],['rejected','Rejected']];
+    var RISK = [['low','Low'],['medium','Medium'],['high','High']];
+    var apprOpts = APPROVAL.map(function(s){ return '<option value="' + s[0] + '"' + (s[0] === (v.approval_status||'pending') ? ' selected' : '') + '>' + esc(s[1]) + '</option>'; }).join('');
+    var riskOpts = RISK.map(function(s){ return '<option value="' + s[0] + '"' + (s[0] === (v.risk_level||'low') ? ' selected' : '') + '>' + esc(s[1]) + '</option>'; }).join('');
     var catOpts = CATEGORIES.map(function(c){ return '<option' + (c === v.category ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('');
     var ov = document.createElement('div');
     ov.id = 'gl-ven-modal';
@@ -316,6 +358,23 @@
           '<div class="frow"><div class="flbl">Certificate of Insurance (COI) expires</div><input class="finp" id="gl-ven-coi" type="date" value="' + esc(v.coi_expires) + '"></div>' +
         '</div>' +
         '<div class="frow"><div class="flbl">Notes</div><textarea class="finp" id="gl-ven-notes" rows="3">' + esc(v.notes) + '</textarea></div>' +
+        '<div style="font-family:var(--ff-disp);font-size:11px;letter-spacing:2px;color:var(--teal);margin:14px 0 6px">APPROVED-SUPPLIER PROGRAM</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+          '<div class="frow"><div class="flbl">Approval status</div><select class="fsel" id="gl-ven-status">' + apprOpts + '</select></div>' +
+          '<div class="frow"><div class="flbl">Risk level</div><select class="fsel" id="gl-ven-risk">' + riskOpts + '</select></div>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+          '<div class="frow"><div class="flbl">Approved by</div><input class="finp" id="gl-ven-approver" value="' + esc(v.approved_by) + '"></div>' +
+          '<div class="frow"><div class="flbl">Approval date</div><input class="finp" id="gl-ven-appdate" type="date" value="' + esc(v.approval_date) + '"></div>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+          '<div class="frow"><div class="flbl">Next review</div><input class="finp" id="gl-ven-review" type="date" value="' + esc(v.next_review) + '"></div>' +
+          '<div class="frow"><div class="flbl">Materials supplied</div><input class="finp" id="gl-ven-materials" value="' + esc(v.materials) + '"></div>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+          '<div class="frow"><div class="flbl">Food-safety cert</div><input class="finp" id="gl-ven-cert" value="' + esc(v.food_safety_cert) + '" placeholder="SQF / BRC / FSSC 22000 / None"></div>' +
+          '<div class="frow"><div class="flbl">Cert expires</div><input class="finp" id="gl-ven-certexp" type="date" value="' + esc(v.cert_expires) + '"></div>' +
+        '</div>' +
         '<div style="display:flex;gap:8px;margin-top:6px">' +
           '<button id="gl-ven-save" class="cbtn pri" style="flex:1">💾 Save</button>' +
           (isEdit ? '<button id="gl-ven-del" class="cbtn" style="background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#ff8579">Delete</button>' : '') +
@@ -345,7 +404,15 @@
         moq:           ov.querySelector('#gl-ven-moq').value.trim(),
         payment_terms: ov.querySelector('#gl-ven-terms').value.trim(),
         coi_expires:   ov.querySelector('#gl-ven-coi').value || null,
-        notes:         ov.querySelector('#gl-ven-notes').value
+        notes:         ov.querySelector('#gl-ven-notes').value,
+        approval_status:  ov.querySelector('#gl-ven-status').value,
+        approved_by:      ov.querySelector('#gl-ven-approver').value.trim(),
+        approval_date:    ov.querySelector('#gl-ven-appdate').value || null,
+        next_review:      ov.querySelector('#gl-ven-review').value || null,
+        materials:        ov.querySelector('#gl-ven-materials').value.trim(),
+        food_safety_cert: ov.querySelector('#gl-ven-cert').value.trim(),
+        cert_expires:     ov.querySelector('#gl-ven-certexp').value || null,
+        risk_level:       ov.querySelector('#gl-ven-risk').value
       };
       if(window.supa){
         try {

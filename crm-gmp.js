@@ -280,6 +280,36 @@
     }
   };
 
+  // ── Raise an NCR / CAPA (defects row) straight from a flagged deviation ──
+  // Turns a compliance_records deviation into one row in the NCR/CAPA log so
+  // corrective action can be tracked. Returns the inserted id, or null.
+  window.glRaiseNCRFromDeviation = async function glRaiseNCRFromDeviation(rec){
+    if(!sb()){ alert('Supabase not ready.'); return null; }
+    rec = rec || {};
+    var d = rec.data || {};
+    var row = {
+      reported_at: new Date().toISOString(),
+      run_ref: (d.run || d.line) || rec.form_code,
+      category: rec.form_code,
+      severity: 'high',
+      status: 'open',
+      owner: d.operator || '',
+      description: rec.deviation_notes || 'GMP deviation',
+      source: 'gmp_deviation',
+      source_record_id: rec.id,
+      ncr_number: 'NCR-' + String(Date.now()).slice(-6)
+    };
+    try {
+      var r = await sb().from('defects').insert([row]).select('id');
+      if(r.error) throw r.error;
+      if(typeof window.glAudit === 'function') window.glAudit('ncr_raised_from_deviation', rec.form_code, { record: rec.id });
+      return (r.data && r.data[0] && r.data[0].id) || null;
+    } catch(e){
+      alert('Could not raise NCR: ' + (e.message || e));
+      return null;
+    }
+  };
+
   // ── Every open deviation across GMP forms ──
   window.glOpenGMPDeviations = async function glOpenGMPDeviations(){
     if(!sb()){ alert('Supabase not ready.'); return; }
@@ -290,13 +320,15 @@
       var rRes = await sb().from('compliance_records').select('*').in('form_code', codes).eq('has_deviation', true).order('recorded_at', { ascending: false }).limit(200);
       if(rRes.error) throw rRes.error;
       var recs = rRes.data || [];
-      var rows = recs.map(function(rec){
+      window.__glDevRecs = recs;   // keep records reachable for the delegated button handler
+      var rows = recs.map(function(rec, i){
         var d = rec.data || {};
         return '<div style="border:1px solid rgba(245,200,66,.25);border-radius:10px;padding:12px 14px;margin-bottom:10px;background:rgba(245,200,66,.05)">' +
           '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div style="font-weight:700;font-size:13px;color:#f5c842">'+esc(rec.form_code)+' — '+esc(rec.record_date||'')+'</div>' +
           '<div style="font-size:11px;color:#9aa7bd">'+esc((d.line||'')+(d.run?(' / '+d.run):''))+' · '+esc(d.operator||'')+'</div></div>' +
           '<div style="font-size:12.5px;color:#eef4ff;margin-top:6px">'+esc(rec.deviation_notes||'Deviation flagged')+'</div>' +
           (rec.corrective_action?'<div style="font-size:12px;color:#5fcf9e;margin-top:4px">Corrective action: '+esc(rec.corrective_action)+'</div>':'') +
+          '<div style="margin-top:10px"><button class="gl-dev-ncr" data-idx="'+i+'" style="padding:8px 14px;background:rgba(0,229,192,.12);color:var(--teal);border:1px solid rgba(0,229,192,.3);border-radius:7px;cursor:pointer;font-size:12px">⤴ Raise NCR</button></div>' +
           '</div>';
       }).join('');
       ov.innerHTML =
@@ -305,6 +337,19 @@
           '<button onclick="document.getElementById(\'gl-gmp-dev\').remove()" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button></div>' +
           (recs.length ? rows : '<div style="color:#5fcf9e;padding:16px 0">✓ No deviations flagged. Clean board.</div>') +
         '</div>';
+      // Delegated handler: each ⤴ Raise NCR button looks up its rec by index.
+      ov.addEventListener('click', async function(ev){
+        var btn = ev.target && ev.target.closest ? ev.target.closest('.gl-dev-ncr') : null;
+        if(!btn || btn.disabled) return;
+        var idx = parseInt(btn.getAttribute('data-idx'), 10);
+        var list = window.__glDevRecs || [];
+        var rec = list[idx];
+        if(!rec) return;
+        btn.disabled = true; btn.textContent = 'Raising…';
+        var id = await window.glRaiseNCRFromDeviation(rec);
+        if(id){ btn.textContent = '✓ NCR raised'; }
+        else { btn.disabled = false; btn.textContent = '⤴ Raise NCR'; }
+      });
     } catch(e){
       ov.querySelector('div').innerHTML = '<div style="color:#ff8579">Could not load: '+esc(e.message||e)+'</div>';
     }

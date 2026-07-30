@@ -487,7 +487,7 @@ rec('Onboarding','Add Deal has an email field (convert entry point)',onb.addDeal
 /* ---------- PHASE 7e: Daily GMP module (type-once → fan-out) ---------- */
 const gmp=await pg.evaluate(async()=>{
   const o={};
-  o.fns=['glRenderGMPHub','glOpenDailyGMP','glOpenGMPRegister','glOpenGMPDeviations','glGenerateAuditorLink','glOpenGMPDocuments'].filter(f=>typeof window[f]!=='function');
+  o.fns=['glRenderGMPHub','glOpenDailyGMP','glOpenGMPRegister','glOpenGMPDeviations','glGenerateAuditorLink','glOpenGMPDocuments','glRaiseNCRFromDeviation'].filter(f=>typeof window[f]!=='function');
   o.mount=!!document.getElementById('cpg-gmp');
   // Templates come from the DB; stub two so the hub + entry render.
   const TPL=[{form_code:'GMP-PREOP-001',title:'Pre-Op',category:'sanitation',in_daily:true,active:true,sort_order:10,fields:[{key:'result',label:'Result',type:'passfail',required:true,deviation_if:'fail'}]}];
