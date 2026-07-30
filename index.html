@@ -1946,6 +1946,7 @@ select option, .fsel option {
         <div class="cni" id="nav-content" onclick="cNav(&#39;content&#39;,this)"><span class="cni-ico">🗓️</span>Content Calendar</div>
         <div class="cni-sec">Compliance</div>
         <div class="cni" id="nav-compliance" onclick="cNav(&#39;compliance&#39;,this)"><span class="cni-ico">📋</span>Compliance Tasks</div>
+        <div class="cni" id="nav-gmp" onclick="cNav(&#39;gmp&#39;,this)"><span class="cni-ico">🧾</span>Daily GMP</div>
         <div class="cni" id="nav-cip" onclick="cNav(&#39;cip&#39;,this)"><span class="cni-ico">🧼</span>CIP / Sanitation Log</div>
         <div class="cni" id="nav-holds" onclick="cNav(&#39;holds&#39;,this)"><span class="cni-ico">🚫</span>Hold Tags</div>
         <div class="cni" id="nav-audit" onclick="cNav(&#39;audit&#39;,this)" style="display:none"><span class="cni-ico">📜</span>Audit Log</div>
@@ -1999,6 +2000,9 @@ select option, .fsel option {
         </div>
         <div id="comp-body"></div>
       </div>
+
+      <!-- ═══ DAILY GMP — mount point; all rendering in crm-gmp.js ═══ -->
+      <div id="cpg-gmp" class="cpg"></div>
 
       <!-- ═══ HOLD TAGS — GMP-QC-001 ═══ -->
       <div id="cpg-holds" class="cpg">
@@ -3172,7 +3176,7 @@ let currentUser=null;
 const PERMISSIONS=window.PERMISSIONS={
   admin:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','users'],
   sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity'],
-  warehouse:['dashboard','production-runs','production-cal','inventory','cip','defects','yield','samples','tasks','announcements'],
+  warehouse:['dashboard','production-runs','production-cal','inventory','cip','gmp','defects','yield','samples','tasks','announcements'],
   viewer:['dashboard','clients','announcements']
 };
 function can(page){return currentUser&&PERMISSIONS[currentUser.role]?.includes(page)}
@@ -11844,5 +11848,6 @@ window.addEventListener('appinstalled', () => {
 <script src="/crm-client-email.js"></script>
 <script src="/crm-quote-builder.js"></script>
 <script src="/crm-onboarding.js"></script>
+<script src="/crm-gmp.js"></script>
 <script src="/crm-selftest.js"></script>
 </body></html>
