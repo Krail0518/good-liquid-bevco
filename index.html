@@ -1947,6 +1947,8 @@ select option, .fsel option {
         <div class="cni-sec">Compliance</div>
         <div class="cni" id="nav-compliance" onclick="cNav(&#39;compliance&#39;,this)"><span class="cni-ico">📋</span>Compliance Tasks</div>
         <div class="cni" id="nav-gmp" onclick="cNav(&#39;gmp&#39;,this)"><span class="cni-ico">🧾</span>Daily GMP</div>
+        <div class="cni" id="nav-gmpsched" onclick="cNav(&#39;gmpsched&#39;,this)"><span class="cni-ico">🗓️</span>GMP Schedule</div>
+        <div class="cni" id="nav-trace" onclick="cNav(&#39;trace&#39;,this)"><span class="cni-ico">🔗</span>Trace / Recall</div>
         <div class="cni" id="nav-cip" onclick="cNav(&#39;cip&#39;,this)"><span class="cni-ico">🧼</span>CIP / Sanitation Log</div>
         <div class="cni" id="nav-holds" onclick="cNav(&#39;holds&#39;,this)"><span class="cni-ico">🚫</span>Hold Tags</div>
         <div class="cni" id="nav-audit" onclick="cNav(&#39;audit&#39;,this)" style="display:none"><span class="cni-ico">📜</span>Audit Log</div>
@@ -2003,6 +2005,12 @@ select option, .fsel option {
 
       <!-- ═══ DAILY GMP — mount point; all rendering in crm-gmp.js ═══ -->
       <div id="cpg-gmp" class="cpg"></div>
+
+      <!-- ═══ GMP SCHEDULE — mount point; all rendering in crm-gmpsched.js ═══ -->
+      <div id="cpg-gmpsched" class="cpg"></div>
+
+      <!-- ═══ TRACEABILITY / MOCK RECALL — mount point; all rendering in crm-trace.js ═══ -->
+      <div id="cpg-trace" class="cpg"></div>
 
       <!-- ═══ HOLD TAGS — GMP-QC-001 ═══ -->
       <div id="cpg-holds" class="cpg">
@@ -11849,5 +11857,7 @@ window.addEventListener('appinstalled', () => {
 <script src="/crm-quote-builder.js"></script>
 <script src="/crm-onboarding.js"></script>
 <script src="/crm-gmp.js"></script>
+<script src="/crm-gmpsched.js"></script>
+<script src="/crm-trace.js"></script>
 <script src="/crm-selftest.js"></script>
 </body></html>

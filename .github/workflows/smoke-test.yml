@@ -108,3 +108,10 @@ jobs:
           NODE_PATH: /tmp/pw/node_modules
           REPO_ROOT: ${{ github.workspace }}
         run: node tests/sqf-supplier-ncr.test.cjs
+
+      # Phase 3 Wave 1 — GMP scheduled-task generation + traceability/mock-recall.
+      - name: Run Phase 3 Wave 1 test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/phase3-wave1.test.cjs
