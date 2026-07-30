@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Welcome to Good Liquid Bev Co — Onboarding</title>
+  <style>
+    :root{--bg:#0d1420;--card:#131f32;--card2:#172038;--border:#1e3058;--teal:#00e5c0;--teal2:#00c4a7;--text:#c8d8f0;--muted:#6b87ad;--yellow:#f5c842;--green:#5fcf9e;--red:#e74646;--white:#eef4ff;}
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+    body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;background-image:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(0,229,192,.07) 0%,transparent 60%);padding:24px 16px;}
+    a{color:var(--teal);}
+    .wrap{max-width:680px;margin:0 auto;}
+    .brand{text-align:center;margin-bottom:8px;font-weight:900;letter-spacing:3px;color:var(--white);font-size:15px;}
+    .brand small{display:block;color:var(--muted);font-weight:400;letter-spacing:1px;font-size:11px;margin-top:4px;}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:26px 24px;margin-top:18px;box-shadow:0 12px 40px rgba(0,0,0,.35);}
+    h1{font-size:22px;color:var(--white);margin-bottom:6px;line-height:1.25;}
+    .sub{font-size:13.5px;color:var(--muted);line-height:1.6;margin-bottom:6px;}
+    .sec-title{font-size:11px;letter-spacing:2px;color:var(--teal);margin:22px 0 12px;text-transform:uppercase;border-bottom:1px solid rgba(0,229,192,.18);padding-bottom:7px;}
+    label{display:block;font-size:11px;letter-spacing:.5px;color:var(--muted);margin:12px 0 5px;}
+    input,select,textarea{width:100%;padding:11px 12px;background:var(--card2);border:1px solid var(--border);border-radius:8px;color:var(--white);font-size:14px;font-family:inherit;}
+    input:focus,select,textarea:focus{outline:none;border-color:var(--teal);}
+    textarea{resize:vertical;min-height:70px;}
+    .row{display:flex;gap:12px;flex-wrap:wrap;}
+    .row>div{flex:1;min-width:130px;}
+    .chk{display:flex;align-items:center;gap:9px;margin:10px 0;font-size:13.5px;color:var(--text);cursor:pointer;}
+    .chk input{width:17px;height:17px;accent-color:var(--teal);flex:0 0 auto;}
+    .prefilled{font-size:10.5px;color:var(--green);margin-top:3px;}
+    .btn{width:100%;margin-top:22px;padding:14px;background:linear-gradient(135deg,var(--teal),var(--teal2));border:none;border-radius:9px;color:#04231d;font-size:15px;font-weight:800;letter-spacing:.4px;cursor:pointer;}
+    .btn:disabled{opacity:.6;cursor:default;}
+    .msg{margin-top:14px;padding:11px 14px;border-radius:8px;font-size:13px;line-height:1.5;display:none;}
+    .msg.err{display:block;background:rgba(231,70,70,.1);border:1px solid rgba(231,70,70,.4);color:#ff9b90;}
+    .msg.ok{display:block;background:rgba(95,207,158,.1);border:1px solid rgba(95,207,158,.4);color:var(--green);}
+    .center{text-align:center;}
+    .big-ok{font-size:46px;margin-bottom:8px;}
+    .hidden{display:none;}
+    .loading{text-align:center;color:var(--muted);padding:40px 0;font-size:14px;}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">GOOD LIQUID BEV CO<small>2011 51st Ave E, Unit 100 · Palmetto, FL 34221</small></div>
+
+  <div id="loading" class="card loading">Loading your onboarding…</div>
+
+  <div id="fatal" class="card hidden">
+    <h1>We couldn't open this link</h1>
+    <div class="sub" id="fatal-msg"></div>
+    <div class="sub">If you believe this is a mistake, reply to the email we sent you or contact Mike at <a href="mailto:mike@goodliquid.com">mike@goodliquid.com</a>.</div>
+  </div>
+
+  <div id="done" class="card center hidden">
+    <div class="big-ok">✅</div>
+    <h1>Thank you — you're all set!</h1>
+    <div class="sub">Your onboarding details are in. Mike has been notified and will be in touch about next steps and your production schedule. You can close this page.</div>
+  </div>
+
+  <form id="form" class="card hidden" autocomplete="on">
+    <h1 id="hi">Welcome!</h1>
+    <div class="sub">A few details so we can set up your account and get your project moving. We've pre-filled what we already have — just review it and complete the rest. Takes about 5 minutes.</div>
+
+    <div class="sec-title">Company</div>
+    <label>Company / brand name</label>
+    <input name="company" id="f-company" readonly style="opacity:.75">
+    <div class="row">
+      <div><label>Legal entity name</label><input name="legal_name" id="f-legal_name" placeholder="Acme Beverages LLC"></div>
+      <div><label>EIN (tax ID)</label><input name="ein" id="f-ein" placeholder="12-3456789"></div>
+    </div>
+    <label>Website</label>
+    <input name="website" id="f-website" placeholder="https://…">
+
+    <div class="sec-title">Primary contact</div>
+    <div class="row">
+      <div><label>Full name</label><input name="contact_name" id="f-contact_name"></div>
+      <div><label>Phone</label><input name="phone" id="f-phone" placeholder="(803) 555-0100"></div>
+    </div>
+
+    <div class="sec-title">Company address</div>
+    <label>Street</label><input name="street" id="f-street">
+    <div class="row">
+      <div><label>City</label><input name="city" id="f-city"></div>
+      <div><label>State</label><input name="state" id="f-state" maxlength="2" placeholder="FL"></div>
+      <div><label>ZIP</label><input name="zip" id="f-zip"></div>
+    </div>
+
+    <div class="sec-title">Billing address</div>
+    <label class="chk"><input type="checkbox" id="bill-same" checked> Same as company address</label>
+    <div id="bill-fields" class="hidden">
+      <label>Street</label><input name="billing_street" id="f-billing_street">
+      <div class="row">
+        <div><label>City</label><input name="billing_city" id="f-billing_city"></div>
+        <div><label>State</label><input name="billing_state" id="f-billing_state" maxlength="2"></div>
+        <div><label>ZIP</label><input name="billing_zip" id="f-billing_zip"></div>
+      </div>
+    </div>
+
+    <div class="sec-title">Shipping / delivery address</div>
+    <label class="chk"><input type="checkbox" id="ship-same" checked> Same as company address</label>
+    <div id="ship-fields" class="hidden">
+      <label>Street</label><input name="shipping_street" id="f-shipping_street">
+      <div class="row">
+        <div><label>City</label><input name="shipping_city" id="f-shipping_city"></div>
+        <div><label>State</label><input name="shipping_state" id="f-shipping_state" maxlength="2"></div>
+        <div><label>ZIP</label><input name="shipping_zip" id="f-shipping_zip"></div>
+      </div>
+    </div>
+
+    <div class="sec-title">Your product</div>
+    <label>What are we making for you? (type of beverage, service needed)</label>
+    <input name="service" id="f-service" placeholder="e.g. small-batch canning, 12oz seltzer">
+    <label>Anything else we should know? (target volume, timeline, special requirements)</label>
+    <textarea name="notes" id="f-notes"></textarea>
+
+    <div class="sec-title">Compliance (helps us start faster)</div>
+    <label class="chk"><input type="checkbox" id="c-formula"> I already have a finished formula/recipe</label>
+    <label class="chk"><input type="checkbox" id="c-pa"> I have a Process Authority letter (or know I'll need one)</label>
+    <label class="chk"><input type="checkbox" id="c-coi"> I can provide a Certificate of Insurance</label>
+
+    <button type="submit" class="btn" id="submit-btn">Submit my onboarding</button>
+    <div id="msg" class="msg"></div>
+  </form>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  var SUPA_URL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co';
+  var ANON_KEY = 'sb_publishable_-37mkPw8uLzEJM21T9jJOA_YQRQ7ikB';
+  var token = new URLSearchParams(location.search).get('token') || '';
+
+  function el(id){ return document.getElementById(id); }
+  function show(id){ el(id).classList.remove('hidden'); }
+  function hide(id){ el(id).classList.add('hidden'); }
+  function fatal(m){ hide('loading'); hide('form'); el('fatal-msg').textContent = m; show('fatal'); }
+
+  async function rpc(fn, body){
+    var r = await fetch(SUPA_URL + '/rest/v1/rpc/' + fn, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'apikey':ANON_KEY, 'Authorization':'Bearer '+ANON_KEY },
+      body: JSON.stringify(body)
+    });
+    if(!r.ok){ throw new Error('HTTP ' + r.status); }
+    return r.json();
+  }
+
+  // Prefill: set a field from the prefill blob and flag it visually.
+  function fill(key, val){
+    var node = el('f-' + key);
+    if(node && val != null && String(val).trim() !== ''){ node.value = val; }
+  }
+
+  var bs = el('bill-same'), sf = el('bill-fields');
+  var ss = el('ship-same'), shf = el('ship-fields');
+  bs.addEventListener('change', function(){ sf.classList.toggle('hidden', bs.checked); });
+  ss.addEventListener('change', function(){ shf.classList.toggle('hidden', ss.checked); });
+
+  if(!token){ fatal('This link is missing its onboarding token.'); return; }
+
+  (async function boot(){
+    try{
+      var res = await rpc('gl_onboarding_get', { p_token: token });
+      if(!res || res.ok === false){ fatal((res && res.error) || 'This onboarding link is not valid.'); return; }
+      if(res.submitted){ hide('loading'); show('done'); return; }
+      var p = res.prefill || {};
+      el('hi').textContent = 'Welcome' + (res.client_name ? ', ' + res.client_name : '') + '!';
+      // Company name is read-only context.
+      el('f-company').value = res.client_name || p.company || p.name || '';
+      // Everything the lead already gave us, pre-filled.
+      fill('legal_name', p.legal_name);
+      fill('ein', p.ein);
+      fill('website', p.website);
+      fill('contact_name', p.contact_name || p.name);
+      fill('phone', p.phone);
+      fill('street', p.street); fill('city', p.city); fill('state', p.state); fill('zip', p.zip);
+      fill('service', p.service);
+      fill('notes', p.notes);
+      hide('loading'); show('form');
+    }catch(e){ fatal('We could not load your onboarding right now. Please try again in a moment.'); }
+  })();
+
+  el('form').addEventListener('submit', async function(ev){
+    ev.preventDefault();
+    var btn = el('submit-btn'), msg = el('msg');
+    msg.className = 'msg';
+    var g = function(k){ var n = el('f-'+k); return n ? n.value.trim() : ''; };
+    if(!g('contact_name')){ msg.className='msg err'; msg.textContent='Please add a primary contact name.'; return; }
+
+    // Mirror company address into billing/shipping when "same" is ticked.
+    var data = {
+      legal_name:g('legal_name'), ein:g('ein'), website:g('website'),
+      contact_name:g('contact_name'), phone:g('phone'),
+      street:g('street'), city:g('city'), state:g('state'), zip:g('zip'),
+      service:g('service'), notes:g('notes'),
+      has_formula: el('c-formula').checked, has_pa_letter: el('c-pa').checked, can_provide_coi: el('c-coi').checked
+    };
+    if(bs.checked){ data.billing_street=g('street'); data.billing_city=g('city'); data.billing_state=g('state'); data.billing_zip=g('zip'); }
+    else { data.billing_street=g('billing_street'); data.billing_city=g('billing_city'); data.billing_state=g('billing_state'); data.billing_zip=g('billing_zip'); }
+    if(ss.checked){ data.shipping_street=g('street'); data.shipping_city=g('city'); data.shipping_state=g('state'); data.shipping_zip=g('zip'); }
+    else { data.shipping_street=g('shipping_street'); data.shipping_city=g('shipping_city'); data.shipping_state=g('shipping_state'); data.shipping_zip=g('shipping_zip'); }
+
+    btn.disabled = true; btn.textContent = 'Submitting…';
+    try{
+      var res = await rpc('gl_onboarding_submit', { p_token: token, p_data: data });
+      if(res && res.ok){ hide('form'); show('done'); window.scrollTo(0,0); }
+      else { msg.className='msg err'; msg.textContent = (res && res.error) || 'Something went wrong. Please try again.'; btn.disabled=false; btn.textContent='Submit my onboarding'; }
+    }catch(e){
+      msg.className='msg err'; msg.textContent='We could not submit right now. Please try again in a moment.';
+      btn.disabled=false; btn.textContent='Submit my onboarding';
+    }
+  });
+})();
+</script>
+</body>
+</html>

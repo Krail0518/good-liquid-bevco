@@ -5910,6 +5910,99 @@ Greet them by first name (${firstName}). Acknowledge what they're building and w
 }
 window.openLeadEmailComposer = openLeadEmailComposer;
 
+/* ═══════════════════════════════════════════════
+   CONVERT PIPELINE LEAD → CLIENT + ONBOARDING
+   One click on a deal: create the client carrying over everything the lead
+   already told us, create a token-secured onboarding record prefilled from
+   the same data, email the client their finish-onboarding link, invite their
+   portal login, and (via the onboarding submit trigger) get notified when
+   they complete it. Everything that can fail is reported; nothing half-done
+   is left silent.
+═══════════════════════════════════════════════ */
+async function glConvertLeadToOnboarding(){
+  if(currentDealStage === null || currentDealIdx === null){ alert('No lead selected.'); return; }
+  var d = (deals[currentDealStage]||[])[currentDealIdx];
+  if(!d){ alert('No lead selected.'); return; }
+  if(!window.supa){ alert('Supabase not ready.'); return; }
+
+  var company = d.co || d.name || '';
+  var email = (d.email || '').trim();
+  if(!company){ alert('This lead has no company name — add one first (✏️ Edit).'); return; }
+  if(!email){ alert('This lead has no email address — add one first so we can send the onboarding link.'); return; }
+
+  if(!confirm('Convert "' + company + '" into a client and send them an onboarding link at ' + email + '?')) return;
+
+  if(typeof window.glStartBusy === 'function') window.glStartBusy('Creating client & onboarding…');
+  try {
+    // 1) Create the client, carrying over what the lead gave us.
+    var contact = d.contactName || '';
+    var initials = (company.trim().split(/\s+/).map(function(w){return w[0];}).join('').slice(0,2) || 'GL').toUpperCase();
+    var ins = await supa.from('clients').insert([{
+      name: company, contact_name: contact, email: email, phone: d.phone || null,
+      city: d.city || null, state: d.state || null,
+      service: d.service || null, status: 'onboarding',
+      lead_source: d.leadSource || null, notes: d.notes || null,
+      initials: initials, onboarding_status: 'invited'
+    }]).select('id').single();
+    if(ins.error) throw new Error('client insert: ' + ins.error.message);
+    var clientId = ins.data.id;
+
+    // 2) Create the onboarding row, prefilled — RPC returns the secret token.
+    var prefill = {
+      company: company, name: contact, email: email, phone: d.phone || '',
+      city: d.city || '', state: d.state || '', service: d.service || '',
+      notes: d.notes || '', volume: d.volume || '', timeline: d.timeline || '',
+      product_type: d.productType || ''
+    };
+    var cr = await supa.rpc('gl_onboarding_create', { p_client_id: clientId, p_prefill: prefill, p_deal_id: (d.id && !String(d.id).startsWith('tmp_')) ? d.id : null });
+    if(cr.error) throw new Error('onboarding create: ' + cr.error.message);
+    if(!cr.data || cr.data.ok === false) throw new Error('onboarding create: ' + ((cr.data && cr.data.error) || 'unknown'));
+    var token = cr.data.token;
+    var link = location.origin + '/onboard.html?token=' + encodeURIComponent(token);
+
+    // 3) Email the client their onboarding link.
+    var firstName = (contact.split(' ')[0]) || 'there';
+    var subject = 'Welcome to Good Liquid Bev Co — let\'s get you set up';
+    var body = 'Hi ' + firstName + ',\n\n'
+      + 'Great news, we\'re excited to start working with ' + company + '. '
+      + 'To set up your account and get your project moving, please complete a short onboarding form. '
+      + 'We\'ve already filled in what we have, so it should only take a few minutes:\n\n'
+      + link + '\n\n'
+      + 'Once you submit it, I\'ll be in touch about next steps and your production schedule.\n\n'
+      + 'Thanks,\nMike\nGood Liquid Bev Co\n(803) 493-5065';
+    var emailOk = await sendMailgunEmail(email, subject, body, {
+      html: '<div style="font-family:Arial,sans-serif;color:#1a1a1a;line-height:1.7;max-width:600px;margin:0 auto">'
+        + '<div style="border-top:3px solid #00e5c0;padding:22px 26px">'
+        + '<div style="font-size:19px;font-weight:900;color:#00b89a;letter-spacing:2px;margin-bottom:12px">GOOD LIQUID BEV CO</div>'
+        + '<p>Hi ' + firstName.replace(/</g,'&lt;') + ',</p>'
+        + '<p>Great news — we\'re excited to start working with ' + company.replace(/</g,'&lt;') + '. To set up your account and get your project moving, please complete a short onboarding form. We\'ve already filled in what we have, so it should only take a few minutes:</p>'
+        + '<p style="text-align:center;margin:26px 0"><a href="' + link + '" style="background:#00e5c0;color:#04231d;text-decoration:none;font-weight:800;padding:13px 26px;border-radius:8px;display:inline-block">Complete your onboarding →</a></p>'
+        + '<p>Once you submit it, I\'ll be in touch about next steps and your production schedule.</p>'
+        + '<p>Thanks,<br>Mike<br>Good Liquid Bev Co · (803) 493-5065</p>'
+        + '</div></div>'
+    });
+
+    // 4) Invite their portal login (best-effort — never blocks the onboarding).
+    try { if(typeof window.glInviteCustomerLogin === 'function') await window.glInviteCustomerLogin(clientId, company, email); }
+    catch(e){ console.warn('[convert] portal invite failed', e); }
+
+    // 5) Refresh local state so the new client shows up without a reload.
+    try { if(typeof loadSupabaseData === 'function') await loadSupabaseData(); } catch(e){}
+
+    if(typeof window.glEndBusy === 'function') window.glEndBusy();
+    var linkNote = emailOk
+      ? 'An onboarding email was sent to ' + email + '.'
+      : '⚠ The client was created but the email failed to send. Copy this link to them manually:\n\n' + link;
+    alert('✓ ' + company + ' is now a client.\n\n' + linkNote + '\n\nYou\'ll get a WhatsApp when they finish onboarding.');
+    if(typeof window.glAudit === 'function') window.glAudit('lead_converted', clientId, { company: company, email: email });
+  } catch(e){
+    if(typeof window.glEndBusy === 'function') window.glEndBusy();
+    console.error('[convert] failed', e);
+    alert('✗ Convert failed: ' + (e.message || e) + '\n\nNothing was sent. Check the browser console and try again.');
+  }
+}
+window.glConvertLeadToOnboarding = glConvertLeadToOnboarding;
+
 // ─── BULK OUTREACH ─────────────────────────────────────────────────────────
 // Opens a modal listing all Prospecting leads with no outreach status and a
 // valid email. Drafts with Claude AI and sends via mailgun-send edge function for each checked lead.
@@ -6338,6 +6431,7 @@ function openDealDetail(stage, idx){
       <button onclick="openLeadEmailComposer()" style="flex:1;padding:10px;background:rgba(26,111,255,.15);color:#6b9fff;border:1px solid rgba(26,111,255,.35);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">✉️ Email Lead</button>
       <button onclick="deleteDeal()" style="padding:10px 16px;background:rgba(231,76,60,.15);color:#e74c3c;border:1px solid rgba(231,76,60,.3);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">Delete</button>
     </div>
+    <button onclick="glConvertLeadToOnboarding()" style="width:100%;margin-top:8px;padding:12px;background:linear-gradient(135deg,#5fcf9e,#00c4a7);color:#04231d;border:none;border-radius:8px;font-weight:800;font-size:13.5px;cursor:pointer">🚀 Convert to Client &amp; Onboard</button>
     <div id="ddp-corr" style="margin-top:18px;border-top:1px solid rgba(255,255,255,.07);padding-top:16px"></div>`;
 
   document.getElementById('ddp-view-mode').innerHTML = viewHTML;

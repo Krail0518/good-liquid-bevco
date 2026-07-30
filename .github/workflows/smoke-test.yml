@@ -72,3 +72,10 @@ jobs:
           NODE_PATH: /tmp/pw/node_modules
           REPO_ROOT: ${{ github.workspace }}
         run: node tests/full-sweep.cjs
+
+      # Public onboarding page (onboard.html) — token gating, prefill, submit.
+      - name: Run onboarding page test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/onboard-page.test.cjs
