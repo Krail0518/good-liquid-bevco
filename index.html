@@ -4754,7 +4754,6 @@ function copyEmail(){
    ═══════════════════════════════════════════════ */
 const SUPA_URL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co';
 const SUPA_KEY = 'sb_publishable_-37mkPw8uLzEJM21T9jJOA_YQRQ7ikB';
-const GL_NOTIFY_SECRET = 'gl-notify-2026-abc123';
 
 /* If the URL carries ?inspector=TOKEN, inject the X-Inspector-Token
    header on every supabase-js request. The new RLS policies on the
@@ -5383,8 +5382,9 @@ async function saveNewDeal(){
   const el = document.getElementById('pipe-sub');
   if(el) el.textContent = total + ' active deals';
 
-  // WhatsApp alert to Mike via notify-deal
-  glNotifyDeal('new_deal', {name, company:co, stage});
+  // No direct alert here: the insert into `deals` above fires the
+  // on_deal_insert DB trigger, which sends the WhatsApp/email server-side.
+  // Calling glNotifyDeal too would alert Mike twice per new deal.
 
   closeAddDealModal();
 }
@@ -10014,14 +10014,15 @@ function updateBkInfo(){
   }
 }
 
-// WhatsApp/email alert to Mike via notify-deal edge function
+// WhatsApp/email alert to Mike via notify-deal edge function.
+// Auth is the signed-in staff JWT (supa.functions.invoke attaches it) — no
+// shared secret in the page anymore. Public-page events (tour bookings,
+// quote requests) don't call this at all: their table inserts fire DB
+// triggers that alert server-side with a Vault-held secret.
 async function glNotifyDeal(event, data){
   try {
-    await fetch(SUPA_URL+'/functions/v1/notify-deal',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+SUPA_KEY},
-      body:JSON.stringify({event, secret:GL_NOTIFY_SECRET, data})
-    });
+    if(!window.supa || !supa.functions || !supa.functions.invoke) return;
+    await supa.functions.invoke('notify-deal', { body: {event, data} });
   } catch(e){ console.warn('notify-deal:', e); }
 }
 
@@ -10065,8 +10066,9 @@ async function submitBooking(){
   await sendMailgunEmail(email,'Your Good Liquid Bev Co Tour Confirmation',
     `Hi ${name},\n\nYour tour request has been submitted!\n\nDate: ${bkSelectedDate} at ${bkSelectedTime}\nLocation: 2011 51st Ave E, Unit 100, Palmetto, FL 34221\n\nMike will confirm within 1 business day.\n\nBest,\nGood Liquid Bev Co\nMike@GoodLiquid.com | (803) 493-5065`);
 
-  // WhatsApp alert to Mike via notify-deal
-  glNotifyDeal('tour_booked', {name, email, date:bkSelectedDate, time:bkSelectedTime});
+  // No direct alert here: the `bookings` insert above fires the
+  // on_booking_insert DB trigger, which sends the WhatsApp/email server-side.
+  // This also lets the public booking page work without any secret in it.
 
   addNotification('📅 Tour booked: '+name,bkSelectedDate+' at '+bkSelectedTime,'success');
   document.getElementById('bk-success').style.display='block';

@@ -1,15 +1,12 @@
-# One-button live check of the WhatsApp/email alert pipeline (notify-deal).
+# Negative check of the alert pipeline's security: posts the RETIRED public
+# secret (the one that used to ship in the page HTML) to notify-deal and
+# asserts it gets a 401. If this workflow fails, the old secret still works
+# and the rotation needs investigating.
 #
-# POSTs a clearly-labeled test event to the notify-deal edge function exactly
-# the way the CRM does, and prints the function's verdict — including whether
-# CallMeBot actually accepted the WhatsApp send. Exists because the sandboxed
-# assistant cannot reach *.supabase.co directly, but GitHub runners can.
-#
-# The two values inline here are NOT secrets: both ship in the public site
-# HTML (the anon key by design; GL_NOTIFY_SECRET at index.html:4757 — a soft
-# gate, flagged for future hardening).
+# The positive check (does a real alert reach the phone?) lives in
+# verify-trigger.yml, which fires the actual DB trigger path.
 
-name: Verify notify-deal
+name: Verify notify-deal (retired secret must be rejected)
 
 on:
   workflow_dispatch:
@@ -19,10 +16,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Send a labeled test alert through notify-deal
+      - name: POST the retired secret — expect 401
         run: |
-          curl -sS -w "\nHTTP %{http_code}\n" -X POST \
+          CODE=$(curl -sS -o resp.txt -w "%{http_code}" -X POST \
             "https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1/notify-deal" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmamtlcW14d3V5aGJxeXVnY2dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNDI2MDksImV4cCI6MjA5MzkxODYwOX0.godgU_jeprCqSzqe0ji_ZA_hwvPF2s7BmzQyAB-c_xE" \
-            -d '{"event":"new_deal","secret":"gl-notify-2026-abc123","data":{"company":"CRM VERIFICATION TEST — ignore me","name":"Automated pipeline check"}}'
+            -d '{"event":"new_deal","secret":"gl-notify-2026-abc123","data":{"company":"RETIRED SECRET PROBE — should be rejected","name":"security check"}}')
+          cat resp.txt; echo; echo "HTTP $CODE"
+          if [ "$CODE" = "401" ]; then
+            echo "✓ retired public secret correctly rejected"
+          else
+            echo "✗ the retired secret still works (HTTP $CODE) — rotation failed or fallback still active"
+            exit 1
+          fi
