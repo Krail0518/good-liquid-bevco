@@ -51,10 +51,13 @@
       // 1) Create the client, carrying over what the lead gave us.
       var contact = d.contactName || '';
       var initials = (company.trim().split(/\s+/).map(function(w){ return w[0]; }).join('').slice(0,2) || 'GL').toUpperCase();
+      // clients.status is constrained to lead/active/inactive — a converted
+      // lead is an active client. The onboarding stage lives in the separate,
+      // unconstrained onboarding_status column, NOT here.
       var ins = await sb().from('clients').insert([{
         name: company, contact_name: contact, email: email, phone: d.phone || null,
         city: d.city || null, state: d.state || null,
-        service: d.service || null, status: 'onboarding',
+        service: d.service || null, status: 'active',
         lead_source: d.leadSource || null, notes: d.notes || null,
         initials: initials, onboarding_status: 'invited'
       }]).select('id').single();

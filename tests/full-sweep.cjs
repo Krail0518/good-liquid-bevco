@@ -434,7 +434,15 @@ const onb=await pg.evaluate(async()=>{
     c.then=(a,b)=>p().then(a,b); c.catch=f=>p().catch(f);
     return c;
   }
-  window.supa.from=(t)=>obChain(t==='clients'?{id:'client-xyz'}:[]);
+  // Capture the client insert payload so we can assert the status value is one
+  // the clients_status_check constraint actually permits (lead/active/inactive)
+  // — a stubbed insert can't hit the real DB constraint, so pin it here.
+  window.__clientInsert=null;
+  window.supa.from=(t)=>{
+    const ch=obChain(t==='clients'?{id:'client-xyz'}:[]);
+    if(t==='clients'){ const origIns=ch.insert; ch.insert=function(rows){ try{ window.__clientInsert=(rows&&rows[0])||rows; }catch(e){} return origIns(rows); }; }
+    return ch;
+  };
   // The convert button must be on the deal-detail view.
   window.deals=window.deals||{}; window.deals['Prospecting']=window.deals['Prospecting']||[];
   if(!window.deals['Prospecting'].find(x=>x.id==='onb1'))
@@ -455,6 +463,10 @@ const onb=await pg.evaluate(async()=>{
   o.calledCreateRpc=window.__rpcCalls.includes('gl_onboarding_create');
   o.sentEmail=window.__sent.length>0;
   o.emailHasOnboardLink=window.__sent.some(s=>s.hasLink);
+  // The new client's status must be constraint-legal (lead/active/inactive) —
+  // 'onboarding' would 400 against clients_status_check in production.
+  o.clientStatus=window.__clientInsert&&window.__clientInsert.status;
+  o.statusLegal=['lead','active','inactive'].includes(o.clientStatus);
   return o;
 });
 rec('Onboarding','convert function defined',onb.fnDefined);
@@ -463,6 +475,7 @@ rec('Onboarding','Convert button on the deal detail',onb.buttonPresent);
 rec('Onboarding','convert calls gl_onboarding_create',onb.calledCreateRpc);
 rec('Onboarding','convert emails the client',onb.sentEmail);
 rec('Onboarding','the email carries the onboarding link',onb.emailHasOnboardLink);
+rec('Onboarding','new client status is constraint-legal',onb.statusLegal,'status='+onb.clientStatus);
 
 /* ---------- PHASE 8: no fatal errors overall ---------- */
 rec('Stability','no fatal JS error across the whole sweep',appErrors.length===0,appErrors.slice(0,4).join(' | '));

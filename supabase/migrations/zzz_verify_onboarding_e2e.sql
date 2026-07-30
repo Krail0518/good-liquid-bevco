@@ -21,7 +21,7 @@ declare
   v_ob     text;
 begin
   insert into public.clients (name, contact_name, email, status, onboarding_status)
-  values ('ZZZ Onboarding E2E (delete me)', 'Test Contact', 'e2e@onboarding.test', 'onboarding', 'invited')
+  values ('ZZZ Onboarding E2E (delete me)', 'Test Contact', 'e2e@onboarding.test', 'active', 'invited')
   returning id into v_client;
 
   insert into public.onboarding (client_id, token, status, contact_email, prefill)
