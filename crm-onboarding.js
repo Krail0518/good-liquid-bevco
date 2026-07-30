@@ -85,7 +85,8 @@
       var body = 'Hi ' + firstName + ',\n\n'
         + 'Great news, we\'re excited to start working with ' + company + '. '
         + 'To set up your account and get your project moving, please complete a short onboarding form. '
-        + 'We\'ve already filled in what we have, so it should only take a few minutes:\n\n'
+        + 'We\'ve already filled in what we have, and at the end you\'ll create your client-portal login '
+        + '(you\'ll sign in with this email). It should only take a few minutes:\n\n'
         + link + '\n\n'
         + 'Once you submit it, I\'ll be in touch about next steps and your production schedule.\n\n'
         + 'Thanks,\nMike\nGood Liquid Bev Co\n(803) 493-5065';
@@ -96,7 +97,7 @@
             + '<div style="border-top:3px solid #00e5c0;padding:22px 26px">'
             + '<div style="font-size:19px;font-weight:900;color:#00b89a;letter-spacing:2px;margin-bottom:12px">GOOD LIQUID BEV CO</div>'
             + '<p>Hi ' + esc(firstName) + ',</p>'
-            + '<p>Great news — we\'re excited to start working with ' + esc(company) + '. To set up your account and get your project moving, please complete a short onboarding form. We\'ve already filled in what we have, so it should only take a few minutes:</p>'
+            + '<p>Great news — we\'re excited to start working with ' + esc(company) + '. To set up your account and get your project moving, please complete a short onboarding form. We\'ve already filled in what we have, and at the end you\'ll create your client-portal login (you\'ll sign in with this email). It should only take a few minutes:</p>'
             + '<p style="text-align:center;margin:26px 0"><a href="' + link + '" style="background:#00e5c0;color:#04231d;text-decoration:none;font-weight:800;padding:13px 26px;border-radius:8px;display:inline-block">Complete your onboarding →</a></p>'
             + '<p>Once you submit it, I\'ll be in touch about next steps and your production schedule.</p>'
             + '<p>Thanks,<br>Mike<br>Good Liquid Bev Co · (803) 493-5065</p>'
@@ -104,17 +105,18 @@
         });
       }
 
-      // 4) Invite their portal login (best-effort — never blocks onboarding).
-      try { if(typeof window.glInviteCustomerLogin === 'function') await window.glInviteCustomerLogin(clientId, company, email); }
-      catch(e){ console.warn('[onboarding] portal invite failed', e); }
+      // 4) No separate portal-invite email: the client creates their login
+      //    (email + a password meeting the complexity policy) at the end of the
+      //    onboarding form itself, via the onboarding-set-password function.
+      //    Staff can still invite a login manually from the client detail page.
 
       // 5) Refresh local state so the new client shows up without a reload.
       try { if(typeof window.loadSupabaseData === 'function') await window.loadSupabaseData(); } catch(e){}
 
       if(typeof window.glEndBusy === 'function') window.glEndBusy();
       var linkNote = emailOk
-        ? 'An onboarding email was sent to ' + email + '.'
-        : '⚠ The client was created but the email failed to send. Copy this link to them manually:\n\n' + link;
+        ? 'An onboarding email was sent to ' + email + '. They\'ll complete their details and create their portal login (email + password) on the form.'
+        : '⚠ The client was created but the email failed to send. Copy this onboarding link to them manually:\n\n' + link;
       alert('✓ ' + company + ' is now a client.\n\n' + linkNote + '\n\nYou\'ll get a WhatsApp when they finish onboarding.');
       if(typeof window.glAudit === 'function') window.glAudit('lead_converted', clientId, { company: company, email: email });
     } catch(e){

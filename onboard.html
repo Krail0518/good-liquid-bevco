@@ -115,7 +115,16 @@
     <label class="chk"><input type="checkbox" id="c-pa"> I have a Process Authority letter (or know I'll need one)</label>
     <label class="chk"><input type="checkbox" id="c-coi"> I can provide a Certificate of Insurance</label>
 
-    <button type="submit" class="btn" id="submit-btn">Submit my onboarding</button>
+    <div class="sec-title">Create your portal login</div>
+    <div class="sub" style="margin-bottom:4px">You'll sign in to your client portal with your email (<b id="login-email">—</b>) and the password you choose here.</div>
+    <div class="sub" style="font-size:12px;color:var(--yellow);margin-bottom:6px">Password must be at least 8 characters and include an uppercase letter, a number, and a special character (e.g. ! ? @ #).</div>
+    <div class="row">
+      <div><label>Password</label><input type="password" id="f-password" autocomplete="new-password"></div>
+      <div><label>Confirm password</label><input type="password" id="f-password2" autocomplete="new-password"></div>
+    </div>
+    <div id="pw-hint" style="font-size:11.5px;margin-top:6px;color:var(--muted)"></div>
+
+    <button type="submit" class="btn" id="submit-btn">Submit &amp; create my login</button>
     <div id="msg" class="msg"></div>
   </form>
 </div>
@@ -140,6 +149,26 @@
     });
     if(!r.ok){ throw new Error('HTTP ' + r.status); }
     return r.json();
+  }
+
+  // Call an edge function (token-gated server-side). Returns the parsed body
+  // even on a 4xx so we can show the server's specific message.
+  async function callFn(name, body){
+    var r = await fetch(SUPA_URL + '/functions/v1/' + name, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'apikey':ANON_KEY, 'Authorization':'Bearer '+ANON_KEY },
+      body: JSON.stringify(body)
+    });
+    return r.json().catch(function(){ return { ok:false, error:'Unexpected server response.' }; });
+  }
+
+  // Same policy the server enforces — stated to the user and pre-checked here.
+  function passwordProblem(pw){
+    if(!pw || pw.length < 8)     return 'At least 8 characters.';
+    if(!/[A-Z]/.test(pw))        return 'Add an uppercase letter.';
+    if(!/[0-9]/.test(pw))        return 'Add a number.';
+    if(!/[^A-Za-z0-9]/.test(pw)) return 'Add a special character (e.g. ! ? @ #).';
+    return '';
   }
 
   // Prefill: set a field from the prefill blob and flag it visually.
@@ -173,9 +202,25 @@
       fill('street', p.street); fill('city', p.city); fill('state', p.state); fill('zip', p.zip);
       fill('service', p.service);
       fill('notes', p.notes);
+      // Their login email (read-only context for the password section).
+      var loginEmail = (res.email || p.email || '');
+      var le = el('login-email'); if(le) le.textContent = loginEmail || 'your email';
+      window.__loginEmail = loginEmail;
       hide('loading'); show('form');
     }catch(e){ fatal('We could not load your onboarding right now. Please try again in a moment.'); }
   })();
+
+  // Live password hint as they type.
+  var pwEl = el('f-password'), pw2El = el('f-password2'), hintEl = el('pw-hint');
+  function updatePwHint(){
+    var p = pwEl.value, p2 = pw2El.value, prob = passwordProblem(p);
+    if(!p){ hintEl.textContent = ''; return; }
+    if(prob){ hintEl.style.color = '#f5c842'; hintEl.textContent = '⚠ ' + prob; return; }
+    if(p2 && p !== p2){ hintEl.style.color = '#ff8579'; hintEl.textContent = '⚠ Passwords don\'t match.'; return; }
+    hintEl.style.color = '#5fcf9e'; hintEl.textContent = '✓ Strong password' + (p2 ? ' — matches.' : '.');
+  }
+  pwEl.addEventListener('input', updatePwHint);
+  pw2El.addEventListener('input', updatePwHint);
 
   el('form').addEventListener('submit', async function(ev){
     ev.preventDefault();
@@ -183,6 +228,12 @@
     msg.className = 'msg';
     var g = function(k){ var n = el('f-'+k); return n ? n.value.trim() : ''; };
     if(!g('contact_name')){ msg.className='msg err'; msg.textContent='Please add a primary contact name.'; return; }
+
+    // Portal login: enforce the stated policy + confirmation before anything.
+    var pw = pwEl.value, pw2 = pw2El.value;
+    var pwProb = passwordProblem(pw);
+    if(pwProb){ msg.className='msg err'; msg.textContent='Password: ' + pwProb + ' (at least 8 chars, an uppercase letter, a number, and a special character.)'; pwEl.focus(); return; }
+    if(pw !== pw2){ msg.className='msg err'; msg.textContent='The two passwords don\'t match.'; pw2El.focus(); return; }
 
     // Mirror company address into billing/shipping when "same" is ticked.
     var data = {
@@ -197,14 +248,32 @@
     if(ss.checked){ data.shipping_street=g('street'); data.shipping_city=g('city'); data.shipping_state=g('state'); data.shipping_zip=g('zip'); }
     else { data.shipping_street=g('shipping_street'); data.shipping_city=g('shipping_city'); data.shipping_state=g('shipping_state'); data.shipping_zip=g('shipping_zip'); }
 
-    btn.disabled = true; btn.textContent = 'Submitting…';
+    btn.disabled = true; btn.textContent = 'Setting up your account…';
+    var reset = function(){ btn.disabled=false; btn.textContent='Submit & create my login'; };
     try{
+      // 1) Create the portal login FIRST. If it fails (e.g. server rejects the
+      //    password), the onboarding is NOT marked submitted, so they can fix
+      //    it and retry — no half-finished state.
+      var setpw = await callFn('onboarding-set-password', { token: token, password: pw });
+      if(!setpw || setpw.ok !== true){
+        msg.className='msg err'; msg.textContent = (setpw && setpw.error) || 'We could not set your password. Please try again.';
+        reset(); return;
+      }
+      // 2) Now record the intake answers.
       var res = await rpc('gl_onboarding_submit', { p_token: token, p_data: data });
-      if(res && res.ok){ hide('form'); show('done'); window.scrollTo(0,0); }
-      else { msg.className='msg err'; msg.textContent = (res && res.error) || 'Something went wrong. Please try again.'; btn.disabled=false; btn.textContent='Submit my onboarding'; }
+      if(res && res.ok){
+        var em = (setpw.email || window.__loginEmail || 'your email');
+        var d = el('done');
+        d.querySelector('.sub').innerHTML = 'Your details are in and your portal login is ready. Sign in anytime at <a href="/?portal=1">your client portal</a> with <b>' + String(em).replace(/[<>&]/g,'') + '</b> and the password you just chose. Mike has been notified and will follow up on next steps.';
+        hide('form'); show('done'); window.scrollTo(0,0);
+      } else {
+        // Password was set but the answers didn't save — tell them plainly.
+        msg.className='msg err'; msg.textContent = (res && res.error) || 'Your login was created, but saving your answers failed. Please try Submit once more.';
+        reset();
+      }
     }catch(e){
-      msg.className='msg err'; msg.textContent='We could not submit right now. Please try again in a moment.';
-      btn.disabled=false; btn.textContent='Submit my onboarding';
+      msg.className='msg err'; msg.textContent='We could not finish right now. Please try again in a moment.';
+      reset();
     }
   });
 })();
