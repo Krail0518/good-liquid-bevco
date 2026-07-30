@@ -140,7 +140,7 @@ const OPENERS=[
   ['glOpenEditClient','gl-edit-client-modal'],['openMailgunSettings','mg-settings-overlay'],
   ['glOpenAddProductionRun','gl-prun-modal'],['openTimeTracker','time-tracker-modal'],
   ['glOpenCipForm','gl-comp-modal'],['openInviteModal','invite-user-modal'],
-  ['glOpenCipEquipManager','gl-comp-modal']
+  ['glOpenCipEquipManager','gl-comp-modal'],['glOpenPricingDoc','gl-pricing-doc-modal']
 ];
 const openers=await pg.evaluate(async(list)=>{
   const out=[];
@@ -275,6 +275,20 @@ const refine=await pg.evaluate(async()=>{
   instr.value='make it shorter';
   await window.glRunRefine({row,instrEl:instr,subjEl:subj,bodyEl:body,btn});
   o.applied=subj.value==='New subject'&&/New body here/.test(body.value);
+  // Refine must carry the pricing doc — "use the real prices" was a no-op
+  // when only the first draft had the reference and refine reran blind.
+  window.__glCapsDoc={text:'PRICE SHEET SENTINEL 42',at:Date.now()};
+  let refineBody=null;
+  window.supa.functions.invoke=async(fn,opt)=>{refineBody=opt&&opt.body;return {data:{ok:true,text:'Subject: S\n\nB.'},error:null};};
+  instr.value='use the real prices';
+  await window.glRunRefine({row,instrEl:instr,subjEl:subj,bodyEl:body,btn});
+  o.refineCarriesDeck=JSON.stringify(refineBody||{}).includes('PRICE SHEET SENTINEL 42');
+  // And when NO doc is loaded, the prompt must forbid invented numbers.
+  window.__glCapsDoc={text:'',at:Date.now()};
+  refineBody=null;
+  instr.value='add pricing';
+  await window.glRunRefine({row,instrEl:instr,subjEl:subj,bodyEl:body,btn});
+  o.refineGuardsNoDeck=JSON.stringify(refineBody||{}).includes('Do NOT state any specific prices');
   row.remove();
   return o;
 });
@@ -282,6 +296,8 @@ rec('Refine with Claude','empty instruction gives feedback',refine.emptyWarns);
 rec('Refine with Claude','failure reports instead of hanging',refine.failWarns);
 rec('Refine with Claude','button re-enables after failure',refine.btnReEnabled);
 rec('Refine with Claude','success applies subject + body',refine.applied);
+rec('Refine with Claude','refine prompt carries the pricing doc',refine.refineCarriesDeck);
+rec('Refine with Claude','no-doc refine forbids invented prices',refine.refineGuardsNoDeck);
 
 /* ---------- PHASE 7: help ---------- */
 const help=await pg.evaluate(async()=>{

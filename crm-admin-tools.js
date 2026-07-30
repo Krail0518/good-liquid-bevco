@@ -284,6 +284,64 @@
     }
   };
 
+  /* ── Pricing & Capabilities doc editor ────────────────────────────────────
+     The text stored here (company_docs.capabilities_pricing) is handed to
+     Claude with EVERY AI-drafted or refined email. This editor is the screen
+     that never existed: the drafts always LOOKED for the doc, but nothing in
+     the app could create it — so Claude improvised prices for real leads. */
+  window.glOpenPricingDoc = async function(){
+    var prior = document.getElementById('gl-pricing-doc-modal'); if(prior) prior.remove();
+    var ov = document.createElement('div');
+    ov.id = 'gl-pricing-doc-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:900;background:rgba(6,13,26,.95);backdrop-filter:blur(16px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:28px;width:100%;max-width:780px;max-height:92vh;overflow-y:auto">' +
+        '<div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:var(--teal);margin-bottom:8px">📄 PRICING &amp; CAPABILITIES DOC</div>' +
+        '<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;line-height:1.6">This text is given to Claude with <b>every</b> AI-drafted and refined email, so it quotes your real prices instead of inventing them. Keep it current — when your deck changes, update it here.</div>' +
+        '<div id="gl-pd-status" style="font-size:12px;line-height:1.5;margin-bottom:10px;padding:9px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;color:#9aa7bd">Loading…</div>' +
+        '<textarea id="gl-pd-text" spellcheck="false" style="width:100%;height:48vh;padding:12px;background:#0a1628;border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#dfe7f1;font-size:12px;font-family:var(--ff-mono);line-height:1.5;resize:vertical"></textarea>' +
+        '<div style="display:flex;gap:10px;margin-top:12px">' +
+          '<button id="gl-pd-save" style="flex:1;padding:12px;background:rgba(0,229,192,.12);color:var(--teal);border:1px solid rgba(0,229,192,.3);border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">💾 Save</button>' +
+          '<button id="gl-pd-close" style="padding:12px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer">Close</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    var status = ov.querySelector('#gl-pd-status');
+    var ta = ov.querySelector('#gl-pd-text');
+    ov.querySelector('#gl-pd-close').addEventListener('click', function(){ ov.remove(); });
+
+    try {
+      var res = await supa.from('company_docs').select('content, updated_at').eq('key','capabilities_pricing').maybeSingle();
+      if(res && res.data && res.data.content){
+        ta.value = res.data.content;
+        status.style.color = '#5fcf9e';
+        status.textContent = '✓ Loaded — last updated ' + (res.data.updated_at ? new Date(res.data.updated_at).toLocaleString() : 'unknown') + '.';
+      } else {
+        status.style.color = '#ff8579';
+        status.textContent = '⚠ EMPTY — Claude currently has NO pricing and is told not to quote any numbers. Paste your deck text below and Save.';
+      }
+    } catch(e){
+      status.style.color = '#ff8579';
+      status.textContent = '⚠ Could not load: ' + (e.message || e);
+    }
+
+    ov.querySelector('#gl-pd-save').addEventListener('click', async function(){
+      var content = ta.value.trim();
+      if(!content){ status.style.color = '#ff8579'; status.textContent = 'Nothing to save — the box is empty.'; return; }
+      status.style.color = '#9aa7bd'; status.textContent = 'Saving…';
+      try {
+        var up = await supa.from('company_docs').upsert({ key: 'capabilities_pricing', content: content, updated_at: new Date().toISOString() });
+        if(up && up.error) throw up.error;
+        try { window.__glCapsDoc = null; } catch(_e){}   // next draft re-reads it
+        status.style.color = '#5fcf9e';
+        status.textContent = '✓ Saved (' + content.length + ' characters). Every AI draft and refine now uses this.';
+      } catch(e){
+        status.style.color = '#ff8579';
+        status.textContent = '✗ Save failed: ' + (e.message || e);
+      }
+    });
+  };
+
   /* Reusable masked-credential reveal modal — used by onboarding to surface
      a temp password without splashing it into a system alert.
      opts: { title, message, email, password, status: 'ok'|'warn' } */
@@ -729,6 +787,7 @@
       { label:'📧 Email Templates', fn:'openEmailTemplates' },
       { label:'📊 Time Report',    fn:'openTimeTrackingReport' },
       { label:'🤖 AI Settings',    fn:'openAISettings' },
+      { label:'📄 Pricing Doc (AI)', fn:'glOpenPricingDoc', admin:true },
       { label:'📧 Mailgun Settings', fn:'openMailgunSettings' },
       { label:'📈 Google Analytics', fn:'openGA4Settings', admin:true },
       { label:'🔒 Two-Factor Auth', fn:'openMFASettings' },
