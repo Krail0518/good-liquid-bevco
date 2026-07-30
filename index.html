@@ -5799,12 +5799,10 @@ function openLeadEmailComposer(){
     btn.textContent = '🤖 Drafting…';
     aiStatus.style.display = 'block';
 
-    // Fetch live pricing/capabilities from Supabase so Claude always uses current numbers
-    let capsDoc = '';
-    try {
-      const capsRes = await supa.from('company_docs').select('content').eq('key','capabilities_pricing').single();
-      if(capsRes.data && capsRes.data.content) capsDoc = capsRes.data.content;
-    } catch(e){ console.warn('[GL] Could not load capabilities doc', e); }
+    // Live pricing/capabilities so Claude always uses current numbers.
+    // Empty means NO doc is loaded — the prompt then explicitly forbids
+    // inventing prices, and the composer shows a warning after drafting.
+    let capsDoc = await glGetCapsDoc();
 
     const systemPrompt = `You are Mike's assistant at Good Liquid Bev Co, a beverage co-packer in Palmetto, FL (2011 51st Ave E, Unit 100). We help emerging beverage brands with R&D, small-batch canning, bottle filling, and co-packing.
 
@@ -5817,7 +5815,7 @@ SUBJECT: [one-line subject here]
 
 [email body here — start straight with the salutation, no extra labels]
 
-${capsDoc ? `--- GOOD LIQUID CAPABILITIES & PRICING REFERENCE ---\n${capsDoc}` : ''}`;
+${capsDoc ? `--- GOOD LIQUID CAPABILITIES & PRICING REFERENCE ---\n${capsDoc}` : GL_NO_PRICING_GUARD}`;
 
     const userPrompt = `Draft a first-contact reply email to this lead who submitted an inquiry on our website:
 
@@ -5843,6 +5841,13 @@ Greet them by first name (${firstName}). Acknowledge what they're building and w
     const body = bodyStart > -1 ? raw.slice(bodyStart).trim() : raw.replace(/^SUBJECT:.*\n?/im,'').trim();
     ov.querySelector('#gl-lem-body').value = body;
     ov.querySelector('#gl-lem-result').textContent = '';
+    if(!capsDoc){
+      // Say it out loud instead of quietly drafting priceless emails — an
+      // unloaded pricing doc once had Claude inventing numbers for leads.
+      const r = ov.querySelector('#gl-lem-result');
+      r.style.color = '#f5c842';
+      r.textContent = '⚠ Drafted WITHOUT your pricing doc (none is loaded, so no specific prices were used). Load it: 🤖 toolbar → Quick Actions → 📄 Pricing Doc (AI).';
+    }
     ov.querySelector('#gl-lem-refine-row').style.display = 'block';
   };
 
@@ -5916,12 +5921,9 @@ async function openBulkOutreach(){
   const prospects = (deals['Prospecting'] || []).map((d,i) => ({...d, _idx:i}))
     .filter(d => d.email && !d.outreachStatus);
 
-  // Fetch capabilities/pricing doc once for AI system prompt
-  let capsDoc = '';
-  try {
-    const capsRes = await supa.from('company_docs').select('content').eq('key','capabilities_pricing').single();
-    if(capsRes.data && capsRes.data.content) capsDoc = capsRes.data.content;
-  } catch(e){ console.warn('[GL] Could not load capabilities doc', e); }
+  // Live pricing/capabilities doc for the AI system prompt (empty = the
+  // prompt forbids invented prices — see glGetCapsDoc).
+  let capsDoc = await glGetCapsDoc();
 
   const systemPrompt = `You are Mike's assistant at Good Liquid Bev Co, a beverage co-packer in Palmetto, FL (2011 51st Ave E, Unit 100). We help emerging beverage brands with R&D, small-batch canning, bottle filling, and co-packing.
 
@@ -5934,7 +5936,7 @@ SUBJECT: [one-line subject here]
 
 [email body here — start straight with the salutation, no extra labels]
 
-${capsDoc ? '--- GOOD LIQUID CAPABILITIES & PRICING REFERENCE ---\n' + capsDoc : ''}`;
+${capsDoc ? '--- GOOD LIQUID CAPABILITIES & PRICING REFERENCE ---\n' + capsDoc : GL_NO_PRICING_GUARD}`;
 
   const ov = document.createElement('div');
   ov.id = 'gl-bulk-outreach-modal';
@@ -9767,6 +9769,27 @@ function glRefineFeedback(rowEl, msg, isError){
 }
 window.glRefineFeedback = glRefineFeedback;
 
+// The live pricing/capabilities reference every AI email feature reads.
+// Cached briefly so several drafts in a row don't re-query. Empty string
+// means NO doc is loaded — callers must then forbid invented prices
+// (GL_NO_PRICING_GUARD) instead of letting Claude improvise numbers.
+async function glGetCapsDoc(){
+  try {
+    var c = window.__glCapsDoc;
+    if(c && (Date.now() - c.at) < 5 * 60000) return c.text;
+    var res = await supa.from('company_docs').select('content').eq('key','capabilities_pricing').single();
+    var text = (res && res.data && res.data.content) ? String(res.data.content) : '';
+    window.__glCapsDoc = { text: text, at: Date.now() };
+    return text;
+  } catch(e){ console.warn('[GL] Could not load capabilities doc', e); return ''; }
+}
+window.glGetCapsDoc = glGetCapsDoc;
+
+// Added to every AI email prompt whenever no pricing doc is loaded. Inventing
+// prices cost real credibility with a real lead once — never again.
+var GL_NO_PRICING_GUARD = 'IMPORTANT: No pricing reference document is loaded. Do NOT state any specific prices, fees, minimums, volumes or turnaround times — you do not know them and must not invent them. Instead, invite the lead to a quick call for current pricing.';
+window.GL_NO_PRICING_GUARD = GL_NO_PRICING_GUARD;
+
 // One hardened path for every "Refine with Claude" button (lead composer,
 // AI Comm, invoice follow-up). Guarantees the button is NEVER left hung and
 // ALWAYS gives visible feedback — the try/catch/finally means even an
@@ -9781,8 +9804,14 @@ async function glRunRefine(opts){
   try {
     if(btn){ btn.disabled = true; btn.textContent = '🤖 Refining…'; }
     if(statusEl){ statusEl.style.display = 'block'; statusEl.textContent = '🤖 Claude is refining your email…'; }
+    // Refine gets the pricing doc too — "add the real prices" was a no-op
+    // when only the first draft carried the reference.
+    var caps = '';
+    try { caps = await glGetCapsDoc(); } catch(_e){}
     var refined = await callAI(
-      'You are helping Mike at Good Liquid Bev Co revise a draft email. Apply the requested changes precisely. Return the complete revised email: Subject line first (starting with "Subject: "), blank line, then email body only — no extra labels.',
+      'You are helping Mike at Good Liquid Bev Co revise a draft email. Apply the requested changes precisely. Return the complete revised email: Subject line first (starting with "Subject: "), blank line, then email body only — no extra labels.'
+        + (caps ? '\n\n--- GOOD LIQUID CAPABILITIES & PRICING REFERENCE (use these real numbers when pricing comes up) ---\n' + caps
+                : '\n\n' + GL_NO_PRICING_GUARD),
       'Current email:\nSubject: ' + (subjEl ? subjEl.value.trim() : '') + '\n\n' + (bodyEl ? bodyEl.value.trim() : '') + '\n\n---\nRevise per this instruction: ' + instruction
     );
     if(!refined || refined === 'AI response unavailable.'){
