@@ -68,6 +68,7 @@
         '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:16px">' +
           tile('window.glOpenDailyGMP()','➕','Log today’s GMP','One entry, fans out to all registers','#00e5c0') +
           tile('window.glOpenGMPDeviations()','⚠️','Open deviations','Anything that failed a check, needs action','#f5c842') +
+          tile('window.glGenerateAuditorLink()','🔒','Auditor access','Read-only login link for an auditor','#f5c842') +
           REGISTERS.map(function(r){ return tile("window.glOpenGMPRegister('"+r.code+"')", r.icon, r.label, 'View / add records'); }).join('') +
         '</div>' +
       '</div>';
@@ -306,6 +307,88 @@
     } catch(e){
       ov.querySelector('div').innerHTML = '<div style="color:#ff8579">Could not load: '+esc(e.message||e)+'</div>';
     }
+  };
+
+  // ── Mint a read-only auditor login link (auditor.html?token=…) ──
+  // Writes one inspector_tokens row (staff-only insert RLS). The token then
+  // gates the standalone auditor portal via is_valid_inspector_token — no CRM
+  // login, no write access. Parallels glGenerateInspectorLink but targets the
+  // dedicated auditor page and stays inside the GMP module.
+  window.glGenerateAuditorLink = function glGenerateAuditorLink(){
+    if(!sb()){ alert('Supabase not ready.'); return; }
+    var ov = overlay('gl-gmp-auditor');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(245,200,66,.3);border-radius:16px;padding:22px;width:100%;max-width:520px;color:#fff">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+          '<div style="font-family:var(--ff-disp);font-size:17px;letter-spacing:1.5px;color:#f5c842">🔒 AUDITOR ACCESS LINK</div>' +
+          '<button onclick="document.getElementById(\'gl-gmp-auditor\').remove()" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        '<div style="font-size:12px;color:#9aa7bd;margin-bottom:14px;line-height:1.5">A read-only login for an auditor to review your GMP registers, deviations, and records. No CRM account, nothing can be changed.</div>' +
+        '<div id="gmp-aud-step1">' +
+          '<label style="display:block;font-size:11px;color:#9aa7bd;margin:8px 0 4px">Auditor name <span style="color:#f5c842">*</span></label>' +
+          '<input id="gmp-aud-name" placeholder="e.g. Jane Smith" style="width:100%;padding:10px;background:#0a1628;border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#fff;font-size:13px">' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">' +
+            '<div><label style="display:block;font-size:11px;color:#9aa7bd;margin:0 0 4px">Agency / firm</label><input id="gmp-aud-agency" placeholder="SQF / FDA / customer" style="width:100%;padding:10px;background:#0a1628;border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#fff;font-size:13px"></div>' +
+            '<div><label style="display:block;font-size:11px;color:#9aa7bd;margin:0 0 4px">Valid for (hours)</label><input id="gmp-aud-hours" type="number" min="1" max="720" value="72" style="width:100%;padding:10px;background:#0a1628;border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#fff;font-size:13px"></div>' +
+          '</div>' +
+          '<label style="display:block;font-size:11px;color:#9aa7bd;margin:8px 0 4px">Purpose <span style="opacity:.6">(optional)</span></label>' +
+          '<input id="gmp-aud-purpose" placeholder="Annual audit / mock recall / etc." style="width:100%;padding:10px;background:#0a1628;border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#fff;font-size:13px">' +
+          '<div id="gmp-aud-err" style="display:none;color:#ff8579;font-size:12px;margin-top:8px"></div>' +
+          '<div style="display:flex;gap:10px;margin-top:14px">' +
+            '<button onclick="document.getElementById(\'gl-gmp-auditor\').remove()" style="flex:1;padding:11px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:8px;color:#dfe7f1;font-size:13px;cursor:pointer">Cancel</button>' +
+            '<button id="gmp-aud-gen" style="flex:1;padding:11px;background:rgba(245,200,66,.16);border:1px solid rgba(245,200,66,.4);border-radius:8px;color:#f5c842;font-weight:700;font-size:13px;cursor:pointer">🔒 Generate link</button>' +
+          '</div>' +
+        '</div>' +
+        '<div id="gmp-aud-step2" style="display:none"></div>' +
+      '</div>';
+
+    ov.querySelector('#gmp-aud-gen').addEventListener('click', async function(){
+      var btn = this;
+      var name    = (ov.querySelector('#gmp-aud-name').value||'').trim();
+      var agency  = (ov.querySelector('#gmp-aud-agency').value||'').trim();
+      var purpose = (ov.querySelector('#gmp-aud-purpose').value||'').trim();
+      var hours   = parseInt(ov.querySelector('#gmp-aud-hours').value, 10) || 72;
+      var err = ov.querySelector('#gmp-aud-err');
+      err.style.display = 'none';
+      if(!name){ err.textContent='Auditor name is required.'; err.style.display='block'; return; }
+      if(hours < 1 || hours > 720){ err.textContent='Valid hours must be 1–720 (max 30 days).'; err.style.display='block'; return; }
+      btn.disabled = true; btn.textContent = 'Generating…';
+      var token = (window.crypto && crypto.randomUUID)
+        ? (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g,'')
+        : ('t'+Date.now()+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2));
+      var validUntil = new Date(Date.now() + hours*3600*1000).toISOString();
+      var uid = (window.currentUser && window.currentUser.id) || null;
+      var row = { token: token, inspector: name, agency: agency || null, purpose: purpose || null, valid_until: validUntil, created_by: uid };
+      try {
+        var r = await sb().from('inspector_tokens').insert(row).select('id').single();
+        if(r.error) throw r.error;
+      } catch(e){
+        err.textContent = 'Save failed: ' + (e.message || e); err.style.display='block';
+        btn.disabled = false; btn.textContent = '🔒 Generate link';
+        return;
+      }
+      var link = window.location.origin + '/auditor.html?token=' + token;
+      var expires = new Date(validUntil).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+      if(typeof window.glAudit === 'function') window.glAudit('auditor_link_generated', name, { agency: agency, hours: hours, expires: validUntil });
+      ov.querySelector('#gmp-aud-step1').style.display = 'none';
+      var s2 = ov.querySelector('#gmp-aud-step2');
+      s2.style.display = 'block';
+      s2.innerHTML =
+        '<div style="font-size:12.5px;color:#5fcf9e;margin-bottom:8px">✓ Link created for <b>'+esc(name)+'</b> — valid through '+esc(expires)+'.</div>' +
+        '<div style="display:flex;gap:8px;align-items:stretch">' +
+          '<input id="gmp-aud-link" readonly value="'+esc(link)+'" style="flex:1;padding:10px;background:#0a1628;border:1px solid rgba(245,200,66,.3);border-radius:7px;color:#f5c842;font-size:12px">' +
+          '<button id="gmp-aud-copy" style="padding:10px 14px;background:rgba(245,200,66,.16);border:1px solid rgba(245,200,66,.4);border-radius:7px;color:#f5c842;font-weight:700;font-size:12px;cursor:pointer;white-space:nowrap">Copy</button>' +
+        '</div>' +
+        '<div style="font-size:11px;color:#9aa7bd;margin-top:10px;line-height:1.5">Send this link to the auditor. It opens a read-only portal — they can view every register, deviation, and record, but cannot edit, sign, or delete anything. Revoke or expire access anytime from Compliance → inspector tokens.</div>' +
+        '<div style="text-align:right;margin-top:12px"><button onclick="document.getElementById(\'gl-gmp-auditor\').remove()" style="padding:10px 16px;background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.3);border-radius:8px;color:var(--teal);font-weight:700;font-size:13px;cursor:pointer">Done</button></div>';
+      var linkEl = s2.querySelector('#gmp-aud-link');
+      s2.querySelector('#gmp-aud-copy').addEventListener('click', function(){
+        linkEl.select();
+        var done = function(){ this.textContent='✓ Copied'; }.bind(this);
+        try { if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(link).then(done, function(){ document.execCommand('copy'); done.call(this); }.bind(this)); } else { document.execCommand('copy'); done.call(this); } }
+        catch(e){ try{ document.execCommand('copy'); done.call(this); }catch(_){} }
+      });
+    });
   };
 
   // Render the hub into its page container once the DOM is ready.

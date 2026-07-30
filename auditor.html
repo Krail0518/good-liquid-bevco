@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Auditor Review — Good Liquid Bev Co</title>
+  <style>
+    :root{--bg:#0d1420;--card:#131f32;--card2:#172038;--border:#1e3058;--teal:#00e5c0;--text:#c8d8f0;--muted:#6b87ad;--yellow:#f5c842;--green:#5fcf9e;--red:#e74646;--white:#eef4ff;}
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+    body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;padding:0 0 60px;}
+    a{color:var(--teal);}
+    .banner{background:#0f3d34;border-bottom:1px solid rgba(0,229,192,.3);padding:12px 20px;font-size:13px;color:#bdeee4;text-align:center;}
+    .wrap{max-width:1000px;margin:0 auto;padding:20px 16px;}
+    .brand{font-weight:900;letter-spacing:2px;color:var(--white);font-size:15px;}
+    .brand small{display:block;color:var(--muted);font-weight:400;letter-spacing:1px;font-size:11px;margin-top:3px;}
+    h1{font-size:20px;color:var(--white);margin:18px 0 4px;}
+    .sub{font-size:13px;color:var(--muted);line-height:1.6;}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;margin-top:16px;}
+    .sec-title{font-size:11px;letter-spacing:2px;color:var(--teal);text-transform:uppercase;margin-bottom:12px;}
+    label{display:block;font-size:11px;letter-spacing:.5px;color:var(--muted);margin:10px 0 5px;}
+    input{width:100%;padding:11px 12px;background:var(--card2);border:1px solid var(--border);border-radius:8px;color:var(--white);font-size:14px;font-family:inherit;}
+    button{cursor:pointer;font-family:inherit;}
+    .btn{width:100%;margin-top:16px;padding:13px;background:linear-gradient(135deg,var(--teal),#00c4a7);border:none;border-radius:9px;color:#04231d;font-size:15px;font-weight:800;}
+    .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;}
+    .tile{background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:left;color:var(--text);}
+    .tile b{display:block;color:var(--white);font-size:22px;}
+    .tile span{font-size:11.5px;color:var(--muted);}
+    table{width:100%;border-collapse:collapse;font-size:12.5px;}
+    th{text-align:left;color:var(--muted);font-size:11px;padding:6px 8px;font-weight:600;}
+    td{padding:6px 8px;border-top:1px solid rgba(255,255,255,.06);color:var(--text);vertical-align:top;}
+    .pill{font-size:10.5px;font-weight:700;border-radius:20px;padding:2px 9px;}
+    .msg{margin-top:12px;padding:11px 14px;border-radius:8px;font-size:13px;line-height:1.5;display:none;}
+    .msg.err{display:block;background:rgba(231,70,70,.1);border:1px solid rgba(231,70,70,.4);color:#ff9b90;}
+    .hidden{display:none;}
+    .row-scroll{overflow-x:auto;}
+    .reg-btn{background:var(--card2);border:1px solid var(--border);border-radius:9px;padding:12px;color:var(--white);text-align:left;display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;}
+    .reg-btn .c{color:var(--teal);font-weight:800;}
+    .back{background:none;border:none;color:var(--teal);font-size:13px;padding:0;margin-bottom:10px;}
+  </style>
+</head>
+<body>
+<div class="banner">🔒 Read-only auditor view — nothing on this page can be changed.</div>
+<div class="wrap">
+  <div class="brand">GOOD LIQUID BEV CO<small>Food Safety &amp; GMP Records · 2011 51st Ave E, Unit 100, Palmetto, FL 34221</small></div>
+
+  <div id="loading" class="card"><div class="sub">Loading…</div></div>
+
+  <!-- Login (no ?token in URL, or invalid) -->
+  <div id="login" class="card hidden" style="max-width:440px;margin:24px auto">
+    <h1>Auditor sign-in</h1>
+    <div class="sub">Enter the access token provided by Good Liquid Bev Co to review the food safety and GMP records.</div>
+    <label>Access token</label>
+    <input id="token-input" placeholder="Paste your token" autocomplete="off">
+    <button class="btn" id="login-btn">Review records →</button>
+    <div id="login-msg" class="msg"></div>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dash" class="hidden">
+    <div id="who" class="sub" style="margin-top:14px"></div>
+    <h1 id="dash-title">Food safety &amp; GMP records</h1>
+
+    <div class="card">
+      <div class="sec-title">At a glance</div>
+      <div class="tiles" id="stats"></div>
+    </div>
+
+    <div class="card">
+      <div class="sec-title">GMP registers</div>
+      <div id="registers" style="display:grid;gap:8px"></div>
+    </div>
+
+    <div class="card">
+      <div class="sec-title">Open deviations</div>
+      <div id="deviations"></div>
+    </div>
+
+    <div class="card">
+      <div class="sec-title">Most recent records</div>
+      <div class="row-scroll"><table id="recent"></table></div>
+    </div>
+  </div>
+
+  <!-- Single register drill-in -->
+  <div id="reg-view" class="hidden">
+    <div class="card">
+      <button class="back" onclick="window.__backToDash()">← Back to overview</button>
+      <div class="sec-title" id="reg-title"></div>
+      <div class="row-scroll"><table id="reg-table"></table></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  var SUPA_URL='https://ufjkeqmxwuyhbqyugcgg.supabase.co';
+  var ANON_KEY='sb_publishable_-37mkPw8uLzEJM21T9jJOA_YQRQ7ikB';
+  var params=new URLSearchParams(location.search);
+  var token=params.get('token')||params.get('inspector')||'';
+
+  function el(id){return document.getElementById(id);}
+  function show(id){el(id).classList.remove('hidden');}
+  function hide(id){el(id).classList.add('hidden');}
+  function esc(s){return String(s==null?'':s).replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});}
+  function fmtDate(s){if(!s)return'';try{return new Date(s).toLocaleDateString();}catch(e){return String(s).slice(0,10);}}
+
+  // Every read carries the anon apikey PLUS the inspector token header, which
+  // the server-side RLS validates (is_valid_inspector_token) before returning
+  // any row. So a revoked/expired token silently returns nothing.
+  function headers(){
+    return { 'apikey':ANON_KEY, 'Authorization':'Bearer '+ANON_KEY, 'X-Inspector-Token':token, 'Accept':'application/json' };
+  }
+  async function rest(pathAndQuery){
+    var r=await fetch(SUPA_URL+'/rest/v1/'+pathAndQuery,{headers:headers()});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }
+
+  function loginError(m){ var e=el('login-msg'); e.className='msg err'; e.textContent=m; }
+
+  async function validateAndLoad(){
+    hide('loading');
+    if(!token){ show('login'); return; }
+    // Validate the token (anon read policy on inspector_tokens) — also drives
+    // the who/expiry banner. Server RLS still independently gates the data.
+    var t;
+    try{ t=await rest('inspector_tokens?token=eq.'+encodeURIComponent(token)+'&select=inspector,agency,purpose,valid_until,revoked_at&limit=1'); }
+    catch(e){ show('login'); loginError('Could not verify that token. Check it and try again.'); return; }
+    var row=(t&&t[0])||null;
+    if(!row){ show('login'); loginError('That token is not recognized.'); return; }
+    if(row.revoked_at){ show('login'); loginError('That access token has been revoked. Contact Good Liquid Bev Co.'); return; }
+    if(new Date(row.valid_until) < new Date()){ show('login'); loginError('That access token expired on '+fmtDate(row.valid_until)+'.'); return; }
+
+    el('who').innerHTML='Reviewer: <b style="color:#eef4ff">'+esc(row.inspector||'Auditor')+'</b>'+(row.agency?(' · '+esc(row.agency)):'')+' · access expires '+fmtDate(row.valid_until);
+    // Bump usage (best-effort; anon has a narrow update policy for this).
+    try{ await fetch(SUPA_URL+'/rest/v1/inspector_tokens?token=eq.'+encodeURIComponent(token),{method:'PATCH',headers:Object.assign({'Content-Type':'application/json','Prefer':'return=minimal'},headers()),body:JSON.stringify({last_used_at:new Date().toISOString()})}); }catch(e){}
+    await loadDashboard();
+    show('dash');
+  }
+
+  var TEMPLATES=[];
+  async function loadDashboard(){
+    // Pull the register definitions + records in parallel.
+    var tpls=[], recent=[], devs=[], cip=[], defects=[], holds=[];
+    try{ tpls=await rest('gmp_templates?active=eq.true&order=sort_order.asc&select=form_code,title,category'); }catch(e){}
+    try{ recent=await rest('compliance_records?order=recorded_at.desc&limit=50&select=form_code,record_date,status,has_deviation,signature_name,data'); }catch(e){}
+    try{ devs=await rest('compliance_records?has_deviation=eq.true&order=recorded_at.desc&limit=50&select=form_code,record_date,deviation_notes,corrective_action,data'); }catch(e){}
+    try{ cip=await rest('cip_logs?order=cycle_at.desc&limit=1&select=id'); }catch(e){}
+    try{ defects=await rest('defects?order=created_at.desc&limit=1&select=id'); }catch(e){}
+    try{ holds=await rest('hold_tags?order=created_at.desc&limit=1&select=id'); }catch(e){}
+    TEMPLATES=tpls||[];
+
+    // Per-register counts.
+    var counts={};
+    (recent||[]).forEach(function(r){counts[r.form_code]=(counts[r.form_code]||0)+1;});
+
+    // Stats tiles.
+    var signed=(recent||[]).filter(function(r){return r.status==='signed';}).length;
+    el('stats').innerHTML=[
+      ['GMP registers', (tpls||[]).length, 'defined'],
+      ['Recent records', (recent||[]).length, 'last 50 shown'],
+      ['Open deviations', (devs||[]).length, 'flagged'],
+      ['Signed records', signed, 'of recent']
+    ].map(function(s){return '<div class="tile"><b>'+s[1]+'</b><span>'+esc(s[0])+' — '+esc(s[2])+'</span></div>';}).join('');
+
+    // Registers list (click to drill in).
+    el('registers').innerHTML=(tpls||[]).map(function(t){
+      return '<button class="reg-btn" onclick="window.__openReg(\''+esc(t.form_code)+'\',\''+esc(t.title).replace(/'/g,"")+'\')">'+
+        '<span>'+esc(t.title)+' <span style="color:#6b87ad;font-size:11px">('+esc(t.category)+')</span></span>'+
+        '<span class="c">'+(counts[t.form_code]||0)+'</span></button>';
+    }).join('') || '<div class="sub">No registers defined.</div>';
+
+    // Deviations.
+    el('deviations').innerHTML=(devs&&devs.length)? devs.map(function(r){
+      var d=r.data||{};
+      return '<div style="border:1px solid rgba(245,200,66,.25);border-radius:9px;padding:10px 12px;margin-bottom:8px;background:rgba(245,200,66,.05)">'+
+        '<div style="font-weight:700;color:#f5c842;font-size:12.5px">'+esc(r.form_code)+' · '+esc(fmtDate(r.record_date))+' <span style="color:#6b87ad;font-weight:400">'+esc((d.line||'')+(d.run?(' / '+d.run):''))+'</span></div>'+
+        '<div style="font-size:12.5px;color:#eef4ff;margin-top:4px">'+esc(r.deviation_notes||'Deviation flagged')+'</div>'+
+        (r.corrective_action?'<div style="font-size:12px;color:#5fcf9e;margin-top:3px">Corrective action: '+esc(r.corrective_action)+'</div>':'')+'</div>';
+    }).join('') : '<div class="sub" style="color:#5fcf9e">✓ No open deviations.</div>';
+
+    // Recent records table.
+    el('recent').innerHTML='<tr><th>Form</th><th>Date</th><th>By</th><th>Dev</th><th>Status</th></tr>'+
+      (recent||[]).map(function(r){var d=r.data||{};
+        return '<tr><td>'+esc(r.form_code)+'</td><td>'+esc(fmtDate(r.record_date))+'</td><td>'+esc(d.operator||r.signature_name||'')+'</td><td>'+(r.has_deviation?'⚠':'')+'</td><td>'+esc(r.status||'')+'</td></tr>';
+      }).join('');
+  }
+
+  window.__openReg=async function(code,title){
+    hide('dash'); show('reg-view');
+    el('reg-title').textContent=title;
+    el('reg-table').innerHTML='<tr><td>Loading…</td></tr>';
+    var recs=[];
+    try{ recs=await rest('compliance_records?form_code=eq.'+encodeURIComponent(code)+'&order=recorded_at.desc&limit=200&select=record_date,status,has_deviation,data'); }catch(e){}
+    var tpl=TEMPLATES.find(function(t){return t.form_code===code;})||{};
+    // Show shared header cols + up to 5 data keys seen.
+    var keys=[]; (recs||[]).slice(0,20).forEach(function(r){Object.keys(r.data||{}).forEach(function(k){if(k[0]!=='_'&&['line','run','shift','operator'].indexOf(k)<0&&keys.indexOf(k)<0&&keys.length<5)keys.push(k);});});
+    el('reg-table').innerHTML='<tr><th>Date</th><th>Line/Run</th><th>By</th>'+keys.map(function(k){return '<th>'+esc(k)+'</th>';}).join('')+'<th>Dev</th><th>Status</th></tr>'+
+      ((recs&&recs.length)? recs.map(function(r){var d=r.data||{};
+        return '<tr><td>'+esc(fmtDate(r.record_date))+'</td><td>'+esc((d.line||'')+(d.run?(' / '+d.run):''))+'</td><td>'+esc(d.operator||'')+'</td>'+
+          keys.map(function(k){return '<td>'+esc(d[k]==null?'':String(d[k]))+'</td>';}).join('')+
+          '<td>'+(r.has_deviation?'⚠':'')+'</td><td>'+esc(r.status||'')+'</td></tr>';
+      }).join('') : '<tr><td colspan="9" style="color:#6b87ad">No records in this register yet.</td></tr>');
+  };
+  window.__backToDash=function(){ hide('reg-view'); show('dash'); };
+
+  el('login-btn').addEventListener('click',function(){
+    var v=(el('token-input').value||'').trim();
+    if(!v){ loginError('Enter your access token.'); return; }
+    token=v; hide('login'); show('loading'); validateAndLoad();
+  });
+
+  validateAndLoad();
+})();
+</script>
+</body>
+</html>

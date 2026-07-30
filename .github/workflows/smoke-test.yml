@@ -86,3 +86,10 @@ jobs:
           NODE_PATH: /tmp/pw/node_modules
           REPO_ROOT: ${{ github.workspace }}
         run: node tests/gmp.test.cjs
+
+      # Auditor portal (auditor.html) — token gating + read-only dashboard.
+      - name: Run auditor page test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/auditor-page.test.cjs
