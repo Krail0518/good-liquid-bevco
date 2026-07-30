@@ -37,10 +37,16 @@ jobs:
           esac
           test -f "$FILE" || { echo "no such file: $FILE"; exit 1; }
           jq -Rs '{query: .}' < "$FILE" > payload.json
-          curl -sS -f -X POST \
+          # Capture body AND status separately so a 400 shows Postgres's actual
+          # error message instead of curl's opaque "returned error: 400".
+          code=$(curl -sS -o resp.txt -w "%{http_code}" -X POST \
             "https://api.supabase.com/v1/projects/$PROJECT_REF/database/query" \
             -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
             -H "Content-Type: application/json" \
-            -d @payload.json
+            -d @payload.json)
+          echo "HTTP $code"
+          echo "--- response ---"
+          cat resp.txt
           echo
+          if [ "$code" -ge 400 ]; then echo "FAILED: $FILE"; exit 1; fi
           echo "applied: $FILE"
