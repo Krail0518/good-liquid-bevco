@@ -96,6 +96,16 @@
     </div>
 
     <div class="card">
+      <div class="sec-title">Training &amp; competency</div>
+      <div id="training"></div>
+    </div>
+
+    <div class="card">
+      <div class="sec-title">Internal audits &amp; management review</div>
+      <div id="audits"></div>
+    </div>
+
+    <div class="card">
       <div class="sec-title">Open deviations</div>
       <div id="deviations"></div>
     </div>
@@ -179,6 +189,9 @@
     var ncr=[]; try{ ncr=await rest('defects?order=reported_at.desc&limit=50&select=reported_at,run_ref,category,severity,status,owner,description,root_cause,corrective_action,preventive_action,due_date,verified_at,ncr_number'); }catch(e){}
     var recalls=[]; try{ recalls=await rest('mock_recalls?order=initiated_at.desc&limit=20&select=lot_code,initiated_at,completed_at,units_produced,units_accounted,pct_reconciled,passed,conducted_by,time_to_complete'); }catch(e){}
     var tasks=[]; try{ tasks=await rest('compliance_tasks?status=eq.open&order=due_date.asc&limit=50&select=title,due_date,due_time,task_type,status'); }catch(e){}
+    var training=[]; try{ training=await rest('training_records?active=eq.true&order=employee_name.asc&select=employee_name,role,course,completed_date,expires_date,trainer'); }catch(e){}
+    var audits=[]; try{ audits=await rest('internal_audits?order=audit_date.desc&limit=20&select=audit_date,scope,auditor,status,summary'); }catch(e){}
+    var reviews=[]; try{ reviews=await rest('management_reviews?order=review_date.desc&limit=5&select=review_date,attendees,notes'); }catch(e){}
     TEMPLATES=tpls||[];
 
     // Per-register counts.
@@ -299,6 +312,69 @@
           '</div>'+
         '</div>';
       }).join('') : '<div class="sub">No open tasks.</div>';
+
+    // Training & competency (read-only). Group rows by employee.
+    var expBadge=function(d){
+      if(!d) return '';
+      var t=new Date(d).getTime();
+      if(isNaN(t)) return '';
+      var col,bg,lbl;
+      if(t<now){ col='var(--red)'; bg='rgba(231,70,70,.12)'; lbl='expired '+esc(fmtDate(d)); }
+      else if(t-now<60*DAY){ col='var(--yellow)'; bg='rgba(245,200,66,.12)'; lbl='expiring '+esc(fmtDate(d)); }
+      else { col='var(--green)'; bg='rgba(95,207,158,.12)'; lbl='valid to '+esc(fmtDate(d)); }
+      return '<span class="pill" style="color:'+col+';background:'+bg+'">'+lbl+'</span>';
+    };
+    if(training&&training.length){
+      var byEmp={}, empOrder=[];
+      training.forEach(function(tr){
+        var k=tr.employee_name||'—';
+        if(!byEmp[k]){ byEmp[k]=[]; empOrder.push(k); }
+        byEmp[k].push(tr);
+      });
+      el('training').innerHTML=empOrder.map(function(name){
+        var rows=byEmp[name];
+        var role=(rows[0]&&rows[0].role)?rows[0].role:'';
+        return '<div style="border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin-bottom:8px;background:var(--card2)">'+
+          '<div style="font-weight:700;color:var(--white);font-size:13px">'+esc(name)+
+            (role?' <span style="color:#6b87ad;font-size:11px;font-weight:400">('+esc(role)+')</span>':'')+'</div>'+
+          rows.map(function(tr){
+            return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:5px">'+
+              '<div style="font-size:12.5px;color:var(--text)">'+esc(tr.course||'Course')+
+                (tr.completed_date?' <span style="color:#6b87ad;font-size:11px">completed '+esc(fmtDate(tr.completed_date))+'</span>':'')+
+                (tr.trainer?' <span style="color:#6b87ad;font-size:11px">· '+esc(tr.trainer)+'</span>':'')+'</div>'+
+              expBadge(tr.expires_date)+
+            '</div>';
+          }).join('')+
+        '</div>';
+      }).join('');
+    } else { el('training').innerHTML='<div class="sub">No training records.</div>'; }
+
+    // Internal audits & management review (read-only).
+    var auditsHtml=(audits&&audits.length)? audits.map(function(a){
+      var st=String(a.status||'').toLowerCase(), col, bg;
+      if(st==='closed'){ col='var(--green)'; bg='rgba(95,207,158,.12)'; }
+      else if(st==='in_progress'){ col='var(--teal)'; bg='rgba(0,229,192,.12)'; }
+      else { col='var(--yellow)'; bg='rgba(245,200,66,.12)'; }
+      var badge=a.status?'<span class="pill" style="color:'+col+';background:'+bg+'">'+esc(a.status)+'</span>':'';
+      return '<div style="border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin-bottom:8px;background:var(--card2)">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'+
+          '<div style="font-weight:700;color:var(--white);font-size:12.5px">'+esc(a.scope||'Audit')+
+            ' <span style="color:#6b87ad;font-weight:400">'+esc(fmtDate(a.audit_date))+'</span>'+
+            (a.auditor?' <span style="color:#6b87ad;font-size:11px;font-weight:400">· '+esc(a.auditor)+'</span>':'')+'</div>'+
+          badge+
+        '</div>'+
+        (a.summary?'<div class="sub" style="margin-top:5px">'+esc(a.summary)+'</div>':'')+
+      '</div>';
+    }).join('') : '<div class="sub">No internal audits on record.</div>';
+    var reviewsHtml=(reviews&&reviews.length)? reviews.map(function(rv){
+      return '<div style="border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin-bottom:8px;background:var(--card2)">'+
+        '<div style="font-weight:700;color:var(--white);font-size:12.5px">'+esc(fmtDate(rv.review_date))+
+          (rv.attendees?' <span style="color:#6b87ad;font-size:11px;font-weight:400">· '+esc(Array.isArray(rv.attendees)?rv.attendees.join(', '):rv.attendees)+'</span>':'')+'</div>'+
+      '</div>';
+    }).join('') : '<div class="sub">No management reviews on record.</div>';
+    el('audits').innerHTML=auditsHtml+
+      '<div class="sub" style="margin:12px 0 6px;color:var(--teal);text-transform:uppercase;letter-spacing:1px;font-size:11px">Management reviews</div>'+
+      reviewsHtml;
 
     // Deviations.
     el('deviations').innerHTML=(devs&&devs.length)? devs.map(function(r){
