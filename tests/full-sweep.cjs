@@ -487,7 +487,7 @@ rec('Onboarding','Add Deal has an email field (convert entry point)',onb.addDeal
 /* ---------- PHASE 7e: Daily GMP module (type-once → fan-out) ---------- */
 const gmp=await pg.evaluate(async()=>{
   const o={};
-  o.fns=['glRenderGMPHub','glOpenDailyGMP','glOpenGMPRegister','glOpenGMPDeviations'].filter(f=>typeof window[f]!=='function');
+  o.fns=['glRenderGMPHub','glOpenDailyGMP','glOpenGMPRegister','glOpenGMPDeviations','glGenerateAuditorLink'].filter(f=>typeof window[f]!=='function');
   o.mount=!!document.getElementById('cpg-gmp');
   // Templates come from the DB; stub two so the hub + entry render.
   const TPL=[{form_code:'GMP-PREOP-001',title:'Pre-Op',category:'sanitation',in_daily:true,active:true,sort_order:10,fields:[{key:'result',label:'Result',type:'passfail',required:true,deviation_if:'fail'}]}];
@@ -498,6 +498,7 @@ const gmp=await pg.evaluate(async()=>{
     c.then=(r)=>Promise.resolve({data:t==='gmp_templates'?TPL:[],error:null}).then(r); return c;};
   try{ window.glRenderGMPHub(); }catch(e){ o.hubThrew=e.message; }
   o.hubRendered=/Daily GMP|Log today/i.test((document.getElementById('cpg-gmp')||{}).innerText||'');
+  o.hubHasAuditorTile=/Auditor access/i.test((document.getElementById('cpg-gmp')||{}).innerText||'');
   try{ await window.glOpenDailyGMP(); }catch(e){ o.entryThrew=e.message; }
   await new Promise(r=>setTimeout(r,150));
   const ov=document.getElementById('gl-gmp-daily');
@@ -508,6 +509,7 @@ const gmp=await pg.evaluate(async()=>{
 rec('Daily GMP','all GMP functions defined',(gmp.fns||[]).length===0,'missing: '+(gmp.fns||[]).join(', '));
 rec('Daily GMP','page mount point present',gmp.mount);
 rec('Daily GMP','hub renders',gmp.hubRendered,gmp.hubThrew||'');
+rec('Daily GMP','hub offers the auditor-access link',gmp.hubHasAuditorTile);
 rec('Daily GMP','combo entry has the shared header (typed once)',gmp.entryHasSharedHeader,gmp.entryThrew||'');
 
 /* ---------- PHASE 8: no fatal errors overall ---------- */
