@@ -71,6 +71,11 @@
     </div>
 
     <div class="card">
+      <div class="sec-title">Documents</div>
+      <div id="docs"></div>
+    </div>
+
+    <div class="card">
       <div class="sec-title">Open deviations</div>
       <div id="deviations"></div>
     </div>
@@ -149,6 +154,7 @@
     try{ cip=await rest('cip_logs?order=cycle_at.desc&limit=1&select=id'); }catch(e){}
     try{ defects=await rest('defects?order=created_at.desc&limit=1&select=id'); }catch(e){}
     try{ holds=await rest('hold_tags?order=created_at.desc&limit=1&select=id'); }catch(e){}
+    var docs=[]; try{ docs=await rest('gmp_documents?active=eq.true&order=sort_order.asc&select=doc_code,title,category,description,file_url,file_type,rev'); }catch(e){}
     TEMPLATES=tpls||[];
 
     // Per-register counts.
@@ -170,6 +176,19 @@
         '<span>'+esc(t.title)+' <span style="color:#6b87ad;font-size:11px">('+esc(t.category)+')</span></span>'+
         '<span class="c">'+(counts[t.form_code]||0)+'</span></button>';
     }).join('') || '<div class="sub">No registers defined.</div>';
+
+    // Documents (read-only; each is a real download anchor to its file_url).
+    el('docs').innerHTML=(docs&&docs.length)? docs.map(function(dc){
+      return '<div style="border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin-bottom:8px;background:var(--card2)">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'+
+          '<div style="font-weight:700;color:var(--white);font-size:13px">'+esc(dc.title)+
+            (dc.category?' <span class="pill" style="color:var(--muted);background:rgba(107,135,173,.12)">'+esc(dc.category)+'</span>':'')+
+            (dc.rev?' <span style="color:#6b87ad;font-size:11px">rev '+esc(dc.rev)+'</span>':'')+'</div>'+
+          '<a href="'+esc(dc.file_url)+'" target="_blank" rel="noopener" style="font-size:12px;font-weight:700">Download'+(dc.file_type?(' ('+esc(dc.file_type)+')'):'')+'</a>'+
+        '</div>'+
+        (dc.description?'<div class="sub" style="margin-top:5px">'+esc(dc.description)+'</div>':'')+
+      '</div>';
+    }).join('') : '<div class="sub">No documents posted.</div>';
 
     // Deviations.
     el('deviations').innerHTML=(devs&&devs.length)? devs.map(function(r){

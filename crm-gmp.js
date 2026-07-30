@@ -69,6 +69,7 @@
           tile('window.glOpenDailyGMP()','➕','Log today’s GMP','One entry, fans out to all registers','#00e5c0') +
           tile('window.glOpenGMPDeviations()','⚠️','Open deviations','Anything that failed a check, needs action','#f5c842') +
           tile('window.glGenerateAuditorLink()','🔒','Auditor access','Read-only login link for an auditor','#f5c842') +
+          tile('window.glOpenGMPDocuments()','📄','Documents','SOPs, registers & regulatory guides','#00e5c0') +
           REGISTERS.map(function(r){ return tile("window.glOpenGMPRegister('"+r.code+"')", r.icon, r.label, 'View / add records'); }).join('') +
         '</div>' +
       '</div>';
@@ -389,6 +390,42 @@
         catch(e){ try{ document.execCommand('copy'); done.call(this); }catch(_){} }
       });
     });
+  };
+
+  // ── Documents library — SOPs, registers & regulatory guides ──
+  // Reads active rows from gmp_documents (read-only listing) and offers each
+  // as a direct download. Mirrors the overlay style of glOpenGMPRegister.
+  window.glOpenGMPDocuments = async function glOpenGMPDocuments(){
+    if(!sb()){ alert('Supabase not ready.'); return; }
+    var ov = overlay('gl-gmp-docs');
+    ov.innerHTML = '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:22px;width:100%;max-width:760px;color:#fff"><div style="color:#9aa7bd">Loading…</div></div>';
+    var res = await sb().from('gmp_documents').select('*').eq('active', true).order('sort_order', { ascending: true });
+    if(res.error){
+      ov.querySelector('div').innerHTML = '<div style="color:#ff8579">Could not load documents: '+esc(res.error.message||res.error)+'</div>';
+      return;
+    }
+    var docs = res.data || [];
+    var rows = docs.map(function(row){
+      var ft = String(row.file_type||'').toUpperCase();
+      return '<div style="border:1px solid rgba(0,229,192,.14);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:rgba(255,255,255,.02)">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
+            '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+              '<span style="font-weight:700;font-size:14px;color:#eef4ff">'+esc(row.title)+'</span>' +
+              (row.category ? '<span style="font-size:10.5px;letter-spacing:.5px;color:var(--teal);background:rgba(0,229,192,.1);border:1px solid rgba(0,229,192,.25);border-radius:20px;padding:2px 9px">'+esc(row.category)+'</span>' : '') +
+            '</div>' +
+            '<a class="gl-doc-dl" href="'+esc(row.file_url)+'" download style="white-space:nowrap;padding:8px 14px;background:rgba(0,229,192,.14);border:1px solid rgba(0,229,192,.35);border-radius:7px;color:var(--teal);font-weight:700;font-size:12px;text-decoration:none">⬇ Download '+esc(ft)+'</a>' +
+          '</div>' +
+          (row.description ? '<div style="font-size:12px;color:#9aa7bd;margin-top:8px;line-height:1.5">'+esc(row.description)+'</div>' : '') +
+        '</div>';
+    }).join('');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:22px;width:100%;max-width:760px;color:#fff">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
+          '<div style="font-family:var(--ff-disp);font-size:17px;letter-spacing:1.5px;color:var(--teal)">📄 DOCUMENTS</div>' +
+          '<button onclick="document.getElementById(\'gl-gmp-docs\').remove()" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+        '</div>' +
+        (docs.length ? rows : '<div style="color:#9aa7bd;padding:20px 0">No documents posted yet.</div>') +
+      '</div>';
   };
 
   // Render the hub into its page container once the DOM is ready.

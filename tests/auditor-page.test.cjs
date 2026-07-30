@@ -38,6 +38,11 @@ function stubInit(validToken){
   const DEVS=[
     {form_code:'GMP-SEAM-001',record_date:'2026-07-29',deviation_notes:'Deviation: Visual OK',corrective_action:'Re-checked seam, held lot',data:{line:'Line 1',run:'B-1'}}
   ];
+  const DOCS=[
+    {doc_code:'GMP-SOP-SUP',title:'GMP SOP Supplement',category:'sop',description:'Supplementary GMP standard operating procedures.',file_url:'/docs/GMP-SOP-Supplement.docx',file_type:'docx',rev:'A'},
+    {doc_code:'GMP-REG',title:'GMP Registers',category:'register',description:'Blank GMP register workbook.',file_url:'/docs/GMP-Registers.xlsx',file_type:'xlsx',rev:'A'},
+    {doc_code:'LACF-ACID',title:'LACF Acidified Regulatory Guide',category:'regulatory',description:'LACF / acidified foods regulatory reference.',file_url:'/docs/LACF-Acidified-Regulatory-Guide.docx',file_type:'docx',rev:'A'}
+  ];
   window.fetch=async function(url,opts){
     opts=opts||{};
     const method=(opts.method||'GET').toUpperCase();
@@ -50,6 +55,7 @@ function stubInit(validToken){
       return ok([]); // unrecognized
     }
     if(/gmp_templates/.test(url)) return ok(TPLS);
+    if(/gmp_documents/.test(url)) return ok(DOCS);
     if(/compliance_records\?form_code=eq\./.test(url)) return ok(RECENT.filter(r=>new RegExp('form_code=eq\\.'+r.form_code).test(url)));
     if(/compliance_records\?has_deviation=eq\.true/.test(url)) return ok(DEVS);
     if(/compliance_records/.test(url)) return ok(RECENT);
@@ -117,6 +123,22 @@ async function open(query){
   rec('registers list renders both forms', /Pre-Op Sanitation/.test(r.registers) && /Double-Seam/.test(r.registers), r.registers.slice(0,80));
   rec('open deviation is shown', /Visual OK|Deviation/.test(r.deviations), r.deviations.slice(0,80));
   rec('recent records table renders rows', /GMP-PREOP-001/.test(r.recent) && /GMP-SEAM-001/.test(r.recent), r.recent.slice(0,80));
+
+  // 3-docs) Documents library card renders the three documents as links.
+  const docs=await pg.evaluate(()=>{
+    const el=document.getElementById('docs');
+    const hrefs=[].slice.call(document.querySelectorAll('#docs a')).map(a=>a.getAttribute('href'));
+    return { text:el?el.innerText:'', hrefs:hrefs };
+  });
+  rec('documents card lists all three document titles',
+    /GMP SOP Supplement/.test(docs.text) && /GMP Registers/.test(docs.text) && /LACF Acidified Regulatory Guide/.test(docs.text),
+    docs.text.slice(0,120));
+  rec('documents card links each file',
+    docs.hrefs.length===3 &&
+    docs.hrefs.some(h=>/\/docs\/GMP-SOP-Supplement\.docx/.test(h)) &&
+    docs.hrefs.some(h=>/\/docs\/GMP-Registers\.xlsx/.test(h)) &&
+    docs.hrefs.some(h=>/\/docs\/LACF-Acidified-Regulatory-Guide\.docx/.test(h)),
+    docs.hrefs.join(' | '));
 
   // 3a) Every data read carried the inspector-token header.
   const hdr=await pg.evaluate((VALID)=>{
