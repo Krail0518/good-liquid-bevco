@@ -1992,7 +1992,10 @@
     videoCard('tutorial-portal.mp4', '🌐 Customer Portal — Your Clients’ Private Login', 'What a brand sees when they log into their own portal — invoices, production runs, COAs &amp; documents, and their label artwork.') +
     videoGroup('🎓 LEARN THE CONCEPTS (EDUCATIONAL)') +
     lead('These aren’t how-to walkthroughs of the app — they explain the food-safety <i>ideas</i> behind it, in plain English. Great for onboarding new staff.') +
-    videoCard('explainer-gmp-haccp-pcqi.mp4', '📚 Food Safety 101 — GMP · HACCP · PCQI', 'The three layers of compliance explained from the ground up: what GMP, HACCP (incl. the 7 principles), and the PCQI each are, and how they fit together.');
+    videoCard('explainer-gmp-haccp-pcqi.mp4', '📚 Food Safety 101 — GMP · HACCP · PCQI', 'The three layers of compliance explained from the ground up: what GMP, HACCP (incl. the 7 principles), and the PCQI each are, and how they fit together.') +
+    videoCard('explainer-lacf.mp4', '🥫 LACF &amp; Acidified Foods — The FDA Rules', 'Why sealed low-acid and acidified beverages are tightly regulated, how to classify a product, and the five mandatory steps (Process Authority → FCE → SID → BPCS → records).') +
+    videoCard('explainer-sqf.mp4', '🏅 SQF Certification — What It Is &amp; How to Get There', 'What GFSI and SQF mean, why retailers ask for it, and the path to certification — built on the GMP and HACCP work you already do.') +
+    videoCard('explainer-allergen.mp4', '🥜 Allergen Control — Protecting Consumers &amp; Your Brand', 'The Big 9 allergens, the two risks (undeclared &amp; cross-contact), and the five controls: ingredients, segregation, cleaning, labeling, and training.');
 
   // ── Global glossary — plain-English definitions for every jargon term used
   //    across the whole help/app, grouped by area. Sits right after Overview so
