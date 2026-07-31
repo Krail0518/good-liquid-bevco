@@ -33,7 +33,7 @@ function installCommon(){
       const applyF=function(arr){ return arr.filter(function(r){ return filters.every(function(f){ return String(r[f.k])===String(f.v); }); }); };
       const keyF=function(){ return filters.find(function(f){ return f.k==='form_code'||f.k==='id'; }); };
       const c={};
-      ['order','limit','gte','lte','gt','lt','in','range','not','is','filter','contains','or','ilike','like','match'].forEach(function(m){ c[m]=function(){ return c; }; });
+      ['order','limit','gte','lte','gt','lt','neq','in','range','not','is','filter','contains','or','ilike','like','match'].forEach(function(m){ c[m]=function(){ return c; }; });
       c.select=function(cols,opts){ if(opts&&opts.count) c._count=true; return c; };
       c.eq=function(k,v){ filters.push({k:k,v:v}); return c; };
       c.maybeSingle=async function(){ let d=applyF(rows()); const f=keyF(); if(!d.length && f && single(table,f.v)) d=[single(table,f.v)]; return {data:d[0]||null,error:null}; };
@@ -203,7 +203,122 @@ function audMock(table,url){
   }
 }
 
+// ── Core CRM sample data (Invoices / Pipeline / Clients) ──
+const CORE_CLIENTS=[
+  {id:'c1',name:'Perico Nutrition',contact:'Ana Perez',email:'ana@perico.co',service:'Canning',status:'active',billed:12400,color:'#00c4a7',tc:'#04231d',init:'PN',referredBy:null},
+  {id:'c2',name:'Lotus Beverages',contact:'Sam Lee',email:'sam@lotus.co',service:'Bottling',status:'active',billed:5300,color:'#1a6fff',tc:'#ffffff',init:'LB',referredBy:null},
+  {id:'c3',name:'Cold Brew Collective',contact:'Dana Wu',email:'dana@coldbrew.co',service:'Co-Packing',status:'lead',billed:0,color:'#f5c842',tc:'#04231d',init:'CB',referredBy:null}
+];
+const CORE_INVOICES=[
+  {id:'GL-1042',clientName:'Perico Nutrition',client:'c1',svc:'Small Batch Canning',amount:3850,date:'2026-07-20',status:'pending'},
+  {id:'GL-1041',clientName:'Lotus Beverages',client:'c2',svc:'Bottle Filling (750ml)',amount:5420,date:'2026-07-05',status:'overdue'},
+  {id:'GL-1039',clientName:'Perico Nutrition',client:'c1',svc:'R&D / Formulation',amount:1500,date:'2026-06-28',status:'paid'},
+  {id:'GL-1038',clientName:'Cold Brew Collective',client:'c3',svc:'Straight Co-Packing',amount:2760,date:'2026-06-15',status:'draft'}
+];
+const CORE_DEALS={
+  'Prospecting':[{id:'d1',name:'Quote Request',co:'Perico Nutrition',contactName:'Ana Perez',email:'ana@perico.co',val:'$8,000',service:'Canning',createdAt:'2026-07-25'}],
+  'Proposal':[{id:'d2',name:'12oz can run',co:'Lotus Beverages',contactName:'Sam Lee',email:'sam@lotus.co',val:'$14,500',service:'Bottling',createdAt:'2026-07-18'}],
+  'Negotiation':[{id:'d3',name:'Annual co-pack',co:'Cold Brew Collective',contactName:'Dana Wu',val:'$42,000',service:'Co-Packing',createdAt:'2026-07-10'}],
+  'Closed Won':[{id:'d4',name:'Sample run',co:'Perico Nutrition',val:'$3,200',createdAt:'2026-06-30'}],
+  'Closed Lost':[]
+};
+async function coreSetup(pg, page, opts){
+  await pg.evaluate(({page,opts})=>{
+    window.__chain({});                       // stub supa + admin currentUser (window)
+    window.currentUser={id:'u1',email:'mike@krail.us',role:'admin',name:'Mike',initials:'MK'};
+    var seed=window.__coreData;
+    window.clients.length=0; seed.clients.forEach(c=>window.clients.push(c));
+    window.invoices.length=0; seed.invoices.forEach(i=>window.invoices.push(i));
+    Object.keys(window.deals).forEach(s=>{ window.deals[s].length=0; });
+    Object.keys(seed.deals).forEach(s=>{ (seed.deals[s]||[]).forEach(d=>{ (window.deals[s]=window.deals[s]||[]).push(d); }); });
+    if(typeof window.populateClientDropdown==='function'){ try{ window.populateClientDropdown(); }catch(e){} }
+    // Remove any nav guards (unsaved-changes / permission checks that read the
+    // real, null currentUser) so programmatic navigation isn't blocked.
+    if(window.GL_HOOKS){ window.GL_HOOKS._navGuards=[]; }
+    document.getElementById('crm-panel').classList.add('show');
+    if(typeof window.cNav==='function') window.cNav(page);
+    window.__hud();
+  }, {page,opts:opts||{}});
+}
+
+const PORTAL_DATA={
+  customer_users:[{id:'cu1',auth_user_id:'cust1',client_id:'c1',email:'ana@perico.co',display_name:'Ana — Perico Nutrition',active:true,role:'customer',notify_run_stage_changes:true}],
+  clients:[{id:'c1',name:'Perico Nutrition',contact_name:'Ana Perez',contact_type:'Owner',email:'ana@perico.co',phone:'',street:'',city:'',state:'',zip:''}],
+  invoices:[
+    {id:'i1',client_id:'c1',invoice_number:'GL-1042',amount:3850,status:'pending',invoice_date:'2026-07-20',due_date:'2026-08-19',line_items:[],share_token:'t1'},
+    {id:'i2',client_id:'c1',invoice_number:'GL-1039',amount:1500,status:'paid',invoice_date:'2026-06-28',due_date:'2026-07-28',line_items:[],share_token:'t2'}
+  ],
+  production_runs:[{id:'r1',client_id:'c1',run_name:'Cold Brew R-2041',format:'12oz can',cases:520,stage:'Production',scheduled_start_date:'2026-07-15',lot_number:'CB-2041',updated_at:'2026-07-16'}],
+  lot_documents:[{id:'ld1',client_id:'c1',document_type:'COA',title:'COA — Cold Brew R-2041',lot_number:'CB-2041',file_name:'coa-cb2041.pdf',file_size:120000,file_path:'x',mime_type:'application/pdf',uploaded_at:'2026-07-16',production_run_id:'r1'}],
+  client_artwork:[{id:'a1',client_id:'c1',sku_name:'Cold Brew 12oz',description:'Front panel design',file_path:'c1/artwork/1.png',file_type:'png',status:'approved'}],
+  client_allergen_declarations:[],sample_shipments:[],formulas:[],customer_requests:[]
+};
+
 const STORYBOARDS={
+  portal:{
+    title:'Customer Portal — Your Clients’ Private Login',
+    url:'/index.html?portal=1',
+    async setup(pg){
+      await pg.evaluate(async(D)=>{
+        window.__chain(D);
+        window.supa.auth.getSession=async()=>({data:{session:{user:{id:'cust1'}}}});
+        window.currentUser=null;
+        await window.glCheckPortal();
+      }, PORTAL_DATA);
+      await sleep(1400);
+      await pg.evaluate(()=>window.__hud());
+    },
+    steps:[
+      {say:"This is the Customer Portal — a private page each of your brands logs into to manage their own account. They see only their own data, and nothing else in your business."},
+      {say:"It opens on their dashboard, headed with your company name and their account.", act:{type:'move',sel:'text=GOOD LIQUID BEV CO'}},
+      {say:"Your Invoices lists everything they have been billed, with the status of each and a button to download the PDF or pay online.", act:{type:'move',sel:'text=YOUR INVOICES'}},
+      {say:"Production Runs show where each of their batches is in your process — from formulation all the way through to shipping.", act:{type:'move',sel:'text=PRODUCTION RUNS'}},
+      {say:"Their COAs and lot documents are right here to download — the exact paperwork their retailers ask for.", act:{type:'move',sel:'text=COAs & DOCUMENTS'}},
+      {say:"And My Label Artwork, where they upload each SKU's design for your approval — one can, or twenty.", act:{type:'move',sel:'#gl-cp-artwork'}},
+      {say:"So the portal is self-service for your customers, and it keeps every invoice, document, and design in one organized place."}
+    ]
+  },
+  invoices:{
+    title:'Invoices — Bill Your Brands',
+    seedCore:true,
+    async setup(pg){ await coreSetup(pg,'invoices'); },
+    steps:[
+      {say:"Invoices is where you bill your brands and see exactly what has been paid and what is still outstanding."},
+      {say:"Every invoice is listed with its client, service, amount, date, and a color-coded status — Draft, Pending, Paid, or Overdue.", act:{type:'move',sel:'#inv-body'}},
+      {say:"Use the pills at the top to filter. Let's show just the overdue invoices.", act:{type:'click',sel:'#inv-pills .cpill:has-text("Overdue")'}},
+      {say:"To create a new one, click New invoice.", act:{type:'click',sel:'button:has-text("New invoice"):visible'}},
+      {say:"First, pick the client the invoice is for.", act:{type:'select',sel:'#inv-client',label:'Perico Nutrition'}},
+      {say:"Then choose the service. The app auto-prices it from your rate card and builds a live preview on the right — no manual math.", act:{type:'select',sel:'#inv-svc',value:'canning'}},
+      {say:"When it looks right, Save and Send emails it straight to the client, or you can save it as a draft for later.", act:{type:'move',sel:'button:has-text("Save & Send"):visible'}},
+      {say:"That is invoicing in a nutshell: pick a client, pick a service, and the price and the preview build themselves."}
+    ]
+  },
+  pipeline:{
+    title:'Pipeline — Your Sales Board',
+    seedCore:true,
+    async setup(pg){ await coreSetup(pg,'pipeline'); },
+    steps:[
+      {say:"The Pipeline is your sales board. Every opportunity moves left to right, from first contact all the way to a signed deal."},
+      {say:"The columns are your stages — Prospecting, Proposal, Negotiation, and Closed Won or Lost. Each header shows how many deals are in it and their total value.", act:{type:'move',sel:'#kanban'}},
+      {say:"Each card is one opportunity — the brand, the contact, and the estimated value.", act:{type:'move',sel:'.kcard:has-text("Quote Request")'}},
+      {say:"You can log an outreach email right on the card, so you always know which brands are awaiting a reply.", act:{type:'move',sel:'button:has-text("Log email sent"):visible'}},
+      {say:"Click a card to open the full deal — contact details, notes, and the email history with that brand.", act:{type:'click',sel:'.kcard:has-text("Quote Request")'}},
+      {say:"As a deal moves forward, you drag it to the next stage. The board is always a live picture of where your sales stand."}
+    ]
+  },
+  clients:{
+    title:'Clients — Every Brand in One Place',
+    seedCore:true,
+    async setup(pg){ await coreSetup(pg,'clients'); },
+    steps:[
+      {say:"The Clients page is every beverage brand you work with, gathered in one list."},
+      {say:"Each row shows the brand, its main contact, the service they use, their status, and how much you have billed them.", act:{type:'move',sel:'#client-body'}},
+      {say:"Right from the list you can start a new invoice for a brand, or send them a customer-portal invite.", act:{type:'move',sel:'button:has-text("Invite"):visible'}},
+      {say:"Click any brand to open its full record.", act:{type:'click',sel:'#client-body tr:has-text("Perico Nutrition")'}},
+      {say:"Everything about that client lives here — contact and business details, the documents they've uploaded, their invoices and pipeline, and their label artwork — all editable in one place.", act:{type:'move',sel:'#gl-ec-artwork'}},
+      {say:"So it is one click from the list to a complete, editable client record — no hunting through separate screens."}
+    ]
+  },
   auditor:{
     title:'Auditor Portal — Read-Only Records Access',
     url:'/auditor.html?token=DEMO-INSPECTOR-TOKEN',
@@ -351,8 +466,10 @@ const STORYBOARDS={
 };
 
 // ─────────────────────────── driver ───────────────────────────
+const ATO=4000;   // per-action timeout so a bad step can't overrun and wreck sync
 async function moveCursor(pg,sel){
-  const box=await pg.locator(sel).first().boundingBox();
+  let box=null;
+  try { box=await pg.locator(sel).first().boundingBox({timeout:ATO}); } catch(e){ return null; }
   if(!box) return null;
   const x=Math.round(box.x+box.width/2), y=Math.round(box.y+Math.min(box.height/2,22));
   await pg.evaluate(({x,y})=>{const c=document.getElementById('vcursor');c.style.left=x+'px';c.style.top=y+'px';},{x,y});
@@ -362,10 +479,10 @@ async function doAct(pg,act){
   if(!act) return;
   if(act.type==='move'){ await moveCursor(pg,act.sel); return; }
   const pt=await moveCursor(pg,act.sel);
-  if(act.type==='click'){ if(pt) await pg.evaluate(({x,y})=>window.__pulse(x,y),pt); await sleep(150); await pg.locator(act.sel).first().click(); }
-  else if(act.type==='type'){ await pg.locator(act.sel).first().click(); await pg.locator(act.sel).first().pressSequentially(act.text,{delay:48}); }
-  else if(act.type==='select'){ await pg.selectOption(act.sel,act.value); }
-  else if(act.type==='fill'){ await pg.locator(act.sel).first().fill(act.text); }
+  if(act.type==='click'){ if(pt) await pg.evaluate(({x,y})=>window.__pulse(x,y),pt); await sleep(150); await pg.locator(act.sel).first().click({timeout:ATO}); }
+  else if(act.type==='type'){ await pg.locator(act.sel).first().click({timeout:ATO}); await pg.locator(act.sel).first().pressSequentially(act.text,{delay:48,timeout:ATO}); }
+  else if(act.type==='select'){ await pg.selectOption(act.sel, act.label?{label:act.label}:act.value, {timeout:ATO}); }
+  else if(act.type==='fill'){ await pg.locator(act.sel).first().fill(act.text,{timeout:ATO}); }
 }
 
 (async()=>{
@@ -410,6 +527,7 @@ const startUrl = sb.url ? ('http://127.0.0.1:8941'+sb.url) : 'http://127.0.0.1:8
 await pg.goto(startUrl,{waitUntil:'domcontentloaded',timeout:30000});
 await pg.waitForTimeout(sb.url?2200:1400);
 await pg.evaluate(installCommon);
+if(sb.seedCore){ await pg.evaluate(d=>{ window.__coreData=d; }, {clients:CORE_CLIENTS,invoices:CORE_INVOICES,deals:CORE_DEALS}); }
 if(sb.url){ await pg.evaluate(()=>window.__hud()); }
 if(sb.setup) await sb.setup(pg);
 await sleep(300);
