@@ -7522,7 +7522,12 @@ function openClientDetail(cid) {
   const c = clients.find(x=>x.id===cid);
   if(!c) return;
   const cInvoices = invoices.filter(i=>i.client===cid||i.clientName===c.name);
-  const cDeals = Object.values(deals).flat().filter(d=>d.co===c.name);
+  const _dnorm = s => String(s==null?'':s).trim().toLowerCase();
+  const cDeals = Object.values(deals).flat().filter(d=>{
+    const nameMatch  = d.co && _dnorm(d.co) === _dnorm(c.name);
+    const emailMatch = d.email && c.email && _dnorm(d.email) === _dnorm(c.email);
+    return nameMatch || emailMatch;
+  });
   const ref = referrers.find(r=>r.id===c.referredBy);
   const totalBilledAmt = cInvoices.reduce((s,i)=>s+(Number(i.amount)||0),0);
   const paid = cInvoices.filter(i=>i.status==='paid').reduce((s,i)=>s+(Number(i.amount)||0),0);
@@ -7534,7 +7539,7 @@ function openClientDetail(cid) {
   ov.id = 'client-detail-overlay';
   ov.style.cssText = 'position:fixed;inset:0;z-index:700;background:rgba(6,13,26,.92);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;padding:20px';
   ov.innerHTML = `
-    <div style="background:#142238;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:32px;width:100%;max-width:800px;max-height:90vh;overflow-y:auto">
+    <div style="background:#142238;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:32px;width:100%;max-width:1000px;max-height:90vh;overflow-y:auto">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px">
         <div style="display:flex;align-items:center;gap:14px">
           <div style="width:56px;height:56px;border-radius:50%;background:${c.color};color:${c.tc};display:flex;align-items:center;justify-content:center;font-weight:900;font-size:18px;flex-shrink:0">${c.init}</div>
@@ -10631,7 +10636,7 @@ function viewClientEnhanced(clientId) {
   ov.id = 'client-detail-overlay';
   ov.style.cssText = 'position:fixed;inset:0;z-index:650;background:rgba(6,13,26,.95);backdrop-filter:blur(16px);display:flex;align-items:center;justify-content:center;padding:20px';
   ov.innerHTML = `
-    <div style="background:#142238;border:1px solid rgba(0,229,192,.18);border-radius:18px;padding:32px;width:100%;max-width:800px;max-height:90vh;overflow-y:auto">
+    <div style="background:#142238;border:1px solid rgba(0,229,192,.18);border-radius:18px;padding:32px;width:100%;max-width:1000px;max-height:90vh;overflow-y:auto">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px">
         <div style="display:flex;align-items:center;gap:14px">
           <div style="width:54px;height:54px;border-radius:50%;background:${client.color};color:${client.tc};display:flex;align-items:center;justify-content:center;font-family:var(--ff-disp);font-size:18px;font-weight:900">${client.init}</div>
