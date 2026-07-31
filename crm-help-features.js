@@ -977,10 +977,26 @@
   /* ──────────────────────────────────────────────────────────
      PATCH: wrap glOpenHelp to inject new sections + TOC entries
      ────────────────────────────────────────────────────────── */
+  var SEC_FOODSAFETY_2026 =
+    '<div style="color:#cfd9e6;font-size:13px;line-height:1.75;margin-bottom:8px">A full digital GMP / HACCP / PCQI / SQF system, all in the CRM. Every record is in the database with row-level security, and an auditor can review it read-only through a token login.</div>' +
+    bullets([
+      '<b>🧾 Daily GMP</b> — “type once, fan out”: the shared header (date/shift/line/run/operator) once, then Pre-Op, Hygiene, CCP Pasteurizer, Double-Seam, Label Reconciliation, Receiving. E-signed; failing checks flag deviations.',
+      '<b>🗓️ GMP Schedule</b> — Generate today’s tasks, then an Overdue / Due today / Done today board with mark-done.',
+      '<b>🔗 Trace / Recall</b> — trace a run’s inputs + shipments + GMP trail; run a mock recall that computes % reconciled and PASS/FAIL.',
+      '<b>Approved Suppliers</b> — approval status, food-safety cert + expiry, risk level; flags certs expiring within 60 days.',
+      '<b>NCR / CAPA</b> — root cause, corrective + preventive action, due date, verified close-out; raise an NCR from a deviation or an audit finding in one click.',
+      '<b>🎓 Training</b> — employee × course competency matrix with expiry flags.',
+      '<b>🔍 Internal Audit &amp; Management Review</b> — schedule audits, log findings → NCRs, KPI-snapshot reviews.',
+      '<b>📄 Documents</b> — DB-listed SOPs, registers, and the LACF guide, with downloads.',
+      '<b>🔒 Auditor portal</b> — mint a token from the GMP hub; the auditor sees everything read-only, no CRM account.',
+      '<b>🎨 Label Artwork / SKUs</b> — customers upload each can design (1 to 20+ SKUs) from their portal; staff see them on the client card.'
+    ]);
+
   var NEW_SECTIONS = [
     // Label spans three sidebar sections (Operations, Operations Pro, Compliance)
     // because production workflow crosses them — see the locator block at the top
     // of SEC_OPS_PRO for the exact mapping.
+    { id:'help-foodsafety-2026', icon:'🧾', label:'Food Safety & GMP', html:SEC_FOODSAFETY_2026 },
     { id:'help-ops-pro',      icon:'🏭', label:'Production & Operations', html:SEC_OPS_PRO },
     { id:'help-qs',           icon:'✅', label:'Quality & Supply',        html:SEC_QS },
     { id:'help-marketing',    icon:'📣', label:'Marketing & Content',     html:SEC_MARKETING },

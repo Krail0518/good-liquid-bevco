@@ -1947,8 +1947,84 @@
       '<b>Sending to client</b>: print to PDF (browser built-in) and email the PDF via the Send Invoice composer.'
     ]);
 
+  // ── Food Safety & GMP cluster (built Jul 2026) ──
+  function lead(txt){ return '<div style="color:#cfd9e6;font-size:13px;line-height:1.75;margin-bottom:8px">' + txt + '</div>'; }
+
+  var SEC_DAILY_GMP =
+    lead('The <b>🧾 Daily GMP</b> page is “type once, fan out.” Enter the shared header (date, shift, line, run, operator) <b>once</b>, fill any of the day’s forms, and one save writes a separate record per form — all tied together by a batch id. Each entry is e-signed; a failing check auto-flags a deviation.') +
+    bullets([
+      '<b>Log today’s GMP</b> — the combo screen: shared header on top, then Pre-Op Sanitation, Daily GMP &amp; Hygiene, CCP — Flash Pasteurizer, Double-Seam, Label Reconciliation, and Receiving. Fill only what applies.',
+      '<b>Open deviations</b> — every failed check across all forms, with its corrective action.',
+      '<b>Each register tile</b> — read that form’s history; ➕ New entry logs another.',
+      'Form definitions live in the database (gmp_templates); every entry is a compliance_records row — nothing is kept only in the browser.',
+      'Also on this page: <b>🔒 Auditor access</b> and the <b>📄 Documents</b> library (SOPs, registers, LACF guide).'
+    ]);
+
+  var SEC_GMP_SCHEDULE =
+    lead('The <b>🗓️ GMP Schedule</b> page turns the forms into a driven daily workflow.') +
+    bullets([
+      '<b>＋ Generate today’s tasks</b> — creates the day’s due items from the recurring-task definitions (daily items every day; weekly items on their day). Safe to click repeatedly — it won’t duplicate.',
+      'The board groups <b style="color:#ff8579">Overdue</b> / <b style="color:#f5c842">Due today</b> / <b style="color:#5fcf9e">Done today</b>. Each open task has a one-click <b>✓ Mark done</b>.'
+    ]);
+
+  var SEC_TRACE_RECALL =
+    lead('The <b>🔗 Trace / Recall</b> page gives one-lot traceability and a mock-recall exercise — the test auditors always ask for.') +
+    bullets([
+      '<b>Trace a run</b> — search a run to see its inputs (material, supplier, supplier lot), its shipments (customer, qty, date, + total units), and the GMP trail from the records tied to that run.',
+      '<b>＋ Add input / ＋ Add shipment</b> — record what went into a lot and where it went.',
+      '<b>🚨 Run mock recall</b> — enter units produced vs accounted; it computes <b>% reconciled</b> and PASS/FAIL and logs the exercise. Recent recalls are listed below the search.'
+    ]);
+
+  var SEC_TRAINING =
+    lead('The <b>🎓 Training</b> page tracks employee training &amp; competency.') +
+    bullets([
+      'A matrix of employee × course (GMP, HACCP, Better Process Control School, etc.).',
+      'Each record shows completion + expiry, with an amber/red badge when a certification is expiring within 60 days or lapsed.',
+      '<b>＋ Add training record</b> to log or edit an employee’s course, dates, and trainer.'
+    ]);
+
+  var SEC_INTERNAL_AUDIT =
+    lead('The <b>🔍 Internal Audit</b> page covers internal SQF audits and management review.') +
+    bullets([
+      '<b>Internal audits</b> — schedule an audit (date, scope, auditor, status). Open it to log findings; each open finding has <b>⤴ Raise NCR</b>, which creates a tracked corrective action tied back to the finding.',
+      '<b>Management review</b> — a live KPI tile row (open deviations, open NCRs, approved suppliers, mock-recall pass rate). <b>＋ New management review</b> records the meeting and snapshots the KPIs.'
+    ]);
+
+  var SEC_AUDITOR_PORTAL =
+    lead('An FDA / FDACS / SQF auditor can review everything <b>read-only</b>, with no CRM account.') +
+    bullets([
+      'From the Daily GMP hub, <b>🔒 Auditor access</b> → enter the auditor’s name + a validity window → you get a copyable link (auditor.html?token=…).',
+      'The auditor opens it and sees every register, open deviation, approved-supplier list, NCR/CAPA, mock recall, training record, internal audit, and document — <b>read-only</b>. Nothing can be edited, signed, or deleted.',
+      'Access is gated by the token (server-side); revoke or expire it anytime from Compliance → inspector tokens.'
+    ]);
+
+  var SEC_ARTWORK =
+    lead('Customers run anywhere from one can to 20+ SKUs, each with its own label art. The <b>🎨 Label Artwork / SKUs</b> section holds one entry per can design.') +
+    bullets([
+      'Add a SKU: name + optional notes + the artwork file (image / PDF / AI / EPS / SVG). Each SKU shows <b>📄 View · ⬇ Download</b> and a status badge, with a remove button.',
+      'It appears in <b>two places</b>: on the staff client card, and in the <b>customer portal</b> so the customer can upload their own designs.',
+      'Files are stored in the client-docs bucket; portal customers see only their own client’s SKUs.'
+    ]);
+
+  var SEC_CLIENT_CARD_2026 =
+    lead('The client card was reworked so you don’t hunt for an Edit button.') +
+    bullets([
+      '<b>Click a client → the full editable form opens directly</b> (for admins / staff). Every field is visible and changeable in one place. Read-only roles (viewer) still get a safe read card.',
+      'The form also shows an <b>Invoices &amp; Pipeline</b> glance and the client’s <b>📧 Correspondence</b> (the same email log the pipeline uses).',
+      'Uploaded compliance docs (W-9, tax exemption, Process Authority letter) have <b>📄 View · ⬇ Download</b> links; after an upload saves, the form reopens so the links appear immediately.',
+      'Deals link to a client by normalized name <i>or</i> email, so a small spelling/casing difference no longer hides a deal.'
+    ]);
+
   var HELP_HTML =
     section('help-overview',        '👋 OVERVIEW',                   SEC_OVERVIEW) +
+    section('help-daily-gmp',       '🧾 DAILY GMP (LOG + FAN-OUT)',  SEC_DAILY_GMP) +
+    section('help-gmp-schedule',    '🗓️ GMP SCHEDULE (DUE / OVERDUE)', SEC_GMP_SCHEDULE) +
+    section('help-trace-recall',    '🔗 TRACE / MOCK RECALL',        SEC_TRACE_RECALL) +
+    section('help-training-gmp',    '🎓 TRAINING & COMPETENCY',      SEC_TRAINING) +
+    section('help-internal-audit',  '🔍 INTERNAL AUDIT & MGMT REVIEW', SEC_INTERNAL_AUDIT) +
+    section('help-auditor-portal',  '🔒 AUDITOR PORTAL (READ-ONLY)', SEC_AUDITOR_PORTAL) +
+    section('help-artwork',         '🎨 LABEL ARTWORK / SKUs',       SEC_ARTWORK) +
+    section('help-client-card-2026','🪪 CLIENT CARD (CLICK-TO-EDIT)', SEC_CLIENT_CARD_2026) +
     section('help-dashboard',       '📊 DASHBOARD',                  SEC_DASHBOARD) +
     section('help-daily-digest',    '📨 DAILY DIGEST EMAIL',         SEC_DAILY_DIGEST) +
     section('help-clients',         '👥 CLIENTS',                    SEC_CLIENTS) +
@@ -1998,7 +2074,12 @@
     section('help-statement',       '📄 STATEMENT OF ACCOUNT',        SEC_STATEMENT_ACCT);
 
   var TOC_ENTRIES = [
-    ['help-overview','👋 Overview'],['help-dashboard','📊 Dashboard'],
+    ['help-overview','👋 Overview'],
+    ['help-daily-gmp','🧾 Daily GMP'],['help-gmp-schedule','🗓️ GMP Schedule'],
+    ['help-trace-recall','🔗 Trace / Recall'],['help-training-gmp','🎓 Training'],
+    ['help-internal-audit','🔍 Internal Audit'],['help-auditor-portal','🔒 Auditor Portal'],
+    ['help-artwork','🎨 Artwork / SKUs'],['help-client-card-2026','🪪 Client Card'],
+    ['help-dashboard','📊 Dashboard'],
     ['help-daily-digest','📨 Daily Digest'],
     ['help-clients','👥 Clients'],['help-client-emails','📧 Additional Emails'],
     ['help-pipeline','📊 Pipeline'],
