@@ -1989,7 +1989,10 @@
     videoCard('tutorial-invoices.mp4', '🧾 Invoices — Bill Your Brands', 'The invoice list and status filters, then building a new invoice — pick a client and service and the price and preview build themselves from the rate card.') +
     videoCard('tutorial-pipeline.mp4', '📊 Pipeline — Your Sales Board', 'How deals move through Prospecting, Proposal, Negotiation and Closed — logging outreach on a card and opening the full deal.') +
     videoCard('tutorial-clients.mp4', '👥 Clients — Every Brand in One Place', 'The client list and what each row shows, then opening a brand’s complete, editable record in one click.') +
-    videoCard('tutorial-portal.mp4', '🌐 Customer Portal — Your Clients’ Private Login', 'What a brand sees when they log into their own portal — invoices, production runs, COAs &amp; documents, and their label artwork.');
+    videoCard('tutorial-portal.mp4', '🌐 Customer Portal — Your Clients’ Private Login', 'What a brand sees when they log into their own portal — invoices, production runs, COAs &amp; documents, and their label artwork.') +
+    videoGroup('🎓 LEARN THE CONCEPTS (EDUCATIONAL)') +
+    lead('These aren’t how-to walkthroughs of the app — they explain the food-safety <i>ideas</i> behind it, in plain English. Great for onboarding new staff.') +
+    videoCard('explainer-gmp-haccp-pcqi.mp4', '📚 Food Safety 101 — GMP · HACCP · PCQI', 'The three layers of compliance explained from the ground up: what GMP, HACCP (incl. the 7 principles), and the PCQI each are, and how they fit together.');
 
   // ── Global glossary — plain-English definitions for every jargon term used
   //    across the whole help/app, grouped by area. Sits right after Overview so
