@@ -62,6 +62,36 @@ function installCommon(){
       cap.style.cssText='position:fixed;left:0;right:0;bottom:0;padding:16px 40px;background:linear-gradient(180deg,rgba(10,22,40,0),rgba(10,22,40,.97) 45%);color:#eaf3f0;font-size:19px;line-height:1.5;font-weight:600;z-index:2147483646;text-align:center;min-height:52px;box-sizing:border-box;pointer-events:none';
       document.body.appendChild(cap);
     }
+    if(!document.getElementById('gm-mascot')){
+      const st=document.createElement('style'); st.id='gm-style';
+      st.textContent=
+        '@keyframes gm-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}'+
+        '@keyframes gm-blink{0%,90%,100%{transform:scaleY(1)}95%{transform:scaleY(.08)}}'+
+        '@keyframes gm-talk{0%,100%{transform:scaleY(.32)}50%{transform:scaleY(1)}}'+
+        '@keyframes gm-wave{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(-32deg)}}'+
+        '#gm-mascot{animation:gm-bob 2.6s ease-in-out infinite}'+
+        '#gm-mascot .gm-eyes{transform-box:fill-box;transform-origin:center;animation:gm-blink 4s infinite}'+
+        '#gm-mascot .gm-mouth{transform-box:fill-box;transform-origin:center;animation:gm-talk .26s ease-in-out infinite}'+
+        '#gm-mascot .gm-arm{transform-box:fill-box;transform-origin:top center;animation:gm-wave 1.1s ease-in-out infinite}';
+      document.head.appendChild(st);
+      const m=document.createElement('div'); m.id='gm-mascot';
+      m.style.cssText='position:fixed;left:22px;bottom:92px;width:118px;height:152px;z-index:2147483646;pointer-events:none;filter:drop-shadow(0 6px 14px rgba(0,0,0,.5))';
+      m.innerHTML='<svg viewBox="0 0 120 152" width="118" height="152">'+
+        '<defs><linearGradient id="gmcan" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#00e5c0"/><stop offset="1" stop-color="#00a88c"/></linearGradient></defs>'+
+        '<rect class="gm-arm" x="14" y="72" width="12" height="34" rx="6" fill="#00c4a7"/>'+
+        '<rect x="94" y="74" width="12" height="30" rx="6" fill="#00c4a7"/>'+
+        '<rect x="28" y="34" width="64" height="98" rx="16" fill="url(#gmcan)" stroke="#0a3d34" stroke-width="2"/>'+
+        '<ellipse cx="60" cy="34" rx="32" ry="8" fill="#7ff0dd" stroke="#0a3d34" stroke-width="2"/>'+
+        '<rect x="28" y="82" width="64" height="24" fill="rgba(255,255,255,.15)"/>'+
+        '<text x="60" y="99" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="12" fill="#eafff9">GOOD LIQUID</text>'+
+        '<circle cx="42" cy="64" r="4" fill="rgba(255,120,120,.5)"/><circle cx="78" cy="64" r="4" fill="rgba(255,120,120,.5)"/>'+
+        '<g class="gm-eyes"><circle cx="49" cy="54" r="9" fill="#fff"/><circle cx="71" cy="54" r="9" fill="#fff"/>'+
+        '<circle cx="50" cy="55" r="4" fill="#08201b"/><circle cx="72" cy="55" r="4" fill="#08201b"/></g>'+
+        '<ellipse class="gm-mouth" cx="60" cy="70" rx="8.5" ry="6" fill="#08201b"/>'+
+        '<rect x="42" y="132" width="9" height="12" rx="4" fill="#00a88c"/><rect x="69" y="132" width="9" height="12" rx="4" fill="#00a88c"/>'+
+        '</svg>';
+      document.body.appendChild(m);
+    }
     window.__vcap=t=>{const c=document.getElementById('vcap'); if(c) c.textContent=t;};
     window.__pulse=(x,y)=>{const p=document.createElement('div');p.style.cssText='position:fixed;left:'+x+'px;top:'+y+'px;width:14px;height:14px;border-radius:50%;border:2px solid #00e5c0;z-index:2147483645;pointer-events:none;transform:translate(-50%,-50%);transition:all .5s ease-out';document.body.appendChild(p);requestAnimationFrame(()=>{p.style.width='64px';p.style.height='64px';p.style.opacity='0';});setTimeout(()=>p.remove(),520);};
   };
