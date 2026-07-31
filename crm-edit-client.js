@@ -746,7 +746,8 @@
       if(paFile  && !newPaPath)  failedUploads.push('Process Authority letter');
       if(failedUploads.length){
         btn.disabled = false; btn.textContent = orig;
-        setErr('⚠ Could not store: ' + failedUploads.join(', ') + '. The file storage (client-docs bucket) isn’t available, so nothing was uploaded — and no changes were saved. Once storage is set up, re-open Edit and upload again.');
+        var why = window.__lastUploadError ? (' (' + window.__lastUploadError + ')') : '';
+        setErr('⚠ Could not store: ' + failedUploads.join(', ') + why + '. Nothing was uploaded and no changes were saved. Try again; if it keeps failing, send me this message.');
         return;
       }
 
