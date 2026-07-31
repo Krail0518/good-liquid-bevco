@@ -981,7 +981,8 @@
     '<div style="color:#cfd9e6;font-size:13px;line-height:1.75;margin-bottom:8px">A full digital GMP / HACCP / PCQI / SQF system, all in the CRM. Every record is in the database with row-level security, and an auditor can review it read-only through a token login.</div>' +
     bullets([
       '<b>🧾 Daily GMP</b> — “type once, fan out”: the shared header (date/shift/line/run/operator) once, then Pre-Op, Hygiene, CCP Pasteurizer, Double-Seam, Label Reconciliation, Receiving. E-signed; failing checks flag deviations.',
-      '<b>🗓️ GMP Schedule</b> — Generate today’s tasks, then an Overdue / Due today / Done today board with mark-done.',
+      '<b>🛡️ Prerequisite Programs</b> — the periodic foundation programs on the GMP hub: Calibration, Pest Control, Chemical &amp; SDS, Glass &amp; Brittle Plastic, Water Potability, and the Complaint Log. Each opens its own single-form entry (not part of the daily fan-out) and flags deviations the same way.',
+      '<b>🗓️ GMP Schedule</b> — Generate today’s tasks, then an Overdue / Due today / Done today board with mark-done. Pest and glass audits recur weekly; calibration monthly; water annually.',
       '<b>🔗 Trace / Recall</b> — trace a run’s inputs + shipments + GMP trail; run a mock recall that computes % reconciled and PASS/FAIL.',
       '<b>Approved Suppliers</b> — approval status, food-safety cert + expiry, risk level; flags certs expiring within 60 days.',
       '<b>NCR / CAPA</b> — root cause, corrective + preventive action, due date, verified close-out; raise an NCR from a deviation or an audit finding in one click.',
