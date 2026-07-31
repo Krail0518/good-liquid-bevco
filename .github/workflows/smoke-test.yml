@@ -87,6 +87,13 @@ jobs:
           REPO_ROOT: ${{ github.workspace }}
         run: node tests/gmp.test.cjs
 
+      # Artwork / SKU manager — multi-SKU upload for staff + customer portal.
+      - name: Run artwork test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/artwork.test.cjs
+
       # Client detail — shared info block shows every field + doc view links.
       - name: Run client detail test
         env:

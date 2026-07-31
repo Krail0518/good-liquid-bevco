@@ -493,6 +493,11 @@
             ldRowsHtml +
           '</div>' +
 
+          '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
+            '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:#00e5c0;font-weight:700">🎨 MY LABEL ARTWORK / SKUs</div>' +
+            '<div style="padding:8px 18px 14px" id="gl-cp-artwork"><div style="font-size:11px;color:#6b87ad">Loading…</div></div>' +
+          '</div>' +
+
           (algs.length ? '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
             '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:#c4b5fd;font-weight:700">ALLERGEN DECLARATIONS</div>' +
             algRowsHtml +
@@ -503,6 +508,11 @@
           '</div>' +
         '</div>' +
       '</div>';
+
+    // Customer-facing artwork/SKU manager (upload their own can designs).
+    if(typeof window.glRenderArtwork === 'function'){
+      try { window.glRenderArtwork(customer.client_id, document.getElementById('gl-cp-artwork')); } catch(e){}
+    }
 
     document.getElementById('cp-signout').onclick = async function(){
       await sb.auth.signOut();
