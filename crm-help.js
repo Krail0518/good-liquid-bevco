@@ -1957,6 +1957,79 @@
   // ── Food Safety & GMP cluster (built Jul 2026) ──
   function lead(txt){ return '<div style="color:#cfd9e6;font-size:13px;line-height:1.75;margin-bottom:8px">' + txt + '</div>'; }
 
+  // ── Global glossary — plain-English definitions for every jargon term used
+  //    across the whole help/app, grouped by area. Sits right after Overview so
+  //    a reader learns the words before hitting any feature section. ──
+  function glo(term, def){
+    return '<div style="margin:0 0 9px;line-height:1.6;padding-left:12px;border-left:2px solid rgba(0,229,192,.25)">' +
+      '<b style="color:#00e5c0">' + term + '</b> <span style="color:#6b7c78">—</span> ' +
+      '<span style="color:#cfd9e6;font-size:12.5px">' + def + '</span></div>';
+  }
+  function gloGroup(title, items){
+    return '<h4 style="margin:20px 0 9px;font-size:12.5px;letter-spacing:1.5px;color:#f5c842">' + title + '</h4>' + items.join('');
+  }
+  var SEC_GLOSSARY =
+    lead('New here, or hit a word you don’t know? Start on this page. Every term the rest of the help uses is defined below in plain English, grouped by area. You don’t need to read it end-to-end — skim your area, or come back and look one up. Nothing here assumes you’ve done this before.') +
+    gloGroup('🏭 FOOD SAFETY &amp; COMPLIANCE', [
+      glo('GMP (Good Manufacturing Practices)', 'The basic “clean, safe, organized plant” rules every food maker follows — hygiene, sanitation, no contamination.'),
+      glo('HACCP', 'A written plan that finds the points where a drink could become unsafe and puts a specific control at each one. Pronounced “hassip.”'),
+      glo('Food Safety Plan', 'The modern, broader version of a HACCP plan required by the FDA — hazards, controls, monitoring, and a recall plan, all written down.'),
+      glo('CCP (Critical Control Point)', 'A step where a control is the last line of defense against a hazard — for example the pasteurizer temperature, or sealing the can. Miss it and the product may be unsafe.'),
+      glo('PRP (Prerequisite Program)', 'A background job that keeps the plant safe so the CCPs can work — pest control, clean water, working meters. The foundation everything else stands on.'),
+      glo('Deviation', 'A red flag: something failed a check. The app raises it automatically so it can’t be forgotten.'),
+      glo('NCR (Non-Conformance Report)', 'The formal record of a problem that needs fixing — a customer complaint, a failed check, an audit finding.'),
+      glo('CAPA / Corrective action', 'The fix for an NCR: find the root cause, correct it, prevent it from recurring, and sign off when it’s verified closed.'),
+      glo('Calibration', 'Checking that a measuring tool (thermometer, scale, pH meter) reads correctly against a known-good reference.'),
+      glo('As-found / As-left', 'A calibration reading before you adjust the tool (as-found) and after (as-left).'),
+      glo('SDS (Safety Data Sheet)', 'A chemical’s safety document from its maker — hazards, safe handling, first aid. Every chemical on site needs one on file.'),
+      glo('COA (Certificate of Analysis)', 'A supplier’s lab report proving an ingredient lot meets spec (purity, micro tests, etc.).'),
+      glo('Potable', 'Safe to drink.'),
+      glo('Lot / Batch / Lot code', 'One production run of a product, and the code stamped on it so it can be traced later.'),
+      glo('Traceability (one-up / one-back)', 'Being able to show, for any lot, what went into it (one-back: supplier, ingredient lot) and where it went (one-up: which customers).'),
+      glo('Mock recall', 'A practice recall — you pick a lot and prove you can account for all of it quickly (the FDA expects this within 4 hours).'),
+      glo('Allergen', 'An ingredient that can cause a serious reaction (milk, soy, tree nuts, etc.). It must be declared on the label and kept from cross-contaminating other products.'),
+      glo('Approved supplier', 'A vendor you’ve vetted and cleared to supply ingredients or packaging, with their certificates on file.'),
+      glo('Double seam', 'The rolled joint that seals a can’s lid to its body. A bad seam breaks the airtight seal, so it’s inspected on every run.'),
+      glo('Pasteurization', 'Briefly heating the drink to kill harmful microbes. The temperature and time are safety-critical (a CCP).'),
+      glo('e-signature', 'Signing a record with your login instead of a pen — it stamps your name and the exact time so the record is official.'),
+      glo('Register', 'A digital logbook for one program or form; each time you fill it in you create one record.'),
+      glo('Cadence', 'How often a job is due — daily, weekly, monthly, yearly, or “as needed.”'),
+      glo('Auditor / Inspector token', 'An outside inspector (FDA, FDACS, or an SQF certifier), and the read-only link you give them to review records without a full account.'),
+      glo('SQF / GFSI', 'A respected food-safety certification (SQF) under an international umbrella (GFSI) that big retailers often require.'),
+      glo('PCQI', 'The trained person (“Preventive Controls Qualified Individual”) who must own the food-safety plan under FDA rules.'),
+      glo('LACF / Acidified food', 'Two FDA categories for canned/sealed drinks — low-acid (needs a heat process) and acidified (acid added to reach a safe pH). Both carry extra registration and filing rules.'),
+      glo('Process Authority', 'An outside expert who determines and signs off the exact safe recipe/process (the “scheduled process”) for a low-acid or acidified drink.')
+    ]) +
+    gloGroup('👥 SALES &amp; CRM', [
+      glo('CRM', 'This app — “Customer Relationship Management.” It tracks your clients, deals, invoices, and compliance in one place.'),
+      glo('Client', 'A company you do (or might do) business with — the brands you co-pack for.'),
+      glo('Lead', 'A potential client you haven’t won yet.'),
+      glo('Pipeline', 'The visual board of open opportunities, moving left-to-right through stages toward a signed deal.'),
+      glo('Deal', 'One opportunity with a client (e.g. “Quote Request — 5,000 cans”). It lives in the pipeline and shows on the client’s card.'),
+      glo('Stage', 'Where a deal is in the process — e.g. New → Quoted → Won.'),
+      glo('Quote', 'A price estimate you send a client; it can be turned into an invoice with one click when accepted.'),
+      glo('Correspondence', 'The email history with a client — visible both in the pipeline and on the client’s card.'),
+      glo('Referral / Referrer', 'A new client sent to you by someone (the referrer), tracked so you can credit or thank them.'),
+      glo('SKU', 'One specific product variant — e.g. a single can design/flavor. A client may have 1 or 20+ SKUs, each with its own label artwork.')
+    ]) +
+    gloGroup('🧾 INVOICING &amp; PAYMENTS', [
+      glo('Invoice', 'A bill you send a client. Statuses: <b>Draft</b> (not sent), <b>Pending</b> (sent, unpaid), <b>Paid</b>, <b>Overdue</b> (past due).'),
+      glo('Partial payment', 'A payment covering only part of an invoice; the balance stays owing and is tracked.'),
+      glo('Credit memo', 'A negative invoice — money credited back to a client (a refund or correction).'),
+      glo('Recurring invoice', 'An invoice set to send itself automatically on a schedule (e.g. monthly).'),
+      glo('Statement of account', 'A one-page summary of everything a client owes and has paid over a period.'),
+      glo('Collections sequence', 'The automatic series of reminder emails for an overdue invoice.'),
+      glo('Stripe', 'The payment processor that lets clients pay an invoice online by card; payments flow back into the CRM.'),
+      glo('Net terms', 'How long a client has to pay (e.g. “Net 30” = due in 30 days).')
+    ]) +
+    gloGroup('⚙️ THE APP ITSELF', [
+      glo('Dashboard', 'The home screen — your key numbers (collected, pending, overdue) and recent activity at a glance.'),
+      glo('Customer portal', 'A separate, limited login for your clients to see their own invoices, documents, and upload artwork — they never see your other clients.'),
+      glo('KPI', 'A “key performance indicator” — an important number you watch, like open deviations or mock-recall pass rate.'),
+      glo('Cache / hard refresh', 'Your browser saves a copy of the app to load faster (the cache). If an update doesn’t show, a “hard refresh” (or the one-click reset page) clears that copy.'),
+      glo('Draft vs. Signed', 'A <b>draft</b> record is saved but not final; a <b>signed</b> record is finalized with your e-signature and time.')
+    ]);
+
   var SEC_DAILY_GMP =
     lead('The <b>🧾 Daily GMP</b> page is “type once, fan out.” Enter the shared header (date, shift, line, run, operator) <b>once</b>, fill any of the day’s forms, and one save writes a separate record per form — all tied together by a batch id. Each entry is e-signed; a failing check auto-flags a deviation.') +
     bullets([
@@ -2088,44 +2161,79 @@
     '</tbody></table></div>';
 
   var SEC_PRP =
-    lead('<b>Prerequisite programs (PRPs)</b> are the periodic support programs the whole food-safety system rests on — calibration, pest control, chemical &amp; SDS control, glass &amp; brittle-plastic control, water potability, and customer complaints. They live on the <b>🧾 Daily GMP</b> hub under a <b>🛡️ Prerequisite Programs</b> heading. Unlike the daily forms, each PRP is its <b>own single-form entry</b> — it is <i>not</i> part of the type-once fan-out — because these run on a weekly / monthly / annual cadence rather than every production run.') +
-    '<h4 style="margin:18px 0 6px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">WHERE THEY LIVE — THE GMP HUB</h4>' +
+    lead('<b>In plain English:</b> making safe drinks depends on a handful of background jobs being done regularly — making sure the thermometers tell the truth, keeping bugs out, checking the water is clean, and so on. These background jobs are called <b>prerequisite programs</b>, or <b>PRPs</b>. Think of them like the routine care a car needs: the trip itself is the production run, but the oil changes, tire checks and brake inspections are what keep every trip safe. This page has <b>six</b> of them, and this guide shows exactly how to do each one — no prior food-safety knowledge needed.') +
+    '<div style="background:rgba(0,229,192,.05);border:1px solid rgba(0,229,192,.25);border-radius:10px;padding:12px 14px;margin:12px 0"><div style="color:#00e5c0;font-size:12px;letter-spacing:1px;margin-bottom:8px">📖 WORDS YOU’LL SEE — READ THIS FIRST</div>' +
+    bullets([
+      '<b>Prerequisite program (PRP)</b> — a basic, ongoing job that keeps the plant safe (pest control, clean water, working meters). The foundation the whole food-safety plan stands on.',
+      '<b>Register</b> — a digital logbook for one program. Each time you fill it in, you create one <b>record</b>.',
+      '<b>Deviation</b> — a red flag: something failed a check. The app raises it <i>automatically</i> so it can never be quietly forgotten.',
+      '<b>Corrective action (NCR / CAPA)</b> — the follow-up after a red flag: find the cause, fix it, stop it happening again, and prove it’s closed.',
+      '<b>Calibration</b> — checking that a measuring tool (thermometer, scale, pH meter) reads correctly against a known-good reference.',
+      '<b>As-found / As-left</b> — the reading <i>before</i> you adjust an instrument (as-found) and <i>after</i> (as-left).',
+      '<b>SDS (Safety Data Sheet)</b> — the manufacturer’s safety document for a chemical: hazards, safe handling, first aid.',
+      '<b>Potable</b> — safe to drink.',
+      '<b>e-signature</b> — signing a record with your login instead of a pen. It stamps your name and the exact time, so the record is official and can’t be back-dated.',
+      '<b>Cadence</b> — how often a job is due (weekly, monthly, yearly).',
+      '<b>Auditor</b> — an outside inspector (FDA, FDACS, or an SQF certifier) who reviews these records.'
+    ]) + '</div>' +
+    '<h4 style="margin:22px 0 6px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">STEP 1 — FIND THEM: THE GMP HUB</h4>' +
+    lead('Everything food-safety lives on one page: <b>🧾 Daily GMP</b> (open it from the main menu). At the top are the <i>daily</i> forms you fill every production run. Below them is a section headed <b>🛡️ Prerequisite Programs</b> — that’s the six jobs in this guide. The picture below is that page, with numbered tags explained underneath.') +
     MOCK_PRP_HUB +
     bullets([
-      '<b>1 · The 🛡️ Prerequisite Programs section</b> — sits directly below the daily register tiles on the GMP hub. Six tiles, one per program.',
-      '<b>2 · A program tile</b> (e.g. 📏 Calibration) — click it to open that register’s history, then <b>➕ New entry</b> to log one. Same pattern as the daily registers, but for periodic programs.',
-      '<b>3 · The cadence</b> is shown right on each tile so you know how often it’s due — Calibration monthly, Pest &amp; Glass weekly, Water annual, Chemical &amp; Complaint as-needed.',
-      '<b>4 · The single-form entry</b> — because a PRP isn’t part of the daily fan-out, ➕ New entry opens just that one form (shown next), not the whole day’s combo.'
+      '<b>1 · The “Prerequisite Programs” heading</b> — everything below it is a background job (a PRP). It sits under the daily forms so it’s all in one place.',
+      '<b>2 · A tile, one per job</b> — for example 📏 Calibration. <b>Click a tile</b> to see everything logged for that job so far.',
+      '<b>3 · The small word under each tile</b> is how often that job is due — Calibration <b>monthly</b>, Pest Control and Glass <b>weekly</b>, Water <b>yearly</b>, Chemical and Complaints <b>as needed</b>.',
+      '<b>4 · The blue note at the bottom</b> tells you the path every time: click a tile → you see its past records → the <b>➕ New entry</b> button opens a blank form to fill in.'
     ]) +
-    '<h4 style="margin:22px 0 6px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">LOGGING ONE — THE SINGLE-FORM ENTRY</h4>' +
-    lead('Opening a PRP (here, <b>Calibration</b>) shows a focused form: the shared header on top, then just this program’s fields. Fill it, then <b>Sign &amp; save</b>.') +
+    '<h4 style="margin:24px 0 6px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">STEP 2 — DO ONE: A CLICK-BY-CLICK WALKTHROUGH</h4>' +
+    lead('Here’s a full example — logging a <b>Calibration</b> check. The other five work exactly the same way; only the boxes differ. The picture is the form you’ll see; the numbered steps below walk you through it.') +
     MOCK_PRP_FORM +
+    '<div style="color:#cfd9e6;font-size:13px;line-height:1.85;margin:8px 0 4px"><b style="color:#00e5c0">Do this, in order:</b></div>' +
+    '<ol style="margin:4px 0 6px;padding-left:22px;color:#cfd9e6;font-size:13px;line-height:1.85">' +
+      '<li style="margin-bottom:7px">Open <b>🧾 Daily GMP</b> from the menu, scroll to <b>🛡️ Prerequisite Programs</b>, and click the tile for the job you’re doing — here, <b>📏 Calibration</b>.</li>' +
+      '<li style="margin-bottom:7px">You’ll see a list of past calibration records. Click <b>➕ New entry</b> at the top right to open a blank form.</li>' +
+      '<li style="margin-bottom:7px"><b>(Tag 1) The top box is filled in for you</b> — today’s date and your name. Change the line or run number if it’s different; otherwise leave it.</li>' +
+      '<li style="margin-bottom:7px">Fill in the boxes for this job. A red <b style="color:#f5c842">*</b> means the box is required. For calibration: which <b>instrument</b>, the <b>reference</b> you compared it against, and the readings.</li>' +
+      '<li style="margin-bottom:7px"><b>(Tag 2) The most important box is the pass/fail one</b> — here “Within tolerance”. Answer honestly. Choosing <b style="color:#ff8579">Fail</b> is <i>not</i> a mistake — it’s the app doing its job and flagging something to fix.</li>' +
+      '<li style="margin-bottom:7px"><b>(Tag 3) Set the “Next due” date</b> so the following check is scheduled, not guessed. Tap the box and pick a date from the calendar.</li>' +
+      '<li style="margin-bottom:7px"><b>(Tag 4) Click ✍️ Sign &amp; save.</b> Done — the record is saved and stamped with your name and the time. (Use <b>Save (draft)</b> instead if you’re not finished and want to come back.)</li>' +
+      '<li>If you answered <b style="color:#ff8579">Fail</b> anywhere, jump to “When a check fails” below — the app has already flagged it for you.</li>' +
+    '</ol>' +
+    '<h4 style="margin:24px 0 6px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">THE SIX JOBS — WHAT EACH IS AND WHY IT MATTERS</h4>' +
+    lead('In everyday terms, here’s what each program protects against. This is the “why” — the reference table after it is the “what to type”.') +
     bullets([
-      '<b>1 · Shared header</b> — date, shift, line, run, operator are recorded with the entry (pre-filled with today and your name). It’s the same header the daily forms use, so PRP records sit alongside them cleanly.',
-      '<b>2 · The pass / fail (safety-critical) field</b> — every PRP has one. Selecting <b style="color:#ff8579">Fail</b> — or its equivalent (“activity found”, “not food-safe”, “not intact / product exposed”, “non-potable”, or a food-safety complaint = <b>Yes</b>) — <b>auto-flags a deviation</b>.',
-      '<b>3 · Date fields</b> — e.g. <b>Next calibration due</b> / <b>Next test due</b>, so the following one is scheduled, not guessed. (This is the new <code>date</code> field type added for PRPs.)',
-      '<b>4 · ✍️ Sign &amp; save</b> — e-signs the record and stores it as a <code>compliance_records</code> row, exactly like every other GMP form. Nothing is kept only in the browser; <b>Save (draft)</b> stores it unsigned.'
+      '<b>📏 Calibration — “are the meters telling the truth?”</b> If a thermometer or pH meter drifts even a little, every reading it gives is wrong, and you could release a batch that isn’t actually safe. You compare each tool to a known-correct reference and record it. <i>Monthly.</i>',
+      '<b>🐜 Pest Control — “keep bugs and rodents out.”</b> Pests carry contamination and are an instant audit failure. You check the traps and bait stations around the building and record what you find. <i>Weekly.</i>',
+      '<b>🧪 Chemical &amp; SDS — “every cleaner and sanitizer is safe and documented.”</b> Only food-safe chemicals belong in a food plant, each needs its safety sheet (SDS) on file, and they must be stored away from ingredients and packaging. You log each one. <i>Whenever a chemical arrives or is reviewed.</i>',
+      '<b>🔦 Glass &amp; Brittle Plastic — “nothing hard can shatter into a can.”</b> Lights, gauges, sight-glasses and guards are listed and checked so a crack or break is caught <i>before</i> a fragment could reach product. <i>Weekly.</i>',
+      '<b>💧 Water Potability — “the water is safe.”</b> Water goes into the drink and cools the sealed cans, so a lab confirms it’s free of harmful bacteria. You record the result and file the report. <i>Yearly (or more often).</i>',
+      '<b>📣 Complaint Log — “listen to customers.”</b> If someone reports a problem, you log it, investigate, and — if it’s a safety issue — turn it into a corrective action. <i>Whenever a complaint comes in.</i>'
     ]) +
-    '<h4 style="margin:22px 0 6px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">WHAT EACH REGISTER CAPTURES</h4>' +
+    '<h4 style="margin:24px 0 6px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">EVERY BOX, PROGRAM BY PROGRAM</h4>' +
+    lead('The exact fields on each form, what makes the app raise a red flag, and how often it’s due:') +
     PRP_REF_TABLE +
-    '<h4 style="margin:22px 0 6px;font-size:13px;letter-spacing:1.5px;color:#f5c842">WHEN A CHECK FAILS — THE DEVIATION FLOW</h4>' +
+    '<h4 style="margin:24px 0 6px;font-size:13px;letter-spacing:1.5px;color:#f5c842">WHEN A CHECK FAILS — WHAT HAPPENS NEXT</h4>' +
+    lead('A “Fail” is not a dead end — it starts a short, tracked cleanup so the problem is actually fixed and can’t be lost.') +
     bullets([
-      'A flagged PRP deviation appears on the GMP hub under <b style="color:#f5c842">⚠️ Open deviations</b>, in the same list as the daily-GMP deviations — one place to see everything that failed a check.',
-      'From there, <b>⤴ Raise NCR</b> opens a corrective action (root cause, corrective + preventive action, due date, verified close-out) tied back to the exact record that raised it.'
+      '<b>It flags itself.</b> The moment you save a failing check, the app lists it on the GMP hub under <b style="color:#f5c842">⚠️ Open deviations</b> — the one place that shows everything currently failing, from both the daily forms and these programs.',
+      '<b>You turn it into a fix.</b> Open the flagged item and click <b>⤴ Raise NCR</b>. That starts a corrective action: what caused it, what you did to fix it, what stops it recurring, a due date, and a sign-off when it’s verified closed — all linked back to the exact record that raised it.',
+      '<b>Nothing disappears.</b> Until it’s closed out it stays on the Open deviations list, so an unfinished problem can’t slip through the cracks.'
     ]) +
-    '<h4 style="margin:22px 0 6px;font-size:13px;letter-spacing:1.5px;color:#5fcf9e">ON THE 🗓️ GMP SCHEDULE BOARD</h4>' +
+    '<h4 style="margin:24px 0 6px;font-size:13px;letter-spacing:1.5px;color:#5fcf9e">SO NOTHING SLIPS — THE SCHEDULE BOARD</h4>' +
+    lead('You don’t have to remember when each job is due — the <b>🗓️ GMP Schedule</b> page tracks it for you.') +
     bullets([
-      'The recurring PRPs are seeded into the scheduler: <b>Pest</b> and <b>Glass</b> weekly, <b>Calibration</b> monthly, <b>Water</b> annually. (Chemical &amp; Complaint are event-driven, so they aren’t scheduled.)',
-      '“<b>＋ Generate today’s tasks</b>” drops them onto the <b style="color:#ff8579">Overdue</b> / <b style="color:#f5c842">Due today</b> board when due, each with a one-click <b>✓ Mark done</b> — so a monthly calibration or a weekly pest check can’t quietly slip.'
+      'The regular jobs are pre-loaded: <b>Pest</b> and <b>Glass</b> every week, <b>Calibration</b> every month, <b>Water</b> every year. (Chemical and Complaints only happen when there’s a reason, so they’re not on a timer.)',
+      'Click <b>＋ Generate today’s tasks</b> and anything due lands on a board split into <b style="color:#ff8579">Overdue</b> / <b style="color:#f5c842">Due today</b> / <b style="color:#5fcf9e">Done today</b>, each with a one-click <b>✓ Mark done</b>. A missed monthly calibration or weekly pest check shows up in red instead of being forgotten.'
     ]) +
-    '<h4 style="margin:22px 0 6px;font-size:13px;letter-spacing:1.5px;color:#9aa7bd">WHO CAN SEE IT</h4>' +
+    '<h4 style="margin:24px 0 6px;font-size:13px;letter-spacing:1.5px;color:#9aa7bd">WHO CAN SEE AND CHANGE IT</h4>' +
     bullets([
-      'Staff log and edit PRP entries. Every record is e-signed and stored in the database under row-level security.',
-      'An auditor with a read-only token sees the PRP registers and their deviations exactly like the daily forms — everything is visible, nothing can be changed.'
+      '<b>Your staff</b> log and edit these entries. Every saved record carries the signer’s name and time and is stored safely in the database — never only in the browser, so it can’t be lost if a laptop closes.',
+      '<b>An auditor</b> you invite gets a read-only link: they can see every program and every red flag exactly as it is, but they cannot change, sign, or delete anything.'
     ]);
 
   var HELP_HTML =
     section('help-overview',        '👋 OVERVIEW',                   SEC_OVERVIEW) +
+    section('help-glossary',        '📖 GLOSSARY (PLAIN-ENGLISH TERMS)', SEC_GLOSSARY) +
     section('help-daily-gmp',       '🧾 DAILY GMP (LOG + FAN-OUT)',  SEC_DAILY_GMP) +
     section('help-gmp-schedule',    '🗓️ GMP SCHEDULE (DUE / OVERDUE)', SEC_GMP_SCHEDULE) +
     section('help-prp',             '🛡️ PREREQUISITE PROGRAMS',      SEC_PRP) +
@@ -2185,6 +2293,7 @@
 
   var TOC_ENTRIES = [
     ['help-overview','👋 Overview'],
+    ['help-glossary','📖 Glossary'],
     ['help-daily-gmp','🧾 Daily GMP'],['help-gmp-schedule','🗓️ GMP Schedule'],
     ['help-prp','🛡️ Prerequisite Programs'],
     ['help-trace-recall','🔗 Trace / Recall'],['help-training-gmp','🎓 Training'],
