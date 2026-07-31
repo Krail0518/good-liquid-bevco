@@ -724,6 +724,20 @@
         newPaPath = await window.uploadComplianceDoc(paFile, clientId, 'pa_letter');
       }
 
+      // A picked file that produced no stored path means the upload silently
+      // failed (usually the client-docs storage bucket isn't set up). Surface
+      // it loudly instead of saving a misleading "on file" flag with no file
+      // anyone can view. Abort the save so nothing partial persists.
+      var failedUploads = [];
+      if(w9File  && !newW9Path)  failedUploads.push('W-9');
+      if(taxFile && !newTaxPath) failedUploads.push('sales-tax exemption');
+      if(paFile  && !newPaPath)  failedUploads.push('Process Authority letter');
+      if(failedUploads.length){
+        btn.disabled = false; btn.textContent = orig;
+        setErr('⚠ Could not store: ' + failedUploads.join(', ') + '. The file storage (client-docs bucket) isn’t available, so nothing was uploaded — and no changes were saved. Once storage is set up, re-open Edit and upload again.');
+        return;
+      }
+
       var patch = {
         name:           name,
         legalName:      val('gl-ec-legal-name'),

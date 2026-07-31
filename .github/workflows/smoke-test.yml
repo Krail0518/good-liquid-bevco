@@ -87,6 +87,13 @@ jobs:
           REPO_ROOT: ${{ github.workspace }}
         run: node tests/gmp.test.cjs
 
+      # Client detail — shared info block shows every field + doc view links.
+      - name: Run client detail test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/client-detail.test.cjs
+
       # Auditor portal (auditor.html) — token gating + read-only dashboard.
       - name: Run auditor page test
         env:
