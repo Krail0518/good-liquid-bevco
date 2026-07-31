@@ -1957,6 +1957,32 @@
   // ── Food Safety & GMP cluster (built Jul 2026) ──
   function lead(txt){ return '<div style="color:#cfd9e6;font-size:13px;line-height:1.75;margin-bottom:8px">' + txt + '</div>'; }
 
+  // ── Video tutorials (narrated screencasts served from /tutorials) ──
+  // watch() drops an inline player at the top of a module's help section;
+  // videoCard() is the richer card used in the dedicated gallery.
+  function watch(file){
+    return '<div style="margin:2px 0 16px;padding:12px 14px;background:#0d1a2e;border:1px solid rgba(0,229,192,.18);border-radius:11px">' +
+      '<div style="font-size:11px;letter-spacing:1.5px;color:#00e5c0;margin-bottom:8px">🎬 VIDEO TUTORIAL — WATCH &amp; LISTEN</div>' +
+      '<video controls preload="none" playsinline style="width:100%;max-width:760px;border-radius:9px;border:1px solid rgba(0,229,192,.2);background:#000;display:block" src="/tutorials/' + file + '"></video>' +
+    '</div>';
+  }
+  function videoCard(file, title, desc){
+    return '<div style="margin:0 0 18px;padding:14px;background:#0d1a2e;border:1px solid rgba(0,229,192,.15);border-radius:12px">' +
+      '<div style="font-weight:700;font-size:14px;color:#eef4ff;margin-bottom:2px">' + title + '</div>' +
+      '<div style="font-size:12px;color:#9aa7bd;margin:2px 0 10px;line-height:1.5">' + desc + '</div>' +
+      '<video controls preload="none" playsinline style="width:100%;max-width:820px;border-radius:9px;border:1px solid rgba(0,229,192,.2);background:#000;display:block" src="/tutorials/' + file + '"></video>' +
+    '</div>';
+  }
+  var SEC_VIDEO_TUTORIALS =
+    lead('Narrated, step-by-step video walkthroughs of the food-safety modules — each one shows the real screen, with a spoken guide and on-screen captions. Press play on any of them. (Sound on for the narration.) New tutorials are added here as modules grow.') +
+    videoCard('tutorial-daily.mp4', '🧾 Daily GMP — Log Today’s Checks', 'The “type once, fan out” daily routine: shared header, filling Pre-Op and Hygiene forms, and one Sign &amp; save that records every form at once.') +
+    videoCard('tutorial-prp.mp4', '🛡️ Prerequisite Programs — Log a Calibration Check', 'How the periodic foundation programs work, using a calibration check end to end — including how a failing check flags a deviation.') +
+    videoCard('tutorial-schedule.mp4', '🗓️ GMP Schedule — What’s Due Today', 'Generating the day’s tasks and working the Overdue / Due Today / Done Today board so nothing slips.') +
+    videoCard('tutorial-trace.mp4', '🔗 Trace &amp; Mock Recall — Account for Any Lot', 'Tracing a run backward to its inputs and forward to its shipments, then running a timed mock recall with a pass/fail result.') +
+    videoCard('tutorial-training.mp4', '🎓 Training &amp; Competency — Keep Certifications Current', 'Reading the competency matrix and expiry badges, and adding a new training record that the system then tracks for renewal.') +
+    videoCard('tutorial-audit.mp4', '🔍 Internal Audit &amp; Management Review', 'Logging audit findings, raising an NCR from a finding, scheduling an audit, and the live management-review KPI snapshot.') +
+    videoCard('tutorial-auditor.mp4', '🔒 Auditor Portal — Read-Only Records Access', 'Exactly what an outside auditor sees through their read-only token link — every register and record visible, nothing changeable.');
+
   // ── Global glossary — plain-English definitions for every jargon term used
   //    across the whole help/app, grouped by area. Sits right after Overview so
   //    a reader learns the words before hitting any feature section. ──
@@ -2031,6 +2057,7 @@
     ]);
 
   var SEC_DAILY_GMP =
+    watch('tutorial-daily.mp4') +
     lead('The <b>🧾 Daily GMP</b> page is “type once, fan out.” Enter the shared header (date, shift, line, run, operator) <b>once</b>, fill any of the day’s forms, and one save writes a separate record per form — all tied together by a batch id. Each entry is e-signed; a failing check auto-flags a deviation.') +
     bullets([
       '<b>Log today’s GMP</b> — the combo screen: shared header on top, then Pre-Op Sanitation, Daily GMP &amp; Hygiene, CCP — Flash Pasteurizer, Double-Seam, Label Reconciliation, and Receiving. Fill only what applies.',
@@ -2041,6 +2068,7 @@
     ]);
 
   var SEC_GMP_SCHEDULE =
+    watch('tutorial-schedule.mp4') +
     lead('The <b>🗓️ GMP Schedule</b> page turns the forms into a driven daily workflow.') +
     bullets([
       '<b>＋ Generate today’s tasks</b> — creates the day’s due items from the recurring-task definitions (daily items every day; weekly items on their day). Safe to click repeatedly — it won’t duplicate.',
@@ -2048,6 +2076,7 @@
     ]);
 
   var SEC_TRACE_RECALL =
+    watch('tutorial-trace.mp4') +
     lead('The <b>🔗 Trace / Recall</b> page gives one-lot traceability and a mock-recall exercise — the test auditors always ask for.') +
     bullets([
       '<b>Trace a run</b> — search a run to see its inputs (material, supplier, supplier lot), its shipments (customer, qty, date, + total units), and the GMP trail from the records tied to that run.',
@@ -2056,6 +2085,7 @@
     ]);
 
   var SEC_TRAINING =
+    watch('tutorial-training.mp4') +
     lead('The <b>🎓 Training</b> page tracks employee training &amp; competency.') +
     bullets([
       'A matrix of employee × course (GMP, HACCP, Better Process Control School, etc.).',
@@ -2064,6 +2094,7 @@
     ]);
 
   var SEC_INTERNAL_AUDIT =
+    watch('tutorial-audit.mp4') +
     lead('The <b>🔍 Internal Audit</b> page covers internal SQF audits and management review.') +
     bullets([
       '<b>Internal audits</b> — schedule an audit (date, scope, auditor, status). Open it to log findings; each open finding has <b>⤴ Raise NCR</b>, which creates a tracked corrective action tied back to the finding.',
@@ -2071,6 +2102,7 @@
     ]);
 
   var SEC_AUDITOR_PORTAL =
+    watch('tutorial-auditor.mp4') +
     lead('An FDA / FDACS / SQF auditor can review everything <b>read-only</b>, with no CRM account.') +
     bullets([
       'From the Daily GMP hub, <b>🔒 Auditor access</b> → enter the auditor’s name + a validity window → you get a copyable link (auditor.html?token=…).',
@@ -2161,6 +2193,7 @@
     '</tbody></table></div>';
 
   var SEC_PRP =
+    watch('tutorial-prp.mp4') +
     lead('<b>In plain English:</b> making safe drinks depends on a handful of background jobs being done regularly — making sure the thermometers tell the truth, keeping bugs out, checking the water is clean, and so on. These background jobs are called <b>prerequisite programs</b>, or <b>PRPs</b>. Think of them like the routine care a car needs: the trip itself is the production run, but the oil changes, tire checks and brake inspections are what keep every trip safe. This page has <b>six</b> of them, and this guide shows exactly how to do each one — no prior food-safety knowledge needed.') +
     '<div style="background:rgba(0,229,192,.05);border:1px solid rgba(0,229,192,.25);border-radius:10px;padding:12px 14px;margin:12px 0"><div style="color:#00e5c0;font-size:12px;letter-spacing:1px;margin-bottom:8px">📖 WORDS YOU’LL SEE — READ THIS FIRST</div>' +
     bullets([
@@ -2234,6 +2267,7 @@
   var HELP_HTML =
     section('help-overview',        '👋 OVERVIEW',                   SEC_OVERVIEW) +
     section('help-glossary',        '📖 GLOSSARY (PLAIN-ENGLISH TERMS)', SEC_GLOSSARY) +
+    section('help-videos',          '🎬 VIDEO TUTORIALS',            SEC_VIDEO_TUTORIALS) +
     section('help-daily-gmp',       '🧾 DAILY GMP (LOG + FAN-OUT)',  SEC_DAILY_GMP) +
     section('help-gmp-schedule',    '🗓️ GMP SCHEDULE (DUE / OVERDUE)', SEC_GMP_SCHEDULE) +
     section('help-prp',             '🛡️ PREREQUISITE PROGRAMS',      SEC_PRP) +
@@ -2294,6 +2328,7 @@
   var TOC_ENTRIES = [
     ['help-overview','👋 Overview'],
     ['help-glossary','📖 Glossary'],
+    ['help-videos','🎬 Video Tutorials'],
     ['help-daily-gmp','🧾 Daily GMP'],['help-gmp-schedule','🗓️ GMP Schedule'],
     ['help-prp','🛡️ Prerequisite Programs'],
     ['help-trace-recall','🔗 Trace / Recall'],['help-training-gmp','🎓 Training'],
