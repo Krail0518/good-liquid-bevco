@@ -36,6 +36,20 @@
     } catch(e){ alert('Could not open the file: ' + (e && e.message || e)); }
   };
 
+  // Download a stored compliance document (signed URL with the download flag,
+  // so the browser saves the file instead of opening it in a tab).
+  window.glDownloadClientDoc = async function(path){
+    if(!path){ return; }
+    if(!window.supa || !window.supa.storage){ alert('Storage not ready.'); return; }
+    try {
+      var r = await window.supa.storage.from('client-docs').createSignedUrl(path, 300, { download: true });
+      if(r && r.data && r.data.signedUrl){
+        var a = document.createElement('a'); a.href = r.data.signedUrl; a.download = '';
+        document.body.appendChild(a); a.click(); a.remove();
+      } else { alert('Could not download — the file may not be stored. Try re-uploading it from Edit.'); }
+    } catch(e){ alert('Download failed: ' + (e && e.message || e)); }
+  };
+
   function card(inner){
     return '<div style="background:rgba(255,255,255,.04);border-radius:10px;padding:14px;font-size:13px;color:'+WHITE+';line-height:1.9">' + inner + '</div>';
   }
@@ -54,7 +68,9 @@
     return '<span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;background:'+bg+';color:'+fg+';border:1px solid '+br+'">' + txt + '</span>';
   }
   function viewBtn(path){
-    return ' <a href="#" onclick="event.preventDefault();window.glOpenClientDoc(\'' + esc(String(path).replace(/'/g,'')) + '\')" style="color:'+TEAL+';font-weight:700">📄 View</a>';
+    var p = esc(String(path).replace(/'/g,''));
+    return ' <a href="#" onclick="event.preventDefault();window.glOpenClientDoc(\'' + p + '\')" style="color:'+TEAL+';font-weight:700">📄 View</a>'
+         + ' <a href="#" onclick="event.preventDefault();window.glDownloadClientDoc(\'' + p + '\')" style="color:'+TEAL+';font-weight:700">⬇ Download</a>';
   }
 
   var CONTACT_TYPE = {owner:'Owner',executive:'Executive',purchasing:'Purchasing',freight:'Freight / Logistics',sales:'Sales',other:'Other'};

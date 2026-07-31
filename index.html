@@ -3707,7 +3707,7 @@ function renderClients(list){
   document.getElementById('client-body').innerHTML=rows.map(c=>{
     const ref=referrers.find(r=>r.id===c.referredBy);
     const billed = billedByClient[c.id] != null ? billedByClient[c.id] : (c.billed || 0);
-    return`<tr style="cursor:pointer" onclick="openClientDetail('${c.id}')">
+    return`<tr style="cursor:pointer" onclick="openClientCard('${c.id}')">
       <td><div style="display:flex;align-items:center;gap:7px"><div class="cavt" style="background:${c.color};color:${c.tc}">${esc(c.init)}</div><span style="font-weight:600">${esc(c.name)}</span></div></td>
       <td style="color:var(--muted)">${esc(c.contact)}</td>
       <td style="color:var(--muted)">${esc(c.service)}</td>
@@ -7518,6 +7518,16 @@ function openSendInvoiceModal(invId){
 }
 
 // ─── CLIENT DETAIL PANEL ───
+// Clicking a client opens the full, editable form directly for write users
+// (admins / staff) — one view, every field, no separate "Edit" step. Pure
+// read-only roles (viewer) still get the safe read-only card.
+window.openClientCard = function(id){
+  const u = window.currentUser;
+  const canEdit = u && u.role !== 'viewer' && typeof window.glOpenEditClient === 'function';
+  if(canEdit) return window.glOpenEditClient(id);
+  if(typeof window.openClientDetail === 'function') return window.openClientDetail(id);
+};
+
 function openClientDetail(cid) {
   const c = clients.find(x=>x.id===cid);
   if(!c) return;
