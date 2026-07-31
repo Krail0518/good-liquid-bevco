@@ -49,6 +49,19 @@
     { code:'GMP-RECV-001',    icon:'📦', label:'Receiving' }
   ];
 
+  // Prerequisite programs (PRPs). These are periodic registers, NOT part of the
+  // daily "log today" fan-out (in_daily = false), so each opens its own single
+  // form. They round out the SQF/HACCP foundation: calibration, pest, chemical
+  // control, glass & brittle plastic, water potability, and customer complaints.
+  var PRP_REGISTERS = [
+    { code:'GMP-CAL-001',   icon:'📏', label:'Calibration' },
+    { code:'GMP-PEST-001',  icon:'🐜', label:'Pest Control' },
+    { code:'GMP-CHEM-001',  icon:'🧪', label:'Chemical & SDS' },
+    { code:'GMP-GLASS-001', icon:'🔦', label:'Glass & Brittle Plastic' },
+    { code:'GMP-WATER-001', icon:'💧', label:'Water Potability' },
+    { code:'GMP-COMPL-001', icon:'📣', label:'Complaint Log' }
+  ];
+
   window.glRenderGMPHub = function glRenderGMPHub(){
     var host = document.getElementById('cpg-gmp');
     if(!host) return;
@@ -72,6 +85,11 @@
           tile('window.glOpenGMPDocuments()','📄','Documents','SOPs, registers & regulatory guides','#00e5c0') +
           REGISTERS.map(function(r){ return tile("window.glOpenGMPRegister('"+r.code+"')", r.icon, r.label, 'View / add records'); }).join('') +
         '</div>' +
+        '<div style="font-family:var(--ff-disp);font-size:15px;letter-spacing:1.5px;color:var(--teal);margin:20px 0 4px">🛡️ PREREQUISITE PROGRAMS</div>' +
+        '<div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.6">The periodic foundation programs behind the daily GMP forms — calibration, pest control, chemical &amp; SDS, glass &amp; brittle plastic, water potability, and complaints. Each opens its own record.</div>' +
+        '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">' +
+          PRP_REGISTERS.map(function(r){ return tile("window.glOpenGMPRegister('"+r.code+"')", r.icon, r.label, 'View / add records'); }).join('') +
+        '</div>' +
       '</div>';
   };
 
@@ -92,6 +110,7 @@
     if(f.type === 'textarea') return lab + '<textarea id="'+id+'" data-key="'+esc(f.key)+'" style="'+base+';min-height:52px;resize:vertical"></textarea>';
     if(f.type === 'number')   return lab + '<input id="'+id+'" data-key="'+esc(f.key)+'" type="number" step="any" style="'+base+'">';
     if(f.type === 'time')     return lab + '<input id="'+id+'" data-key="'+esc(f.key)+'" type="time" style="'+base+'">';
+    if(f.type === 'date')     return lab + '<input id="'+id+'" data-key="'+esc(f.key)+'" type="date" style="'+base+'">';
     if(f.type === 'check')    return '<label style="display:flex;align-items:center;gap:8px;margin:12px 0;font-size:13px;color:#dfe7f1;cursor:pointer"><input id="'+id+'" data-key="'+esc(f.key)+'" type="checkbox" style="width:16px;height:16px;accent-color:#00e5c0"> '+esc(f.label)+'</label>';
     if(f.type === 'passfail') return lab + '<select id="'+id+'" data-key="'+esc(f.key)+'" data-passfail="1" style="'+base+'"><option value="">—</option><option value="pass">Pass</option><option value="fail">Fail</option><option value="na">N/A</option></select>';
     if(f.type === 'select'){
@@ -123,17 +142,28 @@
   }
 
   // ── The combo "log today" screen ──
-  window.glOpenDailyGMP = async function glOpenDailyGMP(){
+  window.glOpenDailyGMP = async function glOpenDailyGMP(onlyCode){
     if(!sb()){ alert('Supabase not ready.'); return; }
     var ov = overlay('gl-gmp-daily');
     ov.innerHTML = '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:22px;width:100%;max-width:720px;color:#fff"><div style="color:#9aa7bd">Loading forms…</div></div>';
     var tpls;
-    try { tpls = await loadTemplates(true); }
+    try {
+      if(onlyCode){
+        // Single-form entry (a prerequisite program or any non-daily register).
+        var r1 = await sb().from('gmp_templates').select('*').eq('active', true).eq('form_code', onlyCode);
+        if(r1.error) throw r1.error;
+        tpls = r1.data || [];
+      } else {
+        tpls = await loadTemplates(true);
+      }
+    }
     catch(e){ ov.querySelector('div').innerHTML = '<div style="color:#ff8579">Could not load GMP forms: '+esc(e.message||e)+'</div>'; return; }
+    if(onlyCode && !tpls.length){ ov.querySelector('div').innerHTML = '<div style="color:#ff8579">Form '+esc(onlyCode)+' is not set up yet.</div>'; return; }
 
     var uname = (window.currentUser && (window.currentUser.name || window.currentUser.email)) || '';
+    var singleTitle = onlyCode && tpls[0] ? tpls[0].title : '';
     var sections = tpls.map(function(t){
-      return '<details class="gl-gmp-sec" data-code="'+esc(t.form_code)+'" style="border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:0 14px;margin-bottom:10px;background:rgba(255,255,255,.02)">' +
+      return '<details class="gl-gmp-sec"'+(onlyCode?' open':'')+' data-code="'+esc(t.form_code)+'" style="border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:0 14px;margin-bottom:10px;background:rgba(255,255,255,.02)">' +
           '<summary style="cursor:pointer;padding:12px 0;font-weight:700;font-size:13.5px;color:#eef4ff;list-style:none">'+esc(t.title)+'</summary>' +
           (t.help?'<div style="font-size:11.5px;color:#9aa7bd;margin-bottom:6px;line-height:1.5">'+esc(t.help)+'</div>':'') +
           '<div class="gl-gmp-fields">'+(t.fields||[]).map(function(f){ return fieldControl(t.form_code, f); }).join('')+'</div>' +
@@ -143,9 +173,9 @@
 
     ov.innerHTML =
       '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:22px;width:100%;max-width:720px;color:#fff">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">🧾 LOG TODAY’S GMP</div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">'+(onlyCode?('🛡️ '+esc(singleTitle.toUpperCase())):'🧾 LOG TODAY’S GMP')+'</div>' +
           '<button onclick="document.getElementById(\'gl-gmp-daily\').remove()" style="background:none;border:none;color:#9aa7bd;font-size:22px;cursor:pointer">✕</button></div>' +
-        '<div style="font-size:12px;color:#9aa7bd;margin-bottom:14px;line-height:1.5">Shared details are typed once and copied into every form you fill in below.</div>' +
+        '<div style="font-size:12px;color:#9aa7bd;margin-bottom:14px;line-height:1.5">'+(onlyCode?'Shared details (date, operator, line) are recorded with this entry.':'Shared details are typed once and copied into every form you fill in below.')+'</div>' +
         '<div style="background:rgba(0,229,192,.05);border:1px solid rgba(0,229,192,.18);border-radius:10px;padding:12px 14px;margin-bottom:14px">' +
           '<div style="font-size:10.5px;letter-spacing:1.5px;color:var(--teal);margin-bottom:8px">SHARED — ENTERED ONCE</div>' +
           '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">' +
@@ -270,7 +300,7 @@
         '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:22px;width:100%;max-width:880px;color:#fff">' +
           '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
             '<div style="font-family:var(--ff-disp);font-size:17px;letter-spacing:1.5px;color:var(--teal)">'+esc(tpl.title)+'</div>' +
-            '<div><button onclick="window.glOpenDailyGMP()" style="padding:8px 14px;background:rgba(0,229,192,.12);color:var(--teal);border:1px solid rgba(0,229,192,.3);border-radius:7px;cursor:pointer;font-size:12px;margin-right:8px">➕ New entry</button>' +
+            '<div><button onclick="window.glOpenDailyGMP('+(tpl.in_daily===false?("'"+esc(code)+"'"):'')+')" style="padding:8px 14px;background:rgba(0,229,192,.12);color:var(--teal);border:1px solid rgba(0,229,192,.3);border-radius:7px;cursor:pointer;font-size:12px;margin-right:8px">➕ New entry</button>' +
             '<button onclick="document.getElementById(\'gl-gmp-reg\').remove()" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button></div></div>' +
           (recs.length ? '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'+head+body+'</table></div>'
                        : '<div style="color:#9aa7bd;padding:20px 0">No records yet. Click ➕ New entry to log one.</div>') +
@@ -316,7 +346,7 @@
     var ov = overlay('gl-gmp-dev');
     ov.innerHTML = '<div style="background:#142238;border:1px solid rgba(245,200,66,.25);border-radius:16px;padding:22px;width:100%;max-width:820px;color:#fff"><div style="color:#9aa7bd">Loading…</div></div>';
     try {
-      var codes = REGISTERS.map(function(r){ return r.code; });
+      var codes = REGISTERS.concat(PRP_REGISTERS).map(function(r){ return r.code; });
       var rRes = await sb().from('compliance_records').select('*').in('form_code', codes).eq('has_deviation', true).order('recorded_at', { ascending: false }).limit(200);
       if(rRes.error) throw rRes.error;
       var recs = rRes.data || [];
