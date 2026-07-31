@@ -413,7 +413,7 @@
       '<b>Data sync:</b> invoices, clients, deals, referrers, referrals, and user profiles all live in Supabase and sync across devices. Tasks, calendar, notifications, and the activity feed live in localStorage (per device).'
     ]);
 
-  var SEC_DASHBOARD = MOCK_DASHBOARD +
+  var SEC_DASHBOARD = watch('tutorial-dashboard.mp4') + MOCK_DASHBOARD +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
       '<b>(1) Top metrics row</b> — Total collected (paid YTD), Pending, Overdue, Active brands.',
@@ -1406,6 +1406,7 @@
     ]);
 
   var SEC_PRODUCTION_RUNS =
+    watch('tutorial-production-runs.mp4') +
     wf(620, 230,
       box(0,0,620,230,'#142238','rgba(255,255,255,.05)') +
       txt(20,22,'🏭 PRODUCTION RUNS',12,'#fff') +
@@ -1438,6 +1439,7 @@
     ]);
 
   var SEC_FORMULA_VAULT =
+    watch('tutorial-formula-vault.mp4') +
     wf(620, 190,
       box(0,0,620,190,'#142238','rgba(255,255,255,.05)') +
       txt(20,22,'🧪 FORMULA VAULT',12,'#fff') +
@@ -1990,12 +1992,19 @@
     videoCard('tutorial-pipeline.mp4', '📊 Pipeline — Your Sales Board', 'How deals move through Prospecting, Proposal, Negotiation and Closed — logging outreach on a card and opening the full deal.') +
     videoCard('tutorial-clients.mp4', '👥 Clients — Every Brand in One Place', 'The client list and what each row shows, then opening a brand’s complete, editable record in one click.') +
     videoCard('tutorial-portal.mp4', '🌐 Customer Portal — Your Clients’ Private Login', 'What a brand sees when they log into their own portal — invoices, production runs, COAs &amp; documents, and their label artwork.') +
+    videoGroup('⚙️ RUNNING THE BUSINESS') +
+    videoCard('tutorial-dashboard.mp4', '📊 Dashboard — Your Business at a Glance', 'The home screen: the FDA audit-readiness scorecard, your key financials, a pipeline snapshot, and the live activity feed.') +
+    videoCard('tutorial-formula-vault.mp4', '🧪 Formula Vault — Every Recipe, Versioned', 'Where product recipes live — name, version, and status — with version control so you can approve and clone without losing history.') +
+    videoCard('tutorial-production-runs.mp4', '🏭 Production Runs — Your Production Schedule', 'The stage board (Discovery → Ship): each run’s brand, format, cases, and date, with line-conflict warnings when you schedule.') +
     videoGroup('🎓 LEARN THE CONCEPTS (EDUCATIONAL)') +
     lead('These aren’t how-to walkthroughs of the app — they explain the food-safety <i>ideas</i> behind it, in plain English. Great for onboarding new staff.') +
     videoCard('explainer-gmp-haccp-pcqi.mp4', '📚 Food Safety 101 — GMP · HACCP · PCQI', 'The three layers of compliance explained from the ground up: what GMP, HACCP (incl. the 7 principles), and the PCQI each are, and how they fit together.') +
     videoCard('explainer-lacf.mp4', '🥫 LACF &amp; Acidified Foods — The FDA Rules', 'Why sealed low-acid and acidified beverages are tightly regulated, how to classify a product, and the five mandatory steps (Process Authority → FCE → SID → BPCS → records).') +
     videoCard('explainer-sqf.mp4', '🏅 SQF Certification — What It Is &amp; How to Get There', 'What GFSI and SQF mean, why retailers ask for it, and the path to certification — built on the GMP and HACCP work you already do.') +
-    videoCard('explainer-allergen.mp4', '🥜 Allergen Control — Protecting Consumers &amp; Your Brand', 'The Big 9 allergens, the two risks (undeclared &amp; cross-contact), and the five controls: ingredients, segregation, cleaning, labeling, and training.');
+    videoCard('explainer-allergen.mp4', '🥜 Allergen Control — Protecting Consumers &amp; Your Brand', 'The Big 9 allergens, the two risks (undeclared &amp; cross-contact), and the five controls: ingredients, segregation, cleaning, labeling, and training.') +
+    videoCard('explainer-envmon.mp4', '🧫 Environmental Monitoring — Find Pathogens First', 'Why pathogens hide in the plant, the four monitoring zones, what you swab for, and the seek-and-destroy response to a positive.') +
+    videoCard('explainer-sanitation.mp4', '🧼 Sanitation &amp; CIP — Clean, Then Sanitize', 'The difference between cleaning and sanitizing, the wet-cleaning steps, how CIP works, pre-op inspection, and the master sanitation schedule.') +
+    videoCard('explainer-traceability.mp4', '🔗 Traceability &amp; Recall — Account for Every Unit', 'Lot coding, one-up/one-back tracing, the mock-recall drill, and the steps of a real recall — the 4-hour standard auditors test.');
 
   // ── Global glossary — plain-English definitions for every jargon term used
   //    across the whole help/app, grouped by area. Sits right after Overview so
