@@ -72,6 +72,29 @@ rec('no products says "None specified"', out.sparseNoneProducts);
 rec('uploaded PA letter exposes a View link', out.paView);
 rec('on-file-but-no-file PA letter warns "no stored file"', out.paNoFileWarns);
 rec('glOpenClientDoc helper exists', out.openDocFn);
+
+// Pipeline-deal matching in openClientDetail must be robust: exact name,
+// case/whitespace-different name, and email-only (name differs) all match;
+// an unrelated deal does not. (Regression: a brittle d.co===c.name exact
+// compare dropped a client's deal when the stored company string differed.)
+async function dealShows(dealCo, dealEmail){
+  return await pg.evaluate(([dealCo,dealEmail])=>{
+    clients.length=0; clients.push({id:'c1',name:'PERICO NUTRITION INC',contact:'E',email:'erick@perico.energy',color:'#1a3a6e',tc:'#9FE1CB',init:'PN'});
+    for(var k in deals){ delete deals[k]; }
+    deals.Negotiation=[{co:dealCo,name:'PERICO NUTRITION INC — Quote Request',val:'$0',email:dealEmail}];
+    var ex=document.getElementById('client-detail-overlay'); if(ex) ex.remove();
+    try{ openClientDetail('c1'); }catch(e){ return 'THREW:'+e.message; }
+    var ov=document.getElementById('client-detail-overlay');
+    return /Quote Request/.test(ov?ov.innerText:'');
+  },[dealCo,dealEmail]);
+}
+rec('deal shows on exact name match', await dealShows('PERICO NUTRITION INC','')===true);
+rec('deal shows despite case/whitespace name diff', await dealShows('  perico nutrition inc ','')===true);
+rec('deal shows on email match when name differs', await dealShows('Perico LLC','ERICK@Perico.Energy')===true);
+rec('unrelated deal does NOT show', await dealShows('Acme Co','x@acme.com')===false);
+const popW=await pg.evaluate(()=>{var ov=document.getElementById('client-detail-overlay');var d=ov&&ov.firstElementChild;return d?getComputedStyle(d).maxWidth:'';});
+rec('client popup is 1000px wide', popW==='1000px', popW);
+
 rec('no fatal app error', appErrors.length===0, appErrors.slice(0,3).join(' | '));
 
 await br.close(); srv.close();
