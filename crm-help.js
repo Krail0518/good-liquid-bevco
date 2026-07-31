@@ -468,7 +468,7 @@
     '<b>Audit trail</b>: every send (manual or scheduled) inserts a <code>daily_digest_sent</code> row into <code>audit_log</code> with full counts, so you can verify the morning email actually went out.'
   ]);
 
-  var SEC_INVOICES = MOCK_INVOICES +
+  var SEC_INVOICES = watch('tutorial-invoices.mp4') + MOCK_INVOICES +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
       '<b>(1) + New invoice</b> — opens the builder modal.',
@@ -597,6 +597,7 @@
   // Customer portal
   // ────────────────────────────────────────────────────────────
   var SEC_CUSTOMER_PORTAL =
+    watch('tutorial-portal.mp4') +
     '<h4 style="margin:4px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">🌐 FULL CUSTOMER PORTAL (LOGIN)</h4>' +
     wf(620, 360,
       box(0,0,620,360,'#0a1628','rgba(255,255,255,.05)') +
@@ -1043,7 +1044,7 @@
       '<b>Role change UI</b>: drill into a user → ROLE row at the top has a dropdown (Admin / Sales / Viewer). Confirm dialog before promoting to Admin. Your own dropdown is disabled — preventing accidental self-lockout.'
     ]);
 
-  var SEC_CLIENTS = MOCK_CLIENTS +
+  var SEC_CLIENTS = watch('tutorial-clients.mp4') + MOCK_CLIENTS +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
       '<b>(1) + Add Client</b> — header button. Opens a modal: name, contact, email, service, status (lead / active).',
@@ -1068,7 +1069,7 @@
       '<b>Printing</b>: click <b>🖨️ Print Statement</b> in the modal to open the browser print dialog. Use "Save as PDF" to email a statement to your client.'
     ]);
 
-  var SEC_PIPELINE = MOCK_PIPELINE +
+  var SEC_PIPELINE = watch('tutorial-pipeline.mp4') + MOCK_PIPELINE +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
       '<b>(1) + Add Deal</b> — creates a card in Prospecting. Click any card to open the deal detail modal (edit name / company / value / probability / notes / stage).',
@@ -1973,15 +1974,22 @@
       '<video controls preload="none" playsinline style="width:100%;max-width:820px;border-radius:9px;border:1px solid rgba(0,229,192,.2);background:#000;display:block" src="/tutorials/' + file + '"></video>' +
     '</div>';
   }
+  function videoGroup(title){ return '<h4 style="margin:22px 0 10px;font-size:12.5px;letter-spacing:1.5px;color:#f5c842">' + title + '</h4>'; }
   var SEC_VIDEO_TUTORIALS =
-    lead('Narrated, step-by-step video walkthroughs of the food-safety modules — each one shows the real screen, with a spoken guide and on-screen captions. Press play on any of them. (Sound on for the narration.) New tutorials are added here as modules grow.') +
+    lead('Narrated, step-by-step video walkthroughs — each one shows the real screen, with a spoken guide, on-screen captions, and a friendly presenter. Press play on any of them. (Sound on for the narration.) New tutorials are added here as the app grows.') +
+    videoGroup('🏭 FOOD SAFETY & GMP') +
     videoCard('tutorial-daily.mp4', '🧾 Daily GMP — Log Today’s Checks', 'The “type once, fan out” daily routine: shared header, filling Pre-Op and Hygiene forms, and one Sign &amp; save that records every form at once.') +
     videoCard('tutorial-prp.mp4', '🛡️ Prerequisite Programs — Log a Calibration Check', 'How the periodic foundation programs work, using a calibration check end to end — including how a failing check flags a deviation.') +
     videoCard('tutorial-schedule.mp4', '🗓️ GMP Schedule — What’s Due Today', 'Generating the day’s tasks and working the Overdue / Due Today / Done Today board so nothing slips.') +
     videoCard('tutorial-trace.mp4', '🔗 Trace &amp; Mock Recall — Account for Any Lot', 'Tracing a run backward to its inputs and forward to its shipments, then running a timed mock recall with a pass/fail result.') +
     videoCard('tutorial-training.mp4', '🎓 Training &amp; Competency — Keep Certifications Current', 'Reading the competency matrix and expiry badges, and adding a new training record that the system then tracks for renewal.') +
     videoCard('tutorial-audit.mp4', '🔍 Internal Audit &amp; Management Review', 'Logging audit findings, raising an NCR from a finding, scheduling an audit, and the live management-review KPI snapshot.') +
-    videoCard('tutorial-auditor.mp4', '🔒 Auditor Portal — Read-Only Records Access', 'Exactly what an outside auditor sees through their read-only token link — every register and record visible, nothing changeable.');
+    videoCard('tutorial-auditor.mp4', '🔒 Auditor Portal — Read-Only Records Access', 'Exactly what an outside auditor sees through their read-only token link — every register and record visible, nothing changeable.') +
+    videoGroup('💼 SALES, INVOICING & CLIENTS') +
+    videoCard('tutorial-invoices.mp4', '🧾 Invoices — Bill Your Brands', 'The invoice list and status filters, then building a new invoice — pick a client and service and the price and preview build themselves from the rate card.') +
+    videoCard('tutorial-pipeline.mp4', '📊 Pipeline — Your Sales Board', 'How deals move through Prospecting, Proposal, Negotiation and Closed — logging outreach on a card and opening the full deal.') +
+    videoCard('tutorial-clients.mp4', '👥 Clients — Every Brand in One Place', 'The client list and what each row shows, then opening a brand’s complete, editable record in one click.') +
+    videoCard('tutorial-portal.mp4', '🌐 Customer Portal — Your Clients’ Private Login', 'What a brand sees when they log into their own portal — invoices, production runs, COAs &amp; documents, and their label artwork.');
 
   // ── Global glossary — plain-English definitions for every jargon term used
   //    across the whole help/app, grouped by area. Sits right after Overview so
