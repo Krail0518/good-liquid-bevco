@@ -403,7 +403,7 @@
               '</label>' +
               '<div><div style="'+LABEL_STYLE+';margin-bottom:3px">W-9 RECEIVED</div><input type="date" id="gl-ec-w9-received" value="'+esc(c.w9Received)+'" style="'+INPUT_STYLE+';padding:8px;font-size:13px"></div>' +
             '</div>' +
-            (c.w9FilePath ? '<div style="font-size:12px;color:var(--teal);margin-top:6px"><a href="#" id="gl-ec-w9-link" style="color:var(--teal)">📄 View current W-9</a></div>' : '') +
+            (c.w9FilePath ? '<div style="font-size:12px;margin-top:6px"><a href="#" id="gl-ec-w9-link" style="color:var(--teal)">📄 View current W-9</a> · <a href="#" id="gl-ec-w9-dl" style="color:var(--teal)">⬇ Download</a></div>' : '') +
             '<div style="margin-top:8px"><div style="'+LABEL_STYLE+';margin-bottom:3px">UPLOAD NEW W-9 PDF</div>' +
               '<input type="file" id="gl-ec-w9-file" accept=".pdf,image/*" style="'+INPUT_STYLE+';padding:8px;font-size:12px">' +
             '</div>' +
@@ -414,7 +414,7 @@
               '</label>' +
               '<div><div style="'+LABEL_STYLE+';margin-bottom:3px">EXEMPT STATE</div><input id="gl-ec-tax-exempt-state" maxlength="2" value="'+esc(c.taxExemptState)+'" style="'+INPUT_STYLE+';padding:8px;font-size:13px;text-transform:uppercase"></div>' +
             '</div>' +
-            (c.taxExemptFilePath ? '<div style="font-size:12px;color:var(--teal);margin-top:6px"><a href="#" id="gl-ec-tax-link" style="color:var(--teal)">📄 View current exemption certificate</a></div>' : '') +
+            (c.taxExemptFilePath ? '<div style="font-size:12px;margin-top:6px"><a href="#" id="gl-ec-tax-link" style="color:var(--teal)">📄 View current exemption certificate</a> · <a href="#" id="gl-ec-tax-dl" style="color:var(--teal)">⬇ Download</a></div>' : '') +
             '<div style="margin-top:8px"><div style="'+LABEL_STYLE+';margin-bottom:3px">UPLOAD NEW EXEMPTION CERTIFICATE</div>' +
               '<input type="file" id="gl-ec-tax-exempt-file" accept=".pdf,image/*" style="'+INPUT_STYLE+';padding:8px;font-size:12px">' +
             '</div>' +
@@ -425,7 +425,7 @@
               '</label>' +
               '<div><div style="'+LABEL_STYLE+';margin-bottom:3px">PA LETTER EXPIRES</div><input type="date" id="gl-ec-pa-letter-expires" value="'+esc(c.paLetterExpires)+'" style="'+INPUT_STYLE+';padding:8px;font-size:13px"></div>' +
             '</div>' +
-            (c.paLetterFilePath ? '<div style="font-size:12px;color:var(--teal);margin-top:6px"><a href="#" id="gl-ec-pa-link" style="color:var(--teal)">📄 View current Process Authority letter</a></div>' : '') +
+            (c.paLetterFilePath ? '<div style="font-size:12px;margin-top:6px"><a href="#" id="gl-ec-pa-link" style="color:var(--teal)">📄 View current Process Authority letter</a> · <a href="#" id="gl-ec-pa-dl" style="color:var(--teal)">⬇ Download</a></div>' : '') +
             '<div style="margin-top:8px"><div style="'+LABEL_STYLE+';margin-bottom:3px">UPLOAD NEW PROCESS AUTHORITY LETTER</div>' +
               '<input type="file" id="gl-ec-pa-letter-file" accept=".pdf,image/*" style="'+INPUT_STYLE+';padding:8px;font-size:12px">' +
               '<div style="font-size:11px;color:var(--muted);margin-top:4px">FDA-required for acidified / low-acid canned beverages.</div>' +
@@ -446,6 +446,11 @@
             '<div id="gl-ec-rates-list" style="font-size:11px;color:#9aa7bd">Loading…</div>' +
             '<div style="font-size:10px;color:#6b87ad;margin-top:8px;line-height:1.5">Negotiated rates for this client. Used by the invoice builder INSTEAD OF the global tier ladder when present. Leave format blank for hour-based services (R&D / Production / Consulting).</div>' +
           '</div>' +
+          '<div style="border-top:1px solid rgba(255,255,255,.08);margin:14px 0 6px"></div>' +
+          '<div style="'+LABEL_STYLE+';margin-bottom:6px">📄 INVOICES &amp; PIPELINE</div>' +
+          '<div id="gl-ec-acct-glance" style="font-size:12px;color:#9aa7bd;margin-bottom:14px;line-height:1.7">Loading…</div>' +
+          '<div style="'+LABEL_STYLE+';margin-bottom:6px">📧 CORRESPONDENCE</div>' +
+          '<div id="cde-corr" style="margin-bottom:14px"><div style="font-size:11px;color:#9aa7bd">Loading correspondence…</div></div>' +
           '<div id="gl-ec-err" style="display:none;color:#e74c3c;font-size:12px"></div>' +
           '<div style="display:flex;gap:8px;margin-top:6px">' +
             '<button id="gl-ec-save" class="cbtn pri" style="flex:1;padding:13px;font-weight:800">💾 Save changes</button>' +
@@ -610,6 +615,13 @@
     if(w9Link)  w9Link.addEventListener('click',  function(e){ e.preventDefault(); openDoc(c.w9FilePath); });
     if(taxLink) taxLink.addEventListener('click', function(e){ e.preventDefault(); openDoc(c.taxExemptFilePath); });
     if(paLink)  paLink.addEventListener('click',  function(e){ e.preventDefault(); openDoc(c.paLetterFilePath); });
+    function dl(path){ if(typeof window.glDownloadClientDoc === 'function') window.glDownloadClientDoc(path); else openDoc(path); }
+    var w9Dl  = ov.querySelector('#gl-ec-w9-dl');
+    var taxDl = ov.querySelector('#gl-ec-tax-dl');
+    var paDl  = ov.querySelector('#gl-ec-pa-dl');
+    if(w9Dl)  w9Dl.addEventListener('click',  function(e){ e.preventDefault(); dl(c.w9FilePath); });
+    if(taxDl) taxDl.addEventListener('click', function(e){ e.preventDefault(); dl(c.taxExemptFilePath); });
+    if(paDl)  paDl.addEventListener('click',  function(e){ e.preventDefault(); dl(c.paLetterFilePath); });
 
     // Additional-emails list: add + remove handlers.
     var EM_INPUT_STYLE = INPUT_STYLE; // reuse the modal's standard input style
@@ -798,6 +810,28 @@
     });
 
     host.appendChild(ov);
+
+    // Account glance (invoices + pipeline) + correspondence — read-only, using
+    // the same sources the client card uses, so nothing is lost by making this
+    // the primary (editable) client view.
+    try {
+      var _norm = function(s){ return String(s==null?'':s).trim().toLowerCase(); };
+      var _inv = (window.invoices||[]).filter(function(i){ return i.client===clientId || i.clientName===c.name; });
+      var _deals = Object.values(window.deals||{}).flat().filter(function(d){
+        return (d.co && _norm(d.co)===_norm(c.name)) || (d.email && c.email && _norm(d.email)===_norm(c.email));
+      });
+      var g = ov.querySelector('#gl-ec-acct-glance');
+      if(g){
+        var billed = _inv.reduce(function(s,i){ return s + (Number(i.amount)||0); }, 0);
+        var html = 'Invoices: <b style="color:#eef4ff">'+_inv.length+'</b> · Billed: <b style="color:#00e5c0">$'+billed.toLocaleString()+'</b>';
+        html += _deals.length
+          ? '<br>Pipeline: '+_deals.map(function(d){ return esc(d.name||d.co)+' <span style="color:#6b87ad">('+esc(d.val||'')+')</span>'; }).join(', ')
+          : '<br><span style="color:#6b87ad">No open pipeline deals.</span>';
+        g.innerHTML = html;
+      }
+    } catch(e){}
+    if(typeof cdeLoadCorrespondence === 'function'){ try { cdeLoadCorrespondence(c); } catch(e){} }
+
     setTimeout(function(){ ov.querySelector('#gl-ec-name').focus(); }, 50);
   };
 

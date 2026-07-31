@@ -95,6 +95,43 @@ rec('unrelated deal does NOT show', await dealShows('Acme Co','x@acme.com')===fa
 const popW=await pg.evaluate(()=>{var ov=document.getElementById('client-detail-overlay');var d=ov&&ov.firstElementChild;return d?getComputedStyle(d).maxWidth:'';});
 rec('client popup is 1000px wide', popW==='1000px', popW);
 
+// Read=edit unification: openClientCard routes write users straight to the
+// editable form (all fields, no Edit button) and viewers to the read-only
+// card; the editable form carries the account glance + correspondence + doc
+// download links.
+const routing = await pg.evaluate(()=>{
+  const o={};
+  clients.length=0; clients.push({id:'c9',name:'Route Co',contact:'R',email:'r@route.co',color:'#1a3a6e',tc:'#9FE1CB',init:'RC',w9OnFile:true,w9FilePath:'c9/compliance/w9_1.pdf'});
+  o.isFn = typeof window.openClientCard==='function';
+  o.downloadFn = typeof window.glDownloadClientDoc==='function';
+  o.helperDownload = /glDownloadClientDoc/.test(window.glClientInfoSections({name:'x',paLetterOnFile:true,paLetterFilePath:'p'}));
+  function clear(){ ['gl-edit-client-modal','client-detail-overlay'].forEach(id=>{var e=document.getElementById(id);if(e)e.remove();}); }
+  // admin -> editable form
+  window.currentUser={id:'u1',role:'admin',name:'Admin'};
+  clear();
+  try{ window.openClientCard('c9'); }catch(e){ o.adminThrew=String(e.message||e); }
+  var ef=document.getElementById('gl-edit-client-modal');
+  o.adminOpensEdit = !!ef && !document.getElementById('client-detail-overlay');
+  o.hasGlance = !!(ef && ef.querySelector('#gl-ec-acct-glance'));
+  o.hasCorr = !!(ef && ef.querySelector('#cde-corr'));
+  o.hasDownload = !!(ef && ef.querySelector('#gl-ec-w9-dl'));
+  if(ef) ef.remove();
+  // viewer -> read-only card
+  window.currentUser={id:'u2',role:'viewer',name:'Viewer'};
+  clear();
+  try{ window.openClientCard('c9'); }catch(e){ o.viewerThrew=String(e.message||e); }
+  o.viewerOpensRead = !!document.getElementById('client-detail-overlay') && !document.getElementById('gl-edit-client-modal');
+  return o;
+});
+rec('openClientCard dispatcher exists', routing.isFn);
+rec('admin/write user gets the editable form directly', routing.adminOpensEdit, JSON.stringify(routing));
+rec('editable form shows invoices/pipeline glance', routing.hasGlance);
+rec('editable form shows correspondence', routing.hasCorr);
+rec('uploaded doc has a Download link in the form', routing.hasDownload);
+rec('viewer (read-only role) still gets the read card', routing.viewerOpensRead);
+rec('glDownloadClientDoc helper exists', routing.downloadFn);
+rec('read card doc rows also expose Download', routing.helperDownload);
+
 rec('no fatal app error', appErrors.length===0, appErrors.slice(0,3).join(' | '));
 
 await br.close(); srv.close();
