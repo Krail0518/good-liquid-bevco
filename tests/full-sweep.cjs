@@ -518,6 +518,10 @@ rec('Daily GMP','combo entry has the shared header (typed once)',gmp.entryHasSha
 const p3w1=await pg.evaluate(()=>typeof window.glRenderGMPSchedule==='function' && typeof window.glRenderTrace==='function');
 rec('Daily GMP','Phase 3 Wave 1 schedule + trace renderers present',p3w1);
 
+/* Phase 3 Wave 2 presence: training + audit/management-review renderers. */
+const p3w2=await pg.evaluate(()=>typeof window.glRenderTraining==='function' && typeof window.glRenderAuditReview==='function');
+rec('Daily GMP','Phase 3 Wave 2 training + audit-review renderers present',p3w2);
+
 /* ---------- PHASE 8: no fatal errors overall ---------- */
 rec('Stability','no fatal JS error across the whole sweep',appErrors.length===0,appErrors.slice(0,4).join(' | '));
 

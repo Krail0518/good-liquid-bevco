@@ -1949,6 +1949,8 @@ select option, .fsel option {
         <div class="cni" id="nav-gmp" onclick="cNav(&#39;gmp&#39;,this)"><span class="cni-ico">🧾</span>Daily GMP</div>
         <div class="cni" id="nav-gmpsched" onclick="cNav(&#39;gmpsched&#39;,this)"><span class="cni-ico">🗓️</span>GMP Schedule</div>
         <div class="cni" id="nav-trace" onclick="cNav(&#39;trace&#39;,this)"><span class="cni-ico">🔗</span>Trace / Recall</div>
+        <div class="cni" id="nav-training" onclick="cNav(&#39;training&#39;,this)"><span class="cni-ico">🎓</span>Training</div>
+        <div class="cni" id="nav-auditreview" onclick="cNav(&#39;auditreview&#39;,this)"><span class="cni-ico">🔍</span>Internal Audit</div>
         <div class="cni" id="nav-cip" onclick="cNav(&#39;cip&#39;,this)"><span class="cni-ico">🧼</span>CIP / Sanitation Log</div>
         <div class="cni" id="nav-holds" onclick="cNav(&#39;holds&#39;,this)"><span class="cni-ico">🚫</span>Hold Tags</div>
         <div class="cni" id="nav-audit" onclick="cNav(&#39;audit&#39;,this)" style="display:none"><span class="cni-ico">📜</span>Audit Log</div>
@@ -2011,6 +2013,12 @@ select option, .fsel option {
 
       <!-- ═══ TRACEABILITY / MOCK RECALL — mount point; all rendering in crm-trace.js ═══ -->
       <div id="cpg-trace" class="cpg"></div>
+
+      <!-- ═══ TRAINING & COMPETENCY — mount point; all rendering in crm-training.js ═══ -->
+      <div id="cpg-training" class="cpg"></div>
+
+      <!-- ═══ INTERNAL AUDIT / MGMT REVIEW — mount point; all rendering in crm-auditreview.js ═══ -->
+      <div id="cpg-auditreview" class="cpg"></div>
 
       <!-- ═══ HOLD TAGS — GMP-QC-001 ═══ -->
       <div id="cpg-holds" class="cpg">
@@ -11859,5 +11867,7 @@ window.addEventListener('appinstalled', () => {
 <script src="/crm-gmp.js"></script>
 <script src="/crm-gmpsched.js"></script>
 <script src="/crm-trace.js"></script>
+<script src="/crm-training.js"></script>
+<script src="/crm-auditreview.js"></script>
 <script src="/crm-selftest.js"></script>
 </body></html>

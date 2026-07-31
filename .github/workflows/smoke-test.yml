@@ -115,3 +115,10 @@ jobs:
           NODE_PATH: /tmp/pw/node_modules
           REPO_ROOT: ${{ github.workspace }}
         run: node tests/phase3-wave1.test.cjs
+
+      # Phase 3 Wave 2 — training records + internal audit/findings/mgmt review.
+      - name: Run Phase 3 Wave 2 test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/phase3-wave2.test.cjs
