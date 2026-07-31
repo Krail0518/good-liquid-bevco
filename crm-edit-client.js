@@ -257,7 +257,7 @@
     ov.id = 'gl-edit-client-modal';
     ov.setAttribute('style','position:fixed;inset:0;z-index:1050;background:rgba(6,13,26,.92);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;padding:20px');
     ov.innerHTML =
-      '<div style="background:#142238;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:32px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto">' +
+      '<div style="background:#142238;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:32px;width:100%;max-width:1040px;max-height:90vh;overflow-y:auto">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:22px">' +
           '<div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:var(--teal)">EDIT CLIENT</div>' +
           '<button id="gl-ec-close" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer">✕</button>' +
@@ -746,7 +746,8 @@
       if(paFile  && !newPaPath)  failedUploads.push('Process Authority letter');
       if(failedUploads.length){
         btn.disabled = false; btn.textContent = orig;
-        setErr('⚠ Could not store: ' + failedUploads.join(', ') + '. The file storage (client-docs bucket) isn’t available, so nothing was uploaded — and no changes were saved. Once storage is set up, re-open Edit and upload again.');
+        var why = window.__lastUploadError ? (' (' + window.__lastUploadError + ')') : '';
+        setErr('⚠ Could not store: ' + failedUploads.join(', ') + why + '. Nothing was uploaded and no changes were saved. Try again; if it keeps failing, send me this message.');
         return;
       }
 
@@ -805,8 +806,17 @@
 
       var ok = await window.glUpdateClient(clientId, patch);
       btn.disabled = false; btn.textContent = orig;
-      if(ok) ov.remove();
-      else   setErr('Save failed — check the browser console.');
+      if(ok){
+        ov.remove();
+        // If a document was just uploaded, reopen the form so its View /
+        // Download links show immediately — they only render once the file has
+        // a stored path, which didn't exist while the form was first open.
+        if((newW9Path || newTaxPath || newPaPath) && typeof window.glOpenEditClient === 'function'){
+          setTimeout(function(){ window.glOpenEditClient(clientId); }, 80);
+        }
+      } else {
+        setErr('Save failed — check the browser console.');
+      }
     });
 
     host.appendChild(ov);

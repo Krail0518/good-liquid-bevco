@@ -5185,14 +5185,15 @@ function closeAddClientModal(){
    client-docs bucket. Returns the storage path or '' on failure.
    Exposed on window so fix.js (Edit Client modal) can reuse it. */
 async function uploadComplianceDoc(file, clientId, kind){
-  if(!file || !window.supa) return '';
+  window.__lastUploadError = '';
+  if(!file || !window.supa){ window.__lastUploadError = 'Not signed in / storage unavailable'; return ''; }
   try {
     const ext = (file.name.split('.').pop() || 'pdf').toLowerCase();
     const path = `${clientId}/compliance/${kind}_${Date.now()}.${ext}`;
     const { error } = await window.supa.storage.from('client-docs').upload(path, file, { cacheControl:'3600', upsert:false });
-    if(error){ console.warn('[GL] compliance upload error', error); return ''; }
+    if(error){ console.warn('[GL] compliance upload error', error); window.__lastUploadError = (error && (error.message || error.error || error.statusCode)) || 'upload rejected'; return ''; }
     return path;
-  } catch(e){ console.warn('[GL] compliance upload threw', e); return ''; }
+  } catch(e){ console.warn('[GL] compliance upload threw', e); window.__lastUploadError = (e && e.message) || String(e); return ''; }
 }
 window.uploadComplianceDoc = uploadComplianceDoc;
 
