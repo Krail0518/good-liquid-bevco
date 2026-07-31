@@ -222,6 +222,26 @@ const CORE_DEALS={
   'Closed Won':[{id:'d4',name:'Sample run',co:'Perico Nutrition',val:'$3,200',createdAt:'2026-06-30'}],
   'Closed Lost':[]
 };
+const DASH_ACTS=[
+  {type:'inv',icon:'🧾',name:'Invoice GL-1042 sent',detail:'Perico Nutrition · $3,850',time:'2h ago'},
+  {type:'deal',icon:'📊',name:'Deal moved to Proposal',detail:'Lotus Beverages · 12oz can run',time:'Yesterday'},
+  {type:'client',icon:'👥',name:'New brand added',detail:'Cold Brew Collective',time:'2d ago'},
+  {type:'pay',icon:'💳',name:'Payment received',detail:'Perico Nutrition · $1,500',time:'3d ago'},
+  {type:'note',icon:'📝',name:'Note added',detail:'Lotus — samples approved',time:'4d ago'}
+];
+const FORMULAS=[
+  {id:'f1',name:'SunBurst Mango Seltzer',version:2,status:'approved',batch_size_gal:200,target_yield_cases:520,allergens:[],updated_at:'2026-07-10'},
+  {id:'f2',name:'Cold Brew Concentrate',version:1,status:'approved',batch_size_gal:150,target_yield_cases:300,allergens:[],updated_at:'2026-06-28'},
+  {id:'f3',name:'Oat Protein Shake',version:3,status:'draft',batch_size_gal:120,target_yield_cases:240,allergens:['Oats','Soy'],updated_at:'2026-07-22'}
+];
+const PROD_DATA={
+  production_runs:[
+    {id:'pr1',run_name:'Cold Brew R-2041',client_name:'Perico Nutrition',format:'12oz can',cases:520,stage:'Production',scheduled_start_date:'2026-07-15',lot_number:'CB-2041',production_line_id:'l1'},
+    {id:'pr2',run_name:'Mango Seltzer R-2043',client_name:'Lotus Beverages',format:'12oz can',cases:800,stage:'Sample',scheduled_start_date:'2026-07-22',production_line_id:'l1'},
+    {id:'pr3',run_name:'Oat Shake R-2044',client_name:'Cold Brew Collective',format:'8oz bottle',cases:300,stage:'Formulation',scheduled_start_date:'2026-07-28',production_line_id:'l2'}
+  ],
+  production_lines:[{id:'l1',name:'Line 1'},{id:'l2',name:'Line 2'}]
+};
 async function coreSetup(pg, page, opts){
   await pg.evaluate(({page,opts})=>{
     window.__chain({});                       // stub supa + admin currentUser (window)
@@ -255,6 +275,81 @@ const PORTAL_DATA={
 };
 
 const STORYBOARDS={
+  dashboard:{
+    title:'Dashboard — Your Business at a Glance',
+    async setup(pg){
+      await pg.evaluate(({clients,invoices,deals,acts})=>{
+        window.__chain({});
+        window.currentUser={id:'u1',email:'mike@krail.us',role:'admin',name:'Mike',initials:'MK'};
+        window.clients.length=0; clients.forEach(c=>window.clients.push(c));
+        window.invoices.length=0; invoices.forEach(i=>window.invoices.push(i));
+        Object.keys(window.deals).forEach(s=>{ window.deals[s].length=0; });
+        Object.keys(deals).forEach(s=>{ (deals[s]||[]).forEach(d=>{ (window.deals[s]=window.deals[s]||[]).push(d); }); });
+        if(window.activities){ window.activities.length=0; acts.forEach(a=>window.activities.push(a)); }
+        if(window.GL_HOOKS){ window.GL_HOOKS._navGuards=[]; }
+        document.getElementById('crm-panel').classList.add('show');
+        window.cNav('dashboard');
+        if(typeof window.renderDash==='function') window.renderDash();
+        // de-dupe the audit-readiness scorecard if it mounted more than once
+        var sc=document.querySelectorAll('#gl-audit-scorecard'); for(var i=1;i<sc.length;i++) sc[i].remove();
+        window.__hud();
+      }, {clients:CORE_CLIENTS,invoices:CORE_INVOICES,deals:CORE_DEALS,acts:DASH_ACTS});
+      await sleep(500); await pg.evaluate(()=>{ var sc=document.querySelectorAll('#gl-audit-scorecard'); for(var i=1;i<sc.length;i++) sc[i].remove(); window.__hud(); });
+    },
+    steps:[
+      {say:"The Dashboard is your home screen — the health of the whole business in a single glance. Most people start their day right here."},
+      {say:"Right at the top, an F D A audit-readiness scorecard grades how prepared you are — a green check for each thing that's handled, and a nudge for anything that still needs attention.", act:{type:'move',sel:'#gl-audit-scorecard'}},
+      {say:"Your key financial numbers are here too: how much you've collected, what's still pending, what's gone overdue, and how many active brands you're working with.", act:{type:'move',sel:'#dash-metrics'}},
+      {say:"A pipeline snapshot shows how your open deals are spread across the stages — an instant read on what's coming.", act:{type:'move',sel:'#pipe-snap'}},
+      {say:"And a live activity feed shows the latest across the CRM — invoices sent, payments received, and deals moving.", act:{type:'move',sel:'#dash-act'}},
+      {say:"One screen, the whole picture — compliance, money, and sales together. From here you see what needs attention and jump straight to it."}
+    ]
+  },
+  'formula-vault':{
+    title:'Formula Vault — Every Recipe, Versioned',
+    async setup(pg){
+      await pg.evaluate((formulas)=>{
+        window.__chain({formulas:formulas.map(f=>Object.assign({},f))});  // refresh() reloads from supa
+        window.currentUser={id:'u1',email:'mike@krail.us',role:'admin',name:'Mike',initials:'MK'};
+        window.glFormulas=formulas.map(f=>Object.assign({},f));
+        if(window.GL_HOOKS){ window.GL_HOOKS._navGuards=[]; }
+        document.getElementById('crm-panel').classList.add('show');
+        window.cNav('formulas');
+        window.__hud();
+      }, FORMULAS);
+      await sleep(700); await pg.evaluate(()=>window.__hud());
+    },
+    steps:[
+      {say:"The Formula Vault is where every product recipe lives — versioned, and kept in one secure place instead of scattered across spreadsheets."},
+      {say:"Each formula shows its name, its version number, and its status — draft, or approved.", act:{type:'move',sel:'#cpg-formulas'}},
+      {say:"Because it's versioned, every change is tracked. You can approve a formula, then clone it as the next version to iterate — so your history is never lost.", act:{type:'move',sel:'#cpg-formulas'}},
+      {say:"Open any formula to see its full details.", act:{type:'click',sel:'tr:has-text("SunBurst Mango Seltzer")'}},
+      {say:"Its name, version, status, batch size, target yield, and the allergens it carries — all captured, and all under version control.", act:{type:'move',sel:'#gl-fv-name'}},
+      {say:"So R&D and production always work from the same, current recipe — no confusion, and no lost history."}
+    ]
+  },
+  'production-runs':{
+    title:'Production Runs — Your Production Schedule',
+    async setup(pg){
+      await pg.evaluate(async(data)=>{
+        window.__chain(JSON.parse(JSON.stringify(data)));
+        window.currentUser={id:'u1',email:'mike@krail.us',role:'admin',name:'Mike',initials:'MK'};
+        if(window.GL_HOOKS){ window.GL_HOOKS._navGuards=[]; }
+        document.getElementById('crm-panel').classList.add('show');
+        window.cNav('production-runs');
+        window.__hud();
+      }, PROD_DATA);
+      await sleep(1000); await pg.evaluate(()=>window.__hud());
+    },
+    steps:[
+      {say:"The Production Runs board is your production schedule — every batch, and exactly where it stands in your process."},
+      {say:"Runs are organized by stage, from Discovery and Formulation, through Sample and COA, all the way to Production and Ship.", act:{type:'move',sel:'#cpg-production-runs'}},
+      {say:"Each card is one run — the brand, the product format, the case count, and its scheduled date.", act:{type:'move',sel:'text=Cold Brew R-2041'}},
+      {say:"To schedule a new run, click Add Run.", act:{type:'click',sel:'button:has-text("Add Run"):visible'}},
+      {say:"You pick the brand, the line, and the dates — and the board even warns you if two runs would collide on the same line at the same time."},
+      {say:"It's the single shared view your operations team runs the floor by — and it feeds the production stage your customers see in their portal."}
+    ]
+  },
   portal:{
     title:'Customer Portal — Your Clients’ Private Login',
     url:'/index.html?portal=1',
@@ -469,7 +564,7 @@ const STORYBOARDS={
 const ATO=4000;   // per-action timeout so a bad step can't overrun and wreck sync
 async function moveCursor(pg,sel){
   let box=null;
-  try { box=await pg.locator(sel).first().boundingBox({timeout:ATO}); } catch(e){ return null; }
+  try { const loc=pg.locator(sel).first(); await loc.scrollIntoViewIfNeeded({timeout:ATO}); await sleep(180); box=await loc.boundingBox({timeout:ATO}); } catch(e){ return null; }
   if(!box) return null;
   const x=Math.round(box.x+box.width/2), y=Math.round(box.y+Math.min(box.height/2,22));
   await pg.evaluate(({x,y})=>{const c=document.getElementById('vcursor');c.style.left=x+'px';c.style.top=y+'px';},{x,y});
