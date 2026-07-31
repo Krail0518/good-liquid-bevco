@@ -25,6 +25,13 @@
   function box(x,y,w,h,fill,stroke){ return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="6" fill="'+(fill||'#243a56')+'" stroke="'+(stroke||'rgba(255,255,255,.06)')+'"/>'; }
   function txt(x,y,t,size,color,anchor){ return '<text x="'+x+'" y="'+y+'" fill="'+(color||'#cfd9e6')+'" font-size="'+(size||11)+'" text-anchor="'+(anchor||'start')+'" font-family="Arial">'+t+'</text>'; }
   function tag(x,y,n){ return '<circle cx="'+x+'" cy="'+y+'" r="11" fill="#00e5c0"/><text x="'+x+'" y="'+(y+4)+'" fill="#0a1628" font-size="11" text-anchor="middle" font-weight="bold" font-family="Arial">'+n+'</text>'; }
+  // A prerequisite-program tile for the GMP-hub mockup: icon, label, cadence.
+  function prpTile(x,y,icon,label,cad){
+    return box(x,y,143,68,'#0e1c30','rgba(0,229,192,.18)') +
+      txt(x+14,y+30,icon,16,'#fff') +
+      txt(x+14,y+50,label,11,'#00e5c0') +
+      txt(x+14,y+63,cad,9,'#9aa7bd');
+  }
 
   var MOCK_DASHBOARD = wf(620, 320,
     box(0,0,140,320,'#142238','rgba(255,255,255,.05)') +
@@ -2015,10 +2022,113 @@
       'Deals link to a client by normalized name <i>or</i> email, so a small spelling/casing difference no longer hides a deal.'
     ]);
 
+  // ── Prerequisite Programs (2026) — detailed, mockup-led ──
+  var MOCK_PRP_HUB = wf(620, 330,
+    box(0,0,140,330,'#142238','rgba(255,255,255,.05)') +
+    txt(15,26,'GMP hub',10,'#9aa7bd') +
+    txt(15,50,'• Log today',11,'#9aa7bd') +
+    txt(15,70,'• Open deviations',11,'#f5c842') +
+    txt(15,90,'• Auditor access',11,'#9aa7bd') +
+    txt(15,110,'• Documents',11,'#9aa7bd') +
+    txt(160,24,'Daily registers (type-once fan-out)',10,'#9aa7bd') +
+    box(160,32,445,26,'rgba(255,255,255,.03)') +
+    txt(172,49,'🧼 Pre-Op   🧑‍🔧 Hygiene   🌡️ CCP   🥫 Seam   🏷️ Label   📦 Receiving',10,'#cfd9e6') +
+    txt(160,86,'🛡️ PREREQUISITE PROGRAMS',12,'#00e5c0') +
+    txt(160,104,'Periodic foundation programs — each opens its own single-form entry',9,'#9aa7bd') +
+    prpTile(160,116,'📏','Calibration','Monthly') +
+    prpTile(311,116,'🐜','Pest Control','Weekly') +
+    prpTile(462,116,'🧪','Chemical & SDS','As needed') +
+    prpTile(160,192,'🔦','Glass & Plastic','Weekly') +
+    prpTile(311,192,'💧','Water Potability','Annual') +
+    prpTile(462,192,'📣','Complaint Log','As needed') +
+    box(160,272,445,34,'rgba(0,229,192,.05)','rgba(0,229,192,.25)') +
+    txt(172,293,'Click a tile → its records list → ➕ New entry opens the single form',10,'#00e5c0') +
+    tag(160,86,1) + tag(160,116,2) + tag(462,150,3) + tag(160,272,4)
+  );
+
+  var MOCK_PRP_FORM = wf(620, 340,
+    box(0,0,620,340,'#142238','rgba(255,255,255,.05)') +
+    txt(20,26,'🛡️ CALIBRATION VERIFICATION',13,'#00e5c0') +
+    box(20,40,580,60,'rgba(0,229,192,.05)','rgba(0,229,192,.18)') +
+    txt(30,58,'SHARED — ENTERED ONCE',9,'#00e5c0') +
+    box(30,66,100,26) + txt(38,83,'2026-07-31',10,'#fff') +
+    box(138,66,80,26) + txt(146,83,'Day',10,'#fff') +
+    box(226,66,120,26) + txt(234,83,'Line 1',10,'#fff') +
+    box(354,66,110,26) + txt(362,83,'Run B-42',10,'#fff') +
+    box(472,66,118,26) + txt(480,83,'Op Tester',10,'#fff') +
+    box(20,112,285,46) + txt(28,130,'Instrument *',9,'#9aa7bd') + txt(28,150,'Digital thermometer',11,'#fff') +
+    box(315,112,285,46) + txt(323,130,'Reference standard *',9,'#9aa7bd') + txt(323,150,'NIST ice point',11,'#fff') +
+    box(20,166,140,46) + txt(28,184,'As-found',9,'#9aa7bd') + txt(28,204,'165.2',11,'#fff') +
+    box(170,166,140,46) + txt(178,184,'As-left',9,'#9aa7bd') + txt(178,204,'165.0',11,'#fff') +
+    box(320,166,130,46,'rgba(255,133,121,.08)','rgba(255,133,121,.45)') + txt(328,184,'Within tolerance *',9,'#9aa7bd') + txt(328,204,'Fail ▾',11,'#ff8579') +
+    box(460,166,140,46) + txt(468,184,'Next due 📅',9,'#9aa7bd') + txt(468,204,'2026-08-31',11,'#fff') +
+    box(20,220,580,44) + txt(28,238,'Adjustment / notes',9,'#9aa7bd') + txt(28,257,'Re-calibrated; retest passed',10,'#cfd9e6') +
+    box(20,272,580,26,'rgba(245,200,66,.08)','rgba(245,200,66,.3)') +
+    txt(30,289,'⚠ A “Fail” auto-flags a deviation → Open deviations → ⤴ raise NCR / CAPA',10,'#f5c842') +
+    box(360,306,110,26,'rgba(255,255,255,.06)') + txt(415,323,'Save (draft)',10,'#dfe7f1','middle') +
+    box(478,306,122,26,'rgba(0,229,192,.14)','rgba(0,229,192,.35)') + txt(539,323,'✍️ Sign & save',10,'#00e5c0','middle') +
+    tag(20,40,1) + tag(320,166,2) + tag(460,166,3) + tag(478,306,4)
+  );
+
+  var PRP_REF_TABLE =
+    '<div style="overflow-x:auto;margin:12px 0 4px">' +
+    '<table style="width:100%;border-collapse:collapse;font-size:12px;color:#cfd9e6">' +
+    '<thead><tr style="background:#0d1e35;border-bottom:2px solid rgba(0,229,192,.25)">' +
+    '<th style="text-align:left;padding:8px 10px;color:#00e5c0;font-size:11px;letter-spacing:1px;white-space:nowrap">REGISTER</th>' +
+    '<th style="text-align:left;padding:8px 10px;color:#00e5c0;font-size:11px;letter-spacing:1px">WHAT IT CAPTURES</th>' +
+    '<th style="text-align:left;padding:8px 10px;color:#00e5c0;font-size:11px;letter-spacing:1px">FLAGS A DEVIATION WHEN…</th>' +
+    '<th style="text-align:left;padding:8px 10px;color:#00e5c0;font-size:11px;letter-spacing:1px;white-space:nowrap">CADENCE</th>' +
+    '</tr></thead><tbody>' +
+    '<tr style="background:#111e34"><td style="padding:7px 10px;white-space:nowrap">📏 <b>Calibration</b><br><span style="color:#00e5c0;font-family:monospace;font-size:10px">GMP-CAL-001</span></td><td style="padding:7px 10px;color:#9aa7bd">Instrument + ID, reference standard, as-found / as-left readings, within-tolerance, next-due date, performed by</td><td style="padding:7px 10px;color:#9aa7bd">A reading is <b style="color:#ff8579">out of tolerance</b></td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Monthly</td></tr>' +
+    '<tr style="background:#0f1b30"><td style="padding:7px 10px;white-space:nowrap">🐜 <b>Pest Control</b><br><span style="color:#00e5c0;font-family:monospace;font-size:10px">GMP-PEST-001</span></td><td style="padding:7px 10px;color:#9aa7bd">In-house vs PCO, technician, devices checked / serviced, exterior &amp; perimeter, pest activity, corrective action</td><td style="padding:7px 10px;color:#9aa7bd"><b style="color:#ff8579">Activity is found</b> or a device is compromised</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Weekly</td></tr>' +
+    '<tr style="background:#111e34"><td style="padding:7px 10px;white-space:nowrap">🧪 <b>Chemical &amp; SDS</b><br><span style="color:#00e5c0;font-family:monospace;font-size:10px">GMP-CHEM-001</span></td><td style="padding:7px 10px;color:#9aa7bd">Chemical, use, food-safe approval, SDS on file, segregated storage, concentration, lot</td><td style="padding:7px 10px;color:#9aa7bd">No current SDS, <b style="color:#ff8579">not food-safe</b>, or mis-stored</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">As needed</td></tr>' +
+    '<tr style="background:#0f1b30"><td style="padding:7px 10px;white-space:nowrap">🔦 <b>Glass &amp; Brittle Plastic</b><br><span style="color:#00e5c0;font-family:monospace;font-size:10px">GMP-GLASS-001</span></td><td style="padding:7px 10px;color:#9aa7bd">Area, register current, all listed items intact, breakage type, action taken</td><td style="padding:7px 10px;color:#9aa7bd">An item isn’t intact, or a <b style="color:#ff8579">break exposed product</b></td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Weekly</td></tr>' +
+    '<tr style="background:#111e34"><td style="padding:7px 10px;white-space:nowrap">💧 <b>Water Potability</b><br><span style="color:#00e5c0;font-family:monospace;font-size:10px">GMP-WATER-001</span></td><td style="padding:7px 10px;color:#9aa7bd">Source, test type, lab, coliform / E. coli, residual chlorine, result, report on file, next-due</td><td style="padding:7px 10px;color:#9aa7bd">Coliform present or a <b style="color:#ff8579">non-potable result</b></td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">Annual +</td></tr>' +
+    '<tr style="background:#0f1b30"><td style="padding:7px 10px;white-space:nowrap">📣 <b>Complaint Log</b><br><span style="color:#00e5c0;font-family:monospace;font-size:10px">GMP-COMPL-001</span></td><td style="padding:7px 10px;color:#9aa7bd">Date, customer, product, lot, category, description, investigation, corrective action, NCR #</td><td style="padding:7px 10px;color:#9aa7bd">It’s a <b style="color:#ff8579">food-safety complaint</b> (foreign material, illness, allergen)</td><td style="padding:7px 10px;color:#9aa7bd;white-space:nowrap">As needed</td></tr>' +
+    '</tbody></table></div>';
+
+  var SEC_PRP =
+    lead('<b>Prerequisite programs (PRPs)</b> are the periodic support programs the whole food-safety system rests on — calibration, pest control, chemical &amp; SDS control, glass &amp; brittle-plastic control, water potability, and customer complaints. They live on the <b>🧾 Daily GMP</b> hub under a <b>🛡️ Prerequisite Programs</b> heading. Unlike the daily forms, each PRP is its <b>own single-form entry</b> — it is <i>not</i> part of the type-once fan-out — because these run on a weekly / monthly / annual cadence rather than every production run.') +
+    '<h4 style="margin:18px 0 6px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">WHERE THEY LIVE — THE GMP HUB</h4>' +
+    MOCK_PRP_HUB +
+    bullets([
+      '<b>1 · The 🛡️ Prerequisite Programs section</b> — sits directly below the daily register tiles on the GMP hub. Six tiles, one per program.',
+      '<b>2 · A program tile</b> (e.g. 📏 Calibration) — click it to open that register’s history, then <b>➕ New entry</b> to log one. Same pattern as the daily registers, but for periodic programs.',
+      '<b>3 · The cadence</b> is shown right on each tile so you know how often it’s due — Calibration monthly, Pest &amp; Glass weekly, Water annual, Chemical &amp; Complaint as-needed.',
+      '<b>4 · The single-form entry</b> — because a PRP isn’t part of the daily fan-out, ➕ New entry opens just that one form (shown next), not the whole day’s combo.'
+    ]) +
+    '<h4 style="margin:22px 0 6px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">LOGGING ONE — THE SINGLE-FORM ENTRY</h4>' +
+    lead('Opening a PRP (here, <b>Calibration</b>) shows a focused form: the shared header on top, then just this program’s fields. Fill it, then <b>Sign &amp; save</b>.') +
+    MOCK_PRP_FORM +
+    bullets([
+      '<b>1 · Shared header</b> — date, shift, line, run, operator are recorded with the entry (pre-filled with today and your name). It’s the same header the daily forms use, so PRP records sit alongside them cleanly.',
+      '<b>2 · The pass / fail (safety-critical) field</b> — every PRP has one. Selecting <b style="color:#ff8579">Fail</b> — or its equivalent (“activity found”, “not food-safe”, “not intact / product exposed”, “non-potable”, or a food-safety complaint = <b>Yes</b>) — <b>auto-flags a deviation</b>.',
+      '<b>3 · Date fields</b> — e.g. <b>Next calibration due</b> / <b>Next test due</b>, so the following one is scheduled, not guessed. (This is the new <code>date</code> field type added for PRPs.)',
+      '<b>4 · ✍️ Sign &amp; save</b> — e-signs the record and stores it as a <code>compliance_records</code> row, exactly like every other GMP form. Nothing is kept only in the browser; <b>Save (draft)</b> stores it unsigned.'
+    ]) +
+    '<h4 style="margin:22px 0 6px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">WHAT EACH REGISTER CAPTURES</h4>' +
+    PRP_REF_TABLE +
+    '<h4 style="margin:22px 0 6px;font-size:13px;letter-spacing:1.5px;color:#f5c842">WHEN A CHECK FAILS — THE DEVIATION FLOW</h4>' +
+    bullets([
+      'A flagged PRP deviation appears on the GMP hub under <b style="color:#f5c842">⚠️ Open deviations</b>, in the same list as the daily-GMP deviations — one place to see everything that failed a check.',
+      'From there, <b>⤴ Raise NCR</b> opens a corrective action (root cause, corrective + preventive action, due date, verified close-out) tied back to the exact record that raised it.'
+    ]) +
+    '<h4 style="margin:22px 0 6px;font-size:13px;letter-spacing:1.5px;color:#5fcf9e">ON THE 🗓️ GMP SCHEDULE BOARD</h4>' +
+    bullets([
+      'The recurring PRPs are seeded into the scheduler: <b>Pest</b> and <b>Glass</b> weekly, <b>Calibration</b> monthly, <b>Water</b> annually. (Chemical &amp; Complaint are event-driven, so they aren’t scheduled.)',
+      '“<b>＋ Generate today’s tasks</b>” drops them onto the <b style="color:#ff8579">Overdue</b> / <b style="color:#f5c842">Due today</b> board when due, each with a one-click <b>✓ Mark done</b> — so a monthly calibration or a weekly pest check can’t quietly slip.'
+    ]) +
+    '<h4 style="margin:22px 0 6px;font-size:13px;letter-spacing:1.5px;color:#9aa7bd">WHO CAN SEE IT</h4>' +
+    bullets([
+      'Staff log and edit PRP entries. Every record is e-signed and stored in the database under row-level security.',
+      'An auditor with a read-only token sees the PRP registers and their deviations exactly like the daily forms — everything is visible, nothing can be changed.'
+    ]);
+
   var HELP_HTML =
     section('help-overview',        '👋 OVERVIEW',                   SEC_OVERVIEW) +
     section('help-daily-gmp',       '🧾 DAILY GMP (LOG + FAN-OUT)',  SEC_DAILY_GMP) +
     section('help-gmp-schedule',    '🗓️ GMP SCHEDULE (DUE / OVERDUE)', SEC_GMP_SCHEDULE) +
+    section('help-prp',             '🛡️ PREREQUISITE PROGRAMS',      SEC_PRP) +
     section('help-trace-recall',    '🔗 TRACE / MOCK RECALL',        SEC_TRACE_RECALL) +
     section('help-training-gmp',    '🎓 TRAINING & COMPETENCY',      SEC_TRAINING) +
     section('help-internal-audit',  '🔍 INTERNAL AUDIT & MGMT REVIEW', SEC_INTERNAL_AUDIT) +
@@ -2076,6 +2186,7 @@
   var TOC_ENTRIES = [
     ['help-overview','👋 Overview'],
     ['help-daily-gmp','🧾 Daily GMP'],['help-gmp-schedule','🗓️ GMP Schedule'],
+    ['help-prp','🛡️ Prerequisite Programs'],
     ['help-trace-recall','🔗 Trace / Recall'],['help-training-gmp','🎓 Training'],
     ['help-internal-audit','🔍 Internal Audit'],['help-auditor-portal','🔒 Auditor Portal'],
     ['help-artwork','🎨 Artwork / SKUs'],['help-client-card-2026','🪪 Client Card'],
