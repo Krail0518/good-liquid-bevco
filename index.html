@@ -2386,7 +2386,7 @@ select option, .fsel option {
         <div class="cph">
           <div><div class="cpt">PIPELINE</div><div class="cps" id="pipe-sub">Active brand engagements</div></div>
           <div style="display:flex;gap:8px">
-            <input id="gl-pipeline-search" type="text" placeholder="Search leads…" oninput="glFilterPipeline(this.value)" style="padding:6px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#fff;font-size:12px;width:200px;outline:none" />
+            <input id="gl-pipeline-search" type="text" placeholder="Search company or email…" oninput="glFilterPipeline(this.value)" style="padding:6px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#fff;font-size:12px;width:200px;outline:none" />
             <button class="cbtn" onclick="openBulkOutreach()" style="background:rgba(245,200,66,.08);border-color:rgba(245,200,66,.25);color:#d4a200">📤 Bulk Outreach</button>
             <button class="cbtn" onclick="openAddDealModal()" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)">+ Add Deal</button>
             <button id="gl-pipeline-quote-btn" class="cbtn" onclick="if(typeof glOpenQuoteBuilder==='function')glOpenQuoteBuilder(null,null)" style="background:rgba(26,111,255,.1);border-color:rgba(26,111,255,.35);color:#5a9fff">📋 Quote Builder</button>
@@ -5559,8 +5559,10 @@ window.glFilterPipeline = function(query){
   var cards = document.querySelectorAll('.kcard');
   cards.forEach(function(card){
     if(!q){ card.style.display = ''; return; }
-    var text = card.innerText.toLowerCase();
-    card.style.display = text.indexOf(q) > -1 ? '' : 'none';
+    // Prefer the deal's data haystack (company + email + contact + …); fall
+    // back to visible text for any card that predates data-search.
+    var hay = card.getAttribute('data-search') || card.innerText.toLowerCase();
+    card.style.display = hay.indexOf(q) > -1 ? '' : 'none';
   });
   // Also show/hide empty-column messages
   document.querySelectorAll('[id^="gl-pipeline-col-"]').forEach(function(col){
@@ -5612,7 +5614,12 @@ function renderKanban(){
              <button onclick="setDealOutreach('${d.id||''}','${stage}',${di},null)" style="font-size:9px;padding:2px 7px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;color:var(--muted);cursor:pointer">Clear</button>`
           : `<button onclick="setDealOutreach('${d.id||''}','${stage}',${di},'sent')" style="font-size:9px;padding:2px 7px;background:rgba(245,200,66,.1);border:1px solid rgba(245,200,66,.3);border-radius:4px;color:#f5c842;cursor:pointer">✉️ Log email sent</button>`;
         const leadDateStr = d.createdAt ? new Date(d.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '';
-        return`<div class="kcard" onclick="openDealDetail('${stage}',${di})" style="cursor:pointer;border-left:3px solid ${obColor}">
+        // Searchable haystack from the deal's real data (company + email +
+        // contact + phone + product), so the pipeline search finds a card by
+        // company name or email even when that field isn't shown on the card.
+        const _search = [d.name,d.co,d.contactName,d.email,d.phone,d.service,d.productType,d.notes]
+          .filter(Boolean).join(' ').toLowerCase().replace(/"/g,'&quot;');
+        return`<div class="kcard" data-search="${_search}" onclick="openDealDetail('${stage}',${di})" style="cursor:pointer;border-left:3px solid ${obColor}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px">
           <div><div class="kc-n">${d.name}</div><div class="kc-co">${d.co}</div></div>
           ${leadDateStr ? `<div style="font-size:10px;color:#6b7fa3;white-space:nowrap;padding-top:3px;flex-shrink:0">${leadDateStr}</div>` : ''}
