@@ -580,19 +580,13 @@
     return !!(p && p.classList.contains('show'));
   }
   function renderFacilityChip(){
+    // The floating facility chip (🏭 GL-PALMETTO) was removed at the owner's
+    // request — with a single facility it only cluttered the top bar. Facility
+    // scoping (facility_id stamping) still works off `activeFacility`; this just
+    // hides the visual switcher. If multi-facility switching is needed later,
+    // surface it from a menu instead of a fixed floating chip.
     var existing = document.getElementById('gl-facility-chip');
-    if(!facilities.length || !isCrmVisible()){
-      if(existing) existing.remove();
-      return;
-    }
     if(existing) existing.remove();
-    var chip = document.createElement('div');
-    chip.id = 'gl-facility-chip';
-    chip.style.cssText = 'position:fixed;top:8px;right:8px;background:#0ea5e9;color:#fff;padding:4px 10px;border-radius:14px;font:12px system-ui;cursor:pointer;z-index:9999;box-shadow:0 2px 4px rgba(0,0,0,.15)';
-    chip.title = 'Active facility — click to switch';
-    chip.textContent = '🏭 ' + (activeFacility ? activeFacility.code : '—');
-    chip.onclick = openFacilityPicker;
-    document.body.appendChild(chip);
   }
   // Re-evaluate chip visibility whenever the CRM panel toggles
   (function watchCrmVisibility(){
