@@ -811,7 +811,7 @@
       '<b>CCP Limits</b>: <b>🎯 CCP Limits</b> shows all Critical Control Point thresholds (HTST ≥ 165°F, hot fill ≥ 185°F, UV ≥ 40 mJ/cm², fermentation pH ≤ 4.6). Editing a limit requires PCQI sign-off and is logged to the audit trail.',
       '<b>AI root-cause suggester</b>: on any Defect / NCR modal, click 🤖 <b>Suggest root cause</b> → sends defect type + description to Claude → returns root cause, corrective action, and preventive action you can copy in.',
       '<b>Camera scanning</b>: 🥫 <b>Scan Lot QR</b> opens the device camera and decodes lot barcodes (native BarcodeDetector — Chrome / Edge). 📷 <b>Scan COA</b> on the receiving form snaps a Certificate of Analysis — Claude Vision auto-fills lot number, vendor, dates, and test results.',
-      '<b>Multi-facility</b>: a 🏭 chip top-right shows the active facility (default GL-PALMETTO). Every new record / task / hold tag is auto-tagged with that facility.'
+      '<b>Multi-facility</b>: every new record / task / hold tag is auto-tagged with the active facility (default GL-PALMETTO). (The floating facility chip was removed; switching, if you add more facilities, can be surfaced from a menu.)'
     ]) +
 
     '<h4 style="margin:22px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">📦 GMP-REC-001 · RECEIVING INSPECTION &amp; COA REVIEW</h4>' +
