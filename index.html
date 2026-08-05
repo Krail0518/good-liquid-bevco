@@ -2388,6 +2388,7 @@ select option, .fsel option {
           <div style="display:flex;gap:8px">
             <input id="gl-pipeline-search" type="text" placeholder="Search company or email…" oninput="glFilterPipeline(this.value)" style="padding:6px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#fff;font-size:12px;width:200px;outline:none" />
             <button class="cbtn" onclick="openBulkOutreach()" style="background:rgba(245,200,66,.08);border-color:rgba(245,200,66,.25);color:#d4a200">📤 Bulk Outreach</button>
+            <button class="cbtn" onclick="glOpenBulkNudge()" style="background:rgba(196,164,248,.1);border-color:rgba(196,164,248,.3);color:#c4a4f8">⏰ Bulk Nudge</button>
             <button class="cbtn" onclick="openAddDealModal()" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)">+ Add Deal</button>
             <button id="gl-pipeline-quote-btn" class="cbtn" onclick="if(typeof glOpenQuoteBuilder==='function')glOpenQuoteBuilder(null,null)" style="background:rgba(26,111,255,.1);border-color:rgba(26,111,255,.35);color:#5a9fff">📋 Quote Builder</button>
           </div>
@@ -6114,6 +6115,269 @@ ${capsDoc ? '--- GOOD LIQUID CAPABILITIES & PRICING REFERENCE ---\n' + capsDoc :
   };
 }
 window.openBulkOutreach = openBulkOutreach;
+
+// BULK NUDGE — find leads that have gone cold (we emailed them, they never
+// replied, and it's been at least N days) and send a friendly follow-up to the
+// ones you check off, all in one pass. N is a variable Mike can type: 7, 10,
+// 21, whatever. The "who's gone quiet" signal comes from GL_OUTREACH — the same
+// per-contact email index the pipeline badges use — so nudge state stays in
+// sync with what the cards already show.
+async function glOpenBulkNudge(){
+  const prior = document.getElementById('gl-bulk-nudge-modal');
+  if(prior) prior.remove();
+
+  // Refresh the last-emailed / last-replied index so "days sitting" is current.
+  if(typeof glLoadOutreachIndex === 'function'){
+    try { await glLoadOutreachIndex(); } catch(_e){ /* fall back to cached */ }
+  }
+  const IDX = window.GL_OUTREACH || {};
+
+  // Closed deals don't get nudged — only live stages.
+  var DEAD_STAGES = { 'Closed Won': 1, 'Closed Lost': 1 };
+
+  // Walk every live pipeline stage and collect leads that have been SITTING for
+  // at least minDays, in either of two senses:
+  //   • Cold follow-up  — we emailed them, they never wrote back, and the last
+  //     email is minDays old. (from GL_OUTREACH: lastOut / lastIn)
+  //   • Untouched       — nobody has emailed them yet, and the lead has sat in
+  //     the pipeline for minDays. (age from stageEnteredAt, else createdAt)
+  // Either way the clock has run out and they deserve a poke. Longest-silent
+  // first — those need it most.
+  function candidates(minDays){
+    var out = [];
+    var now = Date.now();
+    Object.keys(deals || {}).forEach(function(stage){
+      if(DEAD_STAGES[stage]) return;
+      (deals[stage] || []).forEach(function(d, idx){
+        if(!d || !d.email) return;
+        var e = IDX[String(d.email).trim().toLowerCase()];
+        var contacted = !!(e && e.lastOut);
+        if(contacted && e.lastIn && e.lastIn > e.lastOut) return; // replied → not sitting
+
+        var anchor;
+        if(contacted){
+          anchor = e.lastOut;                     // days since our last email
+        } else {
+          // Never emailed: age the lead from when it landed in the stage, or
+          // when it was created. No date at all → can't judge age, skip it.
+          var raw = d.stageEnteredAt || d.createdAt;
+          if(!raw) return;
+          anchor = new Date(raw).getTime();
+          if(!anchor || isNaN(anchor)) return;
+        }
+        var days = Math.floor((now - anchor) / 86400000);
+        if(days < minDays) return;
+
+        out.push({ d:d, stage:stage, idx:idx, email:d.email, days:days,
+                   contacted: contacted,
+                   nudges: contacted ? Math.max(0, (e.sinceReply || 1) - 1) : 0 });
+      });
+    });
+    out.sort(function(a,b){ return b.days - a.days; });
+    return out;
+  }
+
+  // Live pricing/capabilities doc so the follow-up can be concrete when useful.
+  let capsDoc = await glGetCapsDoc();
+
+  const systemPrompt = `You are Mike's assistant at Good Liquid Bev Co, a beverage co-packer in Palmetto, FL (2011 51st Ave E, Unit 100). We help emerging beverage brands with R&D, small-batch canning, bottle filling, and co-packing.
+
+Write a SHORT, warm outreach email to a lead who has gone quiet. The user prompt will tell you whether this is a FOLLOW-UP (we already emailed them and they haven't replied — reference that we reached out before, keep it a light low-pressure nudge) or a FIRST CONTACT (we haven't reached out yet — a warm first hello that opens the door). Either way: 2-3 short paragraphs max, Mike's voice is direct, friendly, and human — never pushy or salesy. End with a soft next step (a quick call or a facility tour) and make it easy to say "if the timing isn't right, just let me know."
+
+Output format — two sections separated by a blank line:
+SUBJECT: [one-line subject here]
+
+[email body here — start straight with the salutation, no extra labels]
+
+${capsDoc ? '--- GOOD LIQUID CAPABILITIES & PRICING REFERENCE ---\n' + capsDoc : GL_NO_PRICING_GUARD}`;
+
+  const DEFAULT_DAYS = 7;
+  let list = candidates(DEFAULT_DAYS);
+
+  const ov = document.createElement('div');
+  ov.id = 'gl-bulk-nudge-modal';
+  ov.setAttribute('style','position:fixed;inset:0;z-index:700;background:rgba(6,13,26,.95);backdrop-filter:blur(10px);display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto');
+
+  function rowsHtml(items){
+    if(!items.length){
+      return '<tr><td colspan="6" style="padding:22px 10px;color:var(--muted);font-size:13px">No leads have been sitting that long. Try a smaller day count.</td></tr>';
+    }
+    return items.map(function(c,ri){
+      var nudgeTag = !c.contacted
+        ? '<span style="color:#6b9fff;font-size:10px">never contacted</span>'
+        : (c.nudges > 0
+            ? '<span style="color:#c4a4f8;font-size:10px">nudged ×'+c.nudges+'</span>'
+            : '<span style="color:var(--muted);font-size:10px">emailed, no reply</span>');
+      return '<tr data-ri="'+ri+'" style="border-bottom:1px solid rgba(255,255,255,.04)">' +
+        '<td style="padding:8px 10px"><input type="checkbox" class="gl-bn-chk" data-ri="'+ri+'" checked style="cursor:pointer"></td>' +
+        '<td style="padding:8px 10px;color:var(--white)">'+((c.d.name||c.d.contactName||'—'))+'</td>' +
+        '<td style="padding:8px 10px;color:var(--muted)">'+(c.d.co||'—')+'</td>' +
+        '<td style="padding:8px 10px;color:#6b9fff">'+c.email+'</td>' +
+        '<td style="padding:8px 10px;color:#f5c842;font-weight:700;white-space:nowrap">'+c.days+'d</td>' +
+        '<td style="padding:8px 10px" id="gl-bn-status-'+ri+'">'+nudgeTag+'</td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  ov.innerHTML = '<div style="background:#142238;border:1px solid rgba(196,164,248,.28);border-radius:16px;width:100%;max-width:840px;padding:26px 28px;color:#fff">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
+      '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:#c4a4f8">⏰ BULK NUDGE — COLD LEADS</div>' +
+      '<button id="gl-bn-close" style="background:none;border:none;color:#9aa7bd;font-size:22px;cursor:pointer;line-height:1">✕</button>' +
+    '</div>' +
+    '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:rgba(196,164,248,.06);border:1px solid rgba(196,164,248,.18);border-radius:10px;padding:12px 14px;margin-bottom:16px">' +
+      '<span style="font-size:13px;color:var(--white)">Show leads with no reply for at least</span>' +
+      '<input id="gl-bn-days" type="number" min="1" max="365" value="'+DEFAULT_DAYS+'" style="width:72px;padding:7px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:7px;color:#fff;font-size:14px;font-weight:700;text-align:center;outline:none" />' +
+      '<span style="font-size:13px;color:var(--white)">days.</span>' +
+      '<span style="display:flex;gap:6px;margin-left:4px">' +
+        '<button class="gl-bn-preset" data-d="7"  style="font-size:11px;padding:4px 9px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:var(--muted);cursor:pointer">7</button>' +
+        '<button class="gl-bn-preset" data-d="10" style="font-size:11px;padding:4px 9px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:var(--muted);cursor:pointer">10</button>' +
+        '<button class="gl-bn-preset" data-d="21" style="font-size:11px;padding:4px 9px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:var(--muted);cursor:pointer">21</button>' +
+        '<button class="gl-bn-preset" data-d="30" style="font-size:11px;padding:4px 9px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:var(--muted);cursor:pointer">30</button>' +
+      '</span>' +
+    '</div>' +
+    '<div id="gl-bn-count" style="font-size:12px;color:var(--muted);margin-bottom:12px"></div>' +
+    '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">' +
+      '<thead><tr style="border-bottom:1px solid rgba(255,255,255,.08)">' +
+        '<th style="text-align:left;padding:6px 10px;color:var(--muted);font-weight:600;width:30px"><input type="checkbox" id="gl-bn-check-all" checked style="cursor:pointer"></th>' +
+        '<th style="text-align:left;padding:6px 10px;color:var(--muted);font-weight:600">Name</th>' +
+        '<th style="text-align:left;padding:6px 10px;color:var(--muted);font-weight:600">Company</th>' +
+        '<th style="text-align:left;padding:6px 10px;color:var(--muted);font-weight:600">Email</th>' +
+        '<th style="text-align:left;padding:6px 10px;color:var(--muted);font-weight:600;width:70px">Sitting</th>' +
+        '<th style="text-align:left;padding:6px 10px;color:var(--muted);font-weight:600;width:90px">History</th>' +
+      '</tr></thead>' +
+      '<tbody id="gl-bn-rows">'+rowsHtml(list)+'</tbody>' +
+    '</table></div>' +
+    '<div style="margin-top:16px;background:rgba(255,255,255,.03);border-radius:8px;height:6px;overflow:hidden">' +
+      '<div id="gl-bn-progress" style="height:100%;background:#c4a4f8;width:0%;transition:width .3s"></div>' +
+    '</div>' +
+    '<div id="gl-bn-progress-label" style="font-size:11px;color:var(--muted);margin-top:6px;min-height:16px"></div>' +
+    '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">' +
+      '<button id="gl-bn-cancel" class="cbtn" style="font-size:13px">Close</button>' +
+      '<button id="gl-bn-send" class="cbtn" style="font-size:13px;background:rgba(196,164,248,.12);border-color:rgba(196,164,248,.32);color:#c4a4f8">✍️ Draft &amp; Send Nudges</button>' +
+    '</div>' +
+  '</div>';
+
+  document.body.appendChild(ov);
+  ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+  ov.querySelector('#gl-bn-close').onclick  = function(){ ov.remove(); };
+  ov.querySelector('#gl-bn-cancel').onclick = function(){ ov.remove(); };
+
+  var daysInput = ov.querySelector('#gl-bn-days');
+  var rowsBody  = ov.querySelector('#gl-bn-rows');
+  var countEl   = ov.querySelector('#gl-bn-count');
+  var checkAll  = ov.querySelector('#gl-bn-check-all');
+  var sendBtn   = ov.querySelector('#gl-bn-send');
+
+  function refresh(){
+    var n = parseInt(daysInput.value, 10);
+    if(!n || n < 1) n = 1;
+    list = candidates(n);
+    rowsBody.innerHTML = rowsHtml(list);
+    countEl.textContent = list.length
+      ? list.length + ' lead' + (list.length !== 1 ? 's' : '') + ' sitting ' + n + '+ days (no reply, or never contacted). All selected by default.'
+      : '';
+    checkAll.checked = list.length > 0;
+    sendBtn.disabled = list.length === 0;
+    sendBtn.style.opacity = list.length === 0 ? '.5' : '1';
+  }
+
+  daysInput.addEventListener('input', refresh);
+  ov.querySelectorAll('.gl-bn-preset').forEach(function(b){
+    b.addEventListener('click', function(){ daysInput.value = b.dataset.d; refresh(); });
+  });
+  checkAll.addEventListener('change', function(){
+    var self = this;
+    ov.querySelectorAll('.gl-bn-chk').forEach(function(chk){ chk.checked = self.checked; });
+  });
+  refresh();
+
+  sendBtn.onclick = async function(){
+    var btn = this;
+    var checked = Array.from(ov.querySelectorAll('.gl-bn-chk')).filter(function(c){ return c.checked; }).map(function(c){ return parseInt(c.dataset.ri, 10); });
+    if(!checked.length){ alert('No leads selected.'); return; }
+    if(!confirm('Send a follow-up nudge to ' + checked.length + ' lead' + (checked.length !== 1 ? 's' : '') + '?')) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+    daysInput.disabled = true;
+
+    var sent = 0;
+    var progBar   = ov.querySelector('#gl-bn-progress');
+    var progLabel = ov.querySelector('#gl-bn-progress-label');
+
+    for(var ci=0; ci<checked.length; ci++){
+      var ri = checked[ci];
+      var c = list[ri];
+      var d = c && c.d;
+      var statusEl = ov.querySelector('#gl-bn-status-'+ri);
+      if(!d || !statusEl) continue;
+
+      statusEl.innerHTML = '<span style="color:var(--teal);font-size:10px">🤖 Drafting…</span>';
+
+      try {
+        var firstName = ((d.contactName || d.name || '').split(' ')[0]) || 'there';
+        var mode = c.contacted ? 'FOLLOW-UP' : 'FIRST CONTACT';
+        var timingLine = c.contacted
+          ? 'It has been about '+c.days+' days since our last email with no reply'+(c.nudges>0?' (already nudged '+c.nudges+' time'+(c.nudges!==1?'s':'')+')':'')+'.'
+          : 'This lead has been sitting in the pipeline for about '+c.days+' days and we have not emailed them yet.';
+        var details = [
+          'This is a '+mode+'.',
+          d.contactName  ? 'Contact: '+d.contactName : null,
+          d.co           ? 'Company: '+d.co : null,
+          d.service      ? 'Service interest: '+d.service : null,
+          d.productType  ? 'Product type: '+d.productType : null,
+          d.notes        ? 'Their original message: "'+d.notes+'"' : null,
+          timingLine,
+        ].filter(Boolean);
+
+        var userPrompt = 'Draft a short, friendly '+(c.contacted?'follow-up nudge':'first-contact hello')+' to this lead who has gone quiet:\n\n'+details.join('\n')+'\n\nGreet them by first name ('+firstName+'). Keep it light — '+(c.contacted?'acknowledge they\'re busy and gently reopen the door':'introduce Good Liquid warmly and open the door')+' for co-packing, and make it easy to say the timing isn\'t right. Suggest a quick 20-minute call or a facility tour. Sign off as Mike, Good Liquid Bev Co, (803) 493-5065.';
+
+        var raw = await callAI(systemPrompt, userPrompt);
+        if(!raw) throw new Error('AI returned empty response');
+
+        var subjectMatch = raw.match(/^SUBJECT:\s*(.+)/im);
+        var subject = subjectMatch ? subjectMatch[1].trim() : 'Following up — Good Liquid Bev Co'+(d.co?' × '+d.co:'');
+        var bodyStart = raw.indexOf('\n\n');
+        var body = bodyStart > -1 ? raw.slice(bodyStart).trim() : raw.replace(/^SUBJECT:.*\n?/im,'').trim();
+
+        var htmlBody = '<div style="font-family:Arial,sans-serif;color:#1a1a1a;line-height:1.6;max-width:640px;margin:0 auto">' +
+          '<div style="border-top:3px solid #00e5c0;padding:24px 28px">' +
+            '<div style="font-size:20px;font-weight:900;color:#00b89a;letter-spacing:2px;margin-bottom:4px">GOOD LIQUID BEV CO</div>' +
+            '<div style="font-size:11px;color:#6b87ad">2011 51st Ave E, Unit 100 · Palmetto, FL 34221 · Mike@GoodLiquid.com · (803) 493-5065</div>' +
+          '</div>' +
+          '<div style="padding:0 28px 28px;white-space:pre-wrap;font-size:14px;line-height:1.7">'+body.replace(/[&<>]/g,function(ch){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[ch];})+'</div>' +
+          '<div style="padding:14px 28px;border-top:1px solid #e5e7eb;font-size:11px;color:#9ca3af;text-align:center">Good Liquid Bev Co · goodliquidbevco.com</div>' +
+        '</div>';
+
+        statusEl.innerHTML = '<span style="color:var(--muted);font-size:10px">📤 Sending…</span>';
+        var ok = await sendMailgunEmail(d.email, subject, body, { bcc: 'mike@goodliquid.com', html: htmlBody });
+
+        if(ok){
+          statusEl.innerHTML = '<span style="color:#5fcf9e;font-size:10px">✓ '+(c.contacted?'Nudged':'Emailed')+'</span>';
+          if(typeof setDealOutreach === 'function') await setDealOutreach(d.id||'', c.stage, c.idx, c.contacted ? 'nudged' : 'sent');
+          if(typeof addNotification === 'function') addNotification(c.contacted?'⏰ Nudge sent':'📧 Lead emailed', (d.name||d.co)+' → '+d.email, 'email');
+          if(typeof window.glAudit === 'function') window.glAudit('bulk_nudge_sent', d.id, { to: d.email, subject: subject, daysSitting: c.days });
+          sent++;
+        } else {
+          statusEl.innerHTML = '<span style="color:#ff8579;font-size:10px">✗ Failed</span>';
+        }
+      } catch(err){
+        console.error('[GL] Bulk nudge error for', d.email, err);
+        statusEl.innerHTML = '<span style="color:#ff8579;font-size:10px">✗ Error</span>';
+      }
+
+      var pct = Math.round(((ci+1) / checked.length) * 100);
+      progBar.style.width = pct + '%';
+      progLabel.textContent = (ci+1) + ' / ' + checked.length + ' processed';
+    }
+
+    progLabel.textContent = 'Done — '+sent+' nudge'+(sent!==1?'s':'')+' sent out of '+checked.length+' attempted.';
+    btn.textContent = '✓ Complete';
+    // New outbound mail means the pipeline badges are stale; force a reload.
+    if(typeof renderKanban === 'function'){ renderKanban._outreachAt = 0; renderKanban(); }
+  };
+}
+window.glOpenBulkNudge = glOpenBulkNudge;
 
 // Close modals on backdrop click
 document.getElementById('add-client-modal').addEventListener('click', function(e){ if(e.target===this) closeAddClientModal(); });
