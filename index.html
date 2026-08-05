@@ -6132,21 +6132,45 @@ async function glOpenBulkNudge(){
   }
   const IDX = window.GL_OUTREACH || {};
 
-  // Walk every pipeline stage and collect leads that have gone cold for at
-  // least minDays: we sent something, they never wrote back, and the clock has
-  // run past the threshold. Longest-silent first — those need the poke most.
+  // Closed deals don't get nudged — only live stages.
+  var DEAD_STAGES = { 'Closed Won': 1, 'Closed Lost': 1 };
+
+  // Walk every live pipeline stage and collect leads that have been SITTING for
+  // at least minDays, in either of two senses:
+  //   • Cold follow-up  — we emailed them, they never wrote back, and the last
+  //     email is minDays old. (from GL_OUTREACH: lastOut / lastIn)
+  //   • Untouched       — nobody has emailed them yet, and the lead has sat in
+  //     the pipeline for minDays. (age from stageEnteredAt, else createdAt)
+  // Either way the clock has run out and they deserve a poke. Longest-silent
+  // first — those need it most.
   function candidates(minDays){
     var out = [];
+    var now = Date.now();
     Object.keys(deals || {}).forEach(function(stage){
+      if(DEAD_STAGES[stage]) return;
       (deals[stage] || []).forEach(function(d, idx){
         if(!d || !d.email) return;
         var e = IDX[String(d.email).trim().toLowerCase()];
-        if(!e || !e.lastOut) return;                 // never emailed → nothing to nudge
-        if(e.lastIn && e.lastIn > e.lastOut) return; // they replied → not sitting
-        var days = Math.floor((Date.now() - e.lastOut) / 86400000);
+        var contacted = !!(e && e.lastOut);
+        if(contacted && e.lastIn && e.lastIn > e.lastOut) return; // replied → not sitting
+
+        var anchor;
+        if(contacted){
+          anchor = e.lastOut;                     // days since our last email
+        } else {
+          // Never emailed: age the lead from when it landed in the stage, or
+          // when it was created. No date at all → can't judge age, skip it.
+          var raw = d.stageEnteredAt || d.createdAt;
+          if(!raw) return;
+          anchor = new Date(raw).getTime();
+          if(!anchor || isNaN(anchor)) return;
+        }
+        var days = Math.floor((now - anchor) / 86400000);
         if(days < minDays) return;
+
         out.push({ d:d, stage:stage, idx:idx, email:d.email, days:days,
-                   nudges: Math.max(0, (e.sinceReply || 1) - 1) });
+                   contacted: contacted,
+                   nudges: contacted ? Math.max(0, (e.sinceReply || 1) - 1) : 0 });
       });
     });
     out.sort(function(a,b){ return b.days - a.days; });
@@ -6158,7 +6182,7 @@ async function glOpenBulkNudge(){
 
   const systemPrompt = `You are Mike's assistant at Good Liquid Bev Co, a beverage co-packer in Palmetto, FL (2011 51st Ave E, Unit 100). We help emerging beverage brands with R&D, small-batch canning, bottle filling, and co-packing.
 
-Write a SHORT, warm follow-up nudge to a lead we already emailed who hasn't replied. This is not a first contact — reference that we reached out before, keep it light and low-pressure, and make it easy to say "not right now." 2-3 short paragraphs max. Mike's voice is direct, friendly, and human — never pushy or salesy. End with a soft next step (a quick call or a facility tour) and an explicit "if the timing isn't right, just let me know."
+Write a SHORT, warm outreach email to a lead who has gone quiet. The user prompt will tell you whether this is a FOLLOW-UP (we already emailed them and they haven't replied — reference that we reached out before, keep it a light low-pressure nudge) or a FIRST CONTACT (we haven't reached out yet — a warm first hello that opens the door). Either way: 2-3 short paragraphs max, Mike's voice is direct, friendly, and human — never pushy or salesy. End with a soft next step (a quick call or a facility tour) and make it easy to say "if the timing isn't right, just let me know."
 
 Output format — two sections separated by a blank line:
 SUBJECT: [one-line subject here]
@@ -6179,9 +6203,11 @@ ${capsDoc ? '--- GOOD LIQUID CAPABILITIES & PRICING REFERENCE ---\n' + capsDoc :
       return '<tr><td colspan="6" style="padding:22px 10px;color:var(--muted);font-size:13px">No leads have been sitting that long. Try a smaller day count.</td></tr>';
     }
     return items.map(function(c,ri){
-      var nudgeTag = c.nudges > 0
-        ? '<span style="color:#c4a4f8;font-size:10px">nudged ×'+c.nudges+'</span>'
-        : '<span style="color:var(--muted);font-size:10px">not yet</span>';
+      var nudgeTag = !c.contacted
+        ? '<span style="color:#6b9fff;font-size:10px">never contacted</span>'
+        : (c.nudges > 0
+            ? '<span style="color:#c4a4f8;font-size:10px">nudged ×'+c.nudges+'</span>'
+            : '<span style="color:var(--muted);font-size:10px">emailed, no reply</span>');
       return '<tr data-ri="'+ri+'" style="border-bottom:1px solid rgba(255,255,255,.04)">' +
         '<td style="padding:8px 10px"><input type="checkbox" class="gl-bn-chk" data-ri="'+ri+'" checked style="cursor:pointer"></td>' +
         '<td style="padding:8px 10px;color:var(--white)">'+((c.d.name||c.d.contactName||'—'))+'</td>' +
@@ -6248,7 +6274,7 @@ ${capsDoc ? '--- GOOD LIQUID CAPABILITIES & PRICING REFERENCE ---\n' + capsDoc :
     list = candidates(n);
     rowsBody.innerHTML = rowsHtml(list);
     countEl.textContent = list.length
-      ? list.length + ' lead' + (list.length !== 1 ? 's' : '') + ' with no reply for ' + n + '+ days. All selected by default.'
+      ? list.length + ' lead' + (list.length !== 1 ? 's' : '') + ' sitting ' + n + '+ days (no reply, or never contacted). All selected by default.'
       : '';
     checkAll.checked = list.length > 0;
     sendBtn.disabled = list.length === 0;
@@ -6290,16 +6316,21 @@ ${capsDoc ? '--- GOOD LIQUID CAPABILITIES & PRICING REFERENCE ---\n' + capsDoc :
 
       try {
         var firstName = ((d.contactName || d.name || '').split(' ')[0]) || 'there';
+        var mode = c.contacted ? 'FOLLOW-UP' : 'FIRST CONTACT';
+        var timingLine = c.contacted
+          ? 'It has been about '+c.days+' days since our last email with no reply'+(c.nudges>0?' (already nudged '+c.nudges+' time'+(c.nudges!==1?'s':'')+')':'')+'.'
+          : 'This lead has been sitting in the pipeline for about '+c.days+' days and we have not emailed them yet.';
         var details = [
+          'This is a '+mode+'.',
           d.contactName  ? 'Contact: '+d.contactName : null,
           d.co           ? 'Company: '+d.co : null,
           d.service      ? 'Service interest: '+d.service : null,
           d.productType  ? 'Product type: '+d.productType : null,
           d.notes        ? 'Their original message: "'+d.notes+'"' : null,
-          'It has been about '+c.days+' days since our last email with no reply'+(c.nudges>0?' (already nudged '+c.nudges+' time'+(c.nudges!==1?'s':'')+')':'')+'.',
+          timingLine,
         ].filter(Boolean);
 
-        var userPrompt = 'Draft a short, friendly follow-up nudge to this lead who has gone quiet:\n\n'+details.join('\n')+'\n\nGreet them by first name ('+firstName+'). Keep it light — acknowledge they\'re busy, gently reopen the door for co-packing at Good Liquid, and make it easy to say the timing isn\'t right. Suggest a quick 20-minute call or a facility tour. Sign off as Mike, Good Liquid Bev Co, (803) 493-5065.';
+        var userPrompt = 'Draft a short, friendly '+(c.contacted?'follow-up nudge':'first-contact hello')+' to this lead who has gone quiet:\n\n'+details.join('\n')+'\n\nGreet them by first name ('+firstName+'). Keep it light — '+(c.contacted?'acknowledge they\'re busy and gently reopen the door':'introduce Good Liquid warmly and open the door')+' for co-packing, and make it easy to say the timing isn\'t right. Suggest a quick 20-minute call or a facility tour. Sign off as Mike, Good Liquid Bev Co, (803) 493-5065.';
 
         var raw = await callAI(systemPrompt, userPrompt);
         if(!raw) throw new Error('AI returned empty response');
@@ -6322,9 +6353,9 @@ ${capsDoc ? '--- GOOD LIQUID CAPABILITIES & PRICING REFERENCE ---\n' + capsDoc :
         var ok = await sendMailgunEmail(d.email, subject, body, { bcc: 'mike@goodliquid.com', html: htmlBody });
 
         if(ok){
-          statusEl.innerHTML = '<span style="color:#5fcf9e;font-size:10px">✓ Nudged</span>';
-          if(typeof setDealOutreach === 'function') await setDealOutreach(d.id||'', c.stage, c.idx, 'nudged');
-          if(typeof addNotification === 'function') addNotification('⏰ Nudge sent', (d.name||d.co)+' → '+d.email, 'email');
+          statusEl.innerHTML = '<span style="color:#5fcf9e;font-size:10px">✓ '+(c.contacted?'Nudged':'Emailed')+'</span>';
+          if(typeof setDealOutreach === 'function') await setDealOutreach(d.id||'', c.stage, c.idx, c.contacted ? 'nudged' : 'sent');
+          if(typeof addNotification === 'function') addNotification(c.contacted?'⏰ Nudge sent':'📧 Lead emailed', (d.name||d.co)+' → '+d.email, 'email');
           if(typeof window.glAudit === 'function') window.glAudit('bulk_nudge_sent', d.id, { to: d.email, subject: subject, daysSitting: c.days });
           sent++;
         } else {
