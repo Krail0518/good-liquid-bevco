@@ -115,30 +115,7 @@
       var link = onboardLink(cr.data.token);
 
       // 3) Email the client their onboarding link.
-      var firstName = (contact.split(' ')[0]) || 'there';
-      var subject = 'Welcome to Good Liquid Bev Co — let\'s get you set up';
-      var body = 'Hi ' + firstName + ',\n\n'
-        + 'Great news, we\'re excited to start working with ' + company + '. '
-        + 'To set up your account and get your project moving, please complete a short onboarding form. '
-        + 'We\'ve already filled in what we have, and at the end you\'ll create your client-portal login '
-        + '(you\'ll sign in with this email). It should only take a few minutes:\n\n'
-        + link + '\n\n'
-        + 'Once you submit it, I\'ll be in touch about next steps and your production schedule.\n\n'
-        + 'Thanks,\nMike\nGood Liquid Bev Co\n(803) 493-5065';
-      var emailOk = false;
-      if(typeof window.sendMailgunEmail === 'function'){
-        emailOk = await window.sendMailgunEmail(email, subject, body, {
-          html: '<div style="font-family:Arial,sans-serif;color:#1a1a1a;line-height:1.7;max-width:600px;margin:0 auto">'
-            + '<div style="border-top:3px solid #00e5c0;padding:22px 26px">'
-            + '<div style="font-size:19px;font-weight:900;color:#00b89a;letter-spacing:2px;margin-bottom:12px">GOOD LIQUID BEV CO</div>'
-            + '<p>Hi ' + esc(firstName) + ',</p>'
-            + '<p>Great news — we\'re excited to start working with ' + esc(company) + '. To set up your account and get your project moving, please complete a short onboarding form. We\'ve already filled in what we have, and at the end you\'ll create your client-portal login (you\'ll sign in with this email). It should only take a few minutes:</p>'
-            + '<p style="text-align:center;margin:26px 0"><a href="' + link + '" style="background:#00e5c0;color:#04231d;text-decoration:none;font-weight:800;padding:13px 26px;border-radius:8px;display:inline-block">Complete your onboarding →</a></p>'
-            + '<p>Once you submit it, I\'ll be in touch about next steps and your production schedule.</p>'
-            + '<p>Thanks,<br>Mike<br>Good Liquid Bev Co · (803) 493-5065</p>'
-            + '</div></div>'
-        });
-      }
+      var emailOk = await sendOnboardEmail(email, contact, company, link);
 
       // 4) No separate portal-invite email: the client creates their login
       //    (email + a password meeting the complexity policy) at the end of the
@@ -159,6 +136,147 @@
       console.error('[onboarding] convert failed', e);
       alert('✗ Convert failed: ' + (e.message || e) + '\n\nNothing was sent. Check the browser console and try again.');
     }
+  };
+
+  // ── Compose + send the branded onboarding email ──
+  // Shared by the pipeline convert flow and the client-detail Send/Resend
+  // button so the client always gets the identical, tested email.
+  async function sendOnboardEmail(email, contactName, company, link){
+    if(typeof window.sendMailgunEmail !== 'function') return false;
+    var firstName = (String(contactName || '').split(' ')[0]) || 'there';
+    var subject = 'Welcome to Good Liquid Bev Co — let\'s get you set up';
+    var body = 'Hi ' + firstName + ',\n\n'
+      + 'Great news, we\'re excited to start working with ' + company + '. '
+      + 'To set up your account and get your project moving, please complete a short onboarding form. '
+      + 'We\'ve already filled in what we have, and at the end you\'ll create your client-portal login '
+      + '(you\'ll sign in with this email). It should only take a few minutes:\n\n'
+      + link + '\n\n'
+      + 'Once you submit it, I\'ll be in touch about next steps and your production schedule.\n\n'
+      + 'Thanks,\nMike\nGood Liquid Bev Co\n(803) 493-5065';
+    return await window.sendMailgunEmail(email, subject, body, {
+      html: '<div style="font-family:Arial,sans-serif;color:#1a1a1a;line-height:1.7;max-width:600px;margin:0 auto">'
+        + '<div style="border-top:3px solid #00e5c0;padding:22px 26px">'
+        + '<div style="font-size:19px;font-weight:900;color:#00b89a;letter-spacing:2px;margin-bottom:12px">GOOD LIQUID BEV CO</div>'
+        + '<p>Hi ' + esc(firstName) + ',</p>'
+        + '<p>Great news — we\'re excited to start working with ' + esc(company) + '. To set up your account and get your project moving, please complete a short onboarding form. We\'ve already filled in what we have, and at the end you\'ll create your client-portal login (you\'ll sign in with this email). It should only take a few minutes:</p>'
+        + '<p style="text-align:center;margin:26px 0"><a href="' + link + '" style="background:#00e5c0;color:#04231d;text-decoration:none;font-weight:800;padding:13px 26px;border-radius:8px;display:inline-block">Complete your onboarding →</a></p>'
+        + '<p>Once you submit it, I\'ll be in touch about next steps and your production schedule.</p>'
+        + '<p>Thanks,<br>Mike<br>Good Liquid Bev Co · (803) 493-5065</p>'
+        + '</div></div>'
+    });
+  }
+
+  // ── Client detail: ONBOARDING section (status + send / copy link) ──
+  // The pipeline convert flow emails the link automatically, but until now
+  // there was no way to send or re-send it from the client itself — the only
+  // entry point was the Quick Actions onboardings board.
+  async function latestOnboarding(clientId){
+    var r = await sb().from('onboarding')
+      .select('id, token, status, created_at, submitted_at')
+      .eq('client_id', clientId)
+      .order('created_at', { ascending: false }).limit(1);
+    if(r.error) throw new Error(r.error.message);
+    return (r.data && r.data[0]) || null;
+  }
+
+  // Reuse the open invite when there is one; otherwise mint a fresh
+  // token-secured onboarding row via the staff-gated RPC.
+  async function ensureOnboarding(clientId, client){
+    var ob = await latestOnboarding(clientId);
+    if(ob && ob.status !== 'submitted' && ob.status !== 'approved') return ob;
+    if(ob && !confirm('This client already submitted their onboarding. Create a fresh link anyway?\n\nTheir portal login keeps working either way.')) return null;
+    var prefill = {
+      company: client.name || '', name: client.contact_name || '',
+      email: client.email || '', phone: client.phone || '',
+      city: client.city || '', state: client.state || '', service: client.service || ''
+    };
+    var cr = await sb().rpc('gl_onboarding_create', { p_client_id: clientId, p_prefill: prefill, p_deal_id: null });
+    if(cr.error) throw new Error(cr.error.message);
+    if(!cr.data || cr.data.ok === false) throw new Error((cr.data && cr.data.error) || 'could not create the onboarding');
+    await sb().from('clients').update({ onboarding_status: 'invited' }).eq('id', clientId);
+    return { id: cr.data.id, token: cr.data.token, status: 'invited' };
+  }
+
+  async function fetchClientRow(clientId){
+    var r = await sb().from('clients').select('name, contact_name, email, phone, city, state, service').eq('id', clientId).maybeSingle();
+    if(r.error) throw new Error(r.error.message);
+    if(!r.data) throw new Error('client not found');
+    return r.data;
+  }
+
+  window.glSendOnboardingLink = async function(clientId){
+    if(!sb()){ alert('Supabase not ready.'); return; }
+    try {
+      var client = await fetchClientRow(clientId);
+      if(!client.email){ alert('This client has no email address — add one first (✏️ Edit).'); return; }
+      var ob = await ensureOnboarding(clientId, client);
+      if(!ob) return;
+      var link = onboardLink(ob.token);
+      var okSend = await sendOnboardEmail(client.email, client.contact_name, client.name, link);
+      if(okSend){
+        alert('✓ Onboarding email sent to ' + client.email + '.');
+        if(typeof window.glAudit === 'function') window.glAudit('onboarding_link_sent', clientId, { email: client.email });
+      } else {
+        prompt('The email could not be sent automatically. Copy the onboarding link and send it yourself:', link);
+      }
+      refreshObStatus(clientId);
+    } catch(e){ alert('Could not send the onboarding link: ' + (e.message || e)); }
+  };
+
+  window.glCopyOnboardingLink = async function(clientId){
+    if(!sb()){ alert('Supabase not ready.'); return; }
+    try {
+      var client = await fetchClientRow(clientId);
+      var ob = await ensureOnboarding(clientId, client);
+      if(!ob) return;
+      var link = onboardLink(ob.token);
+      try { await navigator.clipboard.writeText(link); alert('✓ Onboarding link copied to your clipboard.'); }
+      catch(err){ prompt('Copy this onboarding link:', link); }
+      refreshObStatus(clientId);
+    } catch(e){ alert('Could not get the onboarding link: ' + (e.message || e)); }
+  };
+
+  var OB_LABEL = {
+    invited:   ['#f5c842', 'Invited — link sent, not opened yet'],
+    started:   ['#6b9fff', 'Opened — they started the form'],
+    submitted: ['#5fcf9e', 'Submitted ✓ — their answers are on this record'],
+    approved:  ['#5fcf9e', 'Approved ✓']
+  };
+  async function refreshObStatus(clientId){
+    var el = document.getElementById('gl-cd-ob-status-' + clientId);
+    if(!el) return;
+    try {
+      var ob = await latestOnboarding(clientId);
+      if(!ob){ el.innerHTML = '<span style="color:var(--muted)">Not started — no onboarding link sent yet.</span>'; return; }
+      var m = OB_LABEL[ob.status] || ['#9aa7bd', ob.status || 'unknown'];
+      var when = (ob.status === 'submitted' && ob.submitted_at) ? ob.submitted_at : ob.created_at;
+      var whenTxt = when ? new Date(when).toLocaleDateString() : '';
+      el.innerHTML = '<span style="color:' + m[0] + ';font-weight:700">' + esc(m[1]) + '</span>'
+        + (whenTxt ? ' <span style="color:var(--muted);font-size:11px">(' + esc(whenTxt) + ')</span>' : '');
+    } catch(e){ el.innerHTML = '<span style="color:var(--muted)">Status unavailable.</span>'; }
+  }
+
+  // Section HTML consumed by glClientInfoSections (crm-client-detail.js).
+  // The popup builder is synchronous, so this renders instantly with a
+  // placeholder and fills the live status as soon as the element mounts.
+  window.glClientOnboardingSection = function(c){
+    if(!c || !c.id) return '';
+    var cid = String(c.id).replace(/[^a-zA-Z0-9-]/g, '');
+    var tries = 0;
+    (function waitForMount(){
+      if(document.getElementById('gl-cd-ob-status-' + cid)) return refreshObStatus(cid);
+      if(++tries < 20) setTimeout(waitForMount, 100);
+    })();
+    return '<div style="margin-bottom:20px">' +
+      '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:10px">ONBOARDING</div>' +
+      '<div style="background:rgba(255,255,255,.04);border-radius:10px;padding:14px;font-size:13px;line-height:1.9">' +
+        '<div id="gl-cd-ob-status-' + cid + '" style="margin-bottom:10px;color:var(--muted)">Checking status…</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+          '<button onclick="window.glSendOnboardingLink(\'' + cid + '\')" style="padding:8px 14px;background:rgba(0,229,192,.1);border:1px solid rgba(0,229,192,.3);border-radius:8px;color:var(--teal);font-weight:700;font-size:12px;cursor:pointer">📨 Send / resend onboarding email</button>' +
+          '<button onclick="window.glCopyOnboardingLink(\'' + cid + '\')" style="padding:8px 14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--white);font-weight:700;font-size:12px;cursor:pointer">🔗 Copy link</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
   };
 
   // ── Admin status board: every onboarding and where it stands ──

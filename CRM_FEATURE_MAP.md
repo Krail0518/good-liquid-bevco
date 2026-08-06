@@ -23,7 +23,7 @@
 | Page ID | Sidebar ID | Title | Role | Header Buttons |
 |---------|-----------|-------|------|----------------|
 | `cpg-dashboard` | (no id; always visible) | DASHBOARD | All | `+ New Invoice` (primary) |
-| `cpg-clients` | `nav-clients` | CLIENTS | Admin/Sales | (none in header) |
+| `cpg-clients` | `nav-clients` | CLIENTS | Admin/Sales | (none in header). Client detail popup includes an **ONBOARDING** section (module `crm-onboarding.js` → `glClientOnboardingSection`, rendered by `glClientInfoSections` in `crm-client-detail.js`): live status (Invited / Opened / Submitted) + `📨 Send / resend onboarding email` (`glSendOnboardingLink`) + `🔗 Copy link` (`glCopyOnboardingLink`). Reuses the pipeline-convert email + `gl_onboarding_create` RPC. The `🔑 Invite Customer Login` picker auto-fills the email from the picked client and explains that logins attach to a client; brand-new people go Clients/pipeline-convert → onboarding email. |
 | `cpg-pipeline` | `nav-pipeline` | PIPELINE | Admin/Sales | (none in header) |
 | `cpg-invoices` | `nav-invoices` | INVOICES | Admin/Sales | `+ New Invoice` (primary) |
 | `cpg-newinv` | (no sidebar item; nav via button) | CREATE INVOICE | Admin/Sales | (form only) |

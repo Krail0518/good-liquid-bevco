@@ -942,12 +942,13 @@
     ov.innerHTML =
       '<div style="background:#142238;border:1px solid rgba(26,111,255,.35);border-radius:14px;padding:28px;width:100%;max-width:460px">' +
         '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:#6b9fff;margin-bottom:6px">INVITE CUSTOMER LOGIN</div>' +
-        '<div style="font-size:12px;color:#9ca3af;margin-bottom:20px;line-height:1.5">Pick a client and enter the customer email. They\'ll get an email with a link to set their password and access their invoices.</div>' +
-        '<div style="font-size:11px;letter-spacing:1.5px;color:#6b87ad;margin-bottom:6px">CLIENT</div>' +
+        '<div style="font-size:12px;color:#9ca3af;margin-bottom:20px;line-height:1.5">A portal login is always attached to a client, so their portal knows which invoices and production runs to show. Pick the client — their email fills in automatically (you can change it to invite a different person at that company).</div>' +
+        '<div style="font-size:11px;letter-spacing:1.5px;color:#6b87ad;margin-bottom:6px">STEP 1 — WHICH CLIENT IS THIS LOGIN FOR?</div>' +
         '<select id="gl-ip-client" style="width:100%;padding:11px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eef4ff;font-size:14px;margin-bottom:14px;box-sizing:border-box">' + opts + '</select>' +
-        '<div style="font-size:11px;letter-spacing:1.5px;color:#6b87ad;margin-bottom:6px">CUSTOMER EMAIL</div>' +
+        '<div style="font-size:11px;letter-spacing:1.5px;color:#6b87ad;margin-bottom:6px">STEP 2 — EMAIL THE INVITE GOES TO</div>' +
         '<input id="gl-ip-email" type="email" placeholder="customer@example.com" style="width:100%;padding:11px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eef4ff;font-size:14px;margin-bottom:18px;box-sizing:border-box">' +
         '<div id="gl-ip-err" style="display:none;color:#ff8579;font-size:12px;margin-bottom:10px"></div>' +
+        '<div style="background:rgba(0,229,192,.06);border:1px solid rgba(0,229,192,.15);border-radius:8px;padding:10px 12px;font-size:11.5px;color:#9fc9bd;line-height:1.6;margin-bottom:16px">Inviting someone who isn\'t a client yet? Add them on the Clients page (or convert their pipeline lead with 🚀), then use <b>📨 Send onboarding email</b> on their client card — the onboarding form creates their portal login for them.</div>' +
         '<div style="display:flex;gap:10px;justify-content:flex-end">' +
           '<button id="gl-ip-cancel" class="cbtn" style="background:rgba(255,255,255,.06)">Cancel</button>' +
           '<button id="gl-ip-send" class="cbtn pri">Send invite</button>' +
@@ -959,6 +960,19 @@
     var errEl = ov.querySelector('#gl-ip-err');
     var sendBtn = ov.querySelector('#gl-ip-send');
     ov.querySelector('#gl-ip-cancel').onclick = function(){ ov.remove(); };
+    // Auto-fill the email from the picked client. A hand-typed address is
+    // never overwritten — only blank or previously auto-filled values are.
+    function prefillEmail(){
+      var c = clients.find(function(x){ return x.id === selEl.value; });
+      if(!c || !c.email) return;
+      if(!emEl.value || emEl.dataset.autofilled === '1'){
+        emEl.value = c.email;
+        emEl.dataset.autofilled = '1';
+      }
+    }
+    emEl.addEventListener('input', function(){ emEl.dataset.autofilled = '0'; });
+    selEl.addEventListener('change', prefillEmail);
+    if(preselectedClientId) prefillEmail();
     setTimeout(function(){ (preselectedClientId ? emEl : selEl).focus(); }, 30);
     function showErr(m){ errEl.style.display='block'; errEl.textContent = m; }
     sendBtn.onclick = async function(){

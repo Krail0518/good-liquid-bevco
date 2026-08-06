@@ -167,6 +167,12 @@
     docs += docRow('Process Authority letter', c.paLetterOnFile, c.paLetterFilePath, true, c.paLetterExpires, '');
     out += section('COMPLIANCE DOCUMENTS', '<div style="display:flex;flex-direction:column;gap:8px">' + docs + '</div>');
 
+    // ── ONBOARDING ── (rendered by crm-onboarding.js; guarded so a
+    // load-order change can't take down the whole popup)
+    if(typeof window.glClientOnboardingSection === 'function'){
+      out += window.glClientOnboardingSection(c);
+    }
+
     return out;
   };
 
