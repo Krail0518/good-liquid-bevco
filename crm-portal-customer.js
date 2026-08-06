@@ -736,7 +736,7 @@
           // Need to create the auth user first, then re-call the RPC.
           if(first.data && first.data.error === 'auth_user_not_found'){
             var tempPw = 'GL!' + Math.random().toString(36).slice(2,12) + 'aZ1';
-            var su = await sb.auth.signUp({ email: email, password: tempPw, options: { emailRedirectTo: location.origin + location.pathname + '?portal=1' } });
+            var su = await sb.auth.signUp({ email: email, password: tempPw, options: { emailRedirectTo: location.origin + location.pathname + '?portal=1', data: { portal_customer: true } } });
             if(su.error && !/already (registered|exists)|user_already_exists/i.test(su.error.message||'')){
               mateMsg('Sign-up failed: ' + su.error.message, 'err'); return;
             }
@@ -866,7 +866,7 @@
     var redirectTo = location.origin + location.pathname + '?portal=1';
     // 1) Create auth user (idempotent — already-exists is fine, means they were invited before).
     var tempPw = 'GL!' + Math.random().toString(36).slice(2,12) + 'aZ1';
-    var su = await sb.auth.signUp({ email: email, password: tempPw, options: { emailRedirectTo: redirectTo } });
+    var su = await sb.auth.signUp({ email: email, password: tempPw, options: { emailRedirectTo: redirectTo, data: { portal_customer: true } } });
     var userId = (su.data && su.data.user && su.data.user.id) || null;
     if(su.error && !/already (registered|exists)|user_already_exists/i.test(su.error.message||'')){
       alert('Sign up failed: ' + su.error.message); return;

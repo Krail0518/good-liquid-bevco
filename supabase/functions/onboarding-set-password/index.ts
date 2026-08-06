@@ -92,9 +92,24 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   // Link the auth user to their client so the portal shows their data.
-  if (ob.client_id) {
-    const link = await admin.rpc('link_customer_user_by_email', { p_client_id: ob.client_id, p_email: email });
-    if (link.error) console.warn('[onboarding-set-password] link', link.error);
+  // Done directly with the service-role client: the link_customer_user_by_email
+  // RPC is gated on is_staff_user(), which is always false for service-role
+  // calls (auth.uid() is null), so it returned { ok:false, error:'forbidden' }
+  // as DATA — no .error — and clients ended up with no customer_users row and
+  // a portal that rejected them after a successful password sign-in.
+  if (ob.client_id && userId) {
+    const existing = await admin.from('customer_users')
+      .select('id').eq('auth_user_id', userId).maybeSingle();
+    const link = existing.data
+      ? await admin.from('customer_users')
+          .update({ client_id: ob.client_id, email, active: true })
+          .eq('id', existing.data.id)
+      : await admin.from('customer_users')
+          .insert({ auth_user_id: userId, client_id: ob.client_id, email, active: true, role: 'owner' });
+    if (link.error) {
+      console.error('[onboarding-set-password] portal link failed', link.error);
+      return jsonResponse({ ok: false, error: 'Your password was saved, but we could not finish setting up portal access — please contact us and we\'ll sort it out.' }, 500);
+    }
   }
 
   console.log('[onboarding-set-password] set for', email, 'user', userId);
