@@ -92,9 +92,35 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   // Link the auth user to their client so the portal shows their data.
-  if (ob.client_id) {
-    const link = await admin.rpc('link_customer_user_by_email', { p_client_id: ob.client_id, p_email: email });
-    if (link.error) console.warn('[onboarding-set-password] link', link.error);
+  //
+  // This MUST be done with the service-role admin client directly, NOT via the
+  // link_customer_user_by_email RPC: that RPC was hardened to staff-only
+  // (is_staff_user()), and this function runs as the service role — no staff
+  // JWT — so the RPC returns { ok:false, error:'forbidden' } as DATA (not an
+  // error). The old code only console.warn'd link.error (always null here), so
+  // the link silently never happened and the client could sign in but the
+  // portal rejected them ("not a customer portal account"). Write it here and
+  // FAIL LOUDLY — a missing link is the whole bug.
+  if (ob.client_id && userId) {
+    const existing = await admin
+      .from('customer_users').select('id').eq('auth_user_id', userId).maybeSingle();
+    let linkErr: unknown = existing.error || null;
+    if (!linkErr) {
+      if (existing.data) {
+        const u = await admin.from('customer_users')
+          .update({ client_id: ob.client_id, email, active: true })
+          .eq('id', existing.data.id);
+        linkErr = u.error;
+      } else {
+        const i = await admin.from('customer_users')
+          .insert({ auth_user_id: userId, client_id: ob.client_id, email, active: true });
+        linkErr = i.error;
+      }
+    }
+    if (linkErr) {
+      console.error('[onboarding-set-password] link', linkErr);
+      return jsonResponse({ ok: false, error: 'Your password was saved, but we could not finish linking your portal account. Please contact us and we\'ll fix it right away.' }, 500);
+    }
   }
 
   console.log('[onboarding-set-password] set for', email, 'user', userId);
