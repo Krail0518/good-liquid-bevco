@@ -262,6 +262,10 @@
           '<div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:var(--teal)">EDIT CLIENT</div>' +
           '<button id="gl-ec-close" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer">✕</button>' +
         '</div>' +
+        // Onboarding status + send/copy link (crm-onboarding.js). Admins land
+        // HERE when they click a client card — openClientDetail is only shown
+        // to viewers — so the section must live in this form too.
+        (typeof window.glClientOnboardingSection === 'function' ? window.glClientOnboardingSection(c) : '') +
         '<div style="display:flex;flex-direction:column;gap:12px">' +
           '<div><div style="'+LABEL_STYLE+'">BRAND NAME *</div><input id="gl-ec-name" value="'+esc(c.name)+'" style="'+INPUT_STYLE+'"></div>' +
           '<div><div style="'+LABEL_STYLE+'">LEGAL BUSINESS NAME <span style="opacity:.6">(if different)</span></div><input id="gl-ec-legal-name" value="'+esc(c.legalName)+'" style="'+INPUT_STYLE+'"></div>' +
