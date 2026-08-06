@@ -6653,6 +6653,7 @@ function openDealDetail(stage, idx){
       <button onclick="deleteDeal()" style="padding:10px 16px;background:rgba(231,76,60,.15);color:#e74c3c;border:1px solid rgba(231,76,60,.3);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">Delete</button>
     </div>
     <button onclick="glConvertLeadToOnboarding()" style="width:100%;margin-top:8px;padding:12px;background:linear-gradient(135deg,#5fcf9e,#00c4a7);color:#04231d;border:none;border-radius:8px;font-weight:800;font-size:13.5px;cursor:pointer">🚀 Convert to Client &amp; Onboard</button>
+    <div id="ddp-docs" style="margin-top:18px;border-top:1px solid rgba(255,255,255,.07);padding-top:16px"></div>
     <div id="ddp-corr" style="margin-top:18px;border-top:1px solid rgba(255,255,255,.07);padding-top:16px"></div>`;
 
   document.getElementById('ddp-view-mode').innerHTML = viewHTML;
@@ -6662,6 +6663,14 @@ function openDealDetail(stage, idx){
   document.getElementById('deal-detail-panel').classList.add('show');
   // Load the email correspondence for this lead into the panel above.
   ddpLoadCorrespondence(d);
+  // Documents (NDA, PA letter, formulas, labels). Only real (saved) deals have
+  // a UUID to hang docs on; a not-yet-saved lead shows a gentle prompt instead.
+  var docBox = document.getElementById('ddp-docs');
+  if(docBox && typeof window.glRenderDealDocs === 'function'){
+    if(d.id && !String(d.id).startsWith('tmp_')) window.glRenderDealDocs(docBox, { dealId: d.id });
+    else docBox.innerHTML = '<div style="font-size:10px;letter-spacing:2px;color:var(--teal);margin-bottom:6px">📎 DOCUMENTS</div>' +
+      '<div style="font-size:11px;color:#9aa7bd">Save this deal first (✏️ Edit → Save) to attach NDAs, Process Authority letters, formulas and labels.</div>';
+  }
 }
 
 /* ═══════════════════════════════════════════
@@ -7882,6 +7891,8 @@ function openClientDetail(cid) {
 
       ${typeof window.glRenderClientNotesBlock === 'function' ? window.glRenderClientNotesBlock(c) : ''}
 
+      <div id="cde-docs" style="margin-bottom:20px"></div>
+
       <div style="margin-bottom:20px">
         <div id="cde-corr"><div style="font-size:11px;color:var(--muted)">Loading correspondence…</div></div>
       </div>
@@ -7896,6 +7907,12 @@ function openClientDetail(cid) {
     </div>`;
   ov.addEventListener('click', e=>{ if(e.target===ov) ov.remove(); });
   document.body.appendChild(ov);
+
+  // Documents carried over from the pipeline (NDA, PA letter, formulas, labels)
+  // plus anything uploaded here directly.
+  if(typeof window.glRenderDealDocs === 'function'){
+    window.glRenderDealDocs(document.getElementById('cde-docs'), { clientId: c.id });
+  }
 
   // Pull the client's email correspondence into the account view (same log the
   // pipeline uses — keyed by the client's email, so pipeline + later emails all
@@ -12011,6 +12028,7 @@ window.addEventListener('appinstalled', () => {
 <script src="/crm-gmp.js"></script>
 <script src="/crm-client-detail.js"></script>
 <script src="/crm-artwork.js"></script>
+<script src="/crm-deal-docs.js"></script>
 <script src="/crm-gmpsched.js"></script>
 <script src="/crm-trace.js"></script>
 <script src="/crm-training.js"></script>

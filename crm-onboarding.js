@@ -64,6 +64,41 @@
       if(ins.error) throw new Error('client insert: ' + ins.error.message);
       var clientId = ins.data.id;
 
+      // 1b) Carry the deal's documents over to the new client, and smart-file the
+      //     ones with a dedicated home so they land where staff expect them:
+      //     the Process Authority letter fills the client's PA-letter compliance
+      //     slot, and label artwork becomes SKU entries. NDAs, formulas and
+      //     anything else stay linked to the client's Documents card. A failure
+      //     here must not sink the whole conversion — the client is already made.
+      try {
+        var realDealId = (d.id && !String(d.id).startsWith('tmp_')) ? d.id : null;
+        if(realDealId){
+          var dd = await sb().from('deal_documents').select('*').eq('deal_id', realDealId);
+          var docs = (dd.data) || [];
+          if(docs.length){
+            await sb().from('deal_documents').update({ client_id: clientId }).eq('deal_id', realDealId);
+
+            var paDocs = docs.filter(function(x){ return x.doc_type === 'Process Authority Letter' && x.file_path; })
+              .sort(function(a, b){ return new Date(b.created_at) - new Date(a.created_at); });
+            if(paDocs.length){
+              await sb().from('clients')
+                .update({ pa_letter_file_path: paDocs[0].file_path, pa_letter_on_file: true })
+                .eq('id', clientId);
+            }
+
+            var labels = docs.filter(function(x){ return x.doc_type === 'Label / Artwork' && x.file_path; });
+            if(labels.length){
+              var uid = (window.currentUser && window.currentUser.id) || null;
+              await sb().from('client_artwork').insert(labels.map(function(l){
+                return { client_id: clientId, sku_name: l.name || 'Label', description: l.notes || null,
+                         file_path: l.file_path, file_type: l.file_type || null,
+                         status: 'submitted', created_by: uid };
+              }));
+            }
+          }
+        }
+      } catch(docErr){ console.warn('[onboarding] document carry-over failed', docErr); }
+
       // 2) Create the onboarding row, prefilled — RPC returns the secret token.
       var prefill = {
         company: company, name: contact, email: email, phone: d.phone || '',
