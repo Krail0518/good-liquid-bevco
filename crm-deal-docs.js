@@ -110,15 +110,23 @@
     catch(e){ host.innerHTML = title + '<div style="font-size:11px;color:#ff8579">Could not load documents: '+esc(e.message||e)+'</div>'; return; }
 
     var inp = 'width:100%;padding:9px 10px;background:#0a1628;border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#fff;font-size:13px';
-    var typeOpts = DOC_TYPES.map(function(t){ return '<option value="'+esc(t)+'">'+esc(t)+'</option>'; }).join('');
+    // Document type as a visible chip row (not a dropdown) so every category —
+    // NDA, Process Authority Letter, Formula, Label / Artwork, Other — is
+    // obvious at a glance instead of hidden behind a closed <select>.
+    var typeChips = DOC_TYPES.map(function(t, i){
+      var st = typeStyle(t), on = i === 0;
+      return '<button type="button" class="gl-dd-type-chip" data-type="'+esc(t)+'" aria-pressed="'+on+'" ' +
+        'style="padding:6px 11px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;' +
+        'background:'+(on?st.bg:'rgba(255,255,255,.04)')+';color:'+(on?st.fg:'#9aa7bd')+';' +
+        'border:1px solid '+(on?st.br:'rgba(255,255,255,.12)')+'">'+st.icon+' '+esc(t)+'</button>';
+    }).join('');
 
     host.innerHTML = title +
       (rows.length ? rows.map(docRow).join('') : '<div style="font-size:12px;color:#9aa7bd;padding:6px 0">No documents yet. Add the first one below.</div>') +
       '<div style="border-top:1px solid rgba(255,255,255,.06);margin-top:8px;padding-top:10px">' +
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
-          '<select class="gl-dd-type" style="'+inp+'">'+typeOpts+'</select>' +
-          '<input class="gl-dd-name" placeholder="Document name (e.g. Mango NDA)" style="'+inp+'">' +
-        '</div>' +
+        '<div style="font-size:10px;letter-spacing:1px;color:#9aa7bd;margin-bottom:6px">DOCUMENT TYPE</div>' +
+        '<div class="gl-dd-types" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">'+typeChips+'</div>' +
+        '<input class="gl-dd-name" placeholder="Document name (e.g. Mango NDA)" style="'+inp+'">' +
         '<input class="gl-dd-notes" placeholder="Notes (optional)" style="'+inp+';margin-top:8px">' +
         '<div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">' +
           '<input class="gl-dd-file" type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ai,.eps,.svg,.txt" style="'+inp+';flex:1;min-width:180px;padding:7px">' +
@@ -130,15 +138,28 @@
     var msg = host.querySelector('.gl-dd-msg');
     function show(color, text){ msg.style.display='block'; msg.style.color=color; msg.textContent=text; }
 
-    // Prefill the name field from the chosen type for a quicker add.
+    // Which type chip is active. Clicking one highlights it and, for a named
+    // type, prefills the document name so adding is a two-tap affair.
     var nameEl = host.querySelector('.gl-dd-name');
-    host.querySelector('.gl-dd-type').addEventListener('change', function(){
-      if(!nameEl.value.trim() && this.value !== 'Other') nameEl.value = this.value;
+    var selectedType = DOC_TYPES[0];
+    var chips = host.querySelectorAll('.gl-dd-type-chip');
+    Array.prototype.forEach.call(chips, function(chip){
+      chip.addEventListener('click', function(){
+        selectedType = chip.getAttribute('data-type');
+        Array.prototype.forEach.call(chips, function(c){
+          var st = typeStyle(c.getAttribute('data-type')), on = c === chip;
+          c.setAttribute('aria-pressed', on);
+          c.style.background = on ? st.bg : 'rgba(255,255,255,.04)';
+          c.style.color = on ? st.fg : '#9aa7bd';
+          c.style.borderColor = on ? st.br : 'rgba(255,255,255,.12)';
+        });
+        if(!nameEl.value.trim() && selectedType !== 'Other') nameEl.value = selectedType;
+      });
     });
 
     host.querySelector('.gl-dd-add').addEventListener('click', async function(){
       var btn = this;
-      var type = host.querySelector('.gl-dd-type').value;
+      var type = selectedType;
       var name = (nameEl.value || '').trim();
       var notes = (host.querySelector('.gl-dd-notes').value || '').trim();
       var fileEl = host.querySelector('.gl-dd-file');
