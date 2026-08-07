@@ -59,6 +59,18 @@ Deno.serve(async (req: Request): Promise<Response> => {
     .from('onboarding').select('client_id, contact_email, status').eq('token', token).maybeSingle();
   if (obErr)  { console.error('[onboarding-set-password] lookup', obErr); return jsonResponse({ ok: false, error: 'Could not verify your onboarding link.' }, 500); }
   if (!ob)    return jsonResponse({ ok: false, error: 'This onboarding link is not valid.' }, 400);
+  // Single use: once the onboarding is completed the link must stop being a
+  // password-reset primitive. Anyone holding the original invite email (or a
+  // forwarded copy) could otherwise take over the customer's portal account at
+  // any point in the future. onboard.html sets the password BEFORE calling
+  // gl_onboarding_submit, so a legitimate first run — and a retry after a
+  // failed submit — still sees status 'invited'/'started'.
+  if (ob.status === 'submitted' || ob.status === 'approved') {
+    return jsonResponse({
+      ok: false,
+      error: 'This onboarding link has already been used. If you need to reset your password, use "Forgot password?" on the portal sign-in page.',
+    }, 400);
+  }
   const email = String(ob.contact_email || '').trim().toLowerCase();
   if (!email) return jsonResponse({ ok: false, error: 'No email is on file for this onboarding — contact us and we\'ll sort it out.' }, 400);
 
