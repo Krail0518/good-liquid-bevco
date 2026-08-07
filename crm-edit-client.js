@@ -266,6 +266,10 @@
         // HERE when they click a client card — openClientDetail is only shown
         // to viewers — so the section must live in this form too.
         (typeof window.glClientOnboardingSection === 'function' ? window.glClientOnboardingSection(c) : '') +
+        // Documents on file (NDA, Process Authority letter, formulas, labels) —
+        // carried over from the pipeline at convert time, uploaded here, or
+        // uploaded by the customer from their portal. Card filled after mount.
+        '<div id="gl-ec-docs" style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:12px;margin-bottom:16px"></div>' +
         '<div style="display:flex;flex-direction:column;gap:12px">' +
           '<div><div style="'+LABEL_STYLE+'">BRAND NAME *</div><input id="gl-ec-name" value="'+esc(c.name)+'" style="'+INPUT_STYLE+'"></div>' +
           '<div><div style="'+LABEL_STYLE+'">LEGAL BUSINESS NAME <span style="opacity:.6">(if different)</span></div><input id="gl-ec-legal-name" value="'+esc(c.legalName)+'" style="'+INPUT_STYLE+'"></div>' +
@@ -828,6 +832,12 @@
     });
 
     host.appendChild(ov);
+
+    // Documents card (NDA etc.) — same card the deal panel uses, filtered to
+    // this client, so carried-over pipeline docs and portal uploads show here.
+    if(typeof window.glRenderDealDocs === 'function'){
+      window.glRenderDealDocs(ov.querySelector('#gl-ec-docs'), { clientId: clientId });
+    }
 
     // Account glance (invoices + pipeline) + correspondence — read-only, using
     // the same sources the client card uses, so nothing is lost by making this

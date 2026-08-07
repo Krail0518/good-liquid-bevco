@@ -269,6 +269,10 @@
     var fms = (fmR && fmR.data) || [];
     var ldR = await sb.from('lot_documents').select('id, document_type, title, lot_number, file_name, file_size, file_path, mime_type, uploaded_at, production_run_id').eq('client_id', customer.client_id).order('uploaded_at', { ascending: false });
     var lds = (ldR && ldR.data) || [];
+    // Agreements (NDA, contracts, formulas) — deal_documents rows carried over
+    // from the pipeline at convert time plus anything uploaded here or by staff.
+    var agmR = await sb.from('deal_documents').select('id, doc_type, name, notes, file_path, created_at').eq('client_id', customer.client_id).order('created_at', { ascending: false });
+    var agms = (agmR && agmR.data) || [];
 
     var STATUS_COLOR = { paid:'#5fcf9e', pending:'#f5c842', overdue:'#e74c3c', quote:'#9aa7bd', expired:'#9aa7bd', draft:'#9aa7bd' };
     var paidTotal = invs.filter(function(i){ return i.status === 'paid'; }).reduce(function(s,i){ return s + (Number(i.amount)||0); }, 0);
@@ -425,6 +429,66 @@
       window.open(su.data.signedUrl, '_blank', 'noopener');
     };
 
+    // ── Agreements & contracts (NDA etc.) — rows + download + upload ──
+    var AGM_COLOR = { 'NDA':'#6b9fff', 'Process Authority Letter':'#f5c842', 'Formula':'#c4a4f8', 'Label / Artwork':'#00e5c0', 'Other':'#9aa7bd' };
+    var agmRowsHtml = agms.length ? agms.map(function(d){
+      var color = AGM_COLOR[d.doc_type] || '#9aa7bd';
+      var meta = [];
+      if(d.created_at) meta.push(new Date(d.created_at).toLocaleDateString());
+      if(d.notes) meta.push(escHtml(d.notes));
+      return '<div style="display:grid;grid-template-columns:1fr 150px 100px;gap:12px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.05);align-items:center">' +
+        '<div>' +
+          '<div style="font-size:13px;color:#fff;font-weight:600">' + escHtml(d.name || 'Document') + '</div>' +
+          (meta.length ? '<div style="font-size:11px;color:#6b87ad;margin-top:2px">' + meta.join(' · ') + '</div>' : '') +
+        '</div>' +
+        '<div style="text-align:right">' +
+          '<span style="display:inline-block;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:' + color + ';font-weight:700;background:rgba(255,255,255,.04);border:1px solid ' + color + '33;padding:3px 8px;border-radius:4px">' + escHtml(d.doc_type || 'Other') + '</span>' +
+        '</div>' +
+        '<div style="text-align:right">' +
+          (d.file_path
+            ? '<button onclick="window.glPortalDownloadAgreement(\'' + d.id + '\', event)" style="background:rgba(26,111,255,.12);border:1px solid rgba(26,111,255,.35);color:#6b9fff;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">⬇ Download</button>'
+            : '<span style="font-size:10px;color:#6b87ad">no file</span>') +
+        '</div>' +
+      '</div>';
+    }).join('') : '<div style="padding:20px;text-align:center;color:#6b87ad;font-size:12px">No agreements on file yet. Upload your signed Non-Disclosure Agreement below, or ask Mike to add documents to your account.</div>';
+
+    window._glPortalAgreements = {};
+    agms.forEach(function(d){ window._glPortalAgreements[d.id] = d; });
+    window.glPortalDownloadAgreement = async function(docId, ev){
+      if(ev && ev.preventDefault) ev.preventDefault();
+      var doc = window._glPortalAgreements && window._glPortalAgreements[docId];
+      if(!doc || !doc.file_path){ alert('Document not found'); return; }
+      var su = await sb.storage.from('client-docs').createSignedUrl(doc.file_path, 60);
+      if(su.error || !su.data){ alert('Download link failed: ' + (su.error && su.error.message || 'unknown')); return; }
+      window.open(su.data.signedUrl, '_blank', 'noopener');
+    };
+
+    window.glPortalUploadAgreement = async function(){
+      var fEl = document.getElementById('gl-cp-agm-file');
+      var tEl = document.getElementById('gl-cp-agm-type');
+      var msg = document.getElementById('gl-cp-agm-msg');
+      function say(color, text){ if(msg){ msg.style.display = 'block'; msg.style.color = color; msg.textContent = text; } }
+      var f = fEl && fEl.files && fEl.files[0];
+      if(!f){ say('#ff8579', 'Choose a file first.'); return; }
+      if(f.size > 25 * 1024 * 1024){ say('#ff8579', 'File is over 25 MB — email it to Mike instead.'); return; }
+      say('#6b87ad', 'Uploading…');
+      var ext = (f.name.split('.').pop() || 'bin').toLowerCase();
+      var path = customer.client_id + '/portal/' + Date.now() + '_' + Math.random().toString(36).slice(2, 7) + '.' + ext;
+      var up = await sb.storage.from('client-docs').upload(path, f, { cacheControl: '3600', upsert: false });
+      if(up.error){ say('#ff8579', 'Upload failed: ' + (up.error.message || 'unknown')); return; }
+      var ins = await sb.from('deal_documents').insert({
+        client_id: customer.client_id,
+        doc_type: (tEl && tEl.value) || 'NDA',
+        name: f.name,
+        file_path: path,
+        file_type: f.type || null,
+        uploaded_by: 'portal:' + (customer.email || '')
+      });
+      if(ins.error){ say('#ff8579', 'Could not save the document: ' + (ins.error.message || 'unknown')); return; }
+      say('#5fcf9e', '✓ Uploaded — refreshing…');
+      setTimeout(function(){ renderDashboard(customer); }, 600);
+    };
+
     var algRowsHtml = algs.length ? algs.map(function(a){
       var url = a.share_token ? (location.origin + location.pathname + '?allergen_decl=' + a.share_token) : '';
       return '<div style="display:grid;grid-template-columns:1fr 120px;gap:12px;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.05);align-items:center">' +
@@ -491,6 +555,24 @@
           '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
             '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:#7fc6f5;font-weight:700">📎 COAs & DOCUMENTS</div>' +
             ldRowsHtml +
+          '</div>' +
+
+          '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
+            '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:#6b9fff;font-weight:700">🔒 AGREEMENTS & CONTRACTS</div>' +
+            agmRowsHtml +
+            '<div style="padding:12px 18px;border-top:1px solid rgba(255,255,255,.06)">' +
+              '<div style="font-size:11px;color:#6b87ad;margin-bottom:8px">Upload your signed Non-Disclosure Agreement (NDA) or another document — it lands directly on your account and Mike can see it right away.</div>' +
+              '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+                '<select id="gl-cp-agm-type" style="padding:8px 10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#eef4ff;font-size:12px">' +
+                  '<option value="NDA">Signed NDA</option>' +
+                  '<option value="Formula">Formula</option>' +
+                  '<option value="Other">Other document</option>' +
+                '</select>' +
+                '<input id="gl-cp-agm-file" type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" style="flex:1;min-width:170px;padding:7px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#eef4ff;font-size:12px">' +
+                '<button onclick="window.glPortalUploadAgreement()" style="padding:8px 14px;background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.35);border-radius:6px;color:#00e5c0;font-weight:700;font-size:12px;cursor:pointer">⬆ Upload</button>' +
+              '</div>' +
+              '<div id="gl-cp-agm-msg" style="display:none;font-size:12px;margin-top:8px"></div>' +
+            '</div>' +
           '</div>' +
 
           '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
