@@ -501,13 +501,29 @@
       items:['4 production runs reserved per year','5% discount vs. ad-hoc rate card','Priority scheduling on dock days','Quarterly business review'] }
   ];
 
-  function loadLocal(){ try { var raw = localStorage.getItem('gl_service_packages'); if(raw) return JSON.parse(raw); } catch(e){} return SEED.slice(); }
-  function saveLocal(arr){ localStorage.setItem('gl_service_packages', JSON.stringify(arr)); }
+  /* The catalog is org data, not a device preference — it lives in the
+     app_settings.service_packages row. GL_APP_SETTINGS is the in-memory copy
+     loaded at login, so reads stay synchronous. */
+  function loadPkgs(){
+    var v = (window.GL_APP_SETTINGS && window.GL_APP_SETTINGS.service_packages);
+    if(v == null && typeof window.glGetSetting === 'function') v = window.glGetSetting('service_packages', null);
+    return Array.isArray(v) ? v.slice() : SEED.slice();
+  }
+  function savePkgs(arr){
+    window.GL_APP_SETTINGS = window.GL_APP_SETTINGS || {};
+    window.GL_APP_SETTINGS.service_packages = arr;
+    if(typeof window.glSaveAppSetting !== 'function') return;
+    try {
+      window.glSaveAppSetting('service_packages', arr).then(function(ok){
+        if(!ok) alert('⚠ Package changes are live for this session but did NOT save to the database — they will be lost on reload. Check your connection and save again.');
+      });
+    } catch(e){}
+  }
 
   window.openServicePackages = function(){
     var prior = document.getElementById('gl-pkg-modal'); if(prior) prior.remove();
     var host = document.getElementById('crm-panel') || document.body;
-    var pkgs = loadLocal();
+    var pkgs = loadPkgs();
     var rowsHtml = pkgs.map(function(p){
       return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:18px;margin-bottom:12px">' +
         '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:10px">' +
@@ -532,7 +548,7 @@
           '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">📦 SERVICE PACKAGES</div>' +
           '<button id="gl-pkg-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
         '</div>' +
-        '<div style="font-size:12px;color:#9aa7bd;margin-bottom:18px;line-height:1.6">Pre-built bundles. "Copy as quote text" pastes into emails or quote PDFs. Stored per-device.</div>' +
+        '<div style="font-size:12px;color:#9aa7bd;margin-bottom:18px;line-height:1.6">Pre-built bundles. "Copy as quote text" pastes into emails or quote PDFs. Shared with every staff device.</div>' +
         rowsHtml +
         '<div style="display:flex;justify-content:flex-end;margin-top:10px"><button id="gl-pkg-add" class="cbtn pri">+ New package</button></div>' +
       '</div>';
@@ -562,8 +578,8 @@
         var p = pkgs.find(function(x){ return x.id === b.getAttribute('data-id'); });
         if(!p) return;
         if(!confirm('Delete "' + p.name + '"?')) return;
-        var fresh = loadLocal().filter(function(x){ return x.id !== p.id; });
-        saveLocal(fresh);
+        var fresh = loadPkgs().filter(function(x){ return x.id !== p.id; });
+        savePkgs(fresh);
         ov.remove(); window.openServicePackages();
       });
     });
@@ -599,10 +615,10 @@
         items:   ov.querySelector('#gl-pkg-items').value.split('\n').map(function(s){ return s.trim(); }).filter(Boolean)
       };
       if(!data.name){ alert('Name is required.'); return; }
-      var fresh = loadLocal();
+      var fresh = loadPkgs();
       if(isEdit){ var idx = fresh.findIndex(function(x){ return x.id === p.id; }); if(idx >= 0) fresh[idx] = data; else fresh.push(data); }
       else { fresh.push(data); }
-      saveLocal(fresh);
+      savePkgs(fresh);
       ov.remove(); window.openServicePackages();
     });
     host.appendChild(ov);

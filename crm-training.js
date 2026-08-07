@@ -251,9 +251,10 @@
       btn.disabled = true; show('#9aa7bd','Saving…');
       try {
         var r;
-        if(editing) r = await sb().from('training_records').update(row).eq('id', rec.id);
-        else r = await sb().from('training_records').insert([row]);
+        if(editing) r = await sb().from('training_records').update(row).eq('id', rec.id).select();
+        else r = await sb().from('training_records').insert([row]).select();
         if(r.error) throw r.error;
+        if(Array.isArray(r.data) && r.data.length === 0) throw new Error('the server rejected the write (0 rows affected)');
         if(typeof window.glAudit === 'function') window.glAudit(editing?'training_updated':'training_added', employee, { course: course });
         ov.remove();
         window.glRenderTraining();
@@ -269,8 +270,11 @@
         if(!window.confirm('Delete this training record for '+(rec.employee_name||'')+'? This cannot be undone.')) return;
         var btn = this; btn.disabled = true; show('#9aa7bd','Deleting…');
         try {
-          var r = await sb().from('training_records').delete().eq('id', rec.id);
+          // .select() makes PostgREST return the deleted rows, so a silent RLS
+          // rejection (no error, 0 rows) can't be mistaken for success.
+          var r = await sb().from('training_records').delete().eq('id', rec.id).select();
           if(r.error) throw r.error;
+          if(Array.isArray(r.data) && r.data.length === 0) throw new Error('the server rejected the delete (0 rows removed)');
           if(typeof window.glAudit === 'function') window.glAudit('training_deleted', rec.employee_name||'', { course: rec.course });
           ov.remove();
           window.glRenderTraining();

@@ -50,7 +50,14 @@
     var sb=window.supa;
     if(sb&&uuidish(u.id)){
       try{
-        var r=await sb.from('profiles').update({role:newRole,updated_at:new Date().toISOString()}).eq('id',u.id);
+        // .select() makes PostgREST return the updated rows, so a silent RLS
+        // rejection (no error, 0 rows) can't be mistaken for success.
+        var r=await sb.from('profiles').update({role:newRole,updated_at:new Date().toISOString()}).eq('id',u.id).select();
+        if(!r.error&&Array.isArray(r.data)&&r.data.length===0){
+          alert('The server rejected the role change (0 rows changed). The role has NOT been updated.');
+          if(typeof window.renderUsersPanel==='function')window.renderUsersPanel();
+          return;
+        }
         if(r.error){
           console.error('[GL] role update failed',r.error);
           alert('Role update failed: '+r.error.message);
@@ -1010,6 +1017,9 @@
     'gl_email_templates','gl_time_entries','gl_active_timer','gl_prod_pipeline'
   ];
   // Keys that hold configuration / credentials — preserved by default.
+  // gl_ai_key and gl_mailgun_* are legacy: those secrets live in Supabase
+  // secrets now and are read server-side. They stay listed so a browser that
+  // still holds a stale copy gets it cleared rather than silently retained.
   var CONFIG_KEYS = [
     'gl_ai_key','gl_mailgun_key','gl_mailgun_domain','gl_mailgun_from','gl_supabase_key','gl_ga_id'
   ];

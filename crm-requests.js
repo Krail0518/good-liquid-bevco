@@ -132,8 +132,11 @@
     var uid = sess && sess.data && sess.data.session && sess.data.session.user && sess.data.session.user.id;
     var payload = { status: status };
     if(status === 'resolved') { payload.resolved_at = new Date().toISOString(); payload.resolved_by = uid; }
-    var r = await sb.from('customer_requests').update(payload).eq('id', id);
+    // .select() makes PostgREST return the updated rows, so a silent RLS
+    // rejection (no error, 0 rows) can't be mistaken for success.
+    var r = await sb.from('customer_requests').update(payload).eq('id', id).select();
     if(r.error){ alert('Update failed: ' + r.error.message); return; }
+    if(Array.isArray(r.data) && r.data.length === 0){ alert('The server rejected the update (0 rows changed). The request is unchanged.'); return; }
     if(typeof window.glOpenCustomerRequestsInbox === 'function'){
       // Re-render by re-clicking the active filter button
       var ov = document.getElementById('gl-cri-modal');
@@ -151,8 +154,9 @@
     var r = await sb.from('customer_requests').update({
       status:'resolved', resolved_at: new Date().toISOString(), resolved_by: uid,
       resolution_notes: notes || null
-    }).eq('id', id);
+    }).eq('id', id).select();
     if(r.error){ alert('Update failed: ' + r.error.message); return; }
+    if(Array.isArray(r.data) && r.data.length === 0){ alert('The server rejected the update (0 rows changed). The request is still open.'); return; }
     var ov = document.getElementById('gl-cri-modal');
     if(ov){ var active = ov.querySelector('.gl-cri-pill.act'); if(active) active.click(); }
     refreshDashboardBanner();

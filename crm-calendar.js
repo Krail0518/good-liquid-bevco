@@ -118,8 +118,11 @@
   window.glDeleteCalEvent = async function(id, type, date) {
     if (!window.supa) { alert('Cloud sync unavailable — try reloading.'); return; }
 
-    var r = await window.supa.from('cal_events').delete().eq('id', id);
+    // .select() makes PostgREST return the deleted rows, so a silent RLS
+    // rejection (no error, 0 rows) can't be mistaken for success.
+    var r = await window.supa.from('cal_events').delete().eq('id', id).select();
     if (r.error) { alert('Could not delete event: ' + r.error.message); return; }
+    if (Array.isArray(r.data) && r.data.length === 0) { alert('The server rejected the delete (0 rows removed). The event has NOT been deleted.'); return; }
 
     // Remove from shared in-memory cache so the calendar re-renders correctly
     try {

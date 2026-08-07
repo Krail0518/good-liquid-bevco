@@ -193,7 +193,9 @@
     var cr = await sb().rpc('gl_onboarding_create', { p_client_id: clientId, p_prefill: prefill, p_deal_id: null });
     if(cr.error) throw new Error(cr.error.message);
     if(!cr.data || cr.data.ok === false) throw new Error((cr.data && cr.data.error) || 'could not create the onboarding');
-    await sb().from('clients').update({ onboarding_status: 'invited' }).eq('id', clientId);
+    var su = await sb().from('clients').update({ onboarding_status: 'invited' }).eq('id', clientId).select();
+    if(su.error) throw new Error(su.error.message);
+    if(Array.isArray(su.data) && su.data.length === 0) throw new Error('the client status could not be set to invited (0 rows updated)');
     return { id: cr.data.id, token: cr.data.token, status: 'invited' };
   }
 

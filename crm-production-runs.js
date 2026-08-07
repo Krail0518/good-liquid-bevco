@@ -265,7 +265,16 @@
     var delBtn = ov.querySelector('#gl-prun-del');
     if(delBtn) delBtn.addEventListener('click', async function(){
       if(!confirm('Delete this run?')) return;
-      if(window.supa){ try { await window.supa.from('production_runs').delete().eq('id', run.id); } catch(e){} }
+      // 'local_' ids never reached the database, so there is nothing to delete server-side.
+      if(window.supa && String(run.id||'').indexOf('local_') !== 0){
+        var dq;
+        // .select() makes PostgREST return the deleted rows, so a silent RLS
+        // rejection (no error, 0 rows) can't be mistaken for success.
+        try { dq = await window.supa.from('production_runs').delete().eq('id', run.id).select(); }
+        catch(e){ alert('Could not reach the server — the run was NOT deleted.'); return; }
+        if(dq.error){ alert('Delete failed: ' + dq.error.message); return; }
+        if(Array.isArray(dq.data) && dq.data.length === 0){ alert('The server rejected the delete (0 rows removed). The run has NOT been deleted.'); return; }
+      }
       window.glProductionRuns = (window.glProductionRuns||[]).filter(function(r){ return r.id !== run.id; });
       saveLocal(); renderBoard(); ov.remove();
       if(typeof addNotification === 'function') addNotification('🏭 Run deleted', run.run_name, 'warning');
@@ -343,10 +352,12 @@
         }
       }
       var btn = this; btn.disabled = true; btn.textContent = 'Saving…';
-      if(window.supa){
+      if(window.supa && !(isEdit && String(run.id||'').indexOf('local_') === 0)){
         try {
           if(isEdit){
-            await window.supa.from('production_runs').update(data).eq('id', run.id);
+            var uq = await window.supa.from('production_runs').update(data).eq('id', run.id).select();
+            if(uq.error){ alert('Save failed: ' + uq.error.message); btn.disabled = false; btn.textContent = '💾 Save'; return; }
+            if(Array.isArray(uq.data) && uq.data.length === 0){ alert('The server rejected the update (0 rows changed). Your changes were NOT saved.'); btn.disabled = false; btn.textContent = '💾 Save'; return; }
             Object.assign(run, data);
           } else {
             var r = await window.supa.from('production_runs').insert([data]).select().single();
@@ -438,8 +449,9 @@
             if(!confirm('Delete this document? The customer will no longer be able to see it.')) return;
             b.disabled = true; b.textContent = '…';
             try { if(p) await window.supa.storage.from('client-docs').remove([p]); } catch(e){}
-            var rr = await window.supa.from('lot_documents').delete().eq('id', id);
+            var rr = await window.supa.from('lot_documents').delete().eq('id', id).select();
             if(rr.error){ alert('Delete failed: ' + rr.error.message); b.disabled = false; b.textContent = '🗑'; return; }
+            if(Array.isArray(rr.data) && rr.data.length === 0){ alert('The server rejected the delete (0 rows removed). The document has NOT been deleted.'); b.disabled = false; b.textContent = '🗑'; return; }
             if(typeof window.glAudit === 'function') window.glAudit('lot_document_deleted', id, { run: run.id });
             loadDocs();
           };
@@ -616,8 +628,9 @@
           var patch = rowToPatch(tr);
           if(!patch.name){ alert('Name is required.'); return; }
           if(window.supa){
-            var r = await window.supa.from('production_lines').update(patch).eq('id', id);
+            var r = await window.supa.from('production_lines').update(patch).eq('id', id).select();
             if(r.error){ alert('Save failed: ' + r.error.message); return; }
+            if(Array.isArray(r.data) && r.data.length === 0){ alert('The server rejected the update (0 rows changed). Your changes were NOT saved.'); return; }
           }
           await loadProductionLines();
           renderCapacityWidget();
@@ -628,8 +641,9 @@
         tr.querySelector('.gl-ln-rm').onclick = async function(){
           if(!confirm('Delete this line? Existing runs assigned to it will be unassigned (line_id set to NULL).')) return;
           if(window.supa){
-            var r = await window.supa.from('production_lines').delete().eq('id', id);
+            var r = await window.supa.from('production_lines').delete().eq('id', id).select();
             if(r.error){ alert('Delete failed: ' + r.error.message); return; }
+            if(Array.isArray(r.data) && r.data.length === 0){ alert('The server rejected the delete (0 rows removed). The line has NOT been deleted.'); return; }
           }
           await loadProductionLines();
           await refreshRuns();

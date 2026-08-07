@@ -223,8 +223,9 @@
           if(ins.error){ alert('Save failed: '+ins.error.message); return; }
           toast('Template created ✓');
         } else {
-          var upd = await sb.from('email_templates').update(payload).eq('id', t.id);
+          var upd = await sb.from('email_templates').update(payload).eq('id', t.id).select();
           if(upd.error){ alert('Save failed: '+upd.error.message); return; }
+          if(Array.isArray(upd.data) && upd.data.length === 0){ alert('The server rejected the update (0 rows changed). Your changes were NOT saved.'); return; }
           toast('Template saved ✓');
         }
         ov.remove();
@@ -234,8 +235,9 @@
       if(delBtn) delBtn.onclick = async function(){
         if(!confirm('Delete "'+t.name+'"?')) return;
         var sb = getSB();
-        var r = await sb.from('email_templates').delete().eq('id', t.id);
+        var r = await sb.from('email_templates').delete().eq('id', t.id).select();
         if(r.error){ alert('Delete failed: '+r.error.message); return; }
+        if(Array.isArray(r.data) && r.data.length === 0){ alert('The server rejected the delete (0 rows removed). The template has NOT been deleted.'); return; }
         toast('Template deleted ✓');
         ov.remove();
         window.glOpenEmailTemplates();

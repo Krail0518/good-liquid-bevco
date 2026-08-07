@@ -114,10 +114,15 @@
 
     if(window.supa){
       try {
-        var r = await window.supa.from('clients').update({ notes: trimmed }).eq('id', clientId);
+        var r = await window.supa.from('clients').update({ notes: trimmed }).eq('id', clientId).select();
         if(r && r.error){
           console.warn('[GL] glSaveClientNotes: supabase error', r.error);
           if(typeof addNotification === 'function') addNotification('Notes saved locally','Server error — see console','warning');
+          return false;
+        }
+        if(r && Array.isArray(r.data) && r.data.length === 0){
+          console.warn('[GL] glSaveClientNotes: 0 rows updated (likely RLS)');
+          if(typeof addNotification === 'function') addNotification('Notes saved locally','The server rejected the update — they will be lost on refresh','warning');
           return false;
         }
       } catch(e){
@@ -523,8 +528,9 @@
           var id = b.getAttribute('data-rate-rm');
           if(!confirm('Remove this rate override? The client will go back to the standard tier ladder for this service.')) return;
           b.disabled = true; b.textContent = '…';
-          var rr = await window.supa.from('client_rate_overrides').delete().eq('id', id);
+          var rr = await window.supa.from('client_rate_overrides').delete().eq('id', id).select();
           if(rr.error){ alert('Delete failed: ' + rr.error.message); b.disabled = false; b.textContent = 'Remove'; return; }
+          if(Array.isArray(rr.data) && rr.data.length === 0){ alert('The server rejected the delete (0 rows removed). The rate override is still in place.'); b.disabled = false; b.textContent = 'Remove'; return; }
           if(typeof window.glAudit === 'function') window.glAudit('rate_override_removed', clientId, { id: id });
           // Invalidate cache so next invoice builder load fetches fresh.
           if(window._glRates && window._glRates.overrides) delete window._glRates.overrides[clientId];
@@ -938,7 +944,7 @@
         var working = Object.assign({}, supaPatch);
         var r, retries = 30, droppedCols = [];
         while(retries-- > 0){
-          r = await window.supa.from('clients').update(working).eq('id', clientId);
+          r = await window.supa.from('clients').update(working).eq('id', clientId).select();
           if(!r || !r.error) break;
           if(r.error.code !== 'PGRST204') break;
           var m = (r.error.message || '').match(/'([^']+)' column/);
@@ -953,6 +959,11 @@
         if(r && r.error){
           console.warn('[GL] glUpdateClient: supabase error', r.error);
           if(typeof addNotification === 'function') addNotification('Saved locally','Server error: '+r.error.message,'warning');
+          return false;
+        }
+        if(r && Array.isArray(r.data) && r.data.length === 0){
+          console.warn('[GL] glUpdateClient: 0 rows updated (likely RLS)');
+          if(typeof addNotification === 'function') addNotification('Saved locally','The server rejected the update — the changes will be lost on refresh','warning');
           return false;
         }
       } catch(e){

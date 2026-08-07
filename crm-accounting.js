@@ -90,7 +90,11 @@
       if (window.INV && poEl) window.INV.poNumber = poEl.value.trim();
       var result = await _origSave.apply(this, arguments);
       if (window.INV && window.INV.poNumber && window.INV.invoice_number) {
-        await SB().from('invoices').update({ po_number: window.INV.poNumber }).eq('invoice_number', window.INV.invoice_number);
+        // .select() makes PostgREST return the updated rows, so a silent RLS
+        // rejection (no error, 0 rows) can't be mistaken for success.
+        var poQ = await SB().from('invoices').update({ po_number: window.INV.poNumber }).eq('invoice_number', window.INV.invoice_number).select();
+        if (poQ.error) notify('PO number did NOT save: ' + poQ.error.message, 'error');
+        else if (Array.isArray(poQ.data) && poQ.data.length === 0) notify('PO number did NOT save — the server rejected the update.', 'error');
       }
       return result;
     };
@@ -117,10 +121,11 @@
       if (!reason.trim()) { notify('Please enter a void reason.', 'error'); return; }
       if (!confirm('Void invoice ' + invId + '? This cannot be undone.')) return;
       btn.disabled = true; btn.textContent = 'Voiding…';
-      var { error } = await SB().from('invoices').update({
+      var { data: voidRows, error } = await SB().from('invoices').update({
         status: 'voided', void_reason: reason.trim(), voided_at: new Date().toISOString()
-      }).eq('invoice_number', invId);
+      }).eq('invoice_number', invId).select();
       if (error) { notify('Error: ' + error.message, 'error'); btn.disabled = false; btn.innerHTML = '🚫 Void'; return; }
+      if (Array.isArray(voidRows) && voidRows.length === 0) { notify('The server rejected the void (0 rows changed) — the invoice is unchanged.', 'error'); btn.disabled = false; btn.innerHTML = '🚫 Void'; return; }
       if (inv) { inv.status = 'voided'; inv.void_reason = reason; inv.voided_at = new Date().toISOString(); }
       notify('Invoice voided.', 'success');
       detail.dataset.voidInjected = '';
@@ -191,8 +196,9 @@
       var newAmount = currentAmount + fee;
       var lineItems = Array.isArray(inv.line_items) ? inv.line_items.slice() : [];
       lineItems.push({ desc: 'Late fee (' + overdueDays + ' days @ 1.5%/mo)', qty: 1, unitPrice: +fee.toFixed(2), total: +fee.toFixed(2), unit: '' });
-      var { error } = await SB().from('invoices').update({ amount: +newAmount.toFixed(2), line_items: lineItems }).eq('invoice_number', invId);
+      var { data: feeRows, error } = await SB().from('invoices').update({ amount: +newAmount.toFixed(2), line_items: lineItems }).eq('invoice_number', invId).select();
       if (error) { notify('Error: ' + error.message, 'error'); this.disabled = false; this.textContent = 'Add to Invoice'; return; }
+      if (Array.isArray(feeRows) && feeRows.length === 0) { notify('The server rejected the update (0 rows changed) — the late fee was NOT added.', 'error'); this.disabled = false; this.textContent = 'Add to Invoice'; return; }
       inv.amount = +newAmount.toFixed(2);
       inv.line_items = lineItems;
       notify('Late fee ' + fmt$(fee) + ' added to invoice.', 'success');
@@ -400,7 +406,9 @@
         remaining -= amt;
         notify('Payment of ' + fmt$(amt) + ' recorded.', 'success');
         if (remaining <= 0.01) {
-          await SB().from('invoices').update({ status: 'paid' }).eq('invoice_number', invId);
+          var paidQ = await SB().from('invoices').update({ status: 'paid' }).eq('invoice_number', invId).select();
+          if (paidQ.error) { notify('Payment recorded, but marking the invoice paid failed: ' + paidQ.error.message, 'error'); modal.remove(); return; }
+          if (Array.isArray(paidQ.data) && paidQ.data.length === 0) { notify('Payment recorded, but the server rejected marking the invoice paid (0 rows changed).', 'error'); modal.remove(); return; }
           if (inv) inv.status = 'paid';
           modal.remove();
           if (confirm('Invoice fully paid! Send payment receipt to client?')) window.glSendPaymentReceipt(invId);
@@ -555,8 +563,9 @@
 
   window.glPauseRecurring = async function(id, currentStatus) {
     var newStatus = currentStatus === 'active' ? 'paused' : 'active';
-    var { error } = await SB().from('recurring_invoices').update({ status: newStatus }).eq('id', id);
+    var { data: recRows, error } = await SB().from('recurring_invoices').update({ status: newStatus }).eq('id', id).select();
     if (error) { notify('Error: ' + error.message, 'error'); return; }
+    if (Array.isArray(recRows) && recRows.length === 0) { notify('The server rejected the change (0 rows changed) — the template is unchanged.', 'error'); return; }
     notify('Template ' + newStatus + '.', 'success');
     window.glOpenRecurring();
   };

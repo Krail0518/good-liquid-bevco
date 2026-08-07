@@ -425,8 +425,6 @@
      Invoice" button that flips status to 'pending'.
    ============================================================ */
 (function(){
-  var SURL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/rest/v1';
-  var SKEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmamtlcW14d3V5aGJxeXVnY2dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNDI2MDksImV4cCI6MjA5MzkxODYwOX0.godgU_jeprCqSzqe0ji_ZA_hwvPF2s7BmzQyAB-c_xE';
 
   // Save the current builder state as an invoice with status='quote'.
   // Reuses glSaveInvoice's machinery by temporarily flipping status
@@ -447,17 +445,19 @@
     // Flip status locally
     inv.status = 'quote';
     // Update the Supabase row via PATCH (the save above did an INSERT)
-    if(inv.id){
-      fetch(SURL + '/invoices?invoice_number=eq.' + encodeURIComponent(inv.id), {
-        method: 'PATCH',
-        headers: { apikey: SKEY, Authorization: 'Bearer ' + SKEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'quote' })
-      }).then(function(res){
-        if(!res.ok){
-          console.error('[GL quote] status patch HTTP ' + res.status);
-          if(typeof addNotification === 'function') addNotification('⚠ Quote status not saved', 'The server rejected the change (HTTP ' + res.status + '). It may revert to pending on reload.', 'error');
-        }
-      }).catch(function(e){ console.warn('[GL quote] status patch failed', e); });
+    // Go through the signed-in Supabase client, not a raw fetch with the
+    // anonymous key: invoices are staff-only since the 2026-08-07 lockdown,
+    // so an anon-keyed request is rejected outright. .select() lets us tell
+    // a silent 0-row rejection from a real update.
+    if(inv.id && window.supa){
+      window.supa.from('invoices').update({ status: 'quote' })
+        .eq('invoice_number', inv.id).select('id')
+        .then(function(r){
+          if(r.error || !r.data || !r.data.length){
+            console.error('[GL quote] status patch failed', r.error);
+            if(typeof addNotification === 'function') addNotification('⚠ Quote status not saved', 'The server rejected the change. It may revert to pending on reload.', 'error');
+          }
+        });
     }
     // Update the visible row
     if(typeof renderInvoices === 'function') renderInvoices();
@@ -471,14 +471,11 @@
     var inv = (window.invoices||[]).find(function(i){ return i.id === invId; });
     if(!inv){ alert('Invoice not found.'); return; }
     try {
-      var res = await fetch(SURL + '/invoices?invoice_number=eq.' + encodeURIComponent(invId), {
-        method: 'PATCH',
-        headers: { apikey: SKEY, Authorization: 'Bearer ' + SKEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'pending' })
-      });
-      if(!res.ok){
-        var t = await res.text();
-        alert('Conversion failed: HTTP ' + res.status + '\n' + t);
+      if(!window.supa){ alert('Not signed in.'); return; }
+      var res = await window.supa.from('invoices').update({ status: 'pending' })
+        .eq('invoice_number', invId).select('id');
+      if(res.error || !res.data || !res.data.length){
+        alert('Conversion failed: ' + (res.error ? res.error.message : 'the server changed nothing — you may not have permission.'));
         return;
       }
       inv.status = 'pending';
@@ -989,8 +986,6 @@
    forget to run" problem.
    ============================================================ */
 (function(){
-  var SURL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/rest/v1';
-  var SKEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmamtlcW14d3V5aGJxeXVnY2dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNDI2MDksImV4cCI6MjA5MzkxODYwOX0.godgU_jeprCqSzqe0ji_ZA_hwvPF2s7BmzQyAB-c_xE';
 
   async function checkAuth(){
     var sb = window.supa;
@@ -1002,13 +997,14 @@
     } catch(e){ return { ok:false, msg:e.message||'auth check threw' }; }
   }
   async function checkAuditTable(){
+    // Signed-in client, not the anonymous key: audit_log is staff-only.
+    var sb = window.supa;
+    if(!sb) return { ok:false, msg:'Supabase client not loaded' };
     try {
-      var r = await fetch(SURL + '/audit_log?select=count&limit=1', {
-        headers: { apikey: SKEY, Authorization: 'Bearer ' + SKEY, 'Prefer':'count=exact' }
-      });
-      if(r.ok) return { ok:true, msg:'Table ready' };
-      if(r.status === 404 || r.status === 400) return { ok:false, msg:'Run the audit_log SQL', action:'audit_sql' };
-      return { ok:false, msg:'HTTP ' + r.status };
+      var r = await sb.from('audit_log').select('id', { count:'exact', head:true });
+      if(!r.error) return { ok:true, msg:'Table ready' };
+      if(/does not exist|schema cache/i.test(r.error.message||'')) return { ok:false, msg:'Run the audit_log SQL', action:'audit_sql' };
+      return { ok:false, msg:r.error.message || 'check failed' };
     } catch(e){ return { ok:false, msg:e.message||'check threw' }; }
   }
   async function checkStorageBucket(){
@@ -1033,9 +1029,10 @@
     return { ok:true, msg:'Managed via Supabase secrets' };
   }
   function checkAIKey(){
-    var k = localStorage.getItem('gl_ai_key');
-    if(k && k.length > 10) return { ok:true, msg:'Key set ('+ k.slice(0,8) +'…)' };
-    return { ok:false, msg:'Optional — click to add your Anthropic key', action:'ai_settings', optional:true };
+    // Anthropic key moved to Supabase secrets alongside Mailgun — the
+    // browser cannot inspect the secret, so surface the managed status
+    // instead of reading a localStorage key nothing writes any more.
+    return { ok:true, msg:'Managed via Supabase secrets' };
   }
 
   async function buildWidget(){
@@ -1128,18 +1125,48 @@
     "INSERT INTO storage.buckets (id, name, public)\n" +
     "VALUES ('client-docs', 'client-docs', false)\n" +
     "ON CONFLICT (id) DO NOTHING;\n\n" +
+    "-- Retire the blanket policies: they let ANY authenticated user read,\n" +
+    "-- overwrite and delete EVERY client's documents.\n" +
     "DROP POLICY IF EXISTS \"Authenticated read client-docs\"   ON storage.objects;\n" +
-    "CREATE POLICY \"Authenticated read client-docs\"   ON storage.objects\n" +
-    "  FOR SELECT TO authenticated USING (bucket_id = 'client-docs');\n\n" +
     "DROP POLICY IF EXISTS \"Authenticated write client-docs\"  ON storage.objects;\n" +
-    "CREATE POLICY \"Authenticated write client-docs\"  ON storage.objects\n" +
-    "  FOR INSERT TO authenticated WITH CHECK (bucket_id = 'client-docs');\n\n" +
     "DROP POLICY IF EXISTS \"Authenticated update client-docs\" ON storage.objects;\n" +
-    "CREATE POLICY \"Authenticated update client-docs\" ON storage.objects\n" +
-    "  FOR UPDATE TO authenticated USING (bucket_id = 'client-docs');\n\n" +
-    "DROP POLICY IF EXISTS \"Authenticated delete client-docs\" ON storage.objects;\n" +
-    "CREATE POLICY \"Authenticated delete client-docs\" ON storage.objects\n" +
-    "  FOR DELETE TO authenticated USING (bucket_id = 'client-docs');";
+    "DROP POLICY IF EXISTS \"Authenticated delete client-docs\" ON storage.objects;\n\n" +
+    "-- Staff get full access.\n" +
+    "DROP POLICY IF EXISTS \"client-docs staff all\" ON storage.objects;\n" +
+    "CREATE POLICY \"client-docs staff all\" ON storage.objects\n" +
+    "  FOR ALL TO authenticated\n" +
+    "  USING      (bucket_id = 'client-docs' AND public.is_gl_staff())\n" +
+    "  WITH CHECK (bucket_id = 'client-docs' AND public.is_gl_staff());\n\n" +
+    "-- A portal customer reads only their own client's path prefix, plus\n" +
+    "-- files referenced by their own deal_documents / lot_documents rows.\n" +
+    "DROP POLICY IF EXISTS \"client-docs customer read\" ON storage.objects;\n" +
+    "CREATE POLICY \"client-docs customer read\" ON storage.objects\n" +
+    "  FOR SELECT TO authenticated\n" +
+    "  USING (\n" +
+    "    bucket_id = 'client-docs'\n" +
+    "    AND public.current_customer_client_id() IS NOT NULL\n" +
+    "    AND (\n" +
+    "      name LIKE public.current_customer_client_id()::text || '/%'\n" +
+    "      OR EXISTS (SELECT 1 FROM public.deal_documents d\n" +
+    "                  WHERE d.file_path = storage.objects.name\n" +
+    "                    AND d.client_id = public.current_customer_client_id())\n" +
+    "      OR EXISTS (SELECT 1 FROM public.lot_documents l\n" +
+    "                  WHERE l.file_path = storage.objects.name\n" +
+    "                    AND l.client_id = public.current_customer_client_id())\n" +
+    "    )\n" +
+    "  );\n\n" +
+    "-- Customers upload only under their own prefix. There is deliberately\n" +
+    "-- no customer UPDATE or DELETE policy — do not add one.\n" +
+    "DROP POLICY IF EXISTS \"client-docs customer upload\" ON storage.objects;\n" +
+    "CREATE POLICY \"client-docs customer upload\" ON storage.objects\n" +
+    "  FOR INSERT TO authenticated\n" +
+    "  WITH CHECK (\n" +
+    "    bucket_id = 'client-docs'\n" +
+    "    AND public.current_customer_client_id() IS NOT NULL\n" +
+    "    AND name LIKE public.current_customer_client_id()::text || '/%'\n" +
+    "  );\n\n" +
+    "-- Needs public.is_gl_staff() (20260807020000_tenant_isolation_guard.sql)\n" +
+    "-- and public.current_customer_client_id() (20260518_customer_portal.sql).";
 
   function showSqlModal(title, sql){
     var prior = document.getElementById('gl-sql-modal'); if(prior) prior.remove();

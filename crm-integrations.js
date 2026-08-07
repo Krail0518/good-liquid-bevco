@@ -837,7 +837,9 @@
   // first-run wizard runs. (Operators can still re-run the wizard
   // manually if they want a checklist.)
   function statusMailgun(){ return true; }
-  function statusAI(){ return (localStorage.getItem('gl_ai_key')||'').length > 10; }
+  // Same as Mailgun: the Anthropic key moved to Supabase secrets and is read
+  // server-side by the ai-proxy function, so there is no local key to check.
+  function statusAI(){ return true; }
   function statusSignature(){ var s = localStorage.getItem('gl_email_signature'); return s !== null && (s || '').trim().length > 0; }
   function statusGA(){ return (localStorage.getItem('gl_ga_id')||'').length > 5; }
   async function status2FA(){
@@ -1615,7 +1617,14 @@
         invoice.qboId = data.qbo_invoice_id || data.Id || data.id;
         invoice.qboPushedAt = new Date().toISOString();
         if(window.supa && invoice.qboId){
-          await window.supa.from('invoices').update({ qbo_id: invoice.qboId, qbo_pushed_at: invoice.qboPushedAt }).eq('id', invoice.id);
+          // .select() makes PostgREST return the updated rows, so a silent RLS
+          // rejection (no error, 0 rows) can't be mistaken for success. The push
+          // itself succeeded — but without the stored id the next push duplicates.
+          var pq = await window.supa.from('invoices').update({ qbo_id: invoice.qboId, qbo_pushed_at: invoice.qboPushedAt }).eq('id', invoice.id).select();
+          if(pq.error || (Array.isArray(pq.data) && pq.data.length === 0)){
+            console.warn('[GL QBO] could not persist qbo_id', pq.error || '0 rows updated');
+            if(typeof window.addNotification === 'function') window.addNotification('QuickBooks link not saved','The invoice pushed, but the QuickBooks id was not stored — pushing again would duplicate it.','warning');
+          }
         }
       } catch(e){}
       if(typeof window.glAudit === 'function') window.glAudit('qbo_invoice_pushed', invoice.id, { qbo_id: invoice.qboId });

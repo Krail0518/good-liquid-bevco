@@ -5622,14 +5622,14 @@ function renderKanban(){
           .filter(Boolean).join(' ').toLowerCase().replace(/"/g,'&quot;');
         return`<div class="kcard" data-search="${_search}" onclick="openDealDetail('${stage}',${di})" style="cursor:pointer;border-left:3px solid ${obColor}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px">
-          <div><div class="kc-n">${d.name}</div><div class="kc-co">${d.co}</div></div>
-          ${leadDateStr ? `<div style="font-size:10px;color:#6b7fa3;white-space:nowrap;padding-top:3px;flex-shrink:0">${leadDateStr}</div>` : ''}
+          <div><div class="kc-n">${esc(d.name)}</div><div class="kc-co">${esc(d.co)}</div></div>
+          ${leadDateStr ? `<div style="font-size:10px;color:#6b7fa3;white-space:nowrap;padding-top:3px;flex-shrink:0">${esc(leadDateStr)}</div>` : ''}
         </div>
-        ${d.contactName ? `<div style="font-size:11px;color:#9ca3af;margin-top:2px">👤 ${d.contactName}</div>` : ''}
-        ${d.email ? `<div style="font-size:11px;color:#9ca3af;margin-top:1px">✉️ ${d.email}</div>` : ''}
-        ${d.phone ? `<div style="font-size:11px;color:#9ca3af;margin-top:1px">📞 ${d.phone}</div>` : ''}
-        ${(d.service||d.productType) ? `<div style="font-size:10px;color:var(--teal);margin-top:4px;opacity:.8">${[d.service,d.productType].filter(Boolean).join(' · ')}</div>` : ''}
-        <div class="kc-val">${d.val}</div>
+        ${d.contactName ? `<div style="font-size:11px;color:#9ca3af;margin-top:2px">👤 ${esc(d.contactName)}</div>` : ''}
+        ${d.email ? `<div style="font-size:11px;color:#9ca3af;margin-top:1px">✉️ ${esc(d.email)}</div>` : ''}
+        ${d.phone ? `<div style="font-size:11px;color:#9ca3af;margin-top:1px">📞 ${esc(d.phone)}</div>` : ''}
+        ${(d.service||d.productType) ? `<div style="font-size:10px;color:var(--teal);margin-top:4px;opacity:.8">${esc([d.service,d.productType].filter(Boolean).join(' · '))}</div>` : ''}
+        <div class="kc-val">${esc(d.val)}</div>
         ${(()=>{
           // Stage age and outreach state sit on one line, so a glance at the
           // board answers "how long has this sat?" and "did I already nudge?".
@@ -5740,11 +5740,11 @@ function openLeadEmailComposer(){
       <!-- Fields -->
       <div style="display:grid;grid-template-columns:60px 1fr;gap:8px 12px;align-items:center;font-size:13px;margin-bottom:12px">
         <label style="color:var(--muted);font-size:11px;letter-spacing:1px">TO</label>
-        <input id="gl-lem-to" class="finp" value="${d.email}" style="font-size:13px">
+        <input id="gl-lem-to" class="finp" value="${esc(d.email)}" style="font-size:13px">
         <label style="color:var(--muted);font-size:11px;letter-spacing:1px">BCC</label>
         <input id="gl-lem-bcc" class="finp" value="mike@goodliquid.com" placeholder="optional" style="font-size:13px">
         <label style="color:var(--muted);font-size:11px;letter-spacing:1px">SUBJECT</label>
-        <input id="gl-lem-subject" class="finp" value="${defaultSubject}" style="font-size:13px">
+        <input id="gl-lem-subject" class="finp" value="${esc(defaultSubject)}" style="font-size:13px">
       </div>
 
       <div style="margin-bottom:14px">
@@ -5987,9 +5987,9 @@ ${capsDoc ? '--- GOOD LIQUID CAPABILITIES & PRICING REFERENCE ---\n' + capsDoc :
   const rowsHtml = prospects.map(function(d,ri){
     return '<tr data-ri="'+ri+'" style="border-bottom:1px solid rgba(255,255,255,.04)">' +
       '<td style="padding:8px 10px"><input type="checkbox" class="gl-bo-chk" data-ri="'+ri+'" checked style="cursor:pointer"></td>' +
-      '<td style="padding:8px 10px;color:var(--white)">'+(d.name||'—')+'</td>' +
-      '<td style="padding:8px 10px;color:var(--muted)">'+(d.co||'—')+'</td>' +
-      '<td style="padding:8px 10px;color:#6b9fff">'+d.email+'</td>' +
+      '<td style="padding:8px 10px;color:var(--white)">'+esc(d.name||'—')+'</td>' +
+      '<td style="padding:8px 10px;color:var(--muted)">'+esc(d.co||'—')+'</td>' +
+      '<td style="padding:8px 10px;color:#6b9fff">'+esc(d.email)+'</td>' +
       '<td style="padding:8px 10px" id="gl-bo-status-'+ri+'"><span style="color:var(--muted);font-size:10px">Pending</span></td>' +
     '</tr>';
   }).join('');
@@ -6207,9 +6207,9 @@ ${capsDoc ? '--- GOOD LIQUID CAPABILITIES & PRICING REFERENCE ---\n' + capsDoc :
             : '<span style="color:var(--muted);font-size:10px">no reply</span>');
       return '<tr data-ri="'+ri+'" style="border-bottom:1px solid rgba(255,255,255,.04)">' +
         '<td style="padding:8px 10px"><input type="checkbox" class="gl-bn-chk" data-ri="'+ri+'" checked style="cursor:pointer"></td>' +
-        '<td style="padding:8px 10px;color:var(--white)">'+((c.d.name||c.d.contactName||'—'))+'</td>' +
-        '<td style="padding:8px 10px;color:var(--muted)">'+(c.d.co||'—')+'</td>' +
-        '<td style="padding:8px 10px;color:#6b9fff">'+c.email+'</td>' +
+        '<td style="padding:8px 10px;color:var(--white)">'+esc(c.d.name||c.d.contactName||'—')+'</td>' +
+        '<td style="padding:8px 10px;color:var(--muted)">'+esc(c.d.co||'—')+'</td>' +
+        '<td style="padding:8px 10px;color:#6b9fff">'+esc(c.email)+'</td>' +
         '<td style="padding:8px 10px;color:#f5c842;font-weight:700;white-space:nowrap">'+c.days+'d</td>' +
         '<td style="padding:8px 10px" id="gl-bn-status-'+ri+'">'+nudgeTag+'</td>' +
       '</tr>';
@@ -6622,19 +6622,19 @@ function openDealDetail(stage, idx){
     ? '<span style="padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(231,76,60,.12);color:#e74c3c;border:1px solid rgba(231,76,60,.35)">🔕 No Response</span>'
     : '';
 
-  function row(label, val){ return val ? `<div style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="font-size:10px;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:2px">${label}</span><span style="font-size:13px;color:var(--white)">${val}</span></div>` : ''; }
+  function row(label, val){ return val ? `<div style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="font-size:10px;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:2px">${label}</span><span style="font-size:13px;color:var(--white)">${esc(val)}</span></div>` : ''; }
 
   const viewHTML = `
     <div style="margin-bottom:6px">
-      <div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:1px;color:var(--white)">${d.name||'—'}</div>
-      ${d.co ? `<div style="font-size:13px;color:var(--muted);margin-top:2px">${d.co}</div>` : ''}
+      <div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:1px;color:var(--white)">${esc(d.name||'—')}</div>
+      ${d.co ? `<div style="font-size:13px;color:var(--muted);margin-top:2px">${esc(d.co)}</div>` : ''}
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
       <span style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;background:${stageColor}22;color:${stageColor};border:1px solid ${stageColor}55">${stage}</span>
       ${obBadge}
     </div>
     ${row('CONTACT', d.contactName)}
-    ${d.email ? `<div style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="font-size:10px;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:2px">EMAIL</span><a href="mailto:${d.email}" style="font-size:13px;color:var(--teal)">${d.email}</a></div>` : ''}
+    ${d.email ? `<div style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="font-size:10px;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:2px">EMAIL</span><a href="mailto:${esc(d.email)}" style="font-size:13px;color:var(--teal)">${esc(d.email)}</a></div>` : ''}
     ${row('PHONE', d.phone)}
     ${row('LOCATION', [d.city, d.state].filter(Boolean).join(', '))}
     ${row('SERVICE', d.service)}
@@ -6643,13 +6643,13 @@ function openDealDetail(stage, idx){
     ${row('TIMELINE', d.timeline)}
     <div style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)">
       <span style="font-size:10px;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:4px">DEAL VALUE</span>
-      <span style="font-family:var(--ff-disp);font-size:20px;color:var(--teal)">${d.val||'$0'}</span>
+      <span style="font-family:var(--ff-disp);font-size:20px;color:var(--teal)">${esc(d.val||'$0')}</span>
     </div>
     <div style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)">
       <span style="font-size:10px;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:6px">PROBABILITY — ${prob}%</span>
       <div style="background:rgba(255,255,255,.08);border-radius:4px;height:8px;overflow:hidden"><div style="height:100%;width:${prob}%;background:${stageColor};border-radius:4px"></div></div>
     </div>
-    ${d.notes ? `<div style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="font-size:10px;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:4px">NOTES</span><div style="font-size:13px;color:var(--white);line-height:1.6;white-space:pre-wrap">${d.notes.replace(/</g,'&lt;')}</div></div>` : ''}
+    ${d.notes ? `<div style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="font-size:10px;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:4px">NOTES</span><div style="font-size:13px;color:var(--white);line-height:1.6;white-space:pre-wrap">${esc(d.notes)}</div></div>` : ''}
     <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
       <button onclick="editDealDetail()" style="flex:1;padding:10px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:800;font-size:13px;cursor:pointer">✏️ Edit</button>
       <button onclick="openLeadEmailComposer()" style="flex:1;padding:10px;background:rgba(26,111,255,.15);color:#6b9fff;border:1px solid rgba(26,111,255,.35);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">✉️ Email Lead</button>
@@ -8815,9 +8815,9 @@ function renderProductionKanban(){
         <span class="kcol-c">${byStage[stage].length}</span>
       </div>
       ${byStage[stage].map(r=>`<div class="kcard" onclick="window.glOpenEditProductionRun('${r.id}')" style="cursor:pointer">
-        <div class="kc-n">${r.run_name||'(untitled)'}</div>
-        <div class="kc-co">${r.client_name||'—'}</div>
-        <div class="kc-val">${r.format||''}${r.cases?' · '+(+r.cases).toLocaleString()+' cs':''}</div>
+        <div class="kc-n">${esc(r.run_name||'(untitled)')}</div>
+        <div class="kc-co">${esc(r.client_name||'—')}</div>
+        <div class="kc-val">${esc(r.format||'')}${r.cases?' · '+(+r.cases).toLocaleString()+' cs':''}</div>
       </div>`).join('')}
     </div>`).join('');
 }
@@ -10478,9 +10478,11 @@ window.GL_HOOKS.registerNavHook(function(page){
    Real file upload + download via the live window.supa client
    (created in fix.js) against the 'client-docs' bucket.
 ═══════════════════════════════════════════ */
+// Returns { url, path, error }. The caller MUST check `error` before saving a
+// document row — a null url with no attached file is not a recoverable state.
 async function uploadDocToSupabase(file, clientId, docType, docName) {
   const sb = window.supa;
-  if(!sb) return { url: null, path: null };
+  if(!sb) return { url: null, path: null, error: 'Cloud storage is not available.' };
   try {
     const ext = file.name.split('.').pop();
     const path = `${clientId}/${Date.now()}_${docName.replace(/\s+/g,'_')}.${ext}`;
@@ -10489,10 +10491,11 @@ async function uploadDocToSupabase(file, clientId, docType, docName) {
     });
     if(error) throw error;
     const { data: urlData } = sb.storage.from('client-docs').getPublicUrl(path);
-    return { url: urlData.publicUrl, path };
+    if(!urlData || !urlData.publicUrl) throw new Error('Upload finished but no download link came back.');
+    return { url: urlData.publicUrl, path, error: null };
   } catch(e) {
-    console.log('Supabase upload skipped:', e.message);
-    return { url: null, path: null };
+    console.warn('[GL] Supabase document upload failed:', e);
+    return { url: null, path: null, error: e.message || String(e) };
   }
 }
 
@@ -10519,6 +10522,14 @@ saveDocument = async function() {
   let fileUrl = null, filePath = null;
   if(file) {
     const result = await uploadDocToSupabase(file, clientId, type, name);
+    // A file was chosen, so saving a record with no attachment would silently
+    // create a document nobody can open. Stop instead.
+    if(result.error || !result.url) {
+      alert('The file could not be uploaded, so this document was not saved.\n\n'
+        + (result.error || 'No download link came back from storage.')
+        + '\n\nPlease check your connection and try again.');
+      return;
+    }
     fileUrl = result.url;
     filePath = result.path;
   }

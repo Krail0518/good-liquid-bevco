@@ -67,8 +67,11 @@
       b.onclick = async function(){
         if(!confirm('Cancel this scheduled send?')) return;
         var id = b.getAttribute('data-id');
-        var rr = await sb.from('email_schedule').update({ status: 'cancelled' }).eq('id', id);
+        // .select() makes PostgREST return the updated rows, so a silent RLS
+        // rejection (no error, 0 rows) can't be mistaken for success.
+        var rr = await sb.from('email_schedule').update({ status: 'cancelled' }).eq('id', id).select();
         if(rr.error){ alert('Failed: '+rr.error.message); return; }
+        if(Array.isArray(rr.data) && rr.data.length === 0){ alert('The server rejected the cancellation (0 rows changed). The send is still scheduled.'); return; }
         toast('Cancelled ✓');
         b.disabled = true; b.textContent = 'Cancelled';
         b.style.opacity = '0.5';

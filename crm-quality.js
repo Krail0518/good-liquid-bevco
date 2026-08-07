@@ -186,7 +186,16 @@
     var del = ov.querySelector('#gl-def-del');
     if(del) del.addEventListener('click', async function(){
       if(!confirm('Delete this NCR? FDA expects you to retain non-conformance records.')) return;
-      if(window.supa){ try { await window.supa.from('defects').delete().eq('id', d.id); } catch(e){} }
+      // 'local_' ids never reached the database, so there is nothing to delete server-side.
+      if(window.supa && String(d.id||'').indexOf('local_') !== 0){
+        var dq;
+        // .select() makes PostgREST return the deleted rows, so a silent RLS
+        // rejection (no error, 0 rows) can't be mistaken for success.
+        try { dq = await window.supa.from('defects').delete().eq('id', d.id).select(); }
+        catch(e){ alert('Could not reach the server — the non-conformance record was NOT deleted.'); return; }
+        if(dq.error){ alert('Delete failed: ' + dq.error.message); return; }
+        if(Array.isArray(dq.data) && dq.data.length === 0){ alert('The server rejected the delete (0 rows removed). The non-conformance record has NOT been deleted.'); return; }
+      }
       window.glDefects = (window.glDefects||[]).filter(function(x){ return x.id !== d.id; });
       saveLocal(); render(); ov.remove();
     });
@@ -215,9 +224,14 @@
         verified_by:       ov.querySelector('#gl-def-vby').value.trim(),
         verified_at:       vatVal ? new Date(vatVal).toISOString() : null
       };
-      if(window.supa){
+      if(window.supa && !(isEdit && String(d.id||'').indexOf('local_') === 0)){
         try {
-          if(isEdit){ await window.supa.from('defects').update(data).eq('id', d.id); Object.assign(d, data); }
+          if(isEdit){
+            var uq = await window.supa.from('defects').update(data).eq('id', d.id).select();
+            if(uq.error){ alert('Save failed: ' + uq.error.message); return; }
+            if(Array.isArray(uq.data) && uq.data.length === 0){ alert('The server rejected the update (0 rows changed). Your changes were NOT saved.'); return; }
+            Object.assign(d, data);
+          }
           else { var r = await window.supa.from('defects').insert([data]).select().single(); if(r && r.data){ window.glDefects.unshift(r.data); } else { data.id = 'local_' + Date.now(); window.glDefects.unshift(data); if(r && r.error) alert('\u26a0 Record did NOT save to the database \u2014 kept only on this device:\n' + r.error.message); } }
         } catch(e){
           if(isEdit) Object.assign(d, data);
@@ -387,7 +401,16 @@
     var del = ov.querySelector('#gl-ven-del');
     if(del) del.addEventListener('click', async function(){
       if(!confirm('Delete vendor "' + v.name + '"?')) return;
-      if(window.supa){ try { await window.supa.from('vendors').delete().eq('id', v.id); } catch(e){} }
+      // 'local_' ids never reached the database, so there is nothing to delete server-side.
+      if(window.supa && String(v.id||'').indexOf('local_') !== 0){
+        var dq;
+        // .select() makes PostgREST return the deleted rows, so a silent RLS
+        // rejection (no error, 0 rows) can't be mistaken for success.
+        try { dq = await window.supa.from('vendors').delete().eq('id', v.id).select(); }
+        catch(e){ alert('Could not reach the server — the vendor was NOT deleted.'); return; }
+        if(dq.error){ alert('Delete failed: ' + dq.error.message); return; }
+        if(Array.isArray(dq.data) && dq.data.length === 0){ alert('The server rejected the delete (0 rows removed). The vendor has NOT been deleted.'); return; }
+      }
       window.glVendors = (window.glVendors||[]).filter(function(x){ return x.id !== v.id; });
       saveLocal(); render(); ov.remove();
     });
@@ -414,9 +437,14 @@
         cert_expires:     ov.querySelector('#gl-ven-certexp').value || null,
         risk_level:       ov.querySelector('#gl-ven-risk').value
       };
-      if(window.supa){
+      if(window.supa && !(isEdit && String(v.id||'').indexOf('local_') === 0)){
         try {
-          if(isEdit){ await window.supa.from('vendors').update(data).eq('id', v.id); Object.assign(v, data); }
+          if(isEdit){
+            var uq = await window.supa.from('vendors').update(data).eq('id', v.id).select();
+            if(uq.error){ alert('Save failed: ' + uq.error.message); return; }
+            if(Array.isArray(uq.data) && uq.data.length === 0){ alert('The server rejected the update (0 rows changed). Your changes were NOT saved.'); return; }
+            Object.assign(v, data);
+          }
           else { var r = await window.supa.from('vendors').insert([data]).select().single(); if(r && r.data){ window.glVendors.push(r.data); } else { data.id = 'local_' + Date.now(); window.glVendors.push(data); } }
         } catch(e){
           if(isEdit) Object.assign(v, data);

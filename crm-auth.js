@@ -403,12 +403,24 @@
         // trigger (see 20260522_profiles_updated_at.sql) — don't send it
         // here or the UPDATE 400's against deployments that haven't run
         // the migration yet.
-        var r=await sb.from('profiles').update({status:'inactive'}).eq('id',u.id);
+        // .select() makes PostgREST return the updated rows, so a silent RLS
+        // rejection (no error, 0 rows) can't be mistaken for success.
+        var r=await sb.from('profiles').update({status:'inactive'}).eq('id',u.id).select();
         if(r.error){
           console.warn('[GL] profile status update failed',r.error);
           if(typeof addNotification==='function') addNotification('Remove failed', r.error.message, 'error');
+          return;
         }
-      }catch(e){console.error('[GL] removeUser profile update threw',e);}
+        if(Array.isArray(r.data)&&r.data.length===0){
+          console.warn('[GL] profile status update affected 0 rows');
+          if(typeof addNotification==='function') addNotification('Remove failed','The server rejected the change — the user has NOT been removed.','error');
+          return;
+        }
+      }catch(e){
+        console.error('[GL] removeUser profile update threw',e);
+        if(typeof addNotification==='function') addNotification('Remove failed','Could not reach the server — the user has NOT been removed.','error');
+        return;
+      }
     }
     if(window.users)window.users=window.users.filter(function(x){return x.id!==id;});
     if(typeof renderUsersPanel==='function')renderUsersPanel();

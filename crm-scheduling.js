@@ -324,7 +324,11 @@
     if(!confirm('Cancel this booking? The visitor has already received a confirmation email — you may want to email them directly to let them know.')) return;
     var sb = getSB();
     if(!sb) return;
-    await sb.from('bookings').update({status:'cancelled'}).eq('id', id);
+    // .select() makes PostgREST return the updated rows, so a silent RLS
+    // rejection (no error, 0 rows) can't be mistaken for success.
+    var q = await sb.from('bookings').update({status:'cancelled'}).eq('id', id).select();
+    if(q.error){ alert('Cancel failed: ' + q.error.message); return; }
+    if(Array.isArray(q.data) && q.data.length === 0){ alert('The server rejected the cancellation (0 rows changed). The booking is still active.'); return; }
     _bookings = _bookings.filter(function(b){ return b.id !== id; });
     refresh();
   }

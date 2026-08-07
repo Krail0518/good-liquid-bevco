@@ -403,7 +403,16 @@
     var delBtn = ov.querySelector('#gl-fv-del');
     if(delBtn) delBtn.addEventListener('click', async function(){
       if(!confirm('Delete this formula record? This cannot be undone.')) return;
-      if(window.supa){ try { await window.supa.from('formulas').delete().eq('id', f.id); } catch(e){} }
+      // 'local_' ids never reached the database, so there is nothing to delete server-side.
+      if(window.supa && String(f.id||'').indexOf('local_') !== 0){
+        var dq;
+        // .select() makes PostgREST return the deleted rows, so a silent RLS
+        // rejection (no error, 0 rows) can't be mistaken for success.
+        try { dq = await window.supa.from('formulas').delete().eq('id', f.id).select(); }
+        catch(e){ alert('Could not reach the server — the formula was NOT deleted.'); return; }
+        if(dq.error){ alert('Delete failed: ' + dq.error.message); return; }
+        if(Array.isArray(dq.data) && dq.data.length === 0){ alert('The server rejected the delete (0 rows removed). The formula has NOT been deleted.'); return; }
+      }
       window.glFormulas = (window.glFormulas||[]).filter(function(x){ return x.id !== f.id; });
       saveLocal(); render(); ov.remove();
       if(typeof addNotification === 'function') addNotification('🧪 Formula deleted', f.name, 'warning');
@@ -434,10 +443,12 @@
       var data = readForm();
       if(!data.name){ alert('Name is required.'); return; }
       var btn = this; btn.disabled = true; btn.textContent = 'Saving…';
-      if(window.supa){
+      if(window.supa && !(isEdit && String(f.id||'').indexOf('local_') === 0)){
         try {
           if(isEdit){
-            await window.supa.from('formulas').update(data).eq('id', f.id);
+            var uq = await window.supa.from('formulas').update(data).eq('id', f.id).select();
+            if(uq.error){ alert('Save failed: ' + uq.error.message); btn.disabled = false; btn.textContent = '💾 Save'; return; }
+            if(Array.isArray(uq.data) && uq.data.length === 0){ alert('The server rejected the update (0 rows changed). Your changes were NOT saved.'); btn.disabled = false; btn.textContent = '💾 Save'; return; }
             Object.assign(f, data);
           } else {
             var r = await window.supa.from('formulas').insert([data]).select().single();
@@ -600,7 +611,16 @@
     var delBtn = ov.querySelector('#gl-yld-del');
     if(delBtn) delBtn.addEventListener('click', async function(){
       if(!confirm('Delete this yield log?')) return;
-      if(window.supa){ try { await window.supa.from('yield_logs').delete().eq('id', r.id); } catch(e){} }
+      // 'local_' ids never reached the database, so there is nothing to delete server-side.
+      if(window.supa && String(r.id||'').indexOf('local_') !== 0){
+        var dq;
+        // .select() makes PostgREST return the deleted rows, so a silent RLS
+        // rejection (no error, 0 rows) can't be mistaken for success.
+        try { dq = await window.supa.from('yield_logs').delete().eq('id', r.id).select(); }
+        catch(e){ alert('Could not reach the server — the yield log was NOT deleted.'); return; }
+        if(dq.error){ alert('Delete failed: ' + dq.error.message); return; }
+        if(Array.isArray(dq.data) && dq.data.length === 0){ alert('The server rejected the delete (0 rows removed). The yield log has NOT been deleted.'); return; }
+      }
       window.glYieldLogs = (window.glYieldLogs||[]).filter(function(x){ return x.id !== r.id; });
       saveLocal(); render(); ov.remove();
     });
@@ -620,10 +640,12 @@
         notes:          ov.querySelector('#gl-yld-notes').value
       };
       var btn = this; btn.disabled = true; btn.textContent = 'Saving…';
-      if(window.supa){
+      if(window.supa && !(isEdit && String(r.id||'').indexOf('local_') === 0)){
         try {
           if(isEdit){
-            await window.supa.from('yield_logs').update(data).eq('id', r.id);
+            var uq = await window.supa.from('yield_logs').update(data).eq('id', r.id).select();
+            if(uq.error){ alert('Save failed: ' + uq.error.message); btn.disabled = false; btn.textContent = '💾 Save'; return; }
+            if(Array.isArray(uq.data) && uq.data.length === 0){ alert('The server rejected the update (0 rows changed). Your changes were NOT saved.'); btn.disabled = false; btn.textContent = '💾 Save'; return; }
             Object.assign(r, data);
           } else {
             var resp = await window.supa.from('yield_logs').insert([data]).select().single();
@@ -1032,7 +1054,16 @@
     var delBtn = ov.querySelector('#gl-samp-del');
     if(delBtn) delBtn.addEventListener('click', async function(){
       if(!confirm('Delete this shipment record?')) return;
-      if(window.supa){ try { await window.supa.from('sample_shipments').delete().eq('id', s.id); } catch(e){} }
+      // 'local_' ids never reached the database, so there is nothing to delete server-side.
+      if(window.supa && String(s.id||'').indexOf('local_') !== 0){
+        var dq;
+        // .select() makes PostgREST return the deleted rows, so a silent RLS
+        // rejection (no error, 0 rows) can't be mistaken for success.
+        try { dq = await window.supa.from('sample_shipments').delete().eq('id', s.id).select(); }
+        catch(e){ alert('Could not reach the server — the shipment was NOT deleted.'); return; }
+        if(dq.error){ alert('Delete failed: ' + dq.error.message); return; }
+        if(Array.isArray(dq.data) && dq.data.length === 0){ alert('The server rejected the delete (0 rows removed). The shipment has NOT been deleted.'); return; }
+      }
       window.glSamples = (window.glSamples||[]).filter(function(x){ return x.id !== s.id; });
       saveLocal(); render(); ov.remove();
       if(typeof addNotification === 'function') addNotification('📦 Shipment deleted','','warning');
@@ -1055,10 +1086,12 @@
         notes:          ov.querySelector('#gl-samp-notes').value
       };
       var btn = this; btn.disabled = true; btn.textContent = 'Saving…';
-      if(window.supa){
+      if(window.supa && !(isEdit && String(s.id||'').indexOf('local_') === 0)){
         try {
           if(isEdit){
-            await window.supa.from('sample_shipments').update(data).eq('id', s.id);
+            var uq = await window.supa.from('sample_shipments').update(data).eq('id', s.id).select();
+            if(uq.error){ alert('Save failed: ' + uq.error.message); btn.disabled = false; btn.textContent = '💾 Save'; return; }
+            if(Array.isArray(uq.data) && uq.data.length === 0){ alert('The server rejected the update (0 rows changed). Your changes were NOT saved.'); btn.disabled = false; btn.textContent = '💾 Save'; return; }
             Object.assign(s, data);
           } else {
             var r = await window.supa.from('sample_shipments').insert([data]).select().single();
@@ -1403,7 +1436,9 @@
           });
           if(found && found.id && String(found.id).indexOf('tmp_') !== 0){
             var p = { outcome_reason: window._glPendingOutcome.reason, outcome_value: window._glPendingOutcome.value, outcome_notes: window._glPendingOutcome.notes, closed_at: new Date().toISOString() };
-            await window.supa.from('deals').update(p).eq('id', found.id);
+            var uq = await window.supa.from('deals').update(p).eq('id', found.id).select();
+            if(uq.error){ alert('The outcome was NOT saved: ' + uq.error.message); delete window._glPendingOutcome; return r; }
+            if(Array.isArray(uq.data) && uq.data.length === 0){ alert('The server rejected the outcome update (0 rows changed). It was NOT saved.'); delete window._glPendingOutcome; return r; }
             found.outcomeReason = p.outcome_reason;
             found.outcomeValue  = p.outcome_value;
             found.outcomeNotes  = p.outcome_notes;

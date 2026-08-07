@@ -159,22 +159,27 @@
         payment_method: method,
         surcharge_pct: method === 'card' ? 3 : 0
       };
-      // Supabase function gateway requires an Authorization header even
-      // when the function was deployed with --no-verify-jwt unless the
-      // anon-call path is explicitly enabled. Send the project's anon key
-      // so anonymous customers (no CRM login) can hit the endpoint.
-      var ANON_JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmamtlcW14d3V5aGJxeXVnY2dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNDI2MDksImV4cCI6MjA5MzkxODYwOX0.godgU_jeprCqSzqe0ji_ZA_hwvPF2s7BmzQyAB-c_xE';
-      fetch('https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1/stripe-checkout-session', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': ANON_JWT,
-          'Authorization': 'Bearer ' + ANON_JWT
-        },
-        body: JSON.stringify(body)
-      }).then(function(r){
-        if(!r.ok) return r.text().then(function(t){ throw new Error('HTTP '+r.status+': '+t.slice(0,200)); });
-        return r.json();
+      // The function gateway still wants apikey/Authorization headers even
+      // though stripe-checkout-session is deployed with --no-verify-jwt.
+      // functions.invoke() attaches them from the shared client — the
+      // project's publishable key when the customer has no CRM session —
+      // so no key is duplicated here.
+      var sb = getSB();
+      if(!sb || !sb.functions){
+        if(btnC) btnC.disabled = false;
+        if(btnA) btnA.disabled = false;
+        status.textContent = 'Checkout is unavailable right now. Use the wire instructions below, or contact Mike@GoodLiquid.com.';
+        return;
+      }
+      sb.functions.invoke('stripe-checkout-session', { body: body }).then(function(r){
+        if(r.error){
+          var resp = r.error.context;
+          if(resp && typeof resp.text === 'function'){
+            return resp.text().then(function(t){ throw new Error('HTTP '+resp.status+': '+t.slice(0,200)); });
+          }
+          throw r.error;
+        }
+        return r.data;
       }).then(function(data){
         if(data && data.url){ window.location.href = data.url; }
         else { status.textContent = 'Could not open checkout. Please use the wire instructions below.'; }

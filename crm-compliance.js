@@ -814,7 +814,14 @@
           if(current.data){
             var toDeactivate = current.data.filter(function(r){ return newList.indexOf(r.name) < 0; });
             if(toDeactivate.length){
-              await sb.from('cip_equipment').update({ active: false }).in('id', toDeactivate.map(function(r){return r.id;}));
+              // .select() makes PostgREST return the updated rows, so a silent RLS
+              // rejection (no error, 0 rows) can't be mistaken for success.
+              var dq = await sb.from('cip_equipment').update({ active: false }).in('id', toDeactivate.map(function(r){return r.id;})).select();
+              if(dq.error || (Array.isArray(dq.data) && dq.data.length === 0)){
+                alert('The removed equipment could not be saved to the server — the list has NOT been changed.');
+                btn.disabled = false; btn.textContent = '💾 Save';
+                return;
+              }
             }
           }
           // Upsert each name with its position
@@ -2488,10 +2495,14 @@
         await window.supa.from('compliance_acks').upsert({ record_id: recordId, acked_at: new Date().toISOString(), acked_by: uid || null }, { onConflict: 'record_id' });
         _weeklyAckCache[recordId] = new Date().toISOString();
       } else {
-        await window.supa.from('compliance_acks').delete().eq('record_id', recordId);
+        // .select() makes PostgREST return the deleted rows, so a silent RLS
+        // rejection (no error, 0 rows) can't be mistaken for success.
+        var dq = await window.supa.from('compliance_acks').delete().eq('record_id', recordId).select();
+        if(dq.error){ alert('Could not remove the review sign-off: ' + dq.error.message); return; }
+        if(Array.isArray(dq.data) && dq.data.length === 0){ alert('The server rejected the change (0 rows removed). The review sign-off is still in place.'); return; }
         delete _weeklyAckCache[recordId];
       }
-    } catch(e){ console.warn('[GL] compliance_ack write', e); }
+    } catch(e){ console.warn('[GL] compliance_ack write', e); alert('Could not save the review sign-off — please try again.'); }
   }
 
   async function renderWeeklyReview(host){
@@ -2844,7 +2855,12 @@
           // Only patch if the hold has no photo URL yet
           if(!h.notes || h.notes.indexOf('http') === -1){
             var newNotes = (h.notes ? h.notes + '\n' : '') + 'Photo: ' + photoUrl;
-            await window.supa.from('hold_tags').update({ notes: newNotes }).eq('id', h.id);
+            var uq = await window.supa.from('hold_tags').update({ notes: newNotes }).eq('id', h.id).select();
+            // Keep the pending photo queued unless the row really changed.
+            if(uq.error || (Array.isArray(uq.data) && uq.data.length === 0)){
+              console.warn('[GL] hold photo attach rejected', uq.error || '0 rows updated');
+              return;
+            }
             window.__glLastHoldPhoto = null;
           }
         }

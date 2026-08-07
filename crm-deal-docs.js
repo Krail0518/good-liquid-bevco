@@ -187,7 +187,13 @@
       b.addEventListener('click', async function(){
         if(!confirm('Remove this document?')) return;
         var id = this.getAttribute('data-id');
-        try { await sb().from('deal_documents').delete().eq('id', id); } catch(e){}
+        var dq;
+        // .select() makes PostgREST return the deleted rows, so a silent RLS
+        // rejection (no error, 0 rows) can't be mistaken for success.
+        try { dq = await sb().from('deal_documents').delete().eq('id', id).select(); }
+        catch(e){ show('#ff8579','Delete failed: ' + (e.message || e)); return; }
+        if(dq.error){ show('#ff8579','Delete failed: ' + dq.error.message); return; }
+        if(Array.isArray(dq.data) && dq.data.length === 0){ show('#ff8579','The server rejected the delete (0 rows removed). The document is still attached.'); return; }
         glRenderDealDocs(host, opts);
       });
     });

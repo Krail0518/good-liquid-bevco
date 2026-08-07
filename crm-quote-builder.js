@@ -95,17 +95,18 @@
     return t==='bottling' ? BOTTLING_TERMS : t==='keg' ? KEG_TERMS : CANNING_TERMS;
   }
 
-  /* ── Quote number ───────────────────────────────────────────── */
-  var _pendingQuoteSeq = null;
-  function nextQuoteNumber(){
-    var d   = new Date();
-    var ym  = d.getFullYear() + String(d.getMonth()+1).padStart(2,'0');
-    var seqNum = parseInt(localStorage.getItem('gl_quote_seq')||'0') + 1;
-    // Do NOT persist here — advancing at modal-open time burned a number every
-    // time the builder was opened without saving, leaving gaps in GLQ numbering.
-    // The counter is committed in doSave() only when a quote is actually saved.
-    _pendingQuoteSeq = seqNum;
-    return 'GLQ-' + ym + '-' + String(seqNum).padStart(3,'0');
+  /* ── Quote number ─────────────────────────────────────────────
+     quotes.quote_number is UNIQUE, so the number must be allocated by the
+     database, not by a per-device counter — two browsers would eventually
+     mint the same one and the second save would be rejected.
+     gl_next_quote_number() allocates atomically and is called only at save
+     time, so opening the builder and walking away burns no numbers. ── */
+  async function allocQuoteNumber(sb){
+    try {
+      var r = await sb.rpc('gl_next_quote_number');
+      if(r && !r.error && r.data) return String(r.data);
+    } catch(e){}
+    return null;
   }
 
   /* ── Formatters ─────────────────────────────────────────────── */
@@ -138,7 +139,6 @@
 
     var client  = (window.clients||[]).find(function(c){ return c.id===clientId; }) || {};
     var host    = document.getElementById('crm-panel') || document.body;
-    var qn      = nextQuoteNumber();
     var todayDate = today();
 
     var ov = document.createElement('div');
@@ -167,7 +167,7 @@
             '<input id="gl-qb-client-email" type="email" placeholder="contact@brand.com" style="'+INP+'" value="'+esc(opts.prefillEmail||client.email||'')+'">' +
           '</div>' +
           '<div><div style="'+LBL+'">QUOTE NUMBER</div>' +
-            '<input id="gl-qb-num" style="'+INP+'" value="'+esc(qn)+'">' +
+            '<input id="gl-qb-num" placeholder="Assigned on save" style="'+INP+'">' +
           '</div>' +
           '<div><div style="'+LBL+'">QUOTE DATE</div>' +
             '<input id="gl-qb-date" type="date" style="'+INP+'" value="'+todayDate+'">' +
@@ -611,6 +611,18 @@
       st.style.color='var(--muted)'; st.textContent='Saving…';
       var data = buildQuoteData();
       if(!data.tiers.length){ st.style.color='#ff8579'; st.textContent='Add at least one tier before saving.'; return null; }
+      /* Take a number from the database now. Never fall back to a locally
+         guessed one — quote_number is UNIQUE and a duplicate loses the save. */
+      if(!data.quoteNumber){
+        var assigned = await allocQuoteNumber(sb);
+        if(!assigned){
+          st.style.color='#ff8579';
+          st.textContent='Could not get a quote number from the database — nothing was saved. Check your connection and try again.';
+          return null;
+        }
+        data.quoteNumber = assigned;
+        var numEl = ov.querySelector('#gl-qb-num'); if(numEl) numEl.value = assigned;
+      }
       var row = {
         client_id:      data.clientId,
         deal_id:        data.dealId,
@@ -634,8 +646,6 @@
       }
       if(r.error){ st.style.color='#ff8579'; st.textContent='Save failed: '+r.error.message; return null; }
       state.savedId = r.data.id;
-      // Commit the quote-number sequence now that the quote is actually saved.
-      try { if(_pendingQuoteSeq != null){ localStorage.setItem('gl_quote_seq', _pendingQuoteSeq); _pendingQuoteSeq = null; } } catch(e){}
       st.style.color='#5fcf9e';
       st.textContent='✓ Saved as ' + data.quoteNumber;
       if(typeof window.glAudit==='function') window.glAudit('quote_saved', data.quoteNumber, { client:data.clientName, format:data.packageFormat });
@@ -810,7 +820,9 @@
     // module ones for the pricing table built earlier in this function, so its
     // cells rendered style="undefined". Use the module-scope constants instead.
 
-    return '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Production Quote '+esc(data.quoteNumber)+'</title>' +
+    // Preview before the first save has no number yet — the database assigns it on save.
+    var qref = data.quoteNumber || 'DRAFT';
+    return '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Production Quote '+esc(qref)+'</title>' +
     '<style>' +
       '*{box-sizing:border-box}' +
       'body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;color:#1a2240;font-size:13px}' +
@@ -848,7 +860,7 @@
         '<h2>PRODUCTION QUOTE</h2>' +
         '<div>Quote Date: '+fmtDate(data.quoteDate)+'</div>' +
         '<div>Valid for '+data.validDays+' Days</div>' +
-        '<div style="margin-top:6px;font-size:10px;background:rgba(26,111,255,.2);color:#a8c4ff;padding:3px 10px;border-radius:20px;display:inline-block">'+esc(data.quoteNumber)+'</div>' +
+        '<div style="margin-top:6px;font-size:10px;background:rgba(26,111,255,.2);color:#a8c4ff;padding:3px 10px;border-radius:20px;display:inline-block">'+esc(qref)+'</div>' +
       '</div>' +
     '</div>' +
     '<div class="divider"></div>' +

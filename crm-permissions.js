@@ -440,8 +440,11 @@
     if(userId === perms.userId){ alert('Cannot change your own role — that could lock you out.'); return; }
     var sb = getSB(); if(!sb) return;
     if(newRole === 'admin' && !confirm('Make this user an ADMIN? They will bypass every component gate and be able to manage everyone\'s permissions, invite users, etc.')) return;
-    var r = await sb.from('profiles').update({ role: newRole }).eq('id', userId);
+    // .select() makes PostgREST return the updated rows, so a silent RLS
+    // rejection (no error, 0 rows) can't be mistaken for success.
+    var r = await sb.from('profiles').update({ role: newRole }).eq('id', userId).select();
     if(r.error){ alert('Role change failed: ' + r.error.message); return; }
+    if(Array.isArray(r.data) && r.data.length === 0){ alert('The server rejected the role change (0 rows changed). The role has NOT been updated.'); return; }
     if(typeof window.addNotification === 'function'){
       window.addNotification('Role updated', 'User role changed to ' + newRole + '.', 'success');
     }
@@ -495,8 +498,9 @@
     // 20260522_profiles_updated_at migration yet (originally caught when
     // Mike clicked Deactivate on Danny and got "Could not find the
     // 'updated_at' column" — the click silently bounced).
-    var r = await sb.from('profiles').update({ status: nextStatus }).eq('id', userId);
+    var r = await sb.from('profiles').update({ status: nextStatus }).eq('id', userId).select();
     if(r.error){ alert('Status change failed: ' + r.error.message); return; }
+    if(Array.isArray(r.data) && r.data.length === 0){ alert('The server rejected the status change (0 rows changed). The user has NOT been updated.'); return; }
     if(typeof window.addNotification === 'function'){
       window.addNotification('👤 User ' + nextStatus, u.email || u.name, nextStatus === 'inactive' ? 'warning' : 'success');
     }
@@ -560,8 +564,9 @@
       }
     } else {
       // Fallback: soft-delete only if we can't reach the edge function
-      var r = await sb.from('profiles').update({ status: 'inactive' }).eq('id', id);
+      var r = await sb.from('profiles').update({ status: 'inactive' }).eq('id', id).select();
       if(r.error){ alert('Remove failed: ' + r.error.message); return; }
+      if(Array.isArray(r.data) && r.data.length === 0){ alert('The server rejected the remove (0 rows changed). The user has NOT been removed.'); return; }
     }
 
     if(typeof window.addNotification === 'function'){
@@ -582,8 +587,9 @@
     if(ALLOWED.indexOf(field) < 0){ alert('Unsupported field: ' + field); return; }
     var sb = getSB(); if(!sb) return;
     var patch = {}; patch[field] = !!on;
-    var r = await sb.from('profiles').update(patch).eq('id', userId);
+    var r = await sb.from('profiles').update(patch).eq('id', userId).select();
     if(r.error){ alert('Save failed: ' + r.error.message); return; }
+    if(Array.isArray(r.data) && r.data.length === 0){ alert('The server rejected the change (0 rows changed). The preference was NOT saved.'); return; }
     if(typeof window.addNotification === 'function'){
       window.addNotification('Notification preference saved', field + ' = ' + (on?'on':'off'), 'success');
     }
@@ -611,8 +617,11 @@
   window.glClearPerm = async function(userId, componentId){
     var sb = getSB(); if(!sb) return;
     if(!confirm('Revert this component to its default for this user?')) return;
-    var r = await sb.from('user_permissions').delete().eq('user_id', userId).eq('component_id', componentId);
+    // .select() makes PostgREST return the deleted rows, so a silent RLS
+    // rejection (no error, 0 rows) can't be mistaken for success.
+    var r = await sb.from('user_permissions').delete().eq('user_id', userId).eq('component_id', componentId).select();
     if(r.error){ alert('Revert failed: ' + r.error.message); return; }
+    if(Array.isArray(r.data) && r.data.length === 0){ alert('The server rejected the revert (0 rows removed). The override is still in place.'); return; }
     if(perms.userPerms[userId]) delete perms.userPerms[userId][componentId];
     if(userId === perms.userId) applyGating();
     // Stay on the user's matrix view — don't bounce back to the list.
@@ -652,8 +661,9 @@
 
   window.glSetDefault = async function(componentId, on){
     var sb = getSB(); if(!sb) return;
-    var r = await sb.from('permission_components').update({ default_on: on }).eq('id', componentId);
+    var r = await sb.from('permission_components').update({ default_on: on }).eq('id', componentId).select();
     if(r.error){ alert('Save failed: ' + r.error.message); return; }
+    if(Array.isArray(r.data) && r.data.length === 0){ alert('The server rejected the change (0 rows changed). The default was NOT saved.'); return; }
     var c = perms.byId[componentId];
     if(c) c.default_on = on;
     applyGating();

@@ -410,8 +410,9 @@
       if(r.error) throw r.error;
       var newId = (r.data && r.data[0] && r.data[0].id) || null;
       if(newId){
-        var u = await sb().from('audit_findings').update({ ncr_id: newId }).eq('id', finding.id);
+        var u = await sb().from('audit_findings').update({ ncr_id: newId }).eq('id', finding.id).select();
         if(u.error) throw u.error;
+        if(Array.isArray(u.data) && u.data.length === 0) throw new Error('the finding could not be linked to the new NCR (0 rows updated)');
       }
       if(typeof window.glAudit === 'function') window.glAudit('ncr_raised_from_finding', finding.clause || finding.id, { finding: finding.id, ncr: newId });
       return newId;

@@ -215,8 +215,9 @@
         status: 'done',
         completed_at: new Date().toISOString(),
         completed_by: uid
-      }).eq('id', id);
+      }).eq('id', id).select();
       if(r.error) throw r.error;
+      if(Array.isArray(r.data) && r.data.length === 0) throw new Error('the server rejected the change (0 rows updated)');
       if(typeof window.glAudit === 'function') window.glAudit('gmp_task_done', id);
       await window.glRenderGMPSchedule();
     } catch(e){

@@ -1456,11 +1456,17 @@
     // Update by invoice_number — works whether the row was loaded via UUID
     // (supaId) or by the human-readable number.
     var supaId = inv && inv.supaId;
+    // .select() makes PostgREST return the updated rows, so a silent RLS
+    // rejection (no error, 0 rows) can't be mistaken for success.
     var q = supaId
-      ? window.supa.from('invoices').update({ waive_card_surcharge: !!on }).eq('id', supaId)
-      : window.supa.from('invoices').update({ waive_card_surcharge: !!on }).eq('invoice_number', invId);
+      ? window.supa.from('invoices').update({ waive_card_surcharge: !!on }).eq('id', supaId).select()
+      : window.supa.from('invoices').update({ waive_card_surcharge: !!on }).eq('invoice_number', invId).select();
     q.then(function(r){
-      if(r.error) console.warn('[GL] waive_card_surcharge update', r.error);
+      var failed = !!r.error || (Array.isArray(r.data) && r.data.length === 0);
+      if(!failed) return;
+      console.warn('[GL] waive_card_surcharge update', r.error || '0 rows changed');
+      if(inv) inv.waiveCardSurcharge = !on;   // roll back — the server did not accept it
+      if(typeof addNotification === 'function') addNotification('Surcharge waiver not saved', r.error ? r.error.message : 'The server rejected the change.', 'error');
     });
   }
 
