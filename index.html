@@ -3448,11 +3448,11 @@ function openCustomerPortal(customer){
   const clientInvoices = client ? invoices.filter(i=>i.client===client.id) : [];
   document.getElementById('portal-invoices').innerHTML = clientInvoices.length ?
     clientInvoices.map(i=>`<tr>
-      <td style="font-family:var(--ff-mono);font-size:11px">${i.id}</td>
-      <td>${i.svc.substring(0,30)}…</td>
+      <td style="font-family:var(--ff-mono);font-size:11px">${esc(i.id)}</td>
+      <td>${esc(String(i.svc||'').substring(0,30))}…</td>
       <td style="font-weight:700">$${(window.fmtUsd?window.fmtUsd(i.amount):Number(i.amount||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))}</td>
-      <td>${i.date}</td>
-      <td><span class="cbdg ${i.status}">${i.status}</span></td>
+      <td>${esc(i.date)}</td>
+      <td><span class="cbdg ${esc(i.status)}">${esc(i.status)}</span></td>
     </tr>`).join('') :
     '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">No invoices yet.</td></tr>';
 }
@@ -3574,7 +3574,7 @@ function renderDash(){
     <div class="cmc"><div class="cml">Pending</div><div class="cmv">${fmtMoneyShort(pend)}</div><div class="cmd" style="color:var(--muted)">${pendCt} open</div></div>
     <div class="cmc"><div class="cml">Overdue</div><div class="cmv" style="color:#e74c3c">${fmtMoneyShort(over)}</div><div class="cmd dn">${overCt} invoice(s)</div></div>
     <div class="cmc"><div class="cml">Active brands</div><div class="cmv">${act}</div><div class="cmd up">+${clients.filter(c=>c.status==='lead').length} leads</div></div>`;
-  document.getElementById('dash-act').innerHTML=activities.slice(0,5).map(a=>`<div class="act-item" onclick="actNav(${JSON.stringify(a).replace(/"/g,'&quot;')})" style="cursor:pointer;border-radius:8px;padding:9px 8px;margin:0 -8px;transition:background 0.2s" onmouseenter="this.style.background='rgba(255,255,255,.04)'" onmouseleave="this.style.background='transparent'">
+  document.getElementById('dash-act').innerHTML=activities.slice(0,5).map(a=>`<div class="act-item" onclick="actNav(${esc(JSON.stringify(a))})" style="cursor:pointer;border-radius:8px;padding:9px 8px;margin:0 -8px;transition:background 0.2s" onmouseenter="this.style.background='rgba(255,255,255,.04)'" onmouseleave="this.style.background='transparent'">
     <div class="act-ico ${a.type}">${a.icon}</div>
     <div style="flex:1"><div class="act-name">${esc(a.name)}</div><div class="act-detail">${esc(a.detail)}</div><div class="act-time">${a.time}</div></div>
     <div style="color:var(--teal);font-size:11px;opacity:0.6;flex-shrink:0">→</div>
@@ -3600,8 +3600,8 @@ function renderDash(){
       const rOwed=rRefs.filter(x=>x.status==='won').reduce((a,x)=>a+x.commAmount,0);
       return`<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)">
         <div style="display:flex;align-items:center;gap:7px">
-          <div class="cavt" style="background:${r.color};color:${r.tc};width:22px;height:22px;font-size:8px">${r.init}</div>
-          <span style="font-size:11px;color:var(--white)">${r.name}</span>
+          <div class="cavt" style="background:${r.color};color:${r.tc};width:22px;height:22px;font-size:8px">${esc(r.init)}</div>
+          <span style="font-size:11px;color:var(--white)">${esc(r.name)}</span>
         </div>
         <div style="text-align:right">
           ${rOwed>0?`<span class="owed-tag">$${rOwed.toLocaleString()} owed</span>`:'<span style="font-size:10px;color:var(--muted)">$0 owed</span>'}
@@ -3881,9 +3881,9 @@ async function bulkSendInvoices(){
 
   const recipientRows = rows.map(r => `
     <tr id="gl-bsr-${r.inv.id}" style="border-bottom:1px solid rgba(255,255,255,.05)">
-      <td style="padding:9px 8px;font-family:var(--ff-mono);font-size:12px;color:var(--teal);white-space:nowrap">${r.inv.id}</td>
-      <td style="padding:9px 8px;font-size:12px;color:#fff;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.inv.clientName}</td>
-      <td style="padding:9px 8px;font-size:12px;color:${r.hasEmail ? 'var(--muted)' : '#ff8579'}">${r.hasEmail ? r.email + (r.extras.length ? ` <span style="color:#6b87ad;font-size:10px">+${r.extras.length} cc</span>` : '') : '⚠ No email on file'}</td>
+      <td style="padding:9px 8px;font-family:var(--ff-mono);font-size:12px;color:var(--teal);white-space:nowrap">${esc(r.inv.id)}</td>
+      <td style="padding:9px 8px;font-size:12px;color:#fff;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.inv.clientName)}</td>
+      <td style="padding:9px 8px;font-size:12px;color:${r.hasEmail ? 'var(--muted)' : '#ff8579'}">${r.hasEmail ? esc(r.email) + (r.extras.length ? ` <span style="color:#6b87ad;font-size:10px">+${r.extras.length} cc</span>` : '') : '⚠ No email on file'}</td>
       <td style="padding:9px 8px;font-size:12px;font-weight:600;text-align:right;white-space:nowrap">${r.usd(r.inv.amount)}</td>
       <td style="padding:9px 8px;text-align:center" id="gl-bsr-status-${r.inv.id}">
         ${r.hasEmail ? '<span style="font-size:11px;color:var(--muted)">—</span>' : '<span style="font-size:11px;color:#6b87ad">skip</span>'}
@@ -3897,7 +3897,7 @@ async function bulkSendInvoices(){
         <button id="gl-bsm-close" style="background:none;border:none;color:#9aa7bd;font-size:22px;cursor:pointer;line-height:1">✕</button>
       </div>
 
-      ${noEmail.length ? `<div style="background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.3);border-radius:8px;padding:9px 14px;font-size:12px;color:#ff8579;margin-bottom:14px">⚠ ${noEmail.length} invoice${noEmail.length===1?'':'s'} skipped — no email on file for ${noEmail.map(r=>r.inv.clientName).join(', ')}. Add email in the Clients panel first.</div>` : ''}
+      ${noEmail.length ? `<div style="background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.3);border-radius:8px;padding:9px 14px;font-size:12px;color:#ff8579;margin-bottom:14px">⚠ ${noEmail.length} invoice${noEmail.length===1?'':'s'} skipped — no email on file for ${esc(noEmail.map(r=>r.inv.clientName).join(', '))}. Add email in the Clients panel first.</div>` : ''}
 
       <!-- Recipient table -->
       <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;overflow:hidden;margin-bottom:16px;max-height:240px;overflow-y:auto">
@@ -4047,12 +4047,12 @@ function renderInvoices(){
   document.getElementById('inv-sub').textContent=list.length+' invoices';
   document.getElementById('inv-body').innerHTML=list.map(i=>`<tr style="cursor:pointer" onclick="viewInvoice('${i.id}')">
     <td onclick="event.stopPropagation()" style="text-align:center"><input type="checkbox" class="inv-row-cb" data-id="${i.id}" ${window.invSelected.has(i.id)?'checked':''} onchange="toggleInvoiceRow('${i.id}',this.checked)"></td>
-    <td style="font-weight:600;color:var(--teal)">${i.id}</td>
-    <td>${i.clientName}</td>
-    <td style="color:var(--muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.svc}</td>
+    <td style="font-weight:600;color:var(--teal)">${esc(i.id)}</td>
+    <td>${esc(i.clientName)}</td>
+    <td style="color:var(--muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.svc)}</td>
     <td style="font-weight:600">$${(window.fmtUsd?window.fmtUsd(i.amount):Number(i.amount||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))}</td>
-    <td style="color:var(--muted)">${i.date}</td>
-    <td><span class="cbdg ${i.status}">${i.status}</span></td>
+    <td style="color:var(--muted)">${esc(i.date)}</td>
+    <td><span class="cbdg ${esc(i.status)}">${esc(i.status)}</span></td>
     <td onclick="event.stopPropagation()"><div style="display:flex;gap:3px">
       ${i.status!=='paid'?`<button class="cbtn grn" style="font-size:10px;padding:3px 7px" onclick="event.stopPropagation();quickPaid('${i.id}')">Paid</button>`:''}
       ${effectiveInvoiceStatus(i)==='overdue'?`<button class="cbtn" style="font-size:10px;padding:3px 7px;background:rgba(245,200,66,.12);border-color:rgba(245,200,66,.35);color:#f5c842" onclick="event.stopPropagation();sendInvoiceSmsReminder('${i.id}')" title="Send SMS reminder">📱</button>`:''}
@@ -4095,8 +4095,8 @@ function viewInvoice(id){
         </div>
       </div>
       <div style="margin-bottom:18px"><div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:4px">BILL TO</div>
-        <div style="font-weight:700;font-size:13px;color:var(--white)">${c.legalName || c.name}</div>
-        ${c.legalName && c.legalName !== c.name ? `<div style="font-size:11px;color:var(--muted)">dba ${c.name}</div>` : ''}
+        <div style="font-weight:700;font-size:13px;color:var(--white)">${esc(c.legalName || c.name)}</div>
+        ${c.legalName && c.legalName !== c.name ? `<div style="font-size:11px;color:var(--muted)">dba ${esc(c.name)}</div>` : ''}
         ${(function(){
           const useBilling = c.billingSame === false && (c.billingStreet || c.billingCity);
           const street = useBilling ? c.billingStreet : c.street;
@@ -4104,12 +4104,12 @@ function viewInvoice(id){
           const state  = useBilling ? c.billingState  : c.state;
           const zip    = useBilling ? c.billingZip    : c.zip;
           return street
-            ? `<div style="font-size:11px;color:var(--muted)">${street}</div><div style="font-size:11px;color:var(--muted)">${[city, state].filter(Boolean).join(', ')}${zip ? ' ' + zip : ''}</div>`
+            ? `<div style="font-size:11px;color:var(--muted)">${esc(street)}</div><div style="font-size:11px;color:var(--muted)">${esc([city, state].filter(Boolean).join(', ') + (zip ? ' ' + zip : ''))}</div>`
             : `<div style="font-size:11px;color:#6b7280;font-style:italic">(address not on file — add via Edit Client)</div>`;
         })()}
-        ${c.contact ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">Attn: ${c.contact}</div>` : ''}
-        ${c.email ? `<div style="font-size:11px;color:var(--muted)">${c.email}</div>` : ''}
-        ${c.phone ? `<div style="font-size:11px;color:var(--muted)">${c.phone}</div>` : ''}
+        ${c.contact ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">Attn: ${esc(c.contact)}</div>` : ''}
+        ${c.email ? `<div style="font-size:11px;color:var(--muted)">${esc(c.email)}</div>` : ''}
+        ${c.phone ? `<div style="font-size:11px;color:var(--muted)">${esc(c.phone)}</div>` : ''}
       </div>
       <table style="width:100%;border-collapse:collapse;margin-bottom:14px;font-size:12px">
         <thead><tr style="background:rgba(255,255,255,.04)">
@@ -4218,7 +4218,7 @@ function renderActivity(){
   document.getElementById('full-activity').innerHTML = '<div style="padding:4px">' +
     (list.length === 0
       ? '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No activity matches the filter.</div>'
-      : list.map(a=>`<div class="act-item" onclick="actNav(${JSON.stringify(a).replace(/"/g,'&quot;')})" style="cursor:pointer;border-radius:8px;padding:9px 8px;margin:0 -8px;transition:background 0.2s" onmouseenter="this.style.background='rgba(255,255,255,.04)'" onmouseleave="this.style.background='transparent'">
+      : list.map(a=>`<div class="act-item" onclick="actNav(${esc(JSON.stringify(a))})" style="cursor:pointer;border-radius:8px;padding:9px 8px;margin:0 -8px;transition:background 0.2s" onmouseenter="this.style.background='rgba(255,255,255,.04)'" onmouseleave="this.style.background='transparent'">
         <div class="act-ico ${a.type}">${a.icon}</div>
         <div style="flex:1"><div class="act-name">${esc(a.name)}</div><div class="act-detail">${esc(a.detail)}</div><div class="act-time">${a.time}</div></div>
         <div style="color:var(--teal);font-size:11px;opacity:0.6;flex-shrink:0">→</div>
@@ -4254,10 +4254,10 @@ function renderReferrals(){
     const ref=referrers.find(x=>x.id===r.referrerId)||{name:r.referrerName,color:'#444',tc:'#ccc',init:'?'};
     return`<tr>
       <td><div style="display:flex;align-items:center;gap:7px">
-        <div class="cavt" style="background:${ref.color};color:${ref.tc};width:24px;height:24px;font-size:9px">${ref.init}</div>
-        <div><div style="font-size:12px;font-weight:600;color:var(--white)">${ref.name}</div><div style="font-size:10px;color:var(--muted)">${ref.rel||''}</div></div>
+        <div class="cavt" style="background:${ref.color};color:${ref.tc};width:24px;height:24px;font-size:9px">${esc(ref.init)}</div>
+        <div><div style="font-size:12px;font-weight:600;color:var(--white)">${esc(ref.name)}</div><div style="font-size:10px;color:var(--muted)">${esc(ref.rel||'')}</div></div>
       </div></td>
-      <td style="font-weight:600">${r.clientName}</td>
+      <td style="font-weight:600">${esc(r.clientName)}</td>
       <td style="color:var(--muted)">$${(window.fmtUsd?window.fmtUsd(r.dealValue):Number(r.dealValue||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))}</td>
       <td style="color:var(--muted)">${r.rate}%</td>
       <td style="font-weight:600;color:var(--teal)">$${(window.fmtUsd?window.fmtUsd(r.commAmount):Number(r.commAmount||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))}</td>
@@ -4331,7 +4331,7 @@ function renderReferrers(){
     const wonCount=rRefs.filter(x=>x.status==='won'||x.status==='paid').length;
     return`<div class="rref-card">
       <div class="rref-left">
-        <div class="rref-av" style="background:${r.color};color:${r.tc}">${r.init}</div>
+        <div class="rref-av" style="background:${r.color};color:${r.tc}">${esc(r.init)}</div>
         <div>
           <div class="rref-name">${esc(r.name)}</div>
           <div class="rref-rel">${esc(r.rel)} · ${esc(r.email)} · Default: ${esc(r.rate)}% commission</div>
@@ -4488,7 +4488,7 @@ function updatePreview(){
         <div><div class="inv-co" style="font-size:11px">${GL.name}</div><div style="font-size:10px;color:var(--muted)">${GL.addr}</div></div>
         <div style="text-align:right"><div style="font-family:var(--ff-disp);font-size:12px;color:var(--white)">INVOICE</div><div style="font-size:10px;color:var(--teal)">${num}</div><div style="font-size:10px;color:var(--muted)">${date}</div></div>
       </div>
-      <div style="margin-bottom:10px"><div style="font-size:9px;color:var(--muted);margin-bottom:2px">BILL TO</div><div style="font-weight:600;font-size:12px;color:var(--white)">${c?c.name:'[Select client]'}</div></div>
+      <div style="margin-bottom:10px"><div style="font-size:9px;color:var(--muted);margin-bottom:2px">BILL TO</div><div style="font-weight:600;font-size:12px;color:var(--white)">${c?esc(c.name):'[Select client]'}</div></div>
       <table style="width:100%;border-collapse:collapse;font-size:10px">
         <thead><tr><th style="text-align:left;padding:4px;background:rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.07);color:var(--muted)">Description</th><th style="text-align:right;padding:4px;background:rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.07);color:var(--muted)">Amount</th></tr></thead>
         <tbody>${lines.map(l=>`<tr><td style="padding:5px;border-bottom:1px solid rgba(255,255,255,.05);color:var(--white)">${l.d}</td><td style="padding:5px;text-align:right;border-bottom:1px solid rgba(255,255,255,.05);color:var(--white)">$${fmtUsd(l.a)}</td></tr>`).join('')}</tbody>
@@ -4565,16 +4565,16 @@ function renderUsers(){
     const isSelf = currentUser && u.id===currentUser.id;
     return `<div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:12px;margin-bottom:9px;transition:all .3s">
       <div style="display:flex;align-items:center;gap:13px">
-        <div style="width:42px;height:42px;border-radius:50%;background:${u.color||'#1a3a6e'};color:${u.tc||'#9FE1CB'};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${u.initials||'??'}</div>
+        <div style="width:42px;height:42px;border-radius:50%;background:${u.color||'#1a3a6e'};color:${u.tc||'#9FE1CB'};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${esc(u.initials||'??')}</div>
         <div>
-          <div style="font-size:13px;font-weight:600;color:var(--white)">${u.name} ${isSelf?'<span style="font-size:10px;color:var(--muted)">(you)</span>':''}</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:1px">${u.email}</div>
-          <div style="font-size:10px;color:rgba(107,135,173,.55);margin-top:2px">Last login: ${u.lastLogin||'Never'}</div>
+          <div style="font-size:13px;font-weight:600;color:var(--white)">${esc(u.name)} ${isSelf?'<span style="font-size:10px;color:var(--muted)">(you)</span>':''}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:1px">${esc(u.email)}</div>
+          <div style="font-size:10px;color:rgba(107,135,173,.55);margin-top:2px">Last login: ${esc(u.lastLogin||'Never')}</div>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:10px">
         <span style="padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;background:${rs.bg};color:${rs.color};border:1px solid ${rs.border}">${rs.label}</span>
-        <span class="cbdg ${u.status==='active'?'active':'draft'}">${u.status}</span>
+        <span class="cbdg ${u.status==='active'?'active':'draft'}">${esc(u.status)}</span>
         ${!isSelf && canAction('manage_users')?`
         <button class="cbtn" style="font-size:10px;padding:4px 9px" onclick="openChangeRole('${u.id}')">Change role</button>
         <button class="cbtn" style="font-size:10px;padding:4px 9px" onclick="resetPw('${u.id}')">Reset PW</button>
@@ -4592,9 +4592,9 @@ function openChangeRole(uid){
   const roleStyles={admin:{bg:'rgba(0,229,192,.12)',color:'var(--teal)',label:'Admin'},sales:{bg:'rgba(26,111,255,.12)',color:'#6b9fff',label:'Sales'},warehouse:{bg:'rgba(168,85,247,.12)',color:'#c4a4f8',label:'Warehouse'},viewer:{bg:'rgba(255,255,255,.06)',color:'var(--muted)',label:'Viewer'}};
   const rs=roleStyles[u.role]||roleStyles.viewer;
   document.getElementById('role-modal-user').innerHTML=`
-    <div style="width:36px;height:36px;border-radius:50%;background:${u.color};color:${u.tc};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${u.initials}</div>
-    <div><div style="font-size:13px;font-weight:600;color:var(--white)">${u.name}</div>
-    <div style="font-size:11px;color:var(--muted)">${u.email}</div></div>
+    <div style="width:36px;height:36px;border-radius:50%;background:${u.color};color:${u.tc};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${esc(u.initials)}</div>
+    <div><div style="font-size:13px;font-weight:600;color:var(--white)">${esc(u.name)}</div>
+    <div style="font-size:11px;color:var(--muted)">${esc(u.email)}</div></div>
     <span style="margin-left:auto;padding:3px 10px;border-radius:20px;font-size:11px;background:${rs.bg};color:${rs.color}">${rs.label}</span>`;
   document.getElementById('role-select').value=u.role;
   document.getElementById('role-modal').classList.add('show');
@@ -5136,13 +5136,13 @@ setTimeout(()=>{
 function openAddClientModal(){
   // Populate referrer dropdown
   const sel = document.getElementById('nc-referrer');
-  sel.innerHTML = '<option value="">None</option>' + referrers.map(r=>`<option value="${r.id}">${r.name}</option>`).join('');
+  sel.innerHTML = '<option value="">None</option>' + referrers.map(r=>`<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('');
   // Populate account-owner dropdown from CRM users; default to current user.
   const own = document.getElementById('nc-account-owner');
   if(own){
     const userList = (window.users||[]).filter(u=>u.status!=='inactive');
     own.innerHTML = '<option value="">Unassigned</option>' +
-      userList.map(u=>`<option value="${u.id}">${u.name} (${u.role})</option>`).join('');
+      userList.map(u=>`<option value="${esc(u.id)}">${esc(u.name)} (${esc(u.role)})</option>`).join('');
     if(window.currentUser) own.value = window.currentUser.id;
   }
   document.getElementById('add-client-modal').classList.add('show');
@@ -7469,12 +7469,12 @@ async function downloadInvoicePDF(invId) {
   const bState  = useBilling ? c.billingState  : c.state;
   const bZip    = useBilling ? c.billingZip    : c.zip;
   const bLine2  = [bCity, bState].filter(Boolean).join(', ') + (bZip ? ' ' + bZip : '');
-  const billToHtml = `<strong>${c.legalName || c.name}</strong>`
-    + (c.legalName && c.legalName !== c.name ? `<br><span style="color:#666;font-size:12px">dba ${c.name}</span>` : '')
-    + (bStreet ? `<br>${bStreet}` : '')
-    + (bLine2.trim() ? `<br>${bLine2}` : '')
-    + (c.contact ? `<br><span style="color:#666;font-size:12px">Attn: ${c.contact}</span>` : '')
-    + (c.email ? `<br><span style="color:#666;font-size:12px">${c.email}</span>` : '');
+  const billToHtml = `<strong>${esc(c.legalName || c.name)}</strong>`
+    + (c.legalName && c.legalName !== c.name ? `<br><span style="color:#666;font-size:12px">dba ${esc(c.name)}</span>` : '')
+    + (bStreet ? `<br>${esc(bStreet)}` : '')
+    + (bLine2.trim() ? `<br>${esc(bLine2)}` : '')
+    + (c.contact ? `<br><span style="color:#666;font-size:12px">Attn: ${esc(c.contact)}</span>` : '')
+    + (c.email ? `<br><span style="color:#666;font-size:12px">${esc(c.email)}</span>` : '');
 
   // Prefer the client's payment terms, fall back to whatever's on the invoice.
   const terms = inv.paymentTerms || c.paymentTerms || 'Due on receipt';
@@ -7609,7 +7609,7 @@ function buildInvoiceEmailHtml(invId, opts){
   const lineRows = lines.map(l => {
     const qty = (l.qty != null) ? Number(l.qty).toLocaleString() : '';
     const up = l.unitPrice != null ? usd(l.unitPrice) + (l.unit ? ' /'+l.unit : '') : '';
-    return `<tr><td style="padding:10px 14px;border-bottom:1px solid #eee">${l.desc||''}</td><td style="padding:10px 14px;text-align:center;border-bottom:1px solid #eee">${qty}</td><td style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee">${up}</td><td style="padding:10px 14px;text-align:right;font-weight:700;border-bottom:1px solid #eee">${usd(l.total||0)}</td></tr>`;
+    return `<tr><td style="padding:10px 14px;border-bottom:1px solid #eee">${esc(l.desc||'')}</td><td style="padding:10px 14px;text-align:center;border-bottom:1px solid #eee">${qty}</td><td style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee">${up}</td><td style="padding:10px 14px;text-align:right;font-weight:700;border-bottom:1px solid #eee">${usd(l.total||0)}</td></tr>`;
   }).join('');
   const discountRow = (inv.discount && inv.discountAmt)
     ? `<tr><td colspan="3" style="padding:8px 14px;text-align:right;color:#666">Discount (${inv.discount}%)</td><td style="padding:8px 14px;text-align:right;color:#666">−${usd(inv.discountAmt)}</td></tr>` : '';
@@ -7642,18 +7642,18 @@ function buildInvoiceEmailHtml(invId, opts){
       <tr>
         <td valign="top" style="padding:18px 28px;width:60%">
           <div style="font-size:10px;letter-spacing:2px;color:#6b87ad;text-transform:uppercase;margin-bottom:4px">Bill To</div>
-          <div style="font-weight:700;color:#0a1628">${c.legalName||c.name||''}</div>
-          ${c.legalName && c.legalName !== c.name ? `<div style="font-size:11px;color:#6b87ad">dba ${c.name}</div>` : ''}
-          ${bStreet ? `<div style="font-size:12px;color:#0a1628">${bStreet}</div>` : '<div style="font-size:11px;color:#aaa;font-style:italic">(address not on file)</div>'}
-          ${bLine2.trim() ? `<div style="font-size:12px;color:#0a1628">${bLine2}</div>` : ''}
-          ${c.contact ? `<div style="font-size:11px;color:#6b87ad;margin-top:4px">Attn: ${c.contact}</div>` : ''}
-          ${c.email ? `<div style="font-size:11px;color:#6b87ad">${c.email}</div>` : ''}
-          ${c.phone ? `<div style="font-size:11px;color:#6b87ad">${c.phone}</div>` : ''}
+          <div style="font-weight:700;color:#0a1628">${esc(c.legalName||c.name||'')}</div>
+          ${c.legalName && c.legalName !== c.name ? `<div style="font-size:11px;color:#6b87ad">dba ${esc(c.name)}</div>` : ''}
+          ${bStreet ? `<div style="font-size:12px;color:#0a1628">${esc(bStreet)}</div>` : '<div style="font-size:11px;color:#aaa;font-style:italic">(address not on file)</div>'}
+          ${bLine2.trim() ? `<div style="font-size:12px;color:#0a1628">${esc(bLine2)}</div>` : ''}
+          ${c.contact ? `<div style="font-size:11px;color:#6b87ad;margin-top:4px">Attn: ${esc(c.contact)}</div>` : ''}
+          ${c.email ? `<div style="font-size:11px;color:#6b87ad">${esc(c.email)}</div>` : ''}
+          ${c.phone ? `<div style="font-size:11px;color:#6b87ad">${esc(c.phone)}</div>` : ''}
         </td>
         <td valign="top" align="right" style="padding:18px 28px;text-align:right">
           <div style="font-size:10px;letter-spacing:2px;color:#6b87ad;text-transform:uppercase;margin-bottom:4px">Invoice Details</div>
-          <div style="font-size:12px;color:#0a1628">Date: ${inv.date}</div>
-          <div style="font-size:12px;color:#0a1628">Terms: ${terms}</div>
+          <div style="font-size:12px;color:#0a1628">Date: ${esc(inv.date)}</div>
+          <div style="font-size:12px;color:#0a1628">Terms: ${esc(terms)}</div>
         </td>
       </tr>
     </table>
@@ -7671,7 +7671,7 @@ function buildInvoiceEmailHtml(invId, opts){
       <tbody>
         ${lineRows}
         ${discountRow}
-        ${inv.notes ? `<tr><td colspan="4" style="padding:10px 14px;font-size:12px;color:#6b87ad;font-style:italic">${inv.notes}</td></tr>` : ''}
+        ${inv.notes ? `<tr><td colspan="4" style="padding:10px 14px;font-size:12px;color:#6b87ad;font-style:italic">${esc(inv.notes)}</td></tr>` : ''}
         <tr style="background:#e6fbf6">
           <td colspan="3" style="padding:16px 14px;font-weight:900;color:#0a1628;font-size:16px;letter-spacing:.3px">Total Due</td>
           <td align="right" style="padding:16px 14px;text-align:right;font-weight:900;color:#00b89a;font-size:20px">${usd(inv.amount)}</td>
@@ -7730,16 +7730,16 @@ function openSendInvoiceModal(invId){
       </div>
       <div style="display:grid;grid-template-columns:80px 1fr;gap:8px 12px;align-items:center;font-size:13px">
         <label style="color:var(--muted);font-size:11px;letter-spacing:1px">TO</label>
-        <input id="gl-si-to" class="finp" value="${primary}" placeholder="recipient@client.com (comma-separate for multiple)" style="font-size:13px">
+        <input id="gl-si-to" class="finp" value="${esc(primary)}" placeholder="recipient@client.com (comma-separate for multiple)" style="font-size:13px">
         <label style="color:var(--muted);font-size:11px;letter-spacing:1px">CC</label>
-        <input id="gl-si-cc" class="finp" value="${extras.join(', ')}" placeholder="optional, comma-separated" style="font-size:13px">
+        <input id="gl-si-cc" class="finp" value="${esc(extras.join(', '))}" placeholder="optional, comma-separated" style="font-size:13px">
         <label style="color:var(--muted);font-size:11px;letter-spacing:1px">BCC</label>
         <input id="gl-si-bcc" class="finp" placeholder="optional, comma-separated" style="font-size:13px">
         <label style="color:var(--muted);font-size:11px;letter-spacing:1px">SUBJECT</label>
-        <input id="gl-si-subject" class="finp" value="${defaultSubject}" style="font-size:13px">
+        <input id="gl-si-subject" class="finp" value="${esc(defaultSubject)}" style="font-size:13px">
       </div>
       <div style="margin-top:14px"><div style="font-size:11px;letter-spacing:1px;color:var(--muted);margin-bottom:4px">MESSAGE (added above the invoice)</div>
-        <textarea id="gl-si-message" class="finp" rows="6" style="resize:vertical;font-size:13px">${defaultMessage}</textarea>
+        <textarea id="gl-si-message" class="finp" rows="6" style="resize:vertical;font-size:13px">${esc(defaultMessage)}</textarea>
       </div>
       <details style="margin-top:14px">
         <summary style="cursor:pointer;color:#6b9fff;font-size:12px;letter-spacing:1px">📄 PREVIEW EMBEDDED INVOICE</summary>
@@ -7840,7 +7840,7 @@ function openClientDetail(cid) {
     <div style="background:#142238;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:32px;width:100%;max-width:1000px;max-height:90vh;overflow-y:auto">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px">
         <div style="display:flex;align-items:center;gap:14px">
-          <div style="width:56px;height:56px;border-radius:50%;background:${c.color};color:${c.tc};display:flex;align-items:center;justify-content:center;font-weight:900;font-size:18px;flex-shrink:0">${c.init}</div>
+          <div style="width:56px;height:56px;border-radius:50%;background:${c.color};color:${c.tc};display:flex;align-items:center;justify-content:center;font-weight:900;font-size:18px;flex-shrink:0">${esc(c.init)}</div>
           <div>
             <div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:2px;color:var(--white)">${esc(c.name)}</div>
             <div style="font-size:13px;color:var(--muted)">${esc(c.contact)} · ${esc(c.email)}</div>
@@ -7865,7 +7865,7 @@ function openClientDetail(cid) {
         </div>
       </div>
 
-      ${ref ? `<div style="background:rgba(0,229,192,.05);border:1px solid rgba(0,229,192,.15);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--teal)">🤝 Referred by ${ref.name}</div>` : ''}
+      ${ref ? `<div style="background:rgba(0,229,192,.05);border:1px solid rgba(0,229,192,.15);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--teal)">🤝 Referred by ${esc(ref.name)}</div>` : ''}
 
       ${(typeof window.glClientInfoSections==='function') ? window.glClientInfoSections(c) : ''}
 
@@ -7873,7 +7873,7 @@ function openClientDetail(cid) {
         <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:10px">INVOICES (${cInvoices.length})</div>
         ${cInvoices.length===0 ? '<div style="color:var(--muted);font-size:13px">No invoices yet.</div>' :
           cInvoices.map(i=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.05)">
-            <div><div style="font-size:13px;font-weight:700;color:var(--teal)">${i.id}</div><div style="font-size:11px;color:var(--muted)">${i.svc}</div></div>
+            <div><div style="font-size:13px;font-weight:700;color:var(--teal)">${esc(i.id)}</div><div style="font-size:11px;color:var(--muted)">${esc(i.svc)}</div></div>
             <div style="display:flex;align-items:center;gap:10px">
               <div style="font-weight:700;color:var(--white)">$${i.amount.toLocaleString()}</div>
               <span style="padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;background:${i.status==='paid'?'rgba(29,158,117,.2)':i.status==='overdue'?'rgba(231,76,60,.2)':'rgba(255,255,255,.08)'};color:${i.status==='paid'?'#1D9E75':i.status==='overdue'?'#e74c3c':'var(--muted)'}">
@@ -7887,8 +7887,8 @@ function openClientDetail(cid) {
       ${cDeals.length>0 ? `<div style="margin-bottom:20px">
         <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:10px">PIPELINE DEALS (${cDeals.length})</div>
         ${cDeals.map(d=>`<div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,.05)">
-          <div style="font-size:13px;font-weight:700;color:var(--white)">${d.name}</div>
-          <div style="font-size:11px;color:var(--muted)">${d.val} · ${Object.keys(deals).find(s=>deals[s].includes(d))||''}</div>
+          <div style="font-size:13px;font-weight:700;color:var(--white)">${esc(d.name)}</div>
+          <div style="font-size:11px;color:var(--muted)">${esc(d.val)} · ${esc(Object.keys(deals).find(s=>deals[s].includes(d))||'')}</div>
         </div>`).join('')}
       </div>` : ''}
 
@@ -8019,8 +8019,8 @@ function openReports() {
         <div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:14px">TOP CLIENTS BY REVENUE</div>
         ${topClients.map((c,i)=>`<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.05)">
           <div style="font-family:var(--ff-disp);font-size:20px;color:var(--muted);min-width:24px">#${i+1}</div>
-          <div style="width:36px;height:36px;border-radius:50%;background:${c.color};color:${c.tc};display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px;flex-shrink:0">${c.init}</div>
-          <div style="flex:1"><div style="font-weight:700;color:var(--white);font-size:13px">${c.name}</div><div style="font-size:11px;color:var(--muted)">${c.service}</div></div>
+          <div style="width:36px;height:36px;border-radius:50%;background:${c.color};color:${c.tc};display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px;flex-shrink:0">${esc(c.init)}</div>
+          <div style="flex:1"><div style="font-weight:700;color:var(--white);font-size:13px">${esc(c.name)}</div><div style="font-size:11px;color:var(--muted)">${esc(c.service)}</div></div>
           <div style="font-family:var(--ff-disp);font-size:20px;color:var(--teal)">$${fmtUsd(c.billed||0)}</div>
         </div>`).join('')}
       </div>
@@ -8463,7 +8463,7 @@ function openCalEventModal(type, date){
   document.getElementById('cal-ev-date').value=date||new Date().toISOString().split('T')[0];
   // Populate client dropdown
   const sel=document.getElementById('cal-ev-client');
-  sel.innerHTML='<option value="">Select client…</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  sel.innerHTML='<option value="">Select client…</option>'+clients.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
   document.getElementById('cal-event-modal').classList.add('show');
 }
 
@@ -8556,7 +8556,7 @@ function renderCal(type){
     const hasEvents=dayEvents.length>0;
     html+=`<div class="cal-day${isToday?' today':''}${isWeekend?' weekend':''}${isPast&&!isToday?' past':''}${hasEvents?' has-events':''}" onclick="openCalEventModal('${type}','${dateStr}')">
       <div class="cal-day-num">${day}</div>
-      ${dayEvents.slice(0,3).map(e=>`<div class="cal-event ${e.type}" title="${e.title}">${e.title.substring(0,18)}${e.title.length>18?'…':''}</div>`).join('')}
+      ${dayEvents.slice(0,3).map(e=>`<div class="cal-event ${esc(e.type)}" title="${esc(e.title)}">${esc(String(e.title||'').substring(0,18))}${e.title.length>18?'…':''}</div>`).join('')}
       ${dayEvents.length>3?`<div class="cal-more">+${dayEvents.length-3} more</div>`:''}
     </div>`;
   }
@@ -8631,7 +8631,7 @@ function renderCalList(type){
       return `<div class="cal-list-event" onclick="openCalEventModal('${type}','${dateStr}')">
         <div class="cal-list-event-bar" style="background:${clr}"></div>
         <div class="cal-list-event-body">
-          <div class="cal-list-event-title">${e.title||'(untitled)'}</div>
+          <div class="cal-list-event-title">${esc(e.title||'(untitled)')}</div>
           ${timeStr}
         </div>
       </div>`;
@@ -8666,12 +8666,12 @@ function renderProductionRuns(){
       return `<div class="prod-run">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
           <div>
-            <div style="font-weight:700;font-size:14px;color:var(--white);margin-bottom:4px">${e.title} <span style="font-size:10px;font-family:var(--ff-disp);letter-spacing:1px;color:${stageClr};background:rgba(255,255,255,.05);border:1px solid ${stageClr}33;padding:2px 7px;border-radius:8px">${e.stage.toUpperCase()}</span></div>
+            <div style="font-weight:700;font-size:14px;color:var(--white);margin-bottom:4px">${esc(e.title)} <span style="font-size:10px;font-family:var(--ff-disp);letter-spacing:1px;color:${stageClr};background:rgba(255,255,255,.05);border:1px solid ${stageClr}33;padding:2px 7px;border-radius:8px">${esc(e.stage.toUpperCase())}</span></div>
             <div style="font-size:12px;color:var(--muted);line-height:1.8">
-              🏢 ${e.clientName||'Unknown client'} &nbsp;·&nbsp;
-              📅 Start: ${e.date||'TBD'} &nbsp;·&nbsp;
-              🏁 End: ${e.dueDate||'TBD'}<br>
-              🥫 ${e.format||'—'} &nbsp;·&nbsp; 📦 ${e.qty||'?'} cases
+              🏢 ${esc(e.clientName||'Unknown client')} &nbsp;·&nbsp;
+              📅 Start: ${esc(e.date||'TBD')} &nbsp;·&nbsp;
+              🏁 End: ${esc(e.dueDate||'TBD')}<br>
+              🥫 ${esc(e.format||'—')} &nbsp;·&nbsp; 📦 ${esc(e.qty||'?')} cases
             </div>
           </div>
           <div style="flex-shrink:0">
@@ -8686,12 +8686,12 @@ function renderProductionRuns(){
     return `<div class="prod-run">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
         <div>
-          <div style="font-weight:700;font-size:14px;color:var(--white);margin-bottom:4px">${e.title}</div>
+          <div style="font-weight:700;font-size:14px;color:var(--white);margin-bottom:4px">${esc(e.title)}</div>
           <div style="font-size:12px;color:var(--muted);line-height:1.8">
-            🏢 ${client?client.name:'Unknown client'} &nbsp;·&nbsp;
-            📅 Start: ${e.date} &nbsp;·&nbsp;
-            🏁 Due: ${e.dueDate||'TBD'}<br>
-            🥫 ${e.format||''} &nbsp;·&nbsp; 📦 ${e.qty||'?'} cases
+            🏢 ${esc(client?client.name:'Unknown client')} &nbsp;·&nbsp;
+            📅 Start: ${esc(e.date)} &nbsp;·&nbsp;
+            🏁 Due: ${esc(e.dueDate||'TBD')}<br>
+            🥫 ${esc(e.format||'')} &nbsp;·&nbsp; 📦 ${esc(e.qty||'?')} cases
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
@@ -8886,7 +8886,7 @@ async function loadTasks(){
 
 function openTaskModal(){
   const sel=document.getElementById('task-client-link');
-  sel.innerHTML='<option value="">None</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  sel.innerHTML='<option value="">None</option>'+clients.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
   document.getElementById('task-modal').classList.add('show');
 }
 function closeTaskModal(){ document.getElementById('task-modal').classList.remove('show'); }
@@ -8951,7 +8951,7 @@ function renderTasks(){
         <div class="task-meta">
           ${t.priority?`<span class="priority-badge ${t.priority}">${t.priority.charAt(0).toUpperCase()+t.priority.slice(1)}</span>`:''}
           ${t.due?`<span style="margin-left:8px;color:${overdue?'#e74c3c':'var(--muted)'}">📅 ${t.due}${overdue?' (overdue)':''}</span>`:''}
-          ${client?`<span style="margin-left:8px;color:var(--muted)">👤 ${client.name}</span>`:''}
+          ${client?`<span style="margin-left:8px;color:var(--muted)">👤 ${esc(client.name)}</span>`:''}
         </div>
         ${safeNotes?`<div style="font-size:11px;color:var(--muted);margin-top:3px">${safeNotes}</div>`:''}
       </div>
@@ -9037,7 +9037,7 @@ async function loadDocs(){
 
 function openDocUploadModal(){
   const sel=document.getElementById('doc-client-sel');
-  sel.innerHTML='<option value="">Select client…</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  sel.innerHTML='<option value="">Select client…</option>'+clients.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
   document.getElementById('doc-upload-modal').classList.add('show');
 }
 function closeDocUploadModal(){ document.getElementById('doc-upload-modal').classList.remove('show'); }
@@ -9071,16 +9071,17 @@ function filterDocs(v){ docSearch=v; renderDocs(); }
 function renderDocs(){
   const el=document.getElementById('doc-list');
   if(!el) return;
+  // Declared before the client-filter build below, which also escapes.
+  const esc = s => String(s||'').replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
   const cf=document.getElementById('doc-client-filter');
   if(cf && cf.children.length<=1){
-    cf.innerHTML='<option value="">All clients</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+    cf.innerHTML='<option value="">All clients</option>'+clients.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
   }
   docClientFilter = cf ? cf.value : '';
   let filtered=documents;
   if(docSearch) filtered=filtered.filter(d=>(d.name||'').toLowerCase().includes(docSearch.toLowerCase())||(d.type||'').toLowerCase().includes(docSearch.toLowerCase())||(d.clientName||'').toLowerCase().includes(docSearch.toLowerCase()));
   if(docClientFilter) filtered=filtered.filter(d=>d.clientId===docClientFilter);
   if(!filtered.length){el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:20px 0">No documents found.</div>';return;}
-  const esc = s => String(s||'').replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
   el.innerHTML=filtered.map(d=>`<div class="doc-item">
     <div class="doc-icon">${typeIcons[d.type]||'📄'}</div>
     <div style="flex:1">
@@ -9178,7 +9179,7 @@ function renderInventory(){
     return `<div class="inv-item-row">
       <div style="min-width:180px;font-size:13px;font-weight:600;color:var(--white)">${esc(i.name)}</div>
       <div class="inv-stock-bar"><div class="inv-stock-fill" style="width:${pct}%;background:${color}"></div></div>
-      <div style="min-width:100px;text-align:right;font-size:12px;font-weight:700;color:${color}">${i.qty} ${i.unit}</div>
+      <div style="min-width:100px;text-align:right;font-size:12px;font-weight:700;color:${color}">${esc(i.qty)} ${esc(i.unit)}</div>
       <div style="min-width:80px;text-align:right;font-size:10px;color:var(--muted)">low@${i.lowAt}</div>
       <div style="display:flex;gap:4px">
         <button class="cbtn" style="font-size:10px;padding:3px 7px" onclick="adjustInventory('${i.id}',10)">+</button>
@@ -9393,7 +9394,7 @@ function openChangePwModal(){
   if(adminSection) adminSection.style.display=isAdmin?'block':'none';
   if(isAdmin){
     const sel=document.getElementById('change-pw-user-sel');
-    if(sel) sel.innerHTML=users.map(u=>`<option value="${u.id}">${u.name} (${u.role})</option>`).join('');
+    if(sel) sel.innerHTML=users.map(u=>`<option value="${esc(u.id)}">${esc(u.name)} (${esc(u.role)})</option>`).join('');
   }
   document.getElementById('change-pw-err').style.display='none';
   document.getElementById('change-pw-ok').style.display='none';
@@ -9964,7 +9965,7 @@ function getFollowupLog(invId){
 ═══════════════════════════════════════════ */
 function openMeetingNotesModal(){
   const sel=document.getElementById('mn-client');
-  sel.innerHTML='<option value="">Select client…</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  sel.innerHTML='<option value="">Select client…</option>'+clients.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
   document.getElementById('mn-output').style.display='none';
   document.getElementById('mn-save-btn').style.display='none';
   document.getElementById('meeting-notes-modal').classList.add('show');
@@ -10020,7 +10021,7 @@ async function saveMeetingNotes(){
 ═══════════════════════════════════════════ */
 function openAICommModal(){
   const sel=document.getElementById('ai-comm-client');
-  sel.innerHTML='<option value="">Select client…</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  sel.innerHTML='<option value="">Select client…</option>'+clients.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
   document.getElementById('ai-comm-output').style.display='none';
   document.getElementById('ai-comm-send-btn').style.display='none';
   document.getElementById('ai-comm-custom-row').style.display='none';
@@ -10263,7 +10264,7 @@ async function sendChatMsg(){
     Be friendly, helpful, and concise. If they want to get started, encourage them to fill out the contact form or schedule a tour.`,
     msg);
   
-  document.getElementById('chat-thinking').outerHTML=`<div class="chat-msg bot">${reply}</div>`;
+  document.getElementById('chat-thinking').outerHTML=`<div class="chat-msg bot">${esc(reply)}</div>`;
   msgs.scrollTop=msgs.scrollHeight;
 }
 
@@ -10407,7 +10408,7 @@ initCRM=function(){
   
   // Populate client selects in task/doc modals
   const taskCl=document.getElementById('task-client-link');
-  if(taskCl) taskCl.innerHTML='<option value="">None</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  if(taskCl) taskCl.innerHTML='<option value="">None</option>'+clients.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
   
   // Update PERMISSIONS to include new pages
   PERMISSIONS.admin.push('calendar','production-cal','tasks','documents','inventory','announcements','customers');
@@ -10448,7 +10449,7 @@ renderClients=function(list){
             if(tagCell){
               const tagWrap=document.createElement('div');
               tagWrap.style.cssText='margin-top:4px';
-              tagWrap.innerHTML=tags.map(t=>`<span class="tag-chip" style="font-size:9px;padding:1px 6px">${t}</span>`).join('');
+              tagWrap.innerHTML=tags.map(t=>`<span class="tag-chip" style="font-size:9px;padding:1px 6px">${esc(t)}</span>`).join('');
               nameCell.appendChild(tagWrap);
             }
           }
@@ -10740,7 +10741,7 @@ async function openTimeTracker() {
             <div class="flbl">Client / Job</div>
             <select class="fsel" id="tt-client">
               <option value="">Select client…</option>
-              ${clients.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+              ${clients.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}
             </select>
           </div>
           <div class="frow">
@@ -10870,8 +10871,8 @@ function renderTimeTracker() {
       `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.05)">
         <div style="font-family:var(--ff-disp);font-size:18px;color:var(--teal);min-width:60px">${e.hours}h</div>
         <div style="flex:1">
-          <div style="font-size:12px;font-weight:600;color:var(--white)">${e.clientName} — ${e.activity}</div>
-          <div style="font-size:10px;color:var(--muted)">${e.date} ${e.notes ? '· ' + e.notes : ''}</div>
+          <div style="font-size:12px;font-weight:600;color:var(--white)">${esc(e.clientName)} — ${esc(e.activity)}</div>
+          <div style="font-size:10px;color:var(--muted)">${esc(e.date)} ${e.notes ? '· ' + esc(e.notes) : ''}</div>
         </div>
         <button class="cbtn red" style="font-size:10px;padding:2px 7px" onclick="deleteTimeEntry('${e.id}')">✕</button>
       </div>`
@@ -10886,7 +10887,7 @@ function renderTimeTracker() {
     summary.innerHTML = `
       <div style="display:flex;gap:20px">
         <div><div style="font-size:10px;color:var(--muted);letter-spacing:1px">TOTAL HOURS</div><div style="font-family:var(--ff-disp);font-size:22px;color:var(--teal)">${totalHours.toFixed(1)}</div></div>
-        <div><div style="font-size:10px;color:var(--muted);letter-spacing:1px">TOP CLIENT</div><div style="font-family:var(--ff-disp);font-size:16px;color:var(--white)">${topClient ? topClient[0] : 'N/A'}</div></div>
+        <div><div style="font-size:10px;color:var(--muted);letter-spacing:1px">TOP CLIENT</div><div style="font-family:var(--ff-disp);font-size:16px;color:var(--white)">${esc(topClient ? topClient[0] : 'N/A')}</div></div>
         <div><div style="font-size:10px;color:var(--muted);letter-spacing:1px">ENTRIES</div><div style="font-family:var(--ff-disp);font-size:22px;color:var(--white)">${timeEntries.length}</div></div>
       </div>`;
   }
@@ -11242,12 +11243,12 @@ function renderUsersPanel(){
   el.innerHTML = `<table class="ctbl"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Last Login</th><th>Actions</th></tr></thead><tbody>
     ${users.map(u => `<tr>
       <td style="font-weight:600;display:flex;align-items:center;gap:8px">
-        <div style="width:28px;height:28px;border-radius:50%;background:${u.color};color:${u.tc};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">${u.initials}</div>
-        ${u.name}
+        <div style="width:28px;height:28px;border-radius:50%;background:${u.color};color:${u.tc};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">${esc(u.initials)}</div>
+        ${esc(u.name)}
       </td>
-      <td style="font-family:var(--ff-mono);font-size:11px">${u.email}</td>
-      <td><span class="cbdg ${u.role}">${u.role}</span></td>
-      <td style="font-size:11px;color:var(--muted)">${u.lastLogin||'Never'}</td>
+      <td style="font-family:var(--ff-mono);font-size:11px">${esc(u.email)}</td>
+      <td><span class="cbdg ${esc(u.role)}">${esc(u.role)}</span></td>
+      <td style="font-size:11px;color:var(--muted)">${esc(u.lastLogin||'Never')}</td>
       <td style="display:flex;gap:6px">
         ${u.email !== 'mike@goodliquid.com' ? `<button class="cbtn red" style="font-size:10px;padding:3px 8px" onclick="removeUser('${u.id}')">Remove</button>` : '<span style="font-size:10px;color:var(--muted)">Owner</span>'}
       </td>
@@ -11623,7 +11624,7 @@ async function openTimeTrackingReport(){
           <div style="font-family:var(--ff-disp);font-size:16px;color:var(--teal)">${c.hours}h</div>
         </div>`).join('')}
       </div>
-      <div style="white-space:pre-wrap;font-size:13px;line-height:1.7;margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.07)">${text}</div>`;
+      <div style="white-space:pre-wrap;font-size:13px;line-height:1.7;margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.07)">${esc(text)}</div>`;
   }
 }
 
@@ -11650,7 +11651,7 @@ function generatePayLink(invId){
     <div class="modal-box" style="width:480px">
       <div class="modal-title">💳 Payment Link — ${inv.id} <span class="modal-close" onclick="this.closest('.modal-ov').remove()">✕</span></div>
       <div style="background:rgba(0,229,192,.06);border:1px solid rgba(0,229,192,.15);border-radius:10px;padding:16px;margin-bottom:16px">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Share this link with ${inv.clientName} to request payment:</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Share this link with ${esc(inv.clientName)} to request payment:</div>
         <div style="font-family:var(--ff-mono);font-size:11px;color:var(--teal);word-break:break-all;line-height:1.6">${payUrl}</div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
@@ -11664,7 +11665,7 @@ function generatePayLink(invId){
         </div>
         <div style="text-align:center;padding:10px;background:rgba(255,255,255,.03);border-radius:8px">
           <div style="font-size:10px;color:var(--muted)">CLIENT</div>
-          <div style="font-weight:700;color:var(--white);font-size:11px">${inv.clientName}</div>
+          <div style="font-weight:700;color:var(--white);font-size:11px">${esc(inv.clientName)}</div>
         </div>
       </div>
       <div style="background:rgba(245,200,66,.06);border:1px solid rgba(245,200,66,.18);border-radius:8px;padding:11px;font-size:11px;color:#f5c842;margin-bottom:14px">
@@ -11745,7 +11746,7 @@ viewClientEnhanced = function(clientId){
     banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#142238;border-bottom:2px solid var(--teal);padding:20px;text-align:center';
     banner.innerHTML = `
       <div style="font-family:var(--ff-disp);font-size:20px;color:var(--white);margin-bottom:6px">Payment Request — Good Liquid Bev Co</div>
-      <div style="font-size:14px;color:var(--muted);margin-bottom:12px">Invoice ${data.inv} · ${data.client} · <span style="color:var(--teal);font-weight:700">$${Number(data.amount).toLocaleString()}</span></div>
+      <div style="font-size:14px;color:var(--muted);margin-bottom:12px">Invoice ${esc(data.inv)} · ${esc(data.client)} · <span style="color:var(--teal);font-weight:700">$${Number(data.amount).toLocaleString()}</span></div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:14px">To pay this invoice please contact Mike at Mike@GoodLiquid.com or (803) 493-5065</div>
       <button onclick="this.parentElement.remove()" style="padding:8px 20px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:700;cursor:pointer">Dismiss</button>`;
     document.body.prepend(banner);
