@@ -248,31 +248,50 @@
 
   async function renderDashboard(customer){
     var sb = getSB();
-    // Update last_login (fire-and-forget)
-    try { sb.from('customer_users').update({ last_login: new Date().toISOString() }).eq('id', customer.id); } catch(e){}
-    // Fetch client + invoices + allergen decls + production runs + samples + formulas
-    var clientRow = await sb.from('clients').select('name, contact_name, contact_type, email, phone, street, city, state, zip, additional_emails, shipping_same, shipping_street, shipping_city, shipping_state, shipping_zip, lift_gate, dock_hours').eq('id', customer.client_id).maybeSingle();
-    var client = clientRow.data || {};
-    var invR = await sb.from('invoices').select('id, invoice_number, amount, status, invoice_date, due_date, line_items, share_token').eq('client_id', customer.client_id).order('invoice_date', { ascending: false });
-    var invs = invR.data || [];
-    var algR = await sb.from('client_allergen_declarations').select('id, product_name, allergens, declared_at, share_token').eq('client_id', customer.client_id).order('declared_at', { ascending: false });
-    var algs = algR.data || [];
-    var prR = await sb.from('production_runs').select('id, run_name, format, cases, stage, scheduled_date, scheduled_start_date, scheduled_end_date, lot_number, updated_at').eq('client_id', customer.client_id).order('scheduled_start_date', { ascending: false, nullsFirst: false });
-    var prs = (prR && prR.data) || [];
+    // Stamp last_login through a SECURITY DEFINER function — row-level
+    // security blocks a customer from writing that column directly, so a
+    // plain .update() here is silently rejected. Non-fatal either way.
+    try {
+      var touch = await sb.rpc('portal_touch_my_last_login');
+      if(touch && touch.error) console.error('[GL portal] last_login stamp failed', touch.error);
+    } catch(e){ console.error('[GL portal] last_login stamp failed', e); }
+
+    // Fetch client + invoices + allergen decls + production runs + samples + formulas.
+    // Every query records its own failure: a section that FAILED to load must
+    // not render the same confident "nothing here yet" empty state as a
+    // section that genuinely has no rows.
+    var loadErrors = [];
+    function noteErr(label, r){
+      if(r && r.error) loadErrors.push(label + ': ' + (r.error.message || 'unknown'));
+      return r;
+    }
+    function rowsOf(label, r){ noteErr(label, r); return (r && r.data) || []; }
+
+    var clientRow = noteErr('account', await sb.from('clients').select('name, contact_name, contact_type, email, phone, street, city, state, zip, additional_emails, shipping_same, shipping_street, shipping_city, shipping_state, shipping_zip, lift_gate, dock_hours').eq('id', customer.client_id).maybeSingle());
+    var client = (clientRow && clientRow.data) || {};
+    var invs = rowsOf('invoices', await sb.from('invoices').select('id, invoice_number, amount, status, invoice_date, due_date, line_items, share_token').eq('client_id', customer.client_id).order('invoice_date', { ascending: false }));
+    var algs = rowsOf('allergen declarations', await sb.from('client_allergen_declarations').select('id, product_name, allergens, declared_at, share_token').eq('client_id', customer.client_id).order('declared_at', { ascending: false }));
+    var prs = rowsOf('production runs', await sb.from('production_runs').select('id, run_name, format, cases, stage, scheduled_date, scheduled_start_date, scheduled_end_date, lot_number, updated_at').eq('client_id', customer.client_id).order('scheduled_start_date', { ascending: false, nullsFirst: false }));
     // Note: updated_at omitted because some prod schemas have drifted and
     // it's not actually rendered downstream. Migration 20260521 restores
     // the column server-side; this SELECT stays defensive either way.
-    var shR = await sb.from('sample_shipments').select('id, kind, qty, shipped_date, carrier, tracking, status').eq('client_id', customer.client_id).order('shipped_date', { ascending: false, nullsFirst: false });
-    var shs = (shR && shR.data) || [];
+    var shs = rowsOf('sample shipments', await sb.from('sample_shipments').select('id, kind, qty, shipped_date, carrier, tracking, status').eq('client_id', customer.client_id).order('shipped_date', { ascending: false, nullsFirst: false }));
     // Only show non-draft formulas to the customer
-    var fmR = await sb.from('formulas').select('id, name, version, status, batch_size_gal, target_yield_cases, allergens, updated_at').eq('client_id', customer.client_id).neq('status', 'draft').order('updated_at', { ascending: false });
-    var fms = (fmR && fmR.data) || [];
-    var ldR = await sb.from('lot_documents').select('id, document_type, title, lot_number, file_name, file_size, file_path, mime_type, uploaded_at, production_run_id').eq('client_id', customer.client_id).order('uploaded_at', { ascending: false });
-    var lds = (ldR && ldR.data) || [];
+    var fms = rowsOf('formulas', await sb.from('formulas').select('id, name, version, status, batch_size_gal, target_yield_cases, allergens, updated_at').eq('client_id', customer.client_id).neq('status', 'draft').order('updated_at', { ascending: false }));
+    var lds = rowsOf('documents', await sb.from('lot_documents').select('id, document_type, title, lot_number, file_name, file_size, file_path, mime_type, uploaded_at, production_run_id').eq('client_id', customer.client_id).order('uploaded_at', { ascending: false }));
     // Agreements (NDA, contracts, formulas) — deal_documents rows carried over
     // from the pipeline at convert time plus anything uploaded here or by staff.
-    var agmR = await sb.from('deal_documents').select('id, doc_type, name, notes, file_path, created_at').eq('client_id', customer.client_id).order('created_at', { ascending: false });
-    var agms = (agmR && agmR.data) || [];
+    var agms = rowsOf('agreements', await sb.from('deal_documents').select('id, doc_type, name, notes, file_path, created_at').eq('client_id', customer.client_id).order('created_at', { ascending: false }));
+
+    if(loadErrors.length) console.error('[GL portal] dashboard load errors', loadErrors);
+    // One plain banner for the whole dashboard — sections that loaded fine
+    // still render normally underneath it.
+    var loadBannerHtml = loadErrors.length
+      ? '<div style="background:rgba(245,200,66,.12);border:1px solid rgba(245,200,66,.4);color:#f5c842;padding:12px 16px;border-radius:10px;font-size:13px;line-height:1.5;margin-bottom:20px">' +
+          'We couldn\'t load part of your account. Please refresh, or contact ' +
+          '<a href="mailto:Mike@GoodLiquid.com" style="color:#f5c842;font-weight:700">Mike@GoodLiquid.com</a> if this keeps happening.' +
+        '</div>'
+      : '';
 
     var STATUS_COLOR = { paid:'#5fcf9e', pending:'#f5c842', overdue:'#e74c3c', quote:'#9aa7bd', expired:'#9aa7bd', draft:'#9aa7bd' };
     var paidTotal = invs.filter(function(i){ return i.status === 'paid'; }).reduce(function(s,i){ return s + (Number(i.amount)||0); }, 0);
@@ -517,6 +536,7 @@
         '</div>' +
 
         '<div style="max-width:960px;margin:0 auto;padding:24px">' +
+          loadBannerHtml +
           // KPI tiles
           '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:24px">' +
             kpi('Open balance',     usd(pendingTotal), openInvoiceCount + ' invoice' + (openInvoiceCount===1?'':'s') + ' open', '#f5c842') +
@@ -1176,8 +1196,11 @@
     var sb = getSB(); if(!sb) return alert('Supabase not ready');
     var verb = active ? 'reactivate' : 'deactivate';
     if(!confirm('Are you sure you want to ' + verb + ' this customer portal account?')) return;
-    var r = await sb.from('customer_users').update({ active: active }).eq('id', rowId);
+    // .select('id') so an update that matched NO rows (row-level security,
+    // deleted account) reports failure instead of a false success.
+    var r = await sb.from('customer_users').update({ active: active }).eq('id', rowId).select('id');
     if(r.error) return alert('Update failed: ' + r.error.message);
+    if(!r.data || !r.data.length) return alert('Update failed — nothing was changed. The account may have been removed, or you may not have permission to change it. Refresh and try again.');
     renderFromSupabase();
   };
 
@@ -1185,8 +1208,11 @@
     var sb = getSB(); if(!sb) return alert('Supabase not ready');
     if(role !== 'owner' && role !== 'member'){ alert('Invalid role'); return; }
     if(!confirm('Set this portal user as ' + role + '? ' + (role === 'owner' ? 'They will be able to invite/remove teammates and edit account settings.' : 'They will lose invite + edit privileges.'))) return;
-    var r = await sb.from('customer_users').update({ role: role }).eq('id', rowId);
+    // .select('id') so an update that matched NO rows (row-level security,
+    // deleted account) reports failure instead of a false success.
+    var r = await sb.from('customer_users').update({ role: role }).eq('id', rowId).select('id');
     if(r.error) return alert('Update failed: ' + r.error.message);
+    if(!r.data || !r.data.length) return alert('Update failed — nothing was changed. The account may have been removed, or you may not have permission to change it. Refresh and try again.');
     if(typeof window.glAudit === 'function') window.glAudit('portal_role_changed', rowId, { role: role });
     renderFromSupabase();
   };

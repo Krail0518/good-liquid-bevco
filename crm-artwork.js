@@ -109,7 +109,20 @@
       b.addEventListener('click', async function(){
         if(!confirm('Remove this SKU and its artwork?')) return;
         var id = this.getAttribute('data-id');
-        try { await sb().from('client_artwork').delete().eq('id', id); } catch(e){}
+        var row = rows.filter(function(x){ return String(x.id) === String(id); })[0];
+        // Storage object first: once the row is gone the file_path is gone
+        // with it, and the upload is orphaned in the bucket forever.
+        if(row && row.file_path){
+          try {
+            var rm = await sb().storage.from('client-docs').remove([row.file_path]);
+            if(rm.error) throw rm.error;
+          } catch(e){ show('#ff8579','Could not remove the artwork file: '+(e.message||e)); return; }
+        }
+        try {
+          var del = await sb().from('client_artwork').delete().eq('id', id).select();
+          if(del.error) throw del.error;
+          if(!del.data || !del.data.length) throw new Error('no SKU was removed');
+        } catch(e){ show('#ff8579','Delete failed: '+(e.message||e)); return; }
         glRenderArtwork(clientId, host);
       });
     });
