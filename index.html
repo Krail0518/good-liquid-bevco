@@ -6514,26 +6514,29 @@ async function submitContactForm(btn){
     let newDealId = null;
     try {
       const dealName = vals.brand_name + ' — Quote Request';
-      const { data: newDeal } = await supa.from('deals').insert([{
-        name:          dealName,
-        client_name:   vals.brand_name,
-        value:         0,
-        stage:         'Prospecting',
-        probability:   20,
-        notes:         vals.details || '',
-        contact_name:  vals.contact_name  || null,
-        email:         vals.email         || null,
-        phone:         vals.phone         || null,
-        city:          vals.city          || null,
-        state:         vals.state         || null,
-        service:       vals.service       || null,
-        product_type:  vals.product_type  || null,
-        volume:        vals.volume        || null,
-        timeline:      vals.timeline      || null,
-        funding_stage: vals.funding_stage || null,
-        lead_source:   vals.lead_source   || null
-      }]).select().single();
-      newDealId = newDeal ? newDeal.id : null;
+      // Submitted through a SECURITY DEFINER RPC: the anonymous role has NO
+      // privilege on public.deals (it used to have full read/write via an
+      // `anon_all` policy — see migration 20260807010000), and the function
+      // pins stage/value/probability so a stranger cannot set them.
+      const { data: newId, error: dealErr } = await supa.rpc('submit_quote_request', {
+        p: {
+          brand_name:    vals.brand_name,
+          details:       vals.details       || '',
+          contact_name:  vals.contact_name  || '',
+          email:         vals.email         || '',
+          phone:         vals.phone         || '',
+          city:          vals.city          || '',
+          state:         vals.state         || '',
+          service:       vals.service       || '',
+          product_type:  vals.product_type  || '',
+          volume:        vals.volume        || '',
+          timeline:      vals.timeline      || '',
+          funding_stage: vals.funding_stage || '',
+          lead_source:   vals.lead_source   || ''
+        }
+      });
+      if(dealErr) throw dealErr;
+      newDealId = newId || null;
       if(typeof deals !== 'undefined' && deals['Prospecting']){
         deals['Prospecting'].push({
           id:           newDealId || ('tmp_' + Date.now()),
