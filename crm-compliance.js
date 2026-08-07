@@ -3441,7 +3441,12 @@
           if(d.id === lastSeen) return;
           lastSeen = d.id;
           if(!(d.description||'').includes('Photo:') && !(d.corrective_action||'').includes('Photo:')){
-            await window.supa.from('defects').update({ description: (d.description||'') + '\nPhoto: ' + photo }).eq('id', d.id);
+            var uq = await window.supa.from('defects').update({ description: (d.description||'') + '\nPhoto: ' + photo }).eq('id', d.id).select();
+            // Keep the pending photo queued unless the row really changed.
+            if(uq.error || (Array.isArray(uq.data) && uq.data.length === 0)){
+              console.warn('[GL] defect photo attach rejected', uq.error || '0 rows updated');
+              return;
+            }
             window.__glLastDefectPhoto = null;
           }
         }
@@ -3744,7 +3749,11 @@
           var cur = await window.supa.from('compliance_records').select('data').eq('id', id).single();
           var d = (cur.data && cur.data.data) || {};
           d.retired_at = nowISO();
-          await window.supa.from('compliance_records').update({ data: d }).eq('id', id);
+          // .select() makes PostgREST return the updated rows, so a silent RLS
+          // rejection (no error, 0 rows) can't be mistaken for success.
+          var uq = await window.supa.from('compliance_records').update({ data: d }).eq('id', id).select();
+          if(uq.error){ alert('Retire failed: ' + uq.error.message); return; }
+          if(Array.isArray(uq.data) && uq.data.length === 0){ alert('The server rejected the retire (0 rows changed). The document version is still active.'); return; }
           refreshDocList();
         });
       });
@@ -3846,10 +3855,13 @@
       var rec = rows[i];
       var newData = Object.assign({}, rec.data || {}, { archived_at: nowISO() });
       try {
-        await window.supa.from('compliance_records').update({ data: newData }).eq('id', rec.id);
-        done++;
+        // Count only rows the server actually changed — a silent RLS rejection
+        // returns no error and 0 rows, which would otherwise inflate the total.
+        var uq = await window.supa.from('compliance_records').update({ data: newData }).eq('id', rec.id).select();
+        if(!uq.error && !(Array.isArray(uq.data) && uq.data.length === 0)) done++;
       } catch(e){}
     }
+    if(done < rows.length) alert('Only ' + done + ' of ' + rows.length + ' record' + (rows.length===1?'':'s') + ' could be archived — the server rejected the rest.');
     if(typeof addNotification === 'function') addNotification('📦 Records archived', done + ' record' + (done===1?'':'s') + ' archived','success');
     if(typeof window.glAudit === 'function') window.glAudit('retention_archive_run','', { archived: done, cutoff: cutoff });
   };
@@ -3997,9 +4009,17 @@
     (async function(){
       var done = 0;
       for(var i = 0; i < ids.length; i++){
-        try { await window.supa.from('compliance_records').update(patch).eq('id', ids[i]); done++; }
+        // Count only rows the server actually changed — a silent RLS rejection
+        // returns no error and 0 rows, which would otherwise inflate the total.
+        try {
+          var uq = await window.supa.from('compliance_records').update(patch).eq('id', ids[i]).select();
+          if(uq.error) console.warn('[GL bulk sign] failed for ' + ids[i], uq.error);
+          else if(Array.isArray(uq.data) && uq.data.length === 0) console.warn('[GL bulk sign] rejected for ' + ids[i] + ' (0 rows updated)');
+          else done++;
+        }
         catch(e){ console.warn('[GL bulk sign] failed for ' + ids[i], e); }
       }
+      if(done < ids.length) alert('Only ' + done + ' of ' + ids.length + ' record' + (ids.length===1?'':'s') + ' could be signed — the server rejected the rest.');
       if(typeof window.glAudit === 'function') window.glAudit('compliance_bulk_signoff','', { count: done });
       if(typeof addNotification === 'function') addNotification('✓ ' + done + ' record' + (done===1?'':'s') + ' signed', 'Bulk PCQI sign-off complete','success');
       if(typeof window.refreshComplianceMaster === 'function') window.refreshComplianceMaster();
@@ -4584,7 +4604,12 @@
             var rec = recs[i];
             if(rec.data && rec.data.locked_at) continue;
             var newData = Object.assign({}, rec.data || {}, { locked_at: nowISO(), locked_reason: 'Invoice ' + inv.id + ' marked paid' });
-            try { await window.supa.from('compliance_records').update({ data: newData }).eq('id', rec.id); lockedCount++; }
+            // Count only rows the server actually changed — a silent RLS rejection
+            // returns no error and 0 rows, which would otherwise inflate the total.
+            try {
+              var uq = await window.supa.from('compliance_records').update({ data: newData }).eq('id', rec.id).select();
+              if(!uq.error && !(Array.isArray(uq.data) && uq.data.length === 0)) lockedCount++;
+            }
             catch(e){}
           }
           if(lockedCount && typeof addNotification === 'function'){

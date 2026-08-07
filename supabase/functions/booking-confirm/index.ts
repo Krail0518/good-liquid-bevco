@@ -218,11 +218,39 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!slot_time)    return errorResponse('slot_time required', 400);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(slot_date)) return errorResponse('slot_date must be YYYY-MM-DD', 400);
   if (!/^\d{2}:\d{2}$/.test(slot_time))        return errorResponse('slot_time must be HH:MM', 400);
+  // This endpoint is public and each booking sends email and fills a real
+  // calendar slot, so the inputs are bounded and rate limited below.
+  if (!/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(String(booker_email))) {
+    return errorResponse('Please enter a valid email address', 400);
+  }
+  if (String(booker_name).length > 200 || String(booker_company || '').length > 200) {
+    return errorResponse('Name or company is too long', 400);
+  }
+  if (String(notes || '').length > 2000) {
+    return errorResponse('Please shorten your note', 400);
+  }
 
   const supa = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   );
+
+  // Rate limit: 3 bookings per email per day, and 20 site-wide per hour, so a
+  // stranger cannot fill the calendar or use the confirmation mail as a relay.
+  const dayAgo  = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const [{ count: mineToday }, { count: allRecent }] = await Promise.all([
+    supa.from('bookings').select('id', { count: 'exact', head: true })
+        .eq('booker_email', String(booker_email)).gte('created_at', dayAgo),
+    supa.from('bookings').select('id', { count: 'exact', head: true })
+        .gte('created_at', hourAgo),
+  ]) as Array<{ count: number | null }>;
+  if ((mineToday ?? 0) >= 3) {
+    return errorResponse('You already have a booking request in — we will be in touch shortly.', 429);
+  }
+  if ((allRecent ?? 0) >= 20) {
+    return errorResponse('We are receiving a lot of requests right now — please try again shortly.', 429);
+  }
 
   // ── Load booking page config ───────────────────────────────────────────
   const { data: page, error: pageErr } = await supa

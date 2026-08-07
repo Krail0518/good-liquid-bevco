@@ -443,7 +443,15 @@
     var del = ov.querySelector('#gl-ts-del');
     if(del) del.addEventListener('click', async function(){
       if(!confirm('Delete this show?')) return;
-      if(window.supa){ try { await window.supa.from('trade_shows').delete().eq('id', s.id); } catch(e){} }
+      // .select() so a row rejected by RLS (0 rows, no error) is not reported
+      // as a success and then dropped from the local list.
+      if(window.supa && !String(s.id).startsWith('local_')){
+        var dq = await window.supa.from('trade_shows').delete().eq('id', s.id).select('id');
+        if(dq.error || !dq.data || !dq.data.length){
+          alert('Delete failed on the server — the show was not removed.' + (dq.error ? '\n' + dq.error.message : ''));
+          return;
+        }
+      }
       window.glTradeShows = (window.glTradeShows||[]).filter(function(x){ return x.id !== s.id; });
       saveLocal(); ov.remove();
       if(parent) parent.remove();
@@ -463,7 +471,11 @@
       if(!data.name){ alert('Name is required.'); return; }
       if(window.supa){
         try {
-          if(isEdit){ await window.supa.from('trade_shows').update(data).eq('id', s.id); Object.assign(s, data); }
+          if(isEdit){
+            var uq = await window.supa.from('trade_shows').update(data).eq('id', s.id).select('id');
+            if(uq.error || !uq.data || !uq.data.length){ alert('Save failed on the server — nothing was changed.' + (uq.error ? '\n' + uq.error.message : '')); return; }
+            Object.assign(s, data);
+          }
           else { var r = await window.supa.from('trade_shows').insert([data]).select().single(); if(r && r.data){ window.glTradeShows.unshift(r.data); } else { data.id = 'local_' + Date.now(); window.glTradeShows.unshift(data); if(r && r.error) alert('\u26a0 Trade show did NOT save to the database \u2014 kept only on this device:\n' + r.error.message); } }
         } catch(e){
           if(isEdit) Object.assign(s, data);
@@ -940,7 +952,13 @@
     var del = ov.querySelector('#gl-cc-del');
     if(del) del.addEventListener('click', async function(){
       if(!confirm('Delete this post?')) return;
-      if(window.supa){ try { await window.supa.from('content_calendar').delete().eq('id', p.id); } catch(e){} }
+      if(window.supa && !String(p.id).startsWith('local_')){
+        var dq = await window.supa.from('content_calendar').delete().eq('id', p.id).select('id');
+        if(dq.error || !dq.data || !dq.data.length){
+          alert('Delete failed on the server — the post was not removed.' + (dq.error ? '\n' + dq.error.message : ''));
+          return;
+        }
+      }
       window.glContent = (window.glContent||[]).filter(function(x){ return x.id !== p.id; });
       saveLocal(); render(); ov.remove();
     });
@@ -955,7 +973,11 @@
       if(!data.title){ alert('Title is required.'); return; }
       if(window.supa){
         try {
-          if(isEdit){ await window.supa.from('content_calendar').update(data).eq('id', p.id); Object.assign(p, data); }
+          if(isEdit){
+            var uq = await window.supa.from('content_calendar').update(data).eq('id', p.id).select('id');
+            if(uq.error || !uq.data || !uq.data.length){ alert('Save failed on the server — nothing was changed.' + (uq.error ? '\n' + uq.error.message : '')); return; }
+            Object.assign(p, data);
+          }
           else { var r = await window.supa.from('content_calendar').insert([data]).select().single(); if(r && r.data){ window.glContent.push(r.data); } else { data.id = 'local_' + Date.now(); window.glContent.push(data); } }
         } catch(e){
           if(isEdit) Object.assign(p, data);
