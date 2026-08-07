@@ -311,7 +311,11 @@
    ============================================================ */
 (function(){
   var SURL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/rest/v1';
-  var SKEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmamtlcW14d3V5aGJxeXVnY2dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNDI2MDksImV4cCI6MjA5MzkxODYwOX0.godgU_jeprCqSzqe0ji_ZA_hwvPF2s7BmzQyAB-c_xE';
+  // Current publishable key. (Was a legacy long-lived anon JWT — removed so
+  // that key can be revoked.) A raw fetch is kept here rather than the
+  // supabase client because this fires during page unload and needs
+  // keepalive:true; the session token is attached below when one exists.
+  var SKEY = 'sb_publishable_-37mkPw8uLzEJM21T9jJOA_YQRQ7ikB';
 
   var SKIP_PATTERNS = [
     'ResizeObserver loop limit exceeded',

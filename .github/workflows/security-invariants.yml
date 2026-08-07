@@ -1,0 +1,34 @@
+name: Security invariants
+
+# Probes PRODUCTION from the outside, the way an attacker would, using only
+# the publishable key that already ships in the page source. No secrets.
+#
+# This exists because the 2026-08-06 audit found the entire CRM readable and
+# deletable by any internet user, via policies that had been applied by hand in
+# the Supabase dashboard and therefore appeared in NO migration file. Code
+# review could not have caught it. Testing the live system can.
+#
+# Runs on every push, on pull requests, and daily — the daily run is the one
+# that catches drift introduced outside this repo.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '17 9 * * *'   # 09:17 UTC daily
+  workflow_dispatch:
+
+concurrency:
+  group: security-invariants-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  invariants:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assert security invariants
+        run: bash scripts/security-invariants.sh

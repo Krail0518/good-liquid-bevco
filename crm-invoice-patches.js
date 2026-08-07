@@ -4,9 +4,6 @@
    ========================================================== */
 (function(){
 
-  var SURL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/rest/v1';
-  var SKEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmamtlcW14d3V5aGJxeXVnY2dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNDI2MDksImV4cCI6MjA5MzkxODYwOX0.godgU_jeprCqSzqe0ji_ZA_hwvPF2s7BmzQyAB-c_xE';
-  var SH   = { 'apikey': SKEY, 'Authorization': 'Bearer ' + SKEY, 'Content-Type': 'application/json' };
   var CANS_PER_CASE = 24;
 
   /* ── Rate cache ────────────────────────────────────────── */
@@ -16,8 +13,8 @@
     if (window._glRates.loaded) return window._glRates;
     try {
       var res = await Promise.all([
-        fetch(SURL + '/canning_rates?order=format,min_cases',  {headers: SH}).then(function(r){return r.json();}),
-        fetch(SURL + '/bottling_rates?order=format,min_units', {headers: SH}).then(function(r){return r.json();})
+        window.supa.from('canning_rates').select('*').order('format').order('min_cases').then(function(r){ return r.data || []; }),
+        window.supa.from('bottling_rates').select('*').order('format').order('min_units').then(function(r){ return r.data || []; })
       ]);
       window._glRates.canning  = Array.isArray(res[0]) ? res[0] : [];
       window._glRates.bottling = Array.isArray(res[1]) ? res[1] : [];
@@ -32,7 +29,7 @@
   window.glLoadClientOverrides = async function(clientId){
     if(!clientId) return null;
     try {
-      var rows = await fetch(SURL + '/client_rate_overrides?client_id=eq.' + clientId, {headers: SH}).then(function(r){ return r.json(); });
+      var rows = await window.supa.from('client_rate_overrides').select('*').eq('client_id', clientId).then(function(r){ return r.data || []; });
       if(Array.isArray(rows)){
         var byKey = {};
         rows.forEach(function(r){
@@ -208,17 +205,14 @@
     if (isNaN(val) || val <= 0) { alert('Invalid price'); return; }
 
     btn.textContent = '...';
-    var endpoint = SURL + '/' + (tbl === 'canning' ? 'canning_rates' : 'bottling_rates') + '?id=eq.' + id;
+    var rateTable = (tbl === 'canning') ? 'canning_rates' : 'bottling_rates';
     var body = {};
     body[field] = val;
     body['updated_at'] = new Date().toISOString();
 
     try {
-      var res = await fetch(endpoint, {
-        method: 'PATCH',
-        headers: Object.assign({}, SH, {'Prefer': 'return=minimal'}),
-        body: JSON.stringify(body)
-      });
+      var q = await window.supa.from(rateTable).update(body).eq('id', id).select('id');
+      var res = { ok: !q.error && !!(q.data && q.data.length), status: q.error ? 400 : 200 };
       if (res.ok || res.status === 204) {
         btn.textContent = 'Saved';
         btn.style.background = 'rgba(34,197,94,.2)';
@@ -272,16 +266,13 @@
    INVOICE PRICING - Supabase live rates. Do not remove.
    ============================================================ */
 (function(){
-  var SURL='https://ufjkeqmxwuyhbqyugcgg.supabase.co/rest/v1';
-  var SKEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmamtlcW14d3V5aGJxeXVnY2dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNDI2MDksImV4cCI6MjA5MzkxODYwOX0.godgU_jeprCqSzqe0ji_ZA_hwvPF2s7BmzQyAB-c_xE';
-  var SH={'apikey':SKEY,'Authorization':'Bearer '+SKEY,'Content-Type':'application/json'};
   var CPC=24;
   window._glR={c:[],b:[],ok:false};
   window.glLoadRates=async function(){
     if(window._glR.ok)return;
     var res=await Promise.all([
-      fetch(SURL+'/canning_rates?order=format,min_cases',{headers:SH}).then(function(r){return r.json();}),
-      fetch(SURL+'/bottling_rates?order=format,min_units',{headers:SH}).then(function(r){return r.json();})
+      window.supa.from('canning_rates').select('*').order('format').order('min_cases').then(function(r){ return r.data || []; }),
+      window.supa.from('bottling_rates').select('*').order('format').order('min_units').then(function(r){ return r.data || []; })
     ]);
     window._glR.c=Array.isArray(res[0])?res[0]:[];
     window._glR.b=Array.isArray(res[1])?res[1]:[];
@@ -399,9 +390,9 @@
     var inp=btn.closest('tr').querySelector('input');
     var val=parseFloat(inp.value);if(isNaN(val)||val<=0){alert('Invalid');return;}
     btn.textContent='...';
-    var ep=SURL+'/'+(tbl==='canning'?'canning_rates':'bottling_rates')+'?id=eq.'+id;
+    var rateTable=(tbl==='canning')?'canning_rates':'bottling_rates';
     var body={updated_at:new Date().toISOString()};body[fld]=val;
-    var res=await fetch(ep,{method:'PATCH',headers:Object.assign({},SH,{'Prefer':'return=minimal'}),body:JSON.stringify(body)});
+    var q=await window.supa.from(rateTable).update(body).eq('id',id).select('id');var res={ok:!q.error&&!!(q.data&&q.data.length),status:q.error?400:200};
     if(res.ok||res.status===204){
       btn.textContent='Saved';btn.style.color='#22c55e';
       var cache=tbl==='canning'?window._glR.c:window._glR.b;
@@ -418,9 +409,6 @@
    INVOICE PATCH v2 - handles ALL line types, fixes discount
    ============================================================ */
 (function(){
-  var SURL='https://ufjkeqmxwuyhbqyugcgg.supabase.co/rest/v1';
-  var SKEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmamtlcW14d3V5aGJxeXVnY2dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNDI2MDksImV4cCI6MjA5MzkxODYwOX0.godgU_jeprCqSzqe0ji_ZA_hwvPF2s7BmzQyAB-c_xE';
-  var SH={'apikey':SKEY,'Authorization':'Bearer '+SKEY,'Content-Type':'application/json'};
   var CPC=24;
 
   /* ── Supabase rates ── */
@@ -428,8 +416,8 @@
   window.glLoadRates=async function(){
     if(window._glR.ok)return;
     var res=await Promise.all([
-      fetch(SURL+'/canning_rates?order=format,min_cases',{headers:SH}).then(function(r){return r.json();}),
-      fetch(SURL+'/bottling_rates?order=format,min_units',{headers:SH}).then(function(r){return r.json();})
+      window.supa.from('canning_rates').select('*').order('format').order('min_cases').then(function(r){ return r.data || []; }),
+      window.supa.from('bottling_rates').select('*').order('format').order('min_units').then(function(r){ return r.data || []; })
     ]);
     window._glR.c=Array.isArray(res[0])?res[0]:[];
     window._glR.b=Array.isArray(res[1])?res[1]:[];
@@ -723,9 +711,9 @@
     var inp=btn.closest('tr').querySelector('input');
     var val=parseFloat(inp.value);if(isNaN(val)||val<=0){alert('Invalid');return;}
     btn.textContent='...';
-    var ep=SURL+'/'+(tbl==='canning'?'canning_rates':'bottling_rates')+'?id=eq.'+id;
+    var rateTable=(tbl==='canning')?'canning_rates':'bottling_rates';
     var body={updated_at:new Date().toISOString()};body[fld]=val;
-    var res=await fetch(ep,{method:'PATCH',headers:Object.assign({},SH,{'Prefer':'return=minimal'}),body:JSON.stringify(body)});
+    var q=await window.supa.from(rateTable).update(body).eq('id',id).select('id');var res={ok:!q.error&&!!(q.data&&q.data.length),status:q.error?400:200};
     if(res.ok||res.status===204){
       btn.textContent='Saved';btn.style.color='#22c55e';
       var cache=tbl==='canning'?window._glR.c:window._glR.b;
@@ -750,9 +738,6 @@
    ============================================================ */
 (function(){
 
-  var SURL='https://ufjkeqmxwuyhbqyugcgg.supabase.co/rest/v1';
-  var SKEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmamtlcW14d3V5aGJxeXVnY2dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNDI2MDksImV4cCI6MjA5MzkxODYwOX0.godgU_jeprCqSzqe0ji_ZA_hwvPF2s7BmzQyAB-c_xE';
-  var SH={apikey:SKEY,Authorization:'Bearer '+SKEY,'Content-Type':'application/json'};
 
   window.glCalcInvTotal=function(){
     var tot=0;
