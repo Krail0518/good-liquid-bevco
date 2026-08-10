@@ -774,7 +774,7 @@
     var perCase = rateForCases(table, cases);
     var base = perCase * cases;
     var pCost = pasteur && pasteur.checked ? (cases * 24 * 0.08) : 0;     // ~8¢/can * 24 cans/case
-    var nCost = nitro && nitro.checked    ? (cases * 24 * 0.035) : 0;     // ~3.5¢/can
+    var nCost = nitro && nitro.checked    ? (cases * 24 * 0.03) : 0;      // 3¢/can
     var total = base + pCost + nCost;
 
     totalEl.textContent = fmt$(total);
