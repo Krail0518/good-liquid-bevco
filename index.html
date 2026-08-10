@@ -1531,7 +1531,7 @@ select option, .fsel option {
       <div id="panel-addons" class="panel">
         <div class="ad2">
           <div class="adbox"><div class="ai">🔥</div><div><h5>Flash Pasteurization</h5><p>Rapid thermal processing. Extended shelf life, preserved flavor.</p><div class="ad-tag">5¢/can · $0.20/btl</div></div></div>
-          <div class="adbox"><div class="ai">💨</div><div><h5>Nitrogen Dosing</h5><p>Displaces oxygen, improves mouthfeel and transport rigidity.</p><div class="ad-tag">3–4¢ per can</div></div></div>
+          <div class="adbox"><div class="ai">💨</div><div><h5>Nitrogen Dosing</h5><p>Displaces oxygen, improves mouthfeel and transport rigidity.</p><div class="ad-tag">3¢ per can</div></div></div>
           <div class="adbox"><div class="ai">🏷️</div><div><h5>Labels (Bottles)</h5><p>Front &amp; back or over-the-top label application.</p><div class="ad-tag">$0.03–$0.20/btl</div></div></div>
           <div class="adbox"><div class="ai">📦</div><div><h5>PakTech Handles</h5><p>4-count and 6-count handles, 24-count case trays.</p><div class="ad-tag">$0.05–$0.06/can</div></div></div>
         </div>
@@ -4417,7 +4417,7 @@ function svcChange(){
   let addons='';
   if(svc==='canning'||svc==='copacking'){
     addons=`<div class="addon-card" onclick="toggleAddon(this,'past')"><div class="addon-card-t">🔥 Flash Pasteurization</div><div class="addon-card-p">5¢ per can</div></div>
-    <div class="addon-card" onclick="toggleAddon(this,'nitro')"><div class="addon-card-t">💨 Nitrogen Dosing</div><div class="addon-card-p">3–4¢ per can</div></div>`;
+    <div class="addon-card" onclick="toggleAddon(this,'nitro')"><div class="addon-card-t">💨 Nitrogen Dosing</div><div class="addon-card-p">3¢ per can</div></div>`;
   }else if(svc==='bottling'){
     addons=`<div class="addon-card" onclick="toggleAddon(this,'pastbtl')"><div class="addon-card-t">🔥 Flash Pasteurization</div><div class="addon-card-p">$0.20/btl</div></div>
     <div class="addon-card" onclick="toggleAddon(this,'overlbl')"><div class="addon-card-t">🏷️ Over-Top Labels</div><div class="addon-card-p">$0.20/btl</div></div>`;
@@ -4448,7 +4448,7 @@ function calcTotal(){
     total=mfg+canC+pkgC;
     if(svc==='copacking'&&document.getElementById('verif')?.value==='1'){lines.push({d:'Benchtop verification',a:500});total+=500}
     if(selAddons.past){const c=Math.round(.05*cans*100)/100;lines.push({d:'Flash Pasteurization @ $0.05/can',a:c});total+=c}
-    if(selAddons.nitro){const c=Math.round(.035*cans*100)/100;lines.push({d:'Nitrogen Dosing @ $0.035/can',a:c});total+=c}
+    if(selAddons.nitro){const c=Math.round(.03*cans*100)/100;lines.push({d:'Nitrogen Dosing @ $0.03/can',a:c});total+=c}
     desc=`Canning — ${cases} cases ${fmtL}`;
   }else if(svc==='bottling'){
     const cases=parseInt(document.getElementById('btl-cases')?.value)||660;
@@ -7407,7 +7407,7 @@ async function aiEstimateQuote() {
     CANNING — manufacturing labor per can (24 cans = 1 case; 150-case minimum). 12oz Standard & 12oz Sleek: 150-339 cases=$0.48/can, 340-500=$0.43, 501-999=$0.38, 1,000-2,499=$0.35, 2,500-4,999=$0.31, 5,000+=$0.28. 16oz Standard: 150-339=$0.58, 340-500=$0.53, 501-999=$0.48, 1,000-2,499=$0.45, 2,500-4,999=$0.41, 5,000+=$0.38. The client buys their own cans from a print vendor ($0.29-0.35/can) and packaging — trays + PakTechs — runs $0.05-0.06/can; quote those separately, they are NOT our labor.
     BOTTLING — 750ml, per bottle: 220 cases=$2.16, 660=$1.91, 1,320=$1.58, 2,640=$1.41, 5,280=$1.12.
     R&D: From $2,500 (includes 3 iterations). If the client already has a formula there is NO R&D fee — just a $500 test batch + a Process Authority Letter. IP License=$6,000/yr. Full IP buyout=$15,000.
-    ADD-ONS: Flash Pasteurization=$0.05/can or $0.20/bottle. Nitrogen Dosing=$0.03-0.04/can.
+    ADD-ONS: Flash Pasteurization=$0.05/can or $0.20/bottle. Nitrogen Dosing=$0.03/can.
     IMPORTANT: tiers are per CASE — if the customer gives a CAN count, divide by 24 to get cases before picking a tier.`,
     `Estimate the cost for this project: ${desc}
     
@@ -7423,7 +7423,7 @@ async function aiDraftInvoice() {
   showAIModal('Invoice Drafter', '', true);
   const text = await callAI(
     `You are a billing specialist for Good Liquid Bev Co. Create clear invoice line items based on job descriptions.
-    Rates (per can; 24 cans = 1 case; 150-case minimum): 12oz canning labor by volume — 150-339 cases=$0.48/can, 340-500=$0.43, 501-999=$0.38, 1,000-2,499=$0.35, 2,500-4,999=$0.31, 5,000+=$0.28; 16oz runs $0.38-0.58/can. Bottling (750ml) $1.12-2.16/bottle by volume. R&D from $2,500 (existing formula: no R&D fee, $500 test batch instead). Flash Pasteurization +$0.05/can or +$0.20/bottle. Nitrogen Dosing +$0.03-0.04/can. Convert can counts to cases (÷24) before picking a tier.`,
+    Rates (per can; 24 cans = 1 case; 150-case minimum): 12oz canning labor by volume — 150-339 cases=$0.48/can, 340-500=$0.43, 501-999=$0.38, 1,000-2,499=$0.35, 2,500-4,999=$0.31, 5,000+=$0.28; 16oz runs $0.38-0.58/can. Bottling (750ml) $1.12-2.16/bottle by volume. R&D from $2,500 (existing formula: no R&D fee, $500 test batch instead). Flash Pasteurization +$0.05/can or +$0.20/bottle. Nitrogen Dosing +$0.03/can. Convert can counts to cases (÷24) before picking a tier.`,
     `Create invoice line items for: ${desc}
     
     Format as clear line items with description, quantity, unit price, and subtotal. Include a total. Flag any assumptions.`
