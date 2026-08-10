@@ -1322,7 +1322,7 @@ select option, .fsel option {
     </div>
     <div class="hero-stats">
       <div class="hs"><div class="hs-n">150+</div><div class="hs-l">Min cases / run</div></div>
-      <div class="hs"><div class="hs-n">$1K</div><div class="hs-l">R&amp;D starting fee</div></div>
+      <div class="hs"><div class="hs-n">$2.5K</div><div class="hs-l">R&amp;D starting fee</div></div>
       <div class="hs"><div class="hs-n">3</div><div class="hs-l">Can formats</div></div>
       <div class="hs"><div class="hs-n">8wk</div><div class="hs-l">Typical timeline</div></div>
     </div>
@@ -1337,7 +1337,7 @@ select option, .fsel option {
   <div class="ag rv">
     <div>
       <div class="sc"><div class="sc-n">150+</div><div class="sc-b"><h4>Minimum order quantity</h4><p>Just 150 cases (3,600 units) — ideal for pilot runs, test markets, and emerging brands.</p></div></div>
-      <div class="sc"><div class="sc-n" style="font-size:34px">$1K</div><div class="sc-b"><h4>R&amp;D starting fee</h4><p>Full formulation, 3 iterations. IP license or outright purchase available.</p></div></div>
+      <div class="sc"><div class="sc-n" style="font-size:34px">$2.5K</div><div class="sc-b"><h4>R&amp;D starting fee</h4><p>Full formulation, 3 iterations. IP license or outright purchase available.</p></div></div>
       <div class="sc"><div class="sc-n">8wk</div><div class="sc-b"><h4>Fastest timeline</h4><p>Concept to finished pallet in as little as 8 weeks when materials are ready.</p></div></div>
       <div class="sc"><div class="sc-n">3</div><div class="sc-b"><h4>Can formats</h4><p>12oz Standard, 12oz Sleek, and 16oz Standard. Cold-fill, printed or sleeved.</p></div></div>
     </div>
@@ -7422,7 +7422,7 @@ async function aiDraftInvoice() {
   showAIModal('Invoice Drafter', '', true);
   const text = await callAI(
     `You are a billing specialist for Good Liquid Bev Co. Create clear invoice line items based on job descriptions.
-    Rates: Canning $16-28/case depending on volume. Bottling $8.50-10.50/case. R&D from $1,000. Flash Pasteurization +$0.015/can. Nitrogen Dosing +$0.008/can.`,
+    Rates: Canning $16-28/case depending on volume. Bottling $8.50-10.50/case. R&D from $2,500. Flash Pasteurization +$0.015/can. Nitrogen Dosing +$0.008/can.`,
     `Create invoice line items for: ${desc}
     
     Format as clear line items with description, quantity, unit price, and subtotal. Include a total. Flag any assumptions.`
