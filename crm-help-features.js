@@ -853,7 +853,7 @@
       '<b>Nitrogen dosing:</b> $0.03/can — checked by default.',
       '<b>Case tray (PakTech):</b> $0.03/can — checked by default.',
       '<b>Palletizing:</b> $20/pallet — checked by default.',
-      '<b>Pasteurization:</b> $0.07/can — unchecked by default (add only if client requests it).',
+      '<b>Pasteurization:</b> $0.05/can — unchecked by default (add only if client requests it).',
       'Uncheck any add-on to remove it from the quote. The tier totals update live.'
     ]) +
     subhead('💾', 'SAVING AND GENERATING THE PDF') +

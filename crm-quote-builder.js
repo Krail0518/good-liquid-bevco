@@ -357,7 +357,7 @@
             addonToggle('gl-qb-nitrogen','Nitrogen Dosing','0.03','per can') +
             addonToggle('gl-qb-tray','Tray / PakTech Packaging','0.03','per can') +
             addonToggle('gl-qb-palletizing','Palletizing and Shrink Wrap','20.00','per pallet') +
-            addonToggle('gl-qb-pasteurization','Batch Flash Pasteurization','0.07','per can') +
+            addonToggle('gl-qb-pasteurization','Batch Flash Pasteurization','0.05','per can') +
           '</div>';
         // Check the two standard ones by default
         el.querySelector('#gl-qb-nitrogen-on').checked    = true;

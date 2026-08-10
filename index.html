@@ -1530,7 +1530,7 @@ select option, .fsel option {
       </div>
       <div id="panel-addons" class="panel">
         <div class="ad2">
-          <div class="adbox"><div class="ai">🔥</div><div><h5>Flash Pasteurization</h5><p>Rapid thermal processing. Extended shelf life, preserved flavor.</p><div class="ad-tag">5–12¢/can · $0.20/btl</div></div></div>
+          <div class="adbox"><div class="ai">🔥</div><div><h5>Flash Pasteurization</h5><p>Rapid thermal processing. Extended shelf life, preserved flavor.</p><div class="ad-tag">5¢/can · $0.20/btl</div></div></div>
           <div class="adbox"><div class="ai">💨</div><div><h5>Nitrogen Dosing</h5><p>Displaces oxygen, improves mouthfeel and transport rigidity.</p><div class="ad-tag">3–4¢ per can</div></div></div>
           <div class="adbox"><div class="ai">🏷️</div><div><h5>Labels (Bottles)</h5><p>Front &amp; back or over-the-top label application.</p><div class="ad-tag">$0.03–$0.20/btl</div></div></div>
           <div class="adbox"><div class="ai">📦</div><div><h5>PakTech Handles</h5><p>4-count and 6-count handles, 24-count case trays.</p><div class="ad-tag">$0.05–$0.06/can</div></div></div>
@@ -4416,7 +4416,7 @@ function svcChange(){
   document.getElementById('svc-fields').innerHTML=html;
   let addons='';
   if(svc==='canning'||svc==='copacking'){
-    addons=`<div class="addon-card" onclick="toggleAddon(this,'past')"><div class="addon-card-t">🔥 Flash Pasteurization</div><div class="addon-card-p">5–12¢ per can</div></div>
+    addons=`<div class="addon-card" onclick="toggleAddon(this,'past')"><div class="addon-card-t">🔥 Flash Pasteurization</div><div class="addon-card-p">5¢ per can</div></div>
     <div class="addon-card" onclick="toggleAddon(this,'nitro')"><div class="addon-card-t">💨 Nitrogen Dosing</div><div class="addon-card-p">3–4¢ per can</div></div>`;
   }else if(svc==='bottling'){
     addons=`<div class="addon-card" onclick="toggleAddon(this,'pastbtl')"><div class="addon-card-t">🔥 Flash Pasteurization</div><div class="addon-card-p">$0.20/btl</div></div>
@@ -4447,7 +4447,7 @@ function calcTotal(){
     lines.push({d:`Packaging — trays & PakTechs @ $0.055/can`,a:pkgC});
     total=mfg+canC+pkgC;
     if(svc==='copacking'&&document.getElementById('verif')?.value==='1'){lines.push({d:'Benchtop verification',a:500});total+=500}
-    if(selAddons.past){const c=Math.round(.085*cans*100)/100;lines.push({d:'Flash Pasteurization @ $0.085/can',a:c});total+=c}
+    if(selAddons.past){const c=Math.round(.05*cans*100)/100;lines.push({d:'Flash Pasteurization @ $0.05/can',a:c});total+=c}
     if(selAddons.nitro){const c=Math.round(.035*cans*100)/100;lines.push({d:'Nitrogen Dosing @ $0.035/can',a:c});total+=c}
     desc=`Canning — ${cases} cases ${fmtL}`;
   }else if(svc==='bottling'){
@@ -7407,7 +7407,7 @@ async function aiEstimateQuote() {
     CANNING: 150-299 cases=$28/case + $0.32/can + $0.055/can packaging. 300-499=$24. 500-999=$20. 1000+=$16. Cans per case=24.
     BOTTLING: 100-199 cases=$10.50/case. 200-399=$9.25. 400-699=$8.50. 700+=$custom.
     R&D: From $2,500. IP License=$6,000. Full IP=$15,000.
-    ADD-ONS: Flash Pasteurization=$0.015/can. Nitrogen Dosing=$0.008/can.`,
+    ADD-ONS: Flash Pasteurization=$0.05/can. Nitrogen Dosing=$0.008/can.`,
     `Estimate the cost for this project: ${desc}
     
     Provide: Recommended service, Estimated volume, Itemized cost breakdown, Total estimated range (low-high), Timeline estimate, Key assumptions made.`
@@ -7422,7 +7422,7 @@ async function aiDraftInvoice() {
   showAIModal('Invoice Drafter', '', true);
   const text = await callAI(
     `You are a billing specialist for Good Liquid Bev Co. Create clear invoice line items based on job descriptions.
-    Rates: Canning $16-28/case depending on volume. Bottling $8.50-10.50/case. R&D from $2,500. Flash Pasteurization +$0.015/can. Nitrogen Dosing +$0.008/can.`,
+    Rates: Canning $16-28/case depending on volume. Bottling $8.50-10.50/case. R&D from $2,500. Flash Pasteurization +$0.05/can. Nitrogen Dosing +$0.008/can.`,
     `Create invoice line items for: ${desc}
     
     Format as clear line items with description, quantity, unit price, and subtotal. Include a total. Flag any assumptions.`
