@@ -7404,10 +7404,11 @@ async function aiEstimateQuote() {
   showAIModal('Quote Estimator', '', true);
   const text = await callAI(
     `You are a pricing expert for Good Liquid Bev Co. Use these rates:
-    CANNING: 150-299 cases=$28/case + $0.32/can + $0.055/can packaging. 300-499=$24. 500-999=$20. 1000+=$16. Cans per case=24.
-    BOTTLING: 100-199 cases=$10.50/case. 200-399=$9.25. 400-699=$8.50. 700+=$custom.
-    R&D: From $2,500. IP License=$6,000. Full IP=$15,000.
-    ADD-ONS: Flash Pasteurization=$0.05/can. Nitrogen Dosing=$0.008/can.`,
+    CANNING — manufacturing labor per can (24 cans = 1 case; 150-case minimum). 12oz Standard & 12oz Sleek: 150-339 cases=$0.48/can, 340-500=$0.43, 501-999=$0.38, 1,000-2,499=$0.35, 2,500-4,999=$0.31, 5,000+=$0.28. 16oz Standard: 150-339=$0.58, 340-500=$0.53, 501-999=$0.48, 1,000-2,499=$0.45, 2,500-4,999=$0.41, 5,000+=$0.38. The client buys their own cans from a print vendor ($0.29-0.35/can) and packaging — trays + PakTechs — runs $0.05-0.06/can; quote those separately, they are NOT our labor.
+    BOTTLING — 750ml, per bottle: 220 cases=$2.16, 660=$1.91, 1,320=$1.58, 2,640=$1.41, 5,280=$1.12.
+    R&D: From $2,500 (includes 3 iterations). If the client already has a formula there is NO R&D fee — just a $500 test batch + a Process Authority Letter. IP License=$6,000/yr. Full IP buyout=$15,000.
+    ADD-ONS: Flash Pasteurization=$0.05/can or $0.20/bottle. Nitrogen Dosing=$0.03-0.04/can.
+    IMPORTANT: tiers are per CASE — if the customer gives a CAN count, divide by 24 to get cases before picking a tier.`,
     `Estimate the cost for this project: ${desc}
     
     Provide: Recommended service, Estimated volume, Itemized cost breakdown, Total estimated range (low-high), Timeline estimate, Key assumptions made.`
@@ -7422,7 +7423,7 @@ async function aiDraftInvoice() {
   showAIModal('Invoice Drafter', '', true);
   const text = await callAI(
     `You are a billing specialist for Good Liquid Bev Co. Create clear invoice line items based on job descriptions.
-    Rates: Canning $16-28/case depending on volume. Bottling $8.50-10.50/case. R&D from $2,500. Flash Pasteurization +$0.05/can. Nitrogen Dosing +$0.008/can.`,
+    Rates (per can; 24 cans = 1 case; 150-case minimum): 12oz canning labor by volume — 150-339 cases=$0.48/can, 340-500=$0.43, 501-999=$0.38, 1,000-2,499=$0.35, 2,500-4,999=$0.31, 5,000+=$0.28; 16oz runs $0.38-0.58/can. Bottling (750ml) $1.12-2.16/bottle by volume. R&D from $2,500 (existing formula: no R&D fee, $500 test batch instead). Flash Pasteurization +$0.05/can or +$0.20/bottle. Nitrogen Dosing +$0.03-0.04/can. Convert can counts to cases (÷24) before picking a tier.`,
     `Create invoice line items for: ${desc}
     
     Format as clear line items with description, quantity, unit price, and subtotal. Include a total. Flag any assumptions.`
