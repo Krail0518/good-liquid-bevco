@@ -14,3 +14,9 @@ verify_jwt = false
 # check must be off here too.
 [functions.booking-approve]
 verify_jwt = false
+
+# Called by a DB trigger on deals INSERT (pg_net, no JWT) to auto-estimate a
+# lead's deal value. The gl_notify_secret in the body is the credential,
+# verified in the function body — same pattern as notify-deal.
+[functions.estimate-deal-value]
+verify_jwt = false
