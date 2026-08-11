@@ -80,19 +80,46 @@ Deno.serve(async (req) => {
 
   const deals = (dealsR.data || []).filter((d: any) => !CLOSED.has(d.stage));
 
-  // Per-address outreach index (last inbound / outbound).
-  const idx: Record<string, { lastOut: number; lastIn: number }> = {};
+  // Free/consumer providers — never treat one as a lead's "company" domain, or
+  // unrelated personal-email leads would all cross-wire into one thread.
+  const FREE = new Set(["gmail.com","googlemail.com","yahoo.com","ymail.com","yahoo.co.uk","hotmail.com","outlook.com","live.com","msn.com","aol.com","icloud.com","me.com","mac.com","proton.me","protonmail.com","gmx.com","zoho.com","mail.com","comcast.net","verizon.net","att.net","sbcglobal.net"]);
+  // One row per email: the OTHER party's address + domain, direction, time.
+  const META: Array<{ dir: string; addr: string; dom: string; t: number }> = [];
   (mailR.data || []).forEach((row: any) => {
     const inbound = row.direction === "inbound";
     const raw = String((inbound ? row.from_email : row.to_email) || "");
     const t = tMs(row);
     raw.split(/[,;]/).forEach((part: string) => {
       const a = part.trim().replace(/^[^<]*</, "").replace(/>.*$/, "").toLowerCase();
-      if (!a || a.indexOf("@") < 0) return;
-      const e = idx[a] || (idx[a] = { lastOut: 0, lastIn: 0 });
-      if (inbound) { if (t > e.lastIn) e.lastIn = t; } else { if (t > e.lastOut) e.lastOut = t; }
+      if (!a || a.indexOf("@") < 0 || !t) return;
+      META.push({ dir: inbound ? "in" : "out", addr: a, dom: a.split("@")[1] || "", t });
     });
   });
+
+  function companyToken(co: string): string {
+    let tok = String(co || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    for (const sfx of ["llc","inc","corp","ltd","company","beverages","beverage","brands","brand","drinks","drink"]) {
+      if (tok.length > sfx.length + 3 && tok.endsWith(sfx)) tok = tok.slice(0, -sfx.length);
+    }
+    return tok.length >= 6 ? tok : "";
+  }
+  // Last inbound / outbound for a lead's WHOLE company: match the exact address,
+  // the company email domain (never a free provider), or a distinctive
+  // company-name token — so a lead who switched to another address at the same
+  // company still counts. Mirrors glLoadEmailLog on the client.
+  function lastContact(email: string, co: string): { lastOut: number; lastIn: number } {
+    const e = String(email || "").trim().toLowerCase();
+    const eDom = e.split("@")[1] || "";
+    const dom = eDom && !FREE.has(eDom) ? eDom : "";
+    const tok = companyToken(co);
+    let lastOut = 0, lastIn = 0;
+    for (const m of META) {
+      const hit = m.addr === e || (dom && m.dom === dom) || (tok !== "" && m.dom.indexOf(tok) >= 0);
+      if (!hit) continue;
+      if (m.dir === "in") { if (m.t > lastIn) lastIn = m.t; } else { if (m.t > lastOut) lastOut = m.t; }
+    }
+    return { lastOut, lastIn };
+  }
 
   const todosBy: Record<string, any[]> = {};
   (todosR.data || []).forEach((t: any) => { (todosBy[t.subject_id] = todosBy[t.subject_id] || []).push(t); });
@@ -103,7 +130,8 @@ Deno.serve(async (req) => {
   const items: Item[] = [];
   for (const d of deals as any[]) {
     const email = d.email ? String(d.email).trim().toLowerCase() : "";
-    const e = email ? idx[email] : null;
+    const lc = email ? lastContact(email, d.co) : { lastOut: 0, lastIn: 0 };
+    const e = (lc.lastOut || lc.lastIn) ? lc : null;
     const brief = briefBy[d.id];
     const dtodos = todosBy[d.id] || [];
     const overdue = dtodos.filter((x: any) => x.owner === "you" && x.due_date && x.due_date < todayStr);
