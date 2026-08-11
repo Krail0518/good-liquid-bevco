@@ -228,6 +228,14 @@ section{padding:96px 52px}
 .sub-btn{width:100%;padding:14px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-size:14px;font-weight:800;font-family:var(--ff-body);letter-spacing:.4px;cursor:pointer;transition:all .3s;margin-top:5px;position:relative;z-index:1}
 .sub-btn:hover{background:var(--teal2);transform:translateY(-2px);box-shadow:0 12px 32px rgba(0,229,192,.28)}
 .form-ok{display:none;margin-top:12px;text-align:center;font-size:13px;color:var(--teal);font-weight:600;padding:11px;border:1px solid rgba(0,229,192,.18);border-radius:7px;background:rgba(0,229,192,.06)}
+/* Validation: required-field errors on the public quote form */
+.req{color:#ff6b5a;font-weight:800}
+.form-err{display:none;margin-top:12px;font-size:12.5px;color:#ffc2b8;font-weight:500;padding:11px 13px;border:1px solid rgba(231,76,60,.38);border-radius:7px;background:rgba(231,76,60,.08);line-height:1.55}
+.form-err strong{color:#ff8a78;display:block;margin-bottom:4px;font-size:12px;letter-spacing:.3px}
+.form-err ul{margin:0;padding-left:17px}
+.field.err input,.field.err select,.field.err textarea{border-color:rgba(231,76,60,.75)!important;box-shadow:0 0 0 3px rgba(231,76,60,.12)}
+.pill-field.err > label{color:#ff8a78}
+.pill-field.err .pill-group{outline:1px solid rgba(231,76,60,.45);outline-offset:6px;border-radius:6px}
 /* Pill checkboxes for Service & Product Type */
 .pill-group{display:flex;flex-wrap:wrap;gap:7px;margin-top:5px}
 .pill-group input[type="checkbox"]{position:absolute;opacity:0;width:0;height:0;pointer-events:none}
@@ -1751,12 +1759,12 @@ select option, .fsel option {
     <div class="cf rv d2">
       <div class="cf-title">REQUEST A QUOTE</div>
       <div class="frow2">
-        <div class="field"><label>Brand name</label><input id="qf-brand" type="text" placeholder="Your Beverage Co."></div>
-        <div class="field"><label>Your name</label><input id="qf-name" type="text" placeholder="First &amp; last"></div>
+        <div class="field"><label>Brand name <span class="req">*</span></label><input id="qf-brand" type="text" placeholder="Your Beverage Co."></div>
+        <div class="field"><label>Your name <span class="req">*</span></label><input id="qf-name" type="text" placeholder="First &amp; last"></div>
       </div>
       <div class="frow2">
-        <div class="field"><label>Email</label><input id="qf-email" type="email" placeholder="you@brand.com"></div>
-        <div class="field"><label>Phone</label><input id="qf-phone" type="tel" placeholder="(555) 555-0100"></div>
+        <div class="field"><label>Email <span class="req">*</span></label><input id="qf-email" type="email" placeholder="you@brand.com"></div>
+        <div class="field"><label>Phone <span class="req">*</span></label><input id="qf-phone" type="tel" placeholder="(555) 555-0100"></div>
       </div>
       <div class="frow2">
         <div class="field"><label>City</label><input id="qf-city" type="text" placeholder="Tampa"></div>
@@ -1833,6 +1841,7 @@ select option, .fsel option {
       </div>
       <div class="field"><label>Project details</label><textarea id="qf-details" style="width:100%;padding:12px 15px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:13px;font-family:var(--ff-body);resize:vertical" rows="3" placeholder="Product concept, flavor, packaging vision, certifications needed, questions…"></textarea></div>
       <button class="sub-btn" onclick="submitContactForm(this)">Send inquiry →</button>
+      <div class="form-err" id="form-err"></div>
       <div class="form-ok" id="form-ok">✓ Sent! Mike or Sandra will respond within 1 business day.</div>
     </div>
   </div>
@@ -6451,15 +6460,51 @@ async function submitContactForm(btn){
     details:       v('qf-details')
   };
 
-  // Basic validation
-  if(!vals.brand_name || !vals.contact_name || !vals.email){
-    alert('Brand name, your name, and email are required.');
+  // ── Validation ──────────────────────────────────────────────────────────
+  // A submission must be complete enough to qualify the lead (and to feed the
+  // auto deal-value estimate). We flag every problem at once, highlight the
+  // offending fields, and refuse to submit until they're fixed — a low-effort
+  // or bot submission can't get through with three blank boxes anymore.
+  const problems = []; // {field: elementId | pillGroupId, msg}
+  const markField = id => { const f = document.getElementById(id); if(f){ const w = f.closest('.field'); if(w) w.classList.add('err'); } };
+  const markPill  = groupId => { const g = document.getElementById(groupId); if(g){ const w = g.closest('.pill-field'); if(w) w.classList.add('err'); } };
+
+  // Clear any prior error state first.
+  document.querySelectorAll('.cf .field.err, .cf .pill-field.err').forEach(el => el.classList.remove('err'));
+
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  const phoneDigits = vals.phone.replace(/\D/g, '');
+
+  if(!vals.brand_name){                          problems.push('Enter your brand name.');                   markField('qf-brand'); }
+  if(!vals.contact_name){                         problems.push('Enter your name.');                          markField('qf-name'); }
+  if(!vals.email){                                problems.push('Enter your email address.');                 markField('qf-email'); }
+  else if(!EMAIL_RE.test(vals.email)){            problems.push('Enter a valid email address.');              markField('qf-email'); }
+  if(!vals.phone){                                problems.push('Enter a phone number.');                     markField('qf-phone'); }
+  else if(phoneDigits.length < 10){               problems.push('Enter a valid phone number (with area code).'); markField('qf-phone'); }
+  if(services.length === 0){                      problems.push('Pick at least one service.');                markPill('qf-service-group'); }
+  if(productTypes.length === 0){                  problems.push('Pick at least one product type.');           markPill('qf-product-group'); }
+  else if(productTypes.some(p => p === 'Other')){ problems.push('Describe your product type in the "Other" box.'); markPill('qf-product-group'); markField('pt-other-text-main'); }
+  if(vals.details.length < 15){                   problems.push('Add a few words about your project (at least 15 characters).'); markField('qf-details'); }
+
+  const errBox = document.getElementById('form-err');
+  if(problems.length){
+    if(errBox){
+      errBox.innerHTML = '<strong>Please finish these before sending:</strong><ul>' +
+        problems.map(p => '<li>' + p + '</li>').join('') + '</ul>';
+      errBox.style.display = 'block';
+    }
+    // Once the user starts fixing a flagged field, clear its highlight.
+    document.querySelectorAll('.cf .field.err input, .cf .field.err select, .cf .field.err textarea').forEach(inp => {
+      inp.addEventListener('input', function clr(){ const w = inp.closest('.field'); if(w) w.classList.remove('err'); inp.removeEventListener('input', clr); }, { once: true });
+    });
+    document.querySelectorAll('.cf .pill-field.err input[type="checkbox"]').forEach(cb => {
+      cb.addEventListener('change', function clr(){ const w = cb.closest('.pill-field'); if(w) w.classList.remove('err'); }, { once: true });
+    });
+    const firstErr = document.querySelector('.cf .field.err, .cf .pill-field.err');
+    if(firstErr) firstErr.scrollIntoView({ behavior: 'smooth', block: 'center' });
     return;
   }
-  if(vals.email.indexOf('@') < 0){
-    alert('Please enter a valid email.');
-    return;
-  }
+  if(errBox) errBox.style.display = 'none';
 
   btn.textContent = 'Sending…';
   btn.disabled = true;
