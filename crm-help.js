@@ -1992,6 +1992,9 @@
     videoCard('tutorial-pipeline.mp4', '📊 Pipeline — Your Sales Board', 'How deals move through Prospecting, Proposal, Negotiation and Closed — logging outreach on a card and opening the full deal.') +
     videoCard('tutorial-clients.mp4', '👥 Clients — Every Brand in One Place', 'The client list and what each row shows, then opening a brand’s complete, editable record in one click.') +
     videoCard('tutorial-portal.mp4', '🌐 Customer Portal — Your Clients’ Private Login', 'What a brand sees when they log into their own portal — invoices, production runs, COAs &amp; documents, and their label artwork.') +
+    videoGroup('🚀 STAYING ON TOP OF LEADS') +
+    videoCard('explainer-deal-brief.mp4', '🧠 Never Drop a Lead — Brief, Board &amp; Digest', 'How the AI Deal Brief, the 🔥 Needs Attention board, the morning WhatsApp/email digest, and ⏰ Bulk Nudge work together so no lead slips through the cracks.') +
+    videoCard('explainer-deal-docs.mp4', '📎 Deal Documents &amp; Meeting Notes', 'Storing NDAs, Process Authority letters, formulas &amp; labels on a deal, how they carry over automatically when you convert to a client, and the meeting-notes card that feeds the brief.') +
     videoGroup('⚙️ RUNNING THE BUSINESS') +
     videoCard('tutorial-dashboard.mp4', '📊 Dashboard — Your Business at a Glance', 'The home screen: the FDA audit-readiness scorecard, your key financials, a pipeline snapshot, and the live activity feed.') +
     videoCard('tutorial-formula-vault.mp4', '🧪 Formula Vault — Every Recipe, Versioned', 'Where product recipes live — name, version, and status — with version control so you can approve and clone without losing history.') +
@@ -2287,10 +2290,82 @@
       '<b>An auditor</b> you invite gets a read-only link: they can see every program and every red flag exactly as it is, but they cannot change, sign, or delete anything.'
     ]);
 
+  var SEC_DEAL_BRIEF =
+    '<div style="font-size:12.5px;color:#cfd9e6;line-height:1.65;margin-bottom:12px">The <b>Deal Brief</b> system turns a full inbox into a short, prioritized list. Three parts work together: a living AI <b>brief</b> at the top of every deal &amp; client, the <b>🔥 Needs Attention</b> board that ranks all your open deals, and a <b>morning WhatsApp + email digest</b>. Plus <b>⏰ Bulk Nudge</b> to follow up on cold leads in one pass. Everything is built from your real emails and notes — there is nothing to maintain by hand.</div>' +
+    watch('explainer-deal-brief.mp4') +
+    wf(620, 244,
+      box(0,0,620,244,'#0a1628','rgba(255,255,255,.05)') +
+      box(0,0,620,34,'#142238','rgba(255,255,255,.08)') +
+      txt(20,22,'DEAL DETAILS  ·  Acme Beverages',13,'#fff') + txt(600,22,'✕',12,'#9aa7bd','end') +
+      box(16,44,588,186,'#0d2033','rgba(0,229,192,.25)') +
+      txt(28,62,'🧠 BRIEF',10,'#00e5c0') + txt(596,62,'🔄',11,'#9aa7bd','end') +
+      box(28,72,140,22,'#33300f','rgba(245,200,66,.5)') + txt(36,87,'🟡 YOUR MOVE · 3d',10,'#f5c842') +
+      txt(28,117,'Sent the 250-case quote — waiting on their Process',11,'#eef4ff') +
+      txt(28,134,'Authority letter before we schedule the test batch.',11,'#eef4ff') +
+      box(28,147,98,20,'#182a40','rgba(255,255,255,.1)') + txt(34,161,'Vol: 250 cases',9,'#c7d2e0') +
+      box(132,147,84,20,'#182a40','rgba(255,255,255,.1)') + txt(138,161,'12oz sleek',9,'#c7d2e0') +
+      box(222,147,78,20,'#182a40','rgba(255,255,255,.1)') + txt(228,161,'$0.48/can',9,'#c7d2e0') +
+      txt(28,187,'NEXT ACTIONS',9,'#8493a8') +
+      txt(28,206,'☑ Send updated quote',10,'#8fa0b4') + txt(188,206,'you',9,'#f5c842') +
+      txt(250,206,'☐ Chase the PA letter',10,'#eef4ff') + txt(408,206,'them',9,'#5fcf9e') +
+      tag(16,44,1) + tag(28,72,2) + tag(28,147,3) + tag(28,187,4)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin:8px 0 6px">Numbered callouts on the brief above:</div>' +
+    bullets([
+      '<b>Where to find it</b>: the <b>🧠 BRIEF</b> card appears automatically at the top of any <b>saved</b> deal or client — no button to press. The first time you open a busy thread it takes a few seconds to read; after that it is instant.',
+      '<b>(1) The brief card</b> — a living summary rebuilt from the deal\'s whole email thread plus any meeting notes. It refreshes only when new email or notes have arrived since it last ran, so it is never stale and rarely costs anything.',
+      '<b>(2) Ball-in-court pill</b> — tells you whose turn it is at a glance: <span style="color:#f5c842">🟡 Your move</span> means they replied and you owe a response; <span style="color:#5fcf9e">🟢 Waiting on them</span> means the ball is theirs. The number (e.g. “· 3d”) is how many days it has sat, computed from the newest email.',
+      '<b>(3) Key facts</b> — the durable details (volume, format, quote, timeline) the AI keeps merged in one place, so you never re-read the thread to remember them. It de-duplicates as new emails arrive.',
+      '<b>(4) Next actions</b> — checkable to-dos the AI pulls from the conversation, tagged <span style="color:#f5c842">you</span> or <span style="color:#5fcf9e">them</span>. Tick one and it <b>stays</b> ticked; the AI never un-checks or re-adds a task you already completed. Add your own with the “Add a task…” box.',
+      '<b>🔄 Refresh</b> — forces an immediate re-summarize if you want the very latest. Otherwise it self-refreshes on open.',
+      '<b>How “incremental” works</b> — when a new email lands, the brief folds in <b>only that email</b> and merges it into what it already knew. It does not re-read hundreds of old emails, and it does not repeat information — exactly what keeps it fast and accurate.',
+      '<b>🔥 Needs Attention board</b> — Pipeline header → <b>🔥 Needs Attention</b>. One ranked list across every open deal: <span style="color:#f5c842">🟡 Your move</span> → <span style="color:#ff8579">⏰ Overdue to-do</span> → <span style="color:#7fc6f5">🧊 Cold (no reply 7+ days)</span> → <span style="color:#c4a4f8">✨ New lead</span>. Deals where the ball is genuinely with the customer drop off. Click any row to jump into that deal.',
+      '<b>📲 Send to my phone</b> — the button on that board fires your digest to WhatsApp + email right now (also the way to test it).',
+      '<b>Morning digest</b> — automatically each <b>weekday morning (~7–8am ET)</b> you get the same ranked list by WhatsApp and email, so you know who needs you before you open the CRM. If nothing is urgent, nothing is sent — no daily spam.',
+      '<b>⏰ Bulk Nudge</b> — Pipeline header → <b>⏰ Bulk Nudge</b>. Set a “sitting for at least N days” threshold (7 / 10 / 21 or any number). It finds every lead that has gone quiet, drafts a friendly follow-up for each, and sends them all in one pass.',
+      '<b>Plain-English terms</b> — <b>Ball-in-court</b>: whose turn it is to act. <b>Cold</b>: you emailed and got no reply for a week or more. <b>Incremental</b>: only the new part is summarized, then merged. <b>Digest</b>: the once-a-day roundup of who needs you.'
+    ]);
+
+  var SEC_DEAL_DOCS =
+    '<div style="font-size:12.5px;color:#cfd9e6;line-height:1.65;margin-bottom:12px">Two homes for the paperwork a lead sends you <i>before</i> they are a client — a <b>📎 Documents</b> card and a <b>🗒️ Meeting Notes</b> card on every deal. When you convert the lead to a client, all of it moves over automatically, and the notes feed the Deal Brief.</div>' +
+    watch('explainer-deal-docs.mp4') +
+    wf(620, 250,
+      box(0,0,620,250,'#0a1628','rgba(255,255,255,.05)') +
+      box(0,0,620,34,'#142238','rgba(255,255,255,.08)') +
+      txt(20,22,'DEAL DETAILS  ·  Acme Beverages',13,'#fff') + txt(600,22,'✕',12,'#9aa7bd','end') +
+      box(16,42,588,108,'#0d2033','rgba(0,229,192,.2)') +
+      txt(28,60,'📎 DOCUMENTS',10,'#00e5c0') +
+      box(28,70,52,20,'#12294a','rgba(107,159,255,.4)') + txt(34,84,'🔒 NDA',9,'#6b9fff') +
+      box(86,70,96,20,'#33300f','rgba(245,200,66,.4)') + txt(92,84,'📜 PA Letter',9,'#f5c842') +
+      box(188,70,80,20,'#241833','rgba(196,164,248,.4)') + txt(194,84,'⚗️ Formula',9,'#c4a4f8') +
+      box(274,70,72,20,'#08312b','rgba(0,229,192,.4)') + txt(280,84,'🎨 Label',9,'#00e5c0') +
+      box(352,70,58,20,'#1a2436','rgba(255,255,255,.12)') + txt(358,84,'Other',9,'#9aa7bd') +
+      txt(28,116,'📜 Process Authority Letter',10,'#eef4ff') + txt(250,116,'Acme_PA.pdf',9,'#8493a8') + txt(596,116,'View · ⬇ · 🗑',9,'#00e5c0','end') +
+      txt(28,138,'🔒 NDA',10,'#eef4ff') + txt(250,138,'Acme_NDA.pdf',9,'#8493a8') + txt(596,138,'View · ⬇ · 🗑',9,'#00e5c0','end') +
+      box(16,158,588,78,'#231a33','rgba(196,164,248,.25)') +
+      txt(28,176,'🗒️ MEETING NOTES',10,'#c4a4f8') +
+      txt(28,200,'📝 Kickoff call · Aug 8 — wants 250 cases mango; needs a PA',10,'#eef4ff') +
+      txt(28,218,'letter; targeting a Q4 launch.  (pasted from Pocket AI NoteTaker)',10,'#9aa7bd') +
+      tag(16,42,1) + tag(28,70,2) + tag(596,116,3) + tag(16,158,4)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin:8px 0 6px">Numbered callouts above:</div>' +
+    bullets([
+      '<b>Where to find it</b>: open any <b>saved</b> deal — the <b>📎 Documents</b> and <b>🗒️ Meeting Notes</b> cards sit just below the brief. Both also appear on client panels. (A brand-new, unsaved deal shows a prompt to save it first — it needs an id to attach files to.)',
+      '<b>(1) Documents card</b> — the home for anything a lead sends during the deal: a signed NDA, a Process Authority letter, their formula, their label artwork.',
+      '<b>(2) Type chips</b> — tap a type (<span style="color:#6b9fff">🔒 NDA</span>, <span style="color:#f5c842">📜 Process Authority Letter</span>, <span style="color:#c4a4f8">⚗️ Formula</span>, <span style="color:#00e5c0">🎨 Label / Artwork</span>, or Other), give it a name, choose the file, and press <b>＋ Add Document</b>. It is filed by type so it is easy to scan.',
+      '<b>(3) View / download / delete</b> — each row opens the file through a short-lived secure link; ⬇ downloads it; 🗑 removes it. Files live in the same secure <code>client-docs</code> storage as your other compliance documents, staff-only.',
+      '<b>🚀 The convert hand-off</b> — when you click <b>Convert to Client &amp; Onboard</b>, every document moves with the customer <b>automatically</b>: the <b>Process Authority letter</b> drops into the client\'s PA-letter compliance slot, <b>label artwork</b> becomes SKU entries in their artwork section, and everything else lands on the client\'s own Documents card. Nothing is copied or re-uploaded — the files simply follow the customer, so nothing is lost between the pipeline and the client record.',
+      '<b>(4) Meeting Notes card</b> — after a call, paste your notes or your <b>Pocket AI NoteTaker</b> transcript here, and attach the recording or file if you have one. Give it a title and date.',
+      '<b>Notes feed the brief</b> — the Deal Brief reads your meeting notes too, so what you discussed on a call shows up in the summary right alongside the emails. Adding or removing a note flags the brief to re-summarize next time it refreshes.',
+      '<b>Plain-English terms</b> — <b>PA letter</b>: the Process Authority letter that clears a formula for production. <b>SKU</b>: one product/flavor variant. <b>Convert</b>: turning a pipeline lead into a full client record (the 🚀 button on the deal).'
+    ]);
+
   var HELP_HTML =
     section('help-overview',        '👋 OVERVIEW',                   SEC_OVERVIEW) +
     section('help-glossary',        '📖 GLOSSARY (PLAIN-ENGLISH TERMS)', SEC_GLOSSARY) +
     section('help-videos',          '🎬 VIDEO TUTORIALS',            SEC_VIDEO_TUTORIALS) +
+    section('help-deal-brief',      '🧠 DEAL BRIEF & NEEDS ATTENTION', SEC_DEAL_BRIEF) +
+    section('help-deal-docs',       '📎 DEAL DOCS & MEETING NOTES',  SEC_DEAL_DOCS) +
     section('help-daily-gmp',       '🧾 DAILY GMP (LOG + FAN-OUT)',  SEC_DAILY_GMP) +
     section('help-gmp-schedule',    '🗓️ GMP SCHEDULE (DUE / OVERDUE)', SEC_GMP_SCHEDULE) +
     section('help-prp',             '🛡️ PREREQUISITE PROGRAMS',      SEC_PRP) +
@@ -2352,6 +2427,7 @@
     ['help-overview','👋 Overview'],
     ['help-glossary','📖 Glossary'],
     ['help-videos','🎬 Video Tutorials'],
+    ['help-deal-brief','🧠 Deal Brief & Attention'],['help-deal-docs','📎 Deal Docs & Notes'],
     ['help-daily-gmp','🧾 Daily GMP'],['help-gmp-schedule','🗓️ GMP Schedule'],
     ['help-prp','🛡️ Prerequisite Programs'],
     ['help-trace-recall','🔗 Trace / Recall'],['help-training-gmp','🎓 Training'],
