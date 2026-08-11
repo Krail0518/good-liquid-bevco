@@ -6633,6 +6633,7 @@ function openDealDetail(stage, idx){
       <span style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;background:${stageColor}22;color:${stageColor};border:1px solid ${stageColor}55">${stage}</span>
       ${obBadge}
     </div>
+    <div id="ddp-brief" style="margin:6px 0 12px"></div>
     ${row('CONTACT', d.contactName)}
     ${d.email ? `<div style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="font-size:10px;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:2px">EMAIL</span><a href="mailto:${esc(d.email)}" style="font-size:13px;color:var(--teal)">${esc(d.email)}</a></div>` : ''}
     ${row('PHONE', d.phone)}
@@ -6681,6 +6682,11 @@ function openDealDetail(stage, idx){
     if(d.id && !String(d.id).startsWith('tmp_')) window.glRenderMeetingNotes(mnBox, { kind: 'deal', id: d.id });
     else mnBox.innerHTML = '<div style="font-size:10px;letter-spacing:2px;color:var(--teal);margin-bottom:6px">🗒️ MEETING NOTES</div>' +
       '<div style="font-size:11px;color:#9aa7bd">Save this deal first to attach meeting notes.</div>';
+  }
+  // AI Brief — the living summary at the top of the panel.
+  var brBox = document.getElementById('ddp-brief');
+  if(brBox && typeof window.glRenderBrief === 'function' && d.id && !String(d.id).startsWith('tmp_')){
+    window.glRenderBrief(brBox, { kind:'deal', id:d.id, email:d.email, name:d.name, co:d.co, stage:stage, notes:d.notes });
   }
 }
 
@@ -7876,6 +7882,8 @@ function openClientDetail(cid) {
 
       ${ref ? `<div style="background:rgba(0,229,192,.05);border:1px solid rgba(0,229,192,.15);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--teal)">🤝 Referred by ${esc(ref.name)}</div>` : ''}
 
+      <div id="cde-brief" style="margin-bottom:18px"></div>
+
       ${(typeof window.glClientInfoSections==='function') ? window.glClientInfoSections(c) : ''}
 
       <div style="margin-bottom:20px">
@@ -7930,6 +7938,10 @@ function openClientDetail(cid) {
   // Meeting notes (Pocket AI NoteTaker etc.) for this client.
   if(typeof window.glRenderMeetingNotes === 'function'){
     window.glRenderMeetingNotes(document.getElementById('cde-notes'), { kind: 'client', id: c.id });
+  }
+  // AI Brief for this client.
+  if(typeof window.glRenderBrief === 'function'){
+    window.glRenderBrief(document.getElementById('cde-brief'), { kind:'client', id:c.id, email:c.email, name:c.name, co:c.name, stage:'client', notes:(c.notes||'') });
   }
 
   // Pull the client's email correspondence into the account view (same log the
@@ -12060,6 +12072,7 @@ window.addEventListener('appinstalled', () => {
 <script src="/crm-artwork.js"></script>
 <script src="/crm-deal-docs.js"></script>
 <script src="/crm-meeting-notes.js"></script>
+<script src="/crm-deal-brief.js"></script>
 <script src="/crm-gmpsched.js"></script>
 <script src="/crm-trace.js"></script>
 <script src="/crm-training.js"></script>
