@@ -60,6 +60,28 @@ import { isCronCall } from '../_shared/cron-auth.ts';
 
 const GMAIL_API = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
+// Free/consumer providers — a contact's own address may live at one of these,
+// but the DOMAIN is never "their company", so we must not vacuum every message
+// at gmail.com into one client's thread. Mirrors GL_FREE_EMAIL_DOMAINS in
+// index.html so the ingest side and the read side agree on what counts as a
+// company domain.
+const FREE_DOMAINS = new Set([
+  'gmail.com','googlemail.com','yahoo.com','ymail.com','yahoo.co.uk',
+  'hotmail.com','outlook.com','live.com','msn.com','aol.com',
+  'icloud.com','me.com','mac.com','proton.me','protonmail.com',
+  'gmx.com','zoho.com','mail.com','comcast.net','verizon.net','att.net','sbcglobal.net',
+]);
+
+// The company domain of an address, or '' if it's a free provider / malformed.
+// Used to attribute mail from a NEW address at a company we already know
+// (a client emails from sarah@acme.com after we only had john@acme.com).
+function companyDomain(email: string): string {
+  const d = String(email || '').toLowerCase().split('@')[1] || '';
+  const clean = d.replace(/^www\./, '').trim();
+  if (!clean || clean.indexOf('.') < 0 || FREE_DOMAINS.has(clean)) return '';
+  return clean;
+}
+
 // Pulls the bare address out of a header value like
 // `"Jane Doe" <jane@acme.com>, bob@acme.com` → ['jane@acme.com','bob@acme.com'].
 function addressesIn(headerValue: string): string[] {
@@ -108,14 +130,30 @@ Deno.serve(async (req: Request): Promise<Response> => {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   );
 
+  // For an on-demand single-address sync, the company domain of that address
+  // (if it's not a free provider) — so "sync this lead" pulls in mail from
+  // anyone else at the same company too, not just the one address on file.
+  const onlyDomain = onlyEmail ? companyDomain(onlyEmail) : '';
+
   // ── 1) Known contacts: clients (primary + additional) and pipeline leads ──
   // Map address → client id so inbound rows can be linked to the client row.
   const contacts = new Map<string, string | null>();
+  // Map company domain → client id: a client/lead often starts on one address
+  // and later writes from another at the same company. Matching only exact
+  // addresses silently dropped half the thread, so we also keep any message
+  // to/from a known company domain (never a free provider).
+  const domainOwner = new Map<string, string | null>();
   const addContact = (email: unknown, clientId: string | null) => {
     const e = String(email || '').trim().toLowerCase();
     if (!e.includes('@')) return;
-    if (onlyEmail && e !== onlyEmail) return;
+    // In single-address mode we still want the whole COMPANY, so accept any
+    // address at the target domain here rather than only the exact address.
+    if (onlyEmail && e !== onlyEmail && !(onlyDomain && companyDomain(e) === onlyDomain)) return;
     if (!contacts.has(e) || (clientId && !contacts.get(e))) contacts.set(e, clientId);
+    const dom = companyDomain(e);
+    if (dom && (!onlyEmail || dom === onlyDomain)) {
+      if (!domainOwner.has(dom) || (clientId && !domainOwner.get(dom))) domainOwner.set(dom, clientId);
+    }
   };
 
   const cRes = await supa.from('clients').select('id, email, additional_emails');
@@ -148,8 +186,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // For a single address let Gmail do the filtering (cheap + precise).
   // For a full sync, scan recent mail and filter locally against `contacts`.
+  // In single-address mode, also search the whole company domain (Gmail's
+  // `from:domain.com` matches every sender at that domain) so a lead who wrote
+  // from a second address at the same company still gets pulled in.
+  const onlyClause = onlyEmail
+    ? (onlyDomain
+        ? `(from:${onlyEmail} OR to:${onlyEmail} OR from:${onlyDomain} OR to:${onlyDomain})`
+        : `(from:${onlyEmail} OR to:${onlyEmail})`)
+    : '';
   const q = onlyEmail
-    ? `newer_than:${days}d -in:chats (from:${onlyEmail} OR to:${onlyEmail})`
+    ? `newer_than:${days}d -in:chats ${onlyClause}`
     : `newer_than:${days}d -in:chats`;
 
   const ids: string[] = [];
@@ -197,9 +243,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const toAddrs   = addressesIn(header(headers, 'To')).concat(addressesIn(header(headers, 'Cc')));
 
     // Inbound if the sender is a known contact; otherwise outbound if a
-    // recipient is. Messages involving nobody we track are ignored.
-    const inboundMatch  = fromAddrs.find((a) => contacts.has(a));
-    const outboundMatch = toAddrs.find((a) => contacts.has(a));
+    // recipient is. We match on the exact address first, then fall back to the
+    // company domain — so a client writing from a new address at a company we
+    // already track is still captured (the housewata.com case: correspondence
+    // moved to a second @-address and vanished from the CRM). Messages
+    // involving nobody we track — by address or company domain — are ignored.
+    const domainHit = (a: string) => { const d = companyDomain(a); return d && domainOwner.has(d); };
+    const inboundMatch  = fromAddrs.find((a) => contacts.has(a)) || fromAddrs.find(domainHit);
+    const outboundMatch = toAddrs.find((a) => contacts.has(a))   || toAddrs.find(domainHit);
     if (!inboundMatch && !outboundMatch) continue;
 
     const contactEmail = inboundMatch || outboundMatch!;
@@ -218,7 +269,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
       body_preview: trimToNewMessage(
         extractBody(msg.payload) || decodeEntities(String(msg.snippet || ''))).slice(0, 8000),
       status:       'delivered',
-      client_id:    contacts.get(contactEmail) || null,
+      // Exact address wins; otherwise attribute a domain-matched message to the
+      // client that owns the company domain. `??` (not `||`) so an on-file lead
+      // (client_id intentionally null) isn't re-resolved through the domain map.
+      client_id:    contacts.get(contactEmail) ?? domainOwner.get(companyDomain(contactEmail)) ?? null,
       mailgun_id:   String(id),
       sent_at:      sentAt,
     });
