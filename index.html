@@ -6657,6 +6657,7 @@ function openDealDetail(stage, idx){
     </div>
     <button onclick="glConvertLeadToOnboarding()" style="width:100%;margin-top:8px;padding:12px;background:linear-gradient(135deg,#5fcf9e,#00c4a7);color:#04231d;border:none;border-radius:8px;font-weight:800;font-size:13.5px;cursor:pointer">🚀 Convert to Client &amp; Onboard</button>
     <div id="ddp-docs" style="margin-top:18px;border-top:1px solid rgba(255,255,255,.07);padding-top:16px"></div>
+    <div id="ddp-notes" style="margin-top:18px;border-top:1px solid rgba(255,255,255,.07);padding-top:16px"></div>
     <div id="ddp-corr" style="margin-top:18px;border-top:1px solid rgba(255,255,255,.07);padding-top:16px"></div>`;
 
   document.getElementById('ddp-view-mode').innerHTML = viewHTML;
@@ -6673,6 +6674,13 @@ function openDealDetail(stage, idx){
     if(d.id && !String(d.id).startsWith('tmp_')) window.glRenderDealDocs(docBox, { dealId: d.id });
     else docBox.innerHTML = '<div style="font-size:10px;letter-spacing:2px;color:var(--teal);margin-bottom:6px">📎 DOCUMENTS</div>' +
       '<div style="font-size:11px;color:#9aa7bd">Save this deal first (✏️ Edit → Save) to attach NDAs, Process Authority letters, formulas and labels.</div>';
+  }
+  // Meeting notes (Pocket AI NoteTaker etc.) — same real-deal guard.
+  var mnBox = document.getElementById('ddp-notes');
+  if(mnBox && typeof window.glRenderMeetingNotes === 'function'){
+    if(d.id && !String(d.id).startsWith('tmp_')) window.glRenderMeetingNotes(mnBox, { kind: 'deal', id: d.id });
+    else mnBox.innerHTML = '<div style="font-size:10px;letter-spacing:2px;color:var(--teal);margin-bottom:6px">🗒️ MEETING NOTES</div>' +
+      '<div style="font-size:11px;color:#9aa7bd">Save this deal first to attach meeting notes.</div>';
   }
 }
 
@@ -7897,6 +7905,8 @@ function openClientDetail(cid) {
 
       <div id="cde-docs" style="margin-bottom:20px"></div>
 
+      <div id="cde-notes" style="margin-bottom:20px"></div>
+
       <div style="margin-bottom:20px">
         <div id="cde-corr"><div style="font-size:11px;color:var(--muted)">Loading correspondence…</div></div>
       </div>
@@ -7916,6 +7926,10 @@ function openClientDetail(cid) {
   // plus anything uploaded here directly.
   if(typeof window.glRenderDealDocs === 'function'){
     window.glRenderDealDocs(document.getElementById('cde-docs'), { clientId: c.id });
+  }
+  // Meeting notes (Pocket AI NoteTaker etc.) for this client.
+  if(typeof window.glRenderMeetingNotes === 'function'){
+    window.glRenderMeetingNotes(document.getElementById('cde-notes'), { kind: 'client', id: c.id });
   }
 
   // Pull the client's email correspondence into the account view (same log the
@@ -12045,6 +12059,7 @@ window.addEventListener('appinstalled', () => {
 <script src="/crm-client-detail.js"></script>
 <script src="/crm-artwork.js"></script>
 <script src="/crm-deal-docs.js"></script>
+<script src="/crm-meeting-notes.js"></script>
 <script src="/crm-gmpsched.js"></script>
 <script src="/crm-trace.js"></script>
 <script src="/crm-training.js"></script>
