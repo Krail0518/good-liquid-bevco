@@ -7,3 +7,10 @@ project_id = "ufjkeqmxwuyhbqyugcgg"
 # in the function body — so the gateway JWT check must be off.
 [functions.onboarding-set-password]
 verify_jwt = false
+
+# Mike approves/declines a tour by opening a capability link (from WhatsApp/
+# email) in his phone browser — a bare navigation with no JWT. The HMAC token in
+# the link is the credential, verified in the function body, so the gateway JWT
+# check must be off here too.
+[functions.booking-approve]
+verify_jwt = false

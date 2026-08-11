@@ -43,6 +43,7 @@ import { vaultGet } from '../_shared/gmail-creds.ts';
 
 const MIKE_EMAILS = ['mike@goodliquid.com'];
 const EMOJI_MAP: Record<string, string> = {
+  tour_requested:     '📅',
   tour_booked:        '📅',
   new_deal:           '📋',
   new_quote:          '📩',
@@ -104,6 +105,23 @@ function buildMessage(event: string, data: Record<string, string>): { whatsapp: 
   const emoji = EMOJI_MAP[event] || '🔔';
   const co    = data.company || data.name || 'Unknown';
   const name  = data.name || '';
+
+  if (event === 'tour_requested') {
+    const when     = data.date ? `${data.date} at ${data.time || ''}`.trim() : 'time TBD';
+    const review   = data.review_url ? ` Approve/decline: ${data.review_url}` : '';
+    const whatsapp = `${emoji} TOUR REQUEST: ${name}${data.company ? ' (' + data.company + ')' : ''} wants ${when}. Email: ${data.email || 'n/a'}.${review}`;
+    const body     = [
+      `New tour request via Good Liquid scheduling link — awaiting your approval.`,
+      ``,
+      `Name:    ${name}`,
+      `Company: ${data.company || '—'}`,
+      `Email:   ${data.email   || '—'}`,
+      `When:    ${when}`,
+      ``,
+      data.review_url ? `Approve or decline: ${data.review_url}` : '',
+    ].filter(Boolean).join('\n');
+    return { whatsapp, subject: `📅 Approve tour? ${name} — ${when}`, body };
+  }
 
   if (event === 'tour_booked') {
     const when     = data.date ? `${data.date} at ${data.time || ''}`.trim() : 'time TBD';
