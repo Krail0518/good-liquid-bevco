@@ -128,7 +128,10 @@
     ov.innerHTML = '<div style="width:100%;max-width:760px;color:#fff">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
         '<div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:#f5c842">🔥 NEEDS ATTENTION TODAY</div>' +
-        '<button id="gl-at-close" style="background:none;border:none;color:#9aa7bd;font-size:24px;cursor:pointer;line-height:1">✕</button>' +
+        '<span style="display:flex;align-items:center;gap:10px">' +
+          '<button id="gl-at-send" title="Send this list to your phone (WhatsApp) + email now" style="background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.3);color:#00e5c0;border-radius:7px;font-size:12px;font-weight:700;padding:5px 11px;cursor:pointer">📲 Send to my phone</button>' +
+          '<button id="gl-at-close" style="background:none;border:none;color:#9aa7bd;font-size:24px;cursor:pointer;line-height:1">✕</button>' +
+        '</span>' +
       '</div>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">' +
         chip(counts['your-move'],'your move','#f5c842') + chip(counts.overdue,'overdue','#ff8579') +
@@ -142,6 +145,18 @@
     document.body.appendChild(ov);
     ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
     ov.querySelector('#gl-at-close').onclick = function(){ ov.remove(); };
+    var sendBtn = ov.querySelector('#gl-at-send');
+    if(sendBtn) sendBtn.onclick = async function(){
+      var btn = this; btn.disabled = true; btn.textContent = 'Sending…';
+      try {
+        var r = await sb().functions.invoke('attention-digest', { body: { source: 'manual' } });
+        var d = (r && r.data) || {};
+        if(r && r.error) throw new Error(r.error.message || 'send failed');
+        if(d.items === 0 || d.skipped){ btn.textContent = '✓ Nothing urgent to send'; }
+        else { btn.textContent = '✓ Sent'+((d.whatsappSent||d.emailSent)?'':' (check secrets)'); }
+      } catch(e){ btn.textContent = '✗ Failed'; if(typeof window.addNotification==='function') window.addNotification('Digest failed', (e&&e.message)||'See console', 'warning'); console.error('[attention] send', e); }
+      setTimeout(function(){ if(btn){ btn.disabled=false; btn.textContent='📲 Send to my phone'; } }, 3000);
+    };
     Array.prototype.forEach.call(ov.querySelectorAll('.gl-at-card'), function(el){
       el.addEventListener('mouseenter', function(){ el.style.borderColor = 'rgba(0,229,192,.4)'; });
       el.addEventListener('mouseleave', function(){ el.style.borderColor = 'rgba(255,255,255,.08)'; });
