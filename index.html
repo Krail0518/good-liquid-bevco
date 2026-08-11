@@ -2388,6 +2388,7 @@ select option, .fsel option {
           <div style="display:flex;gap:8px">
             <input id="gl-pipeline-search" type="text" placeholder="Search company or email…" oninput="glFilterPipeline(this.value)" style="padding:6px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#fff;font-size:12px;width:200px;outline:none" />
             <button class="cbtn" onclick="openBulkOutreach()" style="background:rgba(245,200,66,.08);border-color:rgba(245,200,66,.25);color:#d4a200">📤 Bulk Outreach</button>
+            <button class="cbtn" onclick="glOpenAttentionBoard()" style="background:rgba(245,200,66,.14);border-color:rgba(245,200,66,.4);color:#f5c842">🔥 Needs Attention</button>
             <button class="cbtn" onclick="glOpenBulkNudge()" style="background:rgba(196,164,248,.1);border-color:rgba(196,164,248,.3);color:#c4a4f8">⏰ Bulk Nudge</button>
             <button class="cbtn" onclick="openAddDealModal()" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)">+ Add Deal</button>
             <button id="gl-pipeline-quote-btn" class="cbtn" onclick="if(typeof glOpenQuoteBuilder==='function')glOpenQuoteBuilder(null,null)" style="background:rgba(26,111,255,.1);border-color:rgba(26,111,255,.35);color:#5a9fff">📋 Quote Builder</button>
@@ -12073,6 +12074,7 @@ window.addEventListener('appinstalled', () => {
 <script src="/crm-deal-docs.js"></script>
 <script src="/crm-meeting-notes.js"></script>
 <script src="/crm-deal-brief.js"></script>
+<script src="/crm-attention.js"></script>
 <script src="/crm-gmpsched.js"></script>
 <script src="/crm-trace.js"></script>
 <script src="/crm-training.js"></script>
