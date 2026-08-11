@@ -98,7 +98,7 @@
     + '"status_text": 1-3 plain sentences on where things stand and the single most important next step.\n'
     + '"key_facts": array of {"label","value"} for durable facts (product, volume, format, timeline, quote/$ , decisions). Merge with the current facts; no duplicates.\n'
     + '"todos_add": array of {"body","owner","due_date","ai_key"} for NEW open action items only (not already in the open to-dos given). owner is "you" (Good Liquid must act) or "them" (waiting on the lead). due_date is "YYYY-MM-DD" or null. ai_key is a short kebab-case slug unique to the task.\n'
-    + '"todos_complete_keys": array of ai_key strings, taken from the OPEN TO-DOS given, that these new emails/notes show are now done.\n'
+    + '"todos_complete_keys": array of ai_key strings — taken ONLY from the OPEN TO-DOS listed — that the new emails or notes show are now DONE. IMPORTANT: an email marked [OUT] is one WE (Good Liquid) sent. If an [OUT] email fulfills one of the open "you" to-dos — e.g. a to-do says "send the quote" and an [OUT] email contains or promises that quote, or a to-do says "reply to them" and we replied — mark that to-do complete. Also complete a to-do when an [IN] reply clearly resolves it. Match on meaning, not exact wording. When genuinely unsure, leave it open.\n'
     + 'Be concise and factual. If nothing material changed, return empty arrays and keep the status accurate.';
 
   async function summarize(ctx){
@@ -177,7 +177,7 @@
 
     var completeKeys = (Array.isArray(out.todos_complete_keys) ? out.todos_complete_keys : []).map(slug);
     for(var i=0;i<completeKeys.length;i++){
-      var ot = allTodos.filter(function(t){ return !t.done && t.source==='ai' && (t.ai_key||slug(t.body)) === completeKeys[i]; })[0];
+      var ot = allTodos.filter(function(t){ return !t.done && (t.ai_key||slug(t.body)) === completeKeys[i]; })[0];
       if(ot) await sb().from('ai_brief_todos').update({ done:true, done_at:new Date().toISOString() }).eq('id', ot.id);
     }
   }
