@@ -5786,7 +5786,7 @@ function openLeadEmailComposer(){
     var box = ov.querySelector('#gl-lem-corr');
     if(!box || !window.supa || !d.email) return;
     box.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:6px 2px">Loading correspondence…</div>';
-    var _res = await window.glLoadEmailLog(d.email);
+    var _res = await window.glLoadEmailLog(d.email, { co: d.co });
     if(_res.error){ box.innerHTML = '<div style="font-size:11px;color:#ff8579;padding:6px 2px">Could not load correspondence.</div>'; return; }
     var rows = _res.rows;
 
@@ -7078,17 +7078,67 @@ function glOutreachBadge(email){
 window.glOutreachBadge = glOutreachBadge;
 window.glDedupeEmailRows = glDedupeEmailRows;
 
-async function glLoadEmailLog(email){
+// Free/consumer email providers — a lead's own address may be at one of these,
+// but we must NEVER treat the domain as "their company" or we'd cross-wire every
+// gmail lead's thread together.
+var GL_FREE_EMAIL_DOMAINS = {
+  'gmail.com':1,'googlemail.com':1,'yahoo.com':1,'ymail.com':1,'yahoo.co.uk':1,
+  'hotmail.com':1,'outlook.com':1,'live.com':1,'msn.com':1,'aol.com':1,
+  'icloud.com':1,'me.com':1,'mac.com':1,'proton.me':1,'protonmail.com':1,
+  'gmx.com':1,'zoho.com':1,'mail.com':1,'comcast.net':1,'verizon.net':1,'att.net':1,'sbcglobal.net':1
+};
+function glCleanDomain(d){
+  return String(d||'').toLowerCase().replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].split('?')[0].trim();
+}
+
+// Load the email thread for a lead/client. Matches the exact address AND anyone
+// at the same COMPANY: a client often starts on one address and later writes
+// from another at the same domain — matching only the exact address silently
+// dropped half the thread (and left the brief blind to it). We match the
+// company email domain (from the address and/or an optional website), plus a
+// distinctive token from the company name, but never a free provider.
+//   opts = { co: 'Company Name', domains: ['company.com', ...] }
+async function glLoadEmailLog(email, opts){
   var sb = window.supa;
   if(!sb || !email) return { rows: [], error: null };
-  var safe = String(email).replace(/%/g,'\\%').replace(/_/g,'\\_');
+  opts = opts || {};
+  var esc = function(s){ return String(s).replace(/%/g,'\\%').replace(/_/g,'\\_'); };
+  var e = String(email).trim().toLowerCase();
+  var conds = ['to_email.ilike.%' + esc(e) + '%', 'from_email.ilike.%' + esc(e) + '%'];
+
+  var domains = [];
+  var addDomain = function(d){
+    d = glCleanDomain(d);
+    if(d && d.indexOf('.') > 0 && !GL_FREE_EMAIL_DOMAINS[d] && domains.indexOf(d) < 0) domains.push(d);
+  };
+  addDomain(e.split('@')[1] || '');
+  (opts.domains || []).forEach(addDomain);
+  domains.forEach(function(d){
+    conds.push('to_email.ilike.%@' + esc(d) + '%');
+    conds.push('from_email.ilike.%@' + esc(d) + '%');
+  });
+
+  // Company-name token → match against the domain part (catches the case where
+  // the lead's on-file address is a personal gmail but they also write from the
+  // company domain). Conservative: needs a distinctive 6+ char token.
+  if(opts.co){
+    var tok = String(opts.co).toLowerCase().replace(/[^a-z0-9]/g,'');
+    ['llc','inc','corp','ltd','company','beverages','beverage','brands','brand','drinks','drink'].forEach(function(sfx){
+      if(tok.length > sfx.length + 3 && tok.slice(-sfx.length) === sfx) tok = tok.slice(0, -sfx.length);
+    });
+    if(tok.length >= 6){
+      conds.push('to_email.ilike.%@%' + esc(tok) + '%');
+      conds.push('from_email.ilike.%@%' + esc(tok) + '%');
+    }
+  }
+
   var r = await sb.from('email_log').select('*')
-    .or('to_email.ilike.%' + safe + '%,from_email.ilike.%' + safe + '%')
-    .order('created_at', { ascending: false }).limit(50);
+    .or(conds.join(','))
+    .order('created_at', { ascending: false }).limit(80);
   if(!r.error) return { rows: glDedupeEmailRows(r.data || []), error: null };
   console.warn('[GL] email_log OR query failed; retrying on to_email only', r.error);
   var r2 = await sb.from('email_log').select('*')
-    .ilike('to_email', '%' + safe + '%')
+    .ilike('to_email', '%' + esc(e) + '%')
     .order('created_at', { ascending: false }).limit(50);
   if(!r2.error) return { rows: glDedupeEmailRows(r2.data || []), error: null };
   console.error('[GL] email_log load failed', r2.error);
@@ -7105,7 +7155,7 @@ async function ddpLoadCorrespondence(d){
   }
   if(!window.supa){ box.innerHTML = ''; return; }
   box.innerHTML = '<div style="font-size:11px;color:var(--muted)">Loading correspondence…</div>';
-  var _res = await glLoadEmailLog(d.email);
+  var _res = await glLoadEmailLog(d.email, { co: d.co });
   if(_res.error){ box.innerHTML = '<div style="font-size:11px;color:#ff8579">Could not load correspondence.</div>'; return; }
   var rows = _res.rows;
 
@@ -11061,7 +11111,7 @@ async function cdeLoadCorrespondence(client){
   }
   if(!window.supa){ box.innerHTML = ''; return; }
   box.innerHTML = '<div style="font-size:11px;color:var(--muted)">Loading correspondence…</div>';
-  var _res = await glLoadEmailLog(client.email);
+  var _res = await glLoadEmailLog(client.email, { co: client.name });
   if(_res.error){ box.innerHTML = '<div style="font-size:11px;color:#ff8579">Could not load correspondence.</div>'; return; }
   var rows = _res.rows;
 

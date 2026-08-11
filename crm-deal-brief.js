@@ -44,9 +44,9 @@
   function key(kind,id){ return kind+':'+id; }
 
   // ---- data gathering -------------------------------------------------------
-  async function gatherEmails(email){
+  async function gatherEmails(email, co){
     if(!email || typeof window.glLoadEmailLog !== 'function') return [];
-    var res = await window.glLoadEmailLog(email);
+    var res = await window.glLoadEmailLog(email, { co: co });
     var rows = (res && res.rows) || [];
     return rows.map(function(r){
       return { dir: r.direction === 'inbound' ? 'IN' : 'OUT',
@@ -104,7 +104,7 @@
   async function summarize(ctx){
     var kind = ctx.kind, id = ctx.id;
     var brief = await loadBrief(kind,id);
-    var emails = await gatherEmails(ctx.email);
+    var emails = await gatherEmails(ctx.email, ctx.co);
     var notes  = await gatherNotes(kind,id);
     var openTodos = (await loadTodos(kind,id)).filter(function(t){ return !t.done; });
 
@@ -301,7 +301,7 @@
     // Count current emails/notes so paint() can detect "new since last summary".
     var emailCount = 0, noteCount = 0;
     try {
-      if(ctx.email && typeof window.glLoadEmailLog === 'function'){ var r = await window.glLoadEmailLog(ctx.email); emailCount = ((r&&r.rows)||[]).length; }
+      if(ctx.email && typeof window.glLoadEmailLog === 'function'){ var r = await window.glLoadEmailLog(ctx.email, { co: ctx.co }); emailCount = ((r&&r.rows)||[]).length; }
       var nr = await sb().from('meeting_notes').select('id',{count:'exact',head:true}).eq('subject_kind',ctx.kind).eq('subject_id',ctx.id);
       noteCount = (nr && nr.count) || 0;
     } catch(e){}
