@@ -1995,6 +1995,7 @@
     videoGroup('🚀 STAYING ON TOP OF LEADS') +
     videoCard('explainer-deal-brief.mp4', '🧠 Never Drop a Lead — Brief, Board &amp; Digest', 'How the AI Deal Brief, the 🔥 Needs Attention board, the morning WhatsApp/email digest, and ⏰ Bulk Nudge work together so no lead slips through the cracks.') +
     videoCard('explainer-deal-docs.mp4', '📎 Deal Documents &amp; Meeting Notes', 'Storing NDAs, Process Authority letters, formulas &amp; labels on a deal, how they carry over automatically when you convert to a client, and the meeting-notes card that feeds the brief.') +
+    videoCard('explainer-lead-automation.mp4', '🤖 Lead Automations — SLA, Follow-ups &amp; One-Tap Send', 'The safety net: the first-reply watchdog that pings you when a lead waits too long, AI-drafted follow-ups you send with one tap (from the desk or your phone), snooze/handled controls, returning-lead merging, and the auto-included booking link.') +
     videoGroup('⚙️ RUNNING THE BUSINESS') +
     videoCard('tutorial-dashboard.mp4', '📊 Dashboard — Your Business at a Glance', 'The home screen: the FDA audit-readiness scorecard, your key financials, a pipeline snapshot, and the live activity feed.') +
     videoCard('tutorial-formula-vault.mp4', '🧪 Formula Vault — Every Recipe, Versioned', 'Where product recipes live — name, version, and status — with version control so you can approve and clone without losing history.') +
@@ -2360,11 +2361,49 @@
       '<b>Plain-English terms</b> — <b>PA letter</b>: the Process Authority letter that clears a formula for production. <b>SKU</b>: one product/flavor variant. <b>Convert</b>: turning a pipeline lead into a full client record (the 🚀 button on the deal).'
     ]);
 
+  var SEC_LEAD_AUTOMATION =
+    '<div style="font-size:12.5px;color:#cfd9e6;line-height:1.65;margin-bottom:12px">The <b>Lead Automations</b> are the safety net: they work in the background so a lead cannot sit ignored. Five parts — a <b>first-reply watchdog</b>, <b>auto-drafted follow-ups</b> you send with one tap, <b>snooze / handled</b> controls, <b>duplicate-lead merging</b> on the website, and an <b>auto-included booking link</b> in your AI drafts. Nothing to schedule or remember; the system pokes <i>you</i>.</div>' +
+    watch('explainer-lead-automation.mp4') +
+    wf(620, 250,
+      box(0,0,620,250,'#0a1628','rgba(255,255,255,.05)') +
+      box(0,0,620,34,'#142238','rgba(255,255,255,.08)') +
+      txt(20,22,'PIPELINE',13,'#fff') + txt(600,22,'✍️ Follow-ups  3',11,'#00e5c0','end') +
+      // SLA badge on a card
+      box(16,46,286,92,'#0d2033','rgba(231,76,60,.35)') +
+      txt(28,64,'Bracket',12,'#fff') + txt(28,80,'bracket@bracketbev.com',9,'#9aa7bd') +
+      box(28,90,120,20,'#3a1414','rgba(231,76,60,.6)') + txt(36,104,'⚠️ awaiting reply',9,'#ff8579') +
+      txt(28,128,'$7,750',11,'#5fcf9e') +
+      // Follow-up queue card
+      box(318,46,286,180,'#0d2033','rgba(0,229,192,.25)') +
+      txt(330,64,'✍️ FOLLOW-UP READY',10,'#00e5c0') +
+      txt(330,84,'To: Keira\'s Coffee',10,'#eef4ff') + txt(596,84,'⏱ 5 days quiet',9,'#f5c842','end') +
+      txt(330,104,'Subject: Still thinking cold brew?',10,'#c7d2e0') +
+      box(330,116,262,54,'#0b1526','rgba(255,255,255,.08)') +
+      txt(340,134,'Hi Keira, just circling back on your cold',9,'#9fb0cc') +
+      txt(340,150,'brew project. Want to grab 20 min?',9,'#9fb0cc') +
+      txt(340,164,'goodliquidbevco.com/book...',9,'#00e5c0') +
+      box(330,182,80,26,'#00c4a7') + txt(370,199,'✓ Send',10,'#0d1420','middle') +
+      box(418,182,88,26,'#241a2a','rgba(196,164,248,.4)') + txt(462,199,'✕ Dismiss',10,'#c9a6ff','middle') +
+      tag(16,46,1) + tag(28,90,2) + tag(318,46,3) + tag(330,182,4)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin:8px 0 6px">Numbered callouts above:</div>' +
+    bullets([
+      '<b>(1) First-response SLA watchdog</b> — your website promises a reply within one business day, so the system holds you to it. Every new lead starts a clock; if you have not sent them a first reply within <b>24 business hours</b> (weekends do not count), you get a <b>⚠️ WhatsApp alert</b> — once per lead, so it never spams. The same lead also wears a <span style="color:#ff8579">⚠️ awaiting reply</span> badge on its pipeline card so you can spot it at a glance.',
+      '<b>(2) The badge</b> — <span style="color:#ff8579">⚠️ awaiting reply</span> means we have never replied and the business-day clock has run out. It disappears the moment you email them (or snooze / handle the lead).',
+      '<b>(3) Auto follow-up drafts</b> — when a lead you emailed goes quiet for <b>4+ days</b> (the ball is on them), the AI writes a short, friendly nudge tailored to their project and drops it in the <b>✍️ Follow-ups</b> queue (the button in the Pipeline header shows the count). You never chase from a blank page.',
+      '<b>(4) Send or dismiss in one tap</b> — read the draft, then <b>✓ Send</b> (it goes out as you, from your Gmail, and lands in the lead\'s correspondence thread) or <b>✕ Dismiss</b>. You also get a <b>✍️ WhatsApp</b> when drafts are ready, with a link that opens the same review list <b>on your phone</b> — approve and send without opening the CRM.',
+      '<b>💤 Snooze / ✓ Handled</b> — on any deal (or from the phone links), <b>Snooze 7 days</b> pauses the watchdog and follow-ups for a week; <b>Mark handled</b> tells the automations to leave that lead alone for good. Use them so the alerts stay meaningful.',
+      '<b>Returning-lead merging</b> — when someone who already has an open deal submits the website quote form again — even from a <b>different email at the same company</b> — their new request is appended to the existing deal instead of creating a duplicate. Your history stays in one place. (You still get the “new quote” ping.)',
+      '<b>Auto booking link in drafts</b> — whenever an AI reply (or a follow-up) proposes a call or tour, it now includes your <b>scheduling link</b> automatically, so the lead can pick a time in one click instead of trading “what works for you?” emails. That link runs through the tour-approval flow, so you still confirm the time.',
+      '<b>Plain-English terms</b> — <b>SLA</b>: the response-time promise you are holding yourself to (one business day). <b>Business hours</b>: elapsed time with weekends skipped. <b>Ball on them</b>: you replied last and are waiting. <b>Snooze</b>: mute automations for a week. <b>Handled</b>: mute them for good.'
+    ]);
+
   var HELP_HTML =
     section('help-overview',        '👋 OVERVIEW',                   SEC_OVERVIEW) +
     section('help-glossary',        '📖 GLOSSARY (PLAIN-ENGLISH TERMS)', SEC_GLOSSARY) +
     section('help-videos',          '🎬 VIDEO TUTORIALS',            SEC_VIDEO_TUTORIALS) +
     section('help-deal-brief',      '🧠 DEAL BRIEF & NEEDS ATTENTION', SEC_DEAL_BRIEF) +
+    section('help-lead-automation', '🤖 LEAD AUTOMATIONS (SLA & FOLLOW-UPS)', SEC_LEAD_AUTOMATION) +
     section('help-deal-docs',       '📎 DEAL DOCS & MEETING NOTES',  SEC_DEAL_DOCS) +
     section('help-daily-gmp',       '🧾 DAILY GMP (LOG + FAN-OUT)',  SEC_DAILY_GMP) +
     section('help-gmp-schedule',    '🗓️ GMP SCHEDULE (DUE / OVERDUE)', SEC_GMP_SCHEDULE) +
@@ -2427,7 +2466,7 @@
     ['help-overview','👋 Overview'],
     ['help-glossary','📖 Glossary'],
     ['help-videos','🎬 Video Tutorials'],
-    ['help-deal-brief','🧠 Deal Brief & Attention'],['help-deal-docs','📎 Deal Docs & Notes'],
+    ['help-deal-brief','🧠 Deal Brief & Attention'],['help-lead-automation','🤖 Lead Automations'],['help-deal-docs','📎 Deal Docs & Notes'],
     ['help-daily-gmp','🧾 Daily GMP'],['help-gmp-schedule','🗓️ GMP Schedule'],
     ['help-prp','🛡️ Prerequisite Programs'],
     ['help-trace-recall','🔗 Trace / Recall'],['help-training-gmp','🎓 Training'],
