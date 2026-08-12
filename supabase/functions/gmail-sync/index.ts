@@ -123,17 +123,24 @@ Deno.serve(async (req: Request): Promise<Response> => {
   try { body = await req.json(); } catch { /* all params optional */ }
   const days = Math.min(Math.max(Number(body.days) || 30, 1), 365);
   const max  = Math.min(Math.max(Number(body.max)  || 150, 1), 500);
-  const onlyEmail = body.email ? String(body.email).trim().toLowerCase() : '';
+  // A single email field can hold SEVERAL addresses (a lead stored as
+  // "rachel@housewata.com,hello@housewata.com"). Split on commas/semicolons so
+  // each is a real, matchable address — an un-split value matches nothing and,
+  // worse, yields a garbage domain ("housewata.com,hello") that never registers.
+  const splitAddrs = (v: unknown): string[] =>
+    String(v || '').toLowerCase().split(/[,;]/).map((s) => s.trim()).filter((s) => s.includes('@'));
+
+  // For an on-demand sync of one lead: the target addresses AND their company
+  // domains (non-free), so "sync this lead" pulls in mail from anyone else at
+  // the same company too — even a second address at the same domain.
+  const onlyEmails  = splitAddrs(body.email);
+  const isOnly      = onlyEmails.length > 0;
+  const onlyDomains = new Set(onlyEmails.map(companyDomain).filter(Boolean));
 
   const supa = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   );
-
-  // For an on-demand single-address sync, the company domain of that address
-  // (if it's not a free provider) — so "sync this lead" pulls in mail from
-  // anyone else at the same company too, not just the one address on file.
-  const onlyDomain = onlyEmail ? companyDomain(onlyEmail) : '';
 
   // ── 1) Known contacts: clients (primary + additional) and pipeline leads ──
   // Map address → client id so inbound rows can be linked to the client row.
@@ -144,15 +151,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // to/from a known company domain (never a free provider).
   const domainOwner = new Map<string, string | null>();
   const addContact = (email: unknown, clientId: string | null) => {
-    const e = String(email || '').trim().toLowerCase();
-    if (!e.includes('@')) return;
-    // In single-address mode we still want the whole COMPANY, so accept any
-    // address at the target domain here rather than only the exact address.
-    if (onlyEmail && e !== onlyEmail && !(onlyDomain && companyDomain(e) === onlyDomain)) return;
-    if (!contacts.has(e) || (clientId && !contacts.get(e))) contacts.set(e, clientId);
-    const dom = companyDomain(e);
-    if (dom && (!onlyEmail || dom === onlyDomain)) {
-      if (!domainOwner.has(dom) || (clientId && !domainOwner.get(dom))) domainOwner.set(dom, clientId);
+    for (const e of splitAddrs(email)) {
+      // In single-lead mode we still want the whole COMPANY, so accept the
+      // target addresses and anything at their domain.
+      if (isOnly && !onlyEmails.includes(e) && !onlyDomains.has(companyDomain(e))) continue;
+      if (!contacts.has(e) || (clientId && !contacts.get(e))) contacts.set(e, clientId);
+      const dom = companyDomain(e);
+      if (dom && (!isOnly || onlyDomains.has(dom))) {
+        if (!domainOwner.has(dom) || (clientId && !domainOwner.get(dom))) domainOwner.set(dom, clientId);
+      }
     }
   };
 
@@ -173,7 +180,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   if (!contacts.size) {
     return jsonResponse({ ok: true, scanned: 0, matched: 0, inserted: 0, skipped: 0, contacts: 0,
-      note: onlyEmail ? 'That address is not a known client or lead.' : 'No client or lead email addresses on file.' });
+      note: isOnly ? 'That address is not a known client or lead.' : 'No client or lead email addresses on file.' });
   }
 
   // ── 2) List candidate Gmail messages ──
@@ -184,19 +191,18 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const gFetch = (path: string) =>
     fetch(GMAIL_API + path, { headers: { Authorization: `Bearer ${accessToken}` } });
 
-  // For a single address let Gmail do the filtering (cheap + precise).
-  // For a full sync, scan recent mail and filter locally against `contacts`.
-  // In single-address mode, also search the whole company domain (Gmail's
-  // `from:domain.com` matches every sender at that domain) so a lead who wrote
-  // from a second address at the same company still gets pulled in.
-  const onlyClause = onlyEmail
-    ? (onlyDomain
-        ? `(from:${onlyEmail} OR to:${onlyEmail} OR from:${onlyDomain} OR to:${onlyDomain})`
-        : `(from:${onlyEmail} OR to:${onlyEmail})`)
-    : '';
-  const q = onlyEmail
-    ? `newer_than:${days}d -in:chats ${onlyClause}`
-    : `newer_than:${days}d -in:chats`;
+  // For a single lead let Gmail do the filtering (cheap + precise): search each
+  // of the lead's addresses AND each company domain (Gmail's `from:domain.com`
+  // matches every sender at that domain), so a lead who wrote from a second
+  // address at the same company still gets pulled in. For a full sync, scan
+  // recent mail and filter locally against `contacts` / `domainOwner`.
+  let q = `newer_than:${days}d -in:chats`;
+  if (isOnly) {
+    const terms: string[] = [];
+    for (const a of onlyEmails)    terms.push(`from:${a}`, `to:${a}`);
+    for (const d of onlyDomains)   terms.push(`from:${d}`, `to:${d}`);
+    if (terms.length) q += ` (${terms.join(' OR ')})`;
+  }
 
   const ids: string[] = [];
   let pageToken = '';
