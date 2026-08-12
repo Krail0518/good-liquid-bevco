@@ -1987,6 +1987,7 @@ select option, .fsel option {
           <button class="cbtn pri" onclick="cNav(&#39;newinv&#39;,document.querySelectorAll(&#39;.cni&#39;)[5])">+ New Invoice</button>
         </div>
         <div class="cmetrics" id="dash-metrics"></div>
+        <div id="dash-attention" style="display:none"></div>
         <div id="dash-compliance-alert"></div>
         <div class="dash-row">
           <div class="ccard">
@@ -3573,6 +3574,9 @@ function fmtMoneyShort(n){
 }
 
 function renderDash(){
+  // Morning brief, right on the home screen: the same ranked "who needs you"
+  // list as the 🔥 Needs Attention board and the WhatsApp digest, loaded on open.
+  if(typeof window.glRenderAttentionCard === 'function'){ try { window.glRenderAttentionCard('dash-attention'); } catch(e){} }
   const effective = invoices.map(i => ({ inv: i, eff: effectiveInvoiceStatus(i) }));
   const paid    = effective.filter(x => x.eff === 'paid'   ).reduce((a,x) => a + (Number(x.inv.amount)||0), 0);
   const pend    = effective.filter(x => x.eff === 'pending').reduce((a,x) => a + (Number(x.inv.amount)||0), 0);

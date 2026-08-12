@@ -69,11 +69,10 @@
     return null;
   }
 
-  window.glOpenAttentionBoard = async function glOpenAttentionBoard(){
-    var prior = document.getElementById('gl-attention-modal'); if(prior) prior.remove();
+  // Shared: rank every open deal into the attention buckets. Used by the full
+  // board and by the compact dashboard card, so both always agree.
+  async function buildItems(){
     var deals = window.deals || {};
-
-    // Fresh outreach signal (who's waiting) + briefs/to-dos for context.
     if(typeof window.glLoadOutreachIndex === 'function'){ try { await window.glLoadOutreachIndex(); } catch(_e){} }
     var IDX = window.GL_OUTREACH || {};
     var briefs = {}, todos = {};
@@ -85,7 +84,6 @@
         (td.data||[]).forEach(function(t){ (todos[t.subject_id] = todos[t.subject_id] || []).push(t); });
       } catch(e){ console.warn('[attention] load', e); }
     }
-
     var items = [];
     Object.keys(deals).forEach(function(stage){
       if(stage === 'Closed Won' || stage === 'Closed Lost') return;
@@ -97,9 +95,53 @@
       });
     });
     items.sort(function(a,b){ return b.c.score - a.c.score; });
-
     var counts = { 'your-move':0, overdue:0, cold:0, new:0 };
     items.forEach(function(x){ counts[x.c.cat]++; });
+    return { items:items, counts:counts };
+  }
+
+  // Compact "Needs attention today" card that auto-loads on the Dashboard, so
+  // the morning to-do list greets you at login without opening the board.
+  window.glRenderAttentionCard = async function glRenderAttentionCard(mount){
+    var host = typeof mount === 'string' ? document.getElementById(mount) : mount;
+    if(!host) return;
+    if(!sb()){ host.style.display = 'none'; return; }
+    host.style.display = '';
+    host.style.cssText = 'background:#111d31;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:15px 17px;margin-bottom:14px';
+    host.innerHTML = '<div style="font-size:12px;color:#9aa7bd">Loading your to-do list…</div>';
+    var built; try { built = await buildItems(); } catch(e){ host.style.display='none'; return; }
+    var items = built.items, counts = built.counts;
+    var chip = function(n,label,color){ return n ? '<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:'+color+'22;color:'+color+';border:1px solid '+color+'55;font-weight:700">'+n+' '+label+'</span>' : ''; };
+    var head = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
+      '<div style="font-weight:800;color:#eef4ff;font-size:14.5px">🔥 Needs attention today</div>' +
+      '<button onclick="if(window.glOpenAttentionBoard)window.glOpenAttentionBoard()" style="background:none;border:none;color:var(--teal);font-size:12px;font-weight:700;cursor:pointer">Open full board →</button>' +
+    '</div>';
+    if(!items.length){ host.innerHTML = head + '<div style="font-size:12.5px;color:#9aa7bd;padding:4px 0">🎉 You\'re all caught up, nobody is waiting on you right now.</div>'; return; }
+    var chips = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">' +
+      chip(counts['your-move'],'your move','#f5c842') + chip(counts.overdue,'overdue','#ff8579') +
+      chip(counts.cold,'cold','#7fc6f5') + chip(counts['new'],'new','#c4a4f8') + '</div>';
+    var rows = items.slice(0,6).map(function(x){ var d=x.d, c=x.c;
+      return '<div class="gl-atc-row" data-stage="'+esc(x.stage)+'" data-idx="'+x.idx+'" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.06);cursor:pointer">' +
+        '<span style="font-size:11px;font-weight:700;color:'+c.color+';white-space:nowrap;min-width:132px">'+esc(c.tag)+'</span>' +
+        '<span style="font-weight:650;color:#eef4ff;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(d.name||d.co||'(unnamed)')+'</span>' +
+        '<span style="margin-left:auto;color:var(--teal);font-size:11px;font-weight:700;white-space:nowrap">Open →</span>' +
+      '</div>';
+    }).join('');
+    var more = items.length > 6 ? '<div style="font-size:11.5px;color:#8493a8;margin-top:8px">…and '+(items.length-6)+' more on the board.</div>' : '';
+    host.innerHTML = head + chips + rows + more;
+    Array.prototype.forEach.call(host.querySelectorAll('.gl-atc-row'), function(el){
+      el.addEventListener('click', function(){
+        var s = el.getAttribute('data-stage'), i = parseInt(el.getAttribute('data-idx'),10);
+        if(typeof window.openDealDetail === 'function') window.openDealDetail(s, i);
+      });
+    });
+  };
+
+  window.glOpenAttentionBoard = async function glOpenAttentionBoard(){
+    var prior = document.getElementById('gl-attention-modal'); if(prior) prior.remove();
+
+    var _built = await buildItems();
+    var items = _built.items, counts = _built.counts;
 
     var ov = document.createElement('div');
     ov.id = 'gl-attention-modal';
