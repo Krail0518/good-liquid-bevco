@@ -20,3 +20,8 @@ verify_jwt = false
 # verified in the function body — same pattern as notify-deal.
 [functions.estimate-deal-value]
 verify_jwt = false
+
+# One-tap lead actions Mike opens from WhatsApp/email on his phone — bare
+# navigations with no JWT. The HMAC token in the link is the credential.
+[functions.lead-action]
+verify_jwt = false

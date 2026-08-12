@@ -43,6 +43,8 @@ import { vaultGet } from '../_shared/gmail-creds.ts';
 
 const MIKE_EMAILS = ['mike@goodliquid.com'];
 const EMOJI_MAP: Record<string, string> = {
+  lead_sla_overdue:   '⚠️',
+  followups_ready:    '✍️',
   tour_requested:     '📅',
   tour_booked:        '📅',
   new_deal:           '📋',
@@ -105,6 +107,31 @@ function buildMessage(event: string, data: Record<string, string>): { whatsapp: 
   const emoji = EMOJI_MAP[event] || '🔔';
   const co    = data.company || data.name || 'Unknown';
   const name  = data.name || '';
+
+  if (event === 'lead_sla_overdue') {
+    const n = data.count || '1';
+    const whatsapp = `${emoji} ${n} lead${n === '1' ? '' : 's'} still waiting on a FIRST reply (past 1 business day):\n${data.summary || ''}`;
+    const body = [
+      `${n} lead(s) have gone past the one-business-day first-reply mark with no response from us:`,
+      ``,
+      data.summary || '',
+      ``,
+      `Open the pipeline and get back to them before they go cold.`,
+    ].join('\n');
+    return { whatsapp, subject: `⚠️ ${n} lead(s) awaiting a first reply`, body };
+  }
+
+  if (event === 'followups_ready') {
+    const n = data.count || '1';
+    const link = data.review_url ? ` Review & send: ${data.review_url}` : '';
+    const whatsapp = `${emoji} ${n} follow-up${n === '1' ? '' : 's'} drafted and ready to send to quiet leads.${link}`;
+    const body = [
+      `${n} follow-up email(s) have been drafted for leads that went quiet.`,
+      ``,
+      data.review_url ? `Review and send them with one tap: ${data.review_url}` : `Open the CRM Follow-ups card to review and send.`,
+    ].join('\n');
+    return { whatsapp, subject: `✍️ ${n} follow-up(s) ready to send`, body };
+  }
 
   if (event === 'tour_requested') {
     const when     = data.date ? `${data.date} at ${data.time || ''}`.trim() : 'time TBD';

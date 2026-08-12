@@ -2398,6 +2398,7 @@ select option, .fsel option {
             <input id="gl-pipeline-search" type="text" placeholder="Search company or email…" oninput="glFilterPipeline(this.value)" style="padding:6px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#fff;font-size:12px;width:200px;outline:none" />
             <button class="cbtn" onclick="openBulkOutreach()" style="background:rgba(245,200,66,.08);border-color:rgba(245,200,66,.25);color:#d4a200">📤 Bulk Outreach</button>
             <button class="cbtn" onclick="glOpenAttentionBoard()" style="background:rgba(245,200,66,.14);border-color:rgba(245,200,66,.4);color:#f5c842">🔥 Needs Attention</button>
+            <button id="gl-followups-btn" class="cbtn" onclick="glOpenFollowups()" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)">✍️ Follow-ups</button>
             <button class="cbtn" onclick="glOpenBulkNudge()" style="background:rgba(196,164,248,.1);border-color:rgba(196,164,248,.3);color:#c4a4f8">⏰ Bulk Nudge</button>
             <button class="cbtn" onclick="openAddDealModal()" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)">+ Add Deal</button>
             <button id="gl-pipeline-quote-btn" class="cbtn" onclick="if(typeof glOpenQuoteBuilder==='function')glOpenQuoteBuilder(null,null)" style="background:rgba(26,111,255,.1);border-color:rgba(26,111,255,.35);color:#5a9fff">📋 Quote Builder</button>
@@ -4998,6 +4999,9 @@ async function loadSupabaseData(){
         leadSource:d.lead_source||'',
         outreachStatus:d.outreach_status||null,
         createdAt:d.created_at||null,
+        firstResponseAt:d.first_response_at||null,
+        handledAt:d.handled_at||null,
+        snoozedUntil:d.snoozed_until||null,
         stageEnteredAt:d.stage_entered_at||d.created_at||null
       });
     });
@@ -5652,8 +5656,9 @@ function renderKanban(){
             stagePill = `<span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;background:${badge}22;color:${badge};border:1px solid ${badge}55;white-space:nowrap">${daysInStage}d in stage</span>`;
           }
           const outreachPill = (typeof glOutreachBadge === 'function') ? glOutreachBadge(d.email) : '';
-          if(!stagePill && !outreachPill) return '';
-          return `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px">${stagePill}${outreachPill}</div>`;
+          const slaPill = (typeof glSlaBadge === 'function') ? glSlaBadge(d) : '';
+          if(!stagePill && !outreachPill && !slaPill) return '';
+          return `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px">${slaPill}${stagePill}${outreachPill}</div>`;
         })()}
         <div class="kc-prog"><div class="kc-pf" style="width:${d.prob}%;background:${sc[stage]}"></div></div>
         <div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap" onclick="event.stopPropagation()">
@@ -6703,6 +6708,10 @@ function openDealDetail(stage, idx){
       <button onclick="deleteDeal()" style="padding:10px 16px;background:rgba(231,76,60,.15);color:#e74c3c;border:1px solid rgba(231,76,60,.3);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">Delete</button>
     </div>
     <button onclick="glConvertLeadToOnboarding()" style="width:100%;margin-top:8px;padding:12px;background:linear-gradient(135deg,#5fcf9e,#00c4a7);color:#04231d;border:none;border-radius:8px;font-weight:800;font-size:13.5px;cursor:pointer">🚀 Convert to Client &amp; Onboard</button>
+    ${(d.id && !String(d.id).startsWith('tmp_')) ? `<div style="display:flex;gap:8px;margin-top:8px">
+      <button onclick="glSnoozeLead('${d.id}')" title="Pause follow-up drafts & reply alerts for 7 days" style="flex:1;padding:9px;background:rgba(143,179,255,.1);color:#8fb3ff;border:1px solid rgba(143,179,255,.3);border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer">💤 Snooze 7d${d.snoozedUntil && new Date(d.snoozedUntil)>new Date() ? ' ✓' : ''}</button>
+      <button onclick="glMarkLeadHandled('${d.id}')" title="Stop automations nagging about this lead" style="flex:1;padding:9px;background:rgba(95,207,158,.1);color:#5fcf9e;border:1px solid rgba(95,207,158,.3);border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer">✓ Handled${d.handledAt ? ' ✓' : ''}</button>
+    </div>` : ''}
     <div id="ddp-docs" style="margin-top:18px;border-top:1px solid rgba(255,255,255,.07);padding-top:16px"></div>
     <div id="ddp-notes" style="margin-top:18px;border-top:1px solid rgba(255,255,255,.07);padding-top:16px"></div>
     <div id="ddp-corr" style="margin-top:18px;border-top:1px solid rgba(255,255,255,.07);padding-top:16px"></div>`;
@@ -7121,6 +7130,70 @@ function glOutreachBadge(email){
   return pill('#6b87ad', '\u2709\uFE0F sent ' + ago);
 }
 window.glOutreachBadge = glOutreachBadge;
+
+// "Awaiting first reply" badge — the visual half of the SLA watchdog. Shows on a
+// lead we have not yet replied to once more than one business day has passed,
+// unless it's been snoozed or marked handled. Mirrors the server-side rule so
+// the board and the WhatsApp alert agree on who is overdue.
+function glBusinessHoursSince(iso){
+  if(!iso) return 0;
+  var start = new Date(iso).getTime(); if(!start) return 0;
+  var now = Date.now(); if(now <= start) return 0;
+  var hrs = 0, cur = new Date(start);
+  // Cap the walk so a very old lead doesn't loop forever; 30 business days is
+  // far past the 24-hour threshold we care about.
+  var guard = 0;
+  while(cur.getTime() < now && guard < 24*45){
+    var dow = cur.getUTCDay();
+    if(dow !== 0 && dow !== 6) hrs++;
+    cur.setUTCHours(cur.getUTCHours()+1);
+    guard++;
+  }
+  return hrs;
+}
+function glSlaBadge(d){
+  if(!d) return '';
+  if(d.handledAt) return '';
+  if(d.snoozedUntil && new Date(d.snoozedUntil).getTime() > Date.now()) return '';
+  if(d.firstResponseAt) return '';
+  // If our outreach index shows we've emailed them, treat as replied-to.
+  var e = d.email && (window.GL_OUTREACH || {})[String(d.email).split(/[,;]/)[0].trim().toLowerCase()];
+  if(e && e.lastOut) return '';
+  if(glBusinessHoursSince(d.createdAt) < 24) return '';
+  var c = '#e74c3c';
+  return '<span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:800;background:'+c+'22;color:'+c+';border:1px solid '+c+'66;white-space:nowrap">⚠️ awaiting reply</span>';
+}
+window.glSlaBadge = glSlaBadge;
+
+// Snooze / mark-handled: the desk equivalents of the one-tap phone links. Both
+// tell the lead-automations watchdog to stop nagging about this lead — snooze
+// for a week, handled indefinitely. .select() so an RLS-silent write is caught.
+async function glSnoozeLead(id){
+  if(!id || !window.supa) return;
+  var until = new Date(Date.now()+7*86400000).toISOString();
+  try {
+    var r = await window.supa.from('deals').update({snoozed_until:until}).eq('id',id).select('id');
+    if(r.error || !r.data || !r.data.length){ if(typeof addNotification==='function') addNotification('Snooze failed','Could not save — try again.','warning'); return; }
+    if(typeof addNotification==='function') addNotification('💤 Lead snoozed','No nudges for 7 days.','success');
+    var d = (deals[currentDealStage]||[])[currentDealIdx]; if(d) d.snoozedUntil = until;
+    if(typeof renderKanban==='function') renderKanban();
+    if(typeof openDealDetail==='function' && currentDealStage!=null) openDealDetail(currentDealStage,currentDealIdx);
+  } catch(e){}
+}
+async function glMarkLeadHandled(id){
+  if(!id || !window.supa) return;
+  var now = new Date().toISOString();
+  try {
+    var r = await window.supa.from('deals').update({handled_at:now}).eq('id',id).select('id');
+    if(r.error || !r.data || !r.data.length){ if(typeof addNotification==='function') addNotification('Update failed','Could not save — try again.','warning'); return; }
+    if(typeof addNotification==='function') addNotification('✓ Marked handled','Automations will leave it alone.','success');
+    var d = (deals[currentDealStage]||[])[currentDealIdx]; if(d) d.handledAt = now;
+    if(typeof renderKanban==='function') renderKanban();
+    if(typeof openDealDetail==='function' && currentDealStage!=null) openDealDetail(currentDealStage,currentDealIdx);
+  } catch(e){}
+}
+window.glSnoozeLead = glSnoozeLead;
+window.glMarkLeadHandled = glMarkLeadHandled;
 window.glDedupeEmailRows = glDedupeEmailRows;
 
 // Free/consumer email providers — a lead's own address may be at one of these,
@@ -7388,6 +7461,10 @@ document.getElementById('deal-detail-panel').addEventListener('click', function(
 /* AI calls now route through the `ai-proxy` Edge Function. The Anthropic
    API key lives in Supabase secrets only — never exposed to the browser. */
 const AI_MODEL = 'claude-haiku-4-5';
+// Self-serve scheduling link, offered by AI reply drafts when a call/tour is the
+// next step so the lead can pick a time without a back-and-forth. Update the
+// slug if the active booking page changes.
+const GL_BOOKING_URL = 'https://goodliquidbevco.com/book.html?u=mike-krail';
 
 function openAISettings(){
   const existing = document.getElementById('ai-settings-overlay');
@@ -7416,7 +7493,10 @@ const GL_AI_STYLE = '\n\nWriting style rules (follow strictly):\n' +
   'or parentheses instead.\n' +
   '- For number ranges write "2 to 6 weeks", not "2-6 weeks".\n' +
   '- Hyphens inside hyphenated words are fine (co-packing, small-batch, shelf-stable).\n' +
-  '- Write plainly, the way a person speaks. No filler and no marketing padding.';
+  '- Write plainly, the way a person speaks. No filler and no marketing padding.\n' +
+  '- ONLY when the email proposes a call, tour, or meeting as the next step, ' +
+  'include this scheduling link on its own line so they can pick a time: ' +
+  GL_BOOKING_URL + ' — do not include it otherwise.';
 
 // Models ignore style instructions often enough that the rule alone is not
 // enough, so the output is also cleaned deterministically. A dash between two
@@ -12178,6 +12258,7 @@ window.addEventListener('appinstalled', () => {
 <script src="/crm-meeting-notes.js"></script>
 <script src="/crm-deal-brief.js"></script>
 <script src="/crm-attention.js"></script>
+<script src="/crm-followups.js"></script>
 <script src="/crm-gmpsched.js"></script>
 <script src="/crm-trace.js"></script>
 <script src="/crm-training.js"></script>
