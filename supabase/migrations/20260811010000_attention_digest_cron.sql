@@ -31,10 +31,17 @@ select cron.schedule(
   'attention-digest',
   '0 12 * * 1-5',
   $cron$
+    -- The gateway enforces verify_jwt on this function, so the request MUST carry
+    -- a valid JWT in Authorization (the anon key) or it is rejected 401 BEFORE the
+    -- function runs — pg_cron still logs "succeeded" because the POST was sent, so
+    -- the failure is silent. The original version of this migration omitted the
+    -- Authorization header and the morning digest never actually sent for weeks.
+    -- The x-cron-secret authorizes the caller *inside* the function (isCronCall).
     select net.http_post(
       url := 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1/attention-digest',
       headers := jsonb_build_object(
         'Content-Type', 'application/json',
+        'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmamtlcW14d3V5aGJxeXVnY2dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNDI2MDksImV4cCI6MjA5MzkxODYwOX0.godgU_jeprCqSzqe0ji_ZA_hwvPF2s7BmzQyAB-c_xE',
         'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'gl_cron_secret')
       ),
       body := jsonb_build_object('source','pg_cron'),
