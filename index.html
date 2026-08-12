@@ -7148,15 +7148,23 @@ async function glLoadEmailLog(email, opts){
   if(!sb || !email) return { rows: [], error: null };
   opts = opts || {};
   var esc = function(s){ return String(s).replace(/%/g,'\\%').replace(/_/g,'\\_'); };
-  var e = String(email).trim().toLowerCase();
-  var conds = ['to_email.ilike.%' + esc(e) + '%', 'from_email.ilike.%' + esc(e) + '%'];
+  // A lead's email field can hold several addresses ("a@x.com,b@x.com"); split
+  // so each is matched on its own (and contributes its own company domain).
+  var addrs = String(email).toLowerCase().split(/[,;]/).map(function(s){ return s.trim(); })
+              .filter(function(s){ return s.indexOf('@') >= 0; });
+  if(!addrs.length) return { rows: [], error: null };
+  var conds = [];
+  addrs.forEach(function(a){
+    conds.push('to_email.ilike.%' + esc(a) + '%');
+    conds.push('from_email.ilike.%' + esc(a) + '%');
+  });
 
   var domains = [];
   var addDomain = function(d){
     d = glCleanDomain(d);
     if(d && d.indexOf('.') > 0 && !GL_FREE_EMAIL_DOMAINS[d] && domains.indexOf(d) < 0) domains.push(d);
   };
-  addDomain(e.split('@')[1] || '');
+  addrs.forEach(function(a){ addDomain(a.split('@')[1] || ''); });
   (opts.domains || []).forEach(addDomain);
   domains.forEach(function(d){
     conds.push('to_email.ilike.%@' + esc(d) + '%');
@@ -7183,7 +7191,7 @@ async function glLoadEmailLog(email, opts){
   if(!r.error) return { rows: glDedupeEmailRows(r.data || []), error: null };
   console.warn('[GL] email_log OR query failed; retrying on to_email only', r.error);
   var r2 = await sb.from('email_log').select('*')
-    .ilike('to_email', '%' + esc(e) + '%')
+    .ilike('to_email', '%' + esc(addrs[0]) + '%')
     .order('created_at', { ascending: false }).limit(50);
   if(!r2.error) return { rows: glDedupeEmailRows(r2.data || []), error: null };
   console.error('[GL] email_log load failed', r2.error);
