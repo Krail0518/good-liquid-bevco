@@ -197,19 +197,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const hostEmail  = hostProfile?.email || '';
 
   // Capability link Mike uses to approve/decline (unforgeable HMAC token).
-  // It opens the CRM admin area — /?booking=<id>&t=<token> — where the request
-  // is reviewed and confirmed IN the app, so the approval flows onto the admin
-  // schedule (and the host's Google Calendar) rather than a standalone page.
-  // The token still gates the action, so it's safe from Mike's phone; if he
-  // isn't logged in, the CRM logs him in and then opens the request. The Supabase
-  // booking-approve function still backs the actual state change (called by the
-  // CRM), and its own HTML page remains a working fallback for older links.
+  // This points at the SELF-CONTAINED booking-approve page (not the CRM app):
+  // it renders its own Approve/Decline page, needs no login, and works from any
+  // device including a phone. Clicking Approve there does everything server-side
+  // — books the slot, writes the admin General Calendar (cal_events) row, creates
+  // the event on the host's Google Calendar, and emails the customer. Keeping the
+  // whole flow server-side sidesteps the CRM's login/cache fragility entirely.
   const supaUrl    = Deno.env.get('SUPABASE_URL');
-  const siteUrl    = Deno.env.get('GL_SITE_URL') || 'https://goodliquidbevco.com';
   let reviewUrl = '';
   try {
     const token = await signBooking(booking.id);
-    reviewUrl = `${siteUrl}/?booking=${booking.id}&t=${token}`;
+    reviewUrl = `${supaUrl}/functions/v1/booking-approve?b=${booking.id}&t=${token}`;
   } catch (e) {
     console.error('[booking-confirm] could not sign review token:', e);
   }
