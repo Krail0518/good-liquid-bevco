@@ -10576,31 +10576,55 @@ async function submitBooking(){
   const slotMs=new Date(bkSelectedDate+'T'+bkSelectedTime+':00').getTime();
   if(slotMs<Date.now()+24*60*60*1000){alert('Tours require at least 24 hours advance notice. Please select a later date.');return;}
 
-  // Add to calendar
-  calEvents.push({id:'bk'+Date.now(),type:'general',title:'Tour: '+name,date:bkSelectedDate,time:bkSelectedTime,notes:`Visitor: ${name} (${email})\n${notes}`,remind:'1d'});
-  saveCalEvents();
+  // Route through the SAME approval flow as book.html: booking-confirm creates a
+  // PENDING request, emails the visitor a "request received" note, and emails
+  // Mike the in-app Approve/Decline link. NOTHING is auto-added and nothing is
+  // confirmed until Mike approves it in the admin area — that approval is what
+  // writes the schedule row AND the Google Calendar event. (Previously this
+  // widget wrote a `confirmed` booking + calendar row directly, bypassing the
+  // whole approval gate; that's the bug this replaces.)
+  const bkBtn = document.querySelector('#booking-overlay button[onclick="submitBooking()"]');
+  const bkRestore = function(){ if(bkBtn){ bkBtn.disabled=false; bkBtn.textContent='Confirm Booking →'; } };
+  if(bkBtn){ bkBtn.disabled=true; bkBtn.textContent='Sending request…'; }
 
-  // Also persist to Supabase bookings table so it survives a page reload
+  // Resolve the default scheduling page (the same row book.html?u=mike-krail uses).
+  let bkPageId = null;
   try {
-    await supa.from('bookings').insert([{
-      booker_name: name, booker_email: email,
-      start_at: new Date(bkSelectedDate+'T'+bkSelectedTime+':00').toISOString(),
-      status: 'confirmed', notes
-    }]);
-    supa.from('cal_events').insert([{event_type:'general',title:'Tour: '+(name||''),event_date:bkSelectedDate,event_time:bkSelectedTime||'',notes:'Booked via public form'}]).then(function(){});
-  } catch(e){ console.warn('bookings insert:', e); }
+    const { data: bp } = await supa.from('booking_pages').select('id').eq('slug','mike-krail').eq('is_active',true).maybeSingle();
+    if(bp && bp.id) bkPageId = bp.id;
+    if(!bkPageId){
+      const { data: anyPage } = await supa.from('booking_pages').select('id').eq('is_active',true).limit(1);
+      if(anyPage && anyPage[0]) bkPageId = anyPage[0].id;
+    }
+  } catch(e){ console.warn('booking_pages lookup:', e); }
+  if(!bkPageId){ alert('Booking is temporarily unavailable. Please email Mike@GoodLiquid.com and we’ll get you scheduled.'); bkRestore(); return; }
 
-  // Send confirmation emails
-  await sendMailgunEmail('mike@goodliquid.com','[Booking] Tour Request: '+name,
-    `New tour request!\n\nName: ${name}\nEmail: ${email}\nDate: ${bkSelectedDate} at ${bkSelectedTime}\nNotes: ${notes||'None'}\n\nAdded to your calendar.`);
-  await sendMailgunEmail(email,'Your Good Liquid Bev Co Tour Confirmation',
-    `Hi ${name},\n\nYour tour request has been submitted!\n\nDate: ${bkSelectedDate} at ${bkSelectedTime}\nLocation: 2011 51st Ave E, Unit 100, Palmetto, FL 34221\n\nMike will confirm within 1 business day.\n\nBest,\nGood Liquid Bev Co\nMike@GoodLiquid.com | (803) 493-5065`);
+  try {
+    const r = await fetch(SUPA_URL + '/functions/v1/booking-confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY },
+      body: JSON.stringify({
+        page_id:      bkPageId,
+        booker_name:  name,
+        booker_email: email,
+        notes:        notes || null,
+        slot_date:    bkSelectedDate,
+        slot_time:    bkSelectedTime,
+      }),
+    });
+    const data = await r.json().catch(function(){ return {}; });
+    if(!r.ok || !data.ok){
+      alert(data.error || 'Something went wrong submitting your request. Please try again.');
+      bkRestore();
+      return;
+    }
+  } catch(e){
+    alert('Network error submitting your request. Please try again in a moment.');
+    bkRestore();
+    return;
+  }
 
-  // No direct alert here: the `bookings` insert above fires the
-  // on_booking_insert DB trigger, which sends the WhatsApp/email server-side.
-  // This also lets the public booking page work without any secret in it.
-
-  addNotification('📅 Tour booked: '+name,bkSelectedDate+' at '+bkSelectedTime,'success');
+  addNotification('📅 Tour requested: '+name,bkSelectedDate+' at '+bkSelectedTime,'info');
   document.getElementById('bk-success').style.display='block';
   setTimeout(()=>closeBooking(),3000);
 }
