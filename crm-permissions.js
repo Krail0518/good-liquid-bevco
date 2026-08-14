@@ -368,7 +368,7 @@
             '<span style="font-size:10px;color:var(--muted)">Overwrites all of this user\'s current overrides.</span>' +
           '</div>';
 
-      var roleOpts = ['admin','sales','viewer'].map(function(r){
+      var roleOpts = ['admin','sales','warehouse','viewer'].map(function(r){
         return '<option value="' + r + '"' + (u.role===r?' selected':'') + '>' + r.charAt(0).toUpperCase() + r.slice(1) + '</option>';
       }).join('');
       var isSelf = u.id === perms.userId;
@@ -798,6 +798,24 @@
         'action.invoice.send':      true,
         'action.export.csv':        true,
         'action.customer.invite':   true
+      }
+    },
+    warehouse: {
+      label: 'Warehouse',
+      description: 'Floor / QA staff: Dashboard, Production Runs & Schedule, Inventory, CIP / Sanitation, Defects, Yield, Samples, Tasks, Announcements. No clients, pipeline, invoices, referrals, or admin pages.',
+      pageDefaults: false,
+      actionDefaults: false,
+      overrides: {
+        'page.dashboard':       true,
+        'page.production-runs': true,
+        'page.production-cal':  true,
+        'page.inventory':       true,
+        'page.cip':             true,
+        'page.defects':         true,
+        'page.yield':           true,
+        'page.samples':         true,
+        'page.tasks':           true,
+        'page.announcements':   true
       }
     },
     viewer: {
