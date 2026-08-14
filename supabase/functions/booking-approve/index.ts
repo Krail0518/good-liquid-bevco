@@ -57,7 +57,14 @@ function page(title: string, inner: string, status = 200): Response {
   a{color:#00e5c0}
   p{line-height:1.65;color:#9aa7bd;font-size:14px}
 </style></head><body><div class="card">${inner}</div></body></html>`;
-  return new Response(html, { status, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  // Build the header as a real Headers instance: a plain-object header can be
+  // dropped by the edge runtime, and then the browser renders the HTML as plain
+  // text (raw markup + mojibake) instead of a page. TextEncoder → the body is
+  // unambiguously UTF-8 bytes with a matching charset.
+  const headers = new Headers();
+  headers.set('Content-Type', 'text/html; charset=utf-8');
+  headers.set('Cache-Control', 'no-store');
+  return new Response(new TextEncoder().encode(html), { status, headers });
 }
 
 interface Booking {

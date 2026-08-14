@@ -47,7 +47,10 @@ function page(title: string, inner: string, status = 200): Response {
  .ok{color:#5fcf9e}.warn{color:#f5c842}.bad{color:#e74646}
  p{line-height:1.6;color:#9aa7bd;font-size:14px} a{color:#00e5c0}
 </style></head><body><div class="wrap">${inner}</div></body></html>`;
-  return new Response(html, { status, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  const headers = new Headers();
+  headers.set('Content-Type', 'text/html; charset=utf-8');
+  headers.set('Cache-Control', 'no-store');
+  return new Response(new TextEncoder().encode(html), { status, headers });
 }
 
 async function sendViaGmail(to: string, subject: string, text: string): Promise<boolean> {
