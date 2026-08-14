@@ -204,10 +204,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // the event on the host's Google Calendar, and emails the customer. Keeping the
   // whole flow server-side sidesteps the CRM's login/cache fragility entirely.
   const supaUrl    = Deno.env.get('SUPABASE_URL');
+  const siteUrl    = Deno.env.get('GL_SITE_URL') || 'https://goodliquidbevco.com';
   let reviewUrl = '';
   try {
     const token = await signBooking(booking.id);
-    reviewUrl = `${supaUrl}/functions/v1/booking-approve?b=${booking.id}&t=${token}`;
+    reviewUrl = `${siteUrl}/approve.html?b=${booking.id}&t=${token}`;
   } catch (e) {
     console.error('[booking-confirm] could not sign review token:', e);
   }
