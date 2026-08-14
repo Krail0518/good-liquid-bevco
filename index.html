@@ -10488,11 +10488,44 @@ async function sendChatMsg(){
 ═══════════════════════════════════════════ */
 let bkCurrentDate=new Date();
 let bkSelectedDate=null, bkSelectedTime=null;
-const BK_TIMES=['9:00 AM','10:00 AM','11:00 AM','1:00 PM','2:00 PM','3:00 PM'];
+// Slot VALUES are 24-hour "HH:MM" (the format booking-confirm requires); the
+// buttons DISPLAY them as 12-hour. They're rebuilt from the booking page's real
+// window in openBooking so no offered slot can be rejected as out-of-window.
+let BK_TIMES=['10:00','11:00','12:00','13:00'];
+let bkPageCfg=null;
 
-function openBooking(){
+function bk12(v){
+  var p=String(v||'').split(':'); var h=+p[0], m=+p[1]||0;
+  var ap=h<12?'AM':'PM', hh=h%12||12;
+  return hh+':'+String(m).padStart(2,'0')+' '+ap;
+}
+function bkBuildTimes(cfg){
+  var sp=String((cfg&&cfg.start_time)||'10:00').split(':');
+  var ep=String((cfg&&cfg.end_time)||'14:00').split(':');
+  var startMin=(+sp[0])*60+(+sp[1]||0), endMin=(+ep[0])*60+(+ep[1]||0);
+  var dur=Number(cfg&&cfg.duration)||30, step=Math.max(dur,60), out=[];
+  for(var mm=startMin; mm+dur<=endMin; mm+=step){
+    out.push(String(Math.floor(mm/60)).padStart(2,'0')+':'+String(mm%60).padStart(2,'0'));
+  }
+  return out.length?out:['10:00','11:00','12:00','13:00'];
+}
+
+async function openBooking(){
   document.getElementById('booking-overlay').classList.add('show');
   document.getElementById('bk-success').style.display='none';
+  // Load the scheduling page config (same row book.html?u=mike-krail uses) so
+  // the offered times match the real availability window.
+  try {
+    if(!bkPageCfg && window.supa){
+      const { data: bp } = await supa.from('booking_pages').select('id,start_time,end_time,duration').eq('slug','mike-krail').eq('is_active',true).maybeSingle();
+      bkPageCfg = bp || null;
+      if(!bkPageCfg){
+        const { data: anyPage } = await supa.from('booking_pages').select('id,start_time,end_time,duration').eq('is_active',true).limit(1);
+        if(anyPage && anyPage[0]) bkPageCfg = anyPage[0];
+      }
+    }
+    if(bkPageCfg) BK_TIMES = bkBuildTimes(bkPageCfg);
+  } catch(e){ console.warn('booking config load:', e); }
   renderBkCal();
   renderBkTimes();
 }
@@ -10531,7 +10564,7 @@ function selectBkDate(date){
 
 function renderBkTimes(){
   document.getElementById('bk-time-slots').innerHTML=BK_TIMES.map(t=>`
-    <div class="time-slot ${bkSelectedTime===t?'selected':''}" onclick="selectBkTime('${t}')">${t}</div>`).join('');
+    <div class="time-slot ${bkSelectedTime===t?'selected':''}" onclick="selectBkTime('${t}')">${bk12(t)}</div>`).join('');
 }
 
 function selectBkTime(time){ bkSelectedTime=time; renderBkTimes(); updateBkInfo(); }
@@ -10540,7 +10573,7 @@ function updateBkInfo(){
   const el=document.getElementById('bk-selected-info');
   if(bkSelectedDate&&bkSelectedTime){
     el.style.display='block';
-    el.textContent='📅 '+new Date(bkSelectedDate+'T12:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})+' at '+bkSelectedTime;
+    el.textContent='📅 '+new Date(bkSelectedDate+'T12:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})+' at '+bk12(bkSelectedTime);
   }
 }
 
@@ -10567,11 +10600,6 @@ async function submitBooking(){
   const dow=new Date(bkSelectedDate+'T12:00:00Z').getUTCDay();
   if(dow===0||dow===6){alert('Tours are available Monday–Friday only.');return;}
 
-  // Validate: 10am–2pm only
-  const [bkH,bkM]=bkSelectedTime.split(':').map(Number);
-  const bkMin=bkH*60+bkM;
-  if(bkMin<600||bkMin>=840){alert('Tours run between 10:00 AM and 2:00 PM.');return;}
-
   // Validate: 24-hour advance notice
   const slotMs=new Date(bkSelectedDate+'T'+bkSelectedTime+':00').getTime();
   if(slotMs<Date.now()+24*60*60*1000){alert('Tours require at least 24 hours advance notice. Please select a later date.');return;}
@@ -10587,16 +10615,19 @@ async function submitBooking(){
   const bkRestore = function(){ if(bkBtn){ bkBtn.disabled=false; bkBtn.textContent='Confirm Booking →'; } };
   if(bkBtn){ bkBtn.disabled=true; bkBtn.textContent='Sending request…'; }
 
-  // Resolve the default scheduling page (the same row book.html?u=mike-krail uses).
-  let bkPageId = null;
-  try {
-    const { data: bp } = await supa.from('booking_pages').select('id').eq('slug','mike-krail').eq('is_active',true).maybeSingle();
-    if(bp && bp.id) bkPageId = bp.id;
-    if(!bkPageId){
-      const { data: anyPage } = await supa.from('booking_pages').select('id').eq('is_active',true).limit(1);
-      if(anyPage && anyPage[0]) bkPageId = anyPage[0].id;
-    }
-  } catch(e){ console.warn('booking_pages lookup:', e); }
+  // Resolve the default scheduling page (loaded when the widget opened; re-fetch
+  // as a fallback). Same row book.html?u=mike-krail uses.
+  let bkPageId = (bkPageCfg && bkPageCfg.id) || null;
+  if(!bkPageId){
+    try {
+      const { data: bp } = await supa.from('booking_pages').select('id').eq('slug','mike-krail').eq('is_active',true).maybeSingle();
+      if(bp && bp.id) bkPageId = bp.id;
+      if(!bkPageId){
+        const { data: anyPage } = await supa.from('booking_pages').select('id').eq('is_active',true).limit(1);
+        if(anyPage && anyPage[0]) bkPageId = anyPage[0].id;
+      }
+    } catch(e){ console.warn('booking_pages lookup:', e); }
+  }
   if(!bkPageId){ alert('Booking is temporarily unavailable. Please email Mike@GoodLiquid.com and we’ll get you scheduled.'); bkRestore(); return; }
 
   try {
