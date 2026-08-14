@@ -25,6 +25,8 @@ import {
   fmtLocalDate, fmtLocalTime, tzLabel, buildICS, googleCalURL, sendMail,
 } from '../_shared/booking-email.ts';
 import { verifyBooking } from '../_shared/booking-token.ts';
+import { createCalendarEvent } from '../_shared/google-calendar.ts';
+import { jsonResponse, handlePreflight } from '../_shared/cors.ts';
 
 const esc = (s: unknown) =>
   String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -74,24 +76,38 @@ interface Booking {
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
+  // The CRM admin area calls this cross-origin (goodliquidbevco.com → supabase)
+  // as a JSON fetch, so answer the browser preflight.
+  const pre = handlePreflight(req);
+  if (pre) return pre;
+
   const url = new URL(req.url);
 
   // Params come from the query string on GET, and the form body on POST.
   let b = url.searchParams.get('b') || '';
   let t = url.searchParams.get('t') || '';
   let action = url.searchParams.get('action') || '';
+  let fmt = url.searchParams.get('format') || '';
   if (req.method === 'POST') {
     try {
       const form = await req.formData();
       b = String(form.get('b') || b);
       t = String(form.get('t') || t);
       action = String(form.get('action') || action);
+      fmt = String(form.get('format') || fmt);
     } catch { /* keep query params */ }
   }
 
-  if (!b || !t) return page('Invalid link', `<div class="big">🔗</div><h1>Link incomplete</h1><p>This approval link is missing information. Please open it directly from your WhatsApp or email.</p>`, 400);
+  // Two audiences share this endpoint: the CRM admin card (wants JSON) and a
+  // bare browser navigation from an old email link (wants the branded page).
+  const wantsJson = fmt === 'json' || (req.headers.get('accept') || '').includes('application/json');
+  const reply = (
+    status: number, title: string, inner: string, json: Record<string, unknown>,
+  ): Response => wantsJson ? jsonResponse(json, status) : page(title, inner, status);
+
+  if (!b || !t) return reply(400, 'Invalid link', `<div class="big">🔗</div><h1>Link incomplete</h1><p>This approval link is missing information. Please open it directly from your WhatsApp or email.</p>`, { ok: false, error: 'link_incomplete', message: 'This approval link is missing information.' });
   if (!(await verifyBooking(b, t))) {
-    return page('Invalid link', `<div class="big">🚫</div><h1 class="bad">Link not valid</h1><p>This approval link couldn't be verified. If you copied it, make sure you got the whole thing — or just reply to the request email.</p>`, 403);
+    return reply(403, 'Invalid link', `<div class="big">🚫</div><h1 class="bad">Link not valid</h1><p>This approval link couldn't be verified. If you copied it, make sure you got the whole thing — or just reply to the request email.</p>`, { ok: false, error: 'invalid_token', message: "This approval link couldn't be verified." });
   }
 
   const supa = createClient(
@@ -101,7 +117,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const { data: booking } = await supa
     .from('bookings').select('*').eq('id', b).maybeSingle() as { data: Booking | null };
-  if (!booking) return page('Not found', `<div class="big">🔍</div><h1>Request not found</h1><p>We couldn't find this tour request. It may have been removed.</p>`, 404);
+  if (!booking) return reply(404, 'Not found', `<div class="big">🔍</div><h1>Request not found</h1><p>We couldn't find this tour request. It may have been removed.</p>`, { ok: false, error: 'not_found', message: "We couldn't find this tour request." });
 
   const { data: pg } = await supa
     .from('booking_pages').select('*').eq('id', booking.page_id).maybeSingle() as { data: any };
@@ -122,6 +138,18 @@ Deno.serve(async (req: Request): Promise<Response> => {
       ${booking.notes ? `<div class="row"><span class="lbl">Notes</span><span class="val" style="font-weight:400;color:#c8d8f0">${esc(booking.notes)}</span></div>` : ''}
     </div>`;
 
+  // Compact machine-readable view of the request for the CRM admin card.
+  const bookingInfo = {
+    id: booking.id,
+    name: booking.booker_name,
+    company: booking.booker_company,
+    email: booking.booker_email,
+    date: dateLabel,
+    time: timeLabel,
+    tz: tzLbl,
+    notes: booking.notes,
+  };
+
   // Already decided — show current state (idempotent, safe to re-open the link).
   if (booking.status !== 'pending') {
     const map: Record<string, string> = {
@@ -129,11 +157,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
       declined:  `<div class="big">✖️</div><h1 class="warn">Already declined</h1><p>This request was declined. ${esc(booking.booker_name.split(' ')[0])} was let know the time didn't work.</p>`,
       cancelled: `<div class="big">🚫</div><h1 class="warn">Cancelled</h1><p>This booking was cancelled.</p>`,
     };
-    return page('Tour request', (map[booking.status] || `<div class="big">ℹ️</div><h1>Status: ${esc(booking.status)}</h1>`) + detailRows);
+    return reply(200, 'Tour request',
+      (map[booking.status] || `<div class="big">ℹ️</div><h1>Status: ${esc(booking.status)}</h1>`) + detailRows,
+      { ok: true, already: true, status: booking.status, booking: bookingInfo });
   }
 
   // ── GET → show the review page (state changes only on the POST below) ────
   if (req.method !== 'POST') {
+    // The CRM admin card fetches details as JSON and renders its own review UI.
+    if (wantsJson) {
+      return jsonResponse({ ok: true, status: 'pending', action: action || null, booking: bookingInfo });
+    }
     const confirmOnly = action === 'approve' || action === 'decline';
     const hidden = `<input type="hidden" name="b" value="${esc(b)}"><input type="hidden" name="t" value="${esc(t)}">`;
     let buttons: string;
@@ -165,7 +199,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .eq('page_id', booking.page_id).eq('status', 'confirmed').neq('id', booking.id)
       .lt('start_at', booking.end_at).gt('end_at', booking.start_at);
     if (clash && clash.length > 0) {
-      return page('Slot taken', `<div class="big">⛔</div><h1 class="bad">That slot is already booked</h1><p>Another tour was confirmed for this time, so this one can't be approved. Reply to ${esc(booking.booker_email)} to offer a new time; then you can decline this request.</p>${detailRows}`, 409);
+      return reply(409, 'Slot taken', `<div class="big">⛔</div><h1 class="bad">That slot is already booked</h1><p>Another tour was confirmed for this time, so this one can't be approved. Reply to ${esc(booking.booker_email)} to offer a new time; then you can decline this request.</p>${detailRows}`, { ok: false, error: 'slot_taken', message: 'Another tour was confirmed for this time, so this one can’t be approved.' });
     }
 
     // Create the calendar event now that it's real.
@@ -195,7 +229,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .select('id');
     if (upErr || !updated || updated.length === 0) {
       // Someone approved/declined it a moment ago — treat as already handled.
-      return page('Already handled', `<div class="big">↩️</div><h1 class="warn">Nothing to do</h1><p>This request was just updated elsewhere. Re-open the link to see its current state.</p>`, 409);
+      return reply(409, 'Already handled', `<div class="big">↩️</div><h1 class="warn">Nothing to do</h1><p>This request was just updated elsewhere. Re-open the link to see its current state.</p>`, { ok: false, error: 'already_handled', message: 'This request was just updated elsewhere.' });
     }
 
     // Host info for the invite organizer.
@@ -251,7 +285,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
       text: bookerText, html: bookerHtml, icsContent,
     });
 
-    return page('Approved', `<div class="big">✅</div><h1 class="ok">Tour approved</h1><p>${esc(booking.booker_name.split(' ')[0])} just got their confirmation and calendar invite, and the slot is booked on your calendar.</p>${detailRows}`);
+    // Drop the confirmed tour onto the host's own Google Calendar (the mailbox
+    // the CRM is connected to — Mike@GoodLiquid.com). Best-effort: a Google
+    // failure (e.g. the calendar scope not yet granted) never blocks the
+    // approval — the admin schedule row + booker email already went out.
+    const gcalId = await createCalendarEvent({
+      summary,
+      description: icsDesc + `\nContact: ${booking.booker_email}`,
+      startISO: booking.start_at,
+      endISO: booking.end_at,
+      timeZone: tz,
+    });
+    if (gcalId) console.log('[booking-approve] google-calendar event created', gcalId);
+    else console.warn('[booking-approve] google-calendar event NOT created (reconnect Gmail to grant the calendar scope?)');
+
+    return reply(200, 'Approved', `<div class="big">✅</div><h1 class="ok">Tour approved</h1><p>${esc(booking.booker_name.split(' ')[0])} just got their confirmation and calendar invite, and the slot is booked on your calendar.</p>${detailRows}`, { ok: true, status: 'confirmed', gcal: !!gcalId, booking: bookingInfo, message: `${booking.booker_name.split(' ')[0]} got their confirmation and calendar invite.` });
   }
 
   if (action === 'decline') {
@@ -259,7 +307,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .from('bookings').update({ status: 'declined' })
       .eq('id', booking.id).eq('status', 'pending').select('id');
     if (upErr || !updated || updated.length === 0) {
-      return page('Already handled', `<div class="big">↩️</div><h1 class="warn">Nothing to do</h1><p>This request was just updated elsewhere. Re-open the link to see its current state.</p>`, 409);
+      return reply(409, 'Already handled', `<div class="big">↩️</div><h1 class="warn">Nothing to do</h1><p>This request was just updated elsewhere. Re-open the link to see its current state.</p>`, { ok: false, error: 'already_handled', message: 'This request was just updated elsewhere.' });
     }
 
     const firstName = booking.booker_name.split(' ')[0];
@@ -287,8 +335,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
       text: declineText, html: declineHtml,
     });
 
-    return page('Declined', `<div class="big">✖️</div><h1 class="warn">Request declined</h1><p>${esc(firstName)} was let know this time didn’t work and invited to suggest another. The slot is free again.</p>${detailRows}`);
+    return reply(200, 'Declined', `<div class="big">✖️</div><h1 class="warn">Request declined</h1><p>${esc(firstName)} was let know this time didn’t work and invited to suggest another. The slot is free again.</p>${detailRows}`, { ok: true, status: 'declined', booking: bookingInfo, message: `${firstName} was let know this time didn’t work and invited to suggest another.` });
   }
 
-  return page('Unknown action', `<div class="big">❓</div><h1>Unknown action</h1><p>Please use the Approve or Decline button.</p>`, 400);
+  return reply(400, 'Unknown action', `<div class="big">❓</div><h1>Unknown action</h1><p>Please use the Approve or Decline button.</p>`, { ok: false, error: 'unknown_action', message: 'Please use Approve or Decline.' });
 });

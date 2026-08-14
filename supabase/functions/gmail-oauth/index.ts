@@ -31,9 +31,13 @@ import { friendlyOAuthError } from '../_shared/oauth-errors.mjs';
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const AUTH_URL  = 'https://accounts.google.com/o/oauth2/v2/auth';
-// Send + read: gmail-send needs the first, gmail-sync the second. Requested
-// together so one consent covers both — a send-only token made sync 403.
-const SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly';
+// Send + read + calendar: gmail-send needs send, gmail-sync needs readonly, and
+// booking-approve needs calendar.events to drop a confirmed tour onto the host's
+// Google Calendar. All requested together so one consent covers everything — a
+// token missing a scope 403s the feature that needs it (a send-only token once
+// made sync 403). Adding a scope means the existing grant must be re-consented:
+// click "Connect Gmail" again once, or Google keeps issuing the old scope set.
+const SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.events';
 
 async function clientPair(): Promise<{ id: string; secret: string } | null> {
   const [vId, vSec] = await Promise.all([
