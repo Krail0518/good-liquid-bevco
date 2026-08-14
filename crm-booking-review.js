@@ -174,32 +174,69 @@
     }
   }
 
-  function boot() {
+  function stripParams() {
+    try {
+      var p = new URLSearchParams(location.search);
+      p.delete('booking'); p.delete('t'); p.delete('action');
+      var qs = p.toString();
+      history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
+    } catch (e) { /* ignore */ }
+  }
+
+  // Is a Supabase session present? getSession reads the persisted session, so
+  // it's true whenever the browser is signed in — even before the CRM's own
+  // login flow (loginUser) has run on this page load.
+  async function hasSession() {
+    try {
+      if (window.supa && supa.auth && typeof supa.auth.getSession === 'function') {
+        var s = await supa.auth.getSession();
+        return !!(s && s.data && s.data.session);
+      }
+    } catch (e) { /* ignore */ }
+    return false;
+  }
+
+  var _bkBooted = false;
+  // The approval link (/?booking=<id>&t=<token>) opens the public site. This
+  // runs on load AND after any login, so the review card appears whether or not
+  // the visitor was already signed in:
+  //   • already signed in → open the card immediately;
+  //   • not signed in yet → pop the CRM login (openAdmin); once they sign in,
+  //     the login hook re-runs this and the card opens. Params are left in the
+  //     URL until the card actually opens, so they survive the login round-trip.
+  async function boot() {
+    if (_bkBooted) return;
     var bookingId, token;
     try {
       var p = new URLSearchParams(location.search);
       bookingId = p.get('booking');
       token = p.get('t');
-      if (!bookingId || !token) return;
-      // Strip the params so a refresh doesn't re-open the card and the token
-      // isn't left sitting in the address bar / history.
-      try {
-        p.delete('booking'); p.delete('t'); p.delete('action');
-        var qs = p.toString();
-        history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
-      } catch (e) { /* ignore */ }
     } catch (e) { return; }
+    if (!bookingId || !token) return;
+
+    if (!(await hasSession())) {
+      // Not authenticated — surface the login box. Don't strip params yet.
+      if (typeof window.openAdmin === 'function') { try { window.openAdmin(); } catch (e) { /* ignore */ } }
+      return;
+    }
+    _bkBooted = true;
+    stripParams();
     openReview(bookingId, token);
   }
 
-  // Fire once a staff user is authenticated and the CRM is up.
-  if (window.GL_HOOKS && typeof window.GL_HOOKS.registerLoginHook === 'function') {
-    window.GL_HOOKS.registerLoginHook(function () { setTimeout(boot, 300); });
+  // Trigger on initial load (covers the already-signed-in case)…
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { setTimeout(boot, 500); });
   } else {
-    window.addEventListener('load', function () {
-      if (window.GL_HOOKS && typeof window.GL_HOOKS.registerLoginHook === 'function') {
-        window.GL_HOOKS.registerLoginHook(function () { setTimeout(boot, 300); });
-      }
-    });
+    setTimeout(boot, 500);
   }
+  // …and again after any staff login (covers the sign-in-then-open case).
+  function registerHook() {
+    if (window.GL_HOOKS && typeof window.GL_HOOKS.registerLoginHook === 'function') {
+      window.GL_HOOKS.registerLoginHook(function () { setTimeout(boot, 300); });
+      return true;
+    }
+    return false;
+  }
+  if (!registerHook()) window.addEventListener('load', registerHook);
 })();
