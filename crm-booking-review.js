@@ -27,6 +27,16 @@
                (window.supa && window.supa.supabaseUrl) || '';
     return root + '/functions/v1/booking-approve';
   }
+  // The Supabase gateway wants the publishable key on cross-origin calls even
+  // for verify_jwt=false functions; send it like book.html does.
+  function bkKey() {
+    return (typeof SUPA_KEY !== 'undefined' && SUPA_KEY) || window.SUPA_KEY || '';
+  }
+  function bkHeaders(extra) {
+    var h = { 'apikey': bkKey(), 'Authorization': 'Bearer ' + bkKey() };
+    if (extra) for (var k in extra) h[k] = extra[k];
+    return h;
+  }
 
   // Small self-contained toast so the module never depends on a host helper.
   function toast(msg, ok) {
@@ -125,7 +135,7 @@
       fd.append('t', token);
       fd.append('action', action);
       fd.append('format', 'json');
-      var r = await fetch(fnBase() + '?format=json', { method: 'POST', body: fd, headers: { Accept: 'application/json' } });
+      var r = await fetch(fnBase() + '?format=json', { method: 'POST', body: fd, headers: bkHeaders({ Accept: 'application/json' }) });
       var j = await r.json().catch(function () { return {}; });
       if (!j || !j.ok) {
         setBusy(ov, false);
@@ -162,7 +172,7 @@
   async function openReview(bookingId, token) {
     try {
       var url = fnBase() + '?format=json&b=' + encodeURIComponent(bookingId) + '&t=' + encodeURIComponent(token);
-      var r = await fetch(url, { headers: { Accept: 'application/json' } });
+      var r = await fetch(url, { headers: bkHeaders({ Accept: 'application/json' }) });
       var j = await r.json().catch(function () { return {}; });
       if (!j || (!j.ok && !j.already)) {
         toast((j && j.message) || 'This tour request could not be opened.', false);
