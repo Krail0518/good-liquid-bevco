@@ -296,22 +296,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
       endISO: booking.end_at,
       timeZone: tz,
     });
-    console.log('[booking-approve] google-calendar result', JSON.stringify(calRes));
-
-    // DIAGNOSTIC: email the raw Google Calendar outcome to the host so the exact
-    // result (which account it landed on, or the precise Google error) is
-    // visible without server-log access. Safe to remove once calendar sync is
-    // confirmed working.
-    try {
-      const diag = calRes.ok
-        ? [`✅ Google Calendar event CREATED.`, `Calendar/account: ${calRes.calendar || '(unknown)'}`, `Link: ${calRes.htmlLink || '(none)'}`, `Event id: ${calRes.id || '(none)'}`]
-        : [`❌ Google Calendar write FAILED.`, `HTTP status: ${calRes.status ?? '(none)'}`, `Error: ${calRes.error || '(none)'}`];
-      await sendMail({
-        to: organizerEmail,
-        subject: `🔧 Calendar debug — ${booking.booker_name} · ${dateLabel}`,
-        text: [`Tour approved for ${booking.booker_name} (${dateLabel} ${timeLabel} ${tzLbl}).`, '', ...diag, '', 'This is a temporary diagnostic email.'].join('\n'),
-      });
-    } catch (_e) { /* diagnostics must never break the approval */ }
+    if (calRes.ok) console.log('[booking-approve] google-calendar event created', calRes.id, 'on', calRes.calendar);
+    else console.warn('[booking-approve] google-calendar NOT created:', calRes.status, calRes.error);
 
     return reply(200, 'Approved', `<div class="big">✅</div><h1 class="ok">Tour approved</h1><p>${esc(booking.booker_name.split(' ')[0])} just got their confirmation and calendar invite, and the slot is booked on your calendar.</p>${detailRows}`, { ok: true, status: 'confirmed', gcal: calRes.ok, booking: bookingInfo, message: `${booking.booker_name.split(' ')[0]} got their confirmation and calendar invite.` });
   }
