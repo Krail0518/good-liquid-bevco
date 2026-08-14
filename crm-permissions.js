@@ -800,6 +800,24 @@
         'action.customer.invite':   true
       }
     },
+    warehouse: {
+      label: 'Warehouse',
+      description: 'Floor / QA staff: Dashboard, Production Runs & Schedule, Inventory, CIP / Sanitation, Defects, Yield, Samples, Tasks, Announcements. No clients, pipeline, invoices, referrals, or admin pages.',
+      pageDefaults: false,
+      actionDefaults: false,
+      overrides: {
+        'page.dashboard':       true,
+        'page.production-runs': true,
+        'page.production-cal':  true,
+        'page.inventory':       true,
+        'page.cip':             true,
+        'page.defects':         true,
+        'page.yield':           true,
+        'page.samples':         true,
+        'page.tasks':           true,
+        'page.announcements':   true
+      }
+    },
     viewer: {
       label: 'Viewer (read-only)',
       description: 'Dashboard, Clients, Invoices, Reports. Everything else hidden. Cannot delete, mark paid, export, or invite.',
