@@ -26,17 +26,25 @@ export interface CalEventInput {
   location?: string;
 }
 
-// Creates the event and returns its Google event id, or null on any failure.
-// Never throws: calendar sync is a nice-to-have on top of the booking, so a
-// Google hiccup must not fail the approval (the DB row + booker email still go
-// out). Failures are logged for diagnosis.
-export async function createCalendarEvent(ev: CalEventInput): Promise<string | null> {
+export interface CalResult {
+  ok: boolean;
+  id?: string;
+  htmlLink?: string;   // link to the created event (reveals WHICH calendar/account it landed on)
+  calendar?: string;   // organizer/calendar email Google reports the event on
+  status?: number;     // HTTP status on failure
+  error?: string;      // raw Google error body / message on failure
+}
+
+// Creates the event and returns a rich result. Never throws: calendar sync is a
+// nice-to-have on top of the booking, so a Google hiccup must not fail the
+// approval (the DB row + booker email still go out).
+export async function createCalendarEvent(ev: CalEventInput): Promise<CalResult> {
   let token: string;
   try {
     token = await getGmailAccessToken();
   } catch (e) {
-    console.error('[google-calendar] no access token (is Gmail connected with the calendar scope?):', String(e));
-    return null;
+    console.error('[google-calendar] no access token:', String(e));
+    return { ok: false, error: 'no access token: ' + String(e) };
   }
 
   const body: Record<string, unknown> = {
@@ -58,16 +66,18 @@ export async function createCalendarEvent(ev: CalEventInput): Promise<string | n
     );
     if (!r.ok) {
       const t = await r.text().catch(() => '');
-      // 403 with "insufficient" almost always means the calendar scope was
-      // never granted — the mailbox is connected for mail only. Surface it
-      // clearly so the fix ("reconnect Gmail") is obvious in the logs.
       console.error(`[google-calendar] insert failed ${r.status}: ${t}`);
-      return null;
+      return { ok: false, status: r.status, error: t };
     }
     const j = await r.json();
-    return (j?.id as string) || null;
+    return {
+      ok: true,
+      id: (j?.id as string) || undefined,
+      htmlLink: (j?.htmlLink as string) || undefined,
+      calendar: (j?.organizer?.email as string) || undefined,
+    };
   } catch (e) {
     console.error('[google-calendar] insert threw:', String(e));
-    return null;
+    return { ok: false, error: String(e) };
   }
 }
