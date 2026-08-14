@@ -368,7 +368,7 @@
             '<span style="font-size:10px;color:var(--muted)">Overwrites all of this user\'s current overrides.</span>' +
           '</div>';
 
-      var roleOpts = ['admin','sales','viewer'].map(function(r){
+      var roleOpts = ['admin','sales','warehouse','viewer'].map(function(r){
         return '<option value="' + r + '"' + (u.role===r?' selected':'') + '>' + r.charAt(0).toUpperCase() + r.slice(1) + '</option>';
       }).join('');
       var isSelf = u.id === perms.userId;
