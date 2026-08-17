@@ -260,10 +260,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
   if (drafted > 0) {
     // One capability link to review + send all ready drafts from the phone.
+    // Time-bound: the token signs a 7-day expiry so a leaked link isn't a
+    // standing credential over all future follow-ups. A fresh link goes out
+    // with each new batch of drafts.
     let reviewUrl = '';
     try {
-      const tok = await signBooking('followups-review');
-      reviewUrl = `${supaUrl}/functions/v1/lead-action?review=all&t=${tok}`;
+      const exp = Date.now() + 7 * 24 * 60 * 60 * 1000;
+      const tok = await signBooking(`followups-review:${exp}`);
+      reviewUrl = `${supaUrl}/functions/v1/lead-action?review=all&exp=${exp}&t=${tok}`;
     } catch { /* link optional */ }
     await notify('followups_ready', { count: String(drafted), review_url: reviewUrl });
   }

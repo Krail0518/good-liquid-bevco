@@ -79,6 +79,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   let leadId = q.get('lead') || '';
   let token = q.get('t') || '';
   let action = q.get('action') || '';
+  let exp = q.get('exp') || '';
   if (req.method === 'POST') {
     try {
       const form = await req.formData();
@@ -87,6 +88,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       leadId = String(form.get('lead') || leadId);
       token = String(form.get('t') || token);
       action = String(form.get('action') || action);
+      exp = String(form.get('exp') || exp);
     } catch { /* keep query */ }
   }
 
@@ -94,7 +96,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // ── Review-all: list every ready follow-up ──────────────────────────────
   if (review === 'all') {
-    if (!(await verifyBooking('followups-review', token))) return bad("This link couldn't be verified.");
+    // The link is time-bound: the token signs the expiry, and we reject once
+    // it's past. Without this the review-all link was a constant, non-expiring
+    // HMAC — one leaked copy would be a standing credential over every future
+    // drafted follow-up (contact PII + send capability).
+    const expMs = Number(exp);
+    if (!Number.isFinite(expMs) || expMs <= 0 || Date.now() > expMs) {
+      return bad('This review link has expired. A fresh one goes out with the next batch of drafts.');
+    }
+    if (!(await verifyBooking(`followups-review:${expMs}`, token))) return bad("This link couldn't be verified.");
     const { data: rows } = await supa.from('lead_followups')
       .select('id, to_email, to_name, subject, body, reason, created_at')
       .eq('status', 'ready').order('created_at', { ascending: true }) as { data: any[] };
