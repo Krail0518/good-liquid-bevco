@@ -604,8 +604,11 @@
   window.glTogglePerm = async function(userId, componentId, granted){
     var sb = getSB(); if(!sb) return;
     var row = { user_id: userId, component_id: componentId, granted: granted, updated_at: new Date().toISOString(), updated_by: perms.userId };
-    var r = await sb.from('user_permissions').upsert(row, { onConflict: 'user_id,component_id' });
+    // .select() so a silent RLS rejection (no error, 0 rows) can't be mistaken
+    // for success — otherwise the toggle appears saved but reverts on refresh.
+    var r = await sb.from('user_permissions').upsert(row, { onConflict: 'user_id,component_id' }).select();
     if(r.error){ alert('Save failed: ' + r.error.message); return; }
+    if(Array.isArray(r.data) && r.data.length === 0){ alert('The server rejected the change (0 rows saved). The permission was NOT updated.'); return; }
     if(!perms.userPerms[userId]) perms.userPerms[userId] = {};
     perms.userPerms[userId][componentId] = granted;
     // If toggling self, re-apply gating live.

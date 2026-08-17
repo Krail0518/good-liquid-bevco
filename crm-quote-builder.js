@@ -363,6 +363,21 @@
         el.querySelector('#gl-qb-nitrogen-on').checked    = true;
         el.querySelector('#gl-qb-tray-on').checked        = true;
         el.querySelector('#gl-qb-palletizing-on').checked = true;
+        // Wire the Nitrogen / Tray toggles (and their rate inputs) to the per-can
+        // cost on every tier, so unchecking — or editing the rate — actually
+        // changes the quoted price instead of being ignored.
+        function syncCanningAddon(cbId, rateId, field){
+          var cb = el.querySelector('#'+cbId), rt = el.querySelector('#'+rateId);
+          function apply(){
+            var v = (cb && cb.checked) ? (parseFloat(rt && rt.value)||0) : 0;
+            (state.tiers||[]).forEach(function(tier){ tier[field] = v; });
+            renderTiers();
+          }
+          if(cb) cb.addEventListener('change', apply);
+          if(rt) rt.addEventListener('input', apply);
+        }
+        syncCanningAddon('gl-qb-nitrogen-on', 'gl-qb-nitrogen-rate', 'nitrogenPerCan');
+        syncCanningAddon('gl-qb-tray-on',     'gl-qb-tray-rate',     'trayPerCan');
       } else if(t === 'bottling'){
         el.innerHTML =
           '<div style="'+LBL+'">ADD-ON SERVICES</div>' +
