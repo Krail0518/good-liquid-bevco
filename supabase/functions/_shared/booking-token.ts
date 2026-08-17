@@ -7,13 +7,20 @@
 // unforgeable without the secret and reveals nothing about it.
 //
 // The same secret must sign (booking-confirm) and verify (booking-approve), so
-// both import from here. GL_NOTIFY_SECRET is already a shared function secret
-// (notify-deal + booking-confirm use it), so we reuse it rather than minting a
-// new one that could drift out of sync.
+// both import from here. We reuse the shared gl_notify_secret. CRITICAL: read it
+// from Vault FIRST, falling back to the env var — matching notify-deal,
+// lead-automations and estimate-deal-value. The rotation migration
+// (20260730002000_rotate_notify_secret.sql) moved the canonical secret into Vault
+// precisely because the old env value once shipped publicly in page source; an
+// env-only read here would sign/verify with that leaked value, letting anyone
+// holding it forge valid approve/decline links. No service-role fallback: a
+// missing secret must fail loudly, not silently sign with an unrelated key.
 
-function secret(): string {
-  const s = Deno.env.get('GL_NOTIFY_SECRET') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
-  if (!s) throw new Error('No signing secret available (GL_NOTIFY_SECRET unset)');
+import { vaultGet } from './gmail-creds.ts';
+
+async function secret(): Promise<string> {
+  const s = (await vaultGet('gl_notify_secret')) || Deno.env.get('GL_NOTIFY_SECRET') || '';
+  if (!s) throw new Error('No signing secret available (gl_notify_secret / GL_NOTIFY_SECRET unset)');
   return s;
 }
 
@@ -24,7 +31,7 @@ function toHex(buf: ArrayBuffer): string {
 // HMAC-SHA256(bookingId) as lowercase hex.
 export async function signBooking(bookingId: string): Promise<string> {
   const key = await crypto.subtle.importKey(
-    'raw', new TextEncoder().encode(secret()),
+    'raw', new TextEncoder().encode(await secret()),
     { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
   );
   const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(String(bookingId)));
