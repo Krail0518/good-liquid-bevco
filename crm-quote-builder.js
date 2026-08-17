@@ -744,6 +744,17 @@
     // Addons lookup
     function hasAddon(id){ return (data.addons||[]).some(function(a){ return a.id===id; }); }
     function addonRate(id){ var a=(data.addons||[]).find(function(x){ return x.id===id; }); return a?a.rate:0; }
+    // Renders a selected add-on as its own priced line on the quote (same styling
+    // as palletizing). Without this, per-can/per-bottle add-ons like flash
+    // pasteurization and the bottling label options were collected but never
+    // shown or charged — silent revenue leakage on every affected quote.
+    function addonLine(id, label, unit){
+      if(!hasAddon(id)) return '';
+      return '<div style="border-left:4px solid #1a6fff;padding:12px 16px;background:#eef3ff;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
+        '<div><b>'+esc(label)+'</b></div>' +
+        '<div style="color:#1a6fff;font-weight:700;font-size:15px">'+fmtUsd(addonRate(id))+' / '+esc(unit)+'</div>' +
+      '</div>';
+    }
 
     // ── Tiers table (canning format) ──
     var tiersTable = '';
@@ -772,10 +783,11 @@
           '<th style="'+PTH+';color:#1a6fff">Run Total</th>' +
         '</tr></thead><tbody>' + tiersTable + '</tbody></table>' +
         (palletizing > 0 ?
-          '<div style="border-left:4px solid #1a6fff;padding:12px 16px;background:#eef3ff;display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">' +
+          '<div style="border-left:4px solid #1a6fff;padding:12px 16px;background:#eef3ff;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
             '<div><b>Palletizing and Shrink Wrap</b><span style="color:#888;margin-left:12px;font-size:12px">Materials and wrap included</span></div>' +
             '<div style="color:#1a6fff;font-weight:700;font-size:15px">$'+palletizing+' / pallet</div>' +
-          '</div>' : '');
+          '</div>' : '') +
+        addonLine('gl-qb-pasteurization', 'Batch Flash Pasteurization', 'can');
     } else if(isBottling){
       tiersTable = '<table style="width:100%;border-collapse:collapse;margin-bottom:20px">' +
         '<thead><tr><th style="'+PTH+'">Volume</th><th style="'+PTH+'">Cost Per 6-Pack</th><th style="'+PTH+';color:#1a6fff">Cost Per Bottle</th><th style="'+PTH+';color:#1a6fff">Run Total</th></tr></thead><tbody>' +
@@ -789,7 +801,10 @@
             '<td style="'+PTD_BLUE+'">' + fmtUsd(total) + '</td>' +
           '</tr>';
         }).join('') +
-        '</tbody></table>';
+        '</tbody></table>' +
+        addonLine('gl-qb-bfp',    'Batch Flash Pasteurization',    'bottle') +
+        addonLine('gl-qb-otl',    'Over the Top Labels',           'bottle') +
+        addonLine('gl-qb-labels', 'Labels Applied Front &amp; Back', 'bottle');
     } else {
       tiersTable = '<table style="width:100%;border-collapse:collapse;margin-bottom:20px">' +
         '<thead><tr><th style="'+PTH+'">Quantity</th><th style="'+PTH+'">Labor / Keg</th><th style="'+PTH+'">Keg Cost / Keg</th><th style="'+PTH+';color:#1a6fff">Run Total</th></tr></thead><tbody>' +

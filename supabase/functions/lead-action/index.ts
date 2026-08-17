@@ -148,7 +148,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return page('Sent', `<div class="card"><div class="big">✅</div><h1 class="ok">Follow-up sent</h1><p>Off to ${esc(f.to_name || f.to_email)}. It'll show in the lead's correspondence.</p></div>`);
     }
     if (action === 'dismiss') {
-      await supa.from('lead_followups').update({ status: 'dismissed', decided_at: new Date().toISOString() }).eq('id', fId).eq('status', 'ready');
+      const upd = await supa.from('lead_followups').update({ status: 'dismissed', decided_at: new Date().toISOString() }).eq('id', fId).eq('status', 'ready').select('id');
+      if (upd.error || !upd.data?.length) return page('Nothing to do', `<div class="card"><div class="big">↩️</div><h1 class="warn">Already handled</h1><p>This follow-up was already sent, dismissed, or updated elsewhere.</p></div>`, 409);
       return page('Dismissed', `<div class="card"><div class="big">✖️</div><h1 class="warn">Dismissed</h1><p>Won't send. I'll draft a fresh one if they stay quiet.</p></div>`);
     }
     return bad('Unknown action.');
@@ -169,11 +170,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
     if (action === 'snooze') {
       const until = new Date(Date.now() + 7 * 864e5).toISOString();
-      await supa.from('deals').update({ snoozed_until: until }).eq('id', leadId);
+      const upd = await supa.from('deals').update({ snoozed_until: until }).eq('id', leadId).select('id');
+      if (upd.error || !upd.data?.length) return page('Not updated', `<div class="card"><div class="big">⚠️</div><h1 class="warn">Couldn't snooze</h1><p>The change didn't save — try again from the CRM.</p></div>`, 409);
       return page('Snoozed', `<div class="card"><div class="big">💤</div><h1 class="ok">Snoozed 7 days</h1><p>No nudges about ${who} until then.</p></div>`);
     }
     if (action === 'handled') {
-      await supa.from('deals').update({ handled_at: new Date().toISOString() }).eq('id', leadId);
+      const upd = await supa.from('deals').update({ handled_at: new Date().toISOString() }).eq('id', leadId).select('id');
+      if (upd.error || !upd.data?.length) return page('Not updated', `<div class="card"><div class="big">⚠️</div><h1 class="warn">Couldn't update</h1><p>The change didn't save — try again from the CRM.</p></div>`, 409);
       return page('Handled', `<div class="card"><div class="big">✓</div><h1 class="ok">Marked handled</h1><p>The automations will leave ${who} alone.</p></div>`);
     }
     return bad('Unknown action.');

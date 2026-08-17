@@ -773,7 +773,7 @@
 
     var perCase = rateForCases(table, cases);
     var base = perCase * cases;
-    var pCost = pasteur && pasteur.checked ? (cases * 24 * 0.08) : 0;     // ~8¢/can * 24 cans/case
+    var pCost = pasteur && pasteur.checked ? (cases * 24 * 0.05) : 0;     // 5¢/can * 24 cans/case (flat rate, matches every other estimator)
     var nCost = nitro && nitro.checked    ? (cases * 24 * 0.03) : 0;      // 3¢/can
     var total = base + pCost + nCost;
 

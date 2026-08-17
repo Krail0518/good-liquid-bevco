@@ -436,7 +436,7 @@
   }
 
   window.glChangeUserRole = async function(userId, newRole){
-    if(!['admin','sales','viewer'].includes(newRole)){ alert('Invalid role: ' + newRole); return; }
+    if(!['admin','sales','viewer','warehouse'].includes(newRole)){ alert('Invalid role: ' + newRole); return; }
     if(userId === perms.userId){ alert('Cannot change your own role — that could lock you out.'); return; }
     var sb = getSB(); if(!sb) return;
     if(newRole === 'admin' && !confirm('Make this user an ADMIN? They will bypass every component gate and be able to manage everyone\'s permissions, invite users, etc.')) return;
