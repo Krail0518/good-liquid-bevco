@@ -111,7 +111,7 @@
       '</tbody></table>' +
       '<div class="terms"><b>Quote terms</b>' +
         '<ul style="margin:6px 0 0 18px;padding:0;font-size:12px;color:#1a2240"><li>Pricing valid for 30 days from quote date</li>' +
-        '<li>Minimum order: 150 cases (canning) / 220 cases (bottling)</li>' +
+        '<li>Minimum order: 200 cases (canning) / 220 cases (bottling)</li>' +
         '<li>50% deposit on accepted quote; balance due on completion</li>' +
         '<li>Lead time: ~8 weeks from artwork & ingredient approval</li>' +
         '<li>Final invoice may vary based on actual production volume</li></ul>' +

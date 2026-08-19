@@ -100,7 +100,7 @@
     box(305,104,90,26,'rgba(0,229,192,.08)','rgba(0,229,192,.3)') + txt(350,121,'+ Hours',10,'#00e5c0','middle') +
     box(400,104,90,26,'rgba(0,229,192,.08)','rgba(0,229,192,.3)') + txt(445,121,'+ Custom',10,'#00e5c0','middle') +
     box(20,140,580,90) +
-    txt(30,156,'Canning · 12oz Std',10,'#00e5c0') + txt(180,156,'150 cases',10,'#fff') + txt(280,156,'$11.52/case',10,'#9aa7bd') + txt(540,156,'$1,728.00',11,'#fff','end') +
+    txt(30,156,'Canning · 12oz Std',10,'#00e5c0') + txt(180,156,'200 cases',10,'#fff') + txt(280,156,'$11.52/case',10,'#9aa7bd') + txt(540,156,'$2,304.00',11,'#fff','end') +
     '<line x1="30" y1="170" x2="590" y2="170" stroke="rgba(255,255,255,.05)"/>' +
     txt(30,188,'Bottling · 750ml',10,'#00e5c0') + txt(180,188,'500 btl',10,'#fff') + txt(280,188,'$1.85/btl',10,'#9aa7bd') + txt(540,188,'$925.00',11,'#fff','end') +
     '<line x1="30" y1="202" x2="590" y2="202" stroke="rgba(255,255,255,.05)"/>' +
@@ -1248,7 +1248,7 @@
       box(24,100,90,50,'#1a6fff','rgba(107,159,255,.4)') + txt(30,116,'Lotus nutra',9,'#fff') + txt(30,130,'Canning L1',8,'#9aa7bd') + txt(30,144,'100 cases',8,'#9aa7bd') +
       box(127,100,90,50,'#1a6fff','rgba(107,159,255,.4)') + txt(133,116,'Lotus nutra',9,'#fff') + txt(133,130,'Canning L1',8,'#9aa7bd') + txt(133,144,'(cont.)',8,'#9aa7bd') +
       box(230,100,90,50,'rgba(0,229,192,.5)','rgba(0,229,192,.4)') + txt(236,116,'Ceres 14',9,'#fff') + txt(236,130,'Bottling L1',8,'#9aa7bd') + txt(236,144,'200 cases',8,'#9aa7bd') +
-      box(333,100,90,50,'rgba(245,200,66,.4)','rgba(245,200,66,.4)') + txt(339,116,'PitStop',9,'#fff') + txt(339,130,'Canning L1',8,'#9aa7bd') + txt(339,144,'150 cases',8,'#9aa7bd') +
+      box(333,100,90,50,'rgba(245,200,66,.4)','rgba(245,200,66,.4)') + txt(339,116,'PitStop',9,'#fff') + txt(339,130,'Canning L1',8,'#9aa7bd') + txt(339,144,'200 cases',8,'#9aa7bd') +
       box(20,158,580,62,'#142238','rgba(255,255,255,.05)') +
       txt(30,174,'⚙ Production lines',10,'#9aa7bd') + txt(160,174,'+ Add Run',10,'#00e5c0') +
       txt(30,194,'Capacity: 500 cases/day (Canning L1)  ·  100 hrs/wk (Bottling L1)',9,'#9aa7bd') +

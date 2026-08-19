@@ -23,9 +23,9 @@
     canning: {
       formats: ['12oz Standard','12oz Sleek','16oz Standard'],
       tiers: {
-        '12oz Standard': [[150,339,0.48],[340,500,0.43],[501,999,0.38],[1000,2499,0.35],[2500,4999,0.31],[5000,1e9,0.28]],
-        '12oz Sleek':    [[150,339,0.48],[340,500,0.43],[501,999,0.38],[1000,2499,0.35],[2500,4999,0.31],[5000,1e9,0.28]],
-        '16oz Standard': [[150,339,0.58],[340,500,0.53],[501,999,0.48],[1000,2499,0.45],[2500,4999,0.41],[5000,1e9,0.38]]
+        '12oz Standard': [[200,339,0.48],[340,500,0.43],[501,999,0.38],[1000,2499,0.35],[2500,4999,0.31],[5000,1e9,0.28]],
+        '12oz Sleek':    [[200,339,0.48],[340,500,0.43],[501,999,0.38],[1000,2499,0.35],[2500,4999,0.31],[5000,1e9,0.28]],
+        '16oz Standard': [[200,339,0.58],[340,500,0.53],[501,999,0.48],[1000,2499,0.45],[2500,4999,0.41],[5000,1e9,0.38]]
       },
       defaultAddons: { nitrogen: 0.03, tray: 0.03 }
     },
@@ -330,7 +330,7 @@
       /* Opening from a deal but no specific volume — load standard tiers so quote isn't blank */
       if(t2==='canning'){
         state.tiers = [
-          { cases:150,  cans:150*CANS_PER_CASE,  fillPerCan:autoRate(150),  nitrogenPerCan:0.03, trayPerCan:0.03 },
+          { cases:200,  cans:200*CANS_PER_CASE,  fillPerCan:autoRate(200),  nitrogenPerCan:0.03, trayPerCan:0.03 },
           { cases:501,  cans:501*CANS_PER_CASE,  fillPerCan:autoRate(501),  nitrogenPerCan:0.03, trayPerCan:0.03 },
           { cases:1000, cans:1000*CANS_PER_CASE, fillPerCan:autoRate(1000), nitrogenPerCan:0.03, trayPerCan:0.03 }
         ];
@@ -1009,16 +1009,16 @@
     else if(/keg/i.test(dealNotes))     productType = 'keg';
 
     /* ── Volume: read exactly what the client selected ──────────────────
-       Website form checkboxes can produce comma-separated values like "150, 501".
+       Website form checkboxes can produce comma-separated values like "200, 501".
        We parse every value and create one quote tier per selection.
-       Mapping uses the ACTUAL numbers selected — 150 means 150, not 339. */
+       Mapping uses the ACTUAL numbers selected — 200 means 200, not 339. */
     function parseSingleCaseVal(str){
       var s = (str||'').trim();
       if(/2[.,]?500/.test(s))   return 2500;
       if(/1[.,]?000/.test(s))   return 1000;
       if(/501/.test(s))         return 501;
       if(/340/.test(s))         return 340;
-      if(/150/.test(s))         return 150;
+      if(/200/.test(s))         return 200;
       var m = s.match(/(\d[\d,]*)/);
       if(m){ var n = parseInt(m[1].replace(/,/g,'')); if(n >= 50) return n; }
       return null;
@@ -1052,7 +1052,7 @@
 
     /* "minimum run", "smallest batch", "get started", "first run" → use minimum */
     if(!suggestCasesList.length && /minimum|smallest|starter|get\s*started|first\s*run|start\s*small/i.test((volume||'')+' '+(dealNotes||''))){
-      suggestCasesList = [ productType === 'bottling' ? 220 : productType === 'keg' ? 50 : 150 ];
+      suggestCasesList = [ productType === 'bottling' ? 220 : productType === 'keg' ? 50 : 200 ];
     }
 
     var suggestCases = suggestCasesList.length ? suggestCasesList[0] : null;

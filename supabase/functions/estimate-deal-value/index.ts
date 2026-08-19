@@ -48,7 +48,7 @@ function laborPerCan(cases: number, is16: boolean): number {
 const CAN_COST  = 0.32;   // aluminum can, mid of $0.29–0.35
 const PACKAGING = 0.055;  // trays + PakTechs, mid of $0.05–0.06
 const CASE_CANS = 24;
-const MIN_CASES = 150;    // MOQ
+const MIN_CASES = 200;    // MOQ
 const RD_FEE    = 2500;   // new-formula R&D (3 iterations)
 const TEST_BATCH = 500;   // trial run of an existing formula
 
@@ -79,7 +79,7 @@ Return exactly this shape:
 {"cases": <int>, "can_size": "12oz"|"16oz", "needs_rd": <bool>, "test_batch": <bool>, "flash_pasteurization": <bool>, "nitrogen": <bool>, "confidence": "low"|"med"|"high"}
 
 Rules:
-- "cases" = the FIRST production run in cases (24 cans/case). If the lead gives an ANNUAL volume, a first run is a fraction of it — estimate a realistic first run, not the year. If unclear, estimate LOW (a pilot). Minimum 150.
+- "cases" = the FIRST production run in cases (24 cans/case). If the lead gives an ANNUAL volume, a first run is a fraction of it — estimate a realistic first run, not the year. If unclear, estimate LOW (a pilot). Minimum 200.
 - Be conservative: when the request is vague, prefer the smaller number and set confidence "low".
 - "can_size": "16oz" only if they clearly say 16oz; otherwise "12oz".
 - "needs_rd": true only if they need a NEW formula developed. "test_batch": true if they have an EXISTING formula to trial. Both false if unknown.
