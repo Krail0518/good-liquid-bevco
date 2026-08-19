@@ -91,7 +91,7 @@ For each of these, just open it via Compliance Tasks → Forms Library → click
 1. Sidebar → **➕ New Invoice** → builder opens.
 2. Pick a client.
    - **Expect:** If that client has a pricing override, a yellow "💵 N custom rates applied" badge appears next to "NEW INVOICE" title.
-3. Add a Canning line → 150 cases → confirm per-can/per-case rate matches override (if any) or the public tier ladder (if not).
+3. Add a Canning line → 200 cases → confirm per-can/per-case rate matches override (if any) or the public tier ladder (if not).
 4. Add an R&D line, save invoice as draft. Open it. Click **📧 Send Invoice** → composer opens with To prefilled. Don't actually send unless you want to.
 
 ### B4. Email Activity

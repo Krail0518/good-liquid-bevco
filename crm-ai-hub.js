@@ -143,7 +143,7 @@
         var sys = 'You are the Good Liquid Bev Co CRM assistant. Be concise and helpful. ' +
           'Good Liquid is a family-run beverage co-packer in Palmetto FL (Est. 2017). ' +
           'Services: Canning (12oz/16oz), Bottling (750ml), R&D, Consulting. ' +
-          'Min order 150 cases. Canning from $0.28/can. Contact: Mike@GoodLiquid.com.';
+          'Min order 200 cases. Canning from $0.28/can. Contact: Mike@GoodLiquid.com.';
         reply = await window.callAI(sys, msg);
       } else {
         reply = 'AI not configured. Open 🤖 AI Tools → AI Settings to add your API key.';

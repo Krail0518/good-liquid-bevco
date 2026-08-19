@@ -652,7 +652,7 @@
     intro('On the pricing page. Visitor picks format + cases tier + add-ons, gets an instant quote without filling out a form. Hugely converts.') +
     bullets([
       '<b>Formats:</b> 12oz std / 12oz sleek / 16oz std (matches your rate card).',
-      '<b>Tiers:</b> 150 / 340 / 501 / 1,000 / 2,500 / 5,000 cases.',
+      '<b>Tiers:</b> 200 / 340 / 501 / 1,000 / 2,500 / 5,000 cases.',
       '<b>Add-ons:</b> nitro, labelling, palletisation — toggle on/off.',
       '<b>Updates total live</b> as they change inputs. CTA at the bottom: "Get formal quote" pushes them to the contact form, pre-filled.'
     ]) +
