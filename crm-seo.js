@@ -7,10 +7,10 @@
     var h=document.head;
     function m(a){var s=a.name?'meta[name="'+a.name+'"]':a.property?'meta[property="'+a.property+'"]':null;if(s&&document.querySelector(s))return;var el=document.createElement('meta');Object.keys(a).forEach(function(k){el.setAttribute(k,a[k]);});h.appendChild(el);}
     document.title='Good Liquid Bev Co | Beverage Co-Packer | Palmetto, FL';
-    m({name:'description',content:'Family-run beverage co-packer in Palmetto, FL. Small-batch canning, bottling & R&D. GMP, PCQI & HACCP certified. Min 200 cases.'});
+    m({name:'description',content:'Veteran-owned, family-run beverage co-packer in Palmetto, FL. Small-batch canning, bottling & R&D. GMP, PCQI & HACCP certified. Min 200 cases.'});
     m({name:'robots',content:'index, follow'});
     m({property:'og:title',content:'Good Liquid Bev Co | Beverage Co-Packer'});
-    m({property:'og:description',content:'Family-run beverage co-packer in Palmetto, FL. Min 200 cases. GMP certified.'});
+    m({property:'og:description',content:'Veteran-owned, family-run beverage co-packer in Palmetto, FL. Min 200 cases. GMP certified.'});
     m({property:'og:url',content:'https://www.goodliquidbevco.com'});
     m({name:'twitter:card',content:'summary_large_image'});
     if(!document.querySelector('link[rel="canonical"]')){var l=document.createElement('link');l.rel='canonical';l.href='https://www.goodliquidbevco.com';h.appendChild(l);}

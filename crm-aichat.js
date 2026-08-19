@@ -65,7 +65,7 @@
     '## for section headings.\n\n' +
 
     '## About Good Liquid\n' +
-    'Family-run beverage co-packer, Palmetto FL (Est. 2017). Services: small-batch canning ' +
+    'Veteran-owned, family-run beverage co-packer, Palmetto FL (Est. 2017). Services: small-batch canning ' +
     '(12oz/16oz), bottle filling (750ml), beverage R&D/formulation, consulting. ' +
     'Min order 200 cases. R&D from $2,500/SKU. Canning from $0.28/can.' +
     'Contact: Mike@GoodLiquid.com | (803) 493-5065.\n\n' +
