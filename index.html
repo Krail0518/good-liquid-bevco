@@ -1547,41 +1547,80 @@ select option, .fsel option {
     </div>
   </div>
   <!-- Live quote calculator — sits at the bottom of the pricing section. -->
-  <div class="rv" style="max-width:880px;margin:60px auto 0;background:rgba(255,255,255,.03);border:1px solid rgba(0,229,192,.2);border-radius:18px;padding:32px">
+  <style>
+    .qc-wrap{max-width:880px;margin:60px auto 0;background:rgba(255,255,255,.03);border:1px solid rgba(0,229,192,.2);border-radius:18px;padding:32px}
+    .qc-fld{font-size:10px;letter-spacing:2px;color:var(--muted)}
+    .qc-sel{width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)}
+    .qc-runsize{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:18px 20px;margin-bottom:18px}
+    .qc-slider{-webkit-appearance:none;appearance:none;width:100%;height:8px;border-radius:999px;outline:none;margin:16px 0 7px;cursor:pointer;
+      background:linear-gradient(90deg,var(--teal) var(--pct,30%),rgba(255,255,255,.12) var(--pct,30%))}
+    .qc-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:24px;height:24px;border-radius:50%;background:var(--teal);border:3px solid #06111f;box-shadow:0 0 0 4px rgba(0,229,192,.18),0 3px 10px rgba(0,0,0,.5);cursor:grab;transition:transform .12s}
+    .qc-slider:active::-webkit-slider-thumb{transform:scale(1.18);cursor:grabbing}
+    .qc-slider::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:var(--teal);border:3px solid #06111f;box-shadow:0 0 0 4px rgba(0,229,192,.18);cursor:grab}
+    .qc-ticks{display:flex;justify-content:space-between;font-size:10px;color:rgba(107,135,173,.7);letter-spacing:1px}
+    .qc-pills{display:flex;gap:10px;flex-wrap:wrap}
+    .qc-pill{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:999px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--muted);font-size:12.5px;cursor:pointer;transition:all .15s;user-select:none}
+    .qc-pill:hover{border-color:rgba(0,229,192,.35);color:var(--white)}
+    .qc-pill.on{background:rgba(0,229,192,.12);border-color:rgba(0,229,192,.5);color:var(--teal)}
+    .qc-pill .qcp-x{font-size:10px;opacity:.7}
+    .qc-tierbar{height:7px;border-radius:999px;background:rgba(255,255,255,.1);overflow:hidden;margin-top:16px}
+    .qc-tierfill{height:100%;border-radius:999px;background:linear-gradient(90deg,#00e5c0,#57e3ff);width:0;transition:width .5s cubic-bezier(.22,1,.36,1)}
+    .qc-perunit{display:inline-block;margin-top:8px;font-size:13px;color:var(--teal);font-weight:600}
+    @media (max-width:560px){ .qc-wrap{padding:22px 18px} .qc-grid2{grid-template-columns:1fr!important} }
+  </style>
+  <div class="rv qc-wrap">
     <div style="text-align:center;margin-bottom:24px">
       <div class="sec-tag" style="margin-bottom:8px">Instant ballpark</div>
       <h3 style="font-family:var(--ff-disp);font-size:24px;letter-spacing:2px;color:var(--white);margin:0 0 8px">QUOTE <em style="font-style:normal;color:var(--teal)">CALCULATOR.</em></h3>
-      <p style="font-size:13px;color:var(--muted);margin:0;line-height:1.6">Plug in your run size and format to see a rough number. Final quote depends on flavor, packaging, add-ons.</p>
+      <p style="font-size:13px;color:var(--muted);margin:0;line-height:1.6">Drag the slider to size your run — the numbers update live. Final quote depends on flavor, packaging &amp; add-ons.</p>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:22px">
-      <div><label style="display:block;font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">SERVICE</label>
-        <select id="qc-service" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)">
+    <div class="qc-grid2" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
+      <div><label class="qc-fld" style="display:block;margin-bottom:6px">SERVICE</label>
+        <select id="qc-service" class="qc-sel">
           <option value="canning">Canning</option>
           <option value="bottling">Bottle filling</option>
         </select>
       </div>
-      <div><label style="display:block;font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">FORMAT</label>
-        <select id="qc-format" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)">
+      <div><label class="qc-fld" style="display:block;margin-bottom:6px">FORMAT</label>
+        <select id="qc-format" class="qc-sel">
           <option value="12std">12oz Standard can</option>
           <option value="12sleek">12oz Sleek can</option>
           <option value="16std">16oz Standard can</option>
           <option value="750ml" disabled>750ml bottle (pick Bottling)</option>
         </select>
       </div>
-      <div><label style="display:block;font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">CASES</label>
-        <input id="qc-cases" type="number" min="200" value="500" step="50" style="width:100%;padding:11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)">
-      </div>
-      <div><label style="display:block;font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">ADD-ONS</label>
-        <div style="display:flex;flex-direction:column;gap:5px;padding-top:7px">
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--white);cursor:pointer"><input type="checkbox" id="qc-pasteur" style="accent-color:var(--teal)">Pasteurization</label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--white);cursor:pointer"><input type="checkbox" id="qc-nitro" style="accent-color:var(--teal)">Nitro dosing</label>
+    </div>
+    <div class="qc-runsize">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <label class="qc-fld">RUN SIZE</label>
+        <div style="display:flex;align-items:baseline;gap:7px">
+          <span id="qc-casereadout" style="font-family:var(--ff-disp);font-size:26px;color:var(--white);letter-spacing:1px">500</span>
+          <span style="font-size:12px;color:var(--muted)">cases</span>
+          <span id="qc-cans" style="font-size:12px;color:var(--teal)">· 12,000 cans</span>
         </div>
+      </div>
+      <input id="qc-cases-range" class="qc-slider" type="range" min="200" max="5000" step="50" value="500" aria-label="Run size in cases">
+      <div class="qc-ticks"><span>200</span><span>1,250</span><span>2,500</span><span>3,750</span><span>5,000+</span></div>
+      <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
+        <label class="qc-fld" style="letter-spacing:1px">EXACT</label>
+        <input id="qc-cases" type="number" min="200" value="500" step="50" style="width:104px;padding:8px 10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:13px;font-family:var(--ff-body)">
+        <span style="font-size:11px;color:rgba(107,135,173,.7)">cases · 24 per case</span>
+      </div>
+    </div>
+    <div style="margin-bottom:22px">
+      <label class="qc-fld" style="display:block;margin-bottom:8px">ADD-ONS</label>
+      <div class="qc-pills">
+        <label class="qc-pill"><input type="checkbox" id="qc-pasteur" hidden>🔥 Pasteurization <span class="qcp-x">+5¢/can</span></label>
+        <label class="qc-pill"><input type="checkbox" id="qc-nitro" hidden>💨 Nitro dosing <span class="qcp-x">+3¢/can</span></label>
       </div>
     </div>
     <div style="background:rgba(0,229,192,.06);border:1px solid rgba(0,229,192,.25);border-radius:12px;padding:20px 22px;text-align:center">
       <div style="font-size:11px;letter-spacing:2px;color:var(--teal);margin-bottom:6px">ESTIMATED RUN COST</div>
-      <div id="qc-total" style="font-family:var(--ff-disp);font-size:36px;color:var(--white);letter-spacing:1px">$0</div>
+      <div id="qc-total" style="font-family:var(--ff-disp);font-size:40px;color:var(--white);letter-spacing:1px">$0</div>
+      <div id="qc-perunit" class="qc-perunit"></div>
       <div id="qc-breakdown" style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.6"></div>
+      <div class="qc-tierbar"><div id="qc-tierfill" class="qc-tierfill"></div></div>
+      <div id="qc-tierhint" style="font-size:11.5px;color:var(--muted);margin-top:9px;min-height:15px"></div>
       <a href="javascript:void(0)" class="bh pri" onclick="navTo('contact')" style="display:inline-block;margin-top:18px">Lock it in — Request a quote →</a>
     </div>
   </div>

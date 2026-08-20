@@ -741,14 +741,40 @@
 
   function fmt$(n){ return '$' + Math.round(n).toLocaleString(); }
 
+  var UNITS_PER_CASE = { canning: 24, bottling: 6 };
+
+  // Count-up so the headline number rolls to its new value instead of snapping.
+  var _reduce = false;
+  try { _reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch(e){}
+  function animateTotal(el, to){
+    if(!el) return;
+    if(_reduce || typeof requestAnimationFrame !== 'function'){ el._v = to; el.textContent = fmt$(to); return; }
+    var from = el._v || 0; el._v = to;
+    var t0 = null, dur = 460;
+    function step(ts){
+      if(t0 === null) t0 = ts;
+      var p = Math.min(1, (ts - t0) / dur);
+      var e = 1 - Math.pow(1 - p, 3);           // easeOutCubic
+      el.textContent = fmt$(from + (to - from) * e);
+      if(p < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
   function compute(){
     var svc = document.getElementById('qc-service'); if(!svc) return;
     var fmt = document.getElementById('qc-format');
     var casesEl = document.getElementById('qc-cases');
+    var rangeEl = document.getElementById('qc-cases-range');
     var totalEl = document.getElementById('qc-total');
     var bdEl    = document.getElementById('qc-breakdown');
     var pasteur = document.getElementById('qc-pasteur');
     var nitro   = document.getElementById('qc-nitro');
+    var perUnitEl = document.getElementById('qc-perunit');
+    var readoutEl = document.getElementById('qc-casereadout');
+    var cansEl  = document.getElementById('qc-cans');
+    var fillEl  = document.getElementById('qc-tierfill');
+    var hintEl  = document.getElementById('qc-tierhint');
 
     var service = svc.value;
     // If user picks bottling, force the format to 750ml; if canning, ensure can format.
@@ -767,9 +793,28 @@
     }
 
     var cases = Math.max(200, parseInt(casesEl.value, 10) || 200);
-    casesEl.value = cases;
+    // Keep the number field and the slider in sync — but don't fight the user mid-type.
+    if(document.activeElement !== casesEl) casesEl.value = cases;
+    if(rangeEl && document.activeElement !== rangeEl){
+      rangeEl.value = Math.min(cases, parseInt(rangeEl.max, 10) || 5000);
+    }
+    if(rangeEl){
+      var lo = parseInt(rangeEl.min, 10) || 200, hi = parseInt(rangeEl.max, 10) || 5000;
+      var pct = Math.max(0, Math.min(100, (Math.min(cases, hi) - lo) / (hi - lo) * 100));
+      rangeEl.style.setProperty('--pct', pct.toFixed(1) + '%');
+    }
+
+    var unitsPerCase = UNITS_PER_CASE[service] || 24;
+    var unitWord = service === 'bottling' ? 'bottle' : 'can';
+    if(readoutEl) readoutEl.textContent = cases.toLocaleString();
+    if(cansEl) cansEl.textContent = '· ' + (cases * unitsPerCase).toLocaleString() + ' ' + unitWord + 's';
+
+    // Reflect add-on pill state (belt-and-suspenders for browsers without :has()).
+    if(pasteur){ var pl = pasteur.closest && pasteur.closest('.qc-pill'); if(pl) pl.classList.toggle('on', pasteur.checked); }
+    if(nitro){ var nl = nitro.closest && nitro.closest('.qc-pill'); if(nl) nl.classList.toggle('on', nitro.checked); }
+
     var table = (RATES[service] || {})[fmt.value];
-    if(!table){ totalEl.textContent = '$0'; bdEl.textContent = ''; return; }
+    if(!table){ if(totalEl){ totalEl._v = 0; totalEl.textContent = '$0'; } if(bdEl) bdEl.textContent = ''; return; }
 
     var perCase = rateForCases(table, cases);
     var base = perCase * cases;
@@ -777,23 +822,54 @@
     var nCost = nitro && nitro.checked    ? (cases * 24 * 0.03) : 0;      // 3¢/can
     var total = base + pCost + nCost;
 
-    totalEl.textContent = fmt$(total);
+    animateTotal(totalEl, total);
+
+    // All-in per-unit (labor + add-ons) — makes the headline number tangible.
+    if(perUnitEl){
+      var perUnit = total / (cases * unitsPerCase);
+      perUnitEl.textContent = '≈ $' + perUnit.toFixed(2) + ' / ' + unitWord + ' all-in (labor + add-ons)';
+    }
+
     var lines = [
       'Run cost: ' + fmt$(base) + ' (' + cases.toLocaleString() + ' cases @ ' + fmt$(perCase) + '/case)'
     ];
     if(pCost) lines.push('+ Flash pasteurization: ' + fmt$(pCost));
     if(nCost) lines.push('+ Nitrogen dosing: ' + fmt$(nCost));
     lines.push('Excludes ingredients, packaging, freight.');
-    bdEl.innerHTML = lines.join('<br>');
+    if(bdEl) bdEl.innerHTML = lines.join('<br>');
+
+    // Volume-tier "next price break" nudge — gentle upsell + genuinely useful.
+    var idx = 0;
+    for(var k = 0; k < table.length; k++){ if(cases >= table[k][0]) idx = k; }
+    var cur = table[idx], nxt = table[idx + 1];
+    if(fillEl && hintEl){
+      if(nxt){
+        var span = nxt[0] - cur[0];
+        var within = span > 0 ? (cases - cur[0]) / span : 1;
+        fillEl.style.width = Math.max(4, Math.min(100, within * 100)).toFixed(0) + '%';
+        var need = nxt[0] - cases;
+        hintEl.innerHTML = '▲ Add <strong style="color:var(--teal)">' + need.toLocaleString() +
+          '</strong> more cases to drop to <strong style="color:var(--teal)">' + fmt$(nxt[1]) + '/case</strong>';
+      } else {
+        fillEl.style.width = '100%';
+        hintEl.innerHTML = '🎉 You’re at our best per-case rate.';
+      }
+    }
   }
 
   function start(){
     var svc = document.getElementById('qc-service');
     if(!svc){ setTimeout(start, 600); return; }
+    var rangeEl = document.getElementById('qc-cases-range');
+    if(rangeEl){
+      rangeEl.addEventListener('input', function(){
+        var n = document.getElementById('qc-cases'); if(n) n.value = rangeEl.value;
+        compute();
+      });
+    }
     ['qc-service','qc-format','qc-cases','qc-pasteur','qc-nitro'].forEach(function(id){
       var el = document.getElementById(id);
-      if(el) el.addEventListener('input', compute);
-      if(el) el.addEventListener('change', compute);
+      if(el){ el.addEventListener('input', compute); el.addEventListener('change', compute); }
     });
     compute();
   }
