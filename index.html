@@ -7338,21 +7338,22 @@ async function ddpLoadCorrespondence(d){
       '</span>' +
     '</div>';
 
+  // Draft-nudge is ALWAYS available — Mike decides when to reach out. The amber
+  // "no reply in N days" note only appears when we're genuinely waiting on them.
+  var stale = glNoReplyFor(rows);
+  var nudgeNote = stale
+    ? '<span style="font-size:12px;color:#f5c842;line-height:1.4">⏰ No reply in ' + stale.days + ' days.</span>'
+    : '<span style="font-size:12px;color:var(--muted);line-height:1.4">Draft a follow-up whenever you like.</span>';
+  var nudge = '<div style="background:' + (stale ? 'rgba(245,200,66,.08)' : 'rgba(255,255,255,.03)') + ';border:1px solid ' + (stale ? 'rgba(245,200,66,.3)' : 'rgba(255,255,255,.1)') + ';border-radius:8px;padding:10px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
+      nudgeNote +
+      '<button onclick="ddpNudgeLead()" style="font-size:12px;white-space:nowrap;padding:5px 13px;background:rgba(245,200,66,.18);color:#f5c842;border:1px solid rgba(245,200,66,.45);border-radius:6px;cursor:pointer;font-weight:700">✍️ Draft nudge</button>' +
+    '</div>';
+
   if(!rows.length){
-    box.innerHTML = header + '<div style="font-size:11px;color:var(--muted)">No emails logged for this lead yet. Use 🔄 Sync to pull history in from Gmail.</div>';
+    box.innerHTML = header + nudge + '<div style="font-size:11px;color:var(--muted)">No emails logged for this lead yet. Use 🔄 Sync to pull history in from Gmail.</div>';
     glWireCorrSync(box, d.email, 'ddp');
     glAutoSyncContact(d.email, 'ddp');
     return;
-  }
-
-  // Nudge when the newest email we sent has gone 3+ days without a reply.
-  var nudge = '';
-  var stale = glNoReplyFor(rows);
-  if(stale){
-    nudge = '<div style="background:rgba(245,200,66,.08);border:1px solid rgba(245,200,66,.3);border-radius:8px;padding:10px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
-      '<span style="font-size:12px;color:#f5c842;line-height:1.4">⏰ No reply in ' + stale.days + ' days.</span>' +
-      '<button onclick="ddpNudgeLead()" style="font-size:12px;white-space:nowrap;padding:5px 13px;background:rgba(245,200,66,.18);color:#f5c842;border:1px solid rgba(245,200,66,.45);border-radius:6px;cursor:pointer;font-weight:700">✍️ Draft nudge</button>' +
-    '</div>';
   }
 
   box.innerHTML = header + nudge + glRenderCorrespondence('ddp', rows);
@@ -11354,21 +11355,22 @@ async function cdeLoadCorrespondence(client){
       '</span>' +
     '</div>';
 
+  // Draft-nudge is ALWAYS available — Mike decides when to reach out. The amber
+  // "no reply in N days" note only appears when we're genuinely waiting on them.
+  var stale = glNoReplyFor(rows);
+  var nudgeNote = stale
+    ? '<span style="font-size:12px;color:#f5c842;line-height:1.4">⏰ No reply in ' + stale.days + ' days.</span>'
+    : '<span style="font-size:12px;color:var(--muted);line-height:1.4">Draft a follow-up whenever you like.</span>';
+  var nudge = '<div style="background:' + (stale ? 'rgba(245,200,66,.08)' : 'rgba(255,255,255,.03)') + ';border:1px solid ' + (stale ? 'rgba(245,200,66,.3)' : 'rgba(255,255,255,.1)') + ';border-radius:8px;padding:10px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:10px">' +
+      nudgeNote +
+      '<button onclick="cdeNudge(\'' + client.id + '\')" style="font-size:11px;white-space:nowrap;padding:4px 12px;background:rgba(245,200,66,.15);color:#f5c842;border:1px solid rgba(245,200,66,.4);border-radius:6px;cursor:pointer">✍️ Draft nudge</button>' +
+    '</div>';
+
   if(!rows.length){
-    box.innerHTML = header + '<div style="font-size:11px;color:var(--muted)">No emails logged for this client yet. Use 🔄 Sync to pull history in from Gmail.</div>';
+    box.innerHTML = header + nudge + '<div style="font-size:11px;color:var(--muted)">No emails logged for this client yet. Use 🔄 Sync to pull history in from Gmail.</div>';
     glWireCorrSync(box, client.email, 'cde', client.id);
     glAutoSyncContact(client.email, 'cde', client.id);
     return;
-  }
-
-  // Nudge when the newest email we sent has gone 3+ days without a reply.
-  var nudge = '';
-  var stale = glNoReplyFor(rows);
-  if(stale){
-    nudge = '<div style="background:rgba(245,200,66,.08);border:1px solid rgba(245,200,66,.3);border-radius:8px;padding:10px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:10px">' +
-      '<span style="font-size:12px;color:#f5c842;line-height:1.4">⏰ No reply in ' + stale.days + ' days.</span>' +
-      '<button onclick="cdeNudge(\'' + client.id + '\')" style="font-size:11px;white-space:nowrap;padding:4px 12px;background:rgba(245,200,66,.15);color:#f5c842;border:1px solid rgba(245,200,66,.4);border-radius:6px;cursor:pointer">✍️ Draft nudge</button>' +
-    '</div>';
   }
 
   box.innerHTML = header + nudge + glRenderCorrespondence('cde', rows);
