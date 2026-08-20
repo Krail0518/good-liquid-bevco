@@ -21,3 +21,6 @@ Thumbs.db
 # Playwright test artifacts
 supabase.b64.txt
 # Note: supabase.min.js is intentionally tracked — self-hosted to fix mobile CDN issues
+
+# Claude Code agent worktrees (ephemeral, auto-cleaned)
+.claude/worktrees/
