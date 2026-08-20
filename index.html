@@ -1130,8 +1130,8 @@ select option, .fsel option {
   /* ── Hide sidebar shell on phone (bottom tab bar handles navigation) ── */
   #crm-sidebar { display: none !important; }
 
-  /* ── Bottom tab bar ── */
-  #crm-bottom-nav {
+  /* ── Bottom tab bar (only while the CRM is open — never on the public site) ── */
+  #crm-panel.show ~ #crm-bottom-nav {
     display: flex !important;
     flex-direction: row !important;
     align-items: stretch !important;
