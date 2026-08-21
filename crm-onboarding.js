@@ -238,6 +238,50 @@
     } catch(e){ alert('Could not get the onboarding link: ' + (e.message || e)); }
   };
 
+  // ── Clients page: top-bar "Send Onboarding" client picker ──
+  // Pick any existing client and email them the onboarding link (company
+  // details + product questionnaire). Mirrors the Invite Customer Login picker;
+  // the actual send reuses glSendOnboardingLink so behaviour is identical to the
+  // client-card button.
+  window.glOpenOnboardPicker = function(preselectedClientId){
+    var existing = document.getElementById('gl-onboard-picker'); if(existing) existing.remove();
+    var clients = (window.clients && Array.isArray(window.clients)) ? window.clients.slice() : [];
+    clients.sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
+    var ov = document.createElement('div');
+    ov.id = 'gl-onboard-picker';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:9500;background:rgba(6,13,26,.92);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');
+    var opts = ['<option value="">— Pick a client —</option>'].concat(clients.map(function(c){
+      var sel = (c.id === preselectedClientId) ? ' selected' : '';
+      return '<option value="' + esc(c.id) + '"' + sel + '>' + esc(c.name || '(no name)') + (c.email ? '' : ' — ⚠ no email') + '</option>';
+    })).join('');
+    var SEL = 'width:100%;padding:11px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eef4ff;font-size:14px;box-sizing:border-box';
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(0,229,192,.35);border-radius:14px;padding:28px;width:100%;max-width:460px">' +
+        '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal);margin-bottom:6px">SEND ONBOARDING</div>' +
+        '<div style="font-size:12px;color:#9ca3af;margin-bottom:18px;line-height:1.5">Emails the client a link to the onboarding form — company details plus the product questionnaire — and creates their portal login at the end. We pre-fill everything we already have. Sends to the client\'s email on file.</div>' +
+        '<div style="font-size:11px;letter-spacing:1.5px;color:#6b87ad;margin-bottom:6px">WHICH CLIENT?</div>' +
+        '<select id="gl-op-client" style="' + SEL + '">' + opts + '</select>' +
+        '<div id="gl-op-err" style="display:none;color:#ff8579;font-size:12px;margin:10px 0 0"></div>' +
+        '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">' +
+          '<button id="gl-op-cancel" class="cbtn" style="background:rgba(255,255,255,.06)">Cancel</button>' +
+          '<button id="gl-op-send" class="cbtn pri">📨 Send onboarding email</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    var selEl = ov.querySelector('#gl-op-client'), errEl = ov.querySelector('#gl-op-err'), sendBtn = ov.querySelector('#gl-op-send');
+    ov.querySelector('#gl-op-cancel').onclick = function(){ ov.remove(); };
+    setTimeout(function(){ selEl.focus(); }, 30);
+    sendBtn.onclick = async function(){
+      errEl.style.display = 'none';
+      var cid = selEl.value;
+      if(!cid){ errEl.style.display='block'; errEl.textContent='Pick a client.'; return; }
+      sendBtn.disabled = true; var orig = sendBtn.textContent; sendBtn.textContent = 'Sending…';
+      try { await window.glSendOnboardingLink(cid); ov.remove(); }
+      catch(e){ errEl.style.display='block'; errEl.textContent='Failed: ' + ((e && e.message) || 'unknown'); sendBtn.disabled=false; sendBtn.textContent=orig; }
+    };
+  };
+
   var OB_LABEL = {
     invited:   ['#f5c842', 'Invited — link sent, not opened yet'],
     started:   ['#6b9fff', 'Opened — they started the form'],
