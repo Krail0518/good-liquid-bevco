@@ -2598,9 +2598,10 @@ select option, .fsel option {
           </div><!-- /ddp-edit-mode -->
 
           <!-- Always-visible footer: Quote + Close Job (admin only, handled inside each fn) -->
-          <div style="display:flex;gap:10px;margin-top:18px;padding-top:16px;border-top:1px solid rgba(255,255,255,.08)">
+          <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:18px;padding-top:16px;border-top:1px solid rgba(255,255,255,.08)">
             <button onclick="window.glQuoteFromDeal&&glQuoteFromDeal()" style="flex:1;padding:12px;background:rgba(26,111,255,.1);border:1px solid rgba(26,111,255,.35);border-radius:8px;color:#6b9fff;font-weight:700;font-size:14px;cursor:pointer">📋 New Quote</button>
-            <button onclick="window.glCloseJobFromDeal&&glCloseJobFromDeal()" style="flex:1;padding:12px;background:rgba(29,158,117,.08);border:1px solid rgba(29,158,117,.3);border-radius:8px;color:#5fcf9e;font-weight:700;font-size:14px;cursor:pointer">✅ Close Job</button>
+            <button onclick="window.glCloseJobFromDeal&&glCloseJobFromDeal('won')" style="flex:1;padding:12px;background:rgba(29,158,117,.08);border:1px solid rgba(29,158,117,.3);border-radius:8px;color:#5fcf9e;font-weight:700;font-size:14px;cursor:pointer">✅ Won</button>
+            <button onclick="window.glCloseJobFromDeal&&glCloseJobFromDeal('lost')" style="flex:1;padding:12px;background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.3);border-radius:8px;color:#e74c3c;font-weight:700;font-size:14px;cursor:pointer">🚫 Lost</button>
           </div>
         </div>
       </div>
