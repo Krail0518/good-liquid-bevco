@@ -115,6 +115,10 @@
     <label class="chk"><input type="checkbox" id="c-pa"> I have a Process Authority letter (or know I'll need one)</label>
     <label class="chk"><input type="checkbox" id="c-coi"> I can provide a Certificate of Insurance</label>
 
+    <div class="sec-title">Product details</div>
+    <div class="sub" style="margin-bottom:10px">A few specifics so we can plan your production. Pre-filled from what you already told us — edit anything that's changed.</div>
+    <div id="ob-intake-mount"></div>
+
     <div class="sec-title">Create your portal login</div>
     <div class="sub" style="margin-bottom:4px">You'll sign in to your client portal with your email (<b id="login-email">—</b>) and the password you choose here.</div>
     <div class="sub" style="font-size:12px;color:var(--yellow);margin-bottom:6px">Password must be at least 8 characters and include an uppercase letter, a number, and a special character (e.g. ! ? @ #).</div>
@@ -129,6 +133,7 @@
   </form>
 </div>
 
+<script src="/intake-questions.js"></script>
 <script>
 (function(){
   'use strict';
@@ -206,6 +211,16 @@
       var loginEmail = (res.email || p.email || '');
       var le = el('login-email'); if(le) le.textContent = loginEmail || 'your email';
       window.__loginEmail = loginEmail;
+      // Product questionnaire — carry over prior answers (from the tour), seed from the lead.
+      try {
+        var itk = await rpc('gl_onboarding_intake_get', { p_token: token });
+        var ians = (itk && itk.answers) || {};
+        if(!ians.company)      ians.company      = res.client_name || p.company || p.name || '';
+        if(!ians.contact_name) ians.contact_name = p.contact_name || p.name || '';
+        if(!ians.email)        ians.email        = loginEmail || p.email || '';
+        if(!ians.phone)        ians.phone        = p.phone || '';
+        if(window.GL_INTAKE) window.GL_INTAKE.render(el('ob-intake-mount'), ians);
+      } catch(e){ if(window.GL_INTAKE) window.GL_INTAKE.render(el('ob-intake-mount'), {}); }
       hide('loading'); show('form');
     }catch(e){ fatal('We could not load your onboarding right now. Please try again in a moment.'); }
   })();
@@ -261,6 +276,14 @@
       }
       // 2) Now record the intake answers.
       var res = await rpc('gl_onboarding_submit', { p_token: token, p_data: data });
+      // Save the product questionnaire alongside (non-blocking — onboarding
+      // succeeds even if a detail is missing).
+      try {
+        if(window.GL_INTAKE){
+          var qa = window.GL_INTAKE.collect(el('ob-intake-mount'));
+          await rpc('gl_onboarding_intake_submit', { p_token: token, p: { answers: qa.answers } });
+        }
+      } catch(e){ console.warn('onboarding intake save:', e); }
       if(res && res.ok){
         var em = (setpw.email || window.__loginEmail || 'your email');
         var d = el('done');

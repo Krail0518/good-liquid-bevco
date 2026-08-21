@@ -337,25 +337,12 @@
             <span id="selected-label"></span>
             <button onclick="clearSlot()" title="Change time">✕</button>
           </div>
-          <h3>Your details</h3>
-          <div class="form-grid">
-            <div class="form-field">
-              <label>Full name *</label>
-              <input id="f-name" type="text" placeholder="Jane Smith" autocomplete="name">
-            </div>
-            <div class="form-field">
-              <label>Email address *</label>
-              <input id="f-email" type="email" placeholder="jane@company.com" autocomplete="email">
-            </div>
-            <div class="form-field">
-              <label>Company (optional)</label>
-              <input id="f-company" type="text" placeholder="Acme Brewing Co." autocomplete="organization">
-            </div>
-            <div class="form-field full" style="grid-column:unset"></div>
-            <div class="form-field full">
-              <label>Anything you'd like us to know beforehand? (optional)</label>
-              <textarea id="f-notes" placeholder="e.g. We're interested in 16oz canning, ~500 cases…"></textarea>
-            </div>
+          <h3>Tell us about your project</h3>
+          <p style="font-size:13px;color:#8595a8;line-height:1.55;margin:-4px 0 14px">A few quick questions so Mike knows exactly what your tour is about. Fields marked <span style="color:#e0674f">*</span> are required.</p>
+          <div id="bk-intake-mount"></div>
+          <!-- The questionnaire supplies name/email/company/notes; kept hidden so submitBooking still reads them. -->
+          <div style="display:none">
+            <input id="f-name" type="text"><input id="f-email" type="email"><input id="f-company" type="text"><textarea id="f-notes"></textarea>
           </div>
           <div class="submit-row">
             <button class="btn-submit" id="btn-book" onclick="submitBooking()">Request Tour</button>
@@ -370,6 +357,7 @@
 
 </div><!-- /.page-wrap -->
 
+<script src="/intake-questions.js"></script>
 <script>
 (function(){
   'use strict';
@@ -650,20 +638,43 @@
 
   // ── Booking submission ─────────────────────────────────────────────────
   async function submitBooking(){
+    var errEl   = document.getElementById('form-err');
+    var btn     = document.getElementById('btn-book');
+    function setErr(msg){ errEl.textContent = msg; errEl.classList.add('show'); }
+    function clearErr(){ errEl.classList.remove('show'); }
+    clearErr();
+
+    // The questionnaire is required — no blind tours. It also supplies the
+    // name/email/company/notes the request needs.
+    var bkAnswers = null;
+    if(window.GL_INTAKE){
+      var _q = window.GL_INTAKE.collect(document.getElementById('bk-intake-mount'));
+      if(!_q.ok){ setErr('Please finish the questionnaire — missing: ' + _q.missing.slice(0,4).join(', ') + (_q.missing.length>4?'…':'')); return; }
+      bkAnswers = _q.answers;
+      document.getElementById('f-name').value    = _q.answers.contact_name || '';
+      document.getElementById('f-email').value   = _q.answers.email || '';
+      document.getElementById('f-company').value = _q.answers.company || '';
+      document.getElementById('f-notes').value   = window.GL_INTAKE.summary(_q.answers);
+    }
     var name    = (document.getElementById('f-name').value    || '').trim();
     var email   = (document.getElementById('f-email').value   || '').trim();
     var company = (document.getElementById('f-company').value || '').trim();
     var notes   = (document.getElementById('f-notes').value   || '').trim();
-    var errEl   = document.getElementById('form-err');
-    var btn     = document.getElementById('btn-book');
 
-    function setErr(msg){ errEl.textContent = msg; errEl.classList.add('show'); }
-    function clearErr(){ errEl.classList.remove('show'); }
-
-    clearErr();
     if(!name)                          { setErr('Please enter your name.');          return; }
     if(!email || !email.includes('@')) { setErr('Please enter a valid email.');      return; }
     if(!selectedDate || !selectedTime) { setErr('Please select a date and time.');   return; }
+
+    // Create/attach a pipeline lead + store the structured intake (non-blocking).
+    if(bkAnswers && window.GL_INTAKE){
+      try {
+        await fetch(SUPA_URL + '/rest/v1/rpc/gl_tour_intake_submit', {
+          method: 'POST',
+          headers: { 'Content-Type':'application/json', 'apikey':ANON_KEY, 'Authorization':'Bearer '+ANON_KEY },
+          body: JSON.stringify({ p: { lead: window.GL_INTAKE.leadPayload(bkAnswers), answers: bkAnswers } })
+        });
+      } catch(e){ console.warn('tour intake submit:', e); }
+    }
 
     btn.disabled = true;
     btn.textContent = 'Sending request…';
@@ -783,6 +794,16 @@
   }
 
 }());
+</script>
+<script>
+(function(){
+  function renderIntake(){
+    if(window.GL_INTAKE && document.getElementById('bk-intake-mount'))
+      window.GL_INTAKE.render(document.getElementById('bk-intake-mount'), {});
+  }
+  if(document.readyState !== 'loading') renderIntake();
+  else document.addEventListener('DOMContentLoaded', renderIntake);
+})();
 </script>
 </body>
 </html>
