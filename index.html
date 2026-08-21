@@ -6786,6 +6786,12 @@ function openDealDetail(stage, idx){
   if(brBox && typeof window.glRenderBrief === 'function' && d.id && !String(d.id).startsWith('tmp_')){
     window.glRenderBrief(brBox, { kind:'deal', id:d.id, email:d.email, name:d.name, co:d.co, stage:stage, notes:d.notes });
   }
+  // Product intake questionnaire — answers from a tour booking or staff entry.
+  if(brBox && typeof window.glRenderIntake === 'function' && d.id && !String(d.id).startsWith('tmp_')){
+    var ddpIt = document.getElementById('ddp-intake');
+    if(!ddpIt){ ddpIt = document.createElement('div'); ddpIt.id = 'ddp-intake'; ddpIt.style.marginTop = '12px'; brBox.parentNode.insertBefore(ddpIt, brBox.nextSibling); }
+    window.glRenderIntake(ddpIt, { kind:'deal', dealId:d.id, email:d.email, name:d.name||d.co });
+  }
 }
 
 /* ═══════════════════════════════════════════
@@ -8170,6 +8176,14 @@ function openClientDetail(cid) {
   // AI Brief for this client.
   if(typeof window.glRenderBrief === 'function'){
     window.glRenderBrief(document.getElementById('cde-brief'), { kind:'client', id:c.id, email:c.email, name:c.name, co:c.name, stage:'client', notes:(c.notes||'') });
+  }
+  // Product intake questionnaire for this client (carried over from their tour /
+  // onboarding, editable by staff).
+  if(typeof window.glRenderIntake === 'function'){
+    var cdeBr = document.getElementById('cde-brief');
+    var cdeIt = document.getElementById('cde-intake');
+    if(!cdeIt && cdeBr){ cdeIt = document.createElement('div'); cdeIt.id = 'cde-intake'; cdeIt.style.marginTop = '12px'; cdeBr.parentNode.insertBefore(cdeIt, cdeBr.nextSibling); }
+    if(cdeIt) window.glRenderIntake(cdeIt, { kind:'client', clientId:c.id, email:c.email, name:c.name });
   }
 
   // Pull the client's email correspondence into the account view (same log the
@@ -10550,9 +10564,41 @@ function bkBuildTimes(cfg){
   return out.length?out:['10:00','11:00','12:00','13:00'];
 }
 
+let bkIntakeAnswers = null;
+function bkResetSteps(){
+  var si=document.getElementById('bk-step-intake'), ss=document.getElementById('bk-step-schedule');
+  if(si) si.style.display=''; if(ss) ss.style.display='none';
+}
+function bkBackToIntake(){
+  var si=document.getElementById('bk-step-intake'), ss=document.getElementById('bk-step-schedule');
+  if(ss) ss.style.display='none'; if(si) si.style.display='';
+}
+// Gate: the questionnaire must be complete before the calendar unlocks, so Mike
+// never gets a blind tour. On success we stash the answers and prefill the
+// hidden name/email/notes fields submitBooking reads.
+function bkIntakeToSchedule(){
+  var err=document.getElementById('bk-intake-err');
+  if(!window.GL_INTAKE){ if(err){ err.style.display='block'; err.textContent='Questionnaire didn’t load — please refresh and try again.'; } return; }
+  var res=window.GL_INTAKE.collect(document.getElementById('bk-intake-mount'));
+  if(!res.ok){
+    if(err){ err.style.display='block'; err.innerHTML='<strong>Please finish these before continuing:</strong><br>• '+res.missing.map(function(m){return m;}).join('<br>• '); }
+    var box=document.querySelector('#booking-overlay .booking-box'); if(box) box.scrollTop=0;
+    return;
+  }
+  if(err) err.style.display='none';
+  bkIntakeAnswers=res.answers;
+  var n=document.getElementById('bk-name'); if(n) n.value=res.answers.contact_name||'';
+  var e=document.getElementById('bk-email'); if(e) e.value=res.answers.email||'';
+  var nt=document.getElementById('bk-notes'); if(nt) nt.value=(res.answers.product_description||'')+(res.answers.goals?(' — Goals: '+res.answers.goals):'');
+  document.getElementById('bk-step-intake').style.display='none';
+  document.getElementById('bk-step-schedule').style.display='';
+  renderBkCal(); renderBkTimes();
+}
 async function openBooking(){
   document.getElementById('booking-overlay').classList.add('show');
-  document.getElementById('bk-success').style.display='none';
+  var bkS=document.getElementById('bk-success'); if(bkS) bkS.style.display='none';
+  if(window.GL_INTAKE){ window.GL_INTAKE.render(document.getElementById('bk-intake-mount'), bkIntakeAnswers||{}); }
+  bkResetSteps();
   // Load the scheduling page config (same row book.html?u=mike-krail uses) so
   // the offered times match the real availability window.
   try {
@@ -10651,6 +10697,17 @@ async function submitBooking(){
   // writes the schedule row AND the Google Calendar event. (Previously this
   // widget wrote a `confirmed` booking + calendar row directly, bypassing the
   // whole approval gate; that's the bug this replaces.)
+  // Save the intake answers + create/attach a pipeline lead so Mike knows what
+  // the tour is about. Non-blocking: a genuine tour still books if this hiccups.
+  let bkNotes = notes || null;
+  try {
+    if(bkIntakeAnswers && window.GL_INTAKE && window.supa){
+      bkNotes = window.GL_INTAKE.summary(bkIntakeAnswers);
+      const { error: intakeErr } = await supa.rpc('gl_tour_intake_submit', { p: { lead: window.GL_INTAKE.leadPayload(bkIntakeAnswers), answers: bkIntakeAnswers } });
+      if(intakeErr) console.warn('tour intake submit:', intakeErr.message);
+    }
+  } catch(e){ console.warn('tour intake submit failed:', e); }
+
   const bkBtn = document.querySelector('#booking-overlay button[onclick="submitBooking()"]');
   const bkRestore = function(){ if(bkBtn){ bkBtn.disabled=false; bkBtn.textContent='Confirm Booking →'; } };
   if(bkBtn){ bkBtn.disabled=true; bkBtn.textContent='Sending request…'; }
@@ -10678,7 +10735,7 @@ async function submitBooking(){
         page_id:      bkPageId,
         booker_name:  name,
         booker_email: email,
-        notes:        notes || null,
+        notes:        bkNotes,
         slot_date:    bkSelectedDate,
         slot_time:    bkSelectedTime,
       }),
@@ -12218,39 +12275,52 @@ window.addEventListener('appinstalled', () => {
       <div style="font-family:var(--ff-disp);font-size:26px;letter-spacing:2px;color:var(--white)">SCHEDULE A TOUR</div>
       <button onclick="closeBooking()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer">✕</button>
     </div>
-    <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:28px">
-      <div>
-        <div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:10px">SELECT DATE</div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <button onclick="bkPrev()" class="cal-nav-btn">‹</button>
-          <div id="bk-month-label" style="font-family:var(--ff-disp);font-size:15px;color:var(--white);letter-spacing:1px"></div>
-          <button onclick="bkNext()" class="cal-nav-btn">›</button>
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:6px">
-          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Su</div>
-          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Mo</div>
-          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Tu</div>
-          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">We</div>
-          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Th</div>
-          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Fr</div>
-          <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Sa</div>
-        </div>
-        <div class="booking-mini-cal" id="bk-cal-grid"></div>
-      </div>
-      <div>
-        <div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:10px">SELECT TIME</div>
-        <div class="time-slots" id="bk-time-slots"></div>
-        <div id="bk-selected-info" style="display:none;margin-top:14px;padding:11px;background:rgba(0,229,192,.06);border:1px solid rgba(0,229,192,.18);border-radius:8px;font-size:12px;color:var(--teal)"></div>
-      </div>
+    <!-- STEP 1 — required intake questionnaire (no blind tours). -->
+    <div id="bk-step-intake">
+      <p style="font-size:13px;color:var(--muted);line-height:1.6;margin:0 0 16px">A few quick questions so Mike knows exactly what your tour is about — about two minutes. Fields marked <span style="color:#ff8579">*</span> are required.</p>
+      <div id="bk-intake-mount"></div>
+      <div id="bk-intake-err" style="display:none;background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.3);border-radius:8px;padding:10px 12px;font-size:12.5px;color:#ff8579;margin:4px 0 12px"></div>
+      <button onclick="bkIntakeToSchedule()" style="width:100%;padding:14px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-size:14px;font-weight:800;cursor:pointer">Continue to pick a time →</button>
     </div>
-    <div style="margin-top:22px;border-top:1px solid rgba(255,255,255,.07);padding-top:18px">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-        <div><input id="bk-name" placeholder="Your name" style="width:100%;padding:11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:13px;font-family:var(--ff-body)"></div>
-        <div><input id="bk-email" type="email" placeholder="Email address" style="width:100%;padding:11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:13px;font-family:var(--ff-body)"></div>
+
+    <!-- STEP 2 — date/time picker (revealed once the questionnaire is complete). -->
+    <div id="bk-step-schedule" style="display:none">
+      <button type="button" onclick="bkBackToIntake()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;padding:0 0 12px">← Back to questions</button>
+      <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:28px">
+        <div>
+          <div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:10px">SELECT DATE</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <button onclick="bkPrev()" class="cal-nav-btn">‹</button>
+            <div id="bk-month-label" style="font-family:var(--ff-disp);font-size:15px;color:var(--white);letter-spacing:1px"></div>
+            <button onclick="bkNext()" class="cal-nav-btn">›</button>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:6px">
+            <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Su</div>
+            <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Mo</div>
+            <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Tu</div>
+            <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">We</div>
+            <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Th</div>
+            <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Fr</div>
+            <div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">Sa</div>
+          </div>
+          <div class="booking-mini-cal" id="bk-cal-grid"></div>
+        </div>
+        <div>
+          <div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:10px">SELECT TIME</div>
+          <div class="time-slots" id="bk-time-slots"></div>
+          <div id="bk-selected-info" style="display:none;margin-top:14px;padding:11px;background:rgba(0,229,192,.06);border:1px solid rgba(0,229,192,.18);border-radius:8px;font-size:12px;color:var(--teal)"></div>
+        </div>
       </div>
-      <textarea id="bk-notes" rows="2" placeholder="Brief description of your project…" style="width:100%;padding:11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:13px;font-family:var(--ff-body);resize:none;margin-bottom:12px"></textarea>
-      <button onclick="submitBooking()" style="width:100%;padding:14px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-size:14px;font-weight:800;cursor:pointer;transition:all .3s">Confirm Booking →</button>
-      <div id="bk-success" style="display:none;text-align:center;margin-top:14px;font-size:14px;color:var(--teal);font-weight:600">✓ Booking request sent! Mike will confirm within 1 business day.</div>
+      <div style="margin-top:22px;border-top:1px solid rgba(255,255,255,.07);padding-top:18px">
+        <!-- Name/email/notes come from the questionnaire; kept here (hidden) so submitBooking still reads them. -->
+        <div style="display:none">
+          <input id="bk-name" placeholder="Your name">
+          <input id="bk-email" type="email" placeholder="Email address">
+          <textarea id="bk-notes" rows="2"></textarea>
+        </div>
+        <button onclick="submitBooking()" style="width:100%;padding:14px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-size:14px;font-weight:800;cursor:pointer;transition:all .3s">Confirm Booking →</button>
+        <div id="bk-success" style="display:none;text-align:center;margin-top:14px;font-size:14px;color:var(--teal);font-weight:600">✓ Booking request sent! Mike will confirm within 1 business day.</div>
+      </div>
     </div>
   </div>
 </div>
@@ -12356,6 +12426,8 @@ window.addEventListener('appinstalled', () => {
 <script src="/crm-artwork.js"></script>
 <script src="/crm-deal-docs.js"></script>
 <script src="/crm-meeting-notes.js"></script>
+<script src="/intake-questions.js"></script>
+<script src="/crm-intake.js"></script>
 <script src="/crm-deal-brief.js"></script>
 <script src="/crm-attention.js"></script>
 <script src="/crm-followups.js"></script>
