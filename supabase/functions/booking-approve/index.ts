@@ -31,6 +31,32 @@ import { jsonResponse, handlePreflight } from '../_shared/cors.ts';
 const esc = (s: unknown) =>
   String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+// The booking notes are the intake questionnaire summary — a newline-delimited
+// block of "— Section —" headers and "Label: value" lines (see GL_INTAKE.
+// summary). Rendered as one escaped string, HTML collapses the newlines into a
+// wall of text. This parses it back into a readable, sectioned card. Falls back
+// to a whitespace-preserving block if the notes aren't in the expected shape.
+function renderNotes(raw: string): string {
+  const lines = String(raw).split('\n');
+  const parts: string[] = [];
+  let sawStructure = false;
+  for (const line of lines) {
+    const s = line.trim();
+    if (!s) continue;
+    const sec = s.match(/^—\s*(.+?)\s*—$/);
+    if (sec) { sawStructure = true; parts.push(`<div class="sec">${esc(sec[1])}</div>`); continue; }
+    const kv = s.match(/^([^:]+):\s*(.*)$/);
+    if (kv && kv[2]) {
+      sawStructure = true;
+      parts.push(`<div class="qr"><span class="qk">${esc(kv[1].trim())}</span><span class="qv">${esc(kv[2].trim())}</span></div>`);
+      continue;
+    }
+    parts.push(`<div class="qv" style="padding:6px 0">${esc(s)}</div>`);
+  }
+  if (!sawStructure) return `<div class="notes-pre">${esc(raw)}</div>`;
+  return parts.join('');
+}
+
 // ── Minimal branded HTML shell so the review page matches book.html ─────────
 function page(title: string, inner: string, status = 200): Response {
   const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
@@ -50,6 +76,15 @@ function page(title: string, inner: string, status = 200): Response {
   .lbl{color:#6b87ad;font-size:11px;text-transform:uppercase;letter-spacing:.8px;font-weight:600}
   .val{color:#fff;font-size:15px;font-weight:600}
   .box{background:#172038;border:1px solid #1e3058;border-radius:12px;padding:16px 18px;margin:18px 0}
+  .sec{color:#00e5c0;font-size:11px;text-transform:uppercase;letter-spacing:1px;font-weight:800;
+       margin:16px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(0,229,192,.18)}
+  .sec:first-child{margin-top:0}
+  .qr{display:flex;flex-direction:column;gap:2px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+  .qr:last-child{border-bottom:none}
+  .qk{color:#7d97bd;font-size:11px;letter-spacing:.3px}
+  .qv{color:#eaf1fb;font-size:14px;font-weight:600;line-height:1.4;word-break:break-word}
+  .boxlbl{color:#6b87ad;font-size:11px;text-transform:uppercase;letter-spacing:.8px;font-weight:700;margin-bottom:10px}
+  .notes-pre{white-space:pre-wrap;color:#dbe6f7;font-size:14px;line-height:1.5}
   .btns{display:flex;gap:12px;margin-top:24px;flex-wrap:wrap}
   button{border:none;border-radius:10px;padding:14px 28px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;flex:1;min-width:130px}
   .approve{background:#00c4a7;color:#0d1420}
@@ -135,8 +170,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
       <div class="row"><span class="lbl">Time</span><span class="val">${esc(timeLabel)} <span style="color:#6b87ad;font-weight:400">${esc(tzLbl)}</span></span></div>
       <div class="row"><span class="lbl">Who</span><span class="val">${esc(booking.booker_name)}${booking.booker_company ? ' · ' + esc(booking.booker_company) : ''}</span></div>
       <div class="row"><span class="lbl">Contact</span><span class="val">${esc(booking.booker_email)}</span></div>
-      ${booking.notes ? `<div class="row"><span class="lbl">Notes</span><span class="val" style="font-weight:400;color:#c8d8f0">${esc(booking.notes)}</span></div>` : ''}
-    </div>`;
+    </div>${booking.notes ? `
+    <div class="box">
+      <div class="boxlbl">What they told us</div>
+      ${renderNotes(booking.notes)}
+    </div>` : ''}`;
 
   // Compact machine-readable view of the request for the CRM admin card.
   const bookingInfo = {

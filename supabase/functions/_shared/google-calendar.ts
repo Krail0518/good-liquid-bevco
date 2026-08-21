@@ -43,32 +43,52 @@ export interface BusyResult {
   error?: string;
 }
 
-// Free/busy lookup on the connected account's primary calendar for the window
-// [timeMinISO, timeMaxISO). Returns the raw busy intervals Google reports.
+// Busy-interval lookup on the connected account's primary calendar for the
+// window [timeMinISO, timeMaxISO). Returns the busy blocks that overlap it.
+//
+// We deliberately use events.list, NOT freeBusy: the connected grant only holds
+// the `calendar.events` scope (enough to read/write events), and Google's
+// freeBusy.query requires the broader `calendar`/`calendar.readonly` scope — so
+// freeBusy 403s on this token and the availability check would silently fail
+// open. events.list IS authorized by `calendar.events`, needs no re-consent,
+// and singleEvents=true expands recurrences so overlaps are exact.
+//
 // Never throws; ok:false means the check itself couldn't run (no token / API
 // error) so the caller decides how to treat an inconclusive result.
 export async function getBusyIntervals(timeMinISO: string, timeMaxISO: string, timeZone: string): Promise<BusyResult> {
   let token: string;
   try { token = await getGmailAccessToken(); }
-  catch (e) { console.error('[google-calendar] freeBusy no token:', String(e)); return { ok: false, error: 'no access token: ' + String(e) }; }
+  catch (e) { console.error('[google-calendar] busy lookup no token:', String(e)); return { ok: false, error: 'no access token: ' + String(e) }; }
   try {
-    const r = await fetch('https://www.googleapis.com/calendar/v3/freeBusy', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ timeMin: timeMinISO, timeMax: timeMaxISO, timeZone, items: [{ id: 'primary' }] }),
-    });
+    const url = 'https://www.googleapis.com/calendar/v3/calendars/primary/events'
+      + '?timeMin=' + encodeURIComponent(timeMinISO)
+      + '&timeMax=' + encodeURIComponent(timeMaxISO)
+      + '&singleEvents=true&orderBy=startTime&maxResults=2500'
+      + '&timeZone=' + encodeURIComponent(timeZone);
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!r.ok) {
       const t = await r.text().catch(() => '');
-      console.error(`[google-calendar] freeBusy failed ${r.status}: ${t}`);
+      console.error(`[google-calendar] events.list failed ${r.status}: ${t}`);
       return { ok: false, status: r.status, error: t };
     }
     const j = await r.json();
-    const cals = (j?.calendars as Record<string, { busy?: Array<{ start: string; end: string }> }>) || {};
-    const prim = cals['primary'] || Object.values(cals)[0] || {};
-    const intervals = Array.isArray(prim.busy) ? prim.busy : [];
+    const items = Array.isArray(j?.items) ? j.items : [];
+    const intervals: Array<{ start: string; end: string }> = [];
+    for (const ev of items) {
+      // Skip cancelled instances and events the host marked "free" (transparent)
+      // — those don't block the slot. Timed events (start.dateTime) are the ones
+      // that represent a real conflict; all-day (date-only) events are skipped so
+      // birthdays/reminders don't wipe out a whole day of tour slots.
+      if (ev.status === 'cancelled') continue;
+      if (ev.transparency === 'transparent') continue;
+      const s = ev?.start?.dateTime;
+      const e = ev?.end?.dateTime;
+      if (!s || !e) continue;
+      intervals.push({ start: s, end: e });
+    }
     return { ok: true, intervals, busy: intervals.length > 0 };
   } catch (e) {
-    console.error('[google-calendar] freeBusy threw:', String(e));
+    console.error('[google-calendar] busy lookup threw:', String(e));
     return { ok: false, error: String(e) };
   }
 }
