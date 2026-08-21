@@ -1083,12 +1083,14 @@
     });
   };
 
-  window.glCloseJobFromDeal = function(){
+  window.glCloseJobFromDeal = function(outcome){
     if(!window.currentUser || window.currentUser.role !== 'admin'){ alert('Admin only.'); return; }
     var stageEl = document.getElementById('ddp-stage');
     if(!stageEl) return;
-    if(!confirm('Mark this deal as Closed Won?')) return;
-    stageEl.value = 'Closed Won';
+    var lost = (outcome === 'lost' || outcome === 'Closed Lost');
+    var stage = lost ? 'Closed Lost' : 'Closed Won';
+    if(!confirm('Mark this deal as ' + stage + '?')) return;
+    stageEl.value = stage;
     stageEl.dispatchEvent(new Event('change'));
     var saveBtn = document.querySelector('[onclick="saveDealDetail()"]');
     if(saveBtn) saveBtn.click();
