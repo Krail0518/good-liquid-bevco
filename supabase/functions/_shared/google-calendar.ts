@@ -35,6 +35,49 @@ export interface CalResult {
   error?: string;      // raw Google error body / message on failure
 }
 
+export interface BusyResult {
+  ok: boolean;
+  busy?: boolean;                              // true if the window overlaps an event
+  intervals?: Array<{ start: string; end: string }>;  // raw busy blocks (freeBusy)
+  status?: number;
+  error?: string;
+}
+
+// Free/busy lookup on the connected account's primary calendar for the window
+// [timeMinISO, timeMaxISO). Returns the raw busy intervals Google reports.
+// Never throws; ok:false means the check itself couldn't run (no token / API
+// error) so the caller decides how to treat an inconclusive result.
+export async function getBusyIntervals(timeMinISO: string, timeMaxISO: string, timeZone: string): Promise<BusyResult> {
+  let token: string;
+  try { token = await getGmailAccessToken(); }
+  catch (e) { console.error('[google-calendar] freeBusy no token:', String(e)); return { ok: false, error: 'no access token: ' + String(e) }; }
+  try {
+    const r = await fetch('https://www.googleapis.com/calendar/v3/freeBusy', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ timeMin: timeMinISO, timeMax: timeMaxISO, timeZone, items: [{ id: 'primary' }] }),
+    });
+    if (!r.ok) {
+      const t = await r.text().catch(() => '');
+      console.error(`[google-calendar] freeBusy failed ${r.status}: ${t}`);
+      return { ok: false, status: r.status, error: t };
+    }
+    const j = await r.json();
+    const cals = (j?.calendars as Record<string, { busy?: Array<{ start: string; end: string }> }>) || {};
+    const prim = cals['primary'] || Object.values(cals)[0] || {};
+    const intervals = Array.isArray(prim.busy) ? prim.busy : [];
+    return { ok: true, intervals, busy: intervals.length > 0 };
+  } catch (e) {
+    console.error('[google-calendar] freeBusy threw:', String(e));
+    return { ok: false, error: String(e) };
+  }
+}
+
+// Is the host busy on their Google Calendar for exactly this slot?
+export async function checkBusy(startISO: string, endISO: string, timeZone: string): Promise<BusyResult> {
+  return await getBusyIntervals(startISO, endISO, timeZone);
+}
+
 // Creates the event and returns a rich result. Never throws: calendar sync is a
 // nice-to-have on top of the booking, so a Google hiccup must not fail the
 // approval (the DB row + booker email still go out).

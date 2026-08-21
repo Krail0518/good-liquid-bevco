@@ -365,9 +365,12 @@
   var SUPA_URL  = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co';
   var ANON_KEY  = 'sb_publishable_-37mkPw8uLzEJM21T9jJOA_YQRQ7ikB';
   var CONFIRM_FN = SUPA_URL + '/functions/v1/booking-confirm';
+  var AVAIL_FN   = SUPA_URL + '/functions/v1/booking-availability';
 
   var page = null;          // booking_pages row
   var takenSlots = [];      // array of { start_at, end_at } strings (UTC ISO)
+  var calAvail   = {};      // 'HH:MM' -> boolean; false = busy on Mike's calendar
+  var calAvailLoading = false;
   var viewYear  = 0;
   var viewMonth = 0;        // 0-indexed
   var selectedDate = null;  // "YYYY-MM-DD"
@@ -510,6 +513,31 @@
     renderCalendar();
     renderSlots(dateStr);
     document.getElementById('booking-form').classList.remove('show');
+    // Cross-check the picked day against Mike's live calendar so we never
+    // offer (and then reject at confirm time) a slot he's already busy.
+    loadDayAvailability(dateStr);
+  }
+
+  async function loadDayAvailability(dateStr){
+    calAvail = {}; calAvailLoading = true;
+    if(selectedDate === dateStr) renderSlots(dateStr);
+    try {
+      if(page && page.id){
+        var r = await fetch(AVAIL_FN, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': ANON_KEY },
+          body: JSON.stringify({ page_id: page.id, date: dateStr }),
+        });
+        var d = await r.json().catch(function(){ return {}; });
+        if(d && d.ok && Array.isArray(d.slots)){
+          d.slots.forEach(function(s){ calAvail[s.time] = !!s.available; });
+        }
+      }
+    } catch(e){ console.warn('[GL] day availability', e); }
+    calAvailLoading = false;
+    // If the slot the visitor already picked just came back busy, drop it.
+    if(selectedTime && calAvail[selectedTime] === false){ clearSlot(); }
+    if(selectedDate === dateStr) renderSlots(dateStr);
   }
 
   // ── Slot generation ────────────────────────────────────────────────────
@@ -566,7 +594,11 @@
   function buildSlots(dateStr){
     var dur    = Number(page.duration)     || 30;
     var buffer = Number(page.buffer_after) || 0;
-    var stride = dur + buffer;
+    // Step is max(duration, 60), identical to the index.html widget and the
+    // booking-availability endpoint, so slot start-times line up exactly and
+    // the calendar-busy greying (keyed by 'HH:MM') never misses an offset slot.
+    // (buffer_after is still honored at confirm time via real-duration overlap.)
+    var stride = Math.max(dur, 60);
     var tz     = page.timezone || 'America/New_York';
 
     var startParts = (page.start_time || '09:00').split(':');
@@ -591,7 +623,11 @@
       // Skip slots within 24 hours of right now
       if(utcStart < minSlotTime){ continue; }
 
-      var taken = isSlotTaken(utcStart, utcEnd);
+      // Busy if an existing booking overlaps, or Mike's calendar returned this
+      // slot as unavailable (calAvail[time] === false). Missing = not-yet-known
+      // (still loading / lookup failed) → leave selectable, confirm-time guard
+      // is the backstop.
+      var taken = isSlotTaken(utcStart, utcEnd) || calAvail[time] === false;
 
       slots.push({
         time:  time,
@@ -651,7 +687,7 @@
       var _q = window.GL_INTAKE.collect(document.getElementById('bk-intake-mount'));
       if(!_q.ok){ setErr('Please finish the questionnaire — missing: ' + _q.missing.slice(0,4).join(', ') + (_q.missing.length>4?'…':'')); return; }
       bkAnswers = _q.answers;
-      document.getElementById('f-name').value    = _q.answers.contact_name || '';
+      document.getElementById('f-name').value    = [_q.answers.first_name,_q.answers.last_name].filter(Boolean).join(' ') || _q.answers.contact_name || '';
       document.getElementById('f-email').value   = _q.answers.email || '';
       document.getElementById('f-company').value = _q.answers.company || '';
       document.getElementById('f-notes').value   = window.GL_INTAKE.summary(_q.answers);

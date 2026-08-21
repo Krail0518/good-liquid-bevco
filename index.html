@@ -7447,37 +7447,64 @@ async function saveDealDetail(){
   d.prob         = newProb;
   d.notes        = newNotes;
 
-  // Move to different stage if changed; reset stage timer
+  // Move to different stage if changed; reset stage timer.
+  // Remember the pre-move location so a rejected DB write can be rolled back —
+  // otherwise the card appears to move (Close Won/Lost) while nothing persists,
+  // and reverts on the next reload. See CLAUDE.md rule #4.
+  const prevStage = currentDealStage;
+  const prevStageEnteredAt = d.stageEnteredAt;
   const stageChanged = newStage !== currentDealStage;
   if(stageChanged){
     d.stageEnteredAt = new Date().toISOString();
     deals[currentDealStage].splice(currentDealIdx, 1);
     if(!deals[newStage]) deals[newStage] = [];
     deals[newStage].push(d);
-    if(newStage === 'Closed Won') glNotifyDeal('deal_closed_won', {name: newName, company: newCo, stage:'Closed Won', value: String(newVal), email: newEmail, phone: newPhone});
   }
 
   // Save to Supabase if real id
   if(d.id && !String(d.id).startsWith('tmp_')){
+    const updatePayload = {
+      name: newName, client_name: newCo, value: newVal,
+      probability: newProb, stage: newStage, notes: newNotes,
+      contact_name: newContactName || undefined,
+      email:        newEmail       || undefined,
+      phone:        newPhone       || undefined,
+      city:         newCity        || undefined,
+      state:        newState       || undefined,
+      service:      newService     || undefined,
+      product_type: newProduct     || undefined,
+      volume:       newVolume      || undefined,
+      timeline:     newTimeline    || undefined,
+      funding_stage:newFunding     || undefined,
+      lead_source:  newSource      || undefined
+    };
+    if(stageChanged) updatePayload.stage_entered_at = d.stageEnteredAt;
+    // .select() so RLS/constraint rejections surface: a silent 0-row reject
+    // must be treated as failure, not success. On failure, roll the in-memory
+    // move back so the board reflects what actually saved.
+    let uq;
     try {
-      const updatePayload = {
-        name: newName, client_name: newCo, value: newVal,
-        probability: newProb, stage: newStage, notes: newNotes,
-        contact_name: newContactName || undefined,
-        email:        newEmail       || undefined,
-        phone:        newPhone       || undefined,
-        city:         newCity        || undefined,
-        state:        newState       || undefined,
-        service:      newService     || undefined,
-        product_type: newProduct     || undefined,
-        volume:       newVolume      || undefined,
-        timeline:     newTimeline    || undefined,
-        funding_stage:newFunding     || undefined,
-        lead_source:  newSource      || undefined
-      };
-      if(stageChanged) updatePayload.stage_entered_at = d.stageEnteredAt;
-      await supa.from('deals').update(updatePayload).eq('id', d.id);
-    } catch(e){ console.warn('Deal save failed:', e); }
+      uq = await supa.from('deals').update(updatePayload).eq('id', d.id).select();
+    } catch(e){ uq = { error: e }; }
+    if(uq.error || (Array.isArray(uq.data) && uq.data.length === 0)){
+      console.warn('Deal save failed:', uq.error || '0 rows');
+      if(stageChanged){
+        const i = (deals[newStage]||[]).indexOf(d);
+        if(i > -1) deals[newStage].splice(i, 1);
+        d.stageEnteredAt = prevStageEnteredAt;
+        if(!deals[prevStage]) deals[prevStage] = [];
+        deals[prevStage].push(d);
+      }
+      alert('Could not save this deal — the server rejected the change'
+        + (uq.error ? ': ' + (uq.error.message || uq.error) : ' (0 rows changed).')
+        + '\n\nNothing was saved and the deal has NOT been moved. Please try again.');
+      renderKanban();
+      renderDash();
+      return;
+    }
+    if(stageChanged && newStage === 'Closed Won') glNotifyDeal('deal_closed_won', {name: newName, company: newCo, stage:'Closed Won', value: String(newVal), email: newEmail, phone: newPhone});
+  } else if(stageChanged && newStage === 'Closed Won'){
+    glNotifyDeal('deal_closed_won', {name: newName, company: newCo, stage:'Closed Won', value: String(newVal), email: newEmail, phone: newPhone});
   }
 
   touchDeal(d.name || d.co || d.id);
@@ -7489,11 +7516,21 @@ async function saveDealDetail(){
 async function deleteDeal(){
   if(currentDealStage === null || currentDealIdx === null) return;
   if(!confirm('Delete this deal?')) return;
-  const d = (deals[currentDealStage]||[])[currentDealIdx];
-  deals[currentDealStage].splice(currentDealIdx, 1);
+  const stage = currentDealStage, idx = currentDealIdx;
+  const d = (deals[stage]||[])[idx];
   if(d && d.id && !String(d.id).startsWith('tmp_')){
-    try { await supa.from('deals').delete().eq('id', d.id); } catch(e){}
+    // Confirm the server actually deleted the row before removing it from the
+    // board — an RLS reject deletes 0 rows with no error (CLAUDE.md rule #4).
+    let dq;
+    try { dq = await supa.from('deals').delete().eq('id', d.id).select(); }
+    catch(e){ dq = { error: e }; }
+    if(dq.error || (Array.isArray(dq.data) && dq.data.length === 0)){
+      alert('Could not delete this deal — the server rejected it'
+        + (dq.error ? ': ' + (dq.error.message || dq.error) : ' (0 rows). Nothing was deleted.'));
+      return;
+    }
   }
+  deals[stage].splice(idx, 1);
   closeDealDetail();
   renderKanban();
   renderDash();
@@ -10588,7 +10625,7 @@ function bkIntakeToSchedule(){
   }
   if(err) err.style.display='none';
   bkIntakeAnswers=res.answers;
-  var n=document.getElementById('bk-name'); if(n) n.value=res.answers.contact_name||'';
+  var n=document.getElementById('bk-name'); if(n) n.value=[res.answers.first_name,res.answers.last_name].filter(Boolean).join(' ')||res.answers.contact_name||'';
   var e=document.getElementById('bk-email'); if(e) e.value=res.answers.email||'';
   var nt=document.getElementById('bk-notes'); if(nt) nt.value=(res.answers.product_description||'')+(res.answers.goals?(' — Goals: '+res.answers.goals):'');
   document.getElementById('bk-step-intake').style.display='none';
@@ -10642,19 +10679,50 @@ function renderBkCal(){
 function bkPrev(){ bkCurrentDate.setMonth(bkCurrentDate.getMonth()-1); renderBkCal(); }
 function bkNext(){ bkCurrentDate.setMonth(bkCurrentDate.getMonth()+1); renderBkCal(); }
 
+let bkAvail = {};          // 'HH:MM' -> boolean (available); missing = not-yet-known
+let bkAvailLoading = false;
 function selectBkDate(date){
   bkSelectedDate=date;
+  bkSelectedTime=null;       // new day → drop any prior time pick
   renderBkCal();
   renderBkTimes();
   updateBkInfo();
+  loadBkAvailability(date);
+}
+
+// Ask the server which slots are free — combining existing bookings AND Mike's
+// Google Calendar — so conflicting times are greyed out before anyone requests
+// one. Fails open: if the check can't run, slots stay clickable (booking-confirm
+// still guards the calendar server-side).
+async function loadBkAvailability(date){
+  bkAvail = {}; bkAvailLoading = true; renderBkTimes();
+  try {
+    var pid = (bkPageCfg && bkPageCfg.id) || null;
+    if(pid){
+      const r = await fetch(SUPA_URL + '/functions/v1/booking-availability', {
+        method:'POST', headers:{ 'Content-Type':'application/json', 'apikey':SUPA_KEY },
+        body: JSON.stringify({ page_id: pid, date: date })
+      });
+      const d = await r.json().catch(function(){ return {}; });
+      if(d && d.ok && Array.isArray(d.slots)){ d.slots.forEach(function(s){ bkAvail[s.time] = !!s.available; }); }
+    }
+  } catch(e){ console.warn('booking availability:', e); }
+  bkAvailLoading = false;
+  if(bkSelectedTime && bkAvail[bkSelectedTime] === false){ bkSelectedTime=null; updateBkInfo(); }
+  renderBkTimes();
 }
 
 function renderBkTimes(){
-  document.getElementById('bk-time-slots').innerHTML=BK_TIMES.map(t=>`
-    <div class="time-slot ${bkSelectedTime===t?'selected':''}" onclick="selectBkTime('${t}')">${bk12(t)}</div>`).join('');
+  var html = BK_TIMES.map(function(t){
+    var avail = bkAvail[t] !== false;   // available until we hear otherwise
+    if(avail) return '<div class="time-slot '+(bkSelectedTime===t?'selected':'')+'" onclick="selectBkTime(\''+t+'\')">'+bk12(t)+'</div>';
+    return '<div class="time-slot" title="Unavailable — already booked" style="opacity:.35;cursor:not-allowed;text-decoration:line-through">'+bk12(t)+'</div>';
+  }).join('');
+  if(bkAvailLoading) html += '<div style="font-size:11px;color:var(--muted);grid-column:1/-1;padding:6px 0">Checking availability…</div>';
+  document.getElementById('bk-time-slots').innerHTML = html;
 }
 
-function selectBkTime(time){ bkSelectedTime=time; renderBkTimes(); updateBkInfo(); }
+function selectBkTime(time){ if(bkAvail[time]===false) return; bkSelectedTime=time; renderBkTimes(); updateBkInfo(); }
 
 function updateBkInfo(){
   const el=document.getElementById('bk-selected-info');
