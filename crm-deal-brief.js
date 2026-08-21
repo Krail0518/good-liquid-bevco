@@ -308,5 +308,17 @@
     paint(host, ctx, { emailCount: emailCount, noteCount: noteCount });
   };
 
+  // Headless brief refresh for batch callers (the Needs-Attention board's
+  // "Re-scan emails"): runs the same incremental summarize with the in-flight
+  // guard, but renders nothing. Resolves when done; no-ops if already running.
+  window.glRefreshBriefData = async function glRefreshBriefData(ctx){
+    if(!ctx || !ctx.kind || !ctx.id || !sb()) return;
+    var k = key(ctx.kind, ctx.id);
+    if(RUNNING[k]) return;
+    RUNNING[k] = true;
+    try { await summarize(ctx); } catch(e){ console.warn('[brief] batch refresh', e); }
+    RUNNING[k] = false;
+  };
+
   console.log('[GL] deal-brief module loaded');
 }());
