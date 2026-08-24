@@ -39,7 +39,7 @@
     keg: {
       formats: ['19.5L Hybrid Keg (Sixtel)'],
       tiers: {
-        '19.5L Hybrid Keg (Sixtel)': [[50,1e9,12]]
+        '19.5L Hybrid Keg (Sixtel)': [[40,1e9,12]]
       },
       defaultAddons: { emptyKeg: 17.50 }
     }
@@ -79,6 +79,10 @@
       paktech6On:false,  paktech6PerCan:px('paktech_6pack_per_can',0.06),
       proper4On:false,   proper4PerCan:px('proper_pack_4pack_per_can',0.06),
       proper6On:false,   proper6PerCan:px('proper_pack_6pack_per_can',0.06),
+      // Cans (pass-through) — off by default; the deck quotes cans separately.
+      canBlankOn:false,   canBlankPerCan:px('can_blank_per_unit',0.30),
+      canShrinkOn:false,  canShrinkPerCan:px('can_shrink_label_per_unit',0.15),
+      canPrintedOn:false, canPrintedPerCan:px('can_printed_per_unit',0.33),
       palletOn:true,     palletEach:px('pallet_each',12),
       palletWrapOn:true, palletWrapEach:px('pallet_wrap_each',8),  casesPerPallet:px('cases_per_pallet',80)
     };
@@ -97,6 +101,9 @@
     if(pkg.paktech6On) perCan += (pkg.paktech6PerCan || 0);
     if(pkg.proper4On)  perCan += (pkg.proper4PerCan  || 0);
     if(pkg.proper6On)  perCan += (pkg.proper6PerCan  || 0);
+    if(pkg.canBlankOn)   perCan += (pkg.canBlankPerCan   || 0);
+    if(pkg.canShrinkOn)  perCan += (pkg.canShrinkPerCan  || 0);
+    if(pkg.canPrintedOn) perCan += (pkg.canPrintedPerCan || 0);
     var caseExtra = 0;
     if(pkg.tray24On)   caseExtra += (pkg.tray24PerCase   || 0);
     if(pkg.tray12On)   caseExtra += (pkg.tray12PerCase   || 0);
@@ -111,6 +118,43 @@
     return {
       perCan: perCan, caseExtra: caseExtra, pallets: pallets, palletCost: palletCost,
       runTotal: perCan * cans + caseExtra * cases + palletCost
+    };
+  }
+
+  // Bottling packaging defaults (per bottle / per case / per pallet). Same
+  // DB-backed pattern as canning; a 6-pack case counts as one "case".
+  function defaultBottlingPkg(){
+    return {
+      pasteurOn:false,  pasteurPerBtl:px('bottling_pasteurization_per_btl',0.20),
+      otlOn:false,      otlPerBtl:px('bottling_otl_per_btl',0.20),
+      labelsOn:false,   labelsPerBtl:px('bottling_labels_per_btl',0.06),
+      caseOn:true,      casePerCase:px('bottling_case_6pack_per_case',0.75),
+      palletOn:true,    palletEach:px('pallet_each',12),
+      palletWrapOn:true, palletWrapEach:px('pallet_wrap_each',8),
+      casesPerPallet:px('bottling_cases_per_pallet',45)
+    };
+  }
+
+  // Full cost breakdown for one bottling tier (mirror of canningExtras).
+  function bottlingExtras(tier, pkg){
+    pkg = pkg || {};
+    var bottles = tier.bottles || 0, cases = tier.cases || 0;
+    var perBtl = (tier.ratePerBtl || 0);
+    if(pkg.pasteurOn) perBtl += (pkg.pasteurPerBtl || 0);
+    if(pkg.otlOn)     perBtl += (pkg.otlPerBtl     || 0);
+    if(pkg.labelsOn)  perBtl += (pkg.labelsPerBtl  || 0);
+    var caseExtra = 0;
+    if(pkg.caseOn) caseExtra += (pkg.casePerCase || 0);
+    var pallets = 0, palletCost = 0;
+    if(pkg.palletOn || pkg.palletWrapOn){
+      var cpp = pkg.casesPerPallet || 45;
+      pallets = cpp > 0 ? Math.ceil(cases / cpp) : 0;
+      palletCost = pallets * ((pkg.palletOn ? (pkg.palletEach || 0) : 0) +
+                              (pkg.palletWrapOn ? (pkg.palletWrapEach || 0) : 0));
+    }
+    return {
+      perBtl: perBtl, caseExtra: caseExtra, pallets: pallets, palletCost: palletCost,
+      runTotal: perBtl * bottles + caseExtra * cases + palletCost
     };
   }
 
@@ -148,7 +192,7 @@
   var KEG_TERMS = [
     '<b>Empty Keg:</b> $17.50/keg for the one-way PET keg (optional — priced separately).',
     '<b>Gas/Materials:</b> Fees do not include the empty keg, gas, or raw materials.',
-    '<b>Minimum Order:</b> 50 kegs.'
+    '<b>Minimum Order:</b> 40 kegs.'
   ];
   function termsForType(t){
     return t==='bottling' ? BOTTLING_TERMS : t==='keg' ? KEG_TERMS : CANNING_TERMS;
@@ -334,7 +378,7 @@
     }
 
     /* ── Local state ── */
-    var state = { productType:'canning', format:'12oz Sleek', tiers:[], savedId:null, pkg:defaultCanningPkg() };
+    var state = { productType:'canning', format:'12oz Sleek', tiers:[], savedId:null, pkg:defaultCanningPkg(), bpkg:defaultBottlingPkg() };
 
     /* ── Wire close ── */
     ov.querySelector('#gl-qb-close').addEventListener('click', function(){ ov.remove(); });
@@ -355,6 +399,19 @@
     typeEl.addEventListener('change', function(){ rebuildFormats(); state.tiers=[]; renderTiers(); });
     fmtEl.addEventListener('change', function(){ state.format = fmtEl.value; rerenderTiers(); });
     rebuildFormats();
+
+    // The packaging/add-on defaults are read synchronously from the price cache;
+    // if the cache was cold when the builder opened, re-pull the DB prices and
+    // refresh so the very first quote of a session never uses stale fallbacks.
+    if(typeof window.glLoadPricingSettings === 'function'){
+      window.glLoadPricingSettings().then(function(){
+        if(!document.body.contains(ov)) return;   // builder was closed
+        state.pkg  = defaultCanningPkg();
+        state.bpkg = defaultBottlingPkg();
+        rebuildAddons();
+        renderTiers();
+      }).catch(function(){});
+    }
 
     /* ── Auto-select product type from deal ── */
     if(opts.productType && DECK[opts.productType]){
@@ -386,7 +443,7 @@
       state.tiers = caseList.map(function(sc){
         if(t2==='canning')  return { cases:sc, cans:sc*CANS_PER_CASE, fillPerCan:autoRate(sc), nitrogenPerCan:0.03, trayPerCan:0.03 };
         if(t2==='bottling') return { cases:sc, bottles:sc*BTLS_PER_CASE, ratePerBtl:autoRate(sc) };
-        return { kegs:Math.max(50,sc), laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) };
+        return { kegs:Math.max(px('keg_minimum',40),sc), laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) };
       });
       renderTiers();
     } else if(opts.productType){
@@ -404,7 +461,7 @@
           { cases:1320, bottles:1320*BTLS_PER_CASE, ratePerBtl:autoRate(1320) }
         ];
       } else {
-        state.tiers = [{ kegs:50, laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) }];
+        state.tiers = [{ kegs:px('keg_minimum',40), laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) }];
       }
       renderTiers();
     }
@@ -428,6 +485,9 @@
             addonToggle('gl-qb-paktech6','PakTech Handle — 6-pack', P.paktech6PerCan.toFixed(2),'per can') +
             addonToggle('gl-qb-proper4','Proper Pack — 4-pack', P.proper4PerCan.toFixed(2),'per can') +
             addonToggle('gl-qb-proper6','Proper Pack — 6-pack', P.proper6PerCan.toFixed(2),'per can') +
+            addonToggle('gl-qb-canblank','Blank / Brite Can', P.canBlankPerCan.toFixed(2),'per can') +
+            addonToggle('gl-qb-canshrink','Shrink-Sleeve Label', P.canShrinkPerCan.toFixed(2),'per can') +
+            addonToggle('gl-qb-canprinted','Pre-Printed Can', P.canPrintedPerCan.toFixed(2),'per can') +
             addonToggle('gl-qb-pallet','Pallet', P.palletEach.toFixed(2),'per pallet') +
             addonToggle('gl-qb-palletwrap','Pallet Shrink Wrap', P.palletWrapEach.toFixed(2),'per pallet') +
           '</div>' +
@@ -446,6 +506,9 @@
           ['gl-qb-paktech6', 'paktech6On', 'paktech6PerCan'],
           ['gl-qb-proper4',  'proper4On',  'proper4PerCan'],
           ['gl-qb-proper6',  'proper6On',  'proper6PerCan'],
+          ['gl-qb-canblank', 'canBlankOn', 'canBlankPerCan'],
+          ['gl-qb-canshrink','canShrinkOn','canShrinkPerCan'],
+          ['gl-qb-canprinted','canPrintedOn','canPrintedPerCan'],
           ['gl-qb-pallet',   'palletOn',   'palletEach'],
           ['gl-qb-palletwrap','palletWrapOn','palletWrapEach']
         ];
@@ -457,13 +520,36 @@
         var cpp = el.querySelector('#gl-qb-cpp');
         if(cpp) cpp.addEventListener('input', function(){ P.casesPerPallet = parseInt(cpp.value,10)||80; renderTiers(); });
       } else if(t === 'bottling'){
+        var B = state.bpkg || (state.bpkg = defaultBottlingPkg());
         el.innerHTML =
-          '<div style="'+LBL+'">ADD-ON SERVICES</div>' +
+          '<div style="'+LBL+'">ADD-ON SERVICES &amp; PACKAGING</div>' +
           '<div style="display:flex;flex-wrap:wrap;gap:10px">' +
-            addonToggle('gl-qb-bfp','Batch Flash Pasteurization','0.20','per bottle') +
-            addonToggle('gl-qb-otl','Over the Top Labels','0.20','per bottle') +
-            addonToggle('gl-qb-labels','Labels Applied Front & Back','0.06','per bottle') +
+            addonToggle('gl-qb-bfp','Batch Flash Pasteurization', B.pasteurPerBtl.toFixed(2),'per bottle') +
+            addonToggle('gl-qb-otl','Over the Top Labels', B.otlPerBtl.toFixed(2),'per bottle') +
+            addonToggle('gl-qb-labels','Labels Applied Front & Back', B.labelsPerBtl.toFixed(2),'per bottle') +
+            addonToggle('gl-qb-bcase','6-pack Bottle Case', B.casePerCase.toFixed(2),'per case') +
+            addonToggle('gl-qb-bpallet','Pallet', B.palletEach.toFixed(2),'per pallet') +
+            addonToggle('gl-qb-bpalletwrap','Pallet Shrink Wrap', B.palletWrapEach.toFixed(2),'per pallet') +
+          '</div>' +
+          '<div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:10px;align-items:center;font-size:12px;color:#9aa7bd">' +
+            '<label style="display:flex;align-items:center;gap:6px">Cases per pallet' +
+              '<input id="gl-qb-bcpp" type="number" min="1" step="1" value="'+(B.casesPerPallet||45)+'" style="width:70px;padding:4px 6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:4px;color:#fff"></label>' +
           '</div>';
+        var bottlingMap = [
+          ['gl-qb-bfp',        'pasteurOn',   'pasteurPerBtl'],
+          ['gl-qb-otl',        'otlOn',       'otlPerBtl'],
+          ['gl-qb-labels',     'labelsOn',    'labelsPerBtl'],
+          ['gl-qb-bcase',      'caseOn',      'casePerCase'],
+          ['gl-qb-bpallet',    'palletOn',    'palletEach'],
+          ['gl-qb-bpalletwrap','palletWrapOn','palletWrapEach']
+        ];
+        bottlingMap.forEach(function(m){
+          var cb = el.querySelector('#'+m[0]+'-on'), rt = el.querySelector('#'+m[0]+'-rate');
+          if(cb){ cb.checked = !!B[m[1]]; cb.addEventListener('change', function(){ B[m[1]] = cb.checked; renderTiers(); }); }
+          if(rt){ rt.addEventListener('input', function(){ B[m[2]] = parseFloat(rt.value)||0; renderTiers(); }); }
+        });
+        var bcpp = el.querySelector('#gl-qb-bcpp');
+        if(bcpp) bcpp.addEventListener('input', function(){ B.casesPerPallet = parseInt(bcpp.value,10)||45; renderTiers(); });
       } else {
         el.innerHTML =
           '<div style="'+LBL+'">ADD-ON SERVICES</div>' +
@@ -507,7 +593,7 @@
       var headerCols = isCanning
         ? '<th style="'+TH+'">Cases</th><th style="'+TH+'">Cans</th><th style="'+TH+'">Fill /Can</th><th style="'+TH+'">Add-ons /Can</th><th style="'+TH+'">Pkg /Case</th><th style="'+TH+'">Pallets</th><th style="'+TH+'">Run Total</th><th style="'+TH+'"></th>'
         : isBottling
-          ? '<th style="'+TH+'">Cases</th><th style="'+TH+'">Bottles</th><th style="'+TH+'">/Bottle</th><th style="'+TH+'">Run Total</th><th style="'+TH+'"></th>'
+          ? '<th style="'+TH+'">Cases</th><th style="'+TH+'">Bottles</th><th style="'+TH+'">/Bottle</th><th style="'+TH+'">Add-ons /Btl</th><th style="'+TH+'">Pkg /Case</th><th style="'+TH+'">Pallets</th><th style="'+TH+'">Run Total</th><th style="'+TH+'"></th>'
           : '<th style="'+TH+'">Kegs</th><th style="'+TH+'">Labor /Keg</th><th style="'+TH+'">Keg Cost /Keg</th><th style="'+TH+'">Run Total</th><th style="'+TH+'"></th>';
 
       var rows = state.tiers.map(function(tier, i){
@@ -578,12 +664,19 @@
           '<td style="'+TD+'"><button data-del-tier="'+i+'" class="cbtn" style="padding:3px 8px;font-size:11px;color:#ff8579;border-color:rgba(255,133,121,.3)">✕</button></td>' +
         '</tr>';
       } else if(isBottling){
-        var btlTotal = (tier.ratePerBtl||0) * (tier.bottles||0);
+        var bx = bottlingExtras(tier, state.bpkg);
+        var bAddPerBtl = bx.perBtl - (tier.ratePerBtl||0);
+        var bPalletCell = bx.pallets
+          ? bx.pallets + '<div style="color:var(--muted);font-size:10px">' + fmtUsd(bx.palletCost) + '</div>'
+          : '—';
         return '<tr>' +
           '<td style="'+TD+'">' + numInp(i,'cases',tier.cases,0,60) + '</td>' +
           '<td style="'+TD+';color:var(--muted)">' + fmtNum(tier.bottles||0) + '</td>' +
           '<td style="'+TD+'">' + rateInp(i,'ratePerBtl',tier.ratePerBtl,tier._rateOverride) + '</td>' +
-          '<td style="'+TDM+'">' + fmtUsd(btlTotal) + '</td>' +
+          '<td style="'+TDM+';color:var(--muted)">' + fmtUsd(bAddPerBtl) + '</td>' +
+          '<td style="'+TDM+';color:var(--muted)">' + fmtUsd(bx.caseExtra) + '</td>' +
+          '<td style="'+TDM+';color:var(--muted);font-size:11px">' + bPalletCell + '</td>' +
+          '<td style="'+TDM+'">' + fmtUsd(bx.runTotal) + '</td>' +
           '<td style="'+TD+'"><button data-del-tier="'+i+'" class="cbtn" style="padding:3px 8px;font-size:11px;color:#ff8579;border-color:rgba(255,133,121,.3)">✕</button></td>' +
         '</tr>';
       } else {
@@ -629,7 +722,7 @@
         var c = 660;
         state.tiers.push({ cases:c, bottles:c*BTLS_PER_CASE, ratePerBtl:autoRate(c) });
       } else {
-        state.tiers.push({ kegs:50, laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) });
+        state.tiers.push({ kegs:px('keg_minimum',40), laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) });
       }
       renderTiers();
     });
@@ -650,7 +743,7 @@
           { cases:1320, bottles:1320*BTLS_PER_CASE, ratePerBtl:autoRate(1320) }
         ];
       } else {
-        state.tiers = [{ kegs:50, laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) }];
+        state.tiers = [{ kegs:px('keg_minimum',40), laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) }];
       }
       renderTiers();
     });
@@ -692,6 +785,7 @@
         tiers:         state.tiers,
         addons:        addons,
         pkg:           JSON.parse(JSON.stringify(state.pkg || {})),
+        bpkg:          JSON.parse(JSON.stringify(state.bpkg || {})),
         inclusions:    inclusionsForType(productType),
         notes:         notes,
         clientName:    (ov.querySelector('#gl-qb-client-name')||{}).value || client.name || '',
@@ -784,7 +878,8 @@
           var x = canningExtras(t, data.pkg);
           return '<li>'+fmtNum(t.cases)+' cases ('+fmtNum(t.cans||0)+' cans) — '+fmtUsd(x.runTotal)+' all-in ('+fmtUsd((t.cans||0)?x.runTotal/(t.cans||1):0)+'/can)</li>';
         } else if(data.productType==='bottling'){
-          return '<li>'+fmtNum(t.cases)+' cases ('+fmtNum(t.bottles||0)+' bottles) — '+fmtUsd(t.ratePerBtl||0)+'/bottle</li>';
+          var bx = bottlingExtras(t, data.bpkg);
+          return '<li>'+fmtNum(t.cases)+' cases ('+fmtNum(t.bottles||0)+' bottles) — '+fmtUsd(bx.runTotal)+' all-in</li>';
         } else {
           return '<li>'+fmtNum(t.kegs||0)+' kegs — '+fmtUsd((t.laborPerKeg||0)+(t.kegCostPerKeg||0))+'/keg</li>';
         }
@@ -899,25 +994,48 @@
         pkgLine(PK.paktech6On, 'PakTech Handle — 6-pack', PK.paktech6PerCan, 'can') +
         pkgLine(PK.proper4On,  'Proper Pack — 4-pack', PK.proper4PerCan, 'can') +
         pkgLine(PK.proper6On,  'Proper Pack — 6-pack', PK.proper6PerCan, 'can') +
+        pkgLine(PK.canBlankOn,   'Blank / Brite Can', PK.canBlankPerCan, 'can') +
+        pkgLine(PK.canShrinkOn,  'Shrink-Sleeve Label', PK.canShrinkPerCan, 'can') +
+        pkgLine(PK.canPrintedOn, 'Pre-Printed Can', PK.canPrintedPerCan, 'can') +
         pkgLine(PK.palletOn,   'Pallet', PK.palletEach, 'pallet') +
         pkgLine(PK.palletWrapOn, 'Pallet Shrink Wrap', PK.palletWrapEach, 'pallet');
     } else if(isBottling){
-      tiersTable = '<table style="width:100%;border-collapse:collapse;margin-bottom:20px">' +
-        '<thead><tr><th style="'+PTH+'">Volume</th><th style="'+PTH+'">Cost Per 6-Pack</th><th style="'+PTH+';color:#1a6fff">Cost Per Bottle</th><th style="'+PTH+';color:#1a6fff">Run Total</th></tr></thead><tbody>' +
+      var BB = data.bpkg || {};
+      function bpkgLine(on, label, rate, unit){
+        if(!on || !(rate>0)) return '';
+        return '<div style="border-left:4px solid #1a6fff;padding:10px 16px;background:#eef3ff;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+          '<div><b>'+esc(label)+'</b></div>' +
+          '<div style="color:#1a6fff;font-weight:700;font-size:14px">'+fmtUsd(rate)+' / '+esc(unit)+'</div>' +
+        '</div>';
+      }
+      tiersTable = '<table style="width:100%;border-collapse:collapse;margin-bottom:16px">' +
+        '<thead><tr>' +
+          '<th style="'+PTH+'">Volume</th>' +
+          '<th style="'+PTH+'">Per Bottle</th>' +
+          '<th style="'+PTH+'">Add-ons /Btl</th>' +
+          '<th style="'+PTH+'">Pkg /Case</th>' +
+          '<th style="'+PTH+'">Pallets</th>' +
+          '<th style="'+PTH+';color:#1a6fff">Run Total</th>' +
+        '</tr></thead><tbody>' +
         (data.tiers||[]).map(function(t){
-          var perPack = (t.ratePerBtl||0)*BTLS_PER_CASE;
-          var total   = (t.ratePerBtl||0)*(t.bottles||0);
+          var bx = bottlingExtras(t, BB);
+          var addPerBtl = bx.perBtl - (t.ratePerBtl||0);
           return '<tr>' +
             '<td style="'+PTDC+'">' + fmtNum(t.cases||0)+' cases ('+fmtNum(t.bottles||0)+' bottles)</td>' +
-            '<td style="'+PTDC+'">' + fmtUsd(perPack) + '</td>' +
-            '<td style="'+PTD_BLUE+'">' + fmtUsd(t.ratePerBtl||0) + '</td>' +
-            '<td style="'+PTD_BLUE+'">' + fmtUsd(total) + '</td>' +
+            '<td style="'+PTDC+'">' + fmtUsd(t.ratePerBtl||0) + '</td>' +
+            '<td style="'+PTDC+'">' + fmtUsd(addPerBtl) + '</td>' +
+            '<td style="'+PTDC+'">' + fmtUsd(bx.caseExtra) + '</td>' +
+            '<td style="'+PTDC+'">' + (bx.pallets ? bx.pallets+' ('+fmtUsd(bx.palletCost)+')' : '—') + '</td>' +
+            '<td style="'+PTD_BLUE+'">' + fmtUsd(bx.runTotal) + '</td>' +
           '</tr>';
         }).join('') +
         '</tbody></table>' +
-        addonLine('gl-qb-bfp',    'Batch Flash Pasteurization',    'bottle') +
-        addonLine('gl-qb-otl',    'Over the Top Labels',           'bottle') +
-        addonLine('gl-qb-labels', 'Labels Applied Front &amp; Back', 'bottle');
+        bpkgLine(BB.pasteurOn, 'Batch Flash Pasteurization', BB.pasteurPerBtl, 'bottle') +
+        bpkgLine(BB.otlOn,     'Over the Top Labels', BB.otlPerBtl, 'bottle') +
+        bpkgLine(BB.labelsOn,  'Labels Front &amp; Back', BB.labelsPerBtl, 'bottle') +
+        bpkgLine(BB.caseOn,    '6-pack Bottle Case', BB.casePerCase, 'case') +
+        bpkgLine(BB.palletOn,  'Pallet', BB.palletEach, 'pallet') +
+        bpkgLine(BB.palletWrapOn, 'Pallet Shrink Wrap', BB.palletWrapEach, 'pallet');
     } else {
       tiersTable = '<table style="width:100%;border-collapse:collapse;margin-bottom:20px">' +
         '<thead><tr><th style="'+PTH+'">Quantity</th><th style="'+PTH+'">Labor / Keg</th><th style="'+PTH+'">Keg Cost / Keg</th><th style="'+PTH+';color:#1a6fff">Run Total</th></tr></thead><tbody>' +
