@@ -66,7 +66,23 @@
     return (typeof window !== 'undefined' && typeof window.glPrice === 'function')
       ? window.glPrice(key, fallback) : fallback;
   }
-  function defaultCanningPkg(){
+
+  // Cans are priced by size, so the blank-can / shrink-label / printed-can rate
+  // depends on the format being quoted. Map the selected canning format to the
+  // right pricing_settings key. Printed is only defined for 12oz today.
+  function canKeyFor(type, format){
+    var f = String(format || ''), is16 = /16/.test(f), sleek = /sleek/i.test(f);
+    if(type === 'blank')   return is16 ? 'can_blank_16std_per_unit'  : (sleek ? 'can_blank_12sleek_per_unit'  : 'can_blank_12std_per_unit');
+    if(type === 'shrink')  return is16 ? 'can_shrink_16_per_unit'    : (sleek ? 'can_shrink_12sleek_per_unit' : 'can_shrink_12std_per_unit');
+    if(type === 'printed') return is16 ? null : 'can_printed_12_per_unit';
+    return null;
+  }
+  function canRate(type, format){
+    var k = canKeyFor(type, format);
+    return k ? px(k, 0) : 0;
+  }
+  function defaultCanningPkg(format){
+    format = format || '12oz Sleek';
     return {
       nitrogenOn:true,   nitrogenPerCan:px('nitrogen_per_can',0.03),
       pasteurOn:false,   pasteurPerCan:px('pasteurization_per_can',0.05),
@@ -79,10 +95,10 @@
       paktech6On:false,  paktech6PerCan:px('paktech_6pack_per_can',0.06),
       proper4On:false,   proper4PerCan:px('proper_pack_4pack_per_can',0.06),
       proper6On:false,   proper6PerCan:px('proper_pack_6pack_per_can',0.06),
-      // Cans (pass-through) — off by default; the deck quotes cans separately.
-      canBlankOn:false,   canBlankPerCan:px('can_blank_per_unit',0.30),
-      canShrinkOn:false,  canShrinkPerCan:px('can_shrink_label_per_unit',0.15),
-      canPrintedOn:false, canPrintedPerCan:px('can_printed_per_unit',0.33),
+      // Cans (pass-through) — off by default; priced by the format being quoted.
+      canBlankOn:false,   canBlankPerCan:canRate('blank', format),
+      canShrinkOn:false,  canShrinkPerCan:canRate('shrink', format),
+      canPrintedOn:false, canPrintedPerCan:canRate('printed', format),
       palletOn:true,     palletEach:px('pallet_each',12),
       palletWrapOn:true, palletWrapEach:px('pallet_wrap_each',8),  casesPerPallet:px('cases_per_pallet',80)
     };
@@ -393,11 +409,20 @@
       var fmts = DECK[t].formats;
       fmtEl.innerHTML = fmts.map(function(f){ return '<option>'+esc(f)+'</option>'; }).join('');
       state.format = fmts[0];
+      applyCanRates();
       rebuildAddons();
       rerenderTiers();
     }
+    // Re-point the blank-can / shrink-label / printed-can rates at the current
+    // format's prices (they are size-specific). Preserves the on/off toggles.
+    function applyCanRates(){
+      if(!state.pkg) return;
+      state.pkg.canBlankPerCan   = canRate('blank',   state.format);
+      state.pkg.canShrinkPerCan  = canRate('shrink',  state.format);
+      state.pkg.canPrintedPerCan = canRate('printed', state.format);
+    }
     typeEl.addEventListener('change', function(){ rebuildFormats(); state.tiers=[]; renderTiers(); });
-    fmtEl.addEventListener('change', function(){ state.format = fmtEl.value; rerenderTiers(); });
+    fmtEl.addEventListener('change', function(){ state.format = fmtEl.value; applyCanRates(); rebuildAddons(); rerenderTiers(); });
     rebuildFormats();
 
     // The packaging/add-on defaults are read synchronously from the price cache;
@@ -406,7 +431,7 @@
     if(typeof window.glLoadPricingSettings === 'function'){
       window.glLoadPricingSettings().then(function(){
         if(!document.body.contains(ov)) return;   // builder was closed
-        state.pkg  = defaultCanningPkg();
+        state.pkg  = defaultCanningPkg(state.format);
         state.bpkg = defaultBottlingPkg();
         rebuildAddons();
         renderTiers();
