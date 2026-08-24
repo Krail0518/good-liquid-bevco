@@ -60,14 +60,20 @@
   //   nitrogen / pasteurization → per can
   //   tray + case erector       → per case (24 cans)
   //   pallet + pallet wrap      → per pallet (casesPerPallet cases each)
+  // Read a DB-backed price (pricing_settings, loaded by crm-pricing-settings.js)
+  // with a hard-coded fallback so quoting still works if the table is unreachable.
+  function px(key, fallback){
+    return (typeof window !== 'undefined' && typeof window.glPrice === 'function')
+      ? window.glPrice(key, fallback) : fallback;
+  }
   function defaultCanningPkg(){
     return {
-      nitrogenOn:true,  nitrogenPerCan:0.03,
-      pasteurOn:false,  pasteurPerCan:0.05,
-      trayOn:true,      trayPerCase:0.50,   trayCount:24,
-      erectorOn:true,   erectorPerCase:1.25,
-      palletOn:true,    palletEach:12,
-      palletWrapOn:true, palletWrapEach:8,  casesPerPallet:80
+      nitrogenOn:true,  nitrogenPerCan:px('nitrogen_per_can',0.03),
+      pasteurOn:false,  pasteurPerCan:px('pasteurization_per_can',0.05),
+      trayOn:true,      trayPerCase:px('case_tray_per_case',0.50),   trayCount:24,
+      erectorOn:true,   erectorPerCase:px('case_erector_per_case',1.25),
+      palletOn:true,    palletEach:px('pallet_each',12),
+      palletWrapOn:true, palletWrapEach:px('pallet_wrap_each',8),  casesPerPallet:px('cases_per_pallet',80)
     };
   }
 
@@ -174,6 +180,10 @@
       alert('Admin only.');
       return;
     }
+    // Make sure the DB-backed prices are cached so the packaging/keg defaults
+    // reflect any edits made in the "💲 Prices" editor. The cache is also
+    // refreshed live whenever a price is saved there.
+    if(typeof window.glLoadPricingSettings === 'function') window.glLoadPricingSettings();
     opts = opts || {};
     var prior = document.getElementById('gl-qb-modal');
     if(prior) prior.remove();
@@ -364,7 +374,7 @@
       state.tiers = caseList.map(function(sc){
         if(t2==='canning')  return { cases:sc, cans:sc*CANS_PER_CASE, fillPerCan:autoRate(sc), nitrogenPerCan:0.03, trayPerCan:0.03 };
         if(t2==='bottling') return { cases:sc, bottles:sc*BTLS_PER_CASE, ratePerBtl:autoRate(sc) };
-        return { kegs:Math.max(50,sc), laborPerKeg:12, kegCostPerKeg:17.50 };
+        return { kegs:Math.max(50,sc), laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) };
       });
       renderTiers();
     } else if(opts.productType){
@@ -382,7 +392,7 @@
           { cases:1320, bottles:1320*BTLS_PER_CASE, ratePerBtl:autoRate(1320) }
         ];
       } else {
-        state.tiers = [{ kegs:50, laborPerKeg:12, kegCostPerKeg:17.50 }];
+        state.tiers = [{ kegs:50, laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) }];
       }
       renderTiers();
     }
@@ -603,7 +613,7 @@
         var c = 660;
         state.tiers.push({ cases:c, bottles:c*BTLS_PER_CASE, ratePerBtl:autoRate(c) });
       } else {
-        state.tiers.push({ kegs:50, laborPerKeg:12, kegCostPerKeg:17.50 });
+        state.tiers.push({ kegs:50, laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) });
       }
       renderTiers();
     });
@@ -624,7 +634,7 @@
           { cases:1320, bottles:1320*BTLS_PER_CASE, ratePerBtl:autoRate(1320) }
         ];
       } else {
-        state.tiers = [{ kegs:50, laborPerKeg:12, kegCostPerKeg:17.50 }];
+        state.tiers = [{ kegs:50, laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) }];
       }
       renderTiers();
     });
