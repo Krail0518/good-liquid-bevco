@@ -26,7 +26,8 @@
   var SECTIONS = [
     { key:'product', title:'Product & format', fields:[
       { key:'company',        label:'Brand / company name',   type:'text',     required:true },
-      { key:'contact_name',   label:'Your name',              type:'text',     required:true },
+      { key:'first_name',     label:'First name',             type:'text',     required:true },
+      { key:'last_name',      label:'Last name',              type:'text',     required:true },
       { key:'email',          label:'Email',                  type:'email',    required:true },
       { key:'phone',          label:'Phone',                  type:'tel',      required:true },
       { key:'product_description', label:'What are you making? Describe the product', type:'textarea', required:true, placeholder:'e.g. A yerba-mate energy drink, lightly sweetened, natural citrus flavor' },
@@ -190,7 +191,7 @@
     var service = /bottle|750/i.test(fmt) ? 'Bottling' : (/can/i.test(fmt) ? 'Canning' : '');
     return {
       brand_name:   a.company || '',
-      contact_name: a.contact_name || '',
+      contact_name: [a.first_name, a.last_name].filter(Boolean).join(' ') || a.contact_name || '',
       email:        a.email || '',
       phone:        a.phone || '',
       service:      service || 'Consulting',

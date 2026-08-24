@@ -216,7 +216,7 @@
         var itk = await rpc('gl_onboarding_intake_get', { p_token: token });
         var ians = (itk && itk.answers) || {};
         if(!ians.company)      ians.company      = res.client_name || p.company || p.name || '';
-        if(!ians.contact_name) ians.contact_name = p.contact_name || p.name || '';
+        if(!ians.first_name && !ians.last_name){ var _nm=String(p.contact_name||p.name||'').trim().split(/\s+/); ians.first_name=_nm.shift()||''; ians.last_name=_nm.join(' '); }
         if(!ians.email)        ians.email        = loginEmail || p.email || '';
         if(!ians.phone)        ians.phone        = p.phone || '';
         if(window.GL_INTAKE) window.GL_INTAKE.render(el('ob-intake-mount'), ians);

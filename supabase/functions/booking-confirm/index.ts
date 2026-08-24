@@ -39,6 +39,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders, jsonResponse, errorResponse, handlePreflight } from '../_shared/cors.ts';
 import { localToUTC, fmtLocalDate, fmtLocalTime, tzLabel, sendMail } from '../_shared/booking-email.ts';
 import { signBooking } from '../_shared/booking-token.ts';
+import { checkBusy } from '../_shared/google-calendar.ts';
 
 // ── Main handler ──────────────────────────────────────────────────────────
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -159,6 +160,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   if (conflicts && conflicts.length > 0) {
     return errorResponse('That slot is no longer available', 409);
+  }
+
+  // ── Google Calendar availability gate ──────────────────────────────────
+  // Mike does not want an approval email for a time he's already busy. Check
+  // his connected Google Calendar and block on a DEFINITE conflict — nothing is
+  // inserted and no approval email goes out. If the check itself can't run
+  // (token/API hiccup) we let it through: he still has the final Approve/Decline.
+  try {
+    const busyRes = await checkBusy(startAt.toISOString(), endAt.toISOString(), tz);
+    if (busyRes.ok && busyRes.busy) {
+      return errorResponse('That time is already booked on our calendar — please pick another.', 409);
+    }
+    if (!busyRes.ok) console.warn('[booking-confirm] calendar availability check inconclusive:', busyRes.error);
+  } catch (e) {
+    console.warn('[booking-confirm] calendar availability check threw:', String(e));
   }
 
   // ── Insert booking as a PENDING request ────────────────────────────────

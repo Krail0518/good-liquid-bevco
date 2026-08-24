@@ -25,3 +25,8 @@ verify_jwt = false
 # navigations with no JWT. The HMAC token in the link is the credential.
 [functions.lead-action]
 verify_jwt = false
+
+# Public availability lookup the booking widgets call before a visitor picks a
+# time — anonymous, no JWT. Returns only free/busy booleans, no private data.
+[functions.booking-availability]
+verify_jwt = false
