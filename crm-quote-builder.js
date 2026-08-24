@@ -89,12 +89,12 @@
       // Case trays: 24-count is the default; check 12-count instead for that job.
       tray24On:true,     tray24PerCase:px('case_tray_24_per_case',0.50),
       tray12On:false,    tray12PerCase:px('case_tray_12_per_case',0.50),
-      trayWrapOn:false,  trayWrapPerCase:px('case_tray_shrinkwrap_per_case',0.25),
+      trayWrapOn:false,  trayWrapPerCase:px('case_tray_shrinkwrap_per_case',0),
       // Carriers — pick the one the client is using (off by default).
-      paktech4On:false,  paktech4PerCan:px('paktech_4pack_per_can',0.06),
-      paktech6On:false,  paktech6PerCan:px('paktech_6pack_per_can',0.06),
-      proper4On:false,   proper4PerCan:px('proper_pack_4pack_per_can',0.06),
-      proper6On:false,   proper6PerCan:px('proper_pack_6pack_per_can',0.06),
+      paktech4On:false,  paktech4PerCan:px('paktech_4pack_per_can',0),
+      paktech6On:false,  paktech6PerCan:px('paktech_6pack_per_can',0),
+      proper4On:false,   proper4PerCan:px('proper_pack_4pack_per_can',0),
+      proper6On:false,   proper6PerCan:px('proper_pack_6pack_per_can',0),
       // Cans (pass-through) — off by default; priced by the format being quoted.
       canBlankOn:false,   canBlankPerCan:canRate('blank', format),
       canShrinkOn:false,  canShrinkPerCan:canRate('shrink', format),
@@ -144,7 +144,7 @@
       pasteurOn:false,  pasteurPerBtl:px('bottling_pasteurization_per_btl',0.20),
       otlOn:false,      otlPerBtl:px('bottling_otl_per_btl',0.20),
       labelsOn:false,   labelsPerBtl:px('bottling_labels_per_btl',0.06),
-      caseOn:true,      casePerCase:px('bottling_case_6pack_per_case',0.75),
+      caseOn:true,      casePerCase:px('bottling_case_6pack_per_case',0),
       palletOn:true,    palletEach:px('pallet_each',12),
       palletWrapOn:true, palletWrapEach:px('pallet_wrap_each',8),
       casesPerPallet:px('bottling_cases_per_pallet',45)
