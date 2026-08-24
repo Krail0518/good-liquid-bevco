@@ -39,9 +39,9 @@
     keg: {
       formats: ['19.5L Hybrid Keg (Sixtel)'],
       tiers: {
-        '19.5L Hybrid Keg (Sixtel)': [[50,1e9,15]]
+        '19.5L Hybrid Keg (Sixtel)': [[50,1e9,12]]
       },
-      defaultAddons: { emptyKeg: 20 }
+      defaultAddons: { emptyKeg: 17.50 }
     }
   };
 
@@ -55,12 +55,53 @@
     return 0;
   }
 
+  // Default packaging / pallet rates for a canning quote. Every value is
+  // editable per quote in the add-on panel; these are the standing prices.
+  //   nitrogen / pasteurization → per can
+  //   tray + case erector       → per case (24 cans)
+  //   pallet + pallet wrap      → per pallet (casesPerPallet cases each)
+  function defaultCanningPkg(){
+    return {
+      nitrogenOn:true,  nitrogenPerCan:0.03,
+      pasteurOn:false,  pasteurPerCan:0.05,
+      trayOn:true,      trayPerCase:0.50,   trayCount:24,
+      erectorOn:true,   erectorPerCase:1.25,
+      palletOn:true,    palletEach:12,
+      palletWrapOn:true, palletWrapEach:8,  casesPerPallet:80
+    };
+  }
+
+  // Full cost breakdown for one canning tier given the packaging rates. Used by
+  // BOTH the live builder table and the generated quote PDF so a saved quote can
+  // never show a different number than the one on screen.
+  function canningExtras(tier, pkg){
+    pkg = pkg || {};
+    var cans = tier.cans || 0, cases = tier.cases || 0;
+    var perCan = (tier.fillPerCan || 0);
+    if(pkg.nitrogenOn) perCan += (pkg.nitrogenPerCan || 0);
+    if(pkg.pasteurOn)  perCan += (pkg.pasteurPerCan  || 0);
+    var caseExtra = 0;
+    if(pkg.trayOn)    caseExtra += (pkg.trayPerCase   || 0);
+    if(pkg.erectorOn) caseExtra += (pkg.erectorPerCase|| 0);
+    var pallets = 0, palletCost = 0;
+    if(pkg.palletOn || pkg.palletWrapOn){
+      var cpp = pkg.casesPerPallet || 80;
+      pallets = cpp > 0 ? Math.ceil(cases / cpp) : 0;
+      palletCost = pallets * ((pkg.palletOn ? (pkg.palletEach || 0) : 0) +
+                              (pkg.palletWrapOn ? (pkg.palletWrapEach || 0) : 0));
+    }
+    return {
+      perCan: perCan, caseExtra: caseExtra, pallets: pallets, palletCost: palletCost,
+      runTotal: perCan * cans + caseExtra * cases + palletCost
+    };
+  }
+
   var CANNING_INCLUSIONS = [
     'Production labor and line supervision',
     'Standard batching and blending',
     'Can filling and seaming',
-    'Nitrogen dosing on every can',
-    '24-count case tray packing',
+    'PakTech application and packing',
+    'Palletizing and stretch wrapping (labor)',
     'Standard CIP, sanitation, and changeovers',
     'Routine quality checks and normal utilities'
   ];
@@ -87,7 +128,7 @@
     '<b>Pricing:</b> Pricing is subject to change based on specific formulation requirements.'
   ];
   var KEG_TERMS = [
-    '<b>Empty Keg:</b> $20/keg for the one-way PET keg (optional — priced separately).',
+    '<b>Empty Keg:</b> $17.50/keg for the one-way PET keg (optional — priced separately).',
     '<b>Gas/Materials:</b> Fees do not include the empty keg, gas, or raw materials.',
     '<b>Minimum Order:</b> 50 kegs.'
   ];
@@ -271,7 +312,7 @@
     }
 
     /* ── Local state ── */
-    var state = { productType:'canning', format:'12oz Sleek', tiers:[], savedId:null };
+    var state = { productType:'canning', format:'12oz Sleek', tiers:[], savedId:null, pkg:defaultCanningPkg() };
 
     /* ── Wire close ── */
     ov.querySelector('#gl-qb-close').addEventListener('click', function(){ ov.remove(); });
@@ -323,7 +364,7 @@
       state.tiers = caseList.map(function(sc){
         if(t2==='canning')  return { cases:sc, cans:sc*CANS_PER_CASE, fillPerCan:autoRate(sc), nitrogenPerCan:0.03, trayPerCan:0.03 };
         if(t2==='bottling') return { cases:sc, bottles:sc*BTLS_PER_CASE, ratePerBtl:autoRate(sc) };
-        return { kegs:Math.max(50,sc), laborPerKeg:15, kegCostPerKeg:20 };
+        return { kegs:Math.max(50,sc), laborPerKeg:12, kegCostPerKeg:17.50 };
       });
       renderTiers();
     } else if(opts.productType){
@@ -341,7 +382,7 @@
           { cases:1320, bottles:1320*BTLS_PER_CASE, ratePerBtl:autoRate(1320) }
         ];
       } else {
-        state.tiers = [{ kegs:50, laborPerKeg:15, kegCostPerKeg:20 }];
+        state.tiers = [{ kegs:50, laborPerKeg:12, kegCostPerKeg:17.50 }];
       }
       renderTiers();
     }
@@ -351,33 +392,44 @@
       var t = state.productType;
       var el = ov.querySelector('#gl-qb-addons');
       if(t === 'canning'){
+        var P = state.pkg || (state.pkg = defaultCanningPkg());
         el.innerHTML =
-          '<div style="'+LBL+'">ADD-ON SERVICES</div>' +
+          '<div style="'+LBL+'">ADD-ON SERVICES &amp; PACKAGING</div>' +
           '<div style="display:flex;flex-wrap:wrap;gap:10px">' +
-            addonToggle('gl-qb-nitrogen','Nitrogen Dosing','0.03','per can') +
-            addonToggle('gl-qb-tray','Tray / PakTech Packaging','0.03','per can') +
-            addonToggle('gl-qb-palletizing','Palletizing and Shrink Wrap','20.00','per pallet') +
-            addonToggle('gl-qb-pasteurization','Batch Flash Pasteurization','0.05','per can') +
+            addonToggle('gl-qb-nitrogen','Nitrogen Dosing', P.nitrogenPerCan.toFixed(2),'per can') +
+            addonToggle('gl-qb-pasteur','Batch Flash Pasteurization', P.pasteurPerCan.toFixed(2),'per can') +
+            addonToggle('gl-qb-tray','Case Tray', P.trayPerCase.toFixed(2),'per case') +
+            addonToggle('gl-qb-erector','Case Erector + Shrink Wrap', P.erectorPerCase.toFixed(2),'per case') +
+            addonToggle('gl-qb-pallet','Pallet', P.palletEach.toFixed(2),'per pallet') +
+            addonToggle('gl-qb-palletwrap','Pallet Shrink Wrap', P.palletWrapEach.toFixed(2),'per pallet') +
+          '</div>' +
+          '<div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:10px;align-items:center;font-size:12px;color:#9aa7bd">' +
+            '<label style="display:flex;align-items:center;gap:6px">Case tray count' +
+              '<select id="gl-qb-traycount" style="padding:4px 6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:4px;color:#fff">' +
+                '<option value="24"'+(P.trayCount===12?'':' selected')+'>24-count</option>' +
+                '<option value="12"'+(P.trayCount===12?' selected':'')+'>12-count</option>' +
+              '</select></label>' +
+            '<label style="display:flex;align-items:center;gap:6px">Cases per pallet' +
+              '<input id="gl-qb-cpp" type="number" min="1" step="1" value="'+(P.casesPerPallet||80)+'" style="width:70px;padding:4px 6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:4px;color:#fff"></label>' +
           '</div>';
-        // Check the two standard ones by default
-        el.querySelector('#gl-qb-nitrogen-on').checked    = true;
-        el.querySelector('#gl-qb-tray-on').checked        = true;
-        el.querySelector('#gl-qb-palletizing-on').checked = true;
-        // Wire the Nitrogen / Tray toggles (and their rate inputs) to the per-can
-        // cost on every tier, so unchecking — or editing the rate — actually
-        // changes the quoted price instead of being ignored.
-        function syncCanningAddon(cbId, rateId, field){
-          var cb = el.querySelector('#'+cbId), rt = el.querySelector('#'+rateId);
-          function apply(){
-            var v = (cb && cb.checked) ? (parseFloat(rt && rt.value)||0) : 0;
-            (state.tiers||[]).forEach(function(tier){ tier[field] = v; });
-            renderTiers();
-          }
-          if(cb) cb.addEventListener('change', apply);
-          if(rt) rt.addEventListener('input', apply);
-        }
-        syncCanningAddon('gl-qb-nitrogen-on', 'gl-qb-nitrogen-rate', 'nitrogenPerCan');
-        syncCanningAddon('gl-qb-tray-on',     'gl-qb-tray-rate',     'trayPerCan');
+        // Reflect current on/off state onto the checkboxes.
+        var canningMap = [
+          ['gl-qb-nitrogen','nitrogenOn','nitrogenPerCan'],
+          ['gl-qb-pasteur','pasteurOn','pasteurPerCan'],
+          ['gl-qb-tray','trayOn','trayPerCase'],
+          ['gl-qb-erector','erectorOn','erectorPerCase'],
+          ['gl-qb-pallet','palletOn','palletEach'],
+          ['gl-qb-palletwrap','palletWrapOn','palletWrapEach']
+        ];
+        canningMap.forEach(function(m){
+          var cb = el.querySelector('#'+m[0]+'-on'), rt = el.querySelector('#'+m[0]+'-rate');
+          if(cb){ cb.checked = !!P[m[1]]; cb.addEventListener('change', function(){ P[m[1]] = cb.checked; renderTiers(); }); }
+          if(rt){ rt.addEventListener('input', function(){ P[m[2]] = parseFloat(rt.value)||0; renderTiers(); }); }
+        });
+        var tc = el.querySelector('#gl-qb-traycount');
+        if(tc) tc.addEventListener('change', function(){ P.trayCount = parseInt(tc.value,10)||24; renderTiers(); });
+        var cpp = el.querySelector('#gl-qb-cpp');
+        if(cpp) cpp.addEventListener('input', function(){ P.casesPerPallet = parseInt(cpp.value,10)||80; renderTiers(); });
       } else if(t === 'bottling'){
         el.innerHTML =
           '<div style="'+LBL+'">ADD-ON SERVICES</div>' +
@@ -390,7 +442,7 @@
         el.innerHTML =
           '<div style="'+LBL+'">ADD-ON SERVICES</div>' +
           '<div style="display:flex;flex-wrap:wrap;gap:10px">' +
-            addonToggle('gl-qb-empty-keg','Empty One-Way Keg','20.00','per keg') +
+            addonToggle('gl-qb-empty-keg','Empty One-Way Keg','17.50','per keg') +
           '</div>';
         el.querySelector('#gl-qb-empty-keg-on').checked = true;
       }
@@ -427,7 +479,7 @@
       var isKeg      = t === 'keg';
 
       var headerCols = isCanning
-        ? '<th style="'+TH+'">Cases</th><th style="'+TH+'">Cans</th><th style="'+TH+'">Fill /Can</th><th style="'+TH+'">Nitrogen /Can</th><th style="'+TH+'">Tray /Can</th><th style="'+TH+'">All In /Can</th><th style="'+TH+'">Run Total</th><th style="'+TH+'"></th>'
+        ? '<th style="'+TH+'">Cases</th><th style="'+TH+'">Cans</th><th style="'+TH+'">Fill /Can</th><th style="'+TH+'">Add-ons /Can</th><th style="'+TH+'">Pkg /Case</th><th style="'+TH+'">Pallets</th><th style="'+TH+'">Run Total</th><th style="'+TH+'"></th>'
         : isBottling
           ? '<th style="'+TH+'">Cases</th><th style="'+TH+'">Bottles</th><th style="'+TH+'">/Bottle</th><th style="'+TH+'">Run Total</th><th style="'+TH+'"></th>'
           : '<th style="'+TH+'">Kegs</th><th style="'+TH+'">Labor /Keg</th><th style="'+TH+'">Keg Cost /Keg</th><th style="'+TH+'">Run Total</th><th style="'+TH+'"></th>';
@@ -484,16 +536,19 @@
 
     function buildTierRow(tier, i, isCanning, isBottling, isKeg){
       if(isCanning){
-        var allIn   = (tier.fillPerCan||0)+(tier.nitrogenPerCan||0)+(tier.trayPerCan||0);
-        var runTotal = allIn * (tier.cans||0);
+        var x = canningExtras(tier, state.pkg);
+        var addonsPerCan = x.perCan - (tier.fillPerCan||0); // nitrogen + pasteurization
+        var palletCell = x.pallets
+          ? x.pallets + ' × ' + fmtUsd((x.palletCost/x.pallets)) + '<div style="color:var(--muted);font-size:10px">' + fmtUsd(x.palletCost) + '</div>'
+          : '—';
         return '<tr>' +
           '<td style="'+TD+'">' + numInp(i,'cases',tier.cases,0,60) + '</td>' +
           '<td style="'+TD+';color:var(--muted)">' + fmtNum(tier.cans||0) + '</td>' +
           '<td style="'+TD+'">' + rateInp(i,'fillPerCan',tier.fillPerCan,tier._fillOverride) + '</td>' +
-          '<td style="'+TD+'">' + rateInp(i,'nitrogenPerCan',tier.nitrogenPerCan) + '</td>' +
-          '<td style="'+TD+'">' + rateInp(i,'trayPerCan',tier.trayPerCan) + '</td>' +
-          '<td style="'+TDM+'">' + fmtUsd(allIn) + '</td>' +
-          '<td style="'+TDM+'">' + fmtUsd(runTotal) + '</td>' +
+          '<td style="'+TDM+';color:var(--muted)">' + fmtUsd(addonsPerCan) + '</td>' +
+          '<td style="'+TDM+';color:var(--muted)">' + fmtUsd(x.caseExtra) + '</td>' +
+          '<td style="'+TDM+';color:var(--muted);font-size:11px">' + palletCell + '</td>' +
+          '<td style="'+TDM+'">' + fmtUsd(x.runTotal) + '</td>' +
           '<td style="'+TD+'"><button data-del-tier="'+i+'" class="cbtn" style="padding:3px 8px;font-size:11px;color:#ff8579;border-color:rgba(255,133,121,.3)">✕</button></td>' +
         '</tr>';
       } else if(isBottling){
@@ -548,7 +603,7 @@
         var c = 660;
         state.tiers.push({ cases:c, bottles:c*BTLS_PER_CASE, ratePerBtl:autoRate(c) });
       } else {
-        state.tiers.push({ kegs:50, laborPerKeg:15, kegCostPerKeg:20 });
+        state.tiers.push({ kegs:50, laborPerKeg:12, kegCostPerKeg:17.50 });
       }
       renderTiers();
     });
@@ -569,7 +624,7 @@
           { cases:1320, bottles:1320*BTLS_PER_CASE, ratePerBtl:autoRate(1320) }
         ];
       } else {
-        state.tiers = [{ kegs:50, laborPerKeg:15, kegCostPerKeg:20 }];
+        state.tiers = [{ kegs:50, laborPerKeg:12, kegCostPerKeg:17.50 }];
       }
       renderTiers();
     });
@@ -610,6 +665,7 @@
         packageFormat: packageFormat,
         tiers:         state.tiers,
         addons:        addons,
+        pkg:           JSON.parse(JSON.stringify(state.pkg || {})),
         inclusions:    inclusionsForType(productType),
         notes:         notes,
         clientName:    (ov.querySelector('#gl-qb-client-name')||{}).value || client.name || '',
@@ -648,7 +704,10 @@
         package_format: data.packageFormat,
         status:         'draft',
         tiers:          data.tiers,
-        addons:         data.addons,
+        // Persist the packaging/pallet config alongside the toggle list so a
+        // reopened quote can restore it. Kept inside the existing addons jsonb
+        // array (id '__pkg__') to avoid a schema change; readers key by id.
+        addons:         (data.addons||[]).concat([{ id:'__pkg__', pkg: data.pkg }]),
         inclusions:     data.inclusions,
         notes:          data.notes,
         pdf_html:       generateQuoteHTML(data)
@@ -696,8 +755,8 @@
       var validThru = fmtDate(addDays(data.quoteDate, data.validDays));
       var tierLines = data.tiers.map(function(t){
         if(data.productType==='canning'){
-          var ai = ((t.fillPerCan||0)+(t.nitrogenPerCan||0)+(t.trayPerCan||0)).toFixed(2);
-          return '<li>'+fmtNum(t.cases)+' cases ('+fmtNum(t.cans||0)+' cans) — $'+ai+'/can all-in</li>';
+          var x = canningExtras(t, data.pkg);
+          return '<li>'+fmtNum(t.cases)+' cases ('+fmtNum(t.cans||0)+' cans) — '+fmtUsd(x.runTotal)+' all-in ('+fmtUsd((t.cans||0)?x.runTotal/(t.cans||1):0)+'/can)</li>';
         } else if(data.productType==='bottling'){
           return '<li>'+fmtNum(t.cases)+' cases ('+fmtNum(t.bottles||0)+' bottles) — '+fmtUsd(t.ratePerBtl||0)+'/bottle</li>';
         } else {
@@ -774,35 +833,44 @@
     // ── Tiers table (canning format) ──
     var tiersTable = '';
     if(isCanning){
+      var PK = data.pkg || {};
       tiersTable = (data.tiers||[]).map(function(t){
-        var allIn    = (t.fillPerCan||0)+(t.nitrogenPerCan||0)+(t.trayPerCan||0);
-        var runTotal = allIn * (t.cans||0);
-        var vol      = fmtNum(t.cans||0)+' cans ('+fmtNum(t.cases||0)+' cases)';
+        var x   = canningExtras(t, PK);
+        var addonsPerCan = x.perCan - (t.fillPerCan||0);
+        var vol = fmtNum(t.cans||0)+' cans ('+fmtNum(t.cases||0)+' cases)';
         return '<tr>' +
           '<td style="'+PTDC+'">'+vol+'</td>' +
           '<td style="'+PTDC+'">'+fmtUsd(t.fillPerCan||0)+'</td>' +
-          '<td style="'+PTDC+'">'+fmtUsd(t.nitrogenPerCan||0)+'</td>' +
-          '<td style="'+PTDC+'">'+fmtUsd(t.trayPerCan||0)+'</td>' +
-          '<td style="'+PTD_BLUE+'">'+fmtUsd(allIn)+'</td>' +
-          '<td style="'+PTD_BLUE+'">'+fmtUsd(runTotal)+'</td>' +
+          '<td style="'+PTDC+'">'+fmtUsd(addonsPerCan)+'</td>' +
+          '<td style="'+PTDC+'">'+fmtUsd(x.caseExtra)+'</td>' +
+          '<td style="'+PTDC+'">'+(x.pallets ? x.pallets+' ('+fmtUsd(x.palletCost)+')' : '—')+'</td>' +
+          '<td style="'+PTD_BLUE+'">'+fmtUsd(x.runTotal)+'</td>' +
         '</tr>';
       }).join('');
-      var palletizing = hasAddon('gl-qb-palletizing') ? addonRate('gl-qb-palletizing') : 0;
+      // Itemized add-on / packaging breakdown — each active line with its rate.
+      function pkgLine(on, label, rate, unit){
+        if(!on || !(rate>0)) return '';
+        return '<div style="border-left:4px solid #1a6fff;padding:10px 16px;background:#eef3ff;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+          '<div><b>'+esc(label)+'</b></div>' +
+          '<div style="color:#1a6fff;font-weight:700;font-size:14px">'+fmtUsd(rate)+' / '+esc(unit)+'</div>' +
+        '</div>';
+      }
+      var trayLbl = 'Case Tray ('+(PK.trayCount===12?'12':'24')+'-count)';
       tiersTable = '<table style="width:100%;border-collapse:collapse;margin-bottom:16px">' +
         '<thead><tr>' +
           '<th style="'+PTH+'">Volume</th>' +
           '<th style="'+PTH+'">Fill /Can</th>' +
-          '<th style="'+PTH+'">Nitrogen /Can</th>' +
-          '<th style="'+PTH+'">Tray /Can</th>' +
-          '<th style="'+PTH+';color:#1a6fff">All In /Can</th>' +
+          '<th style="'+PTH+'">Add-ons /Can</th>' +
+          '<th style="'+PTH+'">Pkg /Case</th>' +
+          '<th style="'+PTH+'">Pallets</th>' +
           '<th style="'+PTH+';color:#1a6fff">Run Total</th>' +
         '</tr></thead><tbody>' + tiersTable + '</tbody></table>' +
-        (palletizing > 0 ?
-          '<div style="border-left:4px solid #1a6fff;padding:12px 16px;background:#eef3ff;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
-            '<div><b>Palletizing and Shrink Wrap</b><span style="color:#888;margin-left:12px;font-size:12px">Materials and wrap included</span></div>' +
-            '<div style="color:#1a6fff;font-weight:700;font-size:15px">$'+palletizing+' / pallet</div>' +
-          '</div>' : '') +
-        addonLine('gl-qb-pasteurization', 'Batch Flash Pasteurization', 'can');
+        pkgLine(PK.nitrogenOn, 'Nitrogen Dosing', PK.nitrogenPerCan, 'can') +
+        pkgLine(PK.pasteurOn,  'Batch Flash Pasteurization', PK.pasteurPerCan, 'can') +
+        pkgLine(PK.trayOn,     trayLbl, PK.trayPerCase, 'case') +
+        pkgLine(PK.erectorOn,  'Case Erector + Shrink Wrap', PK.erectorPerCase, 'case') +
+        pkgLine(PK.palletOn,   'Pallet', PK.palletEach, 'pallet') +
+        pkgLine(PK.palletWrapOn, 'Pallet Shrink Wrap', PK.palletWrapEach, 'pallet');
     } else if(isBottling){
       tiersTable = '<table style="width:100%;border-collapse:collapse;margin-bottom:20px">' +
         '<thead><tr><th style="'+PTH+'">Volume</th><th style="'+PTH+'">Cost Per 6-Pack</th><th style="'+PTH+';color:#1a6fff">Cost Per Bottle</th><th style="'+PTH+';color:#1a6fff">Run Total</th></tr></thead><tbody>' +
