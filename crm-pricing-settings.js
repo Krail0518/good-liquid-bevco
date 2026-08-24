@@ -137,27 +137,8 @@
     });
   };
 
-  // ── Nav button (admin only) ─────────────────────────────────
-  function injectNav(){
-    if(!isAdmin()) return;
-    if(document.getElementById('gl-ps-nav')) return;
-    var anchor = document.getElementById('gl-pricing-nav');   // the existing "$ Pricing" button
-    var btn = document.createElement('button');
-    btn.id = 'gl-ps-nav';
-    btn.textContent = '💲 Prices';
-    btn.onclick = window.glOpenPricingSettings;
-    if(anchor && anchor.parentNode){
-      btn.setAttribute('style', anchor.getAttribute('style') || '');
-      anchor.parentNode.insertBefore(btn, anchor.nextSibling);
-    } else {
-      var bar = document.querySelector('.cpills');
-      if(!bar) return;
-      btn.setAttribute('style','padding:8px 14px;margin:2px;background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.35);border-radius:8px;color:#00e5c0;font-weight:700;font-size:12px;cursor:pointer');
-      bar.appendChild(btn);
-    }
-  }
-  setTimeout(injectNav, 1600);
-  document.addEventListener('click', function(){ setTimeout(injectNav, 500); });
+  // The entry point is the "💲" button in the CRM top bar (right of the bell,
+  // #top-btn-pricing in index.html) which calls window.glOpenPricingSettings.
 
   // Warm the cache once the DB client is up, so the quote builder's defaults
   // reflect live prices from the first quote of the session.

@@ -68,11 +68,18 @@
   }
   function defaultCanningPkg(){
     return {
-      nitrogenOn:true,  nitrogenPerCan:px('nitrogen_per_can',0.03),
-      pasteurOn:false,  pasteurPerCan:px('pasteurization_per_can',0.05),
-      trayOn:true,      trayPerCase:px('case_tray_per_case',0.50),   trayCount:24,
-      erectorOn:true,   erectorPerCase:px('case_erector_per_case',1.25),
-      palletOn:true,    palletEach:px('pallet_each',12),
+      nitrogenOn:true,   nitrogenPerCan:px('nitrogen_per_can',0.03),
+      pasteurOn:false,   pasteurPerCan:px('pasteurization_per_can',0.05),
+      // Case trays: 24-count is the default; check 12-count instead for that job.
+      tray24On:true,     tray24PerCase:px('case_tray_24_per_case',0.50),
+      tray12On:false,    tray12PerCase:px('case_tray_12_per_case',0.50),
+      trayWrapOn:false,  trayWrapPerCase:px('case_tray_shrinkwrap_per_case',0.25),
+      // Carriers — pick the one the client is using (off by default).
+      paktech4On:false,  paktech4PerCan:px('paktech_4pack_per_can',0.06),
+      paktech6On:false,  paktech6PerCan:px('paktech_6pack_per_can',0.06),
+      proper4On:false,   proper4PerCan:px('proper_pack_4pack_per_can',0.06),
+      proper6On:false,   proper6PerCan:px('proper_pack_6pack_per_can',0.06),
+      palletOn:true,     palletEach:px('pallet_each',12),
       palletWrapOn:true, palletWrapEach:px('pallet_wrap_each',8),  casesPerPallet:px('cases_per_pallet',80)
     };
   }
@@ -86,9 +93,14 @@
     var perCan = (tier.fillPerCan || 0);
     if(pkg.nitrogenOn) perCan += (pkg.nitrogenPerCan || 0);
     if(pkg.pasteurOn)  perCan += (pkg.pasteurPerCan  || 0);
+    if(pkg.paktech4On) perCan += (pkg.paktech4PerCan || 0);
+    if(pkg.paktech6On) perCan += (pkg.paktech6PerCan || 0);
+    if(pkg.proper4On)  perCan += (pkg.proper4PerCan  || 0);
+    if(pkg.proper6On)  perCan += (pkg.proper6PerCan  || 0);
     var caseExtra = 0;
-    if(pkg.trayOn)    caseExtra += (pkg.trayPerCase   || 0);
-    if(pkg.erectorOn) caseExtra += (pkg.erectorPerCase|| 0);
+    if(pkg.tray24On)   caseExtra += (pkg.tray24PerCase   || 0);
+    if(pkg.tray12On)   caseExtra += (pkg.tray12PerCase   || 0);
+    if(pkg.trayWrapOn) caseExtra += (pkg.trayWrapPerCase || 0);
     var pallets = 0, palletCost = 0;
     if(pkg.palletOn || pkg.palletWrapOn){
       var cpp = pkg.casesPerPallet || 80;
@@ -405,30 +417,36 @@
         var P = state.pkg || (state.pkg = defaultCanningPkg());
         el.innerHTML =
           '<div style="'+LBL+'">ADD-ON SERVICES &amp; PACKAGING</div>' +
+          '<div style="font-size:11px;color:#6b87ad;margin:-4px 0 8px">Check what applies to this run — each is priced from the “💲 Prices” settings and added to the tier totals below.</div>' +
           '<div style="display:flex;flex-wrap:wrap;gap:10px">' +
             addonToggle('gl-qb-nitrogen','Nitrogen Dosing', P.nitrogenPerCan.toFixed(2),'per can') +
             addonToggle('gl-qb-pasteur','Batch Flash Pasteurization', P.pasteurPerCan.toFixed(2),'per can') +
-            addonToggle('gl-qb-tray','Case Tray', P.trayPerCase.toFixed(2),'per case') +
-            addonToggle('gl-qb-erector','Case Erector + Shrink Wrap', P.erectorPerCase.toFixed(2),'per case') +
+            addonToggle('gl-qb-tray24','24-count Case Tray', P.tray24PerCase.toFixed(2),'per case') +
+            addonToggle('gl-qb-tray12','12-count Case Tray', P.tray12PerCase.toFixed(2),'per case') +
+            addonToggle('gl-qb-traywrap','Shrink-wrap Case Tray', P.trayWrapPerCase.toFixed(2),'per case') +
+            addonToggle('gl-qb-paktech4','PakTech Handle — 4-pack', P.paktech4PerCan.toFixed(2),'per can') +
+            addonToggle('gl-qb-paktech6','PakTech Handle — 6-pack', P.paktech6PerCan.toFixed(2),'per can') +
+            addonToggle('gl-qb-proper4','Proper Pack — 4-pack', P.proper4PerCan.toFixed(2),'per can') +
+            addonToggle('gl-qb-proper6','Proper Pack — 6-pack', P.proper6PerCan.toFixed(2),'per can') +
             addonToggle('gl-qb-pallet','Pallet', P.palletEach.toFixed(2),'per pallet') +
             addonToggle('gl-qb-palletwrap','Pallet Shrink Wrap', P.palletWrapEach.toFixed(2),'per pallet') +
           '</div>' +
           '<div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:10px;align-items:center;font-size:12px;color:#9aa7bd">' +
-            '<label style="display:flex;align-items:center;gap:6px">Case tray count' +
-              '<select id="gl-qb-traycount" style="padding:4px 6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:4px;color:#fff">' +
-                '<option value="24"'+(P.trayCount===12?'':' selected')+'>24-count</option>' +
-                '<option value="12"'+(P.trayCount===12?' selected':'')+'>12-count</option>' +
-              '</select></label>' +
             '<label style="display:flex;align-items:center;gap:6px">Cases per pallet' +
               '<input id="gl-qb-cpp" type="number" min="1" step="1" value="'+(P.casesPerPallet||80)+'" style="width:70px;padding:4px 6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:4px;color:#fff"></label>' +
           '</div>';
-        // Reflect current on/off state onto the checkboxes.
+        // Reflect current on/off state onto the checkboxes and wire changes.
         var canningMap = [
-          ['gl-qb-nitrogen','nitrogenOn','nitrogenPerCan'],
-          ['gl-qb-pasteur','pasteurOn','pasteurPerCan'],
-          ['gl-qb-tray','trayOn','trayPerCase'],
-          ['gl-qb-erector','erectorOn','erectorPerCase'],
-          ['gl-qb-pallet','palletOn','palletEach'],
+          ['gl-qb-nitrogen', 'nitrogenOn', 'nitrogenPerCan'],
+          ['gl-qb-pasteur',  'pasteurOn',  'pasteurPerCan'],
+          ['gl-qb-tray24',   'tray24On',   'tray24PerCase'],
+          ['gl-qb-tray12',   'tray12On',   'tray12PerCase'],
+          ['gl-qb-traywrap', 'trayWrapOn', 'trayWrapPerCase'],
+          ['gl-qb-paktech4', 'paktech4On', 'paktech4PerCan'],
+          ['gl-qb-paktech6', 'paktech6On', 'paktech6PerCan'],
+          ['gl-qb-proper4',  'proper4On',  'proper4PerCan'],
+          ['gl-qb-proper6',  'proper6On',  'proper6PerCan'],
+          ['gl-qb-pallet',   'palletOn',   'palletEach'],
           ['gl-qb-palletwrap','palletWrapOn','palletWrapEach']
         ];
         canningMap.forEach(function(m){
@@ -436,8 +454,6 @@
           if(cb){ cb.checked = !!P[m[1]]; cb.addEventListener('change', function(){ P[m[1]] = cb.checked; renderTiers(); }); }
           if(rt){ rt.addEventListener('input', function(){ P[m[2]] = parseFloat(rt.value)||0; renderTiers(); }); }
         });
-        var tc = el.querySelector('#gl-qb-traycount');
-        if(tc) tc.addEventListener('change', function(){ P.trayCount = parseInt(tc.value,10)||24; renderTiers(); });
         var cpp = el.querySelector('#gl-qb-cpp');
         if(cpp) cpp.addEventListener('input', function(){ P.casesPerPallet = parseInt(cpp.value,10)||80; renderTiers(); });
       } else if(t === 'bottling'){
@@ -865,7 +881,6 @@
           '<div style="color:#1a6fff;font-weight:700;font-size:14px">'+fmtUsd(rate)+' / '+esc(unit)+'</div>' +
         '</div>';
       }
-      var trayLbl = 'Case Tray ('+(PK.trayCount===12?'12':'24')+'-count)';
       tiersTable = '<table style="width:100%;border-collapse:collapse;margin-bottom:16px">' +
         '<thead><tr>' +
           '<th style="'+PTH+'">Volume</th>' +
@@ -877,8 +892,13 @@
         '</tr></thead><tbody>' + tiersTable + '</tbody></table>' +
         pkgLine(PK.nitrogenOn, 'Nitrogen Dosing', PK.nitrogenPerCan, 'can') +
         pkgLine(PK.pasteurOn,  'Batch Flash Pasteurization', PK.pasteurPerCan, 'can') +
-        pkgLine(PK.trayOn,     trayLbl, PK.trayPerCase, 'case') +
-        pkgLine(PK.erectorOn,  'Case Erector + Shrink Wrap', PK.erectorPerCase, 'case') +
+        pkgLine(PK.tray24On,   '24-count Case Tray', PK.tray24PerCase, 'case') +
+        pkgLine(PK.tray12On,   '12-count Case Tray', PK.tray12PerCase, 'case') +
+        pkgLine(PK.trayWrapOn, 'Shrink-wrap Case Tray', PK.trayWrapPerCase, 'case') +
+        pkgLine(PK.paktech4On, 'PakTech Handle — 4-pack', PK.paktech4PerCan, 'can') +
+        pkgLine(PK.paktech6On, 'PakTech Handle — 6-pack', PK.paktech6PerCan, 'can') +
+        pkgLine(PK.proper4On,  'Proper Pack — 4-pack', PK.proper4PerCan, 'can') +
+        pkgLine(PK.proper6On,  'Proper Pack — 6-pack', PK.proper6PerCan, 'can') +
         pkgLine(PK.palletOn,   'Pallet', PK.palletEach, 'pallet') +
         pkgLine(PK.palletWrapOn, 'Pallet Shrink Wrap', PK.palletWrapEach, 'pallet');
     } else if(isBottling){
