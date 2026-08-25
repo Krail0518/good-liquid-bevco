@@ -147,7 +147,7 @@
       caseOn:true,      casePerCase:px('bottling_case_6pack_per_case',0),
       palletOn:true,    palletEach:px('pallet_each',12),
       palletWrapOn:true, palletWrapEach:px('pallet_wrap_each',8),
-      casesPerPallet:px('bottling_cases_per_pallet',45)
+      casesPerPallet:px('bottling_cases_per_pallet',50)
     };
   }
 
@@ -163,7 +163,7 @@
     if(pkg.caseOn) caseExtra += (pkg.casePerCase || 0);
     var pallets = 0, palletCost = 0;
     if(pkg.palletOn || pkg.palletWrapOn){
-      var cpp = pkg.casesPerPallet || 45;
+      var cpp = pkg.casesPerPallet || 50;
       pallets = cpp > 0 ? Math.ceil(cases / cpp) : 0;
       palletCost = pallets * ((pkg.palletOn ? (pkg.palletEach || 0) : 0) +
                               (pkg.palletWrapOn ? (pkg.palletWrapEach || 0) : 0));
@@ -558,7 +558,7 @@
           '</div>' +
           '<div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:10px;align-items:center;font-size:12px;color:#9aa7bd">' +
             '<label style="display:flex;align-items:center;gap:6px">Cases per pallet' +
-              '<input id="gl-qb-bcpp" type="number" min="1" step="1" value="'+(B.casesPerPallet||45)+'" style="width:70px;padding:4px 6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:4px;color:#fff"></label>' +
+              '<input id="gl-qb-bcpp" type="number" min="1" step="1" value="'+(B.casesPerPallet||50)+'" style="width:70px;padding:4px 6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:4px;color:#fff"></label>' +
           '</div>';
         var bottlingMap = [
           ['gl-qb-bfp',        'pasteurOn',   'pasteurPerBtl'],
@@ -574,7 +574,7 @@
           if(rt){ rt.addEventListener('input', function(){ B[m[2]] = parseFloat(rt.value)||0; renderTiers(); }); }
         });
         var bcpp = el.querySelector('#gl-qb-bcpp');
-        if(bcpp) bcpp.addEventListener('input', function(){ B.casesPerPallet = parseInt(bcpp.value,10)||45; renderTiers(); });
+        if(bcpp) bcpp.addEventListener('input', function(){ B.casesPerPallet = parseInt(bcpp.value,10)||50; renderTiers(); });
       } else {
         el.innerHTML =
           '<div style="'+LBL+'">ADD-ON SERVICES</div>' +
