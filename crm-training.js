@@ -172,7 +172,10 @@
           '</div>' +
           '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
             expiryBadge(r.expires_date) +
-            '<button onclick="window.glEditTraining('+JSON.stringify(String(r.id))+')" style="padding:7px 13px;background:rgba(0,229,192,.12);color:var(--teal);border:1px solid rgba(0,229,192,.3);border-radius:7px;cursor:pointer;font-size:12px">Edit</button>' +
+            // The id goes in a data- attribute (esc()'d) and the handler is
+            // bound below. Interpolating it into onclick="…" broke the button:
+            // JSON.stringify emits double quotes, which close the attribute.
+            '<button data-tr-edit="'+esc(String(r.id))+'" style="padding:7px 13px;background:rgba(0,229,192,.12);color:var(--teal);border:1px solid rgba(0,229,192,.3);border-radius:7px;cursor:pointer;font-size:12px">Edit</button>' +
           '</div>' +
         '</div>' +
         '<div style="font-size:11.5px;color:#9aa7bd;margin-top:8px;line-height:1.5">' +
@@ -187,6 +190,10 @@
       '<div style="font-size:10.5px;letter-spacing:1.5px;color:var(--teal);margin-bottom:10px">RECORDS · '+recs.length+'</div>' + list;
 
     host.innerHTML = '<div style="max-width:1000px;margin:0 auto">' + header + matrix + records + '</div>';
+
+    Array.prototype.forEach.call(host.querySelectorAll('[data-tr-edit]'), function(btn){
+      btn.addEventListener('click', function(){ window.glEditTraining(btn.getAttribute('data-tr-edit')); });
+    });
   };
 
   // ── Add / edit modal ────────────────────────────────────────
