@@ -5,6 +5,9 @@
  * formulation_done / formulation_vendor / formulation_spend. Also checks the
  * house dropdown is seeded from public.formulators, that "＋ Add formulator…"
  * inserts and selects the new house, and that unticking clears the pair.
+ * Also covers the kickback percentage (formulation_pct), the derived revenue,
+ * and the dashboard section — including that a converted lead carried on BOTH
+ * a deal row and a client row is counted ONCE, not twice.
  *
  * RUN: NODE_PATH=/opt/node22/lib/node_modules \
  *      PW_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome node tests/formulation.test.cjs
@@ -86,6 +89,10 @@ const out=await pg.evaluate(async()=>{
   o.dealVendorAutoPicked = dsel.value==='Lotus Nutra';
 
   document.getElementById('ddp-form-spend').value='2500.50';
+  document.getElementById('ddp-form-pct').value='10';
+  document.getElementById('ddp-form-spend').dispatchEvent(new Event('input'));
+  await sleep(100);
+  o.calcShowsCut = /250\.05/.test(document.getElementById('ddp-form-calc').textContent);
   window.__writes.length=0;
   await window.saveDealDetail();
   await sleep(400);
@@ -94,6 +101,7 @@ const out=await pg.evaluate(async()=>{
   o.dealSavedDone   = dw && dw.row.formulation_done===true;
   o.dealSavedVendor = dw && dw.row.formulation_vendor==='Lotus Nutra';
   o.dealSavedSpend  = dw && dw.row.formulation_spend===2500.5;
+  o.dealSavedPct    = dw && dw.row.formulation_pct===10;
   o.dealSavedPayload = dw ? JSON.stringify({d:dw.row.formulation_done,v:dw.row.formulation_vendor,s:dw.row.formulation_spend}) : null;
 
   // View mode shows it back
@@ -123,7 +131,8 @@ const out=await pg.evaluate(async()=>{
   await sleep(400);
   const dw2=window.__writes.find(w=>w.table==='deals'&&w.op==='update');
   o.untickClears = dw2 && dw2.row.formulation_done===false
-    && dw2.row.formulation_vendor===null && dw2.row.formulation_spend===null;
+    && dw2.row.formulation_vendor===null && dw2.row.formulation_spend===null
+    && dw2.row.formulation_pct===null;
 
   // ══ CLIENTS ═══════════════════════════════════════════════
   window.clients.length=0;
@@ -141,6 +150,7 @@ const out=await pg.evaluate(async()=>{
   await sleep(100);
   csel.value='Lotus Nutra';
   document.getElementById('gl-ec-form-spend').value='875.25';
+  document.getElementById('gl-ec-form-pct').value='12.5';
   window.__writes.length=0;
   document.getElementById('gl-ec-save').click();
   await sleep(900);
@@ -149,6 +159,7 @@ const out=await pg.evaluate(async()=>{
   o.clientSavedDone   = cw && cw.row.formulation_done===true;
   o.clientSavedVendor = cw && cw.row.formulation_vendor==='Lotus Nutra';
   o.clientSavedSpend  = cw && cw.row.formulation_spend===875.25;
+  o.clientSavedPct    = cw && cw.row.formulation_pct===12.5;
   o.clientSavedPayload = cw ? JSON.stringify({d:cw.row.formulation_done,v:cw.row.formulation_vendor,s:cw.row.formulation_spend}) : null;
 
   // Read-only detail popup section
@@ -159,6 +170,53 @@ const out=await pg.evaluate(async()=>{
   // Escaping: a house name with markup must not reach the DOM as HTML.
   const nasty = window.glFormulationSummary({formulationDone:true,formulationVendor:'<img src=x onerror=alert(1)>',formulationSpend:1});
   o.vendorEscaped = nasty.indexOf('<img') === -1 && nasty.indexOf('&lt;img') > -1;
+
+  // ══ REVENUE MATH ══════════════════════════════════════════
+  o.revenueDerived = window.glFormulationRevenue({formulationDone:true,formulationSpend:12500,formulationPct:15})===1875;
+  o.revenueNullNoPct = window.glFormulationRevenue({formulationDone:true,formulationSpend:12500})===null;
+  o.revenueNullNotDone = window.glFormulationRevenue({formulationDone:false,formulationSpend:12500,formulationPct:15})===null;
+  o.revenueRounds = window.glFormulationRevenue({formulationDone:true,formulationSpend:333.33,formulationPct:7.5})===25;
+
+  // ══ DASHBOARD ═════════════════════════════════════════════
+  // Same brand on a client row AND a still-open lead row — the shape a
+  // converted lead leaves behind, since converting never sets deals.client_id.
+  window.clients.length=0;
+  window.clients.push({id:'c9',name:'Patizan Energy',email:'serge@patizan.co',
+    formulationDone:true,formulationVendor:'Lotus Nutra',formulationSpend:10000,formulationPct:10});
+  window.clients.push({id:'c10',name:'Other Brand',email:'x@other.co',
+    formulationDone:true,formulationVendor:'Nutra Labs West',formulationSpend:4000,formulationPct:5});
+  window.clients.push({id:'c11',name:'No Pct Brand',email:'n@p.co',
+    formulationDone:true,formulationVendor:'Lotus Nutra',formulationSpend:9999,formulationPct:null});
+  Object.keys(window.deals).forEach(k=>window.deals[k]=[]);
+  window.deals['Closed Won']=[{id:'d9',name:'Patizan lead',co:'Patizan Energy',email:'serge@patizan.co',
+    formulationDone:true,formulationVendor:'Lotus Nutra',formulationSpend:10000,formulationPct:10}];
+  window.deals['Proposal']=[{id:'d10',name:'Fresh lead',co:'Brand New Co',email:'b@new.co',
+    formulationDone:true,formulationVendor:'Lotus Nutra',formulationSpend:2000,formulationPct:20}];
+
+  window.glRenderFormulationDash();
+  await sleep(200);
+  const dash=document.getElementById('dash-formulation');
+  o.dashRendered = !!dash && /Formulation revenue/.test(dash.innerText);
+  const dtxt = dash ? dash.innerText : '';
+  o.dashText = dtxt.replace(/\n+/g,' | ').slice(0,320);
+  // client 10000@10% = 1000, other 4000@5% = 200, fresh lead 2000@20% = 400.
+  // The Patizan LEAD must be skipped (same brand as the client) → 1600, not 2600.
+  o.dashRevenueDeduped = /\$1,600\.00/.test(dtxt) && !/\$2,600\.00/.test(dtxt);
+  o.dashFlagsSkippedLead = /1 converted lead skipped/.test(dtxt);
+  o.dashFlagsMissingPct = /1 record with a spend but no %/.test(dtxt);
+  o.dashPerHouse = /Lotus Nutra/.test(dtxt) && /Nutra Labs West/.test(dtxt);
+  // Referred spend counts the deduped set: 10000+4000+9999+2000 = 25,999
+  o.dashSpend = /\$25,999\.00/.test(dtxt);
+
+  window.clients.length=0;
+  Object.keys(window.deals).forEach(k=>window.deals[k]=[]);
+  window.glRenderFormulationDash();
+  o.dashEmptyState = /Nothing recorded yet/.test(document.getElementById('dash-formulation').innerText);
+
+  // Restore a client for the form checks below.
+  window.clients.push({id:'c-uuid-1',name:'Lotus Nutra Brand',contact:'A B',email:'a@b.co',phone:'',
+    status:'active',service:'Canning',paymentTerms:'Net 30',commPrefs:[],productTypes:[],dockDays:[],
+    additionalEmails:[],notes:'',formulationDone:false,formulationVendor:'',formulationSpend:null});
 
   // Negative spend is dropped here rather than bounced by the DB CHECK.
   // Saving closed the editor, so reopen it to get a live form back.
@@ -171,6 +229,11 @@ const out=await pg.evaluate(async()=>{
   // A blank amount is null, not 0 — "unknown" and "zero" are different facts.
   document.getElementById('gl-ec-form-spend').value='';
   o.blankSpendIsNull = window.glFormulationRead('gl-ec-form').spend===null;
+  // A percentage outside 0–100 is a typo, and the DB CHECK would bounce it.
+  document.getElementById('gl-ec-form-pct').value='150';
+  o.overPctDropped = window.glFormulationRead('gl-ec-form').pct===null;
+  document.getElementById('gl-ec-form-pct').value='7.5';
+  o.validPctKept = window.glFormulationRead('gl-ec-form').pct===7.5;
   } catch(err){ o.__threw = String(err && err.message || err); }
   return o;
 });
@@ -202,6 +265,22 @@ rec('detail popup: empty when not done', out.summaryEmptyWhenNotDone);
 rec('vendor name is HTML-escaped', out.vendorEscaped);
 rec('negative spend dropped before save', out.negativeSpendDropped);
 rec('blank spend saves as null, not 0', out.blankSpendIsNull);
+rec('deal: formulation_pct saved', out.dealSavedPct);
+rec('deal: live "your cut" readout', out.calcShowsCut);
+rec('client: formulation_pct saved', out.clientSavedPct);
+rec('revenue = spend x pct', out.revenueDerived);
+rec('revenue null when % unset (not 0)', out.revenueNullNoPct);
+rec('revenue null when not ticked', out.revenueNullNotDone);
+rec('revenue rounds to cents', out.revenueRounds);
+rec('dashboard renders', out.dashRendered, out.dashText);
+rec('dashboard: converted lead counted ONCE, not twice', out.dashRevenueDeduped);
+rec('dashboard: says how many leads it skipped', out.dashFlagsSkippedLead);
+rec('dashboard: flags spend with no % set', out.dashFlagsMissingPct);
+rec('dashboard: per-formulator breakdown', out.dashPerHouse);
+rec('dashboard: referred spend total', out.dashSpend);
+rec('dashboard: empty state', out.dashEmptyState);
+rec('% over 100 dropped', out.overPctDropped);
+rec('valid % kept', out.validPctKept);
 rec('evaluate ran clean', !out.__threw, out.__threw||'');
 rec('no unexpected page errors', appErrors.length===0, appErrors.join(' | '));
 

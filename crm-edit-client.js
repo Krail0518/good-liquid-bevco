@@ -825,6 +825,7 @@
         patch.formulationDone   = formulation.done;
         patch.formulationVendor = formulation.vendor || '';
         patch.formulationSpend  = formulation.spend;
+        patch.formulationPct    = formulation.pct;
       }
       // Only set file paths in the patch when a new upload happened; otherwise
       // leave them alone so we don't overwrite the existing pointer.
@@ -949,6 +950,7 @@
           formulation_done:   patch.formulationDone   === undefined ? undefined : !!patch.formulationDone,
           formulation_vendor: patch.formulationVendor === undefined ? undefined : (patch.formulationVendor || null),
           formulation_spend:  patch.formulationSpend  === undefined ? undefined : (patch.formulationSpend === null || patch.formulationSpend === '' ? null : patch.formulationSpend),
+          formulation_pct:    patch.formulationPct    === undefined ? undefined : (patch.formulationPct === null || patch.formulationPct === '' ? null : patch.formulationPct),
           initials:        newInit
         };
         // Strip undefined keys so we don't accidentally wipe values not in the patch
