@@ -6,6 +6,11 @@
      • did formulation happen at all      → formulation_done   (bool)
      • which house did it                 → formulation_vendor (text)
      • what the brand spent with them     → formulation_spend  (numeric)
+     • the cut Mike takes on that spend   → formulation_pct    (numeric)
+
+   Revenue = spend x pct / 100, derived on read so a corrected spend can
+   never drift from a stored dollar figure. The dashboard section totals it
+   across clients and open leads.
 
    The house list is a table (public.formulators), not a hard-coded array,
    so staff can add a new formulator from the dropdown without a migration.
@@ -19,6 +24,8 @@
      window.glFormulationBind(pfx)      — fills the house list, wires handlers
      window.glFormulationRead(pfx)      — {done, vendor, spend} from the form
      window.glFormulationSummary(rec)   — read-only HTML ('' when not done)
+     window.glFormulationRevenue(rec)   — spend x pct / 100, or null
+     window.glRenderFormulationDash()   — the dashboard revenue section
 
    Field ids are '<prefix>-done' / '-vendor' / '-spend', so the same block
    works in the deal panel and the client editor without colliding.
@@ -50,6 +57,22 @@
     var n = parseFloat(v);
     return isNaN(n) ? null : n;
   }
+
+  function recPct(rec){
+    var v = read(rec, 'formulationPct', 'formulation_pct');
+    if(v === null || v === '') return null;
+    var n = parseFloat(v);
+    return isNaN(n) ? null : n;
+  }
+  // The money the referral earned. null (not 0) when either half is missing —
+  // an unset rate is an unknown, and calling it zero would quietly understate
+  // the total with nothing on screen to say so.
+  window.glFormulationRevenue = function glFormulationRevenue(rec){
+    if(!recDone(rec)) return null;
+    var spend = recSpend(rec), pct = recPct(rec);
+    if(spend == null || pct == null) return null;
+    return Math.round(spend * pct) / 100;
+  };
 
   function money(n){
     if(n == null || isNaN(n)) return '';
@@ -116,7 +139,7 @@
 
   window.glFormulationBlock = function glFormulationBlock(rec, prefix){
     prefix = prefix || 'gl-form';
-    var done = recDone(rec), vendor = recVendor(rec), spend = recSpend(rec);
+    var done = recDone(rec), vendor = recVendor(rec), spend = recSpend(rec), pct = recPct(rec);
     var label = 'font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px';
     var input = 'width:100%;padding:10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:14px;font-family:var(--ff-body)';
     return '' +
@@ -125,7 +148,7 @@
           '<input type="checkbox" id="'+esc(prefix)+'-done"'+(done?' checked':'')+' style="accent-color:#c4a4f8;width:16px;height:16px;cursor:pointer">' +
           '🧪 Formulation done' +
         '</label>' +
-        '<div id="'+esc(prefix)+'-fields" style="display:'+(done?'grid':'none')+';grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">' +
+        '<div id="'+esc(prefix)+'-fields" style="display:'+(done?'grid':'none')+';grid-template-columns:1.4fr 1fr .8fr;gap:10px;margin-top:10px">' +
           '<div>' +
             '<div style="'+label+'">FORMULATOR</div>' +
             '<select id="'+esc(prefix)+'-vendor" style="'+input+'">'+vendorOptions(vendor)+'</select>' +
@@ -134,7 +157,12 @@
             '<div style="'+label+'">THEY SPENT ($)</div>' +
             '<input id="'+esc(prefix)+'-spend" type="number" min="0" step="0.01" value="'+esc(spend == null ? '' : spend)+'" placeholder="0.00" style="'+input+'">' +
           '</div>' +
+          '<div>' +
+            '<div style="'+label+'">MY CUT (%)</div>' +
+            '<input id="'+esc(prefix)+'-pct" type="number" min="0" max="100" step="0.01" value="'+esc(pct == null ? '' : pct)+'" placeholder="0" style="'+input+'">' +
+          '</div>' +
         '</div>' +
+        '<div id="'+esc(prefix)+'-calc" style="display:'+(done?'block':'none')+';font-size:12px;color:#c4a4f8;margin-top:8px"></div>' +
       '</div>';
   };
 
@@ -147,8 +175,32 @@
     var sel = document.getElementById(prefix + '-vendor');
     if(!cb || !box || !sel) return;
 
+    var amt  = document.getElementById(prefix + '-spend');
+    var pct  = document.getElementById(prefix + '-pct');
+    var calc = document.getElementById(prefix + '-calc');
+
+    // Shows the money the rate works out to, so a mistyped percentage is
+    // obvious while typing rather than after it lands in the dashboard total.
+    function repaintCalc(){
+      if(!calc) return;
+      calc.style.display = cb.checked ? 'block' : 'none';
+      if(!cb.checked){ calc.textContent = ''; return; }
+      var s = amt && String(amt.value).trim() !== '' ? parseFloat(amt.value) : null;
+      var p = pct && String(pct.value).trim() !== '' ? parseFloat(pct.value) : null;
+      if(s == null || isNaN(s) || p == null || isNaN(p)){
+        calc.textContent = p == null || isNaN(p)
+          ? 'Set your % to count this toward formulation revenue.'
+          : 'Enter what they spent to see your cut.';
+        return;
+      }
+      calc.textContent = 'Your cut: ' + money(Math.round(s * p) / 100) + '  (' + p + '% of ' + money(s) + ')';
+    }
+    if(amt) amt.addEventListener('input', repaintCalc);
+    if(pct) pct.addEventListener('input', repaintCalc);
+
     cb.addEventListener('change', function(){
       box.style.display = cb.checked ? 'grid' : 'none';
+      repaintCalc();
       // Ticking the box with nothing picked lands on the first house rather
       // than an empty select the user has to notice and fill in.
       if(cb.checked && !sel.value && (CACHE || []).length) sel.value = CACHE[0];
@@ -174,6 +226,7 @@
     sel.innerHTML = vendorOptions(keep);
     if(keep) sel.value = keep;
     lastVendor = sel.value;
+    repaintCalc();
   };
 
   // ── Reading the form back ───────────────────────────────────
@@ -182,6 +235,7 @@
     var cb  = document.getElementById(prefix + '-done');
     var sel = document.getElementById(prefix + '-vendor');
     var amt = document.getElementById(prefix + '-spend');
+    var pctEl = document.getElementById(prefix + '-pct');
     if(!cb) return null;                            // block not on this form
     var done = !!cb.checked;
     var vendor = sel && sel.value && sel.value !== ADD_SENTINEL ? sel.value : '';
@@ -191,9 +245,15 @@
       // The DB rejects a negative spend; clamp here so the save doesn't bounce.
       if(!isNaN(n) && n >= 0) spend = Math.round(n * 100) / 100;
     }
-    // Unticking clears the pair, so a stale house/amount can't linger unseen.
-    if(!done) return { done: false, vendor: null, spend: null };
-    return { done: true, vendor: vendor || null, spend: spend };
+    var pct = null;
+    if(pctEl && String(pctEl.value).trim() !== ''){
+      var q = parseFloat(pctEl.value);
+      // 0–100 is the DB CHECK; anything outside is a typo, not a rate.
+      if(!isNaN(q) && q >= 0 && q <= 100) pct = Math.round(q * 100) / 100;
+    }
+    // Unticking clears the set, so stale figures can't linger unseen.
+    if(!done) return { done: false, vendor: null, spend: null, pct: null };
+    return { done: true, vendor: vendor || null, spend: spend, pct: pct };
   };
 
   // ── Read-only summary (view panels) ─────────────────────────
@@ -203,10 +263,126 @@
     var bits = '<span style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(196,164,248,.14);color:#c4a4f8;border:1px solid rgba(196,164,248,.35)">🧪 ' +
       esc(vendor || 'Formulation') + '</span>';
     if(spend != null) bits += ' <span style="font-size:13px;color:var(--white)">' + esc(money(spend)) + ' spent</span>';
+    var rev = window.glFormulationRevenue(rec);
+    if(rev != null) bits += ' <span style="font-size:12.5px;color:#5fcf9e">· ' + esc(money(rev)) + ' to you (' + esc(recPct(rec)) + '%)</span>';
+    else if(spend != null) bits += ' <span style="font-size:12px;color:#f5c842">· % not set</span>';
     return '<div style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)">' +
       '<span style="font-size:10px;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:4px">FORMULATION</span>' +
       bits + '</div>';
   };
+
+  // ── Dashboard: revenue generated from formulation ───────────
+  // Sums the cut across clients and open leads. The two are separate tables
+  // with nothing linking them: converting a lead creates a client but never
+  // sets deals.client_id, so a converted brand can carry formulation on BOTH
+  // rows. Counting both would inflate the one number this section exists to
+  // report, so a lead whose company matches a client that also has
+  // formulation recorded is skipped, and the count of skips is shown.
+  function norm(x){ return String(x == null ? '' : x).trim().toLowerCase().replace(/\s+/g,' '); }
+
+  function collect(){
+    var clientRows = (window.clients || []).filter(recDone).map(function(c){
+      return { source:'client', label:c.name || '(unnamed client)', rec:c };
+    });
+    var byName = {}, byEmail = {};
+    clientRows.forEach(function(r){
+      if(norm(r.rec.name)) byName[norm(r.rec.name)] = 1;
+      if(norm(r.rec.email)) byEmail[norm(r.rec.email)] = 1;
+    });
+
+    var leadRows = [], skipped = 0;
+    Object.keys(window.deals || {}).forEach(function(stage){
+      (window.deals[stage] || []).forEach(function(d){
+        if(!recDone(d)) return;
+        var nm = norm(d.co) || norm(d.name);
+        if((nm && byName[nm]) || (norm(d.email) && byEmail[norm(d.email)])){ skipped++; return; }
+        leadRows.push({ source:'lead', label:(d.co || d.name || '(unnamed lead)'), stage:stage, rec:d });
+      });
+    });
+    return { rows: clientRows.concat(leadRows), clientRows: clientRows, leadRows: leadRows, skipped: skipped };
+  }
+
+  function sum(rows, fn){ return rows.reduce(function(a,r){ var v = fn(r); return a + (v == null ? 0 : v); }, 0); }
+
+  window.glRenderFormulationDash = function glRenderFormulationDash(){
+    var host = document.getElementById('dash-formulation');
+    if(!host) return;
+
+    var got = collect();
+    if(!got.rows.length){
+      host.innerHTML = '<div class="ccard"><div class="ccard-t">🧪 Formulation revenue</div>' +
+        '<div style="font-size:12.5px;color:#9aa7bd;line-height:1.6">Nothing recorded yet. Tick <b>Formulation done</b> on a client or a pipeline deal, pick the house, and enter what they spent plus your %.</div></div>';
+      return;
+    }
+
+    var revenue = sum(got.rows, function(r){ return window.glFormulationRevenue(r.rec); });
+    var spend   = sum(got.rows, function(r){ return recSpend(r.rec); });
+    var noPct   = got.rows.filter(function(r){ return recSpend(r.rec) != null && recPct(r.rec) == null; }).length;
+    var noSpend = got.rows.filter(function(r){ return recSpend(r.rec) == null; }).length;
+
+    // Per-house breakdown.
+    var houses = {};
+    got.rows.forEach(function(r){
+      var v = recVendor(r.rec) || '(no house named)';
+      var h = houses[v] || (houses[v] = { vendor:v, n:0, spend:0, revenue:0 });
+      h.n++;
+      var sp = recSpend(r.rec); if(sp != null) h.spend += sp;
+      var rv = window.glFormulationRevenue(r.rec); if(rv != null) h.revenue += rv;
+    });
+    var houseList = Object.keys(houses).map(function(k){ return houses[k]; })
+      .sort(function(a,b){ return b.revenue - a.revenue || b.spend - a.spend; });
+
+    var td = 'padding:7px 10px;font-size:12.5px;border-top:1px solid rgba(255,255,255,.06)';
+    var th = 'padding:6px 10px;font-size:10px;letter-spacing:1.2px;color:#9aa7bd;text-align:left';
+
+    var rowsHtml = houseList.map(function(h){
+      return '<tr>' +
+        '<td style="'+td+';color:#eef4ff;font-weight:600">' + esc(h.vendor) + '</td>' +
+        '<td style="'+td+';color:#9aa7bd;text-align:center">' + h.n + '</td>' +
+        '<td style="'+td+';color:#dfe7f1;text-align:right">' + esc(money(h.spend)) + '</td>' +
+        '<td style="'+td+';color:#5fcf9e;text-align:right;font-weight:700">' + esc(money(h.revenue)) + '</td>' +
+      '</tr>';
+    }).join('');
+
+    var notes = [];
+    notes.push('From clients ' + money(sum(got.clientRows, function(r){ return window.glFormulationRevenue(r.rec); })) +
+               ' · from open leads ' + money(sum(got.leadRows, function(r){ return window.glFormulationRevenue(r.rec); })));
+    if(noPct)   notes.push('<span style="color:#f5c842">' + noPct + ' record' + (noPct===1?'':'s') + ' with a spend but no % — not counted in revenue.</span>');
+    if(noSpend) notes.push('<span style="color:#f5c842">' + noSpend + ' record' + (noSpend===1?'':'s') + ' ticked with no amount entered.</span>');
+    if(got.skipped) notes.push(got.skipped + ' converted lead' + (got.skipped===1?'':'s') + ' skipped — already counted as clients.');
+
+    host.innerHTML =
+      '<div class="ccard">' +
+        '<div class="ccard-t">🧪 Formulation revenue</div>' +
+        '<div style="display:flex;gap:26px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">' +
+          '<div>' +
+            '<div style="font-size:10px;letter-spacing:1.5px;color:#9aa7bd;margin-bottom:3px">YOUR CUT</div>' +
+            '<div style="font-family:var(--ff-disp);font-size:28px;color:#5fcf9e;line-height:1">' + esc(money(revenue)) + '</div>' +
+          '</div>' +
+          '<div>' +
+            '<div style="font-size:10px;letter-spacing:1.5px;color:#9aa7bd;margin-bottom:3px">REFERRED SPEND</div>' +
+            '<div style="font-family:var(--ff-disp);font-size:20px;color:#c4a4f8;line-height:1">' + esc(money(spend)) + '</div>' +
+          '</div>' +
+          '<div>' +
+            '<div style="font-size:10px;letter-spacing:1.5px;color:#9aa7bd;margin-bottom:3px">REFERRALS</div>' +
+            '<div style="font-family:var(--ff-disp);font-size:20px;color:#dfe7f1;line-height:1">' + got.rows.length + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">' +
+          '<thead><tr><th style="'+th+'">FORMULATOR</th><th style="'+th+';text-align:center">REFERRALS</th>' +
+          '<th style="'+th+';text-align:right">SPEND</th><th style="'+th+';text-align:right">YOUR CUT</th></tr></thead>' +
+          '<tbody>' + rowsHtml + '</tbody>' +
+        '</table></div>' +
+        '<div style="font-size:11.5px;color:#9aa7bd;margin-top:10px;line-height:1.7">' + notes.join('<br>') + '</div>' +
+      '</div>';
+  };
+
+  if(window.GL_HOOKS && typeof window.GL_HOOKS.registerDashPatch === 'function'){
+    window.GL_HOOKS.registerDashPatch(function(){
+      try { window.glRenderFormulationDash(); }
+      catch(e){ console.warn('[GL] formulation dash threw', e); }
+    });
+  }
 
   // Warm the cache once Supabase is up so the first dropdown paints filled.
   (function warm(){

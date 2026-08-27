@@ -2043,6 +2043,7 @@ select option, .fsel option {
           <div class="ccard"><div class="ccard-t">Pipeline snapshot</div><div class="pipe-bars" id="pipe-snap"></div></div>
           <div class="ccard"><div class="ccard-t">Referral commissions</div><div id="dash-ref"></div></div>
         </div>
+        <div id="dash-formulation"></div>
         <div id="dash-low-stock"></div>
       </div>
 
@@ -4997,7 +4998,8 @@ async function loadSupabaseData(){
       init:c.initials||(c.name||'').slice(0,2).toUpperCase(), notes:c.notes||'',
       formulationDone: !!c.formulation_done,
       formulationVendor: c.formulation_vendor||'',
-      formulationSpend: c.formulation_spend==null?null:parseFloat(c.formulation_spend)
+      formulationSpend: c.formulation_spend==null?null:parseFloat(c.formulation_spend),
+      formulationPct: c.formulation_pct==null?null:parseFloat(c.formulation_pct)
     }));
   }
   if(iR.data && iR.data.length>0){
@@ -5055,7 +5057,8 @@ async function loadSupabaseData(){
         stageEnteredAt:d.stage_entered_at||d.created_at||null,
         formulationDone:!!d.formulation_done,
         formulationVendor:d.formulation_vendor||'',
-        formulationSpend:d.formulation_spend==null?null:parseFloat(d.formulation_spend)
+        formulationSpend:d.formulation_spend==null?null:parseFloat(d.formulation_spend),
+        formulationPct:d.formulation_pct==null?null:parseFloat(d.formulation_pct)
       });
     });
   }
@@ -7474,6 +7477,7 @@ async function saveDealDetail(){
     d.formulationDone   = newFormulation.done;
     d.formulationVendor = newFormulation.vendor || '';
     d.formulationSpend  = newFormulation.spend;
+    d.formulationPct    = newFormulation.pct;
   }
 
   // Move to different stage if changed; reset stage timer.
@@ -7511,6 +7515,7 @@ async function saveDealDetail(){
       updatePayload.formulation_done   = newFormulation.done;
       updatePayload.formulation_vendor = newFormulation.vendor;
       updatePayload.formulation_spend  = newFormulation.spend;
+      updatePayload.formulation_pct    = newFormulation.pct;
     }
     if(stageChanged) updatePayload.stage_entered_at = d.stageEnteredAt;
     // .select() so RLS/constraint rejections surface: a silent 0-row reject
