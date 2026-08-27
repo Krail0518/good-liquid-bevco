@@ -159,6 +159,12 @@
       : '<span style="color:'+MUTED+'">None specified</span>';
     out += section('PRODUCT TYPES', ptInner);
 
+    // ── FORMULATION ── (only when it happened; module owns the markup)
+    if(typeof window.glFormulationSummary === 'function'){
+      var fSum = window.glFormulationSummary(c);
+      if(fSum) out += section('FORMULATION', fSum);
+    }
+
     // ── COMPLIANCE DOCUMENTS ──
     var docs = '';
     docs += docRow('Certificate of Insurance', c.coiOnFile, '', false, c.coiExpires, '');

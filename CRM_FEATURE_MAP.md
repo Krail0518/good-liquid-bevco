@@ -24,7 +24,7 @@
 |---------|-----------|-------|------|----------------|
 | `cpg-dashboard` | (no id; always visible) | DASHBOARD | All | `+ New Invoice` (primary) |
 | `cpg-clients` | `nav-clients` | CLIENTS | Admin/Sales | (none in header). The **ONBOARDING** section (module `crm-onboarding.js` → `glClientOnboardingSection`) renders in BOTH client surfaces — the admin/sales edit form (`glOpenEditClient` in `crm-edit-client.js`, top of form; this is what a card click opens for non-viewers) and the read-only detail popup (via `glClientInfoSections` in `crm-client-detail.js`). The edit form also mounts the **📎 DOCUMENTS card** (`glRenderDealDocs` from `crm-deal-docs.js`, container `#gl-ec-docs`) — NDA / Process Authority letter / formulas / labels carried over from the pipeline at convert, plus staff and portal-customer uploads. Portal side: the customer dashboard has an **🔒 AGREEMENTS & CONTRACTS** section (crm-portal-customer.js) listing the client's `deal_documents` with download (signed URL, client-docs bucket) and a customer upload control (RLS: "deal_documents customer read" + "deal_documents customer upload", migration 20260807000000): live status (Invited / Opened / Submitted) + `📨 Send / resend onboarding email` (`glSendOnboardingLink`) + `🔗 Copy link` (`glCopyOnboardingLink`). Reuses the pipeline-convert email + `gl_onboarding_create` RPC. The `🔑 Invite Customer Login` picker auto-fills the email from the picked client and explains that logins attach to a client; brand-new people go Clients/pipeline-convert → onboarding email. |
-| `cpg-pipeline` | `nav-pipeline` | PIPELINE | Admin/Sales | (none in header) |
+| `cpg-pipeline` | `nav-pipeline` | PIPELINE | Admin/Sales | (none in header). The deal panel's edit mode mounts the **🧪 FORMULATION block** (`glFormulationBlock` from `crm-formulation.js`, container `#ddp-formulation`, field prefix `ddp-form`) — a done checkbox, a formulator dropdown fed by the `formulators` table, and what the brand spent. Saved by `saveDealDetail()` into `deals.formulation_done` / `_vendor` / `_spend`; the read-only view mode shows it back via `glFormulationSummary`. The same block appears in the client editor (prefix `gl-ec-form`) and in the read-only client popup. |
 | `cpg-invoices` | `nav-invoices` | INVOICES | Admin/Sales | `+ New Invoice` (primary) |
 | `cpg-newinv` | (no sidebar item; nav via button) | CREATE INVOICE | Admin/Sales | (form only) |
 | `cpg-referrals` | `nav-referrals` | REFERRALS | Admin/Sales | `+ Log referral` (primary) |
@@ -319,7 +319,8 @@ Three mechanisms, used in combination:
 | Table | Key Fields | Notes |
 |-------|-----------|-------|
 | `profiles` | id, email, role, name, initials, color, tc, status, is_super_user, notify_daily_digest | Role: admin/sales/viewer |
-| `clients` | id, name, email, phone, contact_name, notes, rate_overrides (JSONB) | |
+| `clients` | id, name, email, phone, contact_name, notes, rate_overrides (JSONB), formulation_done, formulation_vendor, formulation_spend | Formulation trio written by `crm-formulation.js` |
+| `formulators` | id, name (unique), active, sort_order | The formulation houses the 🧪 dropdown offers. Staff-only RLS; add new ones from the dropdown, no migration needed |
 | `invoices` | id, invoice_number (GL-XXXX), client_id, amount, status, line_items (JSONB), stripe_payment_link, qbo_id | status: draft/pending/paid/overdue/void |
 | `referrals` | id, referrer_id, client_name, deal_value, commission_rate, commission_amount, status | status: lead/presented/won/paid/lost |
 | `referrers` | id, name, email, phone, default_rate | |

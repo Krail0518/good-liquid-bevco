@@ -401,6 +401,7 @@
               '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--white)"><input type="checkbox" id="gl-ec-pt-other"'+pt('other')+' style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">📦 Other</label>' +
             '</div>' +
           '</div>' +
+          (typeof window.glFormulationBlock === 'function' ? window.glFormulationBlock(c, 'gl-ec-form') : '') +
           '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:12px">' +
             '<div style="'+LABEL_STYLE+';margin-bottom:8px">COMPLIANCE DOCS</div>' +
             '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end">' +
@@ -816,6 +817,15 @@
         paLetterExpires:val('gl-ec-pa-letter-expires'),
         notes:          val('gl-ec-notes')
       };
+      // Formulation (checkbox + house + spend). Only added when the block is
+      // actually on the form, so other glUpdateClient callers can't wipe it.
+      var formulation = (typeof window.glFormulationRead === 'function')
+        ? window.glFormulationRead('gl-ec-form') : null;
+      if(formulation){
+        patch.formulationDone   = formulation.done;
+        patch.formulationVendor = formulation.vendor || '';
+        patch.formulationSpend  = formulation.spend;
+      }
       // Only set file paths in the patch when a new upload happened; otherwise
       // leave them alone so we don't overwrite the existing pointer.
       if(newW9Path)  patch.w9FilePath = newW9Path;
@@ -866,6 +876,7 @@
     } catch(e){}
     if(typeof cdeLoadCorrespondence === 'function'){ try { cdeLoadCorrespondence(c); } catch(e){} }
     if(typeof window.glRenderArtwork === 'function'){ try { window.glRenderArtwork(clientId, ov.querySelector('#gl-ec-artwork')); } catch(e){} }
+    if(typeof window.glFormulationBind === 'function'){ try { window.glFormulationBind('gl-ec-form'); } catch(e){} }
 
     setTimeout(function(){ ov.querySelector('#gl-ec-name').focus(); }, 50);
   };
@@ -933,6 +944,11 @@
           pa_letter_expires: patch.paLetterExpires || null,
           pa_letter_file_path: patch.paLetterFilePath,
           notes:           patch.notes,
+          // undefined (not null) when the caller didn't touch formulation, so
+          // the strip-undefined pass below leaves the stored values alone.
+          formulation_done:   patch.formulationDone   === undefined ? undefined : !!patch.formulationDone,
+          formulation_vendor: patch.formulationVendor === undefined ? undefined : (patch.formulationVendor || null),
+          formulation_spend:  patch.formulationSpend  === undefined ? undefined : (patch.formulationSpend === null || patch.formulationSpend === '' ? null : patch.formulationSpend),
           initials:        newInit
         };
         // Strip undefined keys so we don't accidentally wipe values not in the patch

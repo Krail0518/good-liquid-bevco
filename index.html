@@ -2587,6 +2587,8 @@ select option, .fsel option {
                 </select>
               </div>
             </div>
+            <!-- Formulation (checkbox + house + spend); filled by crm-formulation.js -->
+            <div id="ddp-formulation"></div>
             <!-- Notes -->
             <div>
               <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px">PROJECT DETAILS / NOTES</div>
@@ -4992,7 +4994,10 @@ async function loadSupabaseData(){
       billed:c.total_billed||0,
       notify_overdue_sms: !!c.notify_overdue_sms,
       referredBy:c.referred_by||'', color:c.color||'#1a3a6e', tc:c.tc||'#9FE1CB',
-      init:c.initials||(c.name||'').slice(0,2).toUpperCase(), notes:c.notes||''
+      init:c.initials||(c.name||'').slice(0,2).toUpperCase(), notes:c.notes||'',
+      formulationDone: !!c.formulation_done,
+      formulationVendor: c.formulation_vendor||'',
+      formulationSpend: c.formulation_spend==null?null:parseFloat(c.formulation_spend)
     }));
   }
   if(iR.data && iR.data.length>0){
@@ -5047,7 +5052,10 @@ async function loadSupabaseData(){
         firstResponseAt:d.first_response_at||null,
         handledAt:d.handled_at||null,
         snoozedUntil:d.snoozed_until||null,
-        stageEnteredAt:d.stage_entered_at||d.created_at||null
+        stageEnteredAt:d.stage_entered_at||d.created_at||null,
+        formulationDone:!!d.formulation_done,
+        formulationVendor:d.formulation_vendor||'',
+        formulationSpend:d.formulation_spend==null?null:parseFloat(d.formulation_spend)
       });
     });
   }
@@ -6742,6 +6750,7 @@ function openDealDetail(stage, idx){
       <span style="font-size:10px;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:4px">DEAL VALUE</span>
       <span style="font-family:var(--ff-disp);font-size:20px;color:var(--teal)">${esc(d.val||'$0')}</span>
     </div>
+    ${typeof window.glFormulationSummary === 'function' ? window.glFormulationSummary(d) : ''}
     <div style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)">
       <span style="font-size:10px;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:6px">PROBABILITY — ${prob}%</span>
       <div style="background:rgba(255,255,255,.08);border-radius:4px;height:8px;overflow:hidden"><div style="height:100%;width:${prob}%;background:${stageColor};border-radius:4px"></div></div>
@@ -6764,6 +6773,11 @@ function openDealDetail(stage, idx){
   document.getElementById('ddp-view-mode').innerHTML = viewHTML;
   document.getElementById('ddp-view-mode').style.display = 'flex';
   document.getElementById('ddp-edit-mode').style.display = 'none';
+  // Drop the previous deal's formulation block: editDealDetail() rebuilds it
+  // for whichever deal is open, and a leftover one could otherwise be read
+  // back and written onto this deal.
+  var fprev = document.getElementById('ddp-formulation');
+  if(fprev) fprev.innerHTML = '';
   document.getElementById('ddp-title').textContent = 'DEAL DETAILS';
   document.getElementById('deal-detail-panel').classList.add('show');
   // Load the email correspondence for this lead into the panel above.
@@ -7394,6 +7408,11 @@ function editDealDetail(){
   sv('ddp-prob',    d.prob || 20);
   sv('ddp-stage',   stage);
   sv('ddp-notes',   d.notes);
+  var fbox = document.getElementById('ddp-formulation');
+  if(fbox && typeof window.glFormulationBlock === 'function'){
+    fbox.innerHTML = window.glFormulationBlock(d, 'ddp-form');
+    if(typeof window.glFormulationBind === 'function') window.glFormulationBind('ddp-form');
+  }
   document.getElementById('ddp-view-mode').style.display = 'none';
   document.getElementById('ddp-edit-mode').style.display = 'flex';
 }
@@ -7429,6 +7448,10 @@ async function saveDealDetail(){
   const newProb        = parseInt(document.getElementById('ddp-prob').value)||20;
   const newStage       = gv('ddp-stage');
   const newNotes       = gv('ddp-notes');
+  // Formulation block (checkbox + house + spend). null when the module or the
+  // block is absent, in which case the existing values are left untouched.
+  const newFormulation = (typeof window.glFormulationRead === 'function')
+    ? window.glFormulationRead('ddp-form') : null;
 
   // Update local deal object
   d.name         = newName;
@@ -7447,6 +7470,11 @@ async function saveDealDetail(){
   d.val          = '$' + newVal.toLocaleString();
   d.prob         = newProb;
   d.notes        = newNotes;
+  if(newFormulation){
+    d.formulationDone   = newFormulation.done;
+    d.formulationVendor = newFormulation.vendor || '';
+    d.formulationSpend  = newFormulation.spend;
+  }
 
   // Move to different stage if changed; reset stage timer.
   // Remember the pre-move location so a rejected DB write can be rolled back —
@@ -7479,6 +7507,11 @@ async function saveDealDetail(){
       funding_stage:newFunding     || undefined,
       lead_source:  newSource      || undefined
     };
+    if(newFormulation){
+      updatePayload.formulation_done   = newFormulation.done;
+      updatePayload.formulation_vendor = newFormulation.vendor;
+      updatePayload.formulation_spend  = newFormulation.spend;
+    }
     if(stageChanged) updatePayload.stage_entered_at = d.stageEnteredAt;
     // .select() so RLS/constraint rejections surface: a silent 0-row reject
     // must be treated as failure, not success. On failure, roll the in-memory
@@ -12506,6 +12539,7 @@ window.addEventListener('appinstalled', () => {
 <script src="/crm-gmpsched.js"></script>
 <script src="/crm-trace.js"></script>
 <script src="/crm-training.js"></script>
+<script src="/crm-formulation.js"></script>
 <script src="/crm-auditreview.js"></script>
 <script src="/crm-selftest.js"></script>
 </body></html>
