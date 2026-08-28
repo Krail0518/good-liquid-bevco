@@ -66,6 +66,9 @@ jobs:
       # The QuickBooks OAuth callback must verify the state it was handed.
       - name: Run QBO OAuth state tests
         run: node tests/qbo-oauth-state.test.cjs
+      # The public pay endpoint must not allow invoice enumeration.
+      - name: Run stripe-checkout authorization tests
+        run: node tests/stripe-checkout-auth.test.cjs
 
       - name: Run smoke test
         env:
