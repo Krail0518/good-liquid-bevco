@@ -45,10 +45,20 @@ Deno.serve(async (req: Request) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
+  // Must be a super-user AND still active. Selecting only is_super_user meant a
+  // DEACTIVATED super-user kept the ability to hard-delete auth accounts: the
+  // profiles row survives deactivation (status flips to 'inactive', the row is
+  // not removed), so `is_super_user` stayed true for someone who had been
+  // removed from the CRM. This is the most destructive endpoint in the system,
+  // so the check has to match the one every other surface uses — an active
+  // profile is what is_gl_staff() means, and deactivation must revoke here too.
   const { data: callerProfile } = await adminClient
-    .from('profiles').select('is_super_user').eq('id', caller.id).maybeSingle();
+    .from('profiles').select('is_super_user, status').eq('id', caller.id).maybeSingle();
   if (!callerProfile?.is_super_user) {
     return errorResponse('Forbidden — super-user required', 403);
+  }
+  if ((callerProfile.status ?? 'active') === 'inactive') {
+    return errorResponse('Forbidden — this account has been deactivated', 403);
   }
 
   // ── 3. Parse body ───────────────────────────────────────────────────────

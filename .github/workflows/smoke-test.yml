@@ -56,6 +56,10 @@ jobs:
       - name: Run OAuth error-mapping unit tests
         run: node tests/oauth-errors.test.mjs
 
+      # Declared JWT state, webhook replay window, deactivated super-user.
+      - name: Run edge-function hardening tests
+        run: node tests/edge-function-hardening.test.cjs
+
       - name: Run smoke test
         env:
           # Let `require('playwright')` in the .cjs resolve from the temp install.
