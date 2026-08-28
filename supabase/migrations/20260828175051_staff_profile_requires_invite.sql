@@ -51,6 +51,20 @@
 --
 -- The pre-existing portal-linked profile is deliberately NOT touched here; that
 -- is a separate data question, handled outside this migration.
+--
+-- IMPORTANT: this trigger IS load-bearing for staff invites. profiles.email is
+-- NOT NULL with no default, and invite-staff-user's own upsert omits email, so
+-- it depends on this trigger having created the row first. Gating on invited_at
+-- keeps that path intact; skipping profile creation outright would break staff
+-- onboarding with a not-null violation.
+--
+-- APPLIED to production 2026-08-28 as version 20260828175051, after a
+-- rolled-back behavioural test of four branches:
+--   A bare self-signup                        -> no profile   PASS
+--   B self-signup forging {"role":"admin"}    -> no profile   PASS
+--   C invited portal customer                 -> no profile   PASS
+--   D genuine admin invite                    -> profile made PASS
+-- profiles count unchanged at 6 before and after; 6 active, 8 portal users.
 
 create or replace function public.handle_new_user()
 returns trigger
