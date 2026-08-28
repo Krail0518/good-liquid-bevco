@@ -1758,18 +1758,13 @@ select option, .fsel option {
 
 <section id="team" style="background:var(--ink)">
   <div style="text-align:center" class="rv"><div class="sec-tag">The team</div><h2 class="sec-h">REAL PEOPLE. <em>REAL ANSWERS.</em></h2></div>
-  <div class="tl rv">
-    <div class="tc">
-      <div class="tav mk">MK</div><h3>Mike Krail</h3><div class="tc-role">Sales &amp; Strategy</div>
-      <p>Your first call for new projects, pricing, capabilities, and getting on the schedule. Mike will tell you straight whether we're the right fit.</p>
-      <a href="mailto:Mike@GoodLiquid.com" class="tc-email">✉ Mike@GoodLiquid.com</a>
-    </div>
+  <!-- The two staff cards (name, role, direct mailto) were removed: publishing
+       direct addresses let enquiries bypass the quote form, so they never
+       reached the pipeline. Every route in now goes through the form. The
+       single remaining card is centred rather than sitting in a 2-column grid
+       with an empty half. -->
+  <div class="tl rv" style="grid-template-columns:1fr;max-width:560px;margin-left:auto;margin-right:auto">
     <div style="display:flex;flex-direction:column;gap:18px">
-      <div class="tc">
-        <div class="tav sk">SK</div><h3>Sandra Krail</h3><div class="tc-role">Operations &amp; Logistics</div>
-        <p>Sandra owns production scheduling, supply chain coordination, and QC. She ensures what you ordered is exactly what ships, on time.</p>
-        <a href="mailto:Sandra@GoodLiquid.com" class="tc-email">✉ Sandra@GoodLiquid.com</a>
-      </div>
       <div class="fac-card">
         <div style="font-family:var(--ff-mono);font-size:10px;letter-spacing:2px;color:var(--teal);text-transform:uppercase;margin-bottom:9px">📍 Visit the facility</div>
         <div style="font-family:var(--ff-disp);font-size:24px;letter-spacing:1px;color:var(--white);margin-bottom:5px">PALMETTO, FL</div>
@@ -1789,8 +1784,7 @@ select option, .fsel option {
       <p style="font-size:15px;color:var(--muted);line-height:1.8">Whether you have a polished brief or a rough idea, we'll give you an honest read on fit and timeline.</p>
       <div class="ci-items">
         <div class="ci"><div class="ci-ic">📍</div><div><div class="ci-lbl">Address</div><div class="ci-val">2011 51st Ave E, Unit 100 · Palmetto, FL 34221</div></div></div>
-        <div class="ci"><div class="ci-ic">✉️</div><div><div class="ci-lbl">Sales &amp; Strategy</div><div class="ci-val">Mike@GoodLiquid.com</div></div></div>
-        <div class="ci"><div class="ci-ic">⚙️</div><div><div class="ci-lbl">Operations</div><div class="ci-val">Sandra@GoodLiquid.com</div></div></div>
+        <div class="ci"><div class="ci-ic">✉️</div><div><div class="ci-lbl">Enquiries</div><div class="ci-val">Use the form — it routes straight to the right person.</div></div></div>
         <div class="ci"><div class="ci-ic">⏱️</div><div><div class="ci-lbl">Response time</div><div class="ci-val">Within 1 business day — from a real person.</div></div></div>
       </div>
     </div>
@@ -1892,7 +1886,7 @@ select option, .fsel option {
   </div>
   <div class="flinks">
     <a href="javascript:void(0)" onclick="navTo(&#39;about&#39;)">About</a><a href="javascript:void(0)" onclick="navTo(&#39;services&#39;)">Services</a><a href="javascript:void(0)" onclick="navTo(&#39;pricing&#39;)">Pricing</a>
-    <a href="javascript:void(0)" onclick="navTo(&#39;certifications&#39;)">Certifications</a><a href="javascript:void(0)" onclick="navTo(&#39;team&#39;)">Team</a><a href="mailto:Mike@GoodLiquid.com">Contact</a>
+    <a href="javascript:void(0)" onclick="navTo(&#39;certifications&#39;)">Certifications</a><a href="javascript:void(0)" onclick="navTo(&#39;team&#39;)">Team</a><a href="javascript:void(0)" onclick="navTo(&#39;contact&#39;)">Contact</a>
   </div>
   <div class="fright">© 2026 Good Liquid Bev Co.</div>
 </footer>
