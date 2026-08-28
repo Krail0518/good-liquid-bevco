@@ -3895,15 +3895,26 @@ async function bulkMarkPaid(){
   const targets = invoices.filter(i => ids.includes(i.id) && i.status !== 'paid');
   if(!targets.length) return;
   if(!confirm(`Mark ${targets.length} invoice${targets.length===1?'':'s'} as paid? This won't actually charge Stripe — use only for offline payments.`)) return;
+  // Persist each one and count what actually landed. Previously every invoice
+  // was flipped to 'paid' in memory before the write, the write was unchecked,
+  // and the success toast reported the full batch regardless — so a partly or
+  // wholly rejected batch still read as "12 invoices marked paid".
+  const failed = [];
   for(const inv of targets){
+    const paidAt = new Date().toISOString();
+    const res = await glPersistInvoiceStatus(inv, { status:'paid', paid_at: paidAt, paid_method:'manual' });
+    if(!res.ok){ failed.push(inv.id + ' (' + res.reason + ')'); continue; }
     inv.status = 'paid';
+    inv.paid_at = paidAt;
     inv.waiveCardSurcharge = inv.waiveCardSurcharge || false;
-    if(inv.supaId){
-      try { await supa.from('invoices').update({ status:'paid', paid_at: new Date().toISOString(), paid_method:'manual' }).eq('id', inv.supaId); }
-      catch(e){ console.warn('[GL] bulk mark-paid update failed for', inv.id, e); }
-    }
   }
-  if(typeof addNotification==='function') addNotification('💰 Bulk mark-paid', targets.length + ' invoice' + (targets.length===1?'':'s') + ' marked paid', 'success');
+  const okCount = targets.length - failed.length;
+  if(typeof addNotification==='function'){
+    if(okCount) addNotification('💰 Bulk mark-paid', okCount + ' invoice' + (okCount===1?'':'s') + ' marked paid', 'success');
+    if(failed.length) addNotification('Some invoices were NOT marked paid', failed.length + ' failed: ' + failed.slice(0,5).join(', ') + (failed.length>5?' …':''), 'error');
+  } else if(failed.length){
+    alert(failed.length + ' invoice(s) were NOT marked paid:\n' + failed.join('\n'));
+  }
   clearInvoiceSelection();
   renderInvoices();
   renderDash();
@@ -4117,16 +4128,49 @@ function renderInvoices(){
 }
 function setInvFilter(el,f){document.querySelectorAll('#inv-pills .cpill').forEach(p=>p.classList.remove('act'));el.classList.add('act');invFilter=f;renderInvoices()}
 function filterInvoices(q){invSearch=q.toLowerCase();renderInvoices()}
+/* Apply a status patch to one invoice and report whether the DATABASE agreed.
+   Returns {ok:true} or {ok:false, reason}.
+
+   RLS rejects a write silently — 0 rows affected, no error — so `.select()`
+   AND the array-length check are both required. Without them "mark paid"
+   updates the screen, fires the paid alert, and leaves the invoice unpaid in
+   the database (CLAUDE.md rule 4). Every mark-paid path goes through here so
+   the check exists once rather than four times (§11). */
+async function glPersistInvoiceStatus(inv, patch){
+  if(!window.supa) return {ok:false, reason:'Not connected to the database.'};
+  try{
+    const base = window.supa.from('invoices').update(patch);
+    const r = inv.supaId
+      ? await base.eq('id', inv.supaId).select('invoice_number')
+      : await base.eq('invoice_number', inv.id).select('invoice_number');
+    if(r.error) return {ok:false, reason:r.error.message};
+    if(!Array.isArray(r.data) || r.data.length === 0){
+      return {ok:false, reason:'The server rejected the change — 0 rows updated.'};
+    }
+    return {ok:true};
+  }catch(e){
+    return {ok:false, reason:(e && e.message) ? e.message : String(e)};
+  }
+}
+
 async function quickPaid(id){
   const i=invoices.find(x=>x.id===id);
   if(!i)return;
+  const prevStatus = i.status, prevPaidAt = i.paid_at;
+  const paidAt = new Date().toISOString();
+  const res = await glPersistInvoiceStatus(i, {status:'paid', paid_at:paidAt, paid_method:'manual'});
+  if(!res.ok){
+    // Do not touch local state and do not fire the paid alert — the invoice is
+    // still unpaid as far as the database is concerned.
+    i.status = prevStatus; i.paid_at = prevPaidAt;
+    if(typeof addNotification==='function') addNotification('Mark paid failed', id + ' is still unpaid: ' + res.reason, 'error');
+    else alert('Mark paid failed — ' + id + ' is still unpaid: ' + res.reason);
+    renderInvoices();renderDash();
+    return;
+  }
   i.status='paid';
-  i.paid_at=new Date().toISOString();
+  i.paid_at=paidAt;
   renderInvoices();renderDash();
-  try{
-    await supa.from('invoices').update({status:'paid',paid_at:i.paid_at})
-      .or(`invoice_number.eq.${id},id.eq.${id}`);
-  }catch(e){console.warn('[GL] quickPaid persist failed',e);}
   glNotifyDeal('invoice_paid_manual',{invoice_number:id,client:i.clientName||'',amount:String(i.amount||'')});
 }
 
@@ -4222,26 +4266,26 @@ async function markStatus(s){
   if(!currentInvId) return;
   const i=invoices.find(x=>x.id===currentInvId);
   if(!i) return;
+  // Persist FIRST. The screen used to update before the write and stayed
+  // updated even when the write was rejected, so the invoice looked paid
+  // until the next reload.
+  const patch = { status: s };
+  if(s === 'paid'){
+    patch.paid_at = new Date().toISOString();
+    patch.paid_method = 'manual';
+  }
+  const res = await glPersistInvoiceStatus(i, patch);
+  if(!res.ok){
+    if(typeof addNotification==='function') addNotification('Status change failed', i.id + ' is unchanged: ' + res.reason, 'error');
+    else alert('Status change failed — ' + i.id + ' is unchanged: ' + res.reason);
+    return;
+  }
   i.status=s;
+  if(s === 'paid') i.paid_at = patch.paid_at;
   viewInvoice(currentInvId);
   renderInvoices();
   renderDash();
-  // Persist to Supabase — markStatus only updated local state, so
-  // "Mark paid" / "Mark overdue" buttons vanished on refresh.
-  try {
-    if(!window.supa) return;
-    const patch = { status: s };
-    if(s === 'paid'){
-      patch.paid_at = new Date().toISOString();
-      patch.paid_method = 'manual';
-    }
-    if(i.supaId){
-      await window.supa.from('invoices').update(patch).eq('id', i.supaId);
-    } else {
-      await window.supa.from('invoices').update(patch).eq('invoice_number', i.id);
-    }
-    if(s === 'paid') glNotifyDeal('invoice_paid_manual', {invoice_number: i.id, client: i.clientName || i.name || '', amount: String(i.amount||'')});
-  } catch(e){ console.warn('[GL] markStatus save failed', e); }
+  if(s === 'paid') glNotifyDeal('invoice_paid_manual', {invoice_number: i.id, client: i.clientName || i.name || '', amount: String(i.amount||'')});
 }
 
 /* Activity feed — filterable by type + free-text search. */
@@ -5495,17 +5539,14 @@ async function saveNewDeal(){
   closeAddDealModal();
 }
 
-// Fix quickPaid to also update Supabase
-async function quickPaid(id){
-  const i=invoices.find(x=>x.id===id);
-  if(i){
-    i.status='paid';
-    // Update in Supabase by invoice_number
-    await supa.from('invoices').update({status:'paid'}).eq('invoice_number',id);
-    renderInvoices();renderDash();
-    glNotifyDeal('invoice_paid_manual', {invoice_number: id, client: i.clientName || i.name || '', amount: String(i.amount||'')});
-  }
-}
+/* The second `async function quickPaid` used to live here. Two top-level
+   declarations of the same name in the same script scope: the later one wins,
+   so THIS was the live implementation and the fuller one above it was dead
+   code. That mattered — this version wrote only {status:'paid'}, so paid_at
+   and paid_method were never set, and crm-accounting.js reads paid_at for AR
+   aging. It also matched on invoice_number only, and fired the paid alert
+   whether or not the write succeeded.
+   Removed so the single checked implementation above is the one that runs. */
 
 /* ──────────────────────────────────────────────────────────
    SMS overdue reminder — sends a single short SMS to the

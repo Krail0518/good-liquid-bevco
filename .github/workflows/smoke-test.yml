@@ -81,6 +81,11 @@ jobs:
         env:
           NODE_PATH: /tmp/pw/node_modules
         run: node tests/user-admin-writes.test.cjs
+      # Marking an invoice paid must not report success when the database did
+      # not change. Extracts glPersistInvoiceStatus from index.html and drives
+      # it against a fake PostgREST, so no browser is needed.
+      - name: Run invoice mark-paid write tests
+        run: node tests/invoice-paid-writes.test.cjs
 
       - name: Run smoke test
         env:
