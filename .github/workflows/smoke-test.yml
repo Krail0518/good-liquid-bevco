@@ -56,6 +56,10 @@ jobs:
       - name: Run OAuth error-mapping unit tests
         run: node tests/oauth-errors.test.mjs
 
+      # The QuickBooks OAuth callback must verify the state it was handed.
+      - name: Run QBO OAuth state tests
+        run: node tests/qbo-oauth-state.test.cjs
+
       - name: Run smoke test
         env:
           # Let `require('playwright')` in the .cjs resolve from the temp install.
