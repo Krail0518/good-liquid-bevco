@@ -62,6 +62,11 @@ jobs:
       - name: Run invoice mark-paid write tests
         run: node tests/invoice-paid-writes.test.cjs
 
+      # A delete the database refused must not purge the local cache or write
+      # an audit entry saying it happened. No browser needed.
+      - name: Run checked-delete tests
+        run: node tests/checked-deletes.test.cjs
+
       - name: Run smoke test
         env:
           # Let `require('playwright')` in the .cjs resolve from the temp install.
