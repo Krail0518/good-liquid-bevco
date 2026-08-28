@@ -40,4 +40,13 @@ jobs:
           # link); sweep them with:
           #   delete from auth.users where email like 'invariant-probe-%@example.invalid';
           GL_INVARIANT_SIGNUP_PROBE: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
+          # Server-side verification and cleanup for the probe, via the Supabase
+          # Management API. Supplied ONLY on the runs that request the probe, so
+          # a pull-request run never has it in its environment at all.
+          #
+          # This is a runner-side secret: it is never written into a client file,
+          # never sent to a browser, and the script never echoes it. Actions also
+          # masks it in logs. Do NOT move this to a step that checks out or
+          # builds untrusted code.
+          SUPABASE_ACCESS_TOKEN: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && secrets.SUPABASE_ACCESS_TOKEN || '' }}
         run: bash scripts/security-invariants.sh
