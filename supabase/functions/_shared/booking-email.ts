@@ -90,16 +90,28 @@ export function googleCalURL(opts: {
     `&details=${q(opts.description.slice(0, 400))}`;
 }
 
-// ── Mailgun sender (with optional .ics attachment) ────────────────────────
+// ── Mailgun sender (optional .ics and/or file attachments) ────────────────
+// Returns the outcome rather than only logging it: the booking flows ignore
+// the result (a missed confirmation must not fail the booking), but quote-decks
+// has to know whether the mail actually left before it writes an email_log row
+// saying it did.
+export interface MailAttachment {
+  filename: string;
+  bytes: Uint8Array;
+  contentType?: string;
+}
+export interface MailResult { ok: boolean; id?: string; error?: string }
+
 export async function sendMail(opts: {
   to: string; subject: string; text: string; html?: string; icsContent?: string;
-}): Promise<void> {
+  replyTo?: string; attachments?: MailAttachment[];
+}): Promise<MailResult> {
   const apiKey = Deno.env.get('MAILGUN_API_KEY');
   const domain = Deno.env.get('MAILGUN_DOMAIN');
   const from = Deno.env.get('MAILGUN_FROM') || 'Good Liquid Bev Co <noreply@goodliquidbevco.com>';
   if (!apiKey || !domain) {
     console.error('[booking-email] Mailgun secrets not configured');
-    return;
+    return { ok: false, error: 'Mailgun secrets not configured' };
   }
   const form = new FormData();
   form.set('from', from);
@@ -107,17 +119,34 @@ export async function sendMail(opts: {
   form.set('subject', opts.subject);
   form.set('text', opts.text);
   if (opts.html) form.set('html', opts.html);
+  if (opts.replyTo) form.set('h:Reply-To', opts.replyTo);
   if (opts.icsContent) {
     const icsBlob = new Blob([opts.icsContent], { type: 'text/calendar;charset=utf-8;method=REQUEST' });
     form.append('attachment', icsBlob, 'invite.ics');
   }
-  const r = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
-    method: 'POST',
-    headers: { Authorization: 'Basic ' + btoa('api:' + apiKey) },
-    body: form,
-  });
+  for (const a of opts.attachments || []) {
+    form.append(
+      'attachment',
+      new Blob([a.bytes], { type: a.contentType || 'application/octet-stream' }),
+      a.filename,
+    );
+  }
+  let r: Response;
+  try {
+    r = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
+      method: 'POST',
+      headers: { Authorization: 'Basic ' + btoa('api:' + apiKey) },
+      body: form,
+    });
+  } catch (e) {
+    console.error('[booking-email] Mailgun request failed', e);
+    return { ok: false, error: String((e as Error)?.message || e) };
+  }
   if (!r.ok) {
     const t = await r.text().catch(() => '');
     console.error('[booking-email] Mailgun error', r.status, t);
+    return { ok: false, error: `Mailgun ${r.status}: ${t}` };
   }
+  const body = await r.json().catch(() => ({} as Record<string, unknown>));
+  return { ok: true, id: String((body as { id?: string }).id || '') };
 }

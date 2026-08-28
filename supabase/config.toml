@@ -30,3 +30,9 @@ verify_jwt = false
 # time — anonymous, no JWT. Returns only free/busy booleans, no private data.
 [functions.booking-availability]
 verify_jwt = false
+
+# Called by the public quote RPC through pg_net (no JWT) to email a new lead our
+# sales decks. The gl_notify_secret in the body is the credential, verified in
+# the function body — same pattern as estimate-deal-value.
+[functions.quote-decks]
+verify_jwt = false

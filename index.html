@@ -1933,6 +1933,7 @@ select option, .fsel option {
         🔔<div id="notif-badge" style="display:none">0</div>
       </div>
       <button id="top-btn-pricing" onclick="window.glOpenPricingSettings && glOpenPricingSettings()" title="Pricing — edit quote &amp; invoice prices" style="width:34px;height:34px;border-radius:8px;background:rgba(0,229,192,.10);border:1px solid rgba(0,229,192,.30);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s;font-size:16px;color:var(--teal)">💲</button>
+      <button id="top-btn-decks" onclick="window.glOpenSalesDecks && glOpenSalesDecks()" title="Sales decks — the PDFs every quote request is sent" style="width:34px;height:34px;border-radius:8px;background:rgba(0,229,192,.10);border:1px solid rgba(0,229,192,.30);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s;font-size:16px;color:var(--teal)">📎</button>
     </div>
     <div class="crm-usr">
       <div id="crm-user-info" style="display:flex;align-items:center;gap:8px">
@@ -12519,6 +12520,7 @@ window.addEventListener('appinstalled', () => {
 <script src="/crm-ai-hub.js"></script>
 <script src="/crm-invoice-patches.js"></script>
 <script src="/crm-pricing-settings.js"></script>
+<script src="/crm-sales-decks.js"></script>
 <script src="/crm-admin-tools.js"></script>
 <script src="/crm-crm-extras.js"></script>
 <script src="/crm-client-email.js"></script>

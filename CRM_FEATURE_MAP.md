@@ -91,6 +91,8 @@
 ### Right (`.crm-top-actions`)
 1. **💬 Chat** (`#crm-chat-btn`) — toggles CRM chat sidebar; all users
 2. **🔔 Bell** (`#notif-bell`) — opens `#notif-panel`; badge `#notif-badge` shows unread count; all users
+3. **💲 Price settings** (`#top-btn-pricing`) — `glOpenPricingSettings()` (crm-pricing-settings.js); the module itself gates editing to admin
+4. **📎 Sales decks** (`#top-btn-decks`) — `glOpenSalesDecks()` (crm-sales-decks.js). Upload / replace the PDFs that are auto-attached to the reply every quote-form submission gets, and switch a deck's auto-send on or off. Files live in the **private** `sales-decks` storage bucket, never in the repo — the Lotus Nutra deck is a confidential partner document and anything committed under the site root is served publicly by Vercel. The send itself is server-side: `submit_quote_request` → `gl_send_quote_decks()` → the `quote-decks` edge function (migration `20260828000000`), which reads the recipient from the deal row, skips an address that already had the decks in the last 90 days, and sends nothing at all if no deck file has been uploaded. `window.glSendDecksToDeal(dealId)` re-sends to one lead by hand.
 
 ### User Section (`.crm-usr`)
 3. **Avatar + Name** (`.crm-av`, `.crm-user-name`) — initials, name, role badge (gold=Admin, blue=Sales)
