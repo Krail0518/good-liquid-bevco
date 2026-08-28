@@ -1,0 +1,16 @@
+name: Weekly AI Review
+on:
+  schedule:
+    # Placeholder only. GitHub Actions cron uses UTC.
+    # Configure the desired Tuesday 8:00 AM America/New_York behavior explicitly.
+    - cron: '0 12 * * 2'
+  workflow_dispatch:
+
+jobs:
+  placeholder:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          echo "Placeholder: connect the approved AI review integration here."
+          echo "Do not add secrets directly to this file."

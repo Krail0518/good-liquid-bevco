@@ -24,3 +24,13 @@ supabase.b64.txt
 
 # Claude Code agent worktrees (ephemeral, auto-cleaned)
 .claude/worktrees/
+
+# --- from AI project scaffold ---
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+build/
+coverage/
+*.log

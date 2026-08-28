@@ -1,0 +1,12 @@
+name: Security Scan
+on:
+  pull_request:
+  schedule:
+    - cron: '0 12 * * 2'
+
+jobs:
+  placeholder:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "Configure dependency/static/security scanning for the actual technology stack."
