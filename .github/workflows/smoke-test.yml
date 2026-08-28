@@ -56,6 +56,14 @@ jobs:
       - name: Run OAuth error-mapping unit tests
         run: node tests/oauth-errors.test.mjs
 
+      # Role change and deactivation must not report success when the database
+      # did not change. Guards both the ReferenceError that stopped the write
+      # running at all, and the missing rows-affected check underneath it.
+      - name: Run user-admin write tests
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+        run: node tests/user-admin-writes.test.cjs
+
       - name: Run smoke test
         env:
           # Let `require('playwright')` in the .cjs resolve from the temp install.
