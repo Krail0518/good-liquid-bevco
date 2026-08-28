@@ -164,10 +164,10 @@
       r.data.forEach(function(row){
         window.GL_APP_SETTINGS[row.key] = row.value;
       });
-      // Bridge legacy localStorage knobs → in-memory cache (read-only;
-      // writes go to DB from now on). Done once to unify the code path.
-      _bridgeLegacySettings();
-    } catch(e){ /* non-fatal — fall back to localStorage */ }
+      // Bridge legacy localStorage knobs into the DB, once, then drop
+      // them. Awaited so the upsert completes before the keys are removed.
+      await _bridgeLegacySettings();
+    } catch(e){ /* non-fatal — legacy keys are left in place for retry */ }
   };
 
   /* Get a setting by key (DB cache first, localStorage fallback) */
@@ -187,10 +187,11 @@
     } catch(e){ console.warn('[GL] app_settings save threw',e); return false; }
   };
 
-  /* One-time bridge: copy existing localStorage values into the
-     in-memory cache so the rest of the app doesn't need to change yet.
-     Org admins can then update settings via the UI to persist to DB. */
-  function _bridgeLegacySettings(){
+  /* One-time migration: move legacy localStorage settings into the
+     app_settings table, then remove the local copies. Runs once per
+     browser, guarded by gl_settings_migrated. Only keys absent from
+     the DB are migrated, so the database always wins on conflict. */
+  async function _bridgeLegacySettings(){
     /* One-time migration: run exactly once, then never again. */
     if(localStorage.getItem('gl_settings_migrated') === '1') return;
     var map = {
@@ -205,16 +206,32 @@
       stripe_pub_key:  'gl_stripe_pub',
       sentry_dsn:      'gl_sentry_dsn'
     };
+    var pending = [];
     Object.keys(map).forEach(function(settingKey){
       if(!(settingKey in window.GL_APP_SETTINGS)){
         var raw = localStorage.getItem(map[settingKey]);
         if(raw != null){
-          try { window.GL_APP_SETTINGS[settingKey] = JSON.parse(raw); }
-          catch(e){ window.GL_APP_SETTINGS[settingKey] = raw; }
+          var val;
+          try { val = JSON.parse(raw); }
+          catch(e){ val = raw; }
+          window.GL_APP_SETTINGS[settingKey] = val;
+          pending.push({ key: settingKey, value: val });
         }
       }
     });
-    /* Delete all legacy keys — DB is now the sole source of truth. */
+    /* Persist to Supabase BEFORE deleting the legacy keys. These values
+       exist only in localStorage — the bridge above copies them into an
+       in-memory cache that is discarded on reload. Deleting first would
+       destroy the only copy (standard §4). Abort the cleanup on any
+       failure and leave localStorage intact so the migration retries. */
+    if(pending.length){
+      var sb = getSupa(); if(!sb) return;
+      try {
+        var r = await sb.from('app_settings').upsert(pending, {onConflict:'key'});
+        if(r.error){ console.warn('[GL] settings migration failed, keeping localStorage', r.error); return; }
+      } catch(e){ console.warn('[GL] settings migration threw, keeping localStorage', e); return; }
+    }
+    /* Safe now: the authoritative copy is in the database. */
     Object.keys(map).forEach(function(k){ localStorage.removeItem(map[k]); });
     localStorage.removeItem('gl_supabase_key');
     localStorage.setItem('gl_settings_migrated', '1');
