@@ -56,6 +56,12 @@ jobs:
       - name: Run OAuth error-mapping unit tests
         run: node tests/oauth-errors.test.mjs
 
+      # app_settings migration — the one-shot localStorage -> DB move must never
+      # delete the local copy before the database write lands, and a seeded empty
+      # default must not mask a real local value. No browser needed.
+      - name: Run app_settings migration tests
+        run: node tests/app-settings-migration.test.cjs
+
       - name: Run smoke test
         env:
           # Let `require('playwright')` in the .cjs resolve from the temp install.
