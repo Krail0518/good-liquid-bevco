@@ -63,6 +63,9 @@ jobs:
         env:
           NODE_PATH: /tmp/pw/node_modules
         run: node tests/calendar-xss.test.cjs
+      # The QuickBooks OAuth callback must verify the state it was handed.
+      - name: Run QBO OAuth state tests
+        run: node tests/qbo-oauth-state.test.cjs
 
       - name: Run smoke test
         env:
