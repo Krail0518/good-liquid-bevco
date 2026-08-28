@@ -56,6 +56,14 @@ jobs:
       - name: Run OAuth error-mapping unit tests
         run: node tests/oauth-errors.test.mjs
 
+      # Stored-XSS guard for the calendar day panel. cal_events titles and notes
+      # originate in the PUBLIC tour-booking form, so this asserts they render as
+      # inert text rather than markup. Fails against the pre-fix code.
+      - name: Run calendar XSS regression test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+        run: node tests/calendar-xss.test.cjs
+
       - name: Run smoke test
         env:
           # Let `require('playwright')` in the .cjs resolve from the temp install.
