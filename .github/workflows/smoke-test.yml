@@ -56,6 +56,10 @@ jobs:
       - name: Run OAuth error-mapping unit tests
         run: node tests/oauth-errors.test.mjs
 
+      # The public pay endpoint must not allow invoice enumeration.
+      - name: Run stripe-checkout authorization tests
+        run: node tests/stripe-checkout-auth.test.cjs
+
       - name: Run smoke test
         env:
           # Let `require('playwright')` in the .cjs resolve from the temp install.
