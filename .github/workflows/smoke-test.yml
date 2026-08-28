@@ -74,6 +74,13 @@ jobs:
       # default must not mask a real local value. No browser needed.
       - name: Run app_settings migration tests
         run: node tests/app-settings-migration.test.cjs
+      # Role change and deactivation must not report success when the database
+      # did not change. Guards both the ReferenceError that stopped the write
+      # running at all, and the missing rows-affected check underneath it.
+      - name: Run user-admin write tests
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+        run: node tests/user-admin-writes.test.cjs
 
       - name: Run smoke test
         env:

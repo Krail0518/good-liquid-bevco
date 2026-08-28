@@ -4653,27 +4653,39 @@ function openChangeRole(uid){
   document.getElementById('role-modal').classList.add('show');
 }
 function closeRoleModal(){document.getElementById('role-modal').classList.remove('show');changeRoleUserId=null}
+/* saveRole / deactivateUser — thin wrappers over crm-permissions.js.
+   The bodies that used to live here were the legacy pair, and they never
+   worked: both called renderPermissionsPanel() BEFORE the update and OUTSIDE
+   the try. That function is declared inside the crm-permissions.js IIFE and is
+   never exported, so the bare call threw a ReferenceError and the
+   `supa.from('profiles').update(...)` line below it was never reached. Role
+   changes and deactivations therefore did nothing at all — a deactivated staff
+   member could still sign in — and the click looked like a dead button.
+   Even had the update run, it had no .select() and no rows-affected check, so
+   an RLS rejection would have reported success (CLAUDE.md rule 4).
+   glChangeUserRole and glToggleUserActive already do this correctly: they
+   verify with .select(), refuse a 0-row result, read current status from the
+   database rather than the in-memory cache, guard against locking yourself
+   out, audit, and re-render. Delegate rather than keep a second copy (§11). */
 async function saveRole(){
   if(!changeRoleUserId)return;
-  const u=users.find(x=>x.id===changeRoleUserId);
-  if(u){
-    u.role=document.getElementById('role-select').value;
-    renderPermissionsPanel();
-    try{ await supa.from('profiles').update({role:u.role}).eq('id',changeRoleUserId); }
-    catch(e){ console.warn('[GL] saveRole persist failed',e); }
-  }
+  const uid=changeRoleUserId;
+  const newRole=document.getElementById('role-select').value;
   closeRoleModal();
+  if(typeof window.glChangeUserRole!=='function'){
+    alert('Cannot change roles: the permissions module did not load. Reload the page and try again.');
+    return;
+  }
+  await window.glChangeUserRole(uid,newRole);
 }
 
 async function deactivateUser(uid){
-  const u=users.find(x=>x.id===uid);if(!u)return;
-  const action=u.status==='active'?'deactivate':'reactivate';
-  if(confirm(`${action.charAt(0).toUpperCase()+action.slice(1)} ${u.name}? ${action==='deactivate'?'They will no longer be able to log in.':'They will be able to log in again.'}`)){
-    u.status=u.status==='active'?'inactive':'active';
-    renderPermissionsPanel();
-    try{ await supa.from('profiles').update({status:u.status}).eq('id',uid); }
-    catch(e){ console.warn('[GL] deactivateUser persist failed',e); }
+  // glToggleUserActive runs its own confirm, so there is deliberately none here.
+  if(typeof window.glToggleUserActive!=='function'){
+    alert('Cannot change user status: the permissions module did not load. Reload the page and try again.');
+    return;
   }
+  await window.glToggleUserActive(uid);
 }
 
 function resetPw(uid){
