@@ -31,4 +31,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Assert security invariants
+        env:
+          # Section 5 signs up a throwaway account to prove a self-registered
+          # stranger is not staff — the invariant that failed on 2026-08-28 and
+          # that an anon-only probe cannot see. It creates a real auth.users
+          # row, so it runs on the daily sweep and on manual dispatch, not on
+          # every pull request. Probe accounts are inert (no profile, no portal
+          # link); sweep them with:
+          #   delete from auth.users where email like 'invariant-probe-%@example.invalid';
+          GL_INVARIANT_SIGNUP_PROBE: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
         run: bash scripts/security-invariants.sh

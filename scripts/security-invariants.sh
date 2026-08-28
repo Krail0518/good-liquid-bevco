@@ -105,6 +105,95 @@ hits=$(printf '%s\n' "$shipped" | xargs -r grep -l 'eyJhbGciOiJIUzI1NiIs' 2>/dev
                || fail "hardcoded JWT key in: $hits"
 
 echo
+echo "── 5. A self-registered stranger is not staff ────────────────"
+# Sections 1-4 only ever authenticate as `anon`. That is one of the three
+# identities CLAUDE.md says to test, and it is not the one that failed on
+# 2026-08-28: handle_new_user() was a denylist, so ANY bare signup received an
+# active 'sales' profiles row. An active profiles row IS is_gl_staff(), which
+# cleared the tenant guard and reached the legacy "authed all" USING(true)
+# policies — full CRUD on every table. An anon-only probe cannot see that at
+# all, which is why the hole survived a script written to catch exactly this
+# class of bug.
+#
+# This section signs up a throwaway account and asserts it is nobody: no
+# profiles row, and no readable business data.
+#
+# It creates a real auth.users row, so it is OPT-IN. The workflow enables it on
+# the daily run and on manual dispatch, not on every pull request, so probe
+# accounts accrue at about one per day rather than one per push. They carry no
+# profile and no customer_users link, so they are inert — but sweep them
+# occasionally:
+#   delete from auth.users where email like 'invariant-probe-%@example.invalid';
+if [ "${GL_INVARIANT_SIGNUP_PROBE:-0}" != "1" ]; then
+  printf '  \033[33mskip\033[0m %s\n' "signup probe (set GL_INVARIANT_SIGNUP_PROBE=1 to run)"
+else
+  # jq is present on GitHub runners but not always in Git Bash; fall back to sed.
+  jget(){ if command -v jq >/dev/null 2>&1; then jq -r "$2 // empty" <<<"$1"
+          else sed -n "s/.*\"${2##*.}\":\"\([^\"]*\)\".*/\1/p" <<<"$1" | head -1; fi; }
+
+  probe_email="invariant-probe-$(date +%s)-$RANDOM@example.invalid"
+  probe_pw="Pr0be-$RANDOM-$RANDOM-Aa!"
+  signup=$(curl -s --max-time 25 -X POST "$SUPA/auth/v1/signup" \
+    -H "apikey: $ANON" -H 'Content-Type: application/json' \
+    -d "{\"email\":\"$probe_email\",\"password\":\"$probe_pw\"}")
+
+  tok=$(jget "$signup" '.access_token')
+  uid=$(jget "$signup" '.user.id')
+  [ -z "$uid" ] && uid=$(jget "$signup" '.id')
+
+  if echo "$signup" | grep -qi 'signup_disabled\|signups not allowed'; then
+    pass "signup is disabled entirely — nobody can self-register"
+  elif [ -z "$tok" ]; then
+    # No session means email confirmation is on — the state of this project as
+    # of 2026-08-28. The account IS created and the trigger HAS already run, so
+    # the profile question is decided; we simply have no JWT to ask with, and
+    # anon cannot read profiles. The invariant is therefore not checkable from
+    # outside without a secret, and this reports a skip rather than a pass.
+    #
+    # Note confirmation is a speed bump, not the control: any disposable inbox
+    # clears it. The allowlist in handle_new_user() is what actually holds.
+    printf '  \033[33mskip\033[0m %s\n' "email confirmation is on — no session, so the profile cannot be probed externally"
+    echo "         account created: $probe_email"
+    echo "         verify it received no staff profile, and clean up, with:"
+    echo "           select u.email, (select count(*) from public.profiles p where p.id=u.id) as profile_rows"
+    echo "             from auth.users u where u.email = '$probe_email';"
+    echo "           delete from auth.users where email like 'invariant-probe-%@example.invalid';"
+  else
+    auth=(-H "apikey: $ANON" -H "Authorization: Bearer $tok")
+
+    # THE invariant. If this fails, a stranger is staff.
+    body=$(curl -s --max-time 20 "$SUPA/rest/v1/profiles?id=eq.$uid&select=id,role,status" "${auth[@]}")
+    if [ "$body" = "[]" ] || echo "$body" | grep -q '42501'; then
+      pass "self-signup received NO staff profile"
+    else
+      fail "SELF-SIGNUP GOT A STAFF PROFILE: $(echo "$body" | head -c 160)"
+    fi
+
+    # Even without a profile, confirm the data is actually unreachable.
+    for t in clients invoices formulas lot_documents customer_users; do
+      body=$(curl -s --max-time 20 "$SUPA/rest/v1/$t?select=*&limit=1" "${auth[@]}")
+      if echo "$body" | grep -q '42501'; then
+        pass "$t — permission denied to a self-registered account"
+      elif [ "$body" = "[]" ]; then
+        pass "$t — no rows visible to a self-registered account"
+      else
+        fail "$t — VISIBLE TO A SELF-REGISTERED ACCOUNT: $(echo "$body" | head -c 160)"
+      fi
+    done
+
+    body=$(curl -s --max-time 20 -X DELETE \
+      "$SUPA/rest/v1/clients?id=neq.00000000-0000-0000-0000-000000000000" "${auth[@]}")
+    if echo "$body" | grep -q '42501' || [ "$body" = "[]" ]; then
+      pass "clients — delete refused for a self-registered account"
+    else
+      fail "SELF-REGISTERED DELETE NOT REFUSED: $(echo "$body" | head -c 160)"
+    fi
+
+    echo "         probe account: $probe_email"
+  fi
+fi
+
+echo
 if [ "$FAILED" -eq 0 ]; then
   echo "All security invariants hold."
 else
