@@ -56,6 +56,12 @@ jobs:
       - name: Run OAuth error-mapping unit tests
         run: node tests/oauth-errors.test.mjs
 
+      # Marking an invoice paid must not report success when the database did
+      # not change. Extracts glPersistInvoiceStatus from index.html and drives
+      # it against a fake PostgREST, so no browser is needed.
+      - name: Run invoice mark-paid write tests
+        run: node tests/invoice-paid-writes.test.cjs
+
       - name: Run smoke test
         env:
           # Let `require('playwright')` in the .cjs resolve from the temp install.
