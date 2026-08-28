@@ -56,6 +56,16 @@ jobs:
       - name: Run OAuth error-mapping unit tests
         run: node tests/oauth-errors.test.mjs
 
+      # Stored-XSS guard for the calendar day panel. cal_events titles and notes
+      # originate in the PUBLIC tour-booking form, so this asserts they render as
+      # inert text rather than markup. Fails against the pre-fix code.
+      - name: Run calendar XSS regression test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+        run: node tests/calendar-xss.test.cjs
+      # The QuickBooks OAuth callback must verify the state it was handed.
+      - name: Run QBO OAuth state tests
+        run: node tests/qbo-oauth-state.test.cjs
       # The public pay endpoint must not allow invoice enumeration.
       - name: Run stripe-checkout authorization tests
         run: node tests/stripe-checkout-auth.test.cjs

@@ -15,10 +15,20 @@
 //   INTUIT_ENV              — "sandbox" or "production" (default "sandbox")
 
 import { jsonResponse, errorResponse, handlePreflight } from '../_shared/cors.ts';
+import { requireStaff } from '../_shared/auth.ts';
+
+const SUPABASE_URL     = Deno.env.get('SUPABASE_URL')              || '';
+const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 
 Deno.serve(async (req: Request): Promise<Response> => {
   const pre = handlePreflight(req);
   if (pre) return pre;
+
+  // Connecting QuickBooks binds the whole org's accounting integration, so
+  // only staff may start the flow. The browser already sends its session
+  // token here (crm-integrations.js authHeader()).
+  const staff = await requireStaff(req);
+  if (!staff.ok) return errorResponse(staff.error || 'Unauthorized', staff.status || 401);
 
   const clientId    = Deno.env.get('INTUIT_CLIENT_ID');
   const redirectUri = Deno.env.get('INTUIT_REDIRECT_URI');
@@ -34,8 +44,45 @@ Deno.serve(async (req: Request): Promise<Response> => {
     } catch { /* origin stays blank */ }
   }
 
-  // CSRF state — opaque random + the caller origin so the callback can verify.
+  /* CSRF state. Previously this value was generated, handed to Intuit, echoed
+     back to qbo-callback, and dropped — the callback verified nothing, so the
+     comment that used to sit here described protection that did not exist.
+     It is now persisted server-side so the callback can check it, and consumed
+     there on first use. */
   const state = crypto.randomUUID() + '.' + btoa(origin || '').replace(/=/g, '');
+
+  // Opportunistic housekeeping so abandoned connect attempts do not accumulate.
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/rpc/gl_purge_expired_qbo_states`, {
+      method: 'POST',
+      headers: {
+        apikey: SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: '{}',
+    });
+  } catch { /* non-fatal */ }
+
+  // Record the pending state. If this write fails the flow must NOT continue:
+  // the callback would then reject the state and the user would see a confusing
+  // failure after granting access at Intuit. Better to fail before the popup.
+  const ins = await fetch(`${SUPABASE_URL}/rest/v1/qbo_oauth_states`, {
+    method: 'POST',
+    headers: {
+      apikey: SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=representation',
+    },
+    body: JSON.stringify({ state, origin: origin || null, created_by: staff.userId || null }),
+  });
+  if (!ins.ok) {
+    const t = await ins.text();
+    console.error('[qbo-connect] could not persist OAuth state:', ins.status, t);
+    return errorResponse('Could not start the QuickBooks connection — please try again', 500);
+  }
+
   const params = new URLSearchParams({
     client_id:     clientId,
     response_type: 'code',
