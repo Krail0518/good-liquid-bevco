@@ -70,11 +70,34 @@
 
       var info = document.createElement('div');
       info.style.cssText = 'flex:1;min-width:0';
-      info.innerHTML =
-        '<div style="font-size:14px;font-weight:600;color:#eef4ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' +
-          (ev.title || '(untitled)') + '</div>' +
-        (timeStr ? '<div style="font-size:12px;color:#6b87ad;margin-top:3px">⏱ ' + timeStr + '</div>' : '') +
-        (ev.notes ? '<div style="font-size:12px;color:#6b87ad;margin-top:3px;white-space:pre-line">' + ev.notes + '</div>' : '');
+
+      /* Built with textContent, not innerHTML. ev.title and ev.notes reach
+         cal_events from the PUBLIC tour-booking form: booking-confirm accepts
+         booker_name and notes from an anonymous caller (length-capped only),
+         and booking-approve writes them into the event as
+         `Meeting: ${booker_name}` plus a notes block. Concatenating them into
+         innerHTML let a stranger run script in a staff session the moment any
+         staff member opened that day — the origin holding the staff JWT.
+         See CLAUDE.md rule 5. Every other calendar renderer escapes
+         (index.html:8899, 8974; crm-scheduling.js:264); this was the one gap. */
+      var titleEl = document.createElement('div');
+      titleEl.style.cssText = 'font-size:14px;font-weight:600;color:#eef4ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+      titleEl.textContent = ev.title || '(untitled)';
+      info.appendChild(titleEl);
+
+      if (timeStr) {
+        var timeEl = document.createElement('div');
+        timeEl.style.cssText = 'font-size:12px;color:#6b87ad;margin-top:3px';
+        timeEl.textContent = '⏱ ' + timeStr;
+        info.appendChild(timeEl);
+      }
+
+      if (ev.notes) {
+        var notesEl = document.createElement('div');
+        notesEl.style.cssText = 'font-size:12px;color:#6b87ad;margin-top:3px;white-space:pre-line';
+        notesEl.textContent = ev.notes;
+        info.appendChild(notesEl);
+      }
 
       var delBtn = document.createElement('button');
       delBtn.textContent = '🗑 Delete';
