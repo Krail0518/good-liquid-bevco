@@ -65,14 +65,21 @@ const HARNESS = (src) => `<!doctype html>
       if (window.__mode === 'norows') return { data: [], error: null };   // silent RLS rejection
       return { data: [{ id: ${JSON.stringify(TARGET_USER)} }], error: null };
     }
+    // PostgREST builders are chainable AND thenable, and the two code paths
+    // under test terminate differently:
+    //   write:  update(...).eq(...).select()          -> awaited
+    //   read:   select(...).eq(...).maybeSingle()     -> awaited
+    // so select() must return the builder, not a promise. Returning a promise
+    // here made .eq() run on a Promise and glToggleUserActive bail out before
+    // its first alert — which is what the first CI run of this file caught.
     window.supa = {
       from(){
         const q = {
           update(){ return q; },
           eq(){ return q; },
-          select(){ return Promise.resolve(writeResult()); },
+          select(){ return q; },
           maybeSingle(){ return Promise.resolve({ data: { id: ${JSON.stringify(TARGET_USER)}, email:'target@test.local', name:'Target', status:'active' }, error: null }); },
-          then(res){ return Promise.resolve(writeResult()).then(res); }
+          then(res, rej){ return Promise.resolve(writeResult()).then(res, rej); }
         };
         return q;
       }
