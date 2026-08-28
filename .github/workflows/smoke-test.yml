@@ -62,6 +62,11 @@ jobs:
       - name: Run invoice mark-paid write tests
         run: node tests/invoice-paid-writes.test.cjs
 
+      # A record the database refused to create must not appear in the UI as
+      # though it exists. No browser needed.
+      - name: Run checked-insert tests
+        run: node tests/checked-inserts.test.cjs
+
       # A delete the database refused must not purge the local cache or write
       # an audit entry saying it happened. No browser needed.
       - name: Run checked-delete tests

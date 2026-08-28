@@ -4176,6 +4176,33 @@ async function glCheckedDelete(build){
   }
 }
 
+/* Insert a row and return it, or report why it did not save.
+   `build` receives window.supa and must return the query with `.select()`
+   (and usually `.single()`) appended, so the caller gets the real database id.
+
+   The pattern this replaces was:
+
+       const {data:newX} = await supa.from('x').insert([...]).select().single();
+       const id = newX ? newX.id : ('tmp_' + Date.now());
+       list.push({id, ...});
+
+   which invents a synthetic id when the insert fails and pushes a record that
+   exists only in that browser tab. The user sees it created; it is gone on
+   reload; and anything keyed to that id — uploaded files, follow-up writes —
+   points at a row that was never created. Failing loudly is the only correct
+   behaviour, so this returns {ok:false} and callers must not fabricate an id. */
+async function glCheckedInsert(build){
+  if(!window.supa) return {ok:false, reason:'Not connected to the database.'};
+  try{
+    const r = await build(window.supa);
+    if(r.error) return {ok:false, reason:r.error.message};
+    if(!r.data) return {ok:false, reason:'The server did not return the new record — it was not saved.'};
+    return {ok:true, row:r.data};
+  }catch(e){
+    return {ok:false, reason:(e && e.message) ? e.message : String(e)};
+  }
+}
+
 async function quickPaid(id){
   const i=invoices.find(x=>x.id===id);
   if(!i)return;
@@ -4480,6 +4507,16 @@ function openRefForReferrer(rid){
 function openAddReferrer(){document.getElementById('add-ref-modal').classList.add('show')}
 function closeAddReferrer(){document.getElementById('add-ref-modal').classList.remove('show')}
 
+/* DEAD CODE — do not fix this one, fix the live one.
+   A second, Supabase-backed declaration of this same name appears further down
+   (search for "Override saveReferrer"). Both are function declarations in the
+   same script block, so the later one wins at hoist time and THIS body never
+   runs. The `_origSaveReferrer` capture beside it therefore holds the later
+   version rather than this one, and is never called anyway.
+   Left in place rather than deleted to keep this change reviewable, but it is
+   the exact trap that hid a real bug in quickPaid: someone wrote a better
+   version while the worse one kept winning. Same shape applies to
+   _origSaveInvoice and _origLogout. Tracked as dead-code debt. */
 function saveReferrer(){
   const name=document.getElementById('nr-name').value.trim();
   if(!name){alert('Please enter a name.');return}
@@ -5185,12 +5222,15 @@ async function saveReferral(){
   const status=document.getElementById('ref-status-sel').value;
   const notes=document.getElementById('ref-notes').value;
   // Write to Supabase and capture the returned UUID so later updates can sync.
-  const { data: newRef } = await supa.from('referrals').insert([{
+  const ins = await glCheckedInsert(sb => sb.from('referrals').insert([{
     referrer_id:refId, client_name:clientName, deal_value:deal,
     commission_rate:rate, commission_amount:comm, status, notes
-  }]).select().single();
-  // Update local
-  const id = newRef ? newRef.id : ('ref'+(referrals.length+1));
+  }]).select().single());
+  if(!ins.ok){
+    alert('The referral was NOT saved: ' + ins.reason + '\n\nNothing has been recorded. Please try again.');
+    return;
+  }
+  const id = ins.row.id;
   referrals.push({id,referrerId:refId,referrerName:ref.name,clientName,dealValue:deal,rate,commAmount:comm,status,datePaid:null,notes,date:new Date().toISOString().split('T')[0]});
   activities.unshift({type:'ref',icon:'🤝',name:`New referral from ${ref.name}`,detail:`${clientName} — potential $${comm.toLocaleString()} commission`,time:'Just now'});saveActivities();
   renderReferrals();renderDash();renderActivity();
@@ -5215,11 +5255,15 @@ async function saveReferrer(){
   const rate=parseFloat(document.getElementById('nr-rate').value)||5;
   const notes=document.getElementById('nr-notes').value;
   // Write to Supabase
-  const {data:newRr} = await supa.from('referrers').insert([{
+  const ins = await glCheckedInsert(sb => sb.from('referrers').insert([{
     name, relationship:rel, email, phone, default_rate:rate,
     initials:init, color:colors[ci], tc:tcs[ci], notes
-  }]).select().single();
-  const rid = newRr ? newRr.id : 'rr'+(referrers.length+1);
+  }]).select().single());
+  if(!ins.ok){
+    alert('The referrer was NOT saved: ' + ins.reason + '\n\nNothing has been recorded. Please try again.');
+    return;
+  }
+  const rid = ins.row.id;
   referrers.push({id:rid,name,rel,email,phone,rate,color:colors[ci],tc:tcs[ci],init,notes});
   populateReferrerSelects();renderReferrers();renderDash();closeAddReferrer();
   ['nr-name','nr-email','nr-phone','nr-notes'].forEach(id=>document.getElementById(id).value='');
@@ -5415,11 +5459,13 @@ async function saveNewClient(){
   const ci = clients.length % colors.length;
   const color = colors[ci], tc = tcs[ci];
 
-  // Generate local ID first so it always works
+  // Placeholder id, used only to detect that the insert did not return one.
+  // It is never persisted or used as a real key — see the guard after the try.
   const localId = 'c_' + Date.now();
 
   // Try Supabase save
   let cid = localId;
+  let insertError = '';
   try {
     const {data:newC, error} = await supa.from('clients').insert([{
       name, legal_name:legalName, ein, website,
@@ -5447,8 +5493,21 @@ async function saveNewClient(){
       initials:init, color, tc
     }]).select().single();
     if(newC && !error) cid = newC.id;
-    if(error) console.warn('Supabase client save error:', error);
-  } catch(e){ console.warn('Supabase unavailable, saved locally:', e); }
+    if(error) insertError = error.message;
+  } catch(e){ insertError = (e && e.message) ? e.message : String(e); }
+
+  /* Stop here if the client was not actually created. Previously cid stayed as
+     the local 'c_<timestamp>' placeholder and execution continued: the
+     compliance documents below were uploaded under a path keyed to an id that
+     exists in no table, the record was pushed into the local array
+     unconditionally, and a "client saved" toast fired. The row was gone on
+     reload, and the uploaded W-9 / tax-exempt / PA letter were orphaned in
+     storage under an id nothing references. */
+  if(cid === localId){
+    alert('The client was NOT saved: ' + (insertError || 'the server did not return the new record') +
+          '\n\nNothing has been recorded, and no documents were uploaded. Please try again.');
+    return;
+  }
 
   // Upload compliance docs (after insert so the path can use the real cid)
   let w9FilePath = '', taxExemptFilePath = '', paLetterFilePath = '';
@@ -5471,7 +5530,8 @@ async function saveNewClient(){
     }
   }
 
-  // Always add to local array
+  // Safe to cache locally: the guard above returned unless the database
+  // created the row, so cid is a real id.
   clients.push({
     id:cid, name, legalName, ein, website,
     contact, email, phone, contactType,
@@ -5524,16 +5584,16 @@ async function saveNewDeal(){
 
   // Save to Supabase. contact_name/email/phone let a manually-added lead be
   // emailed and converted to a client — the same columns the quote form fills.
-  let newD = null;
-  try {
-    const {data} = await supa.from('deals').insert([{
-      name, client_name:co, contact_name:contactName||null, email:email||null, phone:phone||null,
-      value:val, stage, probability:prob, notes
-    }]).select().single();
-    newD = data;
-  } catch(e){ console.warn('[GL] saveNewDeal insert failed', e); }
-
-  const did = newD ? newD.id : 'tmp_'+(Date.now());
+  const ins = await glCheckedInsert(sb => sb.from('deals').insert([{
+    name, client_name:co, contact_name:contactName||null, email:email||null, phone:phone||null,
+    value:val, stage, probability:prob, notes
+  }]).select().single());
+  if(!ins.ok){
+    alert('The deal was NOT saved: ' + ins.reason + '\n\nNothing has been recorded. Please try again.');
+    return;
+  }
+  const newD = ins.row;
+  const did = newD.id;
   if(!deals[stage]) deals[stage]=[];
   deals[stage].push({id:did, name, co, contactName, email, phone, val:'$'+val.toLocaleString(), prob, notes, stageEnteredAt: newD?.stage_entered_at || new Date().toISOString()});
   renderKanban(); renderDash();
