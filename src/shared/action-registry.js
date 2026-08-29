@@ -1,7 +1,7 @@
 /*
  * action-registry.js — the allowlist of action names (GL-DEF-01).
  *
- * Every data-gl-action in the markup must appear here, or the control is
+ * Every data-gl-action in the codebase must appear here, or the control is
  * dead and the dispatcher says so. This IS the allowlist: a name absent from
  * this file is unreachable from markup no matter what globals exist, which is
  * the whole difference between the old inline handlers and the new ones.
@@ -12,23 +12,30 @@
  * actions.js. Deferring the lookup does not weaken the allowlist, because the
  * allowlist is the list of names below, not the state of window.
  *
- * GENERATED from the handlers actually converted, so the list cannot drift
- * out of step with the markup. tests/inline-handler-budget.test.cjs fails if
- * a data-gl-action names something missing here.
+ * GENERATED from every data-gl-action across index.html, crm-index-core.js
+ * and src/. Do not hand-edit: tests/inline-handler-budget.test.cjs fails if a
+ * data-gl-action names something missing here.
  */
 (function () {
   'use strict';
 
   window.glRegisterGlobalActions([
+    'adjustInventory',
+    'aiGenerateInsights',
+    'aiScoreClientHealth',
+    'aiSummarizeClient',
     'bkBackToIntake',
     'bkIntakeToSchedule',
     'bkNext',
     'bkPrev',
+    'bulkMarkPaid',
+    'bulkSendInvoices',
     'cNav',
     'calNext',
     'calPrev',
     'calcRefComm',
     'checkPw',
+    'clearInvoiceSelection',
     'closeAICommModal',
     'closeAddClientModal',
     'closeAddDealModal',
@@ -41,20 +48,30 @@
     'closeDocUploadModal',
     'closeFollowupModal',
     'closeInventoryModal',
+    'closeInviteModal',
     'closeMeetingNotesModal',
     'closePw',
     'closeRefModal',
     'closeResetOverlay',
     'closeRoleModal',
     'closeTaskModal',
+    'createForClient',
+    'createInvitedUser',
     'deleteDeal',
+    'deleteDoc',
     'doChangePassword',
+    'downloadInvoicePDF',
+    'editDealDetail',
     'exitCRM',
     'generateAIComm',
     'generateMeetingNotes',
+    'glConvertLeadToOnboarding',
+    'glDownloadDocById',
+    'glMarkLeadHandled',
     'glOpenAttentionBoard',
     'glOpenBulkNudge',
     'glOpenFollowups',
+    'glSnoozeLead',
     'glToggleCRMChat',
     'logoutCRM',
     'logoutPortal',
@@ -67,9 +84,11 @@
     'openAddDealModal',
     'openAddReferrer',
     'openAdmin',
+    'openArAging',
     'openBulkOutreach',
     'openCalEventModal',
     'openChangePwModal',
+    'openClientCard',
     'openDocUploadModal',
     'openFollowUpModal',
     'openInventoryModal',
@@ -83,6 +102,8 @@
     'refineAIComm',
     'refineFollowupEmail',
     'regenFollowup',
+    'removeCustomerLogin',
+    'removeUser',
     'renderDocs',
     'runDailyDigestNow',
     'saveCalEvent',
@@ -118,7 +139,8 @@
     'toggleNotifPanel',
     'toggleOtherProductMain',
     'updatePreview',
+    'viewInvoice',
   ]);
 
-  console.log('[GL] 98 actions registered');
+  console.log('[GL] 120 actions registered');
 }());
