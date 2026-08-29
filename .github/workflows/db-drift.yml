@@ -1,0 +1,81 @@
+# Authorization drift gate — GL-DRIFT-01.
+#
+# Migration-only review cannot prove production state. Three separate holes in
+# this codebase were invisible to it and were found only by querying the live
+# catalog:
+#
+#   2026-05-18  fourteen permissive `anon` policies applied by hand in the
+#               dashboard, present in no migration — the entire CRM readable
+#               and deletable by anyone on the internet.
+#   2026-08-28  `authed all` / `anon read` / `public read` on thirteen tables,
+#               likewise in no migration.
+#   2026-08-29  anon holding INSERT/UPDATE/DELETE/TRUNCATE on 73 tables.
+#
+# So this diffs the live catalog against a committed baseline and fails on any
+# unreviewed change. Adding a dashboard policy or an EXECUTE grant now makes CI
+# red, which is the acceptance criterion the independent audit asked for.
+#
+# The check runs on pull requests too, so a migration that changes
+# authorization without its baseline update cannot merge quietly.
+
+name: DB Drift
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '41 9 * * *'   # daily; catches drift introduced outside the repo
+  workflow_dispatch:
+    inputs:
+      update_baseline:
+        description: 'Regenerate the baseline from production and commit it'
+        type: boolean
+        default: false
+
+concurrency:
+  group: db-drift-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write   # only used by the update_baseline path
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Needed so the update path can commit back to the branch.
+          ref: ${{ github.head_ref || github.ref_name }}
+
+      - name: Check for authorization drift
+        if: ${{ github.event.inputs.update_baseline != 'true' }}
+        env:
+          # Read-only use: the script runs one SELECT-only snapshot query.
+          # Passed as a header from the runner environment, never echoed.
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: bash scripts/check-db-drift.sh
+
+      - name: Regenerate the baseline
+        if: ${{ github.event.inputs.update_baseline == 'true' }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: bash scripts/check-db-drift.sh --update
+
+      - name: Commit the regenerated baseline
+        if: ${{ github.event.inputs.update_baseline == 'true' }}
+        run: |
+          if git diff --quiet -- docs/database/authorization-baseline.txt; then
+            echo "Baseline already matches production — nothing to commit."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/database/authorization-baseline.txt
+          git commit \
+            -m "chore: regenerate the authorization baseline from production" \
+            -m "Ran scripts/check-db-drift.sh --update. Review this diff: every line is a policy, RLS flag, table grant, function ACL or bucket that changed in production. Anything here that does not correspond to a reviewed migration is dashboard drift."
+          git push
