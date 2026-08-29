@@ -134,6 +134,13 @@ jobs:
       # A precondition for the GL-037 extraction. No browser needed.
       - name: Run duplicate-declaration tests
         run: node tests/duplicate-declarations.test.cjs
+      # The core script was extracted from index.html; it must still load in
+      # the same position, classic and blocking. No browser needed.
+      - name: Run index script-order tests
+        run: node tests/index-script-order.test.cjs
+      # CSP directives, and the measured reason unsafe-inline is still needed.
+      - name: Run CSP tests
+        run: node tests/csp.test.cjs
 
       - name: Run smoke test
         env:

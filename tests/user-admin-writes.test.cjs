@@ -165,7 +165,10 @@ async function run(page, src, mode, fn) {
   // before the write, so the guard is that the call is gone and the handlers
   // delegate.
   console.log('');
-  const html = fs.readFileSync(INDEX_HTML, 'utf8');
+  // The core script moved out of index.html into crm-index-core.js (GL-037).
+  // indexCore() is index.html plus whatever the inline block was extracted
+  // into, so these assertions keep meaning the same thing as that continues.
+  const html = require('./_sources.cjs').indexCore();
   const bareRender = /^\s*renderPermissionsPanel\(\)/m.test(html);
   check('index.html: no bare renderPermissionsPanel() call (it is IIFE-local and throws)', !bareRender);
   check('index.html: saveRole delegates to glChangeUserRole',

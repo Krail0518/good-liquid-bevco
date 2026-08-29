@@ -1,0 +1,102 @@
+/*
+ * index-script-order.test.cjs — GL-037, step one.
+ *
+ * WHY THIS EXISTS
+ * ---------------
+ * index.html carried a single ~9,300-line inline <script>. It has been moved
+ * verbatim into crm-index-core.js. The move is safe only because a classic
+ * external script in the same document position behaves identically to an
+ * inline one — and "same position" plus "classic" are both things a later edit
+ * can break without any obvious symptom.
+ *
+ * CLAUDE.md is explicit that this file hardcodes order-dependent
+ * root-absolute script tags and that a bulk move breaks the site. So the
+ * ordering properties get asserted rather than remembered:
+ *
+ *   - crm-index-core.js loads exactly where the inline block used to, which is
+ *     immediately after the Chart.js CDN tag and before every /crm-*.js
+ *   - it carries no defer/async, either of which would run it AFTER the
+ *     scripts that currently follow it and silently reorder everything
+ *   - index.html has no inline block again, which is what the CSP work needs
+ *   - the tag is root-absolute, because Vercel serves from the repo root
+ *
+ * Run:  node tests/index-script-order.test.cjs
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+const ROOT = path.resolve(__dirname, '..');
+const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+
+let failures = 0;
+function check(name, cond, detail) {
+  if (cond) console.log('  PASS  ' + name);
+  else { console.log('  FAIL  ' + name + (detail ? '\n          ' + detail : '')); failures++; }
+}
+
+console.log('index.html script order — the extraction must not reorder anything\n');
+
+// Every <script> tag in document order, with its attributes.
+const tags = [...html.matchAll(/<script\b([^>]*)>/g)].map((m) => m[1]);
+const srcs = tags
+  .map((a) => (a.match(/\bsrc="([^"]+)"/) || [])[1])
+  .filter(Boolean);
+
+check('the core script is loaded by index.html',
+  srcs.includes('/crm-index-core.js'),
+  'the extracted file must actually be referenced, or the CRM is simply gone');
+
+check('the core script file exists',
+  fs.existsSync(path.join(ROOT, 'crm-index-core.js')));
+
+check('index.html has no inline script block',
+  [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].length === 0,
+  'a new inline block reintroduces what the extraction removed, and what the ' +
+  "CSP's 'unsafe-inline' allowance exists for");
+
+// ── position ─────────────────────────────────────────────────────────
+const coreAt = srcs.indexOf('/crm-index-core.js');
+const chartAt = srcs.findIndex((s) => /chart\.js|chart\.umd/i.test(s));
+check('the core script sits immediately after the Chart.js tag',
+  chartAt !== -1 && coreAt === chartAt + 1,
+  'chart at ' + chartAt + ', core at ' + coreAt +
+  ' — the inline block occupied exactly that slot, and code in it runs ' +
+  'against Chart being already defined');
+
+const firstCrm = srcs.findIndex((s) => /^\/crm-(?!index-core)/.test(s));
+check('the core script loads before every other /crm-*.js',
+  firstCrm === -1 || coreAt < firstCrm,
+  'core at ' + coreAt + ', first other crm module at ' + firstCrm +
+  ' — the modules read globals this file declares');
+
+check('the core script is referenced root-absolutely',
+  /src="\/crm-index-core\.js"/.test(html),
+  'Vercel serves from the repo root; a relative path breaks on nested routes');
+
+// ── it must stay a classic, blocking script ──────────────────────────
+const coreTag = tags.find((a) => /\/crm-index-core\.js/.test(a)) || '';
+check('the core script has no defer',
+  !/\bdefer\b/.test(coreTag),
+  'defer runs it after the scripts that follow it in the document — the exact ' +
+  'reordering CLAUDE.md warns breaks this page');
+check('the core script has no async',
+  !/\basync\b/.test(coreTag),
+  'async makes execution order nondeterministic');
+check('the core script is not a module',
+  !/type="module"/.test(coreTag),
+  'a module is deferred and scoped: top-level declarations would stop being ' +
+  'globals, and the 364 inline on* handlers in this file would stop resolving');
+
+// ── the moved code must still be a plain classic script ──────────────
+const core = fs.readFileSync(path.join(ROOT, 'crm-index-core.js'), 'utf8');
+check('the core script declares the globals the markup calls',
+  /\nfunction logoutCRM\(\)/.test(core) && /\nfunction esc\(/.test(core),
+  'inline on* handlers resolve against window, which top-level function ' +
+  'declarations in a classic script populate');
+check('the core script contains no import/export',
+  !/^\s*(import|export)\s/m.test(core),
+  'either would force module semantics and break the globals contract above');
+
+console.log('\n' + (failures === 0 ? 'ALL PASSED' : failures + ' CHECK(S) FAILED'));
+process.exit(failures === 0 ? 0 : 1);

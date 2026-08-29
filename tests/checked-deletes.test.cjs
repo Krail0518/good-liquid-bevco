@@ -27,8 +27,13 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const INDEX = path.join(__dirname, '..', 'index.html');
-const html = fs.readFileSync(INDEX, 'utf8');
+// The core script moved out of index.html into crm-index-core.js (GL-037).
+// tests/_sources.cjs concatenates index.html with whatever the inline block
+// has been extracted into, so these assertions keep meaning the same thing as
+// GL-037 continues pulling capabilities out.
+const { indexCore } = require('./_sources.cjs');
+const INDEX = null;   // read through indexCore() below
+const html = indexCore();
 
 let failures = 0;
 function check(name, cond, detail) {
