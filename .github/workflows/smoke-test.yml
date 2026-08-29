@@ -126,6 +126,10 @@ jobs:
       # Approve link. Escape at the template, not only at ingestion.
       - name: Run booking email escaping tests
         run: node tests/booking-email-escaping.test.cjs
+      # An FDA co-signature and an inspector-access grant must name an
+      # account the system can identify. No browser needed.
+      - name: Run compliance attribution tests
+        run: node tests/compliance-attribution.test.cjs
 
       - name: Run smoke test
         env:

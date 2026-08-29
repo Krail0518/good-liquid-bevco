@@ -534,21 +534,27 @@
     return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c];
   }); }
   function fmtDate(d){ try { return new Date(d).toLocaleString(); } catch(e){ return String(d); } }
+  /* Who is doing this.
+     These read window.currentUser, which is what every other module in this
+     file already uses (see the digest prompt and the PCQI approval line).
+     They previously read window.__GL.session.user, which nothing in this
+     codebase ever assigns -- so getCurrentUserId() returned null on every
+     call, and it feeds two columns where that matters:
+       * inspector_tokens.created_by      -- who granted an external FDA
+                                             auditor access to compliance data
+       * compliance_records.second_signed_by -- the dual-PCQI co-signature
+     A co-signed FDA record was being stored with a null signer id and only
+     the free-text name typed at a prompt(), which binds the signature to no
+     account at all. No bad rows had accumulated yet; the path was live.
+     The old lookup is kept as a fallback in case __GL is ever populated. */
   function getCurrentUserId(){
     try {
-      var u = window.__GL && window.__GL.session && window.__GL.session.user;
+      var u = window.currentUser;
       if(u && u.id) return u.id;
+      var s = window.__GL && window.__GL.session && window.__GL.session.user;
+      if(s && s.id) return s.id;
     } catch(e){}
     return null;
-  }
-  function getCurrentUserName(){
-    try {
-      var u = window.__GL && window.__GL.session && window.__GL.session.user;
-      if(u && (u.user_metadata && u.user_metadata.name || u.email)) {
-        return u.user_metadata && u.user_metadata.name || u.email;
-      }
-    } catch(e){}
-    return localStorage.getItem('gl_user_display_name') || 'Mike Krail';
   }
 
   /* ==========================================================
@@ -818,7 +824,16 @@
     var ack = confirm('You are co-signing this compliance record as a second PCQI. The record will be marked dual-signed with your name and a timestamp.\n\nProceed?');
     if(!ack) return;
     var sb = getSB(); if(!sb){ toast('Supabase not ready', 'err'); return; }
-    var payload = { second_signed_by: getCurrentUserId(), second_signed_at: new Date().toISOString(), second_signature_name: name };
+    // A second PCQI signature that names nobody the system can identify is
+    // not a signature. second_signature_name is free text typed at a prompt;
+    // second_signed_by is the only field tying it to a real account, so
+    // refuse rather than file an unattributed one on an FDA record.
+    var signerId = getCurrentUserId();
+    if(!signerId){
+      toast('Cannot co-sign: your account could not be identified. Sign in again and retry.', 'err');
+      return;
+    }
+    var payload = { second_signed_by: signerId, second_signed_at: new Date().toISOString(), second_signature_name: name };
     sb.from('compliance_records').update(payload).eq('id', recordId).select().single().then(function(r){
       if(r.error){ toast('Failed: ' + r.error.message, 'err'); return; }
       toast('Second signature recorded ✓');
