@@ -1,4 +1,4 @@
-/* crm-utils.js — Timezone-naive date formatter, password policy, currency formatter, super-user check */
+/* utils.js — Timezone-naive date formatter, password policy, currency formatter, super-user check */
 (function(){
   'use strict';
 

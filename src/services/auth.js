@@ -1,4 +1,4 @@
-/* crm-auth.js — Supabase client factory, authentication, user management, app settings */
+/* auth.js — Supabase client factory, authentication, user management, app settings */
 (function(){
   'use strict';
 
