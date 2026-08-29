@@ -148,13 +148,38 @@ for (const w of fs.readdirSync(WF_DIR)) {
 const wired = new Set(
   [...workflowText.matchAll(/tests\/([A-Za-z0-9._-]+\.(?:cjs|mjs))/g)].map((m) => m[1])
 );
+// A leading underscore marks a shared helper, not a suite — it is required BY
+// tests rather than run as one, so a workflow entry for it would assert
+// nothing. The exclusion is deliberately narrow: it is the filename prefix
+// alone, so a helper cannot quietly acquire assertions and stop being run.
+// Anything named *.test.cjs is still required to be wired, underscore or not.
+const isHelper = (f) => f.startsWith('_') && !/\.test\.(cjs|mjs)$/.test(f);
 const unwired = fs.readdirSync(TESTS)
   .filter((f) => /\.(cjs|mjs)$/.test(f))
+  .filter((f) => !isHelper(f))
   .filter((f) => !wired.has(f));
 check('every test file is actually run by a workflow',
   unwired.length === 0,
   unwired.join(', ') + ' -- present in tests/ but referenced by no workflow, ' +
   'so it guards nothing');
+
+// Helpers are exempt from the wiring rule, so they must genuinely be helpers.
+//
+// Comments are stripped first. A prose mention of "assert" in a file header is
+// not an assertion, and matching it would make this check fire on a helper
+// that merely documents what it is for — which is exactly what happened when
+// this was written.
+const stripComments = (src) => src
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+const helpersWithAssertions = fs.readdirSync(TESTS)
+  .filter(isHelper)
+  .filter((f) => /\bcheck\s*\(|\bassert\s*\(|process\.exit\s*\(/.test(
+    stripComments(fs.readFileSync(path.join(TESTS, f), 'utf8'))));
+check('no exempt helper contains assertions of its own',
+  helpersWithAssertions.length === 0,
+  helpersWithAssertions.join(', ') + ' -- rename to *.test.cjs and wire it, ' +
+  'or move the assertions into a suite that runs');
 
 console.log('\n' + (failures === 0 ? 'ALL PASSED' : failures + ' CHECK(S) FAILED'));
 process.exit(failures === 0 ? 0 : 1);

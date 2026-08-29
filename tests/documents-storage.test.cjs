@@ -40,7 +40,12 @@ function check(name, cond, detail) {
   else { console.log('  FAIL  ' + name + (detail ? '\n          ' + detail : '')); failures++; }
 }
 
-const html = read('index.html');
+// The core script moved out of index.html into crm-index-core.js (GL-037).
+// tests/_sources.cjs concatenates index.html with whatever the inline block
+// has been extracted into, so these assertions keep meaning the same thing as
+// GL-037 continues pulling capabilities out.
+const { indexCore } = require('./_sources.cjs');
+const html = indexCore();
 const extras = read('crm-crm-extras.js');
 
 console.log('documents storage — the column, the URL, and the way back out\n');

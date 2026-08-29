@@ -36,7 +36,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const ROOT = path.resolve(__dirname, '..');
+const { ROOT, coreScript } = require('./_sources.cjs');
 
 let failures = 0;
 function check(name, cond, detail) {
@@ -58,14 +58,22 @@ console.log('duplicate declarations — the last one silently wins\n');
     'got early=' + early + ' late=' + f());
 })();
 
-// ── scan the inline block ────────────────────────────────────────────
+// ── scan the core script ─────────────────────────────────────────────
+// GL-037 moved the inline block into crm-index-core.js verbatim, so the
+// declarations this guards now live there. index.html having NO inline script
+// is a stronger property than the one originally checked here, and it is what
+// the CSP work depends on, so assert that too.
 const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const inline = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)]
   .map((m) => m[1]);
-check('the inline script block was found', inline.length >= 1,
-  'found ' + inline.length + ' — the extraction pattern needs updating');
+check('index.html carries no inline script block', inline.length === 0,
+  'found ' + inline.length + ' — a new inline block reintroduces exactly what ' +
+  'the extraction removed');
 
-const code = inline.join('\n');
+const code = coreScript();
+check('the extracted core script was read', code.length > 100000,
+  'got ' + code.length + ' bytes; crm-index-core.js should be ~500KB — if this ' +
+  'is short, _sources.cjs needs the newly extracted file adding to CORE_FILES');
 // Top-level only: a declaration indented inside a function or IIFE shadows
 // nothing outside it, so nested helpers with shared names are fine.
 const names = [...code.matchAll(/^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/gm)]
@@ -75,10 +83,10 @@ const counts = {};
 for (const n of names) counts[n] = (counts[n] || 0) + 1;
 const dups = Object.entries(counts).filter(([, c]) => c > 1);
 
-check('no top-level function name is declared twice in index.html',
-  inline.length >= 1 && dups.length === 0,
-  inline.length < 1
-    ? 'the block could not be extracted, so this proves nothing'
+check('no top-level function name is declared twice in the core script',
+  code.length > 100000 && dups.length === 0,
+  code.length <= 100000
+    ? 'the core script could not be read, so this proves nothing'
     : dups.map(([n, c]) => n + ' ×' + c).join(', ') +
       ' — the last declaration wins for every call site, including ones above it');
 
