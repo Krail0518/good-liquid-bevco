@@ -34,7 +34,7 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const fn         = fs.readFileSync(path.join(ROOT, 'supabase/functions/stripe-checkout-session/index.ts'), 'utf8');
-const publicCall = fs.readFileSync(path.join(ROOT, 'crm-portal-public.js'), 'utf8');
+const publicCall = fs.readFileSync(path.join(ROOT, 'src/modules/customers/portal-public.js'), 'utf8');
 const staffCall  = fs.readFileSync(path.join(ROOT, 'crm-integrations.js'), 'utf8');
 const sharedAuth = fs.readFileSync(path.join(ROOT, 'supabase/functions/_shared/auth.ts'), 'utf8');
 

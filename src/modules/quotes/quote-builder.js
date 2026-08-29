@@ -1263,7 +1263,7 @@
     });
   }
 
-  // Hook into glOpenEditClient the same way crm-client-email.js does
+  // Hook into glOpenEditClient the same way src/modules/customers/client-email.js does
   (function(){
     var origOpen = window.glOpenEditClient;
     if(typeof origOpen !== 'function') return;
