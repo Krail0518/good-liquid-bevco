@@ -74,6 +74,25 @@ check('the core script is referenced root-absolutely',
   /src="\/crm-index-core\.js"/.test(html),
   'Vercel serves from the repo root; a relative path breaks on nested routes');
 
+// ── modules extracted out of the core (GL-037) ───────────────────────
+// Each capability pulled out of crm-index-core.js gets its own tag. The
+// core still calls into them — renderArAgingSection() from openReports(),
+// openArAging() from an onclick — so a module that loads BEFORE the core,
+// or that defers, breaks those calls. Same contract as the core itself.
+const modules = srcs.filter((x) => x.startsWith('/src/modules/'));
+check('every extracted module loads after the core script',
+  modules.every((m) => srcs.indexOf(m) > coreAt),
+  'modules: ' + modules.join(', ') + ' — the core calls into them, so they ',
+);
+for (const m of modules) {
+  const mTag = tags.find((a) => a.includes(m)) || '';
+  check('module is classic and blocking: ' + m,
+    !/\bdefer\b|\basync\b|type="module"/.test(mTag),
+    'its onclick= handlers resolve against window, which only a classic '
+    + 'top-level declaration populates');
+  check('module exists on disk: ' + m,
+    fs.existsSync(path.join(ROOT, m.slice(1))));
+}
 // ── it must stay a classic, blocking script ──────────────────────────
 const coreTag = tags.find((a) => /\/crm-index-core\.js/.test(a)) || '';
 check('the core script has no defer',
