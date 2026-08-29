@@ -417,6 +417,10 @@ footer{background:var(--ink);border-top:1px solid rgba(255,255,255,.06);padding:
 .ccard-t{font-size:12px;font-weight:600;color:var(--white);margin-bottom:12px}
 .act-item{display:flex;align-items:flex-start;gap:9px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.05)}
 .act-item:last-child{border-bottom:none}
+/* GL-DEF-01: was a pair of inline onmouseenter/onmouseleave handlers on
+   every activity row. The rows set no inline background, so this needs no
+   !important, and mouse-out restores itself. */
+.act-item:hover{background:rgba(255,255,255,.04)}
 .act-ico{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0}
 .act-ico.call{background:rgba(26,111,255,.15);color:#6b9fff}
 .act-ico.email{background:rgba(29,158,117,.15);color:#1D9E75}
