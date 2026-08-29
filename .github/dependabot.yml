@@ -1,0 +1,31 @@
+# Dependabot — deliberately narrow, because this repo has almost nothing
+# Dependabot can see.
+#
+# There is no package.json, no lockfile, no requirements.txt. That is not an
+# oversight: Vercel serves this repo as a static site from the root, and the
+# smoke workflow installs Playwright into /tmp specifically so a package.json
+# can never appear here and change how the site deploys.
+#
+# So the ONLY manifest Dependabot can act on is the workflow files.
+#
+# The dependencies that actually carry risk are invisible to it:
+#
+#   - https://cdn.jsdelivr.net/npm/chart.js@4.4.2/…  a <script> tag in
+#     index.html, running in staff sessions
+#   - https://esm.sh/@supabase/supabase-js@2         imported by 18 edge
+#     functions, ALL of which run with SUPABASE_SERVICE_ROLE_KEY
+#
+# Neither is a package manifest, so nothing here will ever report on them.
+# tests/supply-chain-pinning.test.cjs is what covers those.
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
