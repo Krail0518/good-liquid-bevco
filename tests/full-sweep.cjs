@@ -157,8 +157,29 @@ const openers=await pg.evaluate(async(list)=>{
   }
   return out;
 },OPENERS);
-openers.forEach(o=>{ if(o.ok===null) rec('Modal openers',o.fn,true,'skipped: '+o.why);
-  else rec('Modal openers',o.fn+' opens '+'',o.ok,o.why); });
+/* A missing opener is a FAILURE, not a skip.
+   This used to record `true` with "skipped: not defined in this build". Every
+   one of these 18 functions is defined in the shipped source, so the only way
+   one goes undefined at runtime is that its module threw or failed to load —
+   which is exactly the outage this sweep exists to catch. Scoring it as a pass
+   meant a module could stop loading entirely and turn all 18 checks green: the
+   sweep reported hardest on the days it was working least.
+   If a genuinely optional opener is ever added, add it to OPTIONAL_OPENERS
+   below rather than making absence pass everywhere. */
+const OPTIONAL_OPENERS = new Set([]);
+openers.forEach(o=>{
+  if(o.ok===null){
+    if(OPTIONAL_OPENERS.has(o.fn)){
+      rec('Modal openers',o.fn,true,'optional in this build — not present');
+    } else {
+      rec('Modal openers',o.fn+' is defined',false,
+        'NOT DEFINED at runtime — its module likely failed to load. '+
+        'All 18 openers exist in the shipped source, so this is a load failure, not an absent feature.');
+    }
+    return;
+  }
+  rec('Modal openers',o.fn+' opens '+'',o.ok,o.why);
+});
 
 /* ---------- PHASE 4: the regression-prone invoice flow ---------- */
 const inv=await pg.evaluate(async()=>{
@@ -361,8 +382,17 @@ const gaps=await pg.evaluate(async()=>{
 rec('Previously untested','mobile Dashboard tab exists',gaps.mobileTabFound);
 rec('Previously untested','mobile Dashboard tab targets a real page',gaps.mobileTabTargetsRealPage,gaps.mobileTabThrew||'');
 rec('Previously untested','mobile Dashboard tab reaches the dashboard',gaps.mobileTabShowsPage);
-if(gaps.adminOpensPrompt===null) rec('Previously untested','admin button opens the password prompt',true,'skipped: openAdmin not defined');
-else rec('Previously untested','admin button opens the password prompt',gaps.adminOpensPrompt,gaps.adminThrew||'');
+/* Same rule as the modal openers above: window.openAdmin is defined in the
+   shipped source, so undefined at runtime means its module failed to load.
+   This used to record a PASS with "skipped: openAdmin not defined", which is
+   the one condition it most needs to report — the Admin button on the public
+   site is how staff reach the CRM at all. */
+if(gaps.adminOpensPrompt===null){
+  rec('Previously untested','openAdmin is defined',false,
+    'NOT DEFINED at runtime — its module likely failed to load. The Admin button on the public site would do nothing.');
+} else {
+  rec('Previously untested','admin button opens the password prompt',gaps.adminOpensPrompt,gaps.adminThrew||'');
+}
 rec('Previously untested','cross-sell target field exists',gaps.crossSellFieldExists);
 rec('Previously untested','cross-sell custom row exists',gaps.crossSellRowExists);
 rec('Previously untested','AI comm type offers "custom"',gaps.crossSellTypeHasCustom);
