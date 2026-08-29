@@ -1,5 +1,5 @@
 /* ============================================================
-   crm-deal-docs.js — document storage for pipeline deals & clients
+   deal-docs.js — document storage for pipeline deals & clients
    ============================================================
    Customers routinely send an NDA, a Process Authority letter, formulas and
    label artwork while a deal is still in the pipeline — before there's a

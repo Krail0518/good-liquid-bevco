@@ -1,4 +1,4 @@
-/* crm-followups.js — the in-CRM side of the lead-automation follow-up queue.
+/* followups.js — the in-CRM side of the lead-automation follow-up queue.
  *
  * The lead-automations edge function drafts a gentle nudge whenever a lead goes
  * quiet on us, and drops it in lead_followups (status 'ready'). This renders

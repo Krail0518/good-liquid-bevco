@@ -1,5 +1,5 @@
 /* ============================================================
-   crm-meeting-notes.js — meeting notes (Pocket AI NoteTaker etc.)
+   meeting-notes.js — meeting notes (Pocket AI NoteTaker etc.)
    ============================================================
    A place to drop meeting notes on any pipeline deal or client. Paste the text
    (the AI brief reads it) and/or attach the source file. Notes are polymorphic:
