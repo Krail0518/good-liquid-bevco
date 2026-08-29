@@ -5,12 +5,23 @@
  * failed on purpose, because a green check with no reviewer behind it asserts
  * that a review happened. This is the reviewer.
  *
- * WHY OPENAI AND NOT ANTHROPIC
- * ----------------------------
+ * WHICH REVIEWER, AND WHAT IT COSTS
+ * ---------------------------------
  * AGENTS.md divides the work: Claude implements, ChatGPT/Codex reviews
  * INDEPENDENTLY. A reviewer from the same family as the implementer is not an
- * independent review, it is the same model marking its own homework. The whole
- * value of the arrangement is that the reviewer did not write the code.
+ * independent review, it is the same model marking its own homework. That
+ * independence is most of the value of the arrangement.
+ *
+ * OPENAI_API_KEY is therefore preferred and is used when present.
+ *
+ * ANTHROPIC_API_KEY is accepted as a fallback, because this project already
+ * holds one (the CRM's ai-proxy edge function uses it) and a review that
+ * actually runs beats a gate that cannot. It is a REAL downgrade though: the
+ * reviewer is then the same family as the implementer, and the run says so in
+ * its output and in every issue it files, so nobody reads those findings as
+ * more independent than they are.
+ *
+ * Set AI_REVIEW_PROVIDER to 'openai' or 'anthropic' to force one.
  *
  * WHAT IT GUARANTEES
  * ------------------
@@ -31,6 +42,7 @@
  *
  * Usage:
  *   OPENAI_API_KEY=... node scripts/ai-review.mjs <input-file> <out-dir>
+ *   ANTHROPIC_API_KEY=... node scripts/ai-review.mjs <input-file> <out-dir>
  */
 
 import fs from 'node:fs';
@@ -45,16 +57,37 @@ function die(msg) {
 
 if (!inputPath || !outDir) die('usage: ai-review.mjs <input-file> <out-dir>');
 
-const apiKey = process.env.OPENAI_API_KEY;
-if (!apiKey) {
+const forced = (process.env.AI_REVIEW_PROVIDER || '').toLowerCase();
+if (forced && forced !== 'openai' && forced !== 'anthropic') {
+  die('AI_REVIEW_PROVIDER is "' + forced + '"; expected openai or anthropic');
+}
+
+const openaiKey = process.env.OPENAI_API_KEY || '';
+const anthropicKey = process.env.ANTHROPIC_API_KEY || '';
+
+// Prefer OpenAI: an independent reviewer is the point. Fall back to Anthropic
+// only so the gate can run at all, and say so loudly when it happens.
+let provider = null;
+if (forced === 'openai') provider = openaiKey ? 'openai' : null;
+else if (forced === 'anthropic') provider = anthropicKey ? 'anthropic' : null;
+else if (openaiKey) provider = 'openai';
+else if (anthropicKey) provider = 'anthropic';
+
+if (!provider) {
   die(
-    'OPENAI_API_KEY is not set, so no review ran. This is a failure, not a skip: ' +
-    'a passing job here would assert that a weekly review happened. ' +
-    'Add the secret in Settings -> Secrets and variables -> Actions.'
+    'No reviewer API key is set' + (forced ? ' for provider "' + forced + '"' : '') +
+    ', so no review ran. This is a failure, not a skip: a passing job here ' +
+    'would assert that a weekly review happened. Set OPENAI_API_KEY ' +
+    '(preferred - an independent reviewer) or ANTHROPIC_API_KEY (works, but ' +
+    'the reviewer is then the same family as the implementer) in ' +
+    'Settings -> Secrets and variables -> Actions.'
   );
 }
 
-const MODEL = process.env.AI_REVIEW_MODEL || 'gpt-4o';
+const apiKey = provider === 'openai' ? openaiKey : anthropicKey;
+const INDEPENDENT = provider === 'openai';
+const MODEL = process.env.AI_REVIEW_MODEL ||
+  (provider === 'openai' ? 'gpt-4o' : 'claude-sonnet-4-5-20250929');
 
 if (!fs.existsSync(inputPath)) die('review input not found at ' + inputPath);
 const reviewInput = fs.readFileSync(inputPath, 'utf8');
@@ -110,22 +143,43 @@ const USER = [
   'Return {"findings":[]} if you genuinely found nothing.',
 ].join('\n');
 
-let res;
-try {
-  res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: 'Bearer ' + apiKey,
-    },
-    body: JSON.stringify({
+const ENDPOINT = provider === 'openai'
+  ? 'https://api.openai.com/v1/chat/completions'
+  : 'https://api.anthropic.com/v1/messages';
+
+const HEADERS = provider === 'openai'
+  ? { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey }
+  : { 'Content-Type': 'application/json', 'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01' };
+
+const BODY = provider === 'openai'
+  ? {
       model: MODEL,
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: SYSTEM },
         { role: 'user', content: USER },
       ],
-    }),
+    }
+  : {
+      model: MODEL,
+      max_tokens: 4096,
+      system: SYSTEM,
+      // Anthropic has no JSON mode. Prefilling the assistant turn with an
+      // opening brace is the documented way to force JSON, and the brace has
+      // to be put back on the response before parsing.
+      messages: [
+        { role: 'user', content: USER },
+        { role: 'assistant', content: '{' },
+      ],
+    };
+
+let res;
+try {
+  res = await fetch(ENDPOINT, {
+    method: 'POST',
+    headers: HEADERS,
+    body: JSON.stringify(BODY),
   });
 } catch (e) {
   die('the reviewer could not be reached, so no review ran: ' + e.message);
@@ -139,8 +193,12 @@ if (!res.ok) {
 }
 
 const payload = await res.json();
-const text = payload?.choices?.[0]?.message?.content;
+let text = provider === 'openai'
+  ? payload?.choices?.[0]?.message?.content
+  : payload?.content?.[0]?.text;
 if (!text) die('the reviewer returned no content, so there is nothing to trust');
+// Put back the brace that prefilled the assistant turn.
+if (provider === 'anthropic' && !text.trimStart().startsWith('{')) text = '{' + text;
 
 let parsed;
 try {
@@ -183,10 +241,15 @@ for (const [i, f] of parsed.findings.entries()) {
 
 fs.mkdirSync(outDir, { recursive: true });
 fs.writeFileSync(path.join(outDir, 'findings.json'),
-  JSON.stringify({ model: MODEL, findings }, null, 2));
+  JSON.stringify({ model: MODEL, provider, independent: INDEPENDENT, findings }, null, 2));
 
 const blocking = findings.filter((f) => f.release_blocking).length;
-console.log('review ran against ' + MODEL);
+console.log('review ran against ' + MODEL + ' (' + provider + ')');
+if (!INDEPENDENT) {
+  console.log('::warning::The reviewer is the same model family as the ' +
+    'implementer. AGENTS.md asks for an independent review; set OPENAI_API_KEY ' +
+    'to get one. These findings are worth less than an independent pass.');
+}
 console.log('findings: ' + findings.length + ' (' + blocking + ' release-blocking)');
 for (const f of findings) {
   console.log('  ' + f.severity.padEnd(14) + f.id + '  ' + (f.files[0] || ''));

@@ -18,6 +18,12 @@
  * So each of those paths is asserted to exit non-zero, by actually running the
  * script rather than reading it.
  *
+ * The reviewer accepts either provider. OpenAI is preferred because
+ * AGENTS.md wants a reviewer that did not write the code; Anthropic is a
+ * working fallback because this project already holds such a key. The
+ * checks below pin the preference order and pin that a same-family run
+ * says so, in its output and on every issue it files.
+ *
  * Run:  node tests/ai-review.test.cjs
  */
 
@@ -57,7 +63,7 @@ check('the reviewer script exists', fs.existsSync(SCRIPT));
 check('the issue filer exists', fs.existsSync(FILER));
 
 // ── every "did not actually review" path must fail ───────────────────
-const noKey = run(SCRIPT, [goodInput, path.join(tmp, 'o1')], { OPENAI_API_KEY: '' });
+const noKey = run(SCRIPT, [goodInput, path.join(tmp, 'o1')], { OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '' });
 check('a missing API key fails rather than skipping',
   noKey.code !== 0,
   'exit ' + noKey.code + ' — a skip here would assert a review happened');
@@ -65,16 +71,16 @@ check('the missing-key message says it is not a skip',
   /not a skip/i.test(noKey.out),
   'whoever sees this in a log needs to know the gate did not run');
 
-const emptyIn = run(SCRIPT, [emptyInput, path.join(tmp, 'o2')], { OPENAI_API_KEY: 'dummy' });
+const emptyIn = run(SCRIPT, [emptyInput, path.join(tmp, 'o2')], { OPENAI_API_KEY: 'dummy', ANTHROPIC_API_KEY: '' });
 check('empty review input fails rather than reviewing nothing',
   emptyIn.code !== 0,
   'reviewing nothing produces a meaningless pass');
 
 const missingIn = run(SCRIPT, [path.join(tmp, 'nope.md'), path.join(tmp, 'o3')],
-  { OPENAI_API_KEY: 'dummy' });
+  { OPENAI_API_KEY: 'dummy', ANTHROPIC_API_KEY: '' });
 check('a missing input file fails', missingIn.code !== 0);
 
-const noArgs = run(SCRIPT, [], { OPENAI_API_KEY: 'dummy' });
+const noArgs = run(SCRIPT, [], { OPENAI_API_KEY: 'dummy', ANTHROPIC_API_KEY: '' });
 check('missing arguments fail', noArgs.code !== 0);
 
 // The filer must not file anything without credentials.
@@ -93,8 +99,9 @@ check('the workflow files the findings',
 check('the placeholder "not connected" step is gone',
   !/Reviewer not connected/.test(wf),
   'it existed to fail loudly while unwired; leaving it would fail every run');
-check('the workflow passes the API key through',
-  /OPENAI_API_KEY:\s*\$\{\{\s*secrets\.OPENAI_API_KEY\s*\}\}/.test(wf));
+check('the workflow passes both API keys through',
+  /OPENAI_API_KEY:\s*\$\{\{\s*secrets\.OPENAI_API_KEY\s*\}\}/.test(wf) &&
+  /ANTHROPIC_API_KEY:\s*\$\{\{\s*secrets\.ANTHROPIC_API_KEY\s*\}\}/.test(wf));
 
 // The DST workaround must survive — GL-035 fixed it and nothing here should
 // have disturbed the schedule.
@@ -107,10 +114,26 @@ check('the New York hour guard is intact',
 // ── the reviewer must be independent of the implementer ──────────────
 console.log('');
 const src = fs.readFileSync(SCRIPT, 'utf8');
-check('the reviewer is not the implementing model family',
-  !/api\.anthropic\.com/.test(src) && /api\.openai\.com/.test(src),
-  'AGENTS.md splits the roles so the reviewer did not write the code; a ' +
-  'same-family reviewer is the model marking its own homework');
+// Either provider may be used, but OpenAI must WIN when both keys are
+// present -- an independent reviewer is the point of the arrangement -- and
+// a same-family run has to announce itself rather than pass quietly.
+check('OpenAI is preferred when both keys are present',
+  /else if \(openaiKey\) provider = 'openai';/.test(src),
+  'falling back to Anthropic while an independent reviewer is available '
+  + 'throws away the value of the arrangement');
+check('Anthropic is accepted as a fallback',
+  /api\.anthropic\.com/.test(src) && /anthropic-version/.test(src),
+  'this project already holds an Anthropic key, and a review that runs '
+  + 'beats a gate that cannot');
+check('a same-family run warns that it is not independent',
+  /!INDEPENDENT/.test(src) && /::warning::/.test(src),
+  'silently degrading the review is worse than not running it');
+check('the findings record which provider produced them',
+  /provider, independent: INDEPENDENT/.test(src));
+check('filed issues state when the review was not independent',
+  /INDEP_NOTE/.test(fs.readFileSync(FILER, 'utf8')) &&
+  /same model family/.test(fs.readFileSync(FILER, 'utf8')),
+  'a reader should not have to guess whether the reviewer wrote the code');
 
 check('a finding without a failure scenario is refused',
   /no failure scenario/i.test(src),

@@ -35,7 +35,12 @@ const repo = process.env.GITHUB_REPOSITORY;
 if (!token) die('GH_TOKEN is not set — findings cannot be filed');
 if (!repo) die('GITHUB_REPOSITORY is not set');
 
-const { findings, model } = JSON.parse(fs.readFileSync(findingsPath, 'utf8'));
+const { findings, model, provider, independent } = JSON.parse(fs.readFileSync(findingsPath, 'utf8'));
+// Stated on every issue. A reader should never have to guess whether the
+// finding came from a reviewer that also wrote the code.
+const INDEP_NOTE = independent === false
+  ? ' — **same model family as the implementer**, so this is not an independent review'
+  : '';
 const runUrl = process.env.GITHUB_SERVER_URL && process.env.GITHUB_RUN_ID
   ? `${process.env.GITHUB_SERVER_URL}/${repo}/actions/runs/${process.env.GITHUB_RUN_ID}`
   : '';
@@ -120,7 +125,7 @@ for (const f of findings) {
     '## Re-review verdict', '',
     '- [ ] RESOLVED', '- [ ] STILL PRESENT', '- [ ] ACCEPTED (owner accepted the risk)',
     '', '---', '',
-    '_Reviewer: `' + model + '`' + (runUrl ? ' · [run](' + runUrl + ')' : '') + '_',
+    '_Reviewer: `' + model + '`' + INDEP_NOTE + (runUrl ? ' · [run](' + runUrl + ')' : '') + '_',
     '',
     '_Per Setup Instruction #2 a finding must be **fixed or explicitly accepted**.',
     'Closing it to make the review pass is not remediation._',
