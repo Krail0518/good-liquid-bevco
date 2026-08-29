@@ -111,6 +111,10 @@ jobs:
       # and nothing may query the deprecated cip_logs. No browser needed.
       - name: Run CIP system-of-record tests
         run: node tests/cip-system-of-record.test.cjs
+      # compliance-photos is private, so nothing may persist a URL for it —
+      # a public URL 400s and a signed one expires. No browser needed.
+      - name: Run compliance-photos storage tests
+        run: node tests/compliance-photos.test.cjs
 
       - name: Run smoke test
         env:

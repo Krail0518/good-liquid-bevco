@@ -2809,17 +2809,40 @@
   };
 
   // ── (9) Photo upload helper ──
-  // Uses the "compliance-photos" Supabase Storage bucket.
-  // Falls back to local data URL if bucket doesn't exist.
+  // Uses the "compliance-photos" Supabase Storage bucket, which is PRIVATE
+  // (see 20260829020000_compliance_photos_bucket.sql). Portal customers are
+  // competing beverage brands and these are FDA-defensible evidence files.
+  //
+  // Private means getPublicUrl() cannot work -- it returns a /object/public/
+  // URL that the storage API answers with 400. It also means a usable link is
+  // a SIGNED url, which expires. So nothing durable may store a URL: we store
+  // the object PATH and sign it whenever it is actually displayed.
+  var PHOTO_BUCKET = 'compliance-photos';
+
+  // Signs a stored path for display. Rows written before this change hold a
+  // full URL instead of a path; pass those straight through rather than
+  // mangling them into a path that does not exist.
+  window.glCompliancePhotoUrl = async function glCompliancePhotoUrl(pathOrUrl, ttlSeconds){
+    if(!pathOrUrl || !window.supa) return null;
+    if(/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+    try {
+      var r = await window.supa.storage.from(PHOTO_BUCKET)
+        .createSignedUrl(pathOrUrl, ttlSeconds || 300);
+      if(r && r.error){ console.warn('[GL compliance photo] sign failed', r.error.message); return null; }
+      return (r && r.data && r.data.signedUrl) || null;
+    } catch(e){ console.warn('[GL compliance photo] sign threw', e); return null; }
+  };
+
+  // Returns the stored PATH, not a URL. Callers that need to show the image
+  // immediately sign it themselves via glCompliancePhotoUrl().
   async function uploadPhoto(file, prefix){
     if(!file || !window.supa) return null;
     var ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
     var path = (prefix || 'compliance') + '/' + Date.now() + '-' + Math.random().toString(36).slice(2,8) + '.' + ext;
     try {
-      var r = await window.supa.storage.from('compliance-photos').upload(path, file, { contentType: file.type || 'image/jpeg', upsert: false });
+      var r = await window.supa.storage.from(PHOTO_BUCKET).upload(path, file, { contentType: file.type || 'image/jpeg', upsert: false });
       if(r.error){ console.warn('[GL compliance photo] upload error', r.error); return null; }
-      var pub = window.supa.storage.from('compliance-photos').getPublicUrl(path);
-      return pub.data && pub.data.publicUrl ? pub.data.publicUrl : null;
+      return path;
     } catch(e){ console.warn('[GL compliance photo] threw', e); return null; }
   }
 
@@ -2846,12 +2869,16 @@
     input.addEventListener('change', async function(){
       var f = input.files[0]; if(!f) return;
       preview.innerHTML = '<div style="font-size:11px;color:#9aa7bd">Uploading…</div>';
-      var url = await uploadPhoto(f, 'hold');
-      if(url){
-        preview.innerHTML = '<div style="font-size:10px;color:#5fcf9e;margin-bottom:4px">✓ Uploaded</div><img src="' + esc(url) + '" alt="evidence" style="max-width:200px;max-height:120px;border-radius:6px;border:1px solid rgba(255,255,255,.1)">';
-        preview.dataset.url = url;
+      var path = await uploadPhoto(f, 'hold');
+      if(path){
+        // The stored value is the path; the preview needs a signed URL.
+        var shown = await window.glCompliancePhotoUrl(path, 300);
+        preview.innerHTML = '<div style="font-size:10px;color:#5fcf9e;margin-bottom:4px">✓ Uploaded</div>' +
+          (shown ? '<img src="' + esc(shown) + '" alt="evidence" style="max-width:200px;max-height:120px;border-radius:6px;border:1px solid rgba(255,255,255,.1)">'
+                 : '<div style="font-size:11px;color:#9aa7bd">Saved. Preview unavailable.</div>');
+        preview.dataset.path = path;
       } else {
-        preview.innerHTML = '<div style="font-size:11px;color:#ff8579">Upload failed. Save the hold tag without photo, then attach later. (Create the <code>compliance-photos</code> Storage bucket in Supabase if it does not exist yet.)</div>';
+        preview.innerHTML = '<div style="font-size:11px;color:#ff8579">Upload failed — the file was not saved. Save the hold tag without a photo and attach it later.</div>';
       }
     });
     // Hook the save button to include photo URL in notes
@@ -2861,15 +2888,9 @@
       var origClick = saveBtn.onclick;
       // We can't override addEventListener cleanly, but we can listen first
       saveBtn.addEventListener('click', function(){
-        var url = preview.dataset.url;
-        if(url){
-          // Stash on the hazard field's wrapper so the existing save handler picks it up via notes
-          var notesEl = modal.querySelector('textarea');  // best-effort; the save handler currently doesn't read this
-          // Instead, just write to a known global the save can use
-          window.__glLastHoldPhoto = url;
-        } else {
-          window.__glLastHoldPhoto = null;
-        }
+        // The path, not a URL -- a signed URL would be expired long before
+        // anyone opened the hold tag again.
+        window.__glLastHoldPhoto = preview.dataset.path || null;
       }, true);
     }
   }
@@ -3422,6 +3443,8 @@
   function nowISO(){ return new Date().toISOString(); }
   function todayISO(){ return new Date().toISOString().slice(0,10); }
 
+  // Returns the stored PATH. See glCompliancePhotoUrl() -- the bucket is
+  // private, so a durable public URL does not exist to return.
   async function uploadCompliancePhoto(file, prefix){
     if(!file || !window.supa) return null;
     var ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
@@ -3429,8 +3452,7 @@
     try {
       var r = await window.supa.storage.from('compliance-photos').upload(path, file, { contentType: file.type || 'image/jpeg' });
       if(r.error){ console.warn('[GL polish] photo upload err', r.error); return null; }
-      var pub = window.supa.storage.from('compliance-photos').getPublicUrl(path);
-      return pub.data && pub.data.publicUrl ? pub.data.publicUrl : null;
+      return path;
     } catch(e){ console.warn('[GL polish] photo threw', e); return null; }
   }
 
@@ -3463,13 +3485,16 @@
         input.addEventListener('change', async function(){
           var f = input.files[0]; if(!f) return;
           preview.innerHTML = '<div style="font-size:11px;color:#9aa7bd">Uploading…</div>';
-          var url = await uploadCompliancePhoto(f, 'defect');
-          if(url){
-            preview.innerHTML = '<div style="font-size:10px;color:#5fcf9e;margin-bottom:4px">✓ Uploaded</div><img src="' + esc(url) + '" style="max-width:200px;max-height:120px;border-radius:6px;border:1px solid rgba(255,255,255,.1)">';
-            preview.dataset.url = url;
-            window.__glLastDefectPhoto = url;
+          var path = await uploadCompliancePhoto(f, 'defect');
+          if(path){
+            var shown = await window.glCompliancePhotoUrl(path, 300);
+            preview.innerHTML = '<div style="font-size:10px;color:#5fcf9e;margin-bottom:4px">✓ Uploaded</div>' +
+              (shown ? '<img src="' + esc(shown) + '" style="max-width:200px;max-height:120px;border-radius:6px;border:1px solid rgba(255,255,255,.1)">'
+                     : '<div style="font-size:11px;color:#9aa7bd">Saved. Preview unavailable.</div>');
+            preview.dataset.path = path;
+            window.__glLastDefectPhoto = path;
           } else {
-            preview.innerHTML = '<div style="font-size:11px;color:#ff8579">Upload failed — create the compliance-photos Storage bucket in Supabase to enable.</div>';
+            preview.innerHTML = '<div style="font-size:11px;color:#ff8579">Upload failed — the file was not saved.</div>';
           }
         });
       });
@@ -3786,10 +3811,26 @@
             '<div style="font-size:13px;color:#fff;font-weight:600">📄 ' + esc(d.doc_name || 'Document') + ' · v' + esc(d.version || '1.0') + retiredBadge + '</div>' +
             '<div style="font-size:11px;color:#9aa7bd;margin-top:3px">' + (d.effective_date ? 'Effective ' + fmtDate(d.effective_date) + ' · ' : '') + 'Uploaded ' + fmtTs(r.recorded_at) + ' · ' + ackBadge + '</div>' +
           '</div>' +
-          (d.file_url ? '<a href="' + esc(d.file_url) + '" target="_blank" class="cbtn" style="font-size:10px;padding:4px 10px">📥 Open</a>' : '') +
+          // A stored signed URL would already have expired, so Open signs on
+          // demand. d.file_url is the pre-private-bucket shape, kept working.
+          ((d.file_path || d.file_url)
+            ? '<button class="cbtn gl-doc-open" data-ref="' + esc(d.file_path || d.file_url) + '" style="font-size:10px;padding:4px 10px">📥 Open</button>'
+            : '') +
           (!retired ? '<button class="cbtn gl-doc-retire" data-id="' + r.id + '" style="font-size:10px;padding:4px 10px;background:rgba(231,76,60,.1);border-color:rgba(231,76,60,.3);color:#ff8579">Retire</button>' : '') +
         '</div>';
       }).join('');
+      list.querySelectorAll('.gl-doc-open').forEach(function(btn){
+        btn.addEventListener('click', async function(){
+          var ref = btn.dataset.ref;
+          btn.disabled = true;
+          var was = btn.textContent;
+          btn.textContent = 'Opening…';
+          var url = await window.glCompliancePhotoUrl(ref, 300);
+          btn.disabled = false; btn.textContent = was;
+          if(!url){ alert('Could not open that document. You may not have access, or the file is missing.'); return; }
+          window.open(url, '_blank', 'noopener');
+        });
+      });
       list.querySelectorAll('.gl-doc-retire').forEach(function(btn){
         btn.addEventListener('click', async function(){
           if(!confirm('Retire this document version? It stays in the audit trail but is marked as superseded.')) return;
@@ -3835,7 +3876,7 @@
           fld('Version','version','text',{ value:'v1.0' }) +
           fld('Effective date','eff_date','date',{ value: todayISO() }) +
           fld('File (PDF or DOCX)','file','file') +
-          '<div style="font-size:11px;color:#f5c842;background:rgba(245,200,66,.08);padding:8px 12px;border-radius:6px;margin-top:6px">Will save as PCQI-signed record. Requires the <b>compliance-photos</b> Storage bucket (same one used for evidence photos).</div>' +
+          '<div style="font-size:11px;color:#f5c842;background:rgba(245,200,66,.08);padding:8px 12px;border-radius:6px;margin-top:6px">Saved as a PCQI-signed record. The file is stored privately and opened through a short-lived signed link — staff only.</div>' +
         '</div>' +
         '<div style="padding:14px 22px;border-top:1px solid rgba(255,255,255,.06);display:flex;gap:8px;justify-content:flex-end">' +
           '<button id="gl-docup-cancel" class="cbtn">Cancel</button>' +
@@ -3858,20 +3899,18 @@
       // Upload to compliance-photos bucket (reuse — same RLS, no extra setup)
       var ext = (file.name.split('.').pop() || 'bin').toLowerCase();
       var path = 'docs/' + Date.now() + '-' + Math.random().toString(36).slice(2,8) + '.' + ext;
-      var url = null;
+      var stored = null;
       try {
         var r = await window.supa.storage.from('compliance-photos').upload(path, file, { contentType: file.type || 'application/pdf' });
-        if(!r.error){
-          var pub = window.supa.storage.from('compliance-photos').getPublicUrl(path);
-          url = pub.data && pub.data.publicUrl;
-        }
-      } catch(e){ console.warn('[GL doc upload] failed', e); }
-      if(!url){ btn.disabled = false; btn.textContent = '📤 Upload & sign'; alert('Upload failed. Create the compliance-photos bucket first if you have not.'); return; }
+        if(r.error) console.warn('[GL doc upload] failed', r.error.message);
+        else stored = path;   // the path, not a URL -- the bucket is private
+      } catch(e){ console.warn('[GL doc upload] threw', e); }
+      if(!stored){ btn.disabled = false; btn.textContent = '📤 Upload & sign'; alert('Upload failed — the document was not saved and no signature was recorded.'); return; }
       var user = window.currentUser || {};
       var rec = await window.supa.from('compliance_records').insert([{
         form_code: 'DOC-CTRL-001',
         record_date: eff || todayISO(),
-        data: { doc_name: name, version: ver, effective_date: eff, file_url: url, file_name: file.name, file_type: file.type },
+        data: { doc_name: name, version: ver, effective_date: eff, file_path: stored, file_name: file.name, file_type: file.type },
         status: 'signed',
         signed_by: user.id || null, signed_at: nowISO(),
         signature_name: user.name || user.email || 'PCQI',
