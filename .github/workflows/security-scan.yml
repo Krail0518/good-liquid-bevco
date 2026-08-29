@@ -14,13 +14,19 @@
 # Dependabot see none of that. tests/supply-chain-pinning.test.cjs covers it,
 # and runs in the smoke workflow with the other tests.
 #
-# HISTORY WAS SCANNED ONCE, BY HAND, BEFORE THIS LANDED
-# -----------------------------------------------------
-# All 1,414 blobs in history were checked for provider-key shapes (sk-ant-,
-# sk_live_, ghp_, AKIA…) and every JWT was decoded. Result: zero provider keys,
-# and exactly one JWT — an anon key, which is public by design. So this job was
-# not switched on over a pile of pre-existing findings that everyone would
-# learn to ignore.
+# HISTORY WAS SCANNED BEFORE THIS LANDED, AND THE SCANNER STILL FOUND MORE
+# ------------------------------------------------------------------------
+# All 1,414 blobs in history were checked by hand first, for provider-key
+# shapes (sk-ant-, sk_live_, ghp_, AKIA…) and by decoding every JWT. That found
+# zero provider keys and one anon JWT, which is public by design.
+#
+# gitleaks then found something that scan could not: 'gl-notify-2026-abc123',
+# a project-specific shared secret that once shipped in the public page HTML. A
+# hand-written scan only finds the shapes you thought of, which is the whole
+# argument for running a real scanner. It is already dead — rotated to an
+# in-database generated value by 20260730002000_rotate_notify_secret.sql — so
+# there is nothing to rotate now, and the occurrences that remain are guards
+# asserting it is not in use. It is allowlisted for that reason, narrowly.
 
 name: Security Scan
 

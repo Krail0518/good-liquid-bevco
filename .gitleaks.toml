@@ -42,7 +42,7 @@ regex = '''eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}'''
 keywords = ["eyJ"]
 
 [allowlist]
-description = "Credentials this project publishes on purpose"
+description = "Credentials this project publishes on purpose, plus verified false positives"
 regexes = [
   # Publishable key — public by design, see header.
   '''sb_publishable_[A-Za-z0-9_-]+''',
@@ -50,8 +50,29 @@ regexes = [
   # `ImFub24i` is base64 for "anon" — a service_role token carries
   # `InNlcnZpY2Vfcm9sZSI` there instead and is therefore NOT allowlisted.
   '''eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmamtlcW14d3V5aGJxeXVnY2dnIiwicm9sZSI6ImFub24i[A-Za-z0-9_-]*''',
+
+  # ── verified false positives from the entropy-based generic-api-key rule.
+  # Each was inspected, not waved through. ─────────────────────────────
+  #
+  # A DEAD secret, kept on purpose. 'gl-notify-2026-abc123' shipped in the
+  # public page HTML and was rotated to an in-database generated value by
+  # 20260730002000_rotate_notify_secret.sql. Every remaining occurrence is a
+  # GUARD asserting it is no longer in use — 20260721_tour_alerts.sql raises an
+  # exception if the Vault still holds it. Deleting those guards to quiet the
+  # scanner would remove the check that the rotation actually took.
+  '''gl-notify-2026-abc123''',
+  # Synthetic fixture token in tests: forty characters of 'abcdef0123…',
+  # high-entropy to a scanner and obviously fake to a human.
+  '''abcdef0123456789abcdef0123456789abcdef01''',
+  # Migration FILENAMES. A 14-digit timestamp plus words scores as entropy, and
+  # tests/migration-rollback-notes.test.cjs is a list of 93 of them.
+  '''\d{14}_[a-z0-9_]+\.sql''',
 ]
 paths = [
   # This file quotes key SHAPES, not keys.
   '''\.gitleaks\.toml$''',
+  # Vendored third-party bundles saved from a browser (Chart.js, ~205 KB
+  # minified each). Minified code trips the entropy heuristic constantly, and
+  # these are not ours to edit.
+  '''^index_files/''',
 ]
