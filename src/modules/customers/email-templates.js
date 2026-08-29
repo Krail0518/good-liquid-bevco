@@ -74,7 +74,7 @@ async function openEmailTemplates(){
         <div class="frow"><div class="flbl">Template name</div><input class="finp" id="et-name" placeholder="e.g. Payment Reminder"></div>
         <div class="frow"><div class="flbl">Subject</div><input class="finp" id="et-subject" placeholder="Email subject line"></div>
         <div class="frow"><div class="flbl">Body</div><textarea class="finp" id="et-body" rows="5" placeholder="Use [Name] for client name, [Amount] for invoice amount…" style="resize:vertical"></textarea></div>
-        <button class="cbtn pri" onclick="saveNewTemplate()" style="width:100%">Save Template</button>
+        <button class="cbtn pri" data-gl-action="saveNewTemplate" style="width:100%">Save Template</button>
       </div>
     </div>`;
   (document.getElementById('crm-panel')||document.body).appendChild(modal);
@@ -91,8 +91,8 @@ function renderEmailTemplates(){
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
         <div style="font-weight:700;font-size:13px;color:var(--white)">${esc(t.name)}</div>
         <div style="display:flex;gap:6px">
-          <button class="cbtn" style="font-size:10px;padding:3px 8px" onclick="useTemplate('${t.id}')">Use</button>
-          <button class="cbtn red" style="font-size:10px;padding:3px 8px" onclick="deleteTemplate('${t.id}')">✕</button>
+          <button class="cbtn" style="font-size:10px;padding:3px 8px" data-gl-action="useTemplate" data-gl-arg1="${esc(t.id)}">Use</button>
+          <button class="cbtn red" style="font-size:10px;padding:3px 8px" data-gl-action="deleteTemplate" data-gl-arg1="${esc(t.id)}">✕</button>
         </div>
       </div>
       <div style="font-size:11px;color:var(--teal);margin-bottom:3px">${esc(t.subject)}</div>

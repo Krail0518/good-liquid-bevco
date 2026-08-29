@@ -45,7 +45,7 @@
     var header =
       '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:6px">' +
         '<div style="font-family:var(--ff-disp);font-size:24px;letter-spacing:2px;color:var(--teal)">🗓️ GMP SCHEDULE</div>' +
-        '<button onclick="window.glGenerateGMPTasks()" style="padding:12px 20px;background:linear-gradient(135deg,#00e5c0,#00c4a7);color:#04231d;border:none;border-radius:9px;font-weight:800;font-size:14px;cursor:pointer">＋ Generate today’s tasks</button>' +
+        '<button data-gl-action="glGenerateGMPTasks" style="padding:12px 20px;background:linear-gradient(135deg,#00e5c0,#00c4a7);color:#04231d;border:none;border-radius:9px;font-weight:800;font-size:14px;cursor:pointer">＋ Generate today’s tasks</button>' +
       '</div>' +
       '<div style="font-size:12.5px;color:var(--muted);margin-bottom:18px;line-height:1.6">Today’s recurring GMP tasks, generated from your task definitions. Anything left open past its due date shows under “Overdue”. Mark each check done as you go.</div>';
 

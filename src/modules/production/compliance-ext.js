@@ -439,7 +439,7 @@
       '</head><body>' +
       '<h1>Compliance Monthly Report</h1>' +
       '<div class="meta">Good Liquid Bev Co · ' + fmtDate(new Date(Date.now()-30*86400000)) + ' to ' + fmtDate(new Date()) + ' · generated ' + fmtTs(new Date()) + '</div>' +
-      '<div class="no-print" style="margin-bottom:18px"><button onclick="window.print()" style="padding:8px 16px;background:#0a8;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:700">🖨️ Print / Save as PDF</button> <button onclick="window.close()" style="margin-left:6px">Close</button></div>' +
+      '<div class="no-print" style="margin-bottom:18px"><button data-gl-action="print" style="padding:8px 16px;background:#0a8;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:700">🖨️ Print / Save as PDF</button> <button data-gl-action="close" style="margin-left:6px">Close</button></div>' +
       '<h2>Headline KPIs</h2>' +
       '<div>' +
         '<div class="kpi"><b>' + rows.length + '</b>Total records</div>' +

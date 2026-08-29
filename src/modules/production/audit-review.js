@@ -226,7 +226,7 @@
         // Section A
         '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:6px">' +
           '<div style="font-family:var(--ff-disp);font-size:24px;letter-spacing:2px;color:var(--teal)">🔍 INTERNAL AUDITS</div>' +
-          '<button onclick="window.glAddAudit()" style="padding:12px 20px;background:linear-gradient(135deg,#00e5c0,#00c4a7);color:#04231d;border:none;border-radius:9px;font-weight:800;font-size:14px;cursor:pointer">＋ Schedule audit</button>' +
+          '<button data-gl-action="glAddAudit" style="padding:12px 20px;background:linear-gradient(135deg,#00e5c0,#00c4a7);color:#04231d;border:none;border-radius:9px;font-weight:800;font-size:14px;cursor:pointer">＋ Schedule audit</button>' +
         '</div>' +
         '<div style="font-size:12.5px;color:var(--muted);margin-bottom:16px;line-height:1.6">Plan and record internal audits, log findings against clauses, and raise an NCR straight from any open finding.</div>' +
         (audits.length ? auditRows : '<div style="color:#9aa7bd;padding:16px 0;margin-bottom:8px">No audits scheduled yet. Click ＋ Schedule audit to plan one.</div>') +
@@ -235,7 +235,7 @@
         '<div style="height:22px"></div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:6px">' +
           '<div style="font-family:var(--ff-disp);font-size:24px;letter-spacing:2px;color:var(--teal)">📋 MANAGEMENT REVIEW</div>' +
-          '<button onclick="window.glAddMgmtReview()" style="padding:12px 20px;background:linear-gradient(135deg,#00e5c0,#00c4a7);color:#04231d;border:none;border-radius:9px;font-weight:800;font-size:14px;cursor:pointer">＋ New management review</button>' +
+          '<button data-gl-action="glAddMgmtReview" style="padding:12px 20px;background:linear-gradient(135deg,#00e5c0,#00c4a7);color:#04231d;border:none;border-radius:9px;font-weight:800;font-size:14px;cursor:pointer">＋ New management review</button>' +
         '</div>' +
         '<div style="font-size:12.5px;color:var(--muted);margin-bottom:14px;line-height:1.6">Live compliance KPIs, captured into each review record so the snapshot is preserved.</div>' +
         kpiRow +

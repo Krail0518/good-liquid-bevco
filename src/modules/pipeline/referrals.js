@@ -49,9 +49,9 @@ function renderReferrals(){
       <td style="font-weight:600;color:var(--teal)">$${(window.fmtUsd?window.fmtUsd(r.commAmount):Number(r.commAmount||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))}</td>
       <td><span class="cbdg ${r.status==='won'?'earned':r.status}">${r.status==='won'?'Comm. earned':r.status==='paid'?'Paid out':r.status==='presented'?'Presented':r.status==='lead'?'Lead ref.':'Lost'}</span></td>
       <td><div style="display:flex;gap:3px">
-        ${r.status==='won'?`<button class="cbtn grn" style="font-size:10px;padding:3px 8px" onclick="payComm('${r.id}')">Pay $${(window.fmtUsd?window.fmtUsd(r.commAmount):Number(r.commAmount||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))}</button>`:''}
-        ${r.status==='lead'?`<button class="cbtn amber" style="font-size:10px;padding:3px 8px" onclick="updateRefStatus('${r.id}','presented')">→ Presented</button>`:''}
-        ${r.status==='presented'?`<button class="cbtn grn" style="font-size:10px;padding:3px 8px" onclick="updateRefStatus('${r.id}','won')">Won ✓</button><button class="cbtn red" style="font-size:10px;padding:3px 8px" onclick="updateRefStatus('${r.id}','lost')">Lost</button>`:''}
+        ${r.status==='won'?`<button class="cbtn grn" style="font-size:10px;padding:3px 8px" data-gl-action="payComm" data-gl-arg1="${esc(r.id)}">Pay $${(window.fmtUsd?window.fmtUsd(r.commAmount):Number(r.commAmount||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))}</button>`:''}
+        ${r.status==='lead'?`<button class="cbtn amber" style="font-size:10px;padding:3px 8px" data-gl-action="updateRefStatus" data-gl-arg1="${esc(r.id)}" data-gl-arg2="presented">→ Presented</button>`:''}
+        ${r.status==='presented'?`<button class="cbtn grn" style="font-size:10px;padding:3px 8px" data-gl-action="updateRefStatus" data-gl-arg1="${esc(r.id)}" data-gl-arg2="won">Won ✓</button><button class="cbtn red" style="font-size:10px;padding:3px 8px" data-gl-action="updateRefStatus" data-gl-arg1="${esc(r.id)}" data-gl-arg2="lost">Lost</button>`:''}
         ${r.status==='paid'?`<span class="paid-tag">✓ Paid ${r.datePaid||''}</span>`:''}
       </div></td>
     </tr>`;
@@ -132,7 +132,7 @@ function renderReferrers(){
           ${owed>0?`<div class="owed-tag">$${owed.toLocaleString()} owed</div>`:
           `<div class="rv-val" style="color:var(--muted)">$0</div><div class="rv-lbl">Owed</div>`}
         </div>
-        <button class="cbtn" style="font-size:10px;padding:4px 10px" onclick="openRefForReferrer('${r.id}')">+ Log referral</button>
+        <button class="cbtn" style="font-size:10px;padding:4px 10px" data-gl-action="openRefForReferrer" data-gl-arg1="${esc(r.id)}">+ Log referral</button>
       </div>
     </div>`;
   }).join('');
@@ -171,22 +171,22 @@ function svcChange(){
   let html='';
   if(svc==='canning'||svc==='copacking'){
     html=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-      <div class="frow"><div class="flbl">Can format</div><select class="fsel" id="can-fmt" onchange="updatePreview()"><option value="12std">12oz Standard</option><option value="12slk">12oz Sleek</option><option value="16std">16oz Standard</option></select></div>
-      <div class="frow"><div class="flbl">Cases</div><input type="number" class="finp" id="can-cases" value="500" min="200" oninput="updatePreview()"></div>
+      <div class="frow"><div class="flbl">Can format</div><select class="fsel" id="can-fmt" data-gl-action="updatePreview" data-gl-on="change"><option value="12std">12oz Standard</option><option value="12slk">12oz Sleek</option><option value="16std">16oz Standard</option></select></div>
+      <div class="frow"><div class="flbl">Cases</div><input type="number" class="finp" id="can-cases" value="500" min="200" data-gl-action="updatePreview" data-gl-on="input"></div>
     </div><div style="font-size:10px;color:var(--muted);margin-bottom:12px">Min 200 cases · 24 cans/case</div>`;
-    if(svc==='copacking')html+=`<div class="frow"><div class="flbl">Benchtop verification</div><select class="fsel" id="verif" onchange="updatePreview()"><option value="1">Yes — $500/SKU</option><option value="0">No (PAL provided)</option></select></div>`;
+    if(svc==='copacking')html+=`<div class="frow"><div class="flbl">Benchtop verification</div><select class="fsel" id="verif" data-gl-action="updatePreview" data-gl-on="change"><option value="1">Yes — $500/SKU</option><option value="0">No (PAL provided)</option></select></div>`;
   }else if(svc==='bottling'){
-    html=`<div class="frow"><div class="flbl">Cases (6-pack)</div><select class="fsel" id="btl-cases" onchange="updatePreview()">
+    html=`<div class="frow"><div class="flbl">Cases (6-pack)</div><select class="fsel" id="btl-cases" data-gl-action="updatePreview" data-gl-on="change">
       <option value="220">220 cases (1,320 btls)</option><option value="660">660 cases (3,960 btls)</option>
       <option value="1320">1,320 cases</option><option value="2640">2,640 cases</option><option value="5280">5,280 cases</option>
     </select></div>`;
   }else if(svc==='rd'){
     html=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-      <div class="frow"><div class="flbl">R&D package</div><select class="fsel" id="rd-pkg" onchange="updatePreview()"><option value="rd">R&D Only ($2,500)</option><option value="rd-lic">R&D + IP License ($7,000)</option><option value="rd-buy">R&D + IP Purchase ($16,000)</option></select></div>
-      <div class="frow"><div class="flbl">SKUs</div><input type="number" class="finp" id="rd-skus" value="1" min="1" oninput="updatePreview()"></div>
+      <div class="frow"><div class="flbl">R&D package</div><select class="fsel" id="rd-pkg" data-gl-action="updatePreview" data-gl-on="change"><option value="rd">R&D Only ($2,500)</option><option value="rd-lic">R&D + IP License ($7,000)</option><option value="rd-buy">R&D + IP Purchase ($16,000)</option></select></div>
+      <div class="frow"><div class="flbl">SKUs</div><input type="number" class="finp" id="rd-skus" value="1" min="1" data-gl-action="updatePreview" data-gl-on="input"></div>
     </div>`;
   }else{
-    html=`<div class="frow"><div class="flbl">Flat fee ($)</div><input type="number" class="finp" id="consult-fee" value="2500" oninput="updatePreview()"></div>`;
+    html=`<div class="frow"><div class="flbl">Flat fee ($)</div><input type="number" class="finp" id="consult-fee" value="2500" data-gl-action="updatePreview" data-gl-on="input"></div>`;
   }
   document.getElementById('svc-fields').innerHTML=html;
   let addons='';

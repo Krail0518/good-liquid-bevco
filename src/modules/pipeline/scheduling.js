@@ -140,10 +140,10 @@
           '<div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted,#6b87ad);margin-bottom:8px">Your booking link</div>' +
           '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
             '<div style="flex:1;min-width:200px;background:rgba(0,229,192,.06);border:1px solid rgba(0,229,192,.2);border-radius:8px;padding:10px 14px;font-size:13px;color:var(--teal,#00e5c0);word-break:break-all">'+esc(link)+'</div>' +
-            '<button onclick="window.glSchedCopy()" style="white-space:nowrap;padding:10px 16px;background:rgba(0,229,192,.12);color:var(--teal,#00e5c0);border:1px solid rgba(0,229,192,.25);border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">Copy Link</button>' +
+            '<button data-gl-action="glSchedCopy" style="white-space:nowrap;padding:10px 16px;background:rgba(0,229,192,.12);color:var(--teal,#00e5c0);border:1px solid rgba(0,229,192,.25);border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">Copy Link</button>' +
           '</div>' +
           '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">' +
-            '<button onclick="window.glSchedEmail()" style="padding:8px 14px;background:rgba(245,200,66,.07);color:#f5c842;border:1px solid rgba(245,200,66,.25);border-radius:7px;cursor:pointer;font-size:12px">📧 Send via Email</button>' +
+            '<button data-gl-action="glSchedEmail" style="padding:8px 14px;background:rgba(245,200,66,.07);color:#f5c842;border:1px solid rgba(245,200,66,.25);border-radius:7px;cursor:pointer;font-size:12px">📧 Send via Email</button>' +
             '<a href="'+esc(link)+'" target="_blank" style="display:inline-flex;align-items:center;padding:8px 14px;background:rgba(100,140,255,.07);color:#7fc6f5;border:1px solid rgba(100,140,255,.2);border-radius:7px;cursor:pointer;font-size:12px;text-decoration:none">🔗 Preview Page</a>' +
           '</div>' +
         '</div>' +
@@ -220,7 +220,7 @@
             '</div>' +
 
             '<div style="display:flex;align-items:center;gap:12px">' +
-              '<button onclick="window.glSchedSave()" style="padding:11px 24px;background:var(--teal,#00e5c0);color:#0f1624;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Save Settings</button>' +
+              '<button data-gl-action="glSchedSave" style="padding:11px 24px;background:var(--teal,#00e5c0);color:#0f1624;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Save Settings</button>' +
               '<span id="gl-sched-msg" style="font-size:13px;color:#5fcf9e"></span>' +
             '</div>' +
 
@@ -269,7 +269,7 @@
               '<div style="font-size:13px;color:#fff">'+esc(dateStr)+'</div>' +
               '<div style="font-size:12px;color:var(--muted,#6b87ad)">'+esc(timeStr)+'</div>' +
             '</div>' +
-            '<button onclick="window.glSchedCancel(\''+b.id+'\')" style="flex-shrink:0;padding:6px 12px;background:rgba(231,70,70,.08);color:#e74646;border:1px solid rgba(231,70,70,.2);border-radius:6px;cursor:pointer;font-size:12px">Cancel</button>' +
+            '<button data-gl-action="glSchedCancel" data-gl-arg1="' + esc(b.id) + '" style="flex-shrink:0;padding:6px 12px;background:rgba(231,70,70,.08);color:#e74646;border:1px solid rgba(231,70,70,.2);border-radius:6px;cursor:pointer;font-size:12px">Cancel</button>' +
           '</div>';
         }).join('') +
       '</div></div>';
@@ -371,7 +371,7 @@
           'Preview: "'+esc((window.currentUser||{}).name||'I')+' would like to find a time to connect. Check my availability and book a slot that works for you: <a style=\'color:#00e5c0\'>' + esc(link) + '</a>"' +
         '</div>' +
         '<div style="display:flex;gap:10px;margin-top:18px">' +
-          '<button onclick="window.glSchedSendEmail()" style="flex:1;padding:12px;background:var(--teal,#00e5c0);color:#0f1624;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Send Email</button>' +
+          '<button data-gl-action="glSchedSendEmail" style="flex:1;padding:12px;background:var(--teal,#00e5c0);color:#0f1624;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Send Email</button>' +
           '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="padding:12px 18px;background:rgba(255,255,255,.07);color:#9aa7bd;border:1px solid rgba(255,255,255,.1);border-radius:8px;cursor:pointer;font-size:14px">Cancel</button>' +
         '</div>' +
         '<div id="gl-sched-email-err" style="margin-top:10px;font-size:13px;color:#e74646;display:none"></div>' +

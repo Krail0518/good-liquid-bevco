@@ -107,9 +107,9 @@
           (r.body ? '<div style="font-size:13px;color:#eef4ff;line-height:1.6;margin-top:10px;padding:10px 12px;background:rgba(255,255,255,.03);border-radius:6px;white-space:pre-wrap">' + esc(r.body) + '</div>' : '') +
           (r.resolution_notes ? '<div style="font-size:12px;color:#9aa7bd;margin-top:8px;padding:8px 12px;background:rgba(95,207,158,.06);border-left:2px solid #5fcf9e;border-radius:4px"><b style="color:#5fcf9e">Resolution:</b> ' + esc(r.resolution_notes) + '</div>' : '') +
           (r.status === 'new' || r.status === 'in_progress' ? '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">' +
-            (r.status === 'new' ? '<button onclick="window.glCustReqSetStatus(\'' + r.id + '\',\'in_progress\')" style="background:rgba(107,159,255,.12);border:1px solid rgba(107,159,255,.4);color:#6b9fff;padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-weight:700">Mark in progress</button>' : '') +
-            '<button onclick="window.glCustReqResolve(\'' + r.id + '\')" style="background:rgba(95,207,158,.12);border:1px solid rgba(95,207,158,.4);color:#5fcf9e;padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-weight:700">✓ Resolve</button>' +
-            '<button onclick="window.glCustReqSetStatus(\'' + r.id + '\',\'dismissed\')" style="background:rgba(154,167,189,.1);border:1px solid rgba(154,167,189,.3);color:#9aa7bd;padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer">Dismiss</button>' +
+            (r.status === 'new' ? '<button data-gl-action="glCustReqSetStatus" data-gl-arg1="' + esc(r.id) + '" data-gl-arg2="in_progress" style="background:rgba(107,159,255,.12);border:1px solid rgba(107,159,255,.4);color:#6b9fff;padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-weight:700">Mark in progress</button>' : '') +
+            '<button data-gl-action="glCustReqResolve" data-gl-arg1="' + esc(r.id) + '" style="background:rgba(95,207,158,.12);border:1px solid rgba(95,207,158,.4);color:#5fcf9e;padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-weight:700">✓ Resolve</button>' +
+            '<button data-gl-action="glCustReqSetStatus" data-gl-arg1="' + esc(r.id) + '" data-gl-arg2="dismissed" style="background:rgba(154,167,189,.1);border:1px solid rgba(154,167,189,.3);color:#9aa7bd;padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer">Dismiss</button>' +
             (client.email ? '<a href="mailto:' + esc(client.email) + '?subject=' + encodeURIComponent('Re: ' + (r.subject || kindLabel)) + '" style="background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.4);color:#00e5c0;padding:5px 12px;border-radius:6px;font-size:11px;text-decoration:none;font-weight:700">↩ Reply via email</a>' : '') +
           '</div>' : '') +
         '</div>';
@@ -211,7 +211,7 @@
           'If this was you, no action needed. If not, <b style="color:#f87171">change your password immediately.</b>',
         '</div>',
         '<div style="margin-top:10px;display:flex;gap:8px">',
-          '<button onclick="cNav(\'ai-settings\')" style="font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid rgba(245,200,66,.4);background:rgba(245,200,66,.08);color:#f5c842;cursor:pointer">Account Security</button>',
+          '<button data-gl-action="cNav" data-gl-arg1="ai-settings" style="font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid rgba(245,200,66,.4);background:rgba(245,200,66,.08);color:#f5c842;cursor:pointer">Account Security</button>',
           '<button data-gl-close="#gl-new-ip-banner" style="font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#9ca3af;cursor:pointer">Dismiss</button>',
         '</div>',
       '</div>'

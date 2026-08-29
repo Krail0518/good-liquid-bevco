@@ -97,7 +97,7 @@ function renderProductionKanban(){
         <span class="kcol-t" style="color:${stageColors[stage]}">${stage.toUpperCase()}</span>
         <span class="kcol-c">${byStage[stage].length}</span>
       </div>
-      ${byStage[stage].map(r=>`<div class="kcard" onclick="window.glOpenEditProductionRun('${r.id}')" style="cursor:pointer">
+      ${byStage[stage].map(r=>`<div class="kcard" data-gl-action="glOpenEditProductionRun" data-gl-arg1="${esc(r.id)}" style="cursor:pointer">
         <div class="kc-n">${esc(r.run_name||'(untitled)')}</div>
         <div class="kc-co">${esc(r.client_name||'—')}</div>
         <div class="kc-val">${esc(r.format||'')}${r.cases?' · '+(+r.cases).toLocaleString()+' cs':''}</div>

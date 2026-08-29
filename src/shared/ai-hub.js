@@ -63,7 +63,7 @@
               'style="flex:1;background:#0a1628;border:1px solid rgba(255,255,255,.1);border-radius:8px;' +
               'padding:10px 14px;color:var(--white,#e8f0fe);font-size:13px;outline:none" ' +
               'onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();window.glAIHubSend();}">' +
-            '<button onclick="window.glAIHubSend()" class="cbtn pri" style="padding:10px 20px;flex-shrink:0">Send</button>' +
+            '<button data-gl-action="glAIHubSend" class="cbtn pri" style="padding:10px 20px;flex-shrink:0">Send</button>' +
           '</div>' +
         '</div>' +
       '</div>' +

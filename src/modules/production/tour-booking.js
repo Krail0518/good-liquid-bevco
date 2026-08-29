@@ -152,7 +152,7 @@ async function loadBkAvailability(date){
 function renderBkTimes(){
   var html = BK_TIMES.map(function(t){
     var avail = bkAvail[t] !== false;   // available until we hear otherwise
-    if(avail) return '<div class="time-slot '+(bkSelectedTime===t?'selected':'')+'" onclick="selectBkTime(\''+t+'\')">'+bk12(t)+'</div>';
+    if(avail) return '<div class="time-slot '+(bkSelectedTime===t?'selected':'')+'" data-gl-action="selectBkTime" data-gl-arg1="' + esc(t) + '">'+bk12(t)+'</div>';
     return '<div class="time-slot" title="Unavailable — already booked" style="opacity:.35;cursor:not-allowed;text-decoration:line-through">'+bk12(t)+'</div>';
   }).join('');
   if(bkAvailLoading) html += '<div style="font-size:11px;color:var(--muted);grid-column:1/-1;padding:6px 0">Checking availability…</div>';
@@ -214,7 +214,7 @@ async function submitBooking(){
     }
   } catch(e){ console.warn('tour intake submit failed:', e); }
 
-  const bkBtn = document.querySelector('#booking-overlay button[onclick="submitBooking()"]');
+  const bkBtn = document.querySelector('#booking-overlay button[data-gl-action="submitBooking"]');
   const bkRestore = function(){ if(bkBtn){ bkBtn.disabled=false; bkBtn.textContent='Confirm Booking →'; } };
   if(bkBtn){ bkBtn.disabled=true; bkBtn.textContent='Sending request…'; }
 

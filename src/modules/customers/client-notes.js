@@ -88,7 +88,7 @@ async function openClientNote(clientId){
       </div>
       <textarea class="finp" id="cn-input" rows="3" placeholder="Add a note…" style="resize:none;margin-bottom:10px"></textarea>
       <div style="display:flex;gap:8px">
-        <button class="cbtn pri" onclick="saveClientNote('${clientId}')" style="flex:1">Add Note</button>
+        <button class="cbtn pri" data-gl-action="saveClientNote" data-gl-arg1="${esc(clientId)}" style="flex:1">Add Note</button>
         <button class="cbtn" data-gl-close="">Close</button>
       </div>
     </div>`;
@@ -125,7 +125,7 @@ async function renderClientNotesList(clientId){
       '<div style="font-size:12px;color:var(--white);line-height:1.6;white-space:pre-wrap">' + safeBody + '</div>' +
       '<div style="display:flex;justify-content:space-between;margin-top:6px">' +
         '<div style="font-size:10px;color:var(--muted)">' + when + ' · ' + (n.author_name || '—').replace(/[&<>]/g, '') + '</div>' +
-        '<button class="cbtn red" style="font-size:9px;padding:2px 7px" onclick="deleteClientNote(\'' + clientId + '\',\'' + n.id + '\')">✕</button>' +
+        '<button class="cbtn red" style="font-size:9px;padding:2px 7px" data-gl-action="deleteClientNote" data-gl-arg1="' + esc(clientId) + '" data-gl-arg2="' + esc(n.id) + '">✕</button>' +
       '</div>' +
     '</div>';
   }).join('');

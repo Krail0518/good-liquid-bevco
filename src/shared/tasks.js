@@ -135,7 +135,7 @@ function renderTasks(){
     const safeTitle = String(t.title||'').replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
     const safeNotes = t.notes ? String(t.notes).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])) : '';
     return `<div class="task-item">
-      <div class="task-check ${t.done?'done':''}" onclick="toggleTask('${t.id}')">${t.done?'✓':''}</div>
+      <div class="task-check ${t.done?'done':''}" data-gl-action="toggleTask" data-gl-arg1="${esc(t.id)}">${t.done?'✓':''}</div>
       <div style="flex:1">
         <div class="task-title ${t.done?'done':''}">${safeTitle}</div>
         <div class="task-meta">
@@ -145,7 +145,7 @@ function renderTasks(){
         </div>
         ${safeNotes?`<div style="font-size:11px;color:var(--muted);margin-top:3px">${safeNotes}</div>`:''}
       </div>
-      <button class="cbtn red" style="font-size:10px;padding:3px 7px" onclick="deleteTask('${t.id}')">✕</button>
+      <button class="cbtn red" style="font-size:10px;padding:3px 7px" data-gl-action="deleteTask" data-gl-arg1="${esc(t.id)}">✕</button>
     </div>`;
   }).join('');
 }

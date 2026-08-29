@@ -34,7 +34,7 @@ function showInstallBanner(){
       <div style="font-size:11px;color:var(--muted)">Add to your home screen for quick access</div>
     </div>
     <div style="display:flex;gap:6px">
-      <button onclick="installPWA()" style="padding:7px 14px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Install</button>
+      <button data-gl-action="installPWA" style="padding:7px 14px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Install</button>
       <button data-gl-close="#pwa-install-banner" style="padding:7px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;font-size:12px;color:var(--muted);cursor:pointer">✕</button>
     </div>`;
   document.body.appendChild(banner);

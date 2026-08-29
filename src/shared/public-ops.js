@@ -307,7 +307,7 @@
       rows.map(function(f){
         var clientName = f.client_name || ((window.clients||[]).find(function(c){ return c.id === f.client_id; })||{}).name || '—';
         var updated = f.updated_at ? new Date(f.updated_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
-        return '<tr style="cursor:pointer" onclick="window.glOpenEditFormula(\'' + esc(f.id) + '\')">' +
+        return '<tr style="cursor:pointer" data-gl-action="glOpenEditFormula" data-gl-arg1="' + esc(f.id) + '">' +
           '<td style="padding:11px;font-weight:600;color:var(--white)">' + esc(f.name || '(untitled)') + '</td>' +
           '<td style="padding:11px;color:var(--muted)">' + esc(clientName) + '</td>' +
           '<td style="padding:11px;color:var(--teal);font-family:var(--ff-mono)">v' + (f.version || 1) + '</td>' +
@@ -560,7 +560,7 @@
         var p = r.planned_cases || 0, a = r.actual_cases || 0;
         var pct = p > 0 ? Math.round(a / p * 100) : 0;
         var d = r.completed_at ? new Date(r.completed_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
-        return '<tr style="cursor:pointer" onclick="window.glOpenEditYield(\'' + esc(r.id) + '\')">' +
+        return '<tr style="cursor:pointer" data-gl-action="glOpenEditYield" data-gl-arg1="' + esc(r.id) + '">' +
           '<td style="padding:11px;font-weight:600;color:var(--white)">' + esc(r.run_name || '(untitled)') + '</td>' +
           '<td style="padding:11px;color:var(--muted)">' + esc(r.client_name || '—') + '</td>' +
           '<td style="padding:11px;color:var(--muted)">' + p.toLocaleString() + '</td>' +
@@ -979,7 +979,7 @@
       } else {
         followBadge = '<span style="padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(0,229,192,.1);color:var(--teal);border:1px solid rgba(0,229,192,.3)">Sent</span>';
       }
-      return '<tr style="cursor:pointer" onclick="window.glOpenEditSample(\'' + esc(s.id) + '\')">' +
+      return '<tr style="cursor:pointer" data-gl-action="glOpenEditSample" data-gl-arg1="' + esc(s.id) + '">' +
         '<td style="padding:11px;font-weight:600;color:var(--white)">' + esc(clientName) + '</td>' +
         '<td style="padding:11px;color:var(--muted)">' + esc(s.kind || '—') + '</td>' +
         '<td style="padding:11px;color:var(--muted)">' + (s.qty || '—') + '</td>' +

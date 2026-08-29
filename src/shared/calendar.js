@@ -168,7 +168,7 @@ function renderCal(type){
     const prunDay=(window.glProductionRuns||[]).filter(r=>(r.scheduled_start_date||r.scheduled_date)===dateStr).map(r=>({title:(r.run_name||'(untitled)')+(r.client_name?' — '+r.client_name:''),type:type==='production'?'production':'production-run'}));
     const dayEvents=[...legacyDay,...prunDay];
     const hasEvents=dayEvents.length>0;
-    html+=`<div class="cal-day${isToday?' today':''}${isWeekend?' weekend':''}${isPast&&!isToday?' past':''}${hasEvents?' has-events':''}" onclick="openCalEventModal('${type}','${dateStr}')">
+    html+=`<div class="cal-day${isToday?' today':''}${isWeekend?' weekend':''}${isPast&&!isToday?' past':''}${hasEvents?' has-events':''}" data-gl-action="openCalEventModal" data-gl-arg1="${esc(type)}" data-gl-arg2="${esc(dateStr)}">
       <div class="cal-day-num">${day}</div>
       ${dayEvents.slice(0,3).map(e=>`<div class="cal-event ${esc(e.type)}" title="${esc(e.title)}">${esc(String(e.title||'').substring(0,18))}${e.title.length>18?'…':''}</div>`).join('')}
       ${dayEvents.length>3?`<div class="cal-more">+${dayEvents.length-3} more</div>`:''}
@@ -242,7 +242,7 @@ function renderCalList(type){
     const evHTML = byDate[dateStr].map(e=>{
       const clr = TYPE_CLR[e.type]||'#6b87ad';
       const timeStr = e.time ? `<div class="cal-list-event-time">⏱ ${fmtCalTime(e.time)}</div>` : '';
-      return `<div class="cal-list-event" onclick="openCalEventModal('${type}','${dateStr}')">
+      return `<div class="cal-list-event" data-gl-action="openCalEventModal" data-gl-arg1="${esc(type)}" data-gl-arg2="${esc(dateStr)}">
         <div class="cal-list-event-bar" style="background:${clr}"></div>
         <div class="cal-list-event-body">
           <div class="cal-list-event-title">${esc(e.title||'(untitled)')}</div>
@@ -289,7 +289,7 @@ function renderProductionRuns(){
             </div>
           </div>
           <div style="flex-shrink:0">
-            <button class="cbtn" style="font-size:10px;padding:4px 10px" onclick="window.glOpenEditProductionRun('${e.id}')">✏️ Edit run</button>
+            <button class="cbtn" style="font-size:10px;padding:4px 10px" data-gl-action="glOpenEditProductionRun" data-gl-arg1="${esc(e.id)}">✏️ Edit run</button>
           </div>
         </div>
         <div style="height:3px;border-radius:2px;background:${stageClr};opacity:.35;margin-top:8px"></div>
@@ -314,7 +314,7 @@ function renderProductionRuns(){
             <option value="in-production" ${e.prodStatus==='in-production'?'selected':''}>⚙️ In Production</option>
             <option value="completed" ${e.prodStatus==='completed'?'selected':''}>✅ Completed</option>
           </select>
-          <button class="cbtn red" style="font-size:10px;padding:3px 8px" onclick="deleteProdRun('${e.id}')">✕</button>
+          <button class="cbtn red" style="font-size:10px;padding:3px 8px" data-gl-action="deleteProdRun" data-gl-arg1="${esc(e.id)}">✕</button>
         </div>
       </div>
       <div class="prod-status-bar ${e.prodStatus||'scheduled'}"></div>

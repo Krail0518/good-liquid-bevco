@@ -2025,7 +2025,7 @@
         '<h1>Good Liquid Bev Co — Compliance Records Export</h1>' +
         '<div class="meta">2011 51st Ave E, Palmetto, FL 34221 · Date range: ' + escHtml(dr.from) + ' to ' + escHtml(dr.to) +
         ' · ' + rows.length + ' records · Exported ' + formatTs(new Date()) + (signedOnly() ? ' · PCQI-signed only' : '') + '</div>' +
-        '<div class="no-print" style="margin-bottom:14px"><button onclick="window.print()" style="padding:8px 16px;background:#0a8;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:700">🖨️ Print / Save as PDF</button> <button onclick="window.close()" style="margin-left:6px">Close</button></div>';
+        '<div class="no-print" style="margin-bottom:14px"><button data-gl-action="print" style="padding:8px 16px;background:#0a8;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:700">🖨️ Print / Save as PDF</button> <button data-gl-action="close" style="margin-left:6px">Close</button></div>';
       rows.forEach(function(r){
         var data = r.data || {};
         html += '<div class="rec">' +
@@ -3192,7 +3192,7 @@
       '</head><body>' +
       '<h1>Mock Recall Report</h1>' +
       '<div class="meta">Good Liquid Bev Co · 2011 51st Ave E, Palmetto, FL 34221 · Generated ' + fmtTs(new Date()) + '</div>' +
-      '<div class="no-print" style="margin-bottom:18px"><button onclick="window.print()" style="padding:8px 16px;background:#0a8;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:700">🖨️ Print / Save as PDF</button> <button onclick="window.close()" style="margin-left:6px">Close</button></div>' +
+      '<div class="no-print" style="margin-bottom:18px"><button data-gl-action="print" style="padding:8px 16px;background:#0a8;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:700">🖨️ Print / Save as PDF</button> <button data-gl-action="close" style="margin-left:6px">Close</button></div>' +
       '<h2>Recall scope</h2>' +
       '<div class="row"><b>Lot recalled:</b> ' + esc(lot) + '</div>' +
       '<div class="row"><b>Trace elapsed:</b> ' + elapsed + ' seconds (FDA 4-hour target = 14,400s)</div>' +
@@ -3715,7 +3715,7 @@
       '</head><body>' +
       '<h1>' + esc(rec.form_code) + '</h1>' +
       '<div class="meta">Good Liquid Bev Co · 2011 51st Ave E, Palmetto, FL 34221 · Record ' + esc(rec.id) + '</div>' +
-      '<div class="no-print" style="margin-bottom:14px"><button onclick="window.print()" style="padding:8px 16px;background:#0a8;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:700">🖨️ Print / Save as PDF</button> <button onclick="window.close()" style="margin-left:6px">Close</button></div>' +
+      '<div class="no-print" style="margin-bottom:14px"><button data-gl-action="print" style="padding:8px 16px;background:#0a8;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:700">🖨️ Print / Save as PDF</button> <button data-gl-action="close" style="margin-left:6px">Close</button></div>' +
       '<table style="width:100%;border-collapse:collapse;margin-bottom:14px;font-size:11px">' +
         row('Form', rec.form_code) +
         row('Record date', fmtDate(rec.record_date)) +
@@ -4193,8 +4193,8 @@
         var color = due ? '#ff8579' : (remain < 300 ? '#f5c842' : '#5fcf9e');
         return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><div style="flex:1"><div style="font-weight:600">' + esc(t.label) + '</div>' +
           '<div style="font-size:11px;color:' + color + ';font-family:var(--ff-mono,monospace)">' + (due ? 'DUE NOW' : (m + 'm ' + (s<10?'0':'') + s + 's')) + '</div></div>' +
-          (due ? '<button onclick="window.glOpenTimerForm(\'' + t.id + '\')" class="cbtn" style="font-size:10px;padding:3px 8px;background:rgba(255,133,121,.15);border-color:rgba(255,133,121,.4);color:#ff8579">▶ Log</button>'
-               : '<button onclick="window.glStopCcpTimer(\'' + t.id + '\')" class="cbtn" style="font-size:10px;padding:3px 8px">✕</button>') +
+          (due ? '<button data-gl-action="glOpenTimerForm" data-gl-arg1="' + esc(t.id) + '" class="cbtn" style="font-size:10px;padding:3px 8px;background:rgba(255,133,121,.15);border-color:rgba(255,133,121,.4);color:#ff8579">▶ Log</button>'
+               : '<button data-gl-action="glStopCcpTimer" data-gl-arg1="' + esc(t.id) + '" class="cbtn" style="font-size:10px;padding:3px 8px">✕</button>') +
         '</div>';
       }).join('');
   }
@@ -4347,7 +4347,7 @@
       '<!doctype html><html><head><meta charset="utf-8"><title>Lot QR — ' + esc(lot) + '</title>' +
       '<style>body{font-family:Helvetica,Arial,sans-serif;margin:24px;color:#0a1628}.sticker{display:inline-block;border:2px solid #0a8;padding:18px 22px;border-radius:10px;text-align:center;margin:8px;break-inside:avoid}.sticker h2{font-size:14px;letter-spacing:1px;margin:0 0 8px;color:#0a8}.sticker .lot{font-family:monospace;font-size:14px;margin-bottom:8px;font-weight:700}.sticker img{display:block;margin:0 auto 6px}.sticker .url{font-size:9px;color:#666;max-width:240px;word-break:break-all}@media print{body{margin:8px}.no-print{display:none}}</style>' +
       '</head><body>' +
-      '<div class="no-print" style="margin-bottom:14px"><button onclick="window.print()" style="padding:8px 16px;background:#0a8;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:700">🖨️ Print sticker</button> <button onclick="window.close()" style="margin-left:6px">Close</button> · Print up to 4 copies for the pallet, BOL, master case, and warehouse copy.</div>' +
+      '<div class="no-print" style="margin-bottom:14px"><button data-gl-action="print" style="padding:8px 16px;background:#0a8;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:700">🖨️ Print sticker</button> <button data-gl-action="close" style="margin-left:6px">Close</button> · Print up to 4 copies for the pallet, BOL, master case, and warehouse copy.</div>' +
       '<div class="sticker"><h2>GOOD LIQUID BEV CO</h2><div class="lot">' + esc(lot) + '</div><img src="' + qrUrl + '" width="180" height="180" alt="QR"><div class="url">' + esc(traceUrl) + '</div></div>'.repeat(4) +
       '</body></html>'
     );

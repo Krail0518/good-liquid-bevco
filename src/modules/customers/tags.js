@@ -58,7 +58,7 @@ function getClientTagsEl(clientId,editable=false){
   const esc = s => String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[m]));
   if(!editable) return tags.map(t=>`<span class="tag-chip">${esc(t)}</span>`).join('');
   return `<div class="tag-input-wrap" id="tag-wrap-${clientId}">
-    ${tags.map(t=>`<span class="tag-chip">${esc(t)}<span class="tag-rm" onclick="removeTag('${clientId}','${esc(t)}')">✕</span></span>`).join('')}
+    ${tags.map(t=>`<span class="tag-chip">${esc(t)}<span class="tag-rm" data-gl-action="removeTag" data-gl-arg1="${esc(clientId)}" data-gl-arg2="${esc(t)}">✕</span></span>`).join('')}
     <input placeholder="Add tag, press Enter" onkeydown="if(event.key==='Enter'){addTag('${clientId}',this.value);this.value=''}">
   </div>`;
 }
@@ -105,6 +105,6 @@ function renderClientDetail(clientId){
     const tags=clientTags[clientId]||[];
     const inp=tw.querySelector('input');
     const currentVal=inp?inp.value:'';
-    tw.innerHTML=tags.map(t=>`<span class="tag-chip">${esc(t)}<span class="tag-rm" onclick="removeTag('${esc(clientId)}','${esc(t)}')">✕</span></span>`).join('')+`<input placeholder="Add tag, press Enter" value="${esc(currentVal)}" onkeydown="if(event.key==='Enter'){addTag('${esc(clientId)}',this.value);this.value=''}">`;
+    tw.innerHTML=tags.map(t=>`<span class="tag-chip">${esc(t)}<span class="tag-rm" data-gl-action="removeTag" data-gl-arg1="${esc(clientId)}" data-gl-arg2="${esc(t)}">✕</span></span>`).join('')+`<input placeholder="Add tag, press Enter" value="${esc(currentVal)}" onkeydown="if(event.key==='Enter'){addTag('${esc(clientId)}',this.value);this.value=''}">`;
   }
 }
