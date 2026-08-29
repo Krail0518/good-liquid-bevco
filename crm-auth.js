@@ -164,10 +164,10 @@
       r.data.forEach(function(row){
         window.GL_APP_SETTINGS[row.key] = row.value;
       });
-      // Bridge legacy localStorage knobs → in-memory cache (read-only;
-      // writes go to DB from now on). Done once to unify the code path.
-      _bridgeLegacySettings();
-    } catch(e){ /* non-fatal — fall back to localStorage */ }
+      // Bridge legacy localStorage knobs into the DB, once, then drop
+      // them. Awaited so the upsert completes before the keys are removed.
+      await _bridgeLegacySettings();
+    } catch(e){ /* non-fatal — legacy keys are left in place for retry */ }
   };
 
   /* Get a setting by key (DB cache first, localStorage fallback) */
@@ -200,10 +200,26 @@
     } catch(e){ console.warn('[GL] app_settings save threw',e); return false; }
   };
 
-  /* One-time bridge: copy existing localStorage values into the
-     in-memory cache so the rest of the app doesn't need to change yet.
-     Org admins can then update settings via the UI to persist to DB. */
-  function _bridgeLegacySettings(){
+  /* A seeded-but-empty default is not a real value. 20260525_security_hardening.sql
+     seeds app_settings with sign_templates '{}', stripe_pub_key 'null' and
+     sentry_dsn 'null'. Those rows load into GL_APP_SETTINGS, so a plain
+     `key in GL_APP_SETTINGS` test reports the setting as already migrated and
+     skips the localStorage copy — while the cleanup below still deletes it.
+     Treat null, '', {} and [] as absent so a real local value still migrates,
+     but never overwrite a value an admin actually set. */
+  function _isEmptySetting(v){
+    if(v == null) return true;
+    if(typeof v === 'string') return v === '';
+    if(Array.isArray(v)) return v.length === 0;
+    if(typeof v === 'object') return Object.keys(v).length === 0;
+    return false;
+  }
+
+  /* One-time migration: move legacy localStorage settings into the
+     app_settings table, then remove the local copies. Runs once per
+     browser, guarded by gl_settings_migrated. A real value already in the
+     database always wins; a seeded empty default does not. */
+  async function _bridgeLegacySettings(){
     /* One-time migration: run exactly once, then never again. */
     if(localStorage.getItem('gl_settings_migrated') === '1') return;
     var map = {
@@ -218,16 +234,37 @@
       stripe_pub_key:  'gl_stripe_pub',
       sentry_dsn:      'gl_sentry_dsn'
     };
+    var pending = [];
+    var unmigrated = [];
     Object.keys(map).forEach(function(settingKey){
-      if(!(settingKey in window.GL_APP_SETTINGS)){
-        var raw = localStorage.getItem(map[settingKey]);
-        if(raw != null){
-          try { window.GL_APP_SETTINGS[settingKey] = JSON.parse(raw); }
-          catch(e){ window.GL_APP_SETTINGS[settingKey] = raw; }
-        }
+      var raw = localStorage.getItem(map[settingKey]);
+      if(raw == null) return;
+      if(!_isEmptySetting(window.GL_APP_SETTINGS[settingKey])){
+        /* The database already holds a real value an admin set. It wins, and
+           the stale local copy is safe to drop. */
+        return;
       }
+      var val;
+      try { val = JSON.parse(raw); }
+      catch(e){ val = raw; }
+      if(_isEmptySetting(val)){ return; }   /* nothing worth migrating */
+      window.GL_APP_SETTINGS[settingKey] = val;
+      pending.push({ key: settingKey, value: val });
+      unmigrated.push(map[settingKey]);
     });
-    /* Delete all legacy keys — DB is now the sole source of truth. */
+    /* Persist to Supabase BEFORE deleting the legacy keys. These values
+       exist only in localStorage — the bridge above copies them into an
+       in-memory cache that is discarded on reload. Deleting first would
+       destroy the only copy (standard §4). Abort the cleanup on any
+       failure and leave localStorage intact so the migration retries. */
+    if(pending.length){
+      var sb = getSupa(); if(!sb) return;
+      try {
+        var r = await sb.from('app_settings').upsert(pending, {onConflict:'key'});
+        if(r.error){ console.warn('[GL] settings migration failed, keeping localStorage', r.error); return; }
+      } catch(e){ console.warn('[GL] settings migration threw, keeping localStorage', e); return; }
+    }
+    /* Safe now: the authoritative copy is in the database. */
     Object.keys(map).forEach(function(k){ localStorage.removeItem(map[k]); });
     localStorage.removeItem('gl_supabase_key');
     localStorage.setItem('gl_settings_migrated', '1');

@@ -29,6 +29,7 @@
 //   supabase secrets set STRIPE_SECRET_KEY=sk_live_xxx
 
 import { corsHeaders, jsonResponse, errorResponse, handlePreflight } from '../_shared/cors.ts';
+import { requireStaff } from '../_shared/auth.ts';
 
 const SUPABASE_URL     = Deno.env.get('SUPABASE_URL')              || '';
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
@@ -55,6 +56,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const {
     invoice_id,
+    share_token,
     amount,
     currency = 'usd',
     description,
@@ -65,30 +67,80 @@ Deno.serve(async (req: Request): Promise<Response> => {
     surcharge_pct = 0,
   } = payload as Record<string, string | number>;
 
-  if (!invoice_id) return errorResponse('invoice_id is required', 400);
   if (!success_url) return errorResponse('success_url is required', 400);
   if (!cancel_url)  return errorResponse('cancel_url is required', 400);
 
+  /* ── AUTHORIZATION ──────────────────────────────────────────────────
+     This function performs a SERVICE-ROLE invoice lookup, which bypasses
+     RLS entirely. It previously did no caller check at all and addressed
+     the row by `invoice_number` — a short, sequential, guessable string
+     like "GL-1042". Anyone who could reach the endpoint could therefore
+     walk the invoice-number space and learn, for every client:
+       - whether an invoice exists            (404 vs 200)
+       - whether it is paid or voided         (distinct 409 messages)
+       - its exact amount                     (returned in the session)
+
+     It stays reachable without a CRM login, because that is the point of
+     a public pay link. But the caller must now prove they hold something
+     they could not have guessed:
+
+       (a) share_token — the unique token already used for the public
+           invoice view. The lookup is BY THE TOKEN, so an invoice number
+           is no longer an access key and cannot be enumerated at all.
+       (b) a staff session — for the in-CRM "take payment" flow.
+
+     requireStaff() rejects a bare anon/publishable key, which matters
+     here: supabase-js functions.invoke() attaches the publishable key as
+     the Authorization header when the customer has no session, so
+     "an Authorization header is present" proves nothing on its own. */
+  let lookupFilter = '';
+  let authMode = '';
+
+  if (share_token) {
+    // Address the row by the unguessable token, never by the number.
+    lookupFilter = `share_token=eq.${encodeURIComponent(String(share_token))}`;
+    authMode = 'share_token';
+  } else {
+    const staff = await requireStaff(req);
+    if (!staff.ok) {
+      // Deliberately identical to the not-found response below, so this
+      // cannot be used to probe which invoice numbers exist.
+      return errorResponse('Invoice not found', 404);
+    }
+    if (!invoice_id) return errorResponse('invoice_id is required', 400);
+    lookupFilter = `invoice_number=eq.${encodeURIComponent(String(invoice_id))}`;
+    authMode = 'staff';
+  }
+
   // ── Charge the invoice's REAL amount from the database — never the amount
   //    sent by the browser (a client could POST amount:0.01 to clear a $10k
-  //    invoice). invoice_id is the human-readable invoice_number.
+  //    invoice).
   let dbAmount: number | null = null;
   let dbStatus = '';
+  let dbNumber = '';
   try {
     const invRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/invoices?select=amount,status&invoice_number=eq.${encodeURIComponent(String(invoice_id))}&limit=1`,
+      `${SUPABASE_URL}/rest/v1/invoices?select=amount,status,invoice_number&${lookupFilter}&limit=1`,
       { headers: { apikey: SERVICE_ROLE_KEY, Authorization: `Bearer ${SERVICE_ROLE_KEY}` } },
     );
     const rows = await invRes.json();
     if (Array.isArray(rows) && rows.length) {
       dbAmount = Number(rows[0].amount);
       dbStatus = String(rows[0].status || '');
+      dbNumber = String(rows[0].invoice_number || '');
     }
   } catch (e) {
     console.error('[stripe-checkout-session] invoice lookup failed', e);
     return errorResponse('Could not verify invoice', 502);
   }
   if (dbAmount == null || !(dbAmount > 0)) return errorResponse('Invoice not found', 404);
+
+  // When both were supplied, they must describe the same invoice — otherwise a
+  // valid token for one invoice could be paired with another's number.
+  if (authMode === 'share_token' && invoice_id && dbNumber && String(invoice_id) !== dbNumber) {
+    return errorResponse('Invoice not found', 404);
+  }
+
   if (dbStatus === 'paid')   return errorResponse('This invoice is already paid', 409);
   if (dbStatus === 'voided') return errorResponse('This invoice has been voided', 409);
   const chargeAmount = dbAmount;

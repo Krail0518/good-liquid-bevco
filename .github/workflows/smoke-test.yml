@@ -56,6 +56,46 @@ jobs:
       - name: Run OAuth error-mapping unit tests
         run: node tests/oauth-errors.test.mjs
 
+      # Stored-XSS guard for the calendar day panel. cal_events titles and notes
+      # originate in the PUBLIC tour-booking form, so this asserts they render as
+      # inert text rather than markup. Fails against the pre-fix code.
+      - name: Run calendar XSS regression test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+        run: node tests/calendar-xss.test.cjs
+      # The QuickBooks OAuth callback must verify the state it was handed.
+      - name: Run QBO OAuth state tests
+        run: node tests/qbo-oauth-state.test.cjs
+      # The public pay endpoint must not allow invoice enumeration.
+      - name: Run stripe-checkout authorization tests
+        run: node tests/stripe-checkout-auth.test.cjs
+      # app_settings migration — the one-shot localStorage -> DB move must never
+      # delete the local copy before the database write lands, and a seeded empty
+      # default must not mask a real local value. No browser needed.
+      - name: Run app_settings migration tests
+        run: node tests/app-settings-migration.test.cjs
+      # Role change and deactivation must not report success when the database
+      # did not change. Guards both the ReferenceError that stopped the write
+      # running at all, and the missing rows-affected check underneath it.
+      - name: Run user-admin write tests
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+        run: node tests/user-admin-writes.test.cjs
+      # Marking an invoice paid must not report success when the database did
+      # not change. Extracts glPersistInvoiceStatus from index.html and drives
+      # it against a fake PostgREST, so no browser is needed.
+      - name: Run invoice mark-paid write tests
+        run: node tests/invoice-paid-writes.test.cjs
+
+      # A record the database refused to create must not appear in the UI as
+      # though it exists. No browser needed.
+      - name: Run checked-insert tests
+        run: node tests/checked-inserts.test.cjs
+
+      # A delete the database refused must not purge the local cache or write
+      # an audit entry saying it happened. No browser needed.
+      - name: Run checked-delete tests
+        run: node tests/checked-deletes.test.cjs
       # Admin tools must not destroy the only copy of data, or report a
       # change they did not make. No browser needed.
       - name: Run admin-tools data-loss tests
