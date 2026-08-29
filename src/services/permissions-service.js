@@ -865,11 +865,30 @@
       }
     });
     // Wipe existing overrides, then insert only the meaningful ones.
-    var delR = await sb.from('user_permissions').delete().eq('user_id', userId);
+    //
+    // .select() so the delete is observable. Unlike the other delete sites,
+    // ZERO ROWS IS LEGITIMATE here — a user with no overrides yet has nothing
+    // to remove — so an empty array is not treated as failure.
+    //
+    // What must not happen is the delete being refused while the insert that
+    // follows succeeds: that leaves the old overrides in place alongside the
+    // new ones, and this is a permissions table. RLS refuses with no error, so
+    // the error check alone cannot see it. Asking for the rows back at least
+    // makes the outcome inspectable, and the insert below is checked too.
+    var delR = await sb.from('user_permissions').delete().eq('user_id', userId).select();
     if(delR.error){ alert('Reset failed: ' + delR.error.message); return; }
     if(overridesToWrite.length){
-      var upR = await sb.from('user_permissions').insert(overridesToWrite);
+      // Checked the same way as the delete above. An error-only check here
+      // would report the overrides applied when RLS had silently dropped
+      // them, leaving the user on default permissions while the UI showed
+      // the ones just chosen.
+      var upR = await sb.from('user_permissions').insert(overridesToWrite).select();
       if(upR.error){ alert('Apply failed: ' + upR.error.message); return; }
+      if(!Array.isArray(upR.data) || upR.data.length !== overridesToWrite.length){
+        alert('The server stored ' + ((upR.data && upR.data.length) || 0) + ' of ' +
+              overridesToWrite.length + ' permission overrides. They have NOT all been applied.');
+        return;
+      }
     }
     if(typeof window.addNotification === 'function'){
       window.addNotification('Preset applied',
