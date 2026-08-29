@@ -5,6 +5,7 @@
 # Each line is one authorization fact: a policy, an RLS flag, a table
 # grant, a function's security mode/search_path/ACL, or a storage bucket.
 BUCKET   client-docs | public=f
+BUCKET   compliance-photos | public=f
 BUCKET   sales-decks | public=f
 FUNC     public.admin_set_user_password(target_email text, new_password text) | secdef=t | search_path=public, auth | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.app_settings_updated_at() | secdef=t | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
