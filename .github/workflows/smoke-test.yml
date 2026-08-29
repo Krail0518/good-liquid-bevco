@@ -100,6 +100,9 @@ jobs:
       # change they did not make. No browser needed.
       - name: Run admin-tools data-loss tests
         run: node tests/admin-tools-data-loss.test.cjs
+      # Declared JWT state, webhook replay window, deactivated super-user.
+      - name: Run edge-function hardening tests
+        run: node tests/edge-function-hardening.test.cjs
 
       - name: Run smoke test
         env:

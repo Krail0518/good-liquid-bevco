@@ -30,3 +30,42 @@ verify_jwt = false
 # time — anonymous, no JWT. Returns only free/busy booleans, no private data.
 [functions.booking-availability]
 verify_jwt = false
+
+# ── Declared from live state, 2026-08-28 ─────────────────────────────────────
+# The four below were already verify_jwt=false in production but appeared in no
+# config file, so the setting existed only as server-side state. That works
+# until it doesn't: a function recreated from scratch, or a project restored,
+# comes back with the default (true) and every one of these silently starts
+# rejecting its caller — Stripe stops reconciling payments, Mailgun stops
+# updating delivery status, and the public booking form stops working.
+#
+# Verified against the live project via the Management API before declaring,
+# rather than inferred from the code, so these record what IS rather than what
+# was intended.
+#
+# Each has an external caller that cannot present a JWT, and each authenticates
+# in its own body — signature verification for the webhooks, rate limits and
+# validation for the booking form.
+#
+# Not declared here, deliberately: send-sms, gmail-send, daily-digest and
+# email-scheduler are also verify_jwt=false in production, but each calls
+# requireStaff() (or checks CRON_SECRET) internally, so the gateway setting is
+# not what protects them. Pinning it would enshrine a weaker default than they
+# need.
+
+# Stripe posts payment events here with a webhook signature, no JWT.
+[functions.stripe-webhook]
+verify_jwt = false
+
+# Mailgun posts delivery/open/bounce events with an HMAC signature, no JWT.
+[functions.mailgun-webhook]
+verify_jwt = false
+
+# Mailgun routes forward inbound replies here, no JWT.
+[functions.mailgun-inbound]
+verify_jwt = false
+
+# The public book.html page calls this anonymously to request a tour slot.
+# Rate-limited and validated in the function body.
+[functions.booking-confirm]
+verify_jwt = false
