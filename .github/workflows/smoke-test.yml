@@ -130,6 +130,10 @@ jobs:
       # account the system can identify. No browser needed.
       - name: Run compliance attribution tests
         run: node tests/compliance-attribution.test.cjs
+      # Two top-level declarations of one name: the last silently wins.
+      # A precondition for the GL-037 extraction. No browser needed.
+      - name: Run duplicate-declaration tests
+        run: node tests/duplicate-declarations.test.cjs
 
       - name: Run smoke test
         env:
