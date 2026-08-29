@@ -133,8 +133,19 @@ async function callHelper(src, mode, inv) {
     // Either an explicit rows-affected test, or reading .data.length before
     // acting on it. Checking `error` alone is NOT enough — that is precisely
     // the bug: a refusal arrives as zero rows with no error.
-    const readsRowCount = /\.length\s*===\s*0/.test(after) || /\.data\s*&&\s*\w+\.data\.length/.test(after)
-      || /Array\.isArray\([^)]*\)\s*&&\s*[\w.]*length\s*===\s*0/.test(after);
+    // Accept every form the codebase actually uses to read the row count:
+    //
+    //   rows.length === 0                 explicit comparison
+    //   !r.data || !r.data.length         negation (crm-extras uses this)
+    //   r.data && r.data.length           truthiness before acting
+    //
+    // The first version of this check only recognised `=== 0`, and flagged two
+    // correctly-guarded writes in crm-extras.js as unchecked. A false positive
+    // here is expensive: it argues for relaxing a rule that exists because ~40
+    // real bugs came from unchecked writes.
+    const readsRowCount = /\.length\s*===\s*0/.test(after)
+      || /\.data\.length/.test(after)
+      || /\.data\s*&&\s*\w+\.data\.length/.test(after);
     return !(asksForRows && readsRowCount);
   });
 

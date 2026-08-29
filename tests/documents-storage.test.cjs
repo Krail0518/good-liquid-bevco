@@ -46,7 +46,7 @@ function check(name, cond, detail) {
 // GL-037 continues pulling capabilities out.
 const { indexCore } = require('./_sources.cjs');
 const html = indexCore();
-const extras = read('crm-crm-extras.js');
+const extras = read('src/shared/crm-extras.js');
 
 console.log('documents storage — the column, the URL, and the way back out\n');
 
@@ -89,7 +89,7 @@ check('the save guard checks the path it now receives',
   'checking result.url against an uploader that returns a path would reject every upload');
 check('the upload-progress wrapper checks the path too',
   /!result \|\| !result\.path/.test(extras),
-  'crm-crm-extras.js wraps uploadDocToSupabase and had its own !result.url check');
+  'src/shared/crm-extras.js wraps uploadDocToSupabase and had its own !result.url check');
 
 // ── 3. the file has to be retrievable ────────────────────────────────
 console.log('');
