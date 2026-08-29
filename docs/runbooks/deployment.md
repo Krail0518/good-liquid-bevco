@@ -93,3 +93,56 @@ all three identities in a rolled-back transaction: an active staff member, a
 portal customer, and a self-registered stranger. It checks both directions —
 that non-staff cannot write, **and** that staff still can — so a lockdown that
 goes too far fails it as loudly as one that is too loose.
+
+## Running the browser tests locally (Windows)
+
+Sixteen of the suites drive a real browser. They are easy to conclude are
+"broken locally" when they are only misconfigured, so the exact working setup
+is recorded here.
+
+```bash
+# once — the package only, not the browsers
+PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install playwright --prefix /tmp/pw
+```
+
+```bash
+export NODE_PATH="/tmp/pw/node_modules"
+export PW_CHROMIUM="C:\Program Files\Google\Chrome\Application\chrome.exe"
+export REPO_ROOT="C:\Users\mike\Good_Liquid_Bev_Co_CRM_AI_Project_Scaffold\good-liquid-bev-crm-ai-scaffold"
+
+node tests/smoke.test.cjs
+node tests/full-sweep.cjs        # 120 checks
+```
+
+Three things matter, and each one fails in a way that looks like a real bug:
+
+**`REPO_ROOT` must be a WINDOWS path.** The test server joins it with the
+request path and refuses anything that escapes the root. Handed a Git Bash
+path (`/c/Users/...`), every file 404s and the run reports `body text length
+2`, `viewClientEnhanced missing`, `no sidebar "New Invoice" item found` — a
+convincing impression of a broken application. The app is fine; nothing was
+served.
+
+**Point `PW_CHROMIUM` at the installed Chrome.** There is no need to download
+Playwright's own build.
+
+**A partial download in `%LOCALAPPDATA%\ms-playwright` is worse than none.**
+That directory held a `chromium-1140` of 241 MB containing `chrome.dll` and a
+manifest but **no `chrome.exe`** — an interrupted download. Playwright treats
+the directory as present and fails at launch, and the error names a path that
+exists, so it reads as a Playwright problem rather than a truncated file. If
+launching fails, check for the `.exe` before anything else:
+
+```bash
+find "$LOCALAPPDATA/ms-playwright" -name "chrome.exe"
+```
+
+Empty output means the cache is broken; delete that directory and reinstall,
+or use the installed Chrome as above.
+
+### Why bother, when CI runs them
+
+CI is the gate and stays authoritative. But a browser locally turns a
+push-wait-read cycle into seconds, and the failure it catches first is usually
+the one a source-text assertion cannot see at all — a handler that no longer
+fires, an overlay stacked behind another, a module that stopped loading.
