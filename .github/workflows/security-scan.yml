@@ -47,7 +47,7 @@ jobs:
     name: secret scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Full history: a secret committed and then "removed" in a later
           # commit is still a leaked secret and still needs rotating.
@@ -79,7 +79,7 @@ jobs:
     name: workflow action versions
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # A third-party action runs arbitrary code with this repo's token. These
       # are all first-party (actions/*) or the vendor's own (supabase/*), and a
       # major-version tag is a reasonable trust level for those — but a NEW

@@ -71,7 +71,7 @@ jobs:
             echo "Not 08:00 in New York — this is the other DST candidate run. Exiting."
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: steps.when.outputs.proceed == 'true'
         with:
           fetch-depth: 0   # the review needs history to diff since the last one
