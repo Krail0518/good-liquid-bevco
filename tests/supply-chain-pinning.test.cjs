@@ -132,8 +132,9 @@ const cdnNoSri = cdnTags.filter((t) => !/\bintegrity=/.test(t.tag));
 // GL-047 is FIXED: the Chart.js tag now carries
 // integrity="sha384-e6cc9LaI…" crossorigin="anonymous". The hash was taken
 // from the file jsDelivr actually serves and confirmed three ways -- two
-// independent fetches, and the vendored copy in index_files/, all byte-
-// identical. Baseline is ZERO: a new un-integrity-checked CDN script fails.
+// independent fetches, and a vendored copy then present in index_files/ (since
+// deleted as dead weight), all byte-identical. Baseline is ZERO: a new
+// un-integrity-checked CDN script fails.
 const BASELINE_CDN_NO_SRI = 0;
 
 check('no NEW cross-origin script without Subresource Integrity',
