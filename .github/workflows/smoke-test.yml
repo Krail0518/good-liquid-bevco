@@ -267,3 +267,11 @@ jobs:
       # only shrink. No browser needed.
       - name: Run migration rollback-note test
         run: node tests/migration-rollback-notes.test.cjs
+
+      # Third-party code must be pinned, and the secret scanner's allowlist
+      # must not be able to hide a service_role key. No off-the-shelf tool
+      # covers this repo's dependencies — there is no package.json, so the real
+      # surface is a CDN script tag and 18 edge functions importing Deno URLs
+      # while holding SUPABASE_SERVICE_ROLE_KEY. No browser needed.
+      - name: Run supply-chain pinning tests
+        run: node tests/supply-chain-pinning.test.cjs

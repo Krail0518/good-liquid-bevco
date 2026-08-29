@@ -1,0 +1,57 @@
+# gitleaks configuration — makes CLAUDE.md rule 6 mechanical.
+#
+#   "Secrets live in Supabase secrets or supabase/secrets.env (gitignored),
+#    never in crm-*.js, index.html, or a migration."
+#
+# That rule was enforced by attention alone until now.
+#
+# WHAT THIS PROJECT PUBLISHES ON PURPOSE
+# --------------------------------------
+# Two credentials are public by design and must stay allowed, or the scan is
+# red forever and everyone learns to ignore it — which is worse than no scan:
+#
+#   - sb_publishable_…  the current Supabase publishable key. It ships in the
+#     page source by design; the security model assumes an attacker has it.
+#     That is precisely why scripts/security-invariants.sh probes production
+#     with this key: it is public, and the database must be safe anyway.
+#
+#   - the legacy anon JWT, which exists only in git history.
+#
+# WHY THE ANON ALLOWLIST IS PINNED SO TIGHTLY
+# -------------------------------------------
+# The obvious pattern for that JWT is its `{"iss":"supabase"` prefix. That is a
+# trap: a service_role token for this same project encodes to a BYTE-IDENTICAL
+# prefix, and the two payloads only diverge 73 characters in. An allowlist
+# written that way would silently suppress the single finding that matters most
+# — a service_role key is a full RLS bypass, i.e. every client's data at once,
+# the outcome CLAUDE.md names as the worst this system can produce.
+#
+# So the regex below pins the project ref AND the literal base64 of
+# `"role":"anon"`. Verified against the real historical token: the service_role
+# twin of that exact payload does NOT match.
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "supabase-service-role-key"
+description = "Supabase service_role JWT — full RLS bypass, rotate immediately"
+# The role lives in a base64 payload, so match the JWT shape and let the
+# allowlist subtract the one public token rather than trying to decode here.
+regex = '''eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}'''
+keywords = ["eyJ"]
+
+[allowlist]
+description = "Credentials this project publishes on purpose"
+regexes = [
+  # Publishable key — public by design, see header.
+  '''sb_publishable_[A-Za-z0-9_-]+''',
+  # Legacy anon JWT for project ufjkeqmxwuyhbqyugcgg. The trailing
+  # `ImFub24i` is base64 for "anon" — a service_role token carries
+  # `InNlcnZpY2Vfcm9sZSI` there instead and is therefore NOT allowlisted.
+  '''eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmamtlcW14d3V5aGJxeXVnY2dnIiwicm9sZSI6ImFub24i[A-Za-z0-9_-]*''',
+]
+paths = [
+  # This file quotes key SHAPES, not keys.
+  '''\.gitleaks\.toml$''',
+]

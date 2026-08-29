@@ -1,0 +1,94 @@
+# Security scanning — secrets and supply chain.
+#
+# WHY THIS EXISTS
+# ---------------
+# This repo had 44 named CI steps and zero scanners. Two of CLAUDE.md's hard
+# rules were enforced by attention alone:
+#
+#   rule 6  secrets never live in crm-*.js, index.html, or a migration
+#           -> the gitleaks job below
+#
+# and the dependency surface was invisible to every off-the-shelf tool, because
+# there is no package.json at all. What this project actually depends on is a
+# CDN <script> tag and 18 edge functions importing Deno URLs — npm audit and
+# Dependabot see none of that. tests/supply-chain-pinning.test.cjs covers it,
+# and runs in the smoke workflow with the other tests.
+#
+# HISTORY WAS SCANNED ONCE, BY HAND, BEFORE THIS LANDED
+# -----------------------------------------------------
+# All 1,414 blobs in history were checked for provider-key shapes (sk-ant-,
+# sk_live_, ghp_, AKIA…) and every JWT was decoded. Result: zero provider keys,
+# and exactly one JWT — an anon key, which is public by design. So this job was
+# not switched on over a pile of pre-existing findings that everyone would
+# learn to ignore.
+
+name: Security Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Dashboard drift and newly-published advisories do not arrive on pushes.
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: a secret committed and then "removed" in a later
+          # commit is still a leaked secret and still needs rotating.
+          fetch-depth: 0
+
+      # Pinned to an exact version AND verified against the published
+      # checksum. Downloading an unpinned binary into CI would be its own
+      # supply-chain hole, which is a poor look for a supply-chain scanner.
+      - name: Install gitleaks (pinned + checksum verified)
+        run: |
+          set -euo pipefail
+          VERSION=8.30.1
+          SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+          curl -sSLo gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
+          echo "${SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks version
+
+      # The working tree — what is live right now.
+      - name: Scan working tree
+        run: ./gitleaks dir . --config .gitleaks.toml --redact --verbose
+
+      # And the whole history.
+      - name: Scan git history
+        run: ./gitleaks git . --config .gitleaks.toml --redact --verbose
+
+  actions-pinning:
+    name: workflow action versions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # A third-party action runs arbitrary code with this repo's token. These
+      # are all first-party (actions/*) or the vendor's own (supabase/*), and a
+      # major-version tag is a reasonable trust level for those — but a NEW
+      # third-party action should be a deliberate decision, not a silent one.
+      - name: List actions in use
+        run: |
+          echo "Actions referenced by workflows:"
+          grep -rhoE 'uses: [^ ]+' .github/workflows/ | sort -u | sed 's/^/  /'
+          echo ""
+          THIRD_PARTY=$(grep -rhoE 'uses: [^ ]+' .github/workflows/ \
+            | sed 's/uses: //' | sort -u \
+            | grep -vE '^(actions|github|supabase)/' || true)
+          if [ -n "$THIRD_PARTY" ]; then
+            echo "Third-party actions found — confirm each is intended:"
+            echo "$THIRD_PARTY" | sed 's/^/  /'
+          else
+            echo "No third-party actions."
+          fi
