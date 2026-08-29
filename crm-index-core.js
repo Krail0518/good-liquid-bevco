@@ -453,7 +453,7 @@ function renderCustomerLogins(){
       <td style="font-weight:600">${esc(c.name)}</td>
       <td style="font-family:var(--ff-mono);font-size:11px">${esc(c.email)}</td>
       <td style="font-size:11px;color:var(--muted)">${c.createdAt?c.createdAt.split('T')[0]:''}</td>
-      <td><button class="cbtn red" style="font-size:10px;padding:3px 8px" onclick="removeCustomerLogin('${c.id}')">Remove</button></td>
+      <td><button class="cbtn red" style="font-size:10px;padding:3px 8px" data-gl-action="removeCustomerLogin" data-gl-arg1="${esc(c.id)}">Remove</button></td>
     </tr>`).join('')
   }</tbody></table>`;
 }
@@ -682,7 +682,7 @@ function renderClients(list){
   document.getElementById('client-body').innerHTML=rows.map(c=>{
     const ref=referrers.find(r=>r.id===c.referredBy);
     const billed = billedByClient[c.id] != null ? billedByClient[c.id] : (c.billed || 0);
-    return`<tr style="cursor:pointer" onclick="openClientCard('${c.id}')">
+    return`<tr style="cursor:pointer" data-gl-action="openClientCard" data-gl-arg1="${esc(c.id)}">
       <td><div style="display:flex;align-items:center;gap:7px"><div class="cavt" style="background:${c.color};color:${c.tc}">${esc(c.init)}</div><span style="font-weight:600">${esc(c.name)}</span></div></td>
       <td style="color:var(--muted)">${esc(c.contact)}</td>
       <td style="color:var(--muted)">${esc(c.service)}</td>
@@ -690,7 +690,7 @@ function renderClients(list){
       <td style="font-weight:600">$${Number(billed||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
       <td style="color:var(--muted)">${ref?`🤝 ${esc(ref.name)}`:'-'}</td>
       <td onclick="event.stopPropagation()" style="white-space:nowrap">
-        <button class="cbtn" style="font-size:10px;padding:3px 9px" onclick="createForClient('${c.id}')">+ Invoice</button>
+        <button class="cbtn" style="font-size:10px;padding:3px 9px" data-gl-action="createForClient" data-gl-arg1="${esc(c.id)}">+ Invoice</button>
         <button class="cbtn" style="font-size:10px;padding:3px 9px;margin-left:4px;background:rgba(26,111,255,.12);border-color:rgba(26,111,255,.35);color:#6b9fff" data-cname="${(c.name||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}" onclick="if(window.glInviteCustomerLogin){window.glInviteCustomerLogin('${c.id}', this.dataset.cname);}else{alert('Portal module not ready');}">🔑 Invite</button>
         ${(window.glIsSuperUser && window.glIsSuperUser()) ? `<button class="cbtn red" style="font-size:10px;padding:3px 9px;margin-left:4px" data-cname="${(c.name||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}" onclick="deleteClient('${c.id}', this.dataset.cname)">Delete</button>` : ''}
       </td>
@@ -801,9 +801,9 @@ function renderInvBulkBar(){
     <div style="font-size:12px;color:#fff;font-weight:700">${ids.length} selected</div>
     <div style="font-size:11px;color:var(--muted)">Total: <b style="color:#00e5c0">${fmtMoneyShort(total)}</b></div>
     <div style="flex:1"></div>
-    <button class="cbtn" style="font-size:11px;padding:6px 12px;background:rgba(26,111,255,.15);border-color:rgba(26,111,255,.4);color:#6b9fff" onclick="bulkSendInvoices()">📧 Send ${sendableCount > 0 ? sendableCount : ids.length}</button>
-    ${anyUnpaid ? `<button class="cbtn grn" style="font-size:11px;padding:6px 12px" onclick="bulkMarkPaid()">✓ Mark ${selectedInvs.filter(i => i.status !== 'paid').length} paid</button>` : ''}
-    <button class="cbtn" style="font-size:11px;padding:6px 12px" onclick="clearInvoiceSelection()">Clear</button>`;
+    <button class="cbtn" style="font-size:11px;padding:6px 12px;background:rgba(26,111,255,.15);border-color:rgba(26,111,255,.4);color:#6b9fff" data-gl-action="bulkSendInvoices">📧 Send ${sendableCount > 0 ? sendableCount : ids.length}</button>
+    ${anyUnpaid ? `<button class="cbtn grn" style="font-size:11px;padding:6px 12px" data-gl-action="bulkMarkPaid">✓ Mark ${selectedInvs.filter(i => i.status !== 'paid').length} paid</button>` : ''}
+    <button class="cbtn" style="font-size:11px;padding:6px 12px" data-gl-action="clearInvoiceSelection">Clear</button>`;
 }
 function clearInvoiceSelection(){
   window.invSelected.clear();
@@ -1030,7 +1030,7 @@ function renderInvoices(){
     return mf&&ms;
   });
   document.getElementById('inv-sub').textContent=list.length+' invoices';
-  document.getElementById('inv-body').innerHTML=list.map(i=>`<tr style="cursor:pointer" onclick="viewInvoice('${i.id}')">
+  document.getElementById('inv-body').innerHTML=list.map(i=>`<tr style="cursor:pointer" data-gl-action="viewInvoice" data-gl-arg1="${esc(i.id)}">
     <td onclick="event.stopPropagation()" style="text-align:center"><input type="checkbox" class="inv-row-cb" data-id="${i.id}" ${window.invSelected.has(i.id)?'checked':''} onchange="toggleInvoiceRow('${i.id}',this.checked)"></td>
     <td style="font-weight:600;color:var(--teal)">${esc(i.id)}</td>
     <td>${esc(i.clientName)}</td>
@@ -3265,14 +3265,14 @@ function openDealDetail(stage, idx){
     </div>
     ${d.notes ? `<div style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="font-size:10px;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:4px">NOTES</span><div style="font-size:13px;color:var(--white);line-height:1.6;white-space:pre-wrap">${esc(d.notes)}</div></div>` : ''}
     <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
-      <button onclick="editDealDetail()" style="flex:1;padding:10px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:800;font-size:13px;cursor:pointer">✏️ Edit</button>
-      <button onclick="openLeadEmailComposer()" style="flex:1;padding:10px;background:rgba(26,111,255,.15);color:#6b9fff;border:1px solid rgba(26,111,255,.35);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">✉️ Email Lead</button>
-      <button onclick="deleteDeal()" style="padding:10px 16px;background:rgba(231,76,60,.15);color:#e74c3c;border:1px solid rgba(231,76,60,.3);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">Delete</button>
+      <button data-gl-action="editDealDetail" style="flex:1;padding:10px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:800;font-size:13px;cursor:pointer">✏️ Edit</button>
+      <button data-gl-action="openLeadEmailComposer" style="flex:1;padding:10px;background:rgba(26,111,255,.15);color:#6b9fff;border:1px solid rgba(26,111,255,.35);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">✉️ Email Lead</button>
+      <button data-gl-action="deleteDeal" style="padding:10px 16px;background:rgba(231,76,60,.15);color:#e74c3c;border:1px solid rgba(231,76,60,.3);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">Delete</button>
     </div>
-    <button onclick="glConvertLeadToOnboarding()" style="width:100%;margin-top:8px;padding:12px;background:linear-gradient(135deg,#5fcf9e,#00c4a7);color:#04231d;border:none;border-radius:8px;font-weight:800;font-size:13.5px;cursor:pointer">🚀 Convert to Client &amp; Onboard</button>
+    <button data-gl-action="glConvertLeadToOnboarding" style="width:100%;margin-top:8px;padding:12px;background:linear-gradient(135deg,#5fcf9e,#00c4a7);color:#04231d;border:none;border-radius:8px;font-weight:800;font-size:13.5px;cursor:pointer">🚀 Convert to Client &amp; Onboard</button>
     ${(d.id && !String(d.id).startsWith('tmp_')) ? `<div style="display:flex;gap:8px;margin-top:8px">
-      <button onclick="glSnoozeLead('${d.id}')" title="Pause follow-up drafts & reply alerts for 7 days" style="flex:1;padding:9px;background:rgba(143,179,255,.1);color:#8fb3ff;border:1px solid rgba(143,179,255,.3);border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer">💤 Snooze 7d${d.snoozedUntil && new Date(d.snoozedUntil)>new Date() ? ' ✓' : ''}</button>
-      <button onclick="glMarkLeadHandled('${d.id}')" title="Stop automations nagging about this lead" style="flex:1;padding:9px;background:rgba(95,207,158,.1);color:#5fcf9e;border:1px solid rgba(95,207,158,.3);border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer">✓ Handled${d.handledAt ? ' ✓' : ''}</button>
+      <button data-gl-action="glSnoozeLead" data-gl-arg1="${esc(d.id)}" title="Pause follow-up drafts & reply alerts for 7 days" style="flex:1;padding:9px;background:rgba(143,179,255,.1);color:#8fb3ff;border:1px solid rgba(143,179,255,.3);border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer">💤 Snooze 7d${d.snoozedUntil && new Date(d.snoozedUntil)>new Date() ? ' ✓' : ''}</button>
+      <button data-gl-action="glMarkLeadHandled" data-gl-arg1="${esc(d.id)}" title="Stop automations nagging about this lead" style="flex:1;padding:9px;background:rgba(95,207,158,.1);color:#5fcf9e;border:1px solid rgba(95,207,158,.3);border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer">✓ Handled${d.handledAt ? ' ✓' : ''}</button>
     </div>` : ''}
     <div id="ddp-docs" style="margin-top:18px;border-top:1px solid rgba(255,255,255,.07);padding-top:16px"></div>
     <div id="ddp-notes" style="margin-top:18px;border-top:1px solid rgba(255,255,255,.07);padding-top:16px"></div>
@@ -3948,7 +3948,7 @@ function openClientDetail(cid) {
               <div style="font-weight:700;color:var(--white)">$${i.amount.toLocaleString()}</div>
               <span style="padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;background:${i.status==='paid'?'rgba(29,158,117,.2)':i.status==='overdue'?'rgba(231,76,60,.2)':'rgba(255,255,255,.08)'};color:${i.status==='paid'?'#1D9E75':i.status==='overdue'?'#e74c3c':'var(--muted)'}">
                 ${i.status.toUpperCase()}</span>
-              <button onclick="downloadInvoicePDF('${i.id}')" style="font-size:10px;padding:3px 8px;background:rgba(0,229,192,.1);border:1px solid rgba(0,229,192,.3);border-radius:6px;color:var(--teal);cursor:pointer">⬇ PDF</button>
+              <button data-gl-action="downloadInvoicePDF" data-gl-arg1="${esc(i.id)}" style="font-size:10px;padding:3px 8px;background:rgba(0,229,192,.1);border:1px solid rgba(0,229,192,.3);border-radius:6px;color:var(--teal);cursor:pointer">⬇ PDF</button>
             </div>
           </div>`).join('')
         }
@@ -3975,7 +3975,7 @@ function openClientDetail(cid) {
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button onclick="(function(){var ov=document.getElementById('client-detail-overlay');if(ov)ov.remove();if(window.glOpenEditClient)window.glOpenEditClient('${c.id}');})()" style="flex:1;min-width:140px;padding:11px;background:rgba(245,200,66,.12);border:1px solid rgba(245,200,66,.35);border-radius:8px;color:#f5c842;cursor:pointer;font-weight:700;font-size:13px">✏️ Edit Client</button>
         <button onclick="createForClient('${c.id}');document.getElementById('client-detail-overlay').remove()" style="flex:1;min-width:140px;padding:11px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:800;cursor:pointer;font-size:13px">+ New Invoice</button>
-        <button onclick="aiSummarizeClient('${c.id}')" style="flex:1;min-width:140px;padding:11px;background:rgba(0,229,192,.1);border:1px solid rgba(0,229,192,.3);border-radius:8px;color:var(--teal);cursor:pointer;font-weight:700;font-size:13px">🤖 AI Summary</button>
+        <button data-gl-action="aiSummarizeClient" data-gl-arg1="${esc(c.id)}" style="flex:1;min-width:140px;padding:11px;background:rgba(0,229,192,.1);border:1px solid rgba(0,229,192,.3);border-radius:8px;color:var(--teal);cursor:pointer;font-weight:700;font-size:13px">🤖 AI Summary</button>
         <button onclick="window.glQuoteFromClient&&window.glQuoteFromClient('${c.id}')" style="flex:1;min-width:140px;padding:11px;background:rgba(26,111,255,.1);border:1px solid rgba(26,111,255,.35);border-radius:8px;color:#6b9fff;cursor:pointer;font-weight:700;font-size:13px">📋 Quote Builder</button>
         <button data-gl-close="#client-detail-overlay" style="padding:11px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer;font-size:13px">Close</button>
       </div>
@@ -4116,8 +4116,8 @@ function openReports() {
       ${renderArAgingSection()}
 
       <div style="display:flex;gap:10px;margin-top:24px">
-        <button onclick="openArAging()" style="flex:1;padding:12px;background:rgba(245,200,66,.1);border:1px solid rgba(245,200,66,.3);border-radius:8px;color:#f5c842;font-weight:700;cursor:pointer;font-size:13px">📋 Accounts Receivable (A/R) Aging — Full Drill-Down</button>
-        <button onclick="aiGenerateInsights()" style="flex:1;padding:12px;background:rgba(0,229,192,.1);border:1px solid rgba(0,229,192,.3);border-radius:8px;color:var(--teal);font-weight:700;cursor:pointer;font-size:13px">🤖 AI Business Insights</button>
+        <button data-gl-action="openArAging" style="flex:1;padding:12px;background:rgba(245,200,66,.1);border:1px solid rgba(245,200,66,.3);border-radius:8px;color:#f5c842;font-weight:700;cursor:pointer;font-size:13px">📋 Accounts Receivable (A/R) Aging — Full Drill-Down</button>
+        <button data-gl-action="aiGenerateInsights" style="flex:1;padding:12px;background:rgba(0,229,192,.1);border:1px solid rgba(0,229,192,.3);border-radius:8px;color:var(--teal);font-weight:700;cursor:pointer;font-size:13px">🤖 AI Business Insights</button>
         <button data-gl-close="#reports-overlay" style="padding:12px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer">Close</button>
       </div>
     </div>`;
@@ -4244,9 +4244,9 @@ function renderDocs(){
       ${d.notes?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(d.notes)}</div>`:''}
     </div>
     ${d.filePath
-      ? `<button class="cbtn" style="font-size:10px;padding:3px 9px" onclick="glDownloadDocById('${esc(d.id)}')">\u2b07 Download</button>`
+      ? `<button class="cbtn" style="font-size:10px;padding:3px 9px" data-gl-action="glDownloadDocById" data-gl-arg1="${esc(d.id)}">\u2b07 Download</button>`
       : '<span style="font-size:10px;color:var(--muted)" title="Saved before a file could be attached">no file</span>'}
-    <button class="cbtn red" style="font-size:10px;padding:3px 7px" onclick="deleteDoc('${d.id}')">✕</button>
+    <button class="cbtn red" style="font-size:10px;padding:3px 7px" data-gl-action="deleteDoc" data-gl-arg1="${esc(d.id)}">✕</button>
   </div>`).join('');
 }
 
@@ -4339,8 +4339,8 @@ function renderInventory(){
       <div style="min-width:100px;text-align:right;font-size:12px;font-weight:700;color:${color}">${esc(i.qty)} ${esc(i.unit)}</div>
       <div style="min-width:80px;text-align:right;font-size:10px;color:var(--muted)">low@${i.lowAt}</div>
       <div style="display:flex;gap:4px">
-        <button class="cbtn" style="font-size:10px;padding:3px 7px" onclick="adjustInventory('${i.id}',10)">+</button>
-        <button class="cbtn" style="font-size:10px;padding:3px 7px" onclick="adjustInventory('${i.id}',-10)">−</button>
+        <button class="cbtn" style="font-size:10px;padding:3px 7px" data-gl-action="adjustInventory" data-gl-arg1="${esc(i.id)}" data-gl-arg2="10">+</button>
+        <button class="cbtn" style="font-size:10px;padding:3px 7px" data-gl-action="adjustInventory" data-gl-arg1="${esc(i.id)}" data-gl-arg2="-10">−</button>
       </div>
     </div>`;
   }).join('');
@@ -4609,7 +4609,7 @@ function viewClientEnhanced(clientId) {
 
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button onclick="document.getElementById('client-detail-overlay').remove();if(window.glOpenEditClient)window.glOpenEditClient('${clientId}')" class="cbtn" style="background:rgba(245,200,66,.12);border-color:rgba(245,200,66,.35);color:#f5c842">✏️ Edit Client</button>
-        <button onclick="aiScoreClientHealth('${clientId}')" class="cbtn" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)">🤖 AI Health Score</button>
+        <button data-gl-action="aiScoreClientHealth" data-gl-arg1="${esc(clientId)}" class="cbtn" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)">🤖 AI Health Score</button>
         <button onclick="openAICommModal();document.getElementById('ai-comm-client').value='${clientId}';document.getElementById('client-detail-overlay').remove()" class="cbtn">✉️ Draft Email</button>
         <button onclick="openTimeTracker();document.getElementById('tt-client').value='${clientId}';document.getElementById('client-detail-overlay').remove()" class="cbtn">⏱️ Log Time</button>
         <button onclick="openTaskModal();document.getElementById('task-client-link').value='${clientId}';document.getElementById('client-detail-overlay').remove()" class="cbtn">✅ Add Task</button>
@@ -4789,7 +4789,7 @@ function openInviteModal(){
   modal.className = 'modal-ov show';
   modal.innerHTML = `
     <div class="modal-box" style="width:460px">
-      <div class="modal-title">+ Invite User <span class="modal-close" onclick="closeInviteModal()">✕</span></div>
+      <div class="modal-title">+ Invite User <span class="modal-close" data-gl-action="closeInviteModal">✕</span></div>
       <div style="font-size:12px;color:#9ca3af;margin-bottom:14px;line-height:1.5">An email will be sent with a secure link. The invitee clicks the link to set their own password and access the CRM with the role you select below.</div>
       <div class="frow"><div class="flbl">Full name *</div><input class="finp" id="inv-name" placeholder="e.g. John Smith"></div>
       <div class="frow"><div class="flbl">Email address *</div><input class="finp" type="email" id="inv-email" placeholder="john@goodliquid.com"></div>
@@ -4804,8 +4804,8 @@ function openInviteModal(){
       <div id="inv-err" style="color:#e74c3c;font-size:12px;margin-bottom:8px;display:none"></div>
       <div id="inv-ok" style="color:var(--teal);font-size:12px;margin-bottom:8px;display:none">✓ Invite sent!</div>
       <div style="display:flex;gap:8px;margin-top:6px">
-        <button class="cbtn pri" onclick="createInvitedUser()" style="flex:1">Send Invite</button>
-        <button class="cbtn" onclick="closeInviteModal()">Cancel</button>
+        <button class="cbtn pri" data-gl-action="createInvitedUser" style="flex:1">Send Invite</button>
+        <button class="cbtn" data-gl-action="closeInviteModal">Cancel</button>
       </div>
     </div>`;
   modal.addEventListener('click', e => { if(e.target === modal) closeInviteModal(); });
@@ -4856,7 +4856,7 @@ function renderUsersPanel(){
       <td><span class="cbdg ${esc(u.role)}">${esc(u.role)}</span></td>
       <td style="font-size:11px;color:var(--muted)">${esc(u.lastLogin||'Never')}</td>
       <td style="display:flex;gap:6px">
-        ${u.email !== 'mike@goodliquid.com' ? `<button class="cbtn red" style="font-size:10px;padding:3px 8px" onclick="removeUser('${u.id}')">Remove</button>` : '<span style="font-size:10px;color:var(--muted)">Owner</span>'}
+        ${u.email !== 'mike@goodliquid.com' ? `<button class="cbtn red" style="font-size:10px;padding:3px 8px" data-gl-action="removeUser" data-gl-arg1="${esc(u.id)}">Remove</button>` : '<span style="font-size:10px;color:var(--muted)">Owner</span>'}
       </td>
     </tr>`).join('')}
   </tbody></table>`;
