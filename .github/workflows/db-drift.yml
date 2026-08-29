@@ -68,7 +68,12 @@ jobs:
       - name: Commit the regenerated baseline
         if: ${{ github.event.inputs.update_baseline == 'true' }}
         run: |
-          if git diff --quiet -- docs/database/authorization-baseline.txt; then
+          # `git diff` does not see untracked files, so stage first and then
+          # test the index. Without this the very first run — where the
+          # baseline is a new file — reports "nothing to commit" and silently
+          # produces no baseline at all.
+          git add docs/database/authorization-baseline.txt
+          if git diff --cached --quiet -- docs/database/authorization-baseline.txt; then
             echo "Baseline already matches production — nothing to commit."
             exit 0
           fi
