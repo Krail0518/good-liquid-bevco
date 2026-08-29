@@ -1,5 +1,5 @@
 /* ============================================================
-   crm-attention.js — "Needs Attention Today" triage board
+   attention.js — "Needs Attention Today" triage board
    ============================================================
    One prioritized list across every open lead AND active client, so a glance
    answers "who's waiting on me and what do I owe them?" — not just a vague

@@ -1,5 +1,5 @@
 /* ============================================================
-   crm-deal-brief.js — the AI "Deal Brief"
+   deal-brief.js — the AI "Deal Brief"
    ============================================================
    A living, incrementally-updated summary of a lead/client's whole thread —
    emails + meeting notes + staff notes — so opening a deal answers "where's

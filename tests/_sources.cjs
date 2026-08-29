@@ -68,6 +68,8 @@ const CORE_FILES = [
   'src/modules/invoicing/invoice-builder.js',
   'src/shared/footer-nav.js',
   'src/shared/soft-refresh.js',
+  'src/modules/pipeline/scheduling.js',
+  'src/modules/pipeline/calendar.js',
   'src/modules/invoicing/accounting.js',
   'src/modules/invoicing/invoice-delete.js',
   'src/modules/customers/portal.js',
@@ -85,7 +87,14 @@ const CORE_FILES = [
   'src/modules/customers/onboarding.js',
   'src/modules/customers/client-detail.js',
   'src/modules/customers/artwork.js',
+  'src/modules/pipeline/deal-docs.js',
+  'src/modules/pipeline/meeting-notes.js',
   'src/modules/customers/intake.js',
+  'src/modules/pipeline/deal-brief.js',
+  'src/modules/pipeline/attention.js',
+  'src/modules/pipeline/followups.js',
+  'src/modules/pipeline/booking-review.js',
+  'src/modules/pipeline/formulation.js',
   'src/shared/selftest.js',
 ];
 

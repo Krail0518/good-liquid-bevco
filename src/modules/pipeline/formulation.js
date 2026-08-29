@@ -1,5 +1,5 @@
 /* ============================================================
-   crm-formulation.js — formulation house + spend, per record
+   formulation.js — formulation house + spend, per record
    ============================================================
    Mike refers brands out to third-party formulation houses and needs to
    record, on both a pipeline deal and a client:

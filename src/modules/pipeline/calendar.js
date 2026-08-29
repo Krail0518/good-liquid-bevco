@@ -79,7 +79,7 @@
          innerHTML let a stranger run script in a staff session the moment any
          staff member opened that day — the origin holding the staff JWT.
          See CLAUDE.md rule 5. Every other calendar renderer escapes
-         (index.html:8899, 8974; crm-scheduling.js:264); this was the one gap. */
+         (index.html:8899, 8974; scheduling.js:264); this was the one gap. */
       var titleEl = document.createElement('div');
       titleEl.style.cssText = 'font-size:14px;font-weight:600;color:#eef4ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
       titleEl.textContent = ev.title || '(untitled)';

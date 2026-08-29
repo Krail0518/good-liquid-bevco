@@ -1,4 +1,4 @@
-/* crm-booking-review.js — review & confirm a tour request INSIDE the admin area.
+/* booking-review.js — review & confirm a tour request INSIDE the admin area.
  *
  * The approval email/WhatsApp link now points at the CRM itself
  * (/?booking=<id>&t=<token>), not a standalone Supabase page. On login this

@@ -6,7 +6,7 @@
  * cal_events rows for tours are written from the PUBLIC tour-booking form:
  * booking-confirm accepts booker_name / notes from an anonymous caller, and
  * booking-approve writes them into the event as `Meeting: ${booker_name}` plus
- * a notes block. crm-calendar.js used to concatenate ev.title and ev.notes into
+ * a notes block. src/modules/pipeline/calendar.js used to concatenate ev.title and ev.notes into
  * innerHTML, so a stranger could book a tour whose name contained an <img
  * onerror> payload and get script execution in a staff session the next time
  * any staff member clicked that day — the origin holding the staff JWT.
@@ -14,7 +14,7 @@
  * public quote form.
  *
  * Every other calendar renderer escapes (index.html renderCal / renderCalList,
- * crm-scheduling.js). This file was the one gap, which is what made it easy to
+ * src/modules/pipeline/scheduling.js). This file was the one gap, which is what made it easy to
  * miss — so the guard is a test rather than a comment.
  *
  * Run:  NODE_PATH=<playwright>/node_modules node tests/calendar-xss.test.cjs
@@ -24,7 +24,7 @@ const path = require('path');
 const fs = require('fs');
 const { chromium } = require('playwright');
 
-const CALENDAR_JS = path.join(__dirname, '..', 'crm-calendar.js');
+const CALENDAR_JS = path.join(__dirname, '..', 'src/modules/pipeline/calendar.js');
 
 /* Payloads a booker could put in booker_name or the tour questionnaire notes.
    Each sets window.__xss if the browser ever parses it as markup. */
@@ -50,10 +50,10 @@ const HARNESS = (calendarSrc) => `<!doctype html>
   </div>
   <script>
     window.__xss = 0;
-    // index.html declares calEvents as a top-level let; crm-calendar.js reads it
+    // index.html declares calEvents as a top-level let; src/modules/pipeline/calendar.js reads it
     // through a typeof guard, so a plain global reproduces the real lookup.
     var calEvents = [];
-    window.openCalEventModal = function(){};   // the base impl crm-calendar.js wraps
+    window.openCalEventModal = function(){};   // the base impl src/modules/pipeline/calendar.js wraps
   <\/script>
   <script>${calendarSrc}<\/script>
 </body></html>`;
