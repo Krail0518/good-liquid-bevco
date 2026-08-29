@@ -1,5 +1,5 @@
 /* ============================================================
-   crm-gmp.js — Daily GMP logging with "type once, fan out"
+   gmp.js — Daily GMP logging with "type once, fan out"
    ============================================================
    A self-contained module (no logic in index.html, nothing in localStorage —
    every entry is a row in Postgres). Form/register definitions live in the DB

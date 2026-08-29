@@ -1,5 +1,5 @@
 /* ============================================================
-   crm-training.js — Training & competency records
+   training.js — Training & competency records
    ============================================================
    A self-contained module (no logic in index.html, nothing in
    localStorage — every record is a row in Postgres). Each training

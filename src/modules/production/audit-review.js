@@ -1,9 +1,9 @@
 /* ============================================================
-   crm-auditreview.js — Internal audit + management review
+   audit-review.js — Internal audit + management review
    ============================================================
    A self-contained module (no logic in index.html, nothing in
    localStorage — every entry is a row in Postgres). Mirrors the
-   conventions of crm-gmp.js: IIFE + 'use strict', sb()/esc()/
+   conventions of gmp.js: IIFE + 'use strict', sb()/esc()/
    overlay()/todayISO() helpers, dark-card/teal inline styling,
    if(!sb()) guards, red error messages, DOMContentLoaded +
    MutationObserver boot.

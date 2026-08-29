@@ -75,14 +75,14 @@
   }
   // Records that never reached Supabase.
   //
-  // When dbInsert() in crm-compliance.js is rejected it keeps the operator's
+  // When dbInsert() in compliance.js is rejected it keeps the operator's
   // work in localStorage under 'gl_cache_<table>' and raises a notification.
   // This page used to look for its own key, 'gl_cip_logs', which nothing has
   // ever written — saveLocal() was declared and never called, so the fallback
   // could only ever return []. A CIP cycle whose save was rejected therefore
   // showed up here as "No cycles logged yet": an FDA-required sanitation
   // record simply missing, indistinguishable from a cycle nobody logged.
-  var LOCAL_KEY = 'gl_cache_compliance_records';   // written by crm-compliance.js
+  var LOCAL_KEY = 'gl_cache_compliance_records';   // written by compliance.js
   var CIP_FORM  = 'GMP-SAN-002';
 
   function loadLocal(){

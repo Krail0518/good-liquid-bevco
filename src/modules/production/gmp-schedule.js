@@ -1,5 +1,5 @@
 /* ============================================================
-   crm-gmpsched.js — GMP task scheduler + due/overdue dashboard
+   gmp-schedule.js — GMP task scheduler + due/overdue dashboard
    ============================================================
    A self-contained "what's due today" board (no logic in index.html,
    nothing in localStorage — every task is a row in Postgres). Recurring

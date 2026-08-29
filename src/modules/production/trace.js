@@ -1,5 +1,5 @@
 /* ============================================================
-   crm-trace.js — Lot traceability + mock recall
+   trace.js — Lot traceability + mock recall
    ============================================================
    A self-contained module (no logic in index.html, nothing in
    localStorage — every row lives in Postgres). Given a production run
