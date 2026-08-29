@@ -11,7 +11,7 @@
 // the database at all. The env CRON_SECRET is still honored when it matches,
 // purely so a hand-configured setup keeps working.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.112.4';
 
 export async function isCronCall(req: Request): Promise<boolean> {
   // x-cron-secret is the canonical carrier; Bearer is accepted for hand-rolled

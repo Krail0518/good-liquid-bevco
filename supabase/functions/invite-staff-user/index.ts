@@ -25,7 +25,7 @@
 //   SUPABASE_SERVICE_ROLE_KEY — service role key (has admin auth rights)
 //   SUPABASE_ANON_KEY         — anon key (used to verify the caller's JWT)
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.112.4';
 import { corsHeaders, jsonResponse, errorResponse, handlePreflight } from '../_shared/cors.ts';
 import { requireStaff } from '../_shared/auth.ts';
 

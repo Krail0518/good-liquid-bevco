@@ -35,7 +35,7 @@
 // Deploy:
 //   supabase functions deploy booking-confirm --no-verify-jwt
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.112.4';
 import { corsHeaders, jsonResponse, errorResponse, handlePreflight } from '../_shared/cors.ts';
 import { localToUTC, fmtLocalDate, fmtLocalTime, tzLabel, sendMail } from '../_shared/booking-email.ts';
 import { signBooking } from '../_shared/booking-token.ts';

@@ -44,7 +44,7 @@
 //
 // Deploy: supabase functions deploy gmail-sync
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.112.4';
 import { jsonResponse, errorResponse, handlePreflight } from '../_shared/cors.ts';
 import { requireStaff } from '../_shared/auth.ts';
 // Body extraction, quoted-thread trimming and entity decoding live in a shared
