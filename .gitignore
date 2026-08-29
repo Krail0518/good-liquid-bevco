@@ -34,3 +34,19 @@ dist/
 build/
 coverage/
 *.log
+
+# Database dumps and schema backups — never commit.
+#
+# A schema dump names every table and column, and a data dump is client data
+# outright. supabase/schema_backup_20260525.sql has sat untracked and
+# UNIGNORED in this working tree since May; it is empty, but nothing stopped a
+# `git add -A` from committing it, and that very nearly happened once during
+# the August security work.
+#
+# Force-add with `git add -f` if a dump ever genuinely needs review — that way
+# committing one is a deliberate act, which is the whole point.
+*.dump
+*.sql.gz
+schema_backup*.sql
+supabase/schema_backup*.sql
+supabase/*_backup_*.sql
