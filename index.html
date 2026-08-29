@@ -4507,36 +4507,15 @@ function openRefForReferrer(rid){
 function openAddReferrer(){document.getElementById('add-ref-modal').classList.add('show')}
 function closeAddReferrer(){document.getElementById('add-ref-modal').classList.remove('show')}
 
-/* DEAD CODE — do not fix this one, fix the live one.
-   A second, Supabase-backed declaration of this same name appears further down
-   (search for "Override saveReferrer"). Both are function declarations in the
-   same script block, so the later one wins at hoist time and THIS body never
-   runs. The `_origSaveReferrer` capture beside it therefore holds the later
-   version rather than this one, and is never called anyway.
-   Left in place rather than deleted to keep this change reviewable, but it is
-   the exact trap that hid a real bug in quickPaid: someone wrote a better
-   version while the worse one kept winning. Same shape applies to
-   _origSaveInvoice and _origLogout. Tracked as dead-code debt. */
-function saveReferrer(){
-  const name=document.getElementById('nr-name').value.trim();
-  if(!name){alert('Please enter a name.');return}
-  const init=name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
-  const colors=['#1a3a6e','#0F6E56','#854F0B','#3C3489','#712B13'];
-  const tcs=['#9FE1CB','#E1F5EE','#FAEEDA','#EEEDFE','#FAECE7'];
-  const ci=referrers.length%colors.length;
-  referrers.push({
-    id:'rr'+(referrers.length+1),
-    name,rel:document.getElementById('nr-rel').value,
-    email:document.getElementById('nr-email').value,
-    phone:document.getElementById('nr-phone').value,
-    rate:parseFloat(document.getElementById('nr-rate').value)||5,
-    color:colors[ci],tc:tcs[ci],init,
-    notes:document.getElementById('nr-notes').value
-  });
-  populateReferrerSelects();renderReferrers();renderDash();closeAddReferrer();
-  ['nr-name','nr-email','nr-phone','nr-notes'].forEach(id=>document.getElementById(id).value='');
-}
+/* The Supabase-backed saveReferrer() is further down (search "Override
+   saveReferrer"). A dead first declaration used to sit here: same name, same
+   script block, so the later one won at hoist time and this body never ran.
+   It pushed to a local array and never reached the database.
 
+   Removed rather than annotated. The annotation was the previous state and it
+   did not stop the trap being real -- this is the exact shape that hid a bug
+   in quickPaid, where someone wrote a better version while the worse one kept
+   winning. tests/duplicate-declarations.test.cjs now fails on any repeat. */
 function populateReferrerSelects(){
   ['ref-referrer-sel'].forEach(selId=>{
     const sel=document.getElementById(selId);if(!sel)return;
@@ -4697,16 +4676,19 @@ function updateCRMForUser(){
   cNav('dashboard', document.querySelector('.cni.act')||document.querySelectorAll('.cni')[0]);
 }
 
-function logoutCRM(){
-  currentUser = null;
-  exitCRM();
-  // Clear login fields
-  const em = document.getElementById('pw-email');
-  const pw = document.getElementById('pw-input');
-  if(em)em.value='';
-  if(pw)pw.value='';
-  document.getElementById('pw-err').style.display='none';
-}
+/* The second, live declaration of logoutCRM() is below (search
+   "supa.auth.signOut"). A dead first copy used to sit here.
+
+   Both were top-level `function` declarations with the same name, so the
+   LAST one won for every call site -- including the Sign out button, which
+   appears textually above both. The winner was the correct one: it calls
+   supa.auth.signOut() and resets crmInited. The dead copy only cleared local
+   state and left the Supabase session valid.
+
+   So sign-out worked by accident of declaration order. Reordering, moving or
+   extracting this code -- which is exactly what GL-037 does -- would have
+   silently reverted logout to "clears the screen, keeps the session".
+   Removed rather than left as a comment-only warning. */
 
 /* ═══ USERS PAGE ═══ */
 function renderUsers(){
