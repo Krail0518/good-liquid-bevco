@@ -62,6 +62,30 @@ for t in clients invoices deals; do
 done
 
 echo
+echo "── 2b. The one open anon table stays tenant-free ─────────────"
+# public.capacity is the single anon-readable table whose policy is
+# USING (true) — the shape CLAUDE.md rule 1 forbids. It is acceptable ONLY
+# because the table holds no tenant data: quarter, booked, cans_capacity,
+# bottles_capacity, week_start. The public marketing site reads it.
+#
+# That is an assumption about the schema, and CLAUDE.md's central lesson is
+# that assumptions expire silently. So assert it from outside, with the same
+# key an attacker would use: if the table ever gains a column that identifies
+# a client, the USING (true) stops being safe and this fails.
+cap=$(curl -s --max-time 20 "$SUPA/rest/v1/capacity?select=*&limit=1" -H "apikey: $ANON")
+if echo "$cap" | grep -q '42501'; then
+  pass "capacity — not anon-readable (policy tightened since; fine)"
+else
+  leaky=$(echo "$cap" | grep -oiE '"(client_id|client_name|customer_id|company|brand|account_id|owner|email)"' | sort -u | tr '
+' ' ')
+  if [ -n "$leaky" ]; then
+    fail "capacity — tenant-identifying column now anon-readable: $leaky"
+  else
+    pass "capacity — anon-readable but carries no tenant identifier"
+  fi
+fi
+
+echo
 echo "── 3. The public surface still works ─────────────────────────"
 # These SHOULD be reachable anonymously — the portal and public pages depend
 # on them. A failure here means a lockdown went too far and broke customers.
