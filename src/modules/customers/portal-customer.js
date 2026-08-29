@@ -312,7 +312,7 @@
           '<div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:' + color + ';font-weight:700;margin-top:2px">' + (i.status||'') + '</div>' +
         '</div>' +
         '<div style="text-align:right;white-space:nowrap">' +
-          '<button onclick="window.glPortalDownloadInvoicePdf(\'' + i.id + '\', event)" style="display:inline-block;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.35);color:#c4b5fd;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;margin-right:4px">📥 PDF</button>' +
+          '<button data-gl-action="glPortalDownloadInvoicePdf" data-gl-arg1="' + esc(i.id) + '" style="display:inline-block;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.35);color:#c4b5fd;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;margin-right:4px">📥 PDF</button>' +
           (viewUrl ? '<a href="' + viewUrl + '" target="_blank" style="display:inline-block;background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.35);color:#00e5c0;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;text-decoration:none;cursor:pointer">View' + (canPay ? ' / Pay' : '') + '</a>' : '<span style="font-size:10px;color:#6b87ad">no link</span>') +
         '</div>' +
       '</div>';
@@ -431,7 +431,7 @@
           '<span style="display:inline-block;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:' + color + ';font-weight:700;background:rgba(255,255,255,.04);border:1px solid ' + color + '33;padding:3px 8px;border-radius:4px">' + escHtml(typeLbl) + '</span>' +
         '</div>' +
         '<div style="text-align:right">' +
-          '<button onclick="window.glPortalDownloadLotDoc(\'' + d.id + '\', event)" style="background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.35);color:#c4b5fd;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">⬇ Download</button>' +
+          '<button data-gl-action="glPortalDownloadLotDoc" data-gl-arg1="' + esc(d.id) + '" style="background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.35);color:#c4b5fd;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">⬇ Download</button>' +
         '</div>' +
       '</div>';
     }).join('') : '<div style="padding:20px;text-align:center;color:#6b87ad;font-size:12px">No documents on file yet. Your account manager will upload COAs and spec sheets here as they\'re produced.</div>';
@@ -465,7 +465,7 @@
         '</div>' +
         '<div style="text-align:right">' +
           (d.file_path
-            ? '<button onclick="window.glPortalDownloadAgreement(\'' + d.id + '\', event)" style="background:rgba(26,111,255,.12);border:1px solid rgba(26,111,255,.35);color:#6b9fff;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">⬇ Download</button>'
+            ? '<button data-gl-action="glPortalDownloadAgreement" data-gl-arg1="' + esc(d.id) + '" style="background:rgba(26,111,255,.12);border:1px solid rgba(26,111,255,.35);color:#6b9fff;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">⬇ Download</button>'
             : '<span style="font-size:10px;color:#6b87ad">no file</span>') +
         '</div>' +
       '</div>';

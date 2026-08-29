@@ -54,7 +54,7 @@
     var when = r.meeting_date ? new Date(r.meeting_date + 'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
                               : (r.created_at ? new Date(r.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '');
     var fileLink = r.file_path
-      ? ' · <a href="#" onclick="event.preventDefault();window.glOpenClientDoc(\''+esc(String(r.file_path).replace(/\x27/g,''))+'\')" style="color:#00e5c0;font-weight:700">📎 File</a>'
+      ? ' · <a href="#" data-gl-action="glOpenClientDoc" data-gl-prevent="" data-gl-arg1="'+esc(String(r.file_path).replace(/\x27/g,''))+'" style="color:#00e5c0;font-weight:700">📎 File</a>'
       : '';
     return '<div class="gl-mn-row" data-id="'+esc(r.id)+'" style="padding:10px 0;border-top:1px solid rgba(255,255,255,.06)">' +
         '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">' +

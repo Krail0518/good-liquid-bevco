@@ -96,6 +96,7 @@
     'glCpSetRole',
     'glCustReqResolve',
     'glCustReqSetStatus',
+    'glDownloadClientDoc',
     'glDownloadDocById',
     'glEditTradeShow',
     'glExportEverything',
@@ -120,6 +121,7 @@
     'glOpenAttentionBoard',
     'glOpenBulkNudge',
     'glOpenCipDetail',
+    'glOpenClientDoc',
     'glOpenCustomerRequest',
     'glOpenDailyGMP',
     'glOpenEditContent',
@@ -136,6 +138,9 @@
     'glOpenProductionLines',
     'glOpenTimerForm',
     'glPauseRecurring',
+    'glPortalDownloadAgreement',
+    'glPortalDownloadInvoicePdf',
+    'glPortalDownloadLotDoc',
     'glPortalUploadAgreement',
     'glQuoteFromDeal',
     'glRemLine',
@@ -145,6 +150,7 @@
     'glRunMockRecall',
     'glSaveAndSend',
     'glSaveInvoice',
+    'glSaveRate',
     'glSchedCancel',
     'glSchedCopy',
     'glSchedEmail',
@@ -247,6 +253,7 @@
     'submitContactForm',
     'svcChange',
     'switchPipeline',
+    'toggleAddon',
     'toggleChat',
     'toggleCRMSidebar',
     'toggleMobileMenu',
@@ -261,5 +268,5 @@
     'viewInvoice',
   ]);
 
-  console.log('[GL] 239 actions registered');
+  console.log('[GL] 246 actions registered');
 }());

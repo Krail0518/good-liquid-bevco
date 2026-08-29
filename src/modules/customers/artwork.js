@@ -44,8 +44,8 @@
   function skuRow(r){
     var st = STATUS[r.status] || STATUS.submitted;
     var links = r.file_path
-      ? '<a href="#" onclick="event.preventDefault();window.glOpenClientDoc(\''+esc(String(r.file_path).replace(/\x27/g,''))+'\')" style="color:#00e5c0;font-weight:700">📄 View</a>' +
-        ' <a href="#" onclick="event.preventDefault();window.glDownloadClientDoc(\''+esc(String(r.file_path).replace(/\x27/g,''))+'\')" style="color:#00e5c0;font-weight:700">⬇ Download</a>'
+      ? '<a href="#" data-gl-action="glOpenClientDoc" data-gl-prevent="" data-gl-arg1="'+esc(String(r.file_path).replace(/\x27/g,''))+'" style="color:#00e5c0;font-weight:700">📄 View</a>' +
+        ' <a href="#" data-gl-action="glDownloadClientDoc" data-gl-prevent="" data-gl-arg1="'+esc(String(r.file_path).replace(/\x27/g,''))+'" style="color:#00e5c0;font-weight:700">⬇ Download</a>'
       : '<span style="color:#f5c842">⚠ no file stored</span>';
     return '<div class="gl-art-row" data-id="'+esc(r.id)+'" style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:10px 0;border-top:1px solid rgba(255,255,255,.06)">' +
         '<div style="min-width:0">' +
