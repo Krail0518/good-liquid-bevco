@@ -1,6 +1,6 @@
 /*
  * sqf-supplier-ncr.test.cjs — the Approved-Supplier program + NCR/CAPA
- * (crm-quality.js + crm-gmp.js). Drives the real app with a stubbed Supabase,
+ * (src/modules/production/quality.js + src/modules/production/gmp.js). Drives the real app with a stubbed Supabase,
  * verifying the defining Phase-2 behaviors:
  *   - a GMP deviation can be escalated into an NCR: glRaiseNCRFromDeviation(rec)
  *     writes exactly ONE `defects` row tagged source='gmp_deviation', carrying
@@ -9,7 +9,7 @@
  *   - the defect modal carries the CAPA fields (preventive action, verified-at,
  *     due date).
  *
- * NOTE: the parallel agents' crm-quality.js / crm-gmp.js changes may not be
+ * NOTE: the parallel agents' src/modules/production/quality.js / src/modules/production/gmp.js changes may not be
  * present when this runs. This file only asserts its own contract; a failure
  * solely because a function is still undefined is expected pre-integration.
  *

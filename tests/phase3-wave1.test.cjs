@@ -1,6 +1,6 @@
 /*
  * phase3-wave1.test.cjs — Phase 3 Wave 1: GMP scheduled-task generation
- * (crm-gmpsched.js) + traceability / mock-recall (crm-trace.js).
+ * (src/modules/production/gmp-schedule.js) + traceability / mock-recall (src/modules/production/trace.js).
  *
  * Drives the real app with a stubbed Supabase, verifying the defining
  * behaviors of the two new modules:

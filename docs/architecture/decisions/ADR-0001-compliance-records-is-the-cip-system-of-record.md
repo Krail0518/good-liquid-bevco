@@ -29,7 +29,7 @@ result:
 - `auditor.html` fetched `cip_logs?limit=1&select=id` into a variable that was
   never referenced again — a wasted round trip on every external auditor page
   load, alongside two identical dead probes of `defects` and `hold_tags`.
-- `crm-cip-audit.js` named it in a `console.warn` that pointed anyone
+- `src/modules/production/cip-audit.js` named it in a `console.warn` that pointed anyone
   debugging a missing sanitation record at the wrong table. That warning also
   could not fire; see the consequences below.
 
@@ -69,13 +69,13 @@ The dead-table confusion is gone, and removing the three unused `auditor.html`
 probes takes three round trips off every external auditor page load.
 
 Chasing this down also exposed a real defect behind the misleading warning,
-fixed in the same change (GL-026). `crm-cip-audit.js` had a `loadLocal()`
+fixed in the same change (GL-026). `src/modules/production/cip-audit.js` had a `loadLocal()`
 reading `gl_cip_logs` and a `saveLocal()` writing it. `saveLocal()` was never
 called, so nothing had ever written that key and `loadLocal()` could only
 return `[]`. The fallback that was supposed to surface unsaved work was
 therefore unreachable, and so was the warning attached to it.
 
-Meanwhile `dbInsert()` in `crm-compliance.js` does keep a rejected record —
+Meanwhile `dbInsert()` in `src/modules/production/compliance.js` does keep a rejected record —
 under `gl_cache_compliance_records`, a different key. So a CIP cycle whose
 save was rejected was preserved on disk but invisible on the CIP page, which
 rendered "No cycles logged yet". An operator could not distinguish an

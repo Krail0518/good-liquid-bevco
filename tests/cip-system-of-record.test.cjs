@@ -3,13 +3,13 @@
  *
  * WHY THIS EXISTS
  * ---------------
- * crm-cip-audit.js had a localStorage fallback meant to surface CIP cycles
+ * src/modules/production/cip-audit.js had a localStorage fallback meant to surface CIP cycles
  * whose database write had been rejected. It read the key 'gl_cip_logs'. The
  * only function that wrote that key, saveLocal(), was declared and never
  * called — so nothing had ever written it, loadLocal() could only return [],
  * and the fallback was unreachable.
  *
- * Meanwhile dbInsert() in crm-compliance.js *does* preserve a rejected
+ * Meanwhile dbInsert() in src/modules/production/compliance.js *does* preserve a rejected
  * record — under 'gl_cache_compliance_records', a different key. So the work
  * was on disk and the CIP page rendered "No cycles logged yet". An operator
  * could not tell an FDA-required sanitation record that failed to file from a
@@ -38,13 +38,13 @@ function check(name, cond, detail) {
   else { console.log('  FAIL  ' + name + (detail ? '\n          ' + detail : '')); failures++; }
 }
 
-const cip        = read('crm-cip-audit.js');
-const compliance = read('crm-compliance.js');
+const cip        = read('src/modules/production/cip-audit.js');
+const compliance = read('src/modules/production/compliance.js');
 
 console.log('CIP system of record — the reader and the writer must agree\n');
 
 // ── the reader/writer contract ───────────────────────────────────────
-// Pull the key the CIP page reads, and the key crm-compliance.js writes when
+// Pull the key the CIP page reads, and the key src/modules/production/compliance.js writes when
 // an insert is rejected, out of the real sources. Comparing the two is the
 // whole point: asserting a hard-coded string would pass even if the writer
 // moved.
@@ -52,12 +52,12 @@ const readKey = (cip.match(/var LOCAL_KEY\s*=\s*'([^']+)'/) || [])[1];
 const cachePrefix = (compliance.match(/function localCacheKey\(table\)\{\s*return\s*'([^']+)'/) || [])[1];
 
 check('the CIP page names the key it reads', !!readKey,
-  'expected `var LOCAL_KEY = \'...\'` in crm-cip-audit.js');
-check('crm-compliance.js still caches rejected rows under a known prefix', !!cachePrefix,
+  'expected `var LOCAL_KEY = \'...\'` in src/modules/production/cip-audit.js');
+check('src/modules/production/compliance.js still caches rejected rows under a known prefix', !!cachePrefix,
   'localCacheKey() changed shape — this test needs updating with it');
 
 if (readKey && cachePrefix) {
-  check('the CIP page reads the key crm-compliance.js actually writes',
+  check('the CIP page reads the key src/modules/production/compliance.js actually writes',
     readKey === cachePrefix + 'compliance_records',
     `reads "${readKey}", writer produces "${cachePrefix}compliance_records" — ` +
     'a rejected CIP record would be invisible on the page');
