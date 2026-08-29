@@ -259,3 +259,11 @@ jobs:
           NODE_PATH: /tmp/pw/node_modules
           REPO_ROOT: ${{ github.workspace }}
         run: node tests/training-edit.test.cjs
+
+      # Every migration must say how to undo it. Authorization changes reach
+      # production through the Supabase MCP, so the file is what someone reads
+      # when they need to reverse one — there is no deploy tool to ask. The 93
+      # migrations that predate the rule are frozen as exemptions; the list can
+      # only shrink. No browser needed.
+      - name: Run migration rollback-note test
+        run: node tests/migration-rollback-notes.test.cjs

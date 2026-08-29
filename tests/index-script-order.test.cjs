@@ -181,5 +181,31 @@ check('the core script contains no import/export',
   !/^\s*(import|export)\s/m.test(core),
   'either would force module semantics and break the globals contract above');
 
+// ── every test file is actually wired into CI ────────────────────
+// The workflow names each test as its own hand-written step, so a test can
+// exist, pass locally, and never run on any push. That is worse than having
+// no test: the file reads as coverage and the run is green for a property
+// nothing checked.
+//
+// Comment lines are stripped first — a workflow that merely MENTIONS a test
+// file in a comment must not count as running it. (Three tests in this repo
+// have already been broken by prose matching the thing they searched for.)
+const wfDir = path.join(ROOT, '.github', 'workflows');
+const workflowRuns = fs.readdirSync(wfDir)
+  .filter((f) => /\.ya?ml$/.test(f))
+  .map((f) => fs.readFileSync(path.join(wfDir, f), 'utf8'))
+  .map((y) => y.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n'))
+  .join('\n');
+
+const orphanTests = fs.readdirSync(path.join(ROOT, 'tests'))
+  .filter((f) => f.endsWith('.test.cjs'))
+  .filter((f) => !workflowRuns.includes('tests/' + f));
+
+check('every tests/*.test.cjs is run by a workflow',
+  orphanTests.length === 0,
+  orphanTests.join(', ') +
+  '\n          Add a step to .github/workflows/smoke-test.yml. An unwired ' +
+  'test looks like coverage and provides none.');
+
 console.log('\n' + (failures === 0 ? 'ALL PASSED' : failures + ' CHECK(S) FAILED'));
 process.exit(failures === 0 ? 0 : 1);
