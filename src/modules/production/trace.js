@@ -52,8 +52,8 @@
         '<div style="background:#142238;border:1px solid rgba(0,229,192,.18);border-radius:12px;padding:16px 18px;margin-bottom:16px">' +
           '<div style="font-size:10.5px;letter-spacing:1.5px;color:var(--teal);margin-bottom:8px">TRACE A LOT / RUN</div>' +
           '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-            '<input id="gl-trace-q" placeholder="Run name, e.g. Cold Brew R-2041" style="flex:1;min-width:200px;'+INP+'" onkeydown="if(event.key===\'Enter\')window.glTraceLot(document.getElementById(\'gl-trace-q\').value)">' +
-            '<button onclick="window.glTraceLot(document.getElementById(\'gl-trace-q\').value)" style="padding:10px 18px;background:linear-gradient(135deg,#00e5c0,#00c4a7);color:#04231d;border:none;border-radius:9px;font-weight:800;font-size:13px;cursor:pointer;white-space:nowrap">🔎 Trace</button>' +
+            '<input id="gl-trace-q" placeholder="Run name, e.g. Cold Brew R-2041" style="flex:1;min-width:200px;'+INP+'" data-gl-action="glTraceKeydown" data-gl-on="keydown">' +
+            '<button data-gl-action="glTraceSearch" style="padding:10px 18px;background:linear-gradient(135deg,#00e5c0,#00c4a7);color:#04231d;border:none;border-radius:9px;font-weight:800;font-size:13px;cursor:pointer;white-space:nowrap">🔎 Trace</button>' +
           '</div>' +
         '</div>' +
         '<div id="gl-trace-panel"></div>' +
@@ -68,6 +68,17 @@
   }
 
   // ── Trace a run by name → backward, forward, GMP trail ──
+  // Both the Enter key and the Search button read the same box. That DOM
+  // read was duplicated in two attributes; it now lives in one place.
+  function traceQuery(){
+    var el = document.getElementById('gl-trace-q');
+    return el ? el.value : '';
+  }
+  window.glTraceSearch  = function(){ return window.glTraceLot(traceQuery()); };
+  window.glTraceKeydown = function(ev){
+    if(ev && ev.key === 'Enter') return window.glTraceLot(traceQuery());
+  };
+
   window.glTraceLot = async function glTraceLot(query){
     var q = (query || '').trim();
     var panel = document.getElementById('gl-trace-panel');

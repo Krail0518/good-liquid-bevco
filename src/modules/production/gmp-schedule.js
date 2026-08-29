@@ -88,7 +88,7 @@
                 (t.task_type?(' · '+esc(t.task_type)):'') +
               '</div>' +
             '</div>' +
-            '<button onclick="window.glMarkTaskDone('+"'"+esc(String(t.id))+"'"+')" style="white-space:nowrap;padding:8px 14px;background:rgba(0,229,192,.14);border:1px solid rgba(0,229,192,.35);border-radius:7px;color:var(--teal);font-weight:700;font-size:12px;cursor:pointer">✓ Mark done</button>' +
+            '<button data-gl-action="glMarkTaskDone" data-gl-arg1="'+esc(String(t.id))+'" style="white-space:nowrap;padding:8px 14px;background:rgba(0,229,192,.14);border:1px solid rgba(0,229,192,.35);border-radius:7px;color:var(--teal);font-weight:700;font-size:12px;cursor:pointer">✓ Mark done</button>' +
           '</div>' +
         '</div>';
     };

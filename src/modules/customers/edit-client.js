@@ -106,6 +106,23 @@
    viewClientEnhanced.
    ============================================================ */
 (function(){
+  // Extracted from a multi-line async IIFE that lived inside an onclick
+  // attribute (GL-DEF-01): disable while saving, restore the label, show a
+  // transient status line.
+  window.glSaveNotesClick = async function(clientId, btn){
+    var ta = document.getElementById('gl-notes-' + clientId);
+    var s  = document.getElementById('gl-notes-status-' + clientId);
+    if(!ta || !btn) return;
+    var orig = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Saving…';
+    var ok = await window.glSaveClientNotes(clientId, ta.value);
+    btn.disabled = false; btn.textContent = orig;
+    if(s){
+      s.textContent = ok ? '✓ saved' : '⚠ saved locally only';
+      setTimeout(function(){ if(s) s.textContent = ''; }, 2500);
+    }
+  };
+
   window.glSaveClientNotes = async function(clientId, notesText){
     var c = (window.clients||[]).find(function(x){ return x.id === clientId; });
     if(!c){ alert('Client not found.'); return false; }
@@ -151,15 +168,7 @@
       +     'style="width:100%;padding:11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:13px;font-family:var(--ff-body);resize:vertical;line-height:1.5">'+notes+'</textarea>'
       +   '<div style="display:flex;justify-content:flex-end;margin-top:6px">'
       +     '<button class="cbtn pri" style="font-size:12px;padding:6px 14px" '
-      +       'onclick="(async function(){'
-      +         'var t=document.getElementById(\'gl-notes-'+client.id+'\').value;'
-      +         'var s=document.getElementById(\'gl-notes-status-'+client.id+'\');'
-      +         'var btn=event.target;var orig=btn.textContent;btn.disabled=true;btn.textContent=\'Saving…\';'
-      +         'var ok=await window.glSaveClientNotes(\''+client.id+'\',t);'
-      +         'btn.disabled=false;btn.textContent=orig;'
-      +         'if(s) s.textContent=ok?\'✓ saved\':\'⚠ saved locally only\';'
-      +         'setTimeout(function(){if(s)s.textContent=\'\';},2500);'
-      +       '})()">💾 Save notes</button>'
+      +       'data-gl-action="glSaveNotesClick" data-gl-arg1="'+esc(client.id)+'" data-gl-el="">💾 Save notes</button>'
       +   '</div>'
       + '</div>';
   };

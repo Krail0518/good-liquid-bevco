@@ -108,7 +108,7 @@ function renderBkCal(){
     const dateStr=thisDate.toISOString().split('T')[0];
     const isSelected=bkSelectedDate===dateStr;
     html+=`<div class="bk-day${isPast||isWeekend?' bk-past':''}${isToday?' bk-today':''}${isSelected?' bk-selected':''}" 
-      onclick="${!isPast&&!isWeekend?`selectBkDate('${dateStr}')`:''}">${day}</div>`;
+      ${!isPast&&!isWeekend?`data-gl-action="selectBkDate" data-gl-arg1="${dateStr}"`:''}>${day}</div>`;
   }
   document.getElementById('bk-cal-grid').innerHTML=html;
 }

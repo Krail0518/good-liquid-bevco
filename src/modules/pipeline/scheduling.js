@@ -18,6 +18,13 @@
   var CONFIRM_URL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1/booking-confirm';
   var BOOK_BASE   = window.location.origin + '/book';
 
+    // Was this.closest('div[style*=fixed]').remove() in an attribute. The
+    // selector is unchanged; only where it lives has moved.
+    window.glCloseFixedOverlay = function(el){
+      var ov = el && el.closest ? el.closest('div[style*=fixed]') : null;
+      if(ov) ov.remove();
+    };
+
   function getSB(){ return window.supa || null; }
   var esc = window.glEsc;
 
@@ -372,7 +379,7 @@
         '</div>' +
         '<div style="display:flex;gap:10px;margin-top:18px">' +
           '<button data-gl-action="glSchedSendEmail" style="flex:1;padding:12px;background:var(--teal,#00e5c0);color:#0f1624;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Send Email</button>' +
-          '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="padding:12px 18px;background:rgba(255,255,255,.07);color:#9aa7bd;border:1px solid rgba(255,255,255,.1);border-radius:8px;cursor:pointer;font-size:14px">Cancel</button>' +
+          '<button data-gl-action="glCloseFixedOverlay" data-gl-el="" style="padding:12px 18px;background:rgba(255,255,255,.07);color:#9aa7bd;border:1px solid rgba(255,255,255,.1);border-radius:8px;cursor:pointer;font-size:14px">Cancel</button>' +
         '</div>' +
         '<div id="gl-sched-email-err" style="margin-top:10px;font-size:13px;color:#e74646;display:none"></div>' +
       '</div>';

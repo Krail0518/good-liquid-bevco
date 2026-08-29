@@ -75,6 +75,14 @@ function renderArAgingSection(){
       </div>
     </div>`;
 }
+// Was an onclick running two statements. Both halves matter, so they stay
+// together here rather than being split across markup and code.
+window.glArAgingOpenClient = function(clientId){
+  var ov = document.getElementById('ar-aging-overlay');
+  if(ov) ov.remove();
+  if(typeof window.openClientDetail === 'function') window.openClientDetail(clientId);
+};
+
 function openArAging(){
   const existing = document.getElementById('ar-aging-overlay');
   if(existing) existing.remove();
@@ -122,7 +130,7 @@ function openArAging(){
             <th style="padding:9px 10px;color:var(--muted);font-size:10px;letter-spacing:1px;text-align:right">WORST</th>
           </tr></thead>
           <tbody>
-            ${rows.map(r => `<tr style="border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer" onclick="document.getElementById('ar-aging-overlay').remove();openClientDetail('${r.id}')">
+            ${rows.map(r => `<tr style="border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer" data-gl-action="glArAgingOpenClient" data-gl-arg1="${r.id}">
               <td style="padding:9px 10px;font-weight:700;color:#fff">${esc(r.name)}</td>
               ${bcell(r.current)}${bcell(r.b1_30)}${bcell(r.b31_60)}${bcell(r.b61_90)}${bcell(r.b90plus)}
               <td style="padding:9px 10px;text-align:right;font-family:var(--ff-disp);color:#f5c842;font-size:14px">${fmtMoneyShort(r.total)}</td>

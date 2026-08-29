@@ -62,7 +62,7 @@
               'placeholder="Ask anything about your pipeline, clients, invoices…" ' +
               'style="flex:1;background:#0a1628;border:1px solid rgba(255,255,255,.1);border-radius:8px;' +
               'padding:10px 14px;color:var(--white,#e8f0fe);font-size:13px;outline:none" ' +
-              'onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();window.glAIHubSend();}">' +
+              'data-gl-action="glAIHubKeydown" data-gl-on="keydown">' +
             '<button data-gl-action="glAIHubSend" class="cbtn pri" style="padding:10px 20px;flex-shrink:0">Send</button>' +
           '</div>' +
         '</div>' +
@@ -115,6 +115,20 @@
     msgs.appendChild(d);
     msgs.scrollTop = msgs.scrollHeight;
   }
+
+  // Enter sends; Shift+Enter must still insert a newline, so the modifier
+  // check has to survive the move out of the attribute.
+  window.glAIHubTogglePanel = function(){
+    var p = document.getElementById('gl-ai-panel');
+    if(!p) return;
+    p.style.display = p.style.display === 'flex' ? 'none' : 'flex';
+  };
+
+  window.glAIHubKeydown = function(ev){
+    if(!ev || ev.key !== 'Enter' || ev.shiftKey) return;
+    ev.preventDefault();
+    window.glAIHubSend();
+  };
 
   window.glAIHubSend = async function(){
     var input = document.getElementById('ai-hub-input');
@@ -173,11 +187,11 @@
     var wrapper = document.createElement('div');
     wrapper.innerHTML =
       '<div class="cni-sec">AI</div>' +
-      '<div class="cni" id="nav-ai-hub" onclick="cNav(\'ai\',this)" style="color:var(--teal,#00e5c0)">' +
+      '<div class="cni" id="nav-ai-hub" data-gl-action="cNav" data-gl-arg1="ai" data-gl-el="" style="color:var(--teal,#00e5c0)">' +
         '<span class="cni-ico">💬</span>AI Chat' +
       '</div>' +
       '<div class="cni" id="nav-ai-tools-btn" ' +
-        'onclick="(function(){var p=document.getElementById(\'gl-ai-panel\');if(p){p.style.display=p.style.display===\'flex\'?\'none\':\'flex\';}})()" ' +
+        'data-gl-action="glAIHubTogglePanel" ' +
         'style="color:var(--teal,#00e5c0)">' +
         '<span class="cni-ico">🤖</span>AI Tools' +
       '</div>';

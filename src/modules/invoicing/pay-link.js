@@ -16,6 +16,15 @@
    INVOICE PAY LINK GENERATOR
    Generates a simple payment link for invoices
 ═══════════════════════════════════════════ */
+  // Hoisted out of an onclick. Failure is now reported instead of swallowed:
+  // the original had no catch, so a clipboard rejection (denied permission, or
+  // a non-secure context) left the button looking like it had worked.
+  window.glCopyPayLink = function(url){
+    navigator.clipboard.writeText(url)
+      .then(function(){ alert('Link copied!'); })
+      .catch(function(){ alert('Could not copy the link — copy it from the box above.'); });
+  };
+
 function generatePayLink(invId){
   const inv = invoices.find(i => i.id === invId);
   if(!inv){ alert('Invoice not found'); return; }
@@ -56,7 +65,7 @@ function generatePayLink(invId){
         ⚠ This is an informational link. To accept online payments, connect Stripe in a future update.
       </div>
       <div style="display:flex;gap:8px">
-        <button class="cbtn pri" onclick="navigator.clipboard.writeText('${payUrl}').then(()=>alert('Link copied!'))" style="flex:1">📋 Copy Link</button>
+        <button class="cbtn pri" data-gl-action="glCopyPayLink" data-gl-arg1="${payUrl}" style="flex:1">📋 Copy Link</button>
         <button class="cbtn" data-gl-close="">Close</button>
       </div>
     </div>`;

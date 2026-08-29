@@ -59,9 +59,18 @@ function getClientTagsEl(clientId,editable=false){
   if(!editable) return tags.map(t=>`<span class="tag-chip">${esc(t)}</span>`).join('');
   return `<div class="tag-input-wrap" id="tag-wrap-${clientId}">
     ${tags.map(t=>`<span class="tag-chip">${esc(t)}<span class="tag-rm" data-gl-action="removeTag" data-gl-arg1="${esc(clientId)}" data-gl-arg2="${esc(t)}">✕</span></span>`).join('')}
-    <input placeholder="Add tag, press Enter" onkeydown="if(event.key==='Enter'){addTag('${clientId}',this.value);this.value=''}">
+    <input placeholder="Add tag, press Enter" data-gl-action="glTagInputKeydown" data-gl-on="keydown" data-gl-arg1="${esc(clientId)}" data-gl-el="">
   </div>`;
 }
+
+// Enter adds the typed tag and clears the box. The element arrives via
+// data-gl-el and the event as the final argument, so nothing here needs the
+// dispatcher to know about keyboards.
+window.glTagInputKeydown = function(clientId, el, ev){
+  if(!ev || ev.key !== 'Enter') return;
+  addTag(clientId, el.value);
+  el.value = '';
+};
 
 async function addTag(clientId,tag){
   tag=String(tag||'').trim().toLowerCase().slice(0,80);
@@ -105,6 +114,6 @@ function renderClientDetail(clientId){
     const tags=clientTags[clientId]||[];
     const inp=tw.querySelector('input');
     const currentVal=inp?inp.value:'';
-    tw.innerHTML=tags.map(t=>`<span class="tag-chip">${esc(t)}<span class="tag-rm" data-gl-action="removeTag" data-gl-arg1="${esc(clientId)}" data-gl-arg2="${esc(t)}">✕</span></span>`).join('')+`<input placeholder="Add tag, press Enter" value="${esc(currentVal)}" onkeydown="if(event.key==='Enter'){addTag('${esc(clientId)}',this.value);this.value=''}">`;
+    tw.innerHTML=tags.map(t=>`<span class="tag-chip">${esc(t)}<span class="tag-rm" data-gl-action="removeTag" data-gl-arg1="${esc(clientId)}" data-gl-arg2="${esc(t)}">✕</span></span>`).join('')+`<input placeholder="Add tag, press Enter" value="${esc(currentVal)}" data-gl-action="glTagInputKeydown" data-gl-on="keydown" data-gl-arg1="${esc(clientId)}" data-gl-el="">`;
   }
 }

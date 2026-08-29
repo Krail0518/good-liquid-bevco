@@ -309,7 +309,7 @@ function renderProductionRuns(){
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
-          <select class="fsel" style="font-size:10px;padding:4px 8px" onchange="updateProdStatus('${e.id}',this.value)">
+          <select class="fsel" style="font-size:10px;padding:4px 8px" data-gl-action="updateProdStatus" data-gl-on="change" data-gl-arg1="${e.id}" data-gl-el-prop="value">
             <option value="scheduled" ${(e.prodStatus||'scheduled')==='scheduled'?'selected':''}>📋 Scheduled</option>
             <option value="in-production" ${e.prodStatus==='in-production'?'selected':''}>⚙️ In Production</option>
             <option value="completed" ${e.prodStatus==='completed'?'selected':''}>✅ Completed</option>

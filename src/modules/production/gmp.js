@@ -65,8 +65,11 @@
   window.glRenderGMPHub = function glRenderGMPHub(){
     var host = document.getElementById('cpg-gmp');
     if(!host) return;
-    var tile = function(onclick, icon, label, sub, accent){
-      return '<button onclick="'+onclick+'" style="text-align:left;background:#142238;border:1px solid rgba(0,229,192,.18);border-radius:12px;padding:16px 18px;cursor:pointer;color:#eef4ff;display:flex;flex-direction:column;gap:4px">' +
+    // Takes an action NAME and an optional argument, not a string of
+    // JavaScript. The old signature made every caller assemble source code.
+    var tile = function(action, arg, icon, label, sub, accent){
+      var argAttr = arg ? ' data-gl-arg1="' + arg + '"' : '';
+      return '<button data-gl-action="'+action+'"'+argAttr+' style="text-align:left;background:#142238;border:1px solid rgba(0,229,192,.18);border-radius:12px;padding:16px 18px;cursor:pointer;color:#eef4ff;display:flex;flex-direction:column;gap:4px">' +
         '<span style="font-size:22px">'+icon+'</span>' +
         '<span style="font-weight:700;font-size:14px;color:'+(accent||'#eef4ff')+'">'+label+'</span>' +
         '<span style="font-size:11.5px;color:#9aa7bd;line-height:1.4">'+sub+'</span></button>';
@@ -79,16 +82,16 @@
         '</div>' +
         '<div style="font-size:12.5px;color:var(--muted);margin-bottom:18px;line-height:1.6">Enter the shared details (date, shift, line, run, operator) once — they fan out to every register below. Deviations flag automatically and show under “Open deviations”.</div>' +
         '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:16px">' +
-          tile('window.glOpenDailyGMP()','➕','Log today’s GMP','One entry, fans out to all registers','#00e5c0') +
-          tile('window.glOpenGMPDeviations()','⚠️','Open deviations','Anything that failed a check, needs action','#f5c842') +
-          tile('window.glGenerateAuditorLink()','🔒','Auditor access','Read-only login link for an auditor','#f5c842') +
-          tile('window.glOpenGMPDocuments()','📄','Documents','SOPs, registers & regulatory guides','#00e5c0') +
-          REGISTERS.map(function(r){ return tile("window.glOpenGMPRegister('"+r.code+"')", r.icon, r.label, 'View / add records'); }).join('') +
+          tile('glOpenDailyGMP','','➕','Log today’s GMP','One entry, fans out to all registers','#00e5c0') +
+          tile('glOpenGMPDeviations','','⚠️','Open deviations','Anything that failed a check, needs action','#f5c842') +
+          tile('glGenerateAuditorLink','','🔒','Auditor access','Read-only login link for an auditor','#f5c842') +
+          tile('glOpenGMPDocuments','','📄','Documents','SOPs, registers & regulatory guides','#00e5c0') +
+          REGISTERS.map(function(r){ return tile('glOpenGMPRegister', r.code, r.icon, r.label, 'View / add records'); }).join('') +
         '</div>' +
         '<div style="font-family:var(--ff-disp);font-size:15px;letter-spacing:1.5px;color:var(--teal);margin:20px 0 4px">🛡️ PREREQUISITE PROGRAMS</div>' +
         '<div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.6">The periodic foundation programs behind the daily GMP forms — calibration, pest control, chemical &amp; SDS, glass &amp; brittle plastic, water potability, and complaints. Each opens its own record.</div>' +
         '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">' +
-          PRP_REGISTERS.map(function(r){ return tile("window.glOpenGMPRegister('"+r.code+"')", r.icon, r.label, 'View / add records'); }).join('') +
+          PRP_REGISTERS.map(function(r){ return tile('glOpenGMPRegister', r.code, r.icon, r.label, 'View / add records'); }).join('') +
         '</div>' +
       '</div>';
   };
@@ -300,7 +303,7 @@
         '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:22px;width:100%;max-width:880px;color:#fff">' +
           '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
             '<div style="font-family:var(--ff-disp);font-size:17px;letter-spacing:1.5px;color:var(--teal)">'+esc(tpl.title)+'</div>' +
-            '<div><button onclick="window.glOpenDailyGMP('+(tpl.in_daily===false?("'"+esc(code)+"'"):'')+')" style="padding:8px 14px;background:rgba(0,229,192,.12);color:var(--teal);border:1px solid rgba(0,229,192,.3);border-radius:7px;cursor:pointer;font-size:12px;margin-right:8px">➕ New entry</button>' +
+            '<div><button data-gl-action="glOpenDailyGMP"'+(tpl.in_daily===false?(' data-gl-arg1="'+esc(code)+'"'):'')+' style="padding:8px 14px;background:rgba(0,229,192,.12);color:var(--teal);border:1px solid rgba(0,229,192,.3);border-radius:7px;cursor:pointer;font-size:12px;margin-right:8px">➕ New entry</button>' +
             '<button data-gl-close="#gl-gmp-reg" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button></div></div>' +
           (recs.length ? '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'+head+body+'</table></div>'
                        : '<div style="color:#9aa7bd;padding:20px 0">No records yet. Click ➕ New entry to log one.</div>') +
