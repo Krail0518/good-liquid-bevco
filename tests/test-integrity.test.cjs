@@ -66,17 +66,72 @@ check('no suite records a hard-coded PASS for a skipped or undefined check',
   suspicious.length === 0,
   suspicious.join('\n          '));
 
-// ── the smoke test's own blind spot ──────────────────────────────────
-// GL-034: the pageerror filter is broad enough to swallow real crashes, which
-// guts the "no fatal JS error" assertion. Not fixed here — this records that
-// the filter exists and is worth narrowing, so the next reader sees it.
+// ── GL-034: the pageerror filter must not swallow real crashes ───────
+// A filter meant to reduce CI noise had also removed the signal. This drives
+// the ACTUAL regex out of smoke.test.cjs rather than asserting on its text, so
+// the test cannot pass against a filter that has quietly been widened again.
+console.log('');
 const smoke = fs.readFileSync(path.join(TESTS, 'smoke.test.cjs'), 'utf8');
-const hasErrorFilter = /pageerror/.test(smoke);
-if (hasErrorFilter) {
-  console.log('\n  NOTE  smoke.test.cjs filters pageerror output (GL-034).');
-  console.log('        A filter that is too broad hides genuine crashes behind a green run.');
-  console.log('        Tracked in docs/plans/technical-debt.md; not addressed by this file.');
+
+/*
+ * Reconstruct the live filter. Handles BOTH shapes deliberately: with an
+ * ALWAYS_APP_BUG override, and the older noise-only form. Against the old
+ * form the crash assertions below then fail with a real message — "this
+ * genuine app error would be discarded" — instead of the test bailing out
+ * with "couldn't extract", which would say nothing useful to whoever
+ * reintroduced the regression.
+ */
+function extractFilter(src) {
+  const noise = src.match(/return (\/(?:[^\n]*?)\/i)\.test\(msg\);/);
+  if (!noise) return null;
+  // eslint-disable-next-line no-eval
+  const N = eval(noise[1]);
+  const always = src.match(/const ALWAYS_APP_BUG\s*=\s*\n?\s*(\/.+?\/i);/s);
+  if (!always) return (msg) => N.test(msg);          // pre-fix shape
+  // eslint-disable-next-line no-eval
+  const A = eval(always[1]);
+  return (msg) => (A.test(msg) ? false : N.test(msg));
 }
+
+const isNoise = extractFilter(smoke);
+check('the pageerror filter can be extracted from smoke.test.cjs', !!isNoise,
+  'its shape changed — update this test rather than deleting it');
+check('an ALWAYS_APP_BUG override exists', /ALWAYS_APP_BUG/.test(smoke),
+  'without it, a crash naming a library or status code is filtered as noise');
+
+if (isNoise) {
+  // Real crashes: must NOT be treated as noise.
+  const crashes = [
+    'Maximum call stack size exceeded',
+    "Cannot read properties of undefined (reading 'supabase')",
+    'renderPermissionsPanel is not defined',
+    'window.glEsc is not a function',
+    "Cannot set properties of null (setting 'innerHTML')",
+  ];
+  for (const c of crashes) {
+    check('crash NOT filtered: ' + c.slice(0, 52), isNoise(c) === false,
+      'this genuine app error would be discarded and the run would go green');
+  }
+
+  // Genuine CI noise: SHOULD still be filtered, or the suite cries wolf and
+  // gets ignored — which is how the real hole survived last time.
+  const noise = [
+    'Failed to fetch',
+    'net::ERR_NAME_NOT_RESOLVED',
+    'Access to fetch blocked by CORS policy',
+    'Failed to load resource: the server responded with a status of 403',
+  ];
+  for (const n of noise) {
+    check('noise still filtered: ' + n.slice(0, 52), isNoise(n) === true,
+      'CI would go red on expected sandbox noise');
+  }
+}
+
+// full-sweep must use the same list, or the two suites disagree about what a
+// crash is.
+const sweepSrc = fs.readFileSync(path.join(TESTS, 'full-sweep.cjs'), 'utf8');
+check('full-sweep applies the same ALWAYS_APP_BUG override',
+  /ALWAYS_APP_BUG/.test(sweepSrc) && /ALWAYS_APP_BUG\.test\(m\)/.test(sweepSrc));
 
 console.log('\n' + (failures === 0 ? 'ALL PASSED' : failures + ' CHECK(S) FAILED'));
 process.exit(failures === 0 ? 0 : 1);

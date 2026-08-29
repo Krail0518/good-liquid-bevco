@@ -49,8 +49,16 @@ await new Promise(r=>srv.listen(8901,r));
 const br=await chromium.launch({executablePath:process.env.PW_CHROMIUM||undefined,args:['--no-sandbox','--disable-setuid-sandbox']});
 const pg=await br.newPage();
 const appErrors=[];
+// Errors that are ALWAYS an application bug, whatever else the message
+// mentions — checked before the noise filter so a real crash cannot be
+// discarded for naming a library or a status code. "Maximum call stack" used
+// to sit in the noise list; it is infinite recursion, not network noise.
+// Kept identical to smoke.test.cjs; tests/test-integrity.test.cjs asserts both.
+const ALWAYS_APP_BUG =
+  /Maximum call stack|is not a function|is not defined|Cannot read propert|Cannot access |Cannot set propert|undefined is not|null is not|Unexpected token|Assignment to constant/i;
 pg.on('pageerror',e=>{const m=String(e&&e.message||e);
-  if(!/Failed to fetch|NetworkError|ERR_|net::|TUNNEL|WebSocket|Maximum call stack|jszip|supabase|Load failed|status of 4|status of 5|CORS|429|403|Access-Control/i.test(m)) appErrors.push(m);});
+  if(ALWAYS_APP_BUG.test(m)){ appErrors.push(m); return; }
+  if(!/Failed to fetch|NetworkError|ERR_|net::|TUNNEL|WebSocket|jszip|supabase|Load failed|status of 4|status of 5|CORS|429|403|Access-Control/i.test(m)) appErrors.push(m);});
 
 await pg.goto('http://127.0.0.1:8901/index.html',{waitUntil:'domcontentloaded',timeout:30000});
 await pg.waitForTimeout(2600);
