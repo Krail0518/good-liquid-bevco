@@ -104,6 +104,33 @@ portal customer, and a self-registered stranger. It checks both directions —
 that non-staff cannot write, **and** that staff still can — so a lockdown that
 goes too far fails it as loudly as one that is too loose.
 
+## Where the code lives
+
+GL-037 is complete. Every capability sits under `src/`:
+
+| Path | Holds |
+|---|---|
+| `src/modules/<domain>/` | business capabilities — customers, invoicing, pipeline, production, quotes |
+| `src/services/` | infrastructure with no business meaning — auth, utils, permissions, email, SEO, analytics |
+| `src/shared/` | cross-cutting UI and helpers used by three or more domains |
+| repo root | `index.html` and `crm-index-core.js`, the entry point everything loads after |
+
+Three rules, each enforced by `tests/index-script-order.test.cjs`:
+
+1. **`crm-index-core.js` is the only `crm-*.js` at the root.** Structure erodes
+   by someone adding one file where the others used to be.
+2. **Every module is a CLASSIC script** — no `defer`, `async` or
+   `type="module"`. Their top-level declarations become window properties, and
+   573 inline `on*` handlers resolve against those. A module-scoped file leaves
+   dead buttons and no error.
+3. **Load order is compared index by index.** Never reorder the script block,
+   including to tidy it.
+
+To add a capability: create the file under the right folder, add its tag after
+the last existing `src/` tag, and run the suite. The manifest at the top of
+`crm-index-core.js` and `CORE_FILES` in `tests/_sources.cjs` are both
+regenerated from the actual script tags, so neither is maintained by hand.
+
 ## Running the browser tests locally (Windows)
 
 Sixteen of the suites drive a real browser. They are easy to conclude are
