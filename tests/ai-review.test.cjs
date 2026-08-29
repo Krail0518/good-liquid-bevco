@@ -99,6 +99,16 @@ check('the workflow files the findings',
 check('the placeholder "not connected" step is gone',
   !/Reviewer not connected/.test(wf),
   'it existed to fail loudly while unwired; leaving it would fail every run');
+// The filing step needs issues:write. GITHUB_TOKEN is read-only by default,
+// and the failure is a 403 at the very end -- after the review has run and
+// been paid for -- so it is worth pinning rather than rediscovering.
+check('the workflow grants issues: write',
+  /permissions:[\s\S]{0,160}?issues:\s*write/.test(wf),
+  'without it the filing step gets 403 Resource not accessible by integration');
+check('the workflow does not grant blanket write-all',
+  !/permissions:\s*write-all/.test(wf),
+  'the job needs to read the repo and write issues, nothing more');
+
 check('the workflow passes both API keys through',
   /OPENAI_API_KEY:\s*\$\{\{\s*secrets\.OPENAI_API_KEY\s*\}\}/.test(wf) &&
   /ANTHROPIC_API_KEY:\s*\$\{\{\s*secrets\.ANTHROPIC_API_KEY\s*\}\}/.test(wf));

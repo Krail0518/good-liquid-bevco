@@ -38,6 +38,15 @@ concurrency:
   group: weekly-ai-review
   cancel-in-progress: false
 
+# GITHUB_TOKEN is read-only by default in this repo, so the filing step got
+# 403 "Resource not accessible by integration" on its first real run. Declared
+# at workflow level, narrowly: the job reads the repo and writes issues, and
+# naming the scopes explicitly means a later addition cannot silently inherit
+# more than it needs.
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   review:
     runs-on: ubuntu-latest
