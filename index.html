@@ -1295,14 +1295,14 @@ select option, .fsel option {
   </a>
   <button id="mobile-menu-btn" data-gl-action="toggleMobileMenu" aria-label="Menu">☰</button>
   <div class="nav-links" id="nav-links-list">
-    <a href="javascript:void(0)" onclick="event.preventDefault();navTo(&#39;about&#39;)">About</a>
-    <a href="javascript:void(0)" onclick="event.preventDefault();navTo(&#39;services&#39;)">Services</a>
-    <a href="javascript:void(0)" onclick="event.preventDefault();navTo(&#39;pricing&#39;)">Pricing</a>
-    <a href="javascript:void(0)" onclick="event.preventDefault();navTo(&#39;certifications&#39;)">Certifications</a>
-    <a href="javascript:void(0)" onclick="event.preventDefault();navTo(&#39;team&#39;)">Team</a>
+    <a href="javascript:void(0)" data-gl-action="navTo" data-gl-arg1="about" data-gl-prevent>About</a>
+    <a href="javascript:void(0)" data-gl-action="navTo" data-gl-arg1="services" data-gl-prevent>Services</a>
+    <a href="javascript:void(0)" data-gl-action="navTo" data-gl-arg1="pricing" data-gl-prevent>Pricing</a>
+    <a href="javascript:void(0)" data-gl-action="navTo" data-gl-arg1="certifications" data-gl-prevent>Certifications</a>
+    <a href="javascript:void(0)" data-gl-action="navTo" data-gl-arg1="team" data-gl-prevent>Team</a>
     <a href="javascript:void(0)" class="nav-cta" data-gl-action="navTo" data-gl-arg1="contact">Get a Quote</a>
     <a href="?portal=1" style="padding:9px 22px;border:1.5px solid rgba(0,229,192,.45);color:#00e5c0;border-radius:6px;font-size:13px;font-weight:600;transition:all .25s;margin-left:8px;text-decoration:none">🔑 Customer Portal</a>
-    <a href="javascript:void(0)" onclick="event.preventDefault();openAdmin()" style="padding:9px 22px;border:1.5px solid #f5c842;color:#f5c842;border-radius:6px;font-size:13px;font-weight:600;transition:all .25s;margin-left:8px;">🔒 Admin</a>
+    <a href="javascript:void(0)" data-gl-action="openAdmin" data-gl-prevent style="padding:9px 22px;border:1.5px solid #f5c842;color:#f5c842;border-radius:6px;font-size:13px;font-weight:600;transition:all .25s;margin-left:8px;">🔒 Admin</a>
   </div>
 </nav>
 
@@ -1770,7 +1770,7 @@ select option, .fsel option {
         <div style="font-family:var(--ff-disp);font-size:24px;letter-spacing:1px;color:var(--white);margin-bottom:5px">PALMETTO, FL</div>
         <div style="font-family:var(--ff-mono);font-size:12px;color:var(--white);line-height:1.7;margin-bottom:16px">2011 51st Ave E, Unit 100<br>Palmetto, FL 34221</div>
         <p style="font-size:13px;color:var(--muted);line-height:1.7">Schedule a tour and see the production line in action.</p>
-        <a href="javascript:void(0)" onclick="event.preventDefault();openBooking()" class="fac-btn">Schedule a tour →</a>
+        <a href="javascript:void(0)" data-gl-action="openBooking" data-gl-prevent class="fac-btn">Schedule a tour →</a>
       </div>
     </div>
   </div>
@@ -1932,7 +1932,7 @@ select option, .fsel option {
       <div id="notif-bell" data-gl-action="toggleNotifPanel" style="position:relative;width:34px;height:34px;border-radius:8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s" title="Notifications">
         🔔<div id="notif-badge" style="display:none">0</div>
       </div>
-      <button id="top-btn-pricing" onclick="window.glOpenPricingSettings && glOpenPricingSettings()" title="Pricing — edit quote &amp; invoice prices" style="width:34px;height:34px;border-radius:8px;background:rgba(0,229,192,.10);border:1px solid rgba(0,229,192,.30);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s;font-size:16px;color:var(--teal)">💲</button>
+      <button id="top-btn-pricing" data-gl-action="glOpenPricingSettings" title="Pricing — edit quote &amp; invoice prices" style="width:34px;height:34px;border-radius:8px;background:rgba(0,229,192,.10);border:1px solid rgba(0,229,192,.30);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s;font-size:16px;color:var(--teal)">💲</button>
     </div>
     <div class="crm-usr">
       <div id="crm-user-info" style="display:flex;align-items:center;gap:8px">
@@ -1943,7 +1943,7 @@ select option, .fsel option {
         </div>
       </div>
       <button id="top-btn-users" class="cbtn" style="font-size:10px;padding:4px 10px;margin-left:4px;display:none" onclick="cNav('users',null)">🔑 Users &amp; permissions</button>
-      <button id="top-btn-backup" class="cbtn" style="font-size:10px;padding:4px 10px;margin-left:4px;display:none" onclick="window.glExportEverything && window.glExportEverything()">💾 Backup all data</button>
+      <button id="top-btn-backup" class="cbtn" style="font-size:10px;padding:4px 10px;margin-left:4px;display:none" data-gl-action="glExportEverything">💾 Backup all data</button>
       <button id="top-btn-digest" class="cbtn" style="font-size:10px;padding:4px 10px;margin-left:4px;display:none" data-gl-action="runDailyDigestNow" title="Send today's activity digest to all opted-in staff users right now (bypasses the 7am cron).">📨 Send digest</button>
       <button class="cbtn" style="font-size:10px;padding:4px 10px;margin-left:4px" data-gl-action="openChangePwModal">🔑 Password</button>
       <button class="cbtn" style="font-size:10px;padding:4px 10px;margin-left:4px" data-gl-action="logoutCRM">Sign out</button>
@@ -2068,7 +2068,7 @@ select option, .fsel option {
       <div id="cpg-holds" class="cpg">
         <div class="cph">
           <div><div class="cpt">HOLD TAGS</div><div class="cps" id="holds-sub">Product holds (GMP-QC-001) — block shipping until PCQI disposition</div></div>
-          <button class="cbtn pri" onclick="window.glOpenAddHoldTag && window.glOpenAddHoldTag()">+ New Hold Tag</button>
+          <button class="cbtn pri" data-gl-action="glOpenAddHoldTag">+ New Hold Tag</button>
         </div>
         <div id="holds-body"></div>
       </div>
@@ -2077,7 +2077,7 @@ select option, .fsel option {
       <div id="cpg-cip" class="cpg">
         <div class="cph">
           <div><div class="cpt">CIP / SANITATION LOG</div><div class="cps" id="cip-sub">Cleaning cycles between runs — FDA-defensible chain of custody</div></div>
-          <button class="cbtn pri" onclick="window.glOpenAddCip && window.glOpenAddCip()">+ Log Cycle</button>
+          <button class="cbtn pri" data-gl-action="glOpenAddCip">+ Log Cycle</button>
         </div>
         <div id="cip-body"></div>
       </div>
@@ -2095,7 +2095,7 @@ select option, .fsel option {
       <div id="cpg-formulas" class="cpg">
         <div class="cph">
           <div><div class="cpt">FORMULA VAULT</div><div class="cps" id="fv-sub">Recipes, versions, ingredients, allergen profiles</div></div>
-          <button class="cbtn pri" onclick="window.glOpenAddFormula && window.glOpenAddFormula()">+ New Formula</button>
+          <button class="cbtn pri" data-gl-action="glOpenAddFormula">+ New Formula</button>
         </div>
         <div id="fv-body"></div>
       </div>
@@ -2104,7 +2104,7 @@ select option, .fsel option {
       <div id="cpg-yield" class="cpg">
         <div class="cph">
           <div><div class="cpt">YIELD TRACKER</div><div class="cps" id="yld-sub">Planned vs actual cases per completed run</div></div>
-          <button class="cbtn pri" onclick="window.glOpenLogYield && window.glOpenLogYield()">+ Log Completion</button>
+          <button class="cbtn pri" data-gl-action="glOpenLogYield">+ Log Completion</button>
         </div>
         <div id="yld-body"></div>
       </div>
@@ -2113,7 +2113,7 @@ select option, .fsel option {
       <div id="cpg-production-runs" class="cpg">
         <div class="cph">
           <div><div class="cpt">PRODUCTION RUNS</div><div class="cps" id="prun-sub">Operations board · Discovery → Ship</div></div>
-          <button class="cbtn pri" onclick="window.glOpenAddProductionRun && window.glOpenAddProductionRun()">+ Add Run</button>
+          <button class="cbtn pri" data-gl-action="glOpenAddProductionRun">+ Add Run</button>
         </div>
         <div id="prun-board"></div>
       </div>
@@ -2122,7 +2122,7 @@ select option, .fsel option {
       <div id="cpg-samples" class="cpg">
         <div class="cph">
           <div><div class="cpt">SAMPLE SHIPMENTS</div><div class="cps" id="samp-sub">Track samples out + auto-flag overdue follow-ups</div></div>
-          <button class="cbtn pri" onclick="window.glOpenAddSample && window.glOpenAddSample()">+ Log Shipment</button>
+          <button class="cbtn pri" data-gl-action="glOpenAddSample">+ Log Shipment</button>
         </div>
         <div id="samp-body"></div>
       </div>
@@ -2131,7 +2131,7 @@ select option, .fsel option {
       <div id="cpg-content" class="cpg">
         <div class="cph">
           <div><div class="cpt">CONTENT CALENDAR</div><div class="cps" id="cc-sub">Plan + track social posts across channels</div></div>
-          <button class="cbtn pri" onclick="window.glOpenAddContent && window.glOpenAddContent()">+ New Post</button>
+          <button class="cbtn pri" data-gl-action="glOpenAddContent">+ New Post</button>
         </div>
         <div id="cc-body"></div>
       </div>
@@ -2140,7 +2140,7 @@ select option, .fsel option {
       <div id="cpg-defects" class="cpg">
         <div class="cph">
           <div><div class="cpt">DEFECTS / NCRs</div><div class="cps" id="def-sub">Non-conformance reports — track, root-cause, close out</div></div>
-          <button class="cbtn pri" onclick="window.glOpenAddDefect && window.glOpenAddDefect()">+ Log Defect</button>
+          <button class="cbtn pri" data-gl-action="glOpenAddDefect">+ Log Defect</button>
         </div>
         <div id="def-body"></div>
       </div>
@@ -2149,7 +2149,7 @@ select option, .fsel option {
       <div id="cpg-vendors" class="cpg">
         <div class="cph">
           <div><div class="cpt">VENDORS</div><div class="cps" id="ven-sub">Suppliers + lead times + COI status</div></div>
-          <button class="cbtn pri" onclick="window.glOpenAddVendor && window.glOpenAddVendor()">+ Add Vendor</button>
+          <button class="cbtn pri" data-gl-action="glOpenAddVendor">+ Add Vendor</button>
         </div>
         <div id="ven-body"></div>
       </div>
@@ -2391,7 +2391,7 @@ select option, .fsel option {
             <button class="cbtn pri" onclick="cNav(&#39;newinv&#39;,document.querySelectorAll(&#39;.cni&#39;)[5])">+ New Invoice</button>
           </div>
         </div>
-        <div class="csrow"><span>🔍</span><input type="text" placeholder="Search clients…" oninput="filterClients(this.value)"></div>
+        <div class="csrow"><span>🔍</span><input type="text" placeholder="Search clients…" data-gl-action="filterClients" data-gl-el-prop="value" data-gl-on="input"></div>
         <table class="ctbl"><thead><tr><th>Brand</th><th>Contact</th><th>Service</th><th>Status</th><th>Total billed</th><th>Referred by</th><th></th></tr></thead>
         <tbody id="client-body"></tbody></table>
       </div>
@@ -2431,7 +2431,7 @@ select option, .fsel option {
         <div class="cph">
           <div><div class="cpt">PIPELINE</div><div class="cps" id="pipe-sub">Active brand engagements</div></div>
           <div style="display:flex;gap:8px">
-            <input id="gl-pipeline-search" type="text" placeholder="Search company or email…" oninput="glFilterPipeline(this.value)" style="padding:6px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#fff;font-size:12px;width:200px;outline:none" />
+            <input id="gl-pipeline-search" type="text" placeholder="Search company or email…" data-gl-action="glFilterPipeline" data-gl-el-prop="value" data-gl-on="input" style="padding:6px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#fff;font-size:12px;width:200px;outline:none" />
             <button class="cbtn" data-gl-action="openBulkOutreach" style="background:rgba(245,200,66,.08);border-color:rgba(245,200,66,.25);color:#d4a200">📤 Bulk Outreach</button>
             <button class="cbtn" data-gl-action="glOpenAttentionBoard" style="background:rgba(245,200,66,.14);border-color:rgba(245,200,66,.4);color:#f5c842">🔥 Needs Attention</button>
             <button id="gl-followups-btn" class="cbtn" data-gl-action="glOpenFollowups" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)">✍️ Follow-ups</button>
@@ -2598,7 +2598,7 @@ select option, .fsel option {
 
           <!-- Always-visible footer: Quote + Close Job (admin only, handled inside each fn) -->
           <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:18px;padding-top:16px;border-top:1px solid rgba(255,255,255,.08)">
-            <button onclick="window.glQuoteFromDeal&&glQuoteFromDeal()" style="flex:1;padding:12px;background:rgba(26,111,255,.1);border:1px solid rgba(26,111,255,.35);border-radius:8px;color:#6b9fff;font-weight:700;font-size:14px;cursor:pointer">📋 New Quote</button>
+            <button data-gl-action="glQuoteFromDeal" style="flex:1;padding:12px;background:rgba(26,111,255,.1);border:1px solid rgba(26,111,255,.35);border-radius:8px;color:#6b9fff;font-weight:700;font-size:14px;cursor:pointer">📋 New Quote</button>
             <button onclick="window.glCloseJobFromDeal&&glCloseJobFromDeal('won')" style="flex:1;padding:12px;background:rgba(29,158,117,.08);border:1px solid rgba(29,158,117,.3);border-radius:8px;color:#5fcf9e;font-weight:700;font-size:14px;cursor:pointer">✅ Won</button>
             <button onclick="window.glCloseJobFromDeal&&glCloseJobFromDeal('lost')" style="flex:1;padding:12px;background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.3);border-radius:8px;color:#e74c3c;font-weight:700;font-size:14px;cursor:pointer">🚫 Lost</button>
           </div>
@@ -2611,7 +2611,7 @@ select option, .fsel option {
           <div><div class="cpt">INVOICES</div><div class="cps" id="inv-sub">0 invoices</div></div>
           <button class="cbtn pri" onclick="cNav(&#39;newinv&#39;,document.querySelectorAll(&#39;.cni&#39;)[5])">+ New invoice</button>
         </div>
-        <div class="csrow"><span>🔍</span><input type="text" placeholder="Search invoices…" oninput="filterInvoices(this.value)"></div>
+        <div class="csrow"><span>🔍</span><input type="text" placeholder="Search invoices…" data-gl-action="filterInvoices" data-gl-el-prop="value" data-gl-on="input"></div>
         <div class="cpills" id="inv-pills">
           <span class="cpill act" data-gl-action="setInvFilter" data-gl-arg1="all" data-gl-el-at="1">All</span>
           <span class="cpill" data-gl-action="setInvFilter" data-gl-arg1="draft" data-gl-el-at="1">Draft</span>
@@ -2621,7 +2621,7 @@ select option, .fsel option {
         </div>
         <div id="inv-bulk-bar" style="display:none;background:rgba(0,229,192,.06);border:1px solid rgba(0,229,192,.25);border-radius:10px;padding:10px 14px;margin-bottom:10px;align-items:center;gap:10px;flex-wrap:wrap"></div>
         <table class="ctbl"><thead><tr>
-          <th style="width:32px"><input type="checkbox" id="inv-select-all" onclick="toggleSelectAllInvoices(this.checked)" title="Select all"></th>
+          <th style="width:32px"><input type="checkbox" id="inv-select-all" data-gl-action="toggleSelectAllInvoices" data-gl-el-prop="checked" title="Select all"></th>
           <th>Invoice #</th><th>Client</th><th>Service</th><th>Amount</th><th>Date</th><th>Status</th><th>Actions</th>
         </tr></thead>
         <tbody id="inv-body"></tbody></table>
@@ -2718,7 +2718,7 @@ select option, .fsel option {
           <span class="cpill" data-gl-action="setActivityFilter" data-gl-arg1="ref" data-gl-el-at="1">🤝 Referrals</span>
         </div>
         <div style="margin-bottom:12px">
-          <input type="text" placeholder="🔍 Search activity by name or detail…" oninput="setActivitySearch(this.value)" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:13px;box-sizing:border-box">
+          <input type="text" placeholder="🔍 Search activity by name or detail…" data-gl-action="setActivitySearch" data-gl-el-prop="value" data-gl-on="input" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:13px;box-sizing:border-box">
         </div>
         <div class="ccard" id="full-activity"></div>
       </div>
@@ -2788,7 +2788,7 @@ select option, .fsel option {
           <div><div class="cpt">DOCUMENTS</div><div class="cps">NDAs, formulas, artwork per client</div></div>
           <button class="cbtn pri" data-gl-action="openDocUploadModal">+ Upload Document</button>
         </div>
-        <div class="csrow"><span>🔍</span><input type="text" placeholder="Search documents…" oninput="filterDocs(this.value)"></div>
+        <div class="csrow"><span>🔍</span><input type="text" placeholder="Search documents…" data-gl-action="filterDocs" data-gl-el-prop="value" data-gl-on="input"></div>
         <div class="frow" style="margin-bottom:14px"><div class="flbl">Filter by client</div>
           <select class="fsel" id="doc-client-filter" data-gl-action="renderDocs" data-gl-on="change" style="max-width:220px">
             <option value="">All clients</option>
