@@ -143,7 +143,22 @@
       b.addEventListener('click', async function(){
         if(!confirm('Remove this meeting note?')) return;
         var nid = this.getAttribute('data-id');
-        try { await sb().from('meeting_notes').delete().eq('id', nid); } catch(e){}
+        // Row-level security refuses a delete by returning ZERO ROWS and no
+        // error, so the empty catch that used to be here reported success on
+        // a note the database had kept. The re-render then hid it, and it
+        // reappeared on reload. Ask for the removed rows back and treat an
+        // empty array as failure — CLAUDE.md rule 4.
+        var dq;
+        try { dq = await sb().from('meeting_notes').delete().eq('id', nid).select(); }
+        catch(e){ dq = { error: e }; }
+        if(dq && dq.error){
+          alert('Could not remove the note: ' + (dq.error.message || dq.error));
+          return;
+        }
+        if(!dq || !Array.isArray(dq.data) || dq.data.length === 0){
+          alert('The server refused to remove that note (0 rows changed). It is unchanged.');
+          return;
+        }
         await window.glMarkBriefStale(kind, id);
         glRenderMeetingNotes(host, opts);
       });
