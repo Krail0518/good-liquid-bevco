@@ -122,6 +122,10 @@ jobs:
       # must exist, and the page must offer a way back out. No browser needed.
       - name: Run documents storage tests
         run: node tests/documents-storage.test.cjs
+      # The approval email is built from anonymous input and carries the
+      # Approve link. Escape at the template, not only at ingestion.
+      - name: Run booking email escaping tests
+        run: node tests/booking-email-escaping.test.cjs
 
       - name: Run smoke test
         env:

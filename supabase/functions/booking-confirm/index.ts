@@ -68,6 +68,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(String(booker_email))) {
     return errorResponse('Please enter a valid email address', 400);
   }
+  // That pattern excludes only '@' and whitespace, so it happily accepts
+  // a<svg/onload=alert(1)>@b.co -- no space and no second '@' is required to
+  // build a payload. booker_email was the one field stripAngles() below never
+  // touched, and it is interpolated into the approval email that carries the
+  // Approve link. Reject rather than strip: unlike a name or a note, none of
+  // these characters belongs in a deliverable address.
+  if (/[<>"'`]/.test(String(booker_email))) {
+    return errorResponse('Please enter a valid email address', 400);
+  }
   if (String(booker_name).length > 200 || String(booker_company || '').length > 200) {
     return errorResponse('Name or company is too long', 400);
   }
@@ -84,6 +93,23 @@ Deno.serve(async (req: Request): Promise<Response> => {
      note does not fail an otherwise valid booking.
      Everything below persists or sends these SAFE_* values, never the raw ones. */
   const stripAngles = (v: unknown) => String(v ?? '').replace(/[<>]/g, '');
+
+  /* Escaping for the email templates below.
+     stripAngles() is defence in depth at ingestion, not the fix. It cannot be
+     the fix: it never covered booker_email, it does not touch '&' (so
+     "Tom & Jerry" can still form an entity), and it says nothing about values
+     that reach these templates from somewhere other than this request --
+     hostName comes from the staff profile row. Rendering is the primary
+     defence and has to be correct on its own, which is what GL-006 asked for.
+     Applied to every interpolation of a value this function did not construct
+     itself. */
+  const escapeHtml = (v: unknown) =>
+    String(v ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   const safeName    = stripAngles(booker_name).trim();
   const safeCompany = booker_company ? stripAngles(booker_company).trim() : null;
   const safeNotes   = notes ? stripAngles(notes) : null;
@@ -244,6 +270,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
     console.error('[booking-confirm] could not sign review token:', e);
   }
 
+  // Escaped once, used by both templates below. The plain-text bodies keep
+  // the unescaped values -- entities in a text/plain part render literally,
+  // so escaping there would corrupt the message rather than protect anything.
+  const eName    = escapeHtml(safeName);
+  const eCompany = safeCompany ? escapeHtml(safeCompany) : null;
+  const eNotes   = safeNotes   ? escapeHtml(safeNotes)   : null;
+  const eEmail   = escapeHtml(booker_email);
+  const eHost    = escapeHtml(hostName);
+  const eApprove = escapeHtml(reviewUrl ? reviewUrl + '&action=approve' : '');
+  const eDecline = escapeHtml(reviewUrl ? reviewUrl + '&action=decline' : '');
+
   // ── Email: booker "request received" (NO calendar invite yet) ───────────
   const bookerText = [
     `Hi ${safeName},`,
@@ -269,7 +306,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:#222">
   <div style="background:#0f1624;padding:24px 32px;border-radius:10px">
     <h2 style="color:#00e5c0;margin:0 0 6px">Tour request received ✓</h2>
-    <p style="color:#c8d8f0;margin:0 0 24px">Hi ${safeName} — thanks! We’ll confirm your time shortly.</p>
+    <p style="color:#c8d8f0;margin:0 0 24px">Hi ${eName} — thanks! We’ll confirm your time shortly.</p>
     <div style="background:#192337;border-radius:8px;padding:20px;margin-bottom:20px">
       <div style="margin-bottom:12px">
         <span style="color:#6b87ad;font-size:12px;text-transform:uppercase;letter-spacing:1px">Requested date</span><br>
@@ -329,13 +366,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
     <h2 style="color:#f5c842;margin:0 0 6px">Tour request — needs your OK</h2>
     <div style="background:#192337;border-radius:8px;padding:20px;margin:16px 0">
       <div style="margin-bottom:10px"><span style="color:#6b87ad;font-size:12px;text-transform:uppercase;letter-spacing:1px">When</span><br><span style="color:#fff;font-size:15px">${dateLabel} · ${timeLabel} ${tzLbl}</span></div>
-      <div style="margin-bottom:10px"><span style="color:#6b87ad;font-size:12px;text-transform:uppercase;letter-spacing:1px">Who</span><br><span style="color:#fff;font-size:15px">${safeName}${safeCompany ? ' · ' + safeCompany : ''}</span></div>
-      <div><span style="color:#6b87ad;font-size:12px;text-transform:uppercase;letter-spacing:1px">Contact</span><br><span style="color:#fff;font-size:15px">${booker_email}</span></div>
-      ${safeNotes ? `<div style="margin-top:10px"><span style="color:#6b87ad;font-size:12px;text-transform:uppercase;letter-spacing:1px">Notes</span><br><span style="color:#c8d8f0;font-size:14px">${safeNotes}</span></div>` : ''}
+      <div style="margin-bottom:10px"><span style="color:#6b87ad;font-size:12px;text-transform:uppercase;letter-spacing:1px">Who</span><br><span style="color:#fff;font-size:15px">${eName}${eCompany ? ' · ' + eCompany : ''}</span></div>
+      <div><span style="color:#6b87ad;font-size:12px;text-transform:uppercase;letter-spacing:1px">Contact</span><br><span style="color:#fff;font-size:15px">${eEmail}</span></div>
+      ${eNotes ? `<div style="margin-top:10px"><span style="color:#6b87ad;font-size:12px;text-transform:uppercase;letter-spacing:1px">Notes</span><br><span style="color:#c8d8f0;font-size:14px">${eNotes}</span></div>` : ''}
     </div>
     <div style="margin:22px 0">
-      <a href="${approveUrl}" style="display:inline-block;padding:12px 26px;background:#00c4a7;color:#0d1420;border-radius:8px;text-decoration:none;font-size:14px;font-weight:800;margin-right:10px">✓ Approve</a>
-      <a href="${declineUrl}" style="display:inline-block;padding:12px 26px;background:#2a1620;color:#ff8a78;border:1px solid #5a2630;border-radius:8px;text-decoration:none;font-size:14px;font-weight:700">✕ Decline</a>
+      <a href="${eApprove}" style="display:inline-block;padding:12px 26px;background:#00c4a7;color:#0d1420;border-radius:8px;text-decoration:none;font-size:14px;font-weight:800;margin-right:10px">✓ Approve</a>
+      <a href="${eDecline}" style="display:inline-block;padding:12px 26px;background:#2a1620;color:#ff8a78;border:1px solid #5a2630;border-radius:8px;text-decoration:none;font-size:14px;font-weight:700">✕ Decline</a>
     </div>
     <p style="color:#6b87ad;font-size:12px;margin:0">Approving emails the customer their confirmation + calendar invite and books the slot.</p>
   </div>
