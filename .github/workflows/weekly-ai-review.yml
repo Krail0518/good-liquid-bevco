@@ -8,7 +8,8 @@
 # from the same family as the implementer is the same model marking its own
 # homework.
 #
-# Requires the OPENAI_API_KEY secret. Without it the job FAILS rather than
+# Requires OPENAI_API_KEY (preferred) or ANTHROPIC_API_KEY. Without either
+# the job FAILS rather than
 # skipping — a job that passes while doing nothing is worse than no job,
 # because it reads as coverage. Optional repo variable AI_REVIEW_MODEL picks
 # the model (default gpt-4o).
@@ -108,7 +109,12 @@ jobs:
       - name: Run the deep review
         if: steps.when.outputs.proceed == 'true'
         env:
+          # OpenAI is preferred: AGENTS.md wants a reviewer that did not write
+          # the code. ANTHROPIC_API_KEY is a working fallback and the run says
+          # so, loudly, because it is a real downgrade in independence.
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          AI_REVIEW_PROVIDER: ${{ vars.AI_REVIEW_PROVIDER }}
           AI_REVIEW_MODEL: ${{ vars.AI_REVIEW_MODEL }}
         run: node scripts/ai-review.mjs review-input/summary.md review-output
 
