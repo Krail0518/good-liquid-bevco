@@ -322,4 +322,3 @@ async function deleteTimeEntry(id) {
   if(typeof glAudit === 'function') glAudit('time_entry_deleted', null, { entry_id: id });
 }
 
-/* ENHANCED CLIENT HEALTH SCORE (AI-POWERED) — moved to /src/modules/customers/health-score-ai.js (GL-037). */

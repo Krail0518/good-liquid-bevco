@@ -87,4 +87,3 @@ async function openTimeTrackingReport(){
   }
 }
 
-/* INVOICE PAY LINK GENERATOR — moved to /src/modules/invoicing/pay-link.js (GL-037). */

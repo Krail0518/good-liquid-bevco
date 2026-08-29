@@ -93,6 +93,38 @@ for (const m of modules) {
   check('module exists on disk: ' + m,
     fs.existsSync(path.join(ROOT, m.slice(1))));
 }
+// Every module on disk must actually be loaded. A file under src/modules
+// with no script tag is dead weight that looks like shipped code — the same
+// shape as a test wired to no workflow (GL-039).
+function walkModules(dir, acc) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = dir + '/' + e.name;
+    if (e.isDirectory()) walkModules(full, acc);
+    else if (e.name.endsWith('.js')) acc.push(full);
+  }
+  return acc;
+}
+const onDisk = fs.existsSync(path.join(ROOT, 'src/modules'))
+  ? walkModules(path.join(ROOT, 'src/modules'), []).map((f) =>
+      '/' + path.relative(ROOT, f).split(path.sep).join('/'))
+  : [];
+const unloaded = onDisk.filter((f) => !srcs.includes(f));
+check('every module on disk is loaded by index.html',
+  unloaded.length === 0,
+  unloaded.join(', ') + ' — present but referenced by no script tag');
+
+// The core carries one manifest of what was extracted. Scattered 'moved to'
+// comments were the earlier scheme and they did not survive: an extraction
+// whose boundary ran to the next banner swallowed the previous pointer, and
+// eight ended up inside module files, reading as if the module had something
+// to do with the section named.
+check('no module contains a stray "moved to" pointer',
+  onDisk.every((f) =>
+    !/moved to \/src\/modules/.test(fs.readFileSync(path.join(ROOT, f.slice(1)), 'utf8'))),
+  'a pointer inside a module points away from the code it sits next to');
+check('the core lists every extracted module in its manifest',
+  onDisk.every((f) => fs.readFileSync(path.join(ROOT, 'crm-index-core.js'), 'utf8').includes(f)),
+  'the manifest is how someone reading the core finds where a capability went');
 // ── it must stay a classic, blocking script ──────────────────────────
 const coreTag = tags.find((a) => /\/crm-index-core\.js/.test(a)) || '';
 check('the core script has no defer',

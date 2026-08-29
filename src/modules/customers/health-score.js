@@ -29,4 +29,3 @@ function getClientHealth(client){
   return 'red';
 }
 
-/* TAGS SYSTEM — moved to /src/modules/customers/tags.js (GL-037). */
