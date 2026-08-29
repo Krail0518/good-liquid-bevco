@@ -98,9 +98,31 @@ async function callHelper(src, mode, inv) {
   check('exactly one quickPaid declaration (a second one shadows the first)',
     quickPaidCount === 1, 'found ' + quickPaidCount);
 
-  const rawUpdates = (html.match(/from\('invoices'\)\.update/g) || []).length;
-  check('only the helper writes invoice status directly', rawUpdates === 1,
-    'found ' + rawUpdates + " occurrences of from('invoices').update — expected 1 (inside the helper)");
+  // Only STATUS writes must go through the helper. This used to count every
+  // from('invoices').update, which over-matched the moment GL-037 moved a file
+  // holding an unrelated invoice write into src/ — help-features.js sets
+  // waive_card_surcharge, and does it correctly, with .select() and a 0-row
+  // check. Failing on that would have taught the next person to relax the
+  // check rather than read it.
+  //
+  // The rule is about the columns that decide whether an invoice is paid.
+  // Stated as the rule actually is: no call site outside the helper may write
+  // a status-bearing payload. The helper itself passes a variable
+  // (`update(patch)`), so it carries no column names to match — asserting a
+  // count of literal matches would have required it to be 1 and found 0.
+  const STATUS_COLS = /\b(status|paid_at|paid_method|paid_amount)\s*:/;
+  const literalStatusWrites = [...html.matchAll(/from\('invoices'\)\.update\(\s*\{([^}]*)\}/g)]
+    .filter((m) => STATUS_COLS.test(m[1]));
+  check('no invoice status is written outside glPersistInvoiceStatus',
+    literalStatusWrites.length === 0,
+    'found ' + literalStatusWrites.length + ' direct status write(s): ' +
+    literalStatusWrites.map((m) => '{' + m[1].trim().slice(0, 70) + '}').join(' | ') +
+    ' — these bypass the rows-affected check and report success on a write RLS refused');
+
+  check('the helper itself performs the invoice update',
+    /glPersistInvoiceStatus[\s\S]{0,900}?from\('invoices'\)\.update\(patch\)/.test(html),
+    'the single permitted write lives inside the helper; if it moved, this ' +
+    'rule has nothing left to protect');
 
   for (const fn of ['bulkMarkPaid', 'quickPaid', 'markStatus']) {
     const at = html.indexOf('async function ' + fn);
