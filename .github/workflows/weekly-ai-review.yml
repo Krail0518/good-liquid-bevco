@@ -96,7 +96,29 @@ jobs:
           echo >> review-input/summary.md
           echo "## Technical debt register" >> review-input/summary.md
           sed -n '1,60p' docs/plans/technical-debt.md >> review-input/summary.md || true
-          cat review-input/summary.md
+          echo >> review-input/summary.md
+
+          # LIVE PRODUCTION STATE. Without this the reviewer reads migration
+          # files and reasons about them in isolation: a superseded migration
+          # reads as current, and a table that was renamed or never applied
+          # reads as present. Its first real run produced 6 findings of 7 that
+          # way, including two HIGH ones about a table with no RLS that in fact
+          # has two policies, and one about a table that does not exist.
+          #
+          # The baseline is generated from production by check-db-drift.sh and
+          # is gated by CI, so it is the authoritative answer to "what is
+          # actually there" -- which a migration file is not.
+          echo "## Live production authorization state" >> review-input/summary.md
+          echo >> review-input/summary.md
+          echo "Generated FROM PRODUCTION, not from the migrations. This is" >> review-input/summary.md
+          echo "authoritative. A migration file describes an intention that may" >> review-input/summary.md
+          echo "have been superseded, reverted, or never applied." >> review-input/summary.md
+          echo >> review-input/summary.md
+          echo '```' >> review-input/summary.md
+          grep -v '^#' docs/database/authorization-baseline.txt >> review-input/summary.md || true
+          echo '```' >> review-input/summary.md
+          wc -c review-input/summary.md
+          head -c 4000 review-input/summary.md
 
       - name: Upload the review input
         if: steps.when.outputs.proceed == 'true'
