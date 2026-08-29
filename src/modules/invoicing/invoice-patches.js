@@ -951,7 +951,7 @@
         invoice_date:date,
         due_date:dueIso||null,
         payment_terms: inv.paymentTerms,
-        // Persist the PO Number field (injected by crm-accounting.js). The
+        // Persist the PO Number field (injected by accounting.js). The
         // PGRST204 retry below strips it if the column is missing, so this is
         // safe on deployments that haven't run the accounting migration.
         po_number:(function(){ var el=document.getElementById('gl-po-number'); return el&&el.value.trim()?el.value.trim():null; })(),

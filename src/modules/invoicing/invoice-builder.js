@@ -1,4 +1,4 @@
-/* crm-invoice-builder.js — Invoice builder UI, rate card, line calculations, PDF export, AI chat */
+/* invoice-builder.js — Invoice builder UI, rate card, line calculations, PDF export, AI chat */
 (function(){
   'use strict';
 

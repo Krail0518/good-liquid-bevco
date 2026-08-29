@@ -14,7 +14,7 @@
  * `async function quickPaid` TWICE at top level in the same <script> block.
  * The later declaration wins, so the live implementation was the shorter one,
  * which wrote only {status:'paid'} — never paid_at or paid_method, which
- * crm-accounting.js reads for AR aging — and matched on invoice_number only.
+ * src/modules/invoicing/accounting.js reads for AR aging — and matched on invoice_number only.
  * The fuller version above it was dead code.
  *
  * All four now route through glPersistInvoiceStatus. This file tests that
@@ -110,14 +110,44 @@ async function callHelper(src, mode, inv) {
   // a status-bearing payload. The helper itself passes a variable
   // (`update(patch)`), so it carries no column names to match — asserting a
   // count of literal matches would have required it to be 1 and found 0.
+  // GL-020 was never about centralising the write. It was about writes that
+  // report success on rows the database refused: RLS rejects by returning zero
+  // rows and no error.
+  //
+  // An earlier version of this check demanded that ONLY glPersistInvoiceStatus
+  // write status. That held while the only writers lived in index.html, and
+  // broke the moment GL-037 moved accounting.js and billing-admin.js into
+  // src/. Those three writes — void, record-payment, quote auto-expiry — are
+  // long-standing, and every one already checks its result properly. The rule
+  // was wrong, not the code.
+  //
+  // So assert the property that actually matters: every status-bearing write
+  // asks for rows back and inspects what came back.
   const STATUS_COLS = /\b(status|paid_at|paid_method|paid_amount)\s*:/;
-  const literalStatusWrites = [...html.matchAll(/from\('invoices'\)\.update\(\s*\{([^}]*)\}/g)]
+  const statusWrites = [...html.matchAll(/from\('invoices'\)\.update\(\s*\{([^}]*)\}/g)]
     .filter((m) => STATUS_COLS.test(m[1]));
-  check('no invoice status is written outside glPersistInvoiceStatus',
-    literalStatusWrites.length === 0,
-    'found ' + literalStatusWrites.length + ' direct status write(s): ' +
-    literalStatusWrites.map((m) => '{' + m[1].trim().slice(0, 70) + '}').join(' | ') +
-    ' — these bypass the rows-affected check and report success on a write RLS refused');
+
+  const unchecked = statusWrites.filter((m) => {
+    const after = html.slice(m.index, m.index + 700);
+    const asksForRows = /\.select\(/.test(after);
+    // Either an explicit rows-affected test, or reading .data.length before
+    // acting on it. Checking `error` alone is NOT enough — that is precisely
+    // the bug: a refusal arrives as zero rows with no error.
+    const readsRowCount = /\.length\s*===\s*0/.test(after) || /\.data\s*&&\s*\w+\.data\.length/.test(after)
+      || /Array\.isArray\([^)]*\)\s*&&\s*[\w.]*length\s*===\s*0/.test(after);
+    return !(asksForRows && readsRowCount);
+  });
+
+  check('every invoice status write checks rows-affected, not just error',
+    unchecked.length === 0,
+    'found ' + unchecked.length + ' unchecked status write(s): ' +
+    unchecked.map((m) => '{' + m[1].trim().slice(0, 70) + '}').join(' | ') +
+    ' — RLS refuses with zero rows and NO error, so an error-only check ' +
+    'reports success on a write that never happened');
+
+  check('there is at least one status write to check',
+    statusWrites.length > 0,
+    'the pattern stopped matching — this rule is now asserting nothing');
 
   check('the helper itself performs the invoice update',
     /glPersistInvoiceStatus[\s\S]{0,900}?from\('invoices'\)\.update\(patch\)/.test(html),

@@ -57,9 +57,15 @@
  *   /src/modules/customers/health-score.js
  *   /src/modules/customers/tags.js
  *
+ *   /src/modules/invoicing/accounting.js
  *   /src/modules/invoicing/ar-aging.js
+ *   /src/modules/invoicing/billing-admin.js
  *   /src/modules/invoicing/follow-up.js
+ *   /src/modules/invoicing/invoice-builder.js
+ *   /src/modules/invoicing/invoice-delete.js
+ *   /src/modules/invoicing/invoice-patches.js
  *   /src/modules/invoicing/pay-link.js
+ *   /src/modules/invoicing/pricing-settings.js
  *
  *   /src/modules/pipeline/deal-detail.js
  *   /src/modules/pipeline/multi-pipeline.js
@@ -1950,7 +1956,7 @@ async function saveNewDeal(){
    declarations of the same name in the same script scope: the later one wins,
    so THIS was the live implementation and the fuller one above it was dead
    code. That mattered — this version wrote only {status:'paid'}, so paid_at
-   and paid_method were never set, and crm-accounting.js reads paid_at for AR
+   and paid_method were never set, and src/modules/invoicing/accounting.js reads paid_at for AR
    aging. It also matched on invoice_number only, and fired the paid alert
    whether or not the write succeeded.
    Removed so the single checked implementation above is the one that runs. */
