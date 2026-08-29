@@ -8,7 +8,7 @@
  *
  * 1. index.html carried a legacy saveRole/deactivateUser pair that called
  *    renderPermissionsPanel() *before* the update and *outside* the try. That
- *    function is declared inside the crm-permissions.js IIFE and never
+ *    function is declared inside the src/services/permissions-service.js IIFE and never
  *    exported, so the bare call threw a ReferenceError and the UPDATE below it
  *    never ran. Role changes and deactivations did nothing at all — a
  *    deactivated staff member could still sign in — and the click looked like
@@ -31,13 +31,13 @@ const fs = require('fs');
 const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..');
-const PERMISSIONS_JS = path.join(ROOT, 'crm-permissions.js');
+const PERMISSIONS_JS = path.join(ROOT, 'src/services/permissions-service.js');
 const INDEX_HTML = path.join(ROOT, 'index.html');
 
 const TARGET_USER = '11111111-1111-1111-1111-111111111111';
 
 /*
- * Harness loads crm-permissions.js with the globals it reaches for, plus a
+ * Harness loads src/services/permissions-service.js with the globals it reaches for, plus a
  * fake Supabase whose response is chosen per-test. Captured alerts and
  * notifications are how we observe whether a failure was surfaced.
  */

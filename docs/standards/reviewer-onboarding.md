@@ -86,7 +86,7 @@ to weigh:
 
 - **The refutations are as reviewable as the findings.** One in particular is
   worth checking: `saveInvoice` in `index.html` was refuted as unreachable dead
-  code because `cNav` runs nav guards first and `crm-permissions.js`
+  code because `cNav` runs nav guards first and `src/services/permissions-service.js`
   intercepts the `newinv` page. That reasoning was independently confirmed
   before the finding was dropped, but it is exactly the kind of call worth a
   second opinion.

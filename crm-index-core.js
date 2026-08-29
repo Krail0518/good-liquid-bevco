@@ -109,6 +109,13 @@
  *
  *   /src/modules/quotes/quote-builder.js
  *
+ *   /src/services/auth.js
+ *   /src/services/email.js
+ *   /src/services/integrations.js
+ *   /src/services/permissions-service.js
+ *   /src/services/seo.js
+ *   /src/services/utils.js
+ *
  *   /src/shared/ai-chat.js
  *   /src/shared/ai-drafts.js
  *   /src/shared/ai-insights.js

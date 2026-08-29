@@ -24,7 +24,7 @@
     catch(e){ return s; }
   }
 
-  // Matches the STATUS_COLOR map in crm-email.js so the same row looks
+  // Matches the STATUS_COLOR map in src/services/email.js so the same row looks
   // identical in the Email Activity modal and the per-client thread.
   function statusColor(s){
     return s === 'opened'    ? '#1a6fff'
