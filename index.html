@@ -1923,15 +1923,15 @@ select option, .fsel option {
     <div class="pw-title">SIGN IN</div>
     <div class="pw-sub">Good Liquid Bev Co · CRM</div>
     <div class="pw-err" id="pw-err">Incorrect email or password.</div>
-    <input type="email" class="pw-input" id="pw-email" placeholder="your@email.com" style="letter-spacing:0;margin-bottom:10px;text-align:left;padding:13px 16px" onkeydown="if(event.key===&#39;Enter&#39;)document.getElementById(&#39;pw-input&#39;).focus()">
-    <input type="password" class="pw-input" id="pw-input" placeholder="Password" style="text-align:left;padding:13px 16px" onkeydown="if(event.key===&#39;Enter&#39;)checkPw()">
+    <input type="email" class="pw-input" id="pw-email" placeholder="your@email.com" style="letter-spacing:0;margin-bottom:10px;text-align:left;padding:13px 16px" data-gl-action="glPwUserEnter" data-gl-on="keydown">
+    <input type="password" class="pw-input" id="pw-input" placeholder="Password" style="text-align:left;padding:13px 16px" data-gl-action="glPwSubmitEnter" data-gl-on="keydown">
     <label style="display:flex;align-items:center;gap:9px;font-size:12px;color:var(--muted);margin:6px 2px 14px;cursor:pointer;user-select:none;text-align:left">
       <input type="checkbox" id="gl-remember-cb" checked style="width:14px;height:14px;accent-color:var(--teal);cursor:pointer;margin:0;flex-shrink:0">
       <span>Stay signed in on this computer<br><span style="font-size:10px;color:var(--muted);opacity:.7">Survives closing the browser. Clicking <b>Sign out</b> still ends the session.</span></span>
     </label>
     <button class="pw-btn" data-gl-action="checkPw">Sign in →</button>
     <button class="pw-cancel" data-gl-action="closePw">Cancel</button>
-    <button style="font-size:11px;color:var(--muted);cursor:pointer;border:none;background:none;font-family:var(--ff-body);margin-top:8px" onclick="document.getElementById('pw-ov').classList.remove('show');document.getElementById('reset-overlay').classList.add('show')">Forgot password?</button>
+    <button style="font-size:11px;color:var(--muted);cursor:pointer;border:none;background:none;font-family:var(--ff-body);margin-top:8px" data-gl-action="glShowResetOverlay">Forgot password?</button>
 
   </div>
 </div>
@@ -1964,7 +1964,7 @@ select option, .fsel option {
           <div id="crm-role-badge" style="font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:1px 6px;border-radius:20px;display:inline-block;margin-top:1px">Admin</div>
         </div>
       </div>
-      <button id="top-btn-users" class="cbtn" style="font-size:10px;padding:4px 10px;margin-left:4px;display:none" onclick="cNav('users',null)">🔑 Users &amp; permissions</button>
+      <button id="top-btn-users" class="cbtn" style="font-size:10px;padding:4px 10px;margin-left:4px;display:none" data-gl-action="cNav" data-gl-arg1="users" data-gl-arg2="">🔑 Users &amp; permissions</button>
       <button id="top-btn-backup" class="cbtn" style="font-size:10px;padding:4px 10px;margin-left:4px;display:none" data-gl-action="glExportEverything">💾 Backup all data</button>
       <button id="top-btn-digest" class="cbtn" style="font-size:10px;padding:4px 10px;margin-left:4px;display:none" data-gl-action="runDailyDigestNow" title="Send today's activity digest to all opted-in staff users right now (bypasses the 7am cron).">📨 Send digest</button>
       <button class="cbtn" style="font-size:10px;padding:4px 10px;margin-left:4px" data-gl-action="openChangePwModal">🔑 Password</button>
@@ -2039,7 +2039,7 @@ select option, .fsel option {
       <div id="cpg-dashboard" class="cpg act">
         <div class="cph">
           <div><div class="cpt">DASHBOARD</div><div class="cps">Good Liquid Bev Co · May 2026</div></div>
-          <button class="cbtn pri" onclick="cNav(&#39;newinv&#39;,document.querySelectorAll(&#39;.cni&#39;)[5])">+ New Invoice</button>
+          <button class="cbtn pri" data-gl-action="glNavNewInvoice">+ New Invoice</button>
         </div>
         <div class="cmetrics" id="dash-metrics"></div>
         <div id="dash-attention" style="display:none"></div>
@@ -2218,7 +2218,7 @@ select option, .fsel option {
             </div>
             <div>
               <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--white);cursor:pointer;margin-bottom:8px">
-                <input type="checkbox" id="nc-billing-same" checked onchange="document.getElementById('nc-billing-block').style.display=this.checked?'none':'grid'" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">
+                <input type="checkbox" id="nc-billing-same" checked data-gl-action="glToggleNcBlock" data-gl-on="change" data-gl-arg1="nc-billing-block" data-gl-el-prop="checked" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">
                 Billing address same as physical
               </label>
               <div id="nc-billing-block" style="display:none;grid-template-columns:1fr;gap:8px">
@@ -2232,7 +2232,7 @@ select option, .fsel option {
             </div>
             <div>
               <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--white);cursor:pointer;margin-bottom:8px">
-                <input type="checkbox" id="nc-shipping-same" checked onchange="document.getElementById('nc-shipping-block').style.display=this.checked?'none':'grid'" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">
+                <input type="checkbox" id="nc-shipping-same" checked data-gl-action="glToggleNcBlock" data-gl-on="change" data-gl-arg1="nc-shipping-block" data-gl-el-prop="checked" style="accent-color:var(--teal);width:16px;height:16px;cursor:pointer">
                 Shipping address same as billing
               </label>
               <div id="nc-shipping-block" style="display:none;grid-template-columns:1fr;gap:8px">
@@ -2407,10 +2407,10 @@ select option, .fsel option {
         <div class="cph">
           <div><div class="cpt">CLIENTS</div><div class="cps" id="client-sub">8 beverage brands</div></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="cbtn" onclick="if(window.glOpenOnboardPicker){window.glOpenOnboardPicker();}else{alert('Onboarding module not loaded yet.');}" style="background:rgba(0,229,192,.12);border-color:rgba(0,229,192,.35);color:var(--teal)">📨 Send Onboarding</button>
-            <button class="cbtn" onclick="if(window.glOpenInvitePicker){window.glOpenInvitePicker();}else{alert('Portal module not loaded yet.');}" style="background:rgba(26,111,255,.12);border-color:rgba(26,111,255,.35);color:#6b9fff">🔑 Invite Customer Login</button>
+            <button class="cbtn" data-gl-action="glOpenOnboardPickerBtn" style="background:rgba(0,229,192,.12);border-color:rgba(0,229,192,.35);color:var(--teal)">📨 Send Onboarding</button>
+            <button class="cbtn" data-gl-action="glOpenInvitePickerBtn" style="background:rgba(26,111,255,.12);border-color:rgba(26,111,255,.35);color:#6b9fff">🔑 Invite Customer Login</button>
             <button class="cbtn" data-gl-action="openAddClientModal" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)">+ Add Client</button>
-            <button class="cbtn pri" onclick="cNav(&#39;newinv&#39;,document.querySelectorAll(&#39;.cni&#39;)[5])">+ New Invoice</button>
+            <button class="cbtn pri" data-gl-action="glNavNewInvoice">+ New Invoice</button>
           </div>
         </div>
         <div class="csrow"><span>🔍</span><input type="text" placeholder="Search clients…" data-gl-action="filterClients" data-gl-el-prop="value" data-gl-on="input"></div>
@@ -2459,7 +2459,7 @@ select option, .fsel option {
             <button id="gl-followups-btn" class="cbtn" data-gl-action="glOpenFollowups" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)">✍️ Follow-ups</button>
             <button class="cbtn" data-gl-action="glOpenBulkNudge" style="background:rgba(196,164,248,.1);border-color:rgba(196,164,248,.3);color:#c4a4f8">⏰ Bulk Nudge</button>
             <button class="cbtn" data-gl-action="openAddDealModal" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)">+ Add Deal</button>
-            <button id="gl-pipeline-quote-btn" class="cbtn" onclick="if(typeof glOpenQuoteBuilder==='function')glOpenQuoteBuilder(null,null)" style="background:rgba(26,111,255,.1);border-color:rgba(26,111,255,.35);color:#5a9fff">📋 Quote Builder</button>
+            <button id="gl-pipeline-quote-btn" class="cbtn" data-gl-action="glNewQuote" style="background:rgba(26,111,255,.1);border-color:rgba(26,111,255,.35);color:#5a9fff">📋 Quote Builder</button>
           </div>
         </div>
         <div class="pipeline-switch">
@@ -2621,8 +2621,8 @@ select option, .fsel option {
           <!-- Always-visible footer: Quote + Close Job (admin only, handled inside each fn) -->
           <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:18px;padding-top:16px;border-top:1px solid rgba(255,255,255,.08)">
             <button data-gl-action="glQuoteFromDeal" style="flex:1;padding:12px;background:rgba(26,111,255,.1);border:1px solid rgba(26,111,255,.35);border-radius:8px;color:#6b9fff;font-weight:700;font-size:14px;cursor:pointer">📋 New Quote</button>
-            <button onclick="window.glCloseJobFromDeal&&glCloseJobFromDeal('won')" style="flex:1;padding:12px;background:rgba(29,158,117,.08);border:1px solid rgba(29,158,117,.3);border-radius:8px;color:#5fcf9e;font-weight:700;font-size:14px;cursor:pointer">✅ Won</button>
-            <button onclick="window.glCloseJobFromDeal&&glCloseJobFromDeal('lost')" style="flex:1;padding:12px;background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.3);border-radius:8px;color:#e74c3c;font-weight:700;font-size:14px;cursor:pointer">🚫 Lost</button>
+            <button data-gl-action="glCloseJobFromDeal" data-gl-arg1="won" style="flex:1;padding:12px;background:rgba(29,158,117,.08);border:1px solid rgba(29,158,117,.3);border-radius:8px;color:#5fcf9e;font-weight:700;font-size:14px;cursor:pointer">✅ Won</button>
+            <button data-gl-action="glCloseJobFromDeal" data-gl-arg1="lost" style="flex:1;padding:12px;background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.3);border-radius:8px;color:#e74c3c;font-weight:700;font-size:14px;cursor:pointer">🚫 Lost</button>
           </div>
         </div>
       </div>
@@ -2631,7 +2631,7 @@ select option, .fsel option {
       <div id="cpg-invoices" class="cpg">
         <div class="cph">
           <div><div class="cpt">INVOICES</div><div class="cps" id="inv-sub">0 invoices</div></div>
-          <button class="cbtn pri" onclick="cNav(&#39;newinv&#39;,document.querySelectorAll(&#39;.cni&#39;)[5])">+ New invoice</button>
+          <button class="cbtn pri" data-gl-action="glNavNewInvoice">+ New invoice</button>
         </div>
         <div class="csrow"><span>🔍</span><input type="text" placeholder="Search invoices…" data-gl-action="filterInvoices" data-gl-el-prop="value" data-gl-on="input"></div>
         <div class="cpills" id="inv-pills">
@@ -2858,10 +2858,10 @@ select option, .fsel option {
           <button class="cbtn grn" id="btn-paid" data-gl-action="markStatus" data-gl-arg1="paid">✓ Mark paid</button>
           <button class="cbtn amber" id="btn-overdue" data-gl-action="markStatus" data-gl-arg1="overdue">⚠ Mark overdue</button>
           <button class="cbtn" data-gl-action="openFollowUpModal">✉ AI Follow-Up</button>
-          <button class="cbtn" style="background:rgba(26,111,255,.12);border-color:rgba(26,111,255,.35);color:#6b9fff" onclick="if(currentInvId)openSendInvoiceModal(currentInvId)">📧 Send Invoice</button>
-          <button class="cbtn" style="background:rgba(245,200,66,.12);border-color:rgba(245,200,66,.35);color:#f5c842" onclick="if(currentInvId && window.openEditInvoice)window.openEditInvoice(currentInvId)">✏️ Edit</button>
-          <button class="cbtn" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)" onclick="if(currentInvId)downloadInvoicePDF(currentInvId)">⬇ PDF</button>
-          <button class="cbtn" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)" onclick="if(currentInvId){const i=invoices.find(x=&gt;x.id===currentInvId);if(i)aiDraftEmail(i.clientName,i.id,i.amount,i.status)}">🤖 AI Email</button>
+          <button class="cbtn" style="background:rgba(26,111,255,.12);border-color:rgba(26,111,255,.35);color:#6b9fff" data-gl-action="glInvSend">📧 Send Invoice</button>
+          <button class="cbtn" style="background:rgba(245,200,66,.12);border-color:rgba(245,200,66,.35);color:#f5c842" data-gl-action="glInvEdit">✏️ Edit</button>
+          <button class="cbtn" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)" data-gl-action="glInvPdf">⬇ PDF</button>
+          <button class="cbtn" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)" data-gl-action="glInvAiDraft">🤖 AI Email</button>
         </div>
         <div style="max-width:640px;margin:0 auto" id="inv-detail-content"></div>
       </div>
@@ -3225,19 +3225,19 @@ select option, .fsel option {
 
 <!-- ═══ PHONE BOTTOM TAB BAR — outside crm-panel so position:fixed works cleanly ═══ -->
 <div id="crm-bottom-nav" role="navigation" aria-label="Quick navigation">
-  <button class="crm-bnav-item act" data-page="dashboard" onclick="cNav('dashboard');crmBnavSet(this)">
+  <button class="crm-bnav-item act" data-page="dashboard" data-gl-action="glBnavGo" data-gl-arg1="dashboard" data-gl-el="">
     <span class="crm-bnav-ico">📊</span>
     <span class="crm-bnav-lbl">Dashboard</span>
   </button>
-  <button class="crm-bnav-item" data-page="clients" onclick="cNav('clients');crmBnavSet(this)">
+  <button class="crm-bnav-item" data-page="clients" data-gl-action="glBnavGo" data-gl-arg1="clients" data-gl-el="">
     <span class="crm-bnav-ico">👥</span>
     <span class="crm-bnav-lbl">Clients</span>
   </button>
-  <button class="crm-bnav-item" data-page="invoices" onclick="cNav('invoices');crmBnavSet(this)">
+  <button class="crm-bnav-item" data-page="invoices" data-gl-action="glBnavGo" data-gl-arg1="invoices" data-gl-el="">
     <span class="crm-bnav-ico">🧾</span>
     <span class="crm-bnav-lbl">Invoices</span>
   </button>
-  <button class="crm-bnav-item" data-page="pipeline" onclick="cNav('pipeline');crmBnavSet(this)">
+  <button class="crm-bnav-item" data-page="pipeline" data-gl-action="glBnavGo" data-gl-arg1="pipeline" data-gl-el="">
     <span class="crm-bnav-ico">📋</span>
     <span class="crm-bnav-lbl">Pipeline</span>
   </button>
@@ -3299,7 +3299,7 @@ select option, .fsel option {
     <div class="chat-msg bot">Hi! I'm the Good Liquid Bev Co assistant. Ask me about our canning, bottling, R&D services, pricing, or how to get started. 👋</div>
   </div>
   <div id="gl-chat-input-row">
-    <textarea id="gl-chat-input" placeholder="Ask about services, pricing, process…" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMsg()}"></textarea>
+    <textarea id="gl-chat-input" placeholder="Ask about services, pricing, process…" rows="1" data-gl-action="glChatKeydown" data-gl-on="keydown"></textarea>
     <button data-gl-action="sendChatMsg" style="padding:9px 14px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:16px">→</button>
   </div>
 </div>
