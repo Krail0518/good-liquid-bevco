@@ -2205,10 +2205,23 @@
     try { return Object.assign({}, JSON.parse(localStorage.getItem(LIMITS_KEY) || '{}')); }
     catch(e){ return {}; }
   }
-  function writeLimits(obj){
-    localStorage.setItem(LIMITS_KEY, JSON.stringify(obj)); // keep a local cache
-    // Persist org-wide so other staff/devices judge forms against the same limits.
-    if(window.glSaveAppSetting) { try { window.glSaveAppSetting('ccp_limits', obj); } catch(e){} }
+  /* Returns true only if the org-wide write actually landed.
+     The empty catch used to swallow a rejected upsert, and the caller
+     reported "CCP limits saved" either way — so a limit change could apply on
+     one browser and nowhere else, with every other device still judging forms
+     against the old numbers. These are FDA critical limits; a save that only
+     half-happened must not read as success. */
+  async function writeLimits(obj){
+    localStorage.setItem(LIMITS_KEY, JSON.stringify(obj)); // local cache
+    if(typeof window.glSaveAppSetting !== 'function') return false;
+    try {
+      var ok = await window.glSaveAppSetting('ccp_limits', obj);
+      if(ok && window.GL_APP_SETTINGS) window.GL_APP_SETTINGS.ccp_limits = obj;
+      return !!ok;
+    } catch(e){
+      console.warn('[GL] ccp_limits save threw', e);
+      return false;
+    }
   }
   // Push overrides into the compliance module's DEFAULT_LIMITS object
   // (it's hoisted via closure but we exposed nothing; mutate via a known global guard).
@@ -2282,20 +2295,55 @@
     ov.addEventListener('click', function(e){ if(e.target === ov) close(); });
     ov.querySelector('#gl-lim-close').addEventListener('click', close);
     ov.querySelector('#gl-lim-cancel').addEventListener('click', close);
-    ov.querySelector('#gl-lim-reset').addEventListener('click', function(){
+    ov.querySelector('#gl-lim-reset').addEventListener('click', async function(){
       if(!confirm('Reset all limits to LEAN_01 defaults?')) return;
+      /* Clear the ORG-WIDE override, not just this browser's cache.
+         readLimits() prefers GL_APP_SETTINGS.ccp_limits over the local copy,
+         and writeLimits() persists every save to app_settings. Removing only
+         LIMITS_KEY therefore reset nothing: the database override still won,
+         and the next form was still judged against the old numbers while the
+         UI said "Limits reset to defaults".
+         These are FDA critical limits — pasteurisation temperature and hold
+         time, hot-fill temperature. Reporting a reset that did not happen is
+         the failure mode that matters here. */
       localStorage.removeItem(LIMITS_KEY);
+
+      if(typeof window.glSaveAppSetting === 'function'){
+        var ok = false;
+        try { ok = await window.glSaveAppSetting('ccp_limits', {}); }
+        catch(e){ ok = false; }
+        if(!ok){
+          if(typeof addNotification === 'function'){
+            addNotification('Reset failed','The org-wide limits were NOT reset — the server rejected the change. They are unchanged for everyone.','error');
+          } else {
+            alert('Reset failed — the org-wide limits were NOT reset.');
+          }
+          return;
+        }
+      }
+      if(window.GL_APP_SETTINGS) window.GL_APP_SETTINGS.ccp_limits = {};
+
       close();
-      if(typeof addNotification === 'function') addNotification('⚙️ Limits reset to defaults','','info');
+      if(typeof addNotification === 'function') addNotification('⚙️ Limits reset to defaults','Applies to every device. Hard-refresh to apply.','info');
+      if(typeof window.glAudit === 'function') window.glAudit('ccp_limits_reset','', {});
     });
-    ov.querySelector('#gl-lim-save').addEventListener('click', function(){
+    ov.querySelector('#gl-lim-save').addEventListener('click', async function(){
       var o = {};
       fields.forEach(function(f){
         var v = parseFloat(ov.querySelector('#gl-lim-' + f.k).value);
         if(!isNaN(v)) o[f.k] = v;
       });
-      writeLimits(o);
-      if(typeof addNotification === 'function') addNotification('⚙️ CCP limits saved','Hard-refresh to apply','success');
+      var saved = await writeLimits(o);
+      if(!saved){
+        // Do not close, do not audit: the limits are unchanged for everyone else.
+        if(typeof addNotification === 'function'){
+          addNotification('Save failed','The limits were NOT saved org-wide. Other devices still use the previous values.','error');
+        } else {
+          alert('Save failed — the limits were NOT saved org-wide.');
+        }
+        return;
+      }
+      if(typeof addNotification === 'function') addNotification('⚙️ CCP limits saved','Applies to every device. Hard-refresh to apply.','success');
       if(typeof window.glAudit === 'function') window.glAudit('ccp_limits_changed','', o);
       close();
     });

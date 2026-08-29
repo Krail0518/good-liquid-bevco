@@ -150,6 +150,11 @@
       var qs = '?invoice_view=' + encodeURIComponent(token);
       var body = {
         invoice_id: inv.invoice_number || inv.id,
+        // The share token is what authorizes this call. The customer has no
+        // CRM session, so without it the function cannot tell them from anyone
+        // guessing invoice numbers — which is exactly what it used to allow.
+        // This page already holds the token: it is how the invoice was opened.
+        share_token: token,
         amount: Number(inv.amount) || 0,
         currency: 'usd',
         description: 'Invoice ' + (inv.invoice_number || inv.id) + ' — Good Liquid Bev Co',
