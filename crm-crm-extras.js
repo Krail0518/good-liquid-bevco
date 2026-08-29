@@ -762,10 +762,10 @@
       if(typeof window.glStartBusy === 'function') window.glStartBusy('Uploading ' + (file && file.name ? file.name : 'document') + '…');
       try {
         var result = await origUpload.apply(this, arguments);
-        if(!result || !result.url){
-          // Most likely cause: bucket doesn't exist or RLS forbids.
-          // Surface that to the admin rather than silently dropping the file.
-          if(typeof addNotification === 'function') addNotification('Upload failed — file not stored', 'Check that the client-docs Supabase Storage bucket exists and that you ran the bucket SQL.', 'warning');
+        if(!result || !result.path){
+          // uploadDocToSupabase returns a PATH now, not a URL: client-docs is
+          // private, so there is no durable URL for it to hand back.
+          if(typeof addNotification === 'function') addNotification('Upload failed \u2014 file not stored', (result && result.error) || 'The file did not reach storage, so no document was saved.', 'warning');
         } else {
           if(typeof addNotification === 'function') addNotification('📎 File uploaded', (file && file.name) || 'document', 'success');
         }
