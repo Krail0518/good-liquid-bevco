@@ -107,6 +107,7 @@
     'glGmailManualStart',
     'glGmailSaveCreds',
     'glGmailTest',
+    'glInvState_lines_desc',
     'glMarkLeadHandled',
     'glOpenAddCip',
     'glOpenAddContent',
@@ -150,7 +151,12 @@
     'glSchedSave',
     'glSchedSendEmail',
     'glSendOnboardingLink',
+    'glSetAddonDesc',
+    'glSetAddonPrice',
     'glSetDefault',
+    'glSetInvClient',
+    'glSetInvDate',
+    'glSetInvNotes',
     'glShowEmailFull',
     'glShowPermList',
     'glSnoozeLead',
@@ -166,6 +172,8 @@
     'glUpdateCan',
     'glUpdateCanPrice',
     'glUpdateManual',
+    'glUpdLine',
+    'glUpdLinePrice',
     'installPWA',
     'logoutCRM',
     'logoutPortal',
@@ -253,5 +261,5 @@
     'viewInvoice',
   ]);
 
-  console.log('[GL] 231 actions registered');
+  console.log('[GL] 239 actions registered');
 }());
