@@ -145,6 +145,31 @@ check('filed issues state when the review was not independent',
   /same model family/.test(fs.readFileSync(FILER, 'utf8')),
   'a reader should not have to guess whether the reviewer wrote the code');
 
+// The reviewer must be given LIVE state, not just migration files.
+//
+// Its first real run produced 7 findings of which 6 were wrong, every one
+// from the same cause: it read migration files and reasoned about them in
+// isolation. Two HIGH findings said tables had no RLS -- one has two
+// policies, the other is unreachable by design -- and two more were about
+// tables that do not exist. A HIGH-graded false positive is worse than
+// silence, because it teaches the owner to ignore the review.
+console.log('');
+const baselinePath = path.join(ROOT, 'docs', 'database', 'authorization-baseline.txt');
+check('the authorization baseline exists to feed the reviewer',
+  fs.existsSync(baselinePath),
+  'without it there is no authoritative answer to what production actually has');
+check('the workflow puts live production state into the review input',
+  /authorization-baseline\.txt/.test(wf),
+  'the reviewer would be back to reasoning from migration files alone');
+check('the input labels that state as authoritative over migrations',
+  /Live production authorization state/.test(wf) && /authoritative/.test(wf),
+  'the model has to be told which source wins when they disagree');
+check('the prompt tells the reviewer to check claims against live state',
+  /CHECK IT/.test(src) && /does not appear in the live state/.test(src),
+  'supplying the state is not enough; it has to be told to use it');
+check('the prompt explains that RLS-on with no grants is correct',
+  /needs a grant AND a policy/.test(src),
+  'this exact shape produced a HIGH false positive on the first run');
 check('a finding without a failure scenario is refused',
   /no failure scenario/i.test(src),
   'the issue template requires one — a finding without it cannot be verified ' +
