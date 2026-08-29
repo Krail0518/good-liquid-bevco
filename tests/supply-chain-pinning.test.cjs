@@ -30,10 +30,11 @@
  * The esm.sh imports are now pinned (GL-046, all 18 functions), so that
  * baseline is zero and a reintroduced floating specifier fails immediately.
  *
- * The CDN Subresource Integrity gap (GL-047) is still frozen at its current
- * count rather than fixed: a wrong integrity hash blocks the script site-wide,
- * so it needs a hash taken from the served file and a browser check, which is
- * its own change. This cannot get WORSE meanwhile.
+ * The CDN Subresource Integrity gap (GL-047) is now fixed too, so both
+ * baselines are zero and this file asserts a property rather than tolerating a
+ * backlog. A wrong integrity hash blocks the script site-wide, so that hash was
+ * taken from the file jsDelivr actually serves and confirmed three ways before
+ * it shipped.
  *
  * Run:  node tests/supply-chain-pinning.test.cjs
  */
@@ -128,8 +129,12 @@ for (const f of htmlFiles) {
 
 const cdnNoSri = cdnTags.filter((t) => !/\bintegrity=/.test(t.tag));
 
-// Frozen 2026-08-29: 1 (chart.js@4.4.2 from jsDelivr). May only go DOWN.
-const BASELINE_CDN_NO_SRI = 1;
+// GL-047 is FIXED: the Chart.js tag now carries
+// integrity="sha384-e6cc9LaI…" crossorigin="anonymous". The hash was taken
+// from the file jsDelivr actually serves and confirmed three ways -- two
+// independent fetches, and the vendored copy in index_files/, all byte-
+// identical. Baseline is ZERO: a new un-integrity-checked CDN script fails.
+const BASELINE_CDN_NO_SRI = 0;
 
 check('no NEW cross-origin script without Subresource Integrity',
   cdnNoSri.length <= BASELINE_CDN_NO_SRI,
