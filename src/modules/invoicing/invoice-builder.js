@@ -156,20 +156,58 @@
   }
   window.glApplyDiscount=function(v){INV.discount=parseFloat(v)||0;refreshTotals();};
 
+  // ── Extracted from inline attributes (GL-DEF-01 phase 6b) ──────────
+  // Each of these was a property assignment living in an on* attribute,
+  // which is the shape that cannot survive dropping unsafe-inline. They
+  // keep using window.INV, as the attributes did: it is the same object as
+  // the module-scoped INV, but it is also what accounting.js and
+  // invoice-patches.js read, so preserving the reference keeps this a
+  // faithful extraction.
+  //
+  // The index arrives as a STRING now, because attributes carry strings.
+  // That is safe here and only here: it is used solely for array access
+  // (INV.lines[i] / INV.addons[i]), where "0" and 0 are equivalent. Any
+  // arithmetic on it would need Number() first.
+
+  // The discount is recomputed after an add-on edit because an add-on
+  // changes the subtotal the percentage applies to. Reading the field back
+  // out of the DOM is what the original attribute did.
+  function reapplyDiscount(){
+    var el = document.getElementById('ginv-disc');
+    window.glApplyDiscount(el && el.value ? el.value : 0);
+  }
+
+  window.glSetInvClient = function(v){
+    if(window.INV) window.INV.clientId = v;
+    // Optional collaborator: invoice-patches.js defines it, and the original
+    // attribute guarded on typeof for exactly that reason.
+    if(typeof window.glOnInvClientChange === 'function') window.glOnInvClientChange(v);
+  };
+  window.glSetInvDate  = function(v){ if(window.INV) window.INV.date  = v; };
+  window.glSetInvNotes = function(v){ if(window.INV) window.INV.notes = v; };
+  window.glSetAddonDesc = function(i,v){
+    if(window.INV && window.INV.addons && window.INV.addons[i]) window.INV.addons[i].d = v;
+    reapplyDiscount();
+  };
+  window.glSetAddonPrice = function(i,v){
+    if(window.INV && window.INV.addons && window.INV.addons[i]) window.INV.addons[i].p = v;
+    reapplyDiscount();
+  };
+
   /* ── LINE RENDER ── */
   function renderLine(l,i){
     return '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 36px;gap:0;padding:10px 12px;border-top:1px solid rgba(255,255,255,.05);align-items:start">' +
       '<div>' +
         '<div style="font-size:13px;font-weight:600;color:var(--white);margin-bottom:2px">'+l.description+'</div>' +
         (l.note?'<div style="font-size:10px;color:var(--muted)">'+l.note+'</div>':'') +
-        (l.editable?'<input class="finp" placeholder="Description" value="'+l.description+'" oninput="glInvState_lines_desc('+i+',this.value)" style="margin-top:4px;font-size:12px;padding:4px 8px;width:100%">':'') +
+        (l.editable?'<input class="finp" placeholder="Description" value="'+l.description+'" data-gl-action="glInvState_lines_desc" data-gl-on="input" data-gl-arg1="'+i+'" data-gl-el-prop="value" style="margin-top:4px;font-size:12px;padding:4px 8px;width:100%">':'') +
       '</div>' +
       '<div style="text-align:center">' +
-        '<input class="finp" type="number" min="0" value="'+(l.qty||'')+'" placeholder="0" oninput="glUpdLine('+i+',this.value)" style="width:80px;text-align:center;font-size:13px;padding:4px">'+
+        '<input class="finp" type="number" min="0" value="'+(l.qty||'')+'" placeholder="0" data-gl-action="glUpdLine" data-gl-on="input" data-gl-arg1="'+i+'" data-gl-el-prop="value" style="width:80px;text-align:center;font-size:13px;padding:4px">'+
         '<div style="font-size:10px;color:var(--muted);margin-top:2px">'+(l.unit||'')+'</div>' +
       '</div>' +
       '<div style="text-align:center">' +
-        '<input class="finp" type="number" min="0" step="0.01" value="'+(l.unitPrice||'')+'" placeholder="0.00" oninput="glUpdLinePrice('+i+',this.value)" style="width:90px;text-align:center;font-size:13px;padding:4px">' +
+        '<input class="finp" type="number" min="0" step="0.01" value="'+(l.unitPrice||'')+'" placeholder="0.00" data-gl-action="glUpdLinePrice" data-gl-on="input" data-gl-arg1="'+i+'" data-gl-el-prop="value" style="width:90px;text-align:center;font-size:13px;padding:4px">' +
       '</div>' +
       '<div id="ginv-lt-'+i+'" style="text-align:right;font-weight:700;color:var(--teal);font-size:13px;padding-top:6px">'+glFmt(l.total||0)+'</div>' +
       '<div style="text-align:center;padding-top:4px"><button data-gl-action="glRemLine" data-gl-arg1="+i+" style="background:none;border:none;color:rgba(231,76,60,.6);cursor:pointer;font-size:16px;padding:4px">&#x2715;</button></div>' +
@@ -186,7 +224,7 @@
       l.unitPrice=RC.canning.perCase(l.canType||'12oz-standard',l.qty);
       var pc=RC.canning.perCan(l.canType||'12oz-standard',l.qty);
       l.note=glFmt(pc)+'/can \u00b7 '+glFmt(l.unitPrice)+'/case \u00b7 '+(l.qty*24).toLocaleString()+' total cans';
-      var upEl=document.querySelector('[oninput="glUpdLinePrice('+i+',this.value)"]');
+      var upEl=document.querySelector('[data-gl-action="glUpdLinePrice" data-gl-on="input" data-gl-arg1="'+i+'" data-gl-el-prop="value"]');
       if(upEl)upEl.value=l.unitPrice.toFixed(2);
       var noteEl=document.querySelector('[style*="font-size:10px;color:var(--muted)"]');
     }
@@ -194,7 +232,7 @@
       var bt=RC.bottling.getTier(l.qty);
       l.unitPrice=bt.perCase;
       l.note=glFmt(bt.perBottle)+'/bottle \u00b7 '+glFmt(bt.perCase)+'/case (6 bottles) \u00b7 '+(l.qty*6).toLocaleString()+' total bottles';
-      var bpEl=document.querySelector('[oninput="glUpdLinePrice('+i+',this.value)"]');
+      var bpEl=document.querySelector('[data-gl-action="glUpdLinePrice" data-gl-on="input" data-gl-arg1="'+i+'" data-gl-el-prop="value"]');
       if(bpEl)bpEl.value=bt.perCase.toFixed(2);
     }
     l.total=l.qty*(l.unitPrice||0);
@@ -220,11 +258,11 @@
     body.innerHTML=
       '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px">'+
         '<div><div class="flbl">Client *</div>'+
-          '<select class="fsel" id="ginv-client" onchange="if(window.INV)window.INV.clientId=this.value;if(typeof window.glOnInvClientChange===&quot;function&quot;)window.glOnInvClientChange(this.value)" style="width:100%">'+
+          '<select class="fsel" id="ginv-client" data-gl-action="glSetInvClient" data-gl-on="change" data-gl-el-prop="value" style="width:100%">'+
             '<option value="">Select client\u2026</option>'+
             clients.map(function(c){return '<option value="'+c.id+'"'+(INV.clientId===c.id?' selected':'')+'>'+(window.glEsc?window.glEsc(c.name):c.name)+'</option>';}).join('')+
           '</select></div>'+
-        '<div><div class="flbl">Invoice date</div><input class="finp" type="date" id="ginv-date" value="'+INV.date+'" onchange="if(window.INV)window.INV.date=this.value"></div>'+
+        '<div><div class="flbl">Invoice date</div><input class="finp" type="date" id="ginv-date" value="'+INV.date+'" data-gl-action="glSetInvDate" data-gl-on="change" data-gl-el-prop="value"></div>'+
         '<div><div class="flbl">Invoice #</div><input class="finp" id="ginv-id" value="'+glNextId()+'" readonly style="opacity:.6"></div>'+
       '</div>'+
 
@@ -252,14 +290,14 @@
       '<div style="margin-bottom:20px">'+
         INV.addons.map(function(a,i){
           return '<div style="display:grid;grid-template-columns:1fr 130px;gap:8px;margin-bottom:8px">'+
-            '<input class="finp" placeholder="Add-on description (e.g. Kratom filter, Shrink wrap)" value="'+(a.d||'')+'" oninput="if(window.INV)window.INV.addons['+i+'].d=this.value;glApplyDiscount(document.getElementById(\'ginv-disc\')?.value||0)">'+
-            '<input class="finp" type="number" placeholder="$0.00" value="'+(a.p||'')+'" oninput="if(window.INV)window.INV.addons['+i+'].p=this.value;glApplyDiscount(document.getElementById(\'ginv-disc\')?.value||0)">'+
+            '<input class="finp" placeholder="Add-on description (e.g. Kratom filter, Shrink wrap)" value="'+(a.d||'')+'" data-gl-action="glSetAddonDesc" data-gl-on="input" data-gl-arg1="'+i+'" data-gl-el-prop="value">'+
+            '<input class="finp" type="number" placeholder="$0.00" value="'+(a.p||'')+'" data-gl-action="glSetAddonPrice" data-gl-on="input" data-gl-arg1="'+i+'" data-gl-el-prop="value">'+
           '</div>';
         }).join('')+
       '</div>'+
 
       '<div style="margin-bottom:20px"><div class="flbl">Notes / payment instructions</div>'+
-        '<textarea class="finp" rows="2" placeholder="e.g. 50% deposit required before production begins." oninput="if(window.INV)window.INV.notes=this.value" style="resize:none;font-size:13px">'+(INV.notes||'')+'</textarea></div>'+
+        '<textarea class="finp" rows="2" placeholder="e.g. 50% deposit required before production begins." data-gl-action="glSetInvNotes" data-gl-on="input" data-gl-el-prop="value" style="resize:none;font-size:13px">'+(INV.notes||'')+'</textarea></div>'+
 
       '<div style="display:grid;grid-template-columns:1fr 260px;gap:20px;align-items:end;margin-bottom:20px">'+
         '<div><div class="flbl">Discount (%)</div>'+
@@ -284,7 +322,10 @@
     INV = freshState();
     // Optional: pre-select a client (e.g. "New Invoice" from a client's page).
     if(preClientId) INV.clientId = preClientId;
-    window.INV = INV; // expose for oninput handlers
+    // Read by accounting.js and invoice-patches.js, and by the glSet*
+    // functions above. The inline oninput handlers this was originally
+    // written for are gone (GL-DEF-01), but the global is still load-bearing.
+    window.INV = INV;
     var existing = document.getElementById('gl-inv-builder');
     if(!existing){
       var ov=document.createElement('div');ov.id='gl-inv-builder';ov.className='modal-ov show';

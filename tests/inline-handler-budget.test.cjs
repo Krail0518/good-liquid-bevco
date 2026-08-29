@@ -75,7 +75,7 @@ const BUDGET = {
   'crm-index-core.js': 39,
   'index.html': 23,
   'src/services/permissions-service.js': 0,
-  'src/modules/invoicing/invoice-builder.js': 10,
+  'src/modules/invoicing/invoice-builder.js': 0,
   'src/shared/tools.js': 6,
   'src/modules/customers/portal-customer.js': 5,
   'src/modules/pipeline/referrals.js': 4,
