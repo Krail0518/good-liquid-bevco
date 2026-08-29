@@ -96,6 +96,10 @@ jobs:
       # an audit entry saying it happened. No browser needed.
       - name: Run checked-delete tests
         run: node tests/checked-deletes.test.cjs
+      # Admin tools must not destroy the only copy of data, or report a
+      # change they did not make. No browser needed.
+      - name: Run admin-tools data-loss tests
+        run: node tests/admin-tools-data-loss.test.cjs
 
       - name: Run smoke test
         env:

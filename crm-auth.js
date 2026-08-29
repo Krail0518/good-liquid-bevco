@@ -176,13 +176,26 @@
     return fallback !== undefined ? fallback : null;
   };
 
-  /* Save a setting to Supabase and update the local cache */
+  /* Save a setting to Supabase and update the local cache.
+     Returns true ONLY if the row actually changed.
+
+     The `.select('key')` is load-bearing: without it PostgREST returns no rows
+     and an RLS rejection arrives as 0 rows with no error, so this returned
+     true for a write that never landed. Callers act on that boolean — the CCP
+     critical-limits editor reports "saved" or "reset" from it — so a false
+     true means the UI claims an FDA limit changed org-wide when it did not.
+     The in-memory cache is only updated after the server confirms, so a failed
+     save no longer leaves this browser disagreeing with every other one. */
   window.glSaveAppSetting = async function(key, value){
-    window.GL_APP_SETTINGS[key] = value;
     var sb = getSupa(); if(!sb) return false;
     try {
-      var r = await sb.from('app_settings').upsert({key:key,value:value},{onConflict:'key'});
+      var r = await sb.from('app_settings').upsert({key:key,value:value},{onConflict:'key'}).select('key');
       if(r.error){ console.warn('[GL] app_settings save failed',r.error); return false; }
+      if(!Array.isArray(r.data) || r.data.length === 0){
+        console.warn('[GL] app_settings save affected 0 rows — rejected by RLS?', key);
+        return false;
+      }
+      window.GL_APP_SETTINGS[key] = value;
       return true;
     } catch(e){ console.warn('[GL] app_settings save threw',e); return false; }
   };
