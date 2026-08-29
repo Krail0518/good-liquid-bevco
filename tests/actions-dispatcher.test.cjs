@@ -66,11 +66,24 @@ const HOSTILE = [
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 
-  // Structural: the registry must not fall back to arbitrary globals.
-  check('the dispatcher never resolves through window[name]',
-    !/window\s*\[\s*(name|action)/.test(code),
-    'falling back to any global would reproduce exactly the surface this ' +
+  // The registry must not FALL BACK to arbitrary globals.
+  //
+  // Phase 3 introduced glRegisterGlobalActions, which does look up
+  // window[name] — but only inside a thunk created for a name that was
+  // explicitly registered. The allowlist is the list of names, not the state
+  // of window, so that lookup is fine. What must never exist is a lookup on
+  // the DISPATCH path, where an unregistered name would still resolve.
+  //
+  // The behavioural check further down is the real proof; this one keeps the
+  // dispatch path itself honest.
+  const dispatchPath = (code.match(/function run\([\s\S]*?\n  \}/) || [''])[0];
+  check('the dispatch path never falls back to window[name]',
+    !/window\s*\[/.test(dispatchPath),
+    'an unregistered name would resolve, reproducing exactly the surface this ' +
     'migration exists to shrink');
+  check('the global-name lookup is gated on registration',
+    /glRegisterGlobalActions[\s\S]{0,400}?glRegisterAction\(/.test(code),
+    'window[name] may only be reached through a name that was registered');
   check('an unregistered action is reported, not ignored',
     /no action registered/.test(src) && /console\.error/.test(src),
     'a silent no-op is a dead button with nothing in the console');
@@ -196,10 +209,23 @@ const HOSTILE = [
   check('index.html still loads the dispatcher',
     /src="\/src\/shared\/actions\.js"/.test(indexHtml),
     'the file exists but nothing loads it');
-  check('phase 1 converted no handlers yet',
-    !/data-gl-action=/.test(indexHtml),
-    'phase 1 is additive by design; conversions start in phase 2 so that any ' +
-    'breakage is attributable to one small batch');
+  // This used to assert that NOTHING was converted, which was right for
+  // phase 1 and wrong the moment phase 3 landed. Deleting it would lose the
+  // property worth keeping: every converted control must name something the
+  // registry knows, or it is a dead button.
+  check('index.html loads the generated action registry',
+    /src="\/src\/shared\/action-registry\.js"/.test(indexHtml),
+    'the converted controls name actions that only that file registers');
+
+  const registryJs = fs.readFileSync(path.join(ROOT, 'src/shared/action-registry.js'), 'utf8');
+  const usedInHtml = [...new Set([...indexHtml.matchAll(/data-gl-action="([^"]+)"/g)]
+    .map((m) => m[1]))];
+  const missing = usedInHtml.filter((n) => !registryJs.includes("'" + n + "'"));
+  check('every converted control in index.html is registered',
+    missing.length === 0,
+    missing.join(', ') + ' — the dispatcher logs an error and does nothing, ' +
+    'which looks exactly like a working button');
+  console.log('    (' + usedInHtml.length + ' distinct actions used in index.html)');
 
   console.log('\n  page errors during the run: ' + pageErrors.length +
     (pageErrors.length ? ' :: ' + pageErrors[0] : ''));
