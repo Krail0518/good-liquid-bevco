@@ -60,20 +60,20 @@
  *   /src/modules/production/time-report.js
  *   /src/modules/production/time-tracking.js
  *   /src/modules/production/tour-booking.js
- *   /src/modules/shared/ai-chat.js
- *   /src/modules/shared/ai-drafts.js
- *   /src/modules/shared/ai-insights.js
- *   /src/modules/shared/ai-meeting-notes.js
- *   /src/modules/shared/calendar.js
- *   /src/modules/shared/correspondence.js
- *   /src/modules/shared/email-composer.js
- *   /src/modules/shared/mobile-menu.js
- *   /src/modules/shared/notifications.js
- *   /src/modules/shared/password-change.js
- *   /src/modules/shared/permissions.js
- *   /src/modules/shared/pwa-install.js
- *   /src/modules/shared/tasks.js
- *   /src/modules/shared/users-page.js
+ *   /src/shared/ai-chat.js
+ *   /src/shared/ai-drafts.js
+ *   /src/shared/ai-insights.js
+ *   /src/shared/ai-meeting-notes.js
+ *   /src/shared/calendar.js
+ *   /src/shared/correspondence.js
+ *   /src/shared/email-composer.js
+ *   /src/shared/mobile-menu.js
+ *   /src/shared/notifications.js
+ *   /src/shared/password-change.js
+ *   /src/shared/permissions.js
+ *   /src/shared/pwa-install.js
+ *   /src/shared/tasks.js
+ *   /src/shared/users-page.js
  *
  * Scattered "moved to" comments used to mark each removal. Later
  * extractions swallowed them — a boundary running to the next banner takes
@@ -1230,10 +1230,10 @@ function renderActivity(){
 /* REFERRAL PROGRAM — moved to /src/modules/pipeline/referrals.js (GL-037). */
 
 
-/* MULTI-USER AUTH & PERMISSIONS — moved to /src/modules/shared/permissions.js (GL-037). */
+/* MULTI-USER AUTH & PERMISSIONS — moved to /src/shared/permissions.js (GL-037). */
 
 
-/* USERS PAGE — moved to /src/modules/shared/users-page.js (GL-037). */
+/* USERS PAGE — moved to /src/shared/users-page.js (GL-037). */
 
 
 /* ═══ KEYBOARD ═══ */
@@ -1245,7 +1245,7 @@ document.addEventListener('keydown',e=>{
   }
 });
 
-/* FOLLOW-UP EMAIL COMPOSER — moved to /src/modules/shared/email-composer.js (GL-037). */
+/* FOLLOW-UP EMAIL COMPOSER — moved to /src/shared/email-composer.js (GL-037). */
 
 
 
@@ -3251,7 +3251,7 @@ function openDealDetail(stage, idx){
   }
 }
 
-/* SHARED CORRESPONDENCE RENDERING — moved to /src/modules/shared/correspondence.js (GL-037). */
+/* SHARED CORRESPONDENCE RENDERING — moved to /src/shared/correspondence.js (GL-037). */
 
 
 
@@ -4058,7 +4058,7 @@ function openReports() {
   document.body.appendChild(ov);
 }
 
-/* AI BUSINESS INSIGHTS — moved to /src/modules/shared/ai-insights.js (GL-037). */
+/* AI BUSINESS INSIGHTS — moved to /src/shared/ai-insights.js (GL-037). */
 
 
 
@@ -4910,7 +4910,7 @@ if('serviceWorker' in navigator){
   });
 }
 
-/* PWA INSTALL PROMPT — moved to /src/modules/shared/pwa-install.js (GL-037). */
+/* PWA INSTALL PROMPT — moved to /src/shared/pwa-install.js (GL-037). */
 
 
 /* ═══════════════════════════════════════════
