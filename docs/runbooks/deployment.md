@@ -54,11 +54,21 @@ Two settings are deliberate, and worth understanding before changing them:
 Branch protection is repository configuration, not code, so it is not in this
 repo and a `git revert` will not restore it. Settings → Branches.
 
-### Still outstanding
+### The SQL-apply gate
 
-The `production-db` environment has no required reviewers, so the gate on
-`apply-sql.yml` (#298) is currently decorative. Settings → Environments →
-`production-db` → Required reviewers.
+`apply-sql.yml` (#298) runs under the `production-db` environment, which now
+requires a reviewer. Nothing applies SQL to production until a human approves
+the run from the Actions tab.
+
+That environment did not exist until 2026-08-29. A workflow referencing an
+environment does not create it — GitHub creates it on the first run — so the
+gate had been referenced but unenforced since #298 merged. It is worth
+checking this after any workflow gains an `environment:` key, because the
+reference reads as protection whether or not the environment is there.
+
+`can_admins_bypass` is left at its default (true), for the same reason
+`enforce_admins` is off on the branch protection above: the gate exists to
+catch mistakes, not to lock the owner out of their own production database.
 
 ## Authorization changes
 
