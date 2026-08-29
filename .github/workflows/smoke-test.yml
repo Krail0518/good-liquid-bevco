@@ -141,6 +141,9 @@ jobs:
       # CSP directives, and the measured reason unsafe-inline is still needed.
       - name: Run CSP tests
         run: node tests/csp.test.cjs
+      # The GL-DEF-01 ratchet: inline handlers may only go down, never up.
+      - name: Run inline-handler budget
+        run: node tests/inline-handler-budget.test.cjs
       # The weekly review gate must never pass without actually reviewing.
       - name: Run AI review gate tests
         run: node tests/ai-review.test.cjs
@@ -232,6 +235,14 @@ jobs:
           NODE_PATH: /tmp/pw/node_modules
           REPO_ROOT: ${{ github.workspace }}
         run: node tests/phase3-wave2.test.cjs
+
+      # The delegated action dispatcher (GL-DEF-01 phase 1). Needs a browser:
+      # source assertions cannot prove a delegated listener actually fires.
+      - name: Run action dispatcher test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/actions-dispatcher.test.cjs
 
       # Formulation block on Pipeline + Clients — the three columns must reach
       # the server, and a lead on both a deal and a client counts once.

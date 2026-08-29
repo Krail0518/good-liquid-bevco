@@ -116,6 +116,7 @@
  *   /src/services/seo.js
  *   /src/services/utils.js
  *
+ *   /src/shared/actions.js
  *   /src/shared/admin-tools.js
  *   /src/shared/ai-chat-widget.js
  *   /src/shared/ai-chat.js
