@@ -33,14 +33,24 @@
   // the client overlay stacked on top of the builder (the builder looked like
   // it never opened) and the invoice opened with no client selected.
   //
-  // Elements with their own onclick are purpose-built and already route to
+  // Elements with their own handler are purpose-built and already route to
   // openNewInvoiceBuilder correctly — including the sidebar nav item, which
   // goes through cNav() and the 'newinv' nav guard in src/services/permissions-service.js.
+  //
+  // "Its own handler" now means EITHER an inline onclick or a data-gl-action.
+  // The check used to test onclick alone, which was right when every control
+  // was wired that way. GL-DEF-01 converted the client-detail "+ New Invoice"
+  // button to data-gl-action, and this guard immediately stopped recognising
+  // it — so the interceptor below killed the handler and reproduced, exactly,
+  // the bug described at the top of this comment: the invoice opened with no
+  // client selected and the client overlay stayed stacked on top of it.
+  // The smoke test caught it. Both mechanisms count as self-handling.
   document.addEventListener('click', function(e){
     var el = e.target.closest('button,a,.cni');
     if(!el) return;
     if(!(el.textContent||'').trim().includes('New Invoice')) return;
-    if(el.hasAttribute('onclick')) return;   // it handles itself — leave it alone
+    // it handles itself — leave it alone
+    if(el.hasAttribute('onclick') || el.hasAttribute('data-gl-action')) return;
     e.preventDefault(); e.stopImmediatePropagation();
     window.openNewInvoiceBuilder();
   }, true);
