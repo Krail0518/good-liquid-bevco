@@ -103,6 +103,14 @@ jobs:
       # Declared JWT state, webhook replay window, deactivated super-user.
       - name: Run edge-function hardening tests
         run: node tests/edge-function-hardening.test.cjs
+      # The suite must not score absence as success, and the pageerror filter
+      # must not discard real crashes. Guards the guards. No browser needed.
+      - name: Run test-integrity tests
+        run: node tests/test-integrity.test.cjs
+      # A CIP save the database rejected must stay visible to the operator,
+      # and nothing may query the deprecated cip_logs. No browser needed.
+      - name: Run CIP system-of-record tests
+        run: node tests/cip-system-of-record.test.cjs
 
       - name: Run smoke test
         env:
@@ -191,3 +199,19 @@ jobs:
           NODE_PATH: /tmp/pw/node_modules
           REPO_ROOT: ${{ github.workspace }}
         run: node tests/phase3-wave2.test.cjs
+
+      # Formulation block on Pipeline + Clients — the three columns must reach
+      # the server, and a lead on both a deal and a client counts once.
+      - name: Run formulation test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/formulation.test.cjs
+
+      # Per-record Edit on Training & Competency — guards the id interpolated
+      # into onclick="…", whose quotes once closed the attribute.
+      - name: Run training edit test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/training-edit.test.cjs

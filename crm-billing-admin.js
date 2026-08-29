@@ -209,7 +209,7 @@
   // Every table we want to back up. Order doesn't matter for export.
   var EXPORT_TABLES = [
     'clients','invoices','referrals','referrers','deals','activity',
-    'vendors','formulas','production_runs','yield_logs','cip_logs',
+    'vendors','formulas','production_runs','yield_logs',
     'defects','sample_shipments','content_calendar','trade_shows',
     'capacity','case_studies','nps_responses','resources','audit_log',
     'compliance_tasks','compliance_records','hold_tags','facilities',
