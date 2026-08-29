@@ -141,8 +141,31 @@
       return;
     }
     if (el.getAttribute('data-gl-prevent') !== null && ev && ev.preventDefault) ev.preventDefault();
+
+    // The element as an ARGUMENT, not just the receiver. Several handlers take
+    // it as a parameter — showPanel('canning', this), setInvFilter(this, 'all')
+    // — and fn.apply(el, ...) only sets `this`, which those do not read.
+    //
+    //   data-gl-el            append it after the declared arguments
+    //   data-gl-el-at="1"     insert it at that 1-based position
+    //
+    // Two forms because the element appears in both places in this codebase,
+    // and rewriting the functions to agree on one would be a behaviour change
+    // smuggled into a mechanical conversion.
+    var args = readArgs(el);
+    var elAt = el.getAttribute('data-gl-el-at');
+    if (elAt !== null) {
+      var pos = parseInt(elAt, 10);
+      if (!(pos >= 1)) {
+        console.error('[gl-actions] data-gl-el-at="' + elAt + '" is not a 1-based position');
+        return;
+      }
+      args.splice(pos - 1, 0, el);
+    } else if (el.getAttribute('data-gl-el') !== null) {
+      args.push(el);
+    }
     try {
-      fn.apply(el, readArgs(el).concat([ev]));
+      fn.apply(el, args.concat([ev]));
     } catch (e) {
       console.error('[gl-actions] "' + name + '" threw', e);
       throw e;

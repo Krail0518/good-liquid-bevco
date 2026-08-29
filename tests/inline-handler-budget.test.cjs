@@ -72,8 +72,8 @@ function countIn(rel) {
  * file not listed here is budgeted at zero, so a new handler anywhere fails.
  */
 const BUDGET = {
-  'index.html': 136,
   'crm-index-core.js': 65,
+  'index.html': 48,
   'src/modules/invoicing/invoice-builder.js': 20,
   'src/modules/invoicing/invoice-patches.js': 20,
   'src/modules/pipeline/referrals.js': 16,
