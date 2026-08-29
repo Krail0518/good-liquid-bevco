@@ -98,5 +98,22 @@ check('the staff caller sends its session token',
 check('the charge amount is still read from the database, not the request',
   /const chargeAmount = dbAmount;/.test(fn));
 
+// ...and the request amount must not even be READ.
+//
+// It never reached the charge, but it sat in the destructure unused, and an
+// external security review on 2026-08-29 read that as the function trusting a
+// client-supplied amount — its Phase 0 asked for payment creation to be
+// disabled until "the server calculates the amount from immutable records",
+// which it already did.
+//
+// Code that merely looks unsafe still costs a review cycle, and invites a
+// "fix" that breaks the thing it was worried about. Both the variable and the
+// input documentation are gone; this keeps them gone.
+const fnCode = fn.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+check('the request body amount is not destructured at all',
+  !/^\s*amount\s*,\s*$/m.test(fnCode),
+  'reading it implies it is used; a reviewer cannot tell the difference ' +
+  'without following it through the whole function');
+
 console.log('\n' + (failures === 0 ? 'ALL PASSED' : failures + ' CHECK(S) FAILED'));
 process.exit(failures === 0 ? 0 : 1);
