@@ -3816,8 +3816,8 @@ async function deleteClient(cid, cname){
     alert('Name did not match — delete cancelled. (Type "' + cname + '" exactly.)');
     return;
   }
-  const r = await window.supa.from('clients').delete().eq('id', cid);
-  if(r.error){ alert('Delete failed: ' + r.error.message); return; }
+  const res = await glCheckedDelete(sb => sb.from('clients').delete().eq('id', cid).select('id'));
+  if(!res.ok){ alert('Delete failed — "' + cname + '" has NOT been deleted: ' + res.reason); return; }
   // Local cache + UI refresh
   if(Array.isArray(window.clients)) window.clients = window.clients.filter(c => c.id !== cid);
   if(typeof renderClients === 'function') renderClients();
@@ -4153,6 +4153,56 @@ async function glPersistInvoiceStatus(inv, patch){
   }
 }
 
+/* Run a delete and report whether the database actually removed anything.
+   `build` receives window.supa and must return the query with `.select()`
+   already appended — PostgREST only returns the deleted rows when asked, and
+   without them an RLS rejection (0 rows, no error) is indistinguishable from
+   success. Checking only `r.error`, as every delete in this file used to,
+   means the local cache is purged and glAudit() records a deletion that never
+   happened. A false audit entry is worse than a failed delete.
+   Declared in this script block; the callers in the next block run later, so
+   the global binding is in place by then. */
+async function glCheckedDelete(build){
+  if(!window.supa) return {ok:false, reason:'Not connected to the database.'};
+  try{
+    const r = await build(window.supa);
+    if(r.error) return {ok:false, reason:r.error.message};
+    if(!Array.isArray(r.data) || r.data.length === 0){
+      return {ok:false, reason:'The server rejected the delete — 0 rows removed.'};
+    }
+    return {ok:true, count:r.data.length};
+  }catch(e){
+    return {ok:false, reason:(e && e.message) ? e.message : String(e)};
+  }
+}
+
+/* Insert a row and return it, or report why it did not save.
+   `build` receives window.supa and must return the query with `.select()`
+   (and usually `.single()`) appended, so the caller gets the real database id.
+
+   The pattern this replaces was:
+
+       const {data:newX} = await supa.from('x').insert([...]).select().single();
+       const id = newX ? newX.id : ('tmp_' + Date.now());
+       list.push({id, ...});
+
+   which invents a synthetic id when the insert fails and pushes a record that
+   exists only in that browser tab. The user sees it created; it is gone on
+   reload; and anything keyed to that id — uploaded files, follow-up writes —
+   points at a row that was never created. Failing loudly is the only correct
+   behaviour, so this returns {ok:false} and callers must not fabricate an id. */
+async function glCheckedInsert(build){
+  if(!window.supa) return {ok:false, reason:'Not connected to the database.'};
+  try{
+    const r = await build(window.supa);
+    if(r.error) return {ok:false, reason:r.error.message};
+    if(!r.data) return {ok:false, reason:'The server did not return the new record — it was not saved.'};
+    return {ok:true, row:r.data};
+  }catch(e){
+    return {ok:false, reason:(e && e.message) ? e.message : String(e)};
+  }
+}
+
 async function quickPaid(id){
   const i=invoices.find(x=>x.id===id);
   if(!i)return;
@@ -4457,6 +4507,16 @@ function openRefForReferrer(rid){
 function openAddReferrer(){document.getElementById('add-ref-modal').classList.add('show')}
 function closeAddReferrer(){document.getElementById('add-ref-modal').classList.remove('show')}
 
+/* DEAD CODE — do not fix this one, fix the live one.
+   A second, Supabase-backed declaration of this same name appears further down
+   (search for "Override saveReferrer"). Both are function declarations in the
+   same script block, so the later one wins at hoist time and THIS body never
+   runs. The `_origSaveReferrer` capture beside it therefore holds the later
+   version rather than this one, and is never called anyway.
+   Left in place rather than deleted to keep this change reviewable, but it is
+   the exact trap that hid a real bug in quickPaid: someone wrote a better
+   version while the worse one kept winning. Same shape applies to
+   _origSaveInvoice and _origLogout. Tracked as dead-code debt. */
 function saveReferrer(){
   const name=document.getElementById('nr-name').value.trim();
   if(!name){alert('Please enter a name.');return}
@@ -5174,12 +5234,15 @@ async function saveReferral(){
   const status=document.getElementById('ref-status-sel').value;
   const notes=document.getElementById('ref-notes').value;
   // Write to Supabase and capture the returned UUID so later updates can sync.
-  const { data: newRef } = await supa.from('referrals').insert([{
+  const ins = await glCheckedInsert(sb => sb.from('referrals').insert([{
     referrer_id:refId, client_name:clientName, deal_value:deal,
     commission_rate:rate, commission_amount:comm, status, notes
-  }]).select().single();
-  // Update local
-  const id = newRef ? newRef.id : ('ref'+(referrals.length+1));
+  }]).select().single());
+  if(!ins.ok){
+    alert('The referral was NOT saved: ' + ins.reason + '\n\nNothing has been recorded. Please try again.');
+    return;
+  }
+  const id = ins.row.id;
   referrals.push({id,referrerId:refId,referrerName:ref.name,clientName,dealValue:deal,rate,commAmount:comm,status,datePaid:null,notes,date:new Date().toISOString().split('T')[0]});
   activities.unshift({type:'ref',icon:'🤝',name:`New referral from ${ref.name}`,detail:`${clientName} — potential $${comm.toLocaleString()} commission`,time:'Just now'});saveActivities();
   renderReferrals();renderDash();renderActivity();
@@ -5204,11 +5267,15 @@ async function saveReferrer(){
   const rate=parseFloat(document.getElementById('nr-rate').value)||5;
   const notes=document.getElementById('nr-notes').value;
   // Write to Supabase
-  const {data:newRr} = await supa.from('referrers').insert([{
+  const ins = await glCheckedInsert(sb => sb.from('referrers').insert([{
     name, relationship:rel, email, phone, default_rate:rate,
     initials:init, color:colors[ci], tc:tcs[ci], notes
-  }]).select().single();
-  const rid = newRr ? newRr.id : 'rr'+(referrers.length+1);
+  }]).select().single());
+  if(!ins.ok){
+    alert('The referrer was NOT saved: ' + ins.reason + '\n\nNothing has been recorded. Please try again.');
+    return;
+  }
+  const rid = ins.row.id;
   referrers.push({id:rid,name,rel,email,phone,rate,color:colors[ci],tc:tcs[ci],init,notes});
   populateReferrerSelects();renderReferrers();renderDash();closeAddReferrer();
   ['nr-name','nr-email','nr-phone','nr-notes'].forEach(id=>document.getElementById(id).value='');
@@ -5404,11 +5471,13 @@ async function saveNewClient(){
   const ci = clients.length % colors.length;
   const color = colors[ci], tc = tcs[ci];
 
-  // Generate local ID first so it always works
+  // Placeholder id, used only to detect that the insert did not return one.
+  // It is never persisted or used as a real key — see the guard after the try.
   const localId = 'c_' + Date.now();
 
   // Try Supabase save
   let cid = localId;
+  let insertError = '';
   try {
     const {data:newC, error} = await supa.from('clients').insert([{
       name, legal_name:legalName, ein, website,
@@ -5436,8 +5505,21 @@ async function saveNewClient(){
       initials:init, color, tc
     }]).select().single();
     if(newC && !error) cid = newC.id;
-    if(error) console.warn('Supabase client save error:', error);
-  } catch(e){ console.warn('Supabase unavailable, saved locally:', e); }
+    if(error) insertError = error.message;
+  } catch(e){ insertError = (e && e.message) ? e.message : String(e); }
+
+  /* Stop here if the client was not actually created. Previously cid stayed as
+     the local 'c_<timestamp>' placeholder and execution continued: the
+     compliance documents below were uploaded under a path keyed to an id that
+     exists in no table, the record was pushed into the local array
+     unconditionally, and a "client saved" toast fired. The row was gone on
+     reload, and the uploaded W-9 / tax-exempt / PA letter were orphaned in
+     storage under an id nothing references. */
+  if(cid === localId){
+    alert('The client was NOT saved: ' + (insertError || 'the server did not return the new record') +
+          '\n\nNothing has been recorded, and no documents were uploaded. Please try again.');
+    return;
+  }
 
   // Upload compliance docs (after insert so the path can use the real cid)
   let w9FilePath = '', taxExemptFilePath = '', paLetterFilePath = '';
@@ -5460,7 +5542,8 @@ async function saveNewClient(){
     }
   }
 
-  // Always add to local array
+  // Safe to cache locally: the guard above returned unless the database
+  // created the row, so cid is a real id.
   clients.push({
     id:cid, name, legalName, ein, website,
     contact, email, phone, contactType,
@@ -5513,16 +5596,16 @@ async function saveNewDeal(){
 
   // Save to Supabase. contact_name/email/phone let a manually-added lead be
   // emailed and converted to a client — the same columns the quote form fills.
-  let newD = null;
-  try {
-    const {data} = await supa.from('deals').insert([{
-      name, client_name:co, contact_name:contactName||null, email:email||null, phone:phone||null,
-      value:val, stage, probability:prob, notes
-    }]).select().single();
-    newD = data;
-  } catch(e){ console.warn('[GL] saveNewDeal insert failed', e); }
-
-  const did = newD ? newD.id : 'tmp_'+(Date.now());
+  const ins = await glCheckedInsert(sb => sb.from('deals').insert([{
+    name, client_name:co, contact_name:contactName||null, email:email||null, phone:phone||null,
+    value:val, stage, probability:prob, notes
+  }]).select().single());
+  if(!ins.ok){
+    alert('The deal was NOT saved: ' + ins.reason + '\n\nNothing has been recorded. Please try again.');
+    return;
+  }
+  const newD = ins.row;
+  const did = newD.id;
   if(!deals[stage]) deals[stage]=[];
   deals[stage].push({id:did, name, co, contactName, email, phone, val:'$'+val.toLocaleString(), prob, notes, stageEnteredAt: newD?.stage_entered_at || new Date().toISOString()});
   renderKanban(); renderDash();
@@ -9114,8 +9197,8 @@ async function updateProdStatus(id,status){
 async function deleteProdRun(id){
   if(!confirm('Delete this production run?')) return;
   if(window.supa){
-    const r = await window.supa.from('cal_events').delete().eq('id', id);
-    if(r.error){ alert('Delete failed: ' + r.error.message); return; }
+    const res = await glCheckedDelete(sb => sb.from('cal_events').delete().eq('id', id).select('id'));
+    if(!res.ok){ alert('Delete failed — the production run has NOT been deleted: ' + res.reason); return; }
   }
   calEvents=calEvents.filter(e=>e.id!==id);
   renderProductionRuns();
@@ -9371,8 +9454,8 @@ async function toggleTask(id){
 async function deleteTask(id){
   if(!window.supa){ return; }
   if(!confirm('Delete this task?')) return;
-  const r = await window.supa.from('tasks').delete().eq('id', id);
-  if(r.error){ alert('Delete failed: ' + r.error.message); return; }
+  const res = await glCheckedDelete(sb => sb.from('tasks').delete().eq('id', id).select('id'));
+  if(!res.ok){ alert('Delete failed — the task has NOT been deleted: ' + res.reason); return; }
   tasks = tasks.filter(t => t.id !== id);
   renderTasks();
   if(typeof glAudit === 'function') glAudit('task_deleted', null, { task_id: id });
@@ -9489,8 +9572,8 @@ function renderDocs(){
 async function deleteDoc(id){
   if(!confirm('Delete this document record?')) return;
   if(!window.supa){ return; }
-  const r = await window.supa.from('documents').delete().eq('id', id);
-  if(r.error){ alert('Delete failed: ' + r.error.message); return; }
+  const res = await glCheckedDelete(sb => sb.from('documents').delete().eq('id', id).select('id'));
+  if(!res.ok){ alert('Delete failed — the document record has NOT been deleted: ' + res.reason); return; }
   documents=documents.filter(d=>d.id!==id);
   renderDocs();
   if(typeof glAudit === 'function') glAudit('document_deleted', null, { document_id: id });
@@ -9762,7 +9845,14 @@ async function removeTag(clientId,tag){
   clientTags[clientId]=clientTags[clientId].filter(t=>t!==tag);
   renderClientDetail(clientId);
   if(window.supa){
-    await window.supa.from('client_tags').delete().eq('client_id', clientId).eq('tag', tag);
+    const res = await glCheckedDelete(sb => sb.from('client_tags').delete().eq('client_id', clientId).eq('tag', tag).select('tag'));
+    if(!res.ok){
+      // Put it back: the database still has it.
+      if(!clientTags[clientId]) clientTags[clientId] = [];
+      if(!clientTags[clientId].includes(tag)) clientTags[clientId].push(tag);
+      renderClientDetail(clientId);
+      alert('Could not remove the tag — it has NOT been deleted: ' + res.reason);
+    }
   }
 }
 
@@ -11418,8 +11508,8 @@ function renderTimeTracker() {
 async function deleteTimeEntry(id) {
   if(!window.supa){ alert('Cloud sync unavailable — try reloading.'); return; }
   if(!confirm('Delete this time entry?')) return;
-  const r = await window.supa.from('time_entries').delete().eq('id', id);
-  if(r.error){ alert('Delete failed: ' + r.error.message); return; }
+  const res = await glCheckedDelete(sb => sb.from('time_entries').delete().eq('id', id).select('id'));
+  if(!res.ok){ alert('Delete failed — the time entry has NOT been deleted: ' + res.reason); return; }
   await loadTimeEntries();
   renderTimeTracker();
   if(typeof glAudit === 'function') glAudit('time_entry_deleted', null, { entry_id: id });
@@ -11940,8 +12030,8 @@ async function saveClientNote(clientId){
 async function deleteClientNote(clientId, noteId){
   if(!window.supa){ alert('Cloud sync unavailable — try reloading.'); return; }
   if(!confirm('Delete this note?')) return;
-  const r = await window.supa.from('client_notes').delete().eq('id', noteId);
-  if(r.error){ alert('Delete failed: ' + r.error.message); return; }
+  const res = await glCheckedDelete(sb => sb.from('client_notes').delete().eq('id', noteId).select('id'));
+  if(!res.ok){ alert('Delete failed — the note has NOT been deleted: ' + res.reason); return; }
   await renderClientNotesList(clientId);
   if(typeof glAudit === 'function') glAudit('client_note_deleted', clientId, { note_id: noteId });
 }
