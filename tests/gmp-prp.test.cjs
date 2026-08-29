@@ -1,5 +1,5 @@
 /*
- * gmp-prp.test.cjs — the Prerequisite Program (PRP) registers (crm-gmp.js).
+ * gmp-prp.test.cjs — the Prerequisite Program (PRP) registers (src/modules/production/gmp.js).
  * Verifies the PRP cluster: the GMP hub renders a "Prerequisite Programs"
  * section with tiles (Calibration, Pest, Chemical, Glass, Water, Complaint);
  * a PRP register (in_daily=false) opens its OWN single-form entry via

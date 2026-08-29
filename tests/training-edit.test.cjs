@@ -1,6 +1,6 @@
 /*
  * training-edit.test.cjs — the per-record Edit button on Training & Competency.
- * Renders crm-training.js against a stubbed Supabase, clicks Edit on a record
+ * Renders src/modules/production/training.js against a stubbed Supabase, clicks Edit on a record
  * and asserts the modal opens prefilled with that record. Regression guard for
  * the id being interpolated into onclick="…" with JSON.stringify, whose double
  * quotes closed the attribute and left the handler as a syntax error.
@@ -11,7 +11,7 @@
 const http=require('http'),fs=require('fs'),path=require('path');
 const {chromium}=require('playwright');
 const ROOT=process.env.REPO_ROOT||path.resolve(__dirname,'..');
-const TRAINING=process.env.TRAINING_JS||path.join(ROOT,'crm-training.js');
+const TRAINING=process.env.TRAINING_JS||path.join(ROOT,'src/modules/production/training.js');
 
 const REC={id:'54d7acaa-3c48-4fb5-849a-31f807ef388d',employee_name:'Zack Weeks',role:'Production',
   course:'Haccp first training session.',completed_date:'2026-08-01',expires_date:'2026-08-30',
@@ -28,12 +28,12 @@ window.supa={from:function(){return {select:function(){return res([REC])},
   update:function(){return res([REC])},insert:function(){return res([REC])},
   delete:function(){return res([REC])}};}};
 <\/script>
-<script src="/crm-training.js"><\/script></body>`;
+<script src="/src/modules/production/training.js"><\/script></body>`;
 
 const srv=http.createServer((q,s)=>{
   const p=decodeURIComponent(q.url.split('?')[0]);
   if(p==='/'||p==='/index.html'){s.writeHead(200,{'Content-Type':'text/html'});return s.end(PAGE);}
-  if(p==='/crm-training.js'){s.writeHead(200,{'Content-Type':'text/javascript'});return s.end(fs.readFileSync(TRAINING));}
+  if(p==='/src/modules/production/training.js'){s.writeHead(200,{'Content-Type':'text/javascript'});return s.end(fs.readFileSync(TRAINING));}
   s.writeHead(404);s.end();
 });
 

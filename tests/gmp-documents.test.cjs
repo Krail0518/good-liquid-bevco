@@ -1,5 +1,5 @@
 /*
- * gmp-documents.test.cjs — the GMP Documents library (crm-gmp.js).
+ * gmp-documents.test.cjs — the GMP Documents library (src/modules/production/gmp.js).
  * Drives the real hub + documents overlay with a stubbed Supabase, verifying:
  * the hub renders a "Documents" tile, glOpenGMPDocuments() opens an overlay
  * (#gl-gmp-docs) that lists the active gmp_documents rows, and each document

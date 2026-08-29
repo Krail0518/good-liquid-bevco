@@ -93,9 +93,19 @@
  *   /src/modules/pipeline/stale-deals.js
  *
  *   /src/modules/production/ai-optimizer.js
+ *   /src/modules/production/audit-review.js
+ *   /src/modules/production/cip-audit.js
+ *   /src/modules/production/compliance-ext.js
+ *   /src/modules/production/compliance.js
+ *   /src/modules/production/gmp-schedule.js
+ *   /src/modules/production/gmp.js
+ *   /src/modules/production/production-runs.js
+ *   /src/modules/production/quality.js
  *   /src/modules/production/time-report.js
  *   /src/modules/production/time-tracking.js
  *   /src/modules/production/tour-booking.js
+ *   /src/modules/production/trace.js
+ *   /src/modules/production/training.js
  *
  *   /src/modules/quotes/quote-builder.js
  *

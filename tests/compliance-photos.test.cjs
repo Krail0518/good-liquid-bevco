@@ -3,7 +3,7 @@
  *
  * WHY THIS EXISTS
  * ---------------
- * crm-compliance.js had uploaded to a "compliance-photos" Storage bucket since
+ * src/modules/production/compliance.js had uploaded to a "compliance-photos" Storage bucket since
  * 20260517_phase3_extras.sql shipped its RLS policies. The bucket was never
  * created, so three features had never worked: hold-tag evidence photos,
  * defect/NCR photos, and PCQI-signed controlled documents.
@@ -39,7 +39,7 @@ function check(name, cond, detail) {
   else { console.log('  FAIL  ' + name + (detail ? '\n          ' + detail : '')); failures++; }
 }
 
-const src = read('crm-compliance.js');
+const src = read('src/modules/production/compliance.js');
 
 console.log('compliance-photos — a private bucket forbids storing URLs\n');
 

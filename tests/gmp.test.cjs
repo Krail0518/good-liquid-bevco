@@ -1,5 +1,5 @@
 /*
- * gmp.test.cjs — the Daily GMP module (crm-gmp.js).
+ * gmp.test.cjs — the Daily GMP module (src/modules/production/gmp.js).
  * Drives the real hub + combo entry with a stubbed Supabase, verifying the
  * defining behavior: ONE entry with shared header + two forms filled writes
  * TWO compliance_records that SHARE a batch_id and carry the shared header,

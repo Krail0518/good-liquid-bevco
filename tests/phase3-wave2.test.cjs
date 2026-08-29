@@ -1,6 +1,6 @@
 /*
- * phase3-wave2.test.cjs — Phase 3 Wave 2: training records (crm-training.js) +
- * internal audit / findings / management review (crm-auditreview.js).
+ * phase3-wave2.test.cjs — Phase 3 Wave 2: training records (src/modules/production/training.js) +
+ * internal audit / findings / management review (src/modules/production/audit-review.js).
  *
  * Drives the real app with a stubbed Supabase, verifying the defining
  * behaviors of the two new modules:

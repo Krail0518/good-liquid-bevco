@@ -8,7 +8,7 @@
  * order to delete a legacy secret, one is an alias fallback whose primary key
  * IS written. One was not.
  *
- * crm-compliance-ext.js resolved the acting user like this:
+ * src/modules/production/compliance-ext.js resolved the acting user like this:
  *
  *     function getCurrentUserId(){
  *       var u = window.__GL && window.__GL.session && window.__GL.session.user;
@@ -41,7 +41,7 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
-const src = fs.readFileSync(path.join(ROOT, 'crm-compliance-ext.js'), 'utf8')
+const src = fs.readFileSync(path.join(ROOT, 'src/modules/production/compliance-ext.js'), 'utf8')
   .split('\r\n').join('\n');
 
 let failures = 0;
