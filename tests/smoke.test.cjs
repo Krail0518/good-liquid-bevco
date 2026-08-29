@@ -84,10 +84,23 @@ function check(name, ok, detail) {
   else { console.log(`  FAIL: ${name}${detail ? ' — ' + detail : ''}`); failures.push(name); }
 }
 
+// Errors that are ALWAYS an application bug, whatever else the message
+// mentions. Checked FIRST, so a bug that happens to name a library or a status
+// code cannot be filtered away as noise.
+//
+// "Maximum call stack" was in the noise list below. It is infinite recursion —
+// one of the clearest app crashes there is — and it was being discarded on
+// every run. Naming a library is not evidence of a network problem either:
+// "Cannot read properties of undefined (reading 'supabase')" is a null-deref
+// in our code that the bare `supabase` pattern swallowed whole.
+const ALWAYS_APP_BUG =
+  /Maximum call stack|is not a function|is not defined|Cannot read propert|Cannot access |Cannot set propert|undefined is not|null is not|Unexpected token|Assignment to constant/i;
+
 // Network/backend noise we expect in CI (no Supabase, no third-party CDNs).
 // These are NOT app bugs, so they must not fail the build.
 function isBackendNoise(msg) {
-  return /Failed to fetch|NetworkError|ERR_|net::|TUNNEL|WebSocket|Maximum call stack|jszip|supabase|Load failed|status of 4|status of 5|blocked by CORS|CORS policy|429|403|Access-Control/i.test(msg);
+  if (ALWAYS_APP_BUG.test(msg)) return false;
+  return /Failed to fetch|NetworkError|ERR_|net::|TUNNEL|WebSocket|jszip|supabase|Load failed|status of 4|status of 5|blocked by CORS|CORS policy|429|403|Access-Control/i.test(msg);
 }
 
 async function main() {
