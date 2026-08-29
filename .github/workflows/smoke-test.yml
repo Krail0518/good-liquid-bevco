@@ -141,6 +141,9 @@ jobs:
       # CSP directives, and the measured reason unsafe-inline is still needed.
       - name: Run CSP tests
         run: node tests/csp.test.cjs
+      # The weekly review gate must never pass without actually reviewing.
+      - name: Run AI review gate tests
+        run: node tests/ai-review.test.cjs
 
       - name: Run smoke test
         env:
