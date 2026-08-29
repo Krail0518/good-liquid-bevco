@@ -6,7 +6,11 @@
 // Request body (POST JSON):
 //   {
 //     invoice_id:    string   // human-readable invoice number e.g. "GL-1042"
-//     amount:        number   // dollars, e.g. 1842.50 (NOT cents)
+//     amount:        number   // IGNORED. The browser still sends it; the
+//                             // charge is read from the invoices row instead.
+//                             // Documenting it as an input was itself part of
+//                             // why this function read as though it trusted a
+//                             // client amount.
 //     currency?:     string   // default "usd"
 //     description?:  string   // appears on the Stripe checkout page
 //     client_email?: string   // pre-fills email on the checkout page
@@ -57,7 +61,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const {
     invoice_id,
     share_token,
-    amount,
+    // `amount` is deliberately NOT destructured. The browser still sends one
+    // and it is ignored: the charge is built from dbAmount below, read from
+    // the invoices row under the service-role key.
+    //
+    // It used to be pulled out here and then never used, which made the
+    // function READ as though it trusted a client-supplied amount. An external
+    // security review flagged exactly that on 2026-08-29 and asked for the
+    // amount to be server-derived — it already was. Code that merely looks
+    // unsafe still costs a review cycle and invites a "fix" that breaks it.
     currency = 'usd',
     description,
     client_email,
