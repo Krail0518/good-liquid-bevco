@@ -122,9 +122,15 @@ async function callHelper(src, mode) {
   check('the "Always add to local array" comment is gone',
     !/Always add to local array/.test(html));
 
-  // The dead duplicate must stay marked so nobody repairs the wrong one.
-  check('the dead saveReferrer is labelled DEAD CODE',
-    /DEAD CODE — do not fix this one/.test(html));
+  // This used to require the dead duplicate to carry a "DEAD CODE" label, so
+  // nobody would repair the copy that never runs. The duplicate has since been
+  // removed outright (GL-044) — labelling it was the weaker fix, and it did
+  // not stop the trap being real. Assert the stronger property instead: there
+  // is only one saveReferrer, so there is no wrong one to repair.
+  check('saveReferrer is declared exactly once',
+    (html.match(/function saveReferrer\(\)/g) || []).length === 1,
+    'a second top-level declaration silently wins over the first — see ' +
+    'tests/duplicate-declarations.test.cjs');
 
   // ── the helper's contract ────────────────────────────────────────────
   console.log('');
