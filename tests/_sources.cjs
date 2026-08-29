@@ -33,6 +33,7 @@ const CORE_FILES = [
   'crm-index-core.js',
   // Everything under src/, in real load order. Regenerated from the actual
   // <script> tags in index.html, so it cannot drift out of order.
+  'src/shared/actions.js',
   'src/modules/invoicing/ar-aging.js',
   'src/modules/invoicing/pay-link.js',
   'src/modules/customers/client-notes.js',
