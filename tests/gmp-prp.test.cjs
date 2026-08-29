@@ -76,8 +76,17 @@ const out=await pg.evaluate(async(TEMPLATES)=>{
   o.hubHasGlass=/Glass/i.test(hubTxt);
   o.hubHasWater=/Water/i.test(hubTxt);
   o.hubHasComplaint=/Complaint/i.test(hubTxt);
-  // hub calls the single-form entry with the PRP code
-  o.tileTargetsCode=/glOpenGMPRegister\('GMP-CAL-001'\)/.test(host?host.innerHTML:'');
+  // The hub tile must target this PRP's register code.
+  //
+  // Matches EITHER wiring on purpose. GL-DEF-01 moved these tiles from an
+  // onclick carrying a string of JavaScript to data-gl-action, and an
+  // assertion written against the call syntax fails on a change that breaks
+  // nothing. What matters is that a control names glOpenGMPRegister AND
+  // carries this code -- checked as a pair, so a tile naming the right action
+  // with the wrong code still fails.
+  o.tileTargetsCode =
+    /glOpenGMPRegister\('GMP-CAL-001'\)/.test(host ? host.innerHTML : '') ||
+    !!(host && host.querySelector('[data-gl-action="glOpenGMPRegister"][data-gl-arg1="GMP-CAL-001"]'));
 
   // Open the single-form PRP entry directly.
   await window.glOpenDailyGMP('GMP-CAL-001');

@@ -205,7 +205,7 @@
     var chip = function(n,label,color){ return n ? '<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:'+color+'22;color:'+color+';border:1px solid '+color+'55;font-weight:700">'+n+' '+label+'</span>' : ''; };
     var head = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
       '<div style="font-weight:800;color:#eef4ff;font-size:14.5px">🔥 Needs attention today</div>' +
-      '<button onclick="if(window.glOpenAttentionBoard)window.glOpenAttentionBoard()" style="background:none;border:none;color:var(--teal);font-size:12px;font-weight:700;cursor:pointer">Open full board →</button>' +
+      '<button data-gl-action="glOpenAttentionBoard" style="background:none;border:none;color:var(--teal);font-size:12px;font-weight:700;cursor:pointer">Open full board →</button>' +
     '</div>';
     if(!items.length){ host.innerHTML = head + '<div style="font-size:12.5px;color:#9aa7bd;padding:4px 0">🎉 You\'re all caught up, nobody is waiting on you right now.</div>'; return; }
     var chips = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">' +

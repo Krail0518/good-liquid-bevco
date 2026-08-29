@@ -1217,7 +1217,7 @@
               '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + fmt(data.total) + ' outstanding · ' + anyLate + ' invoice' + (anyLate === 1 ? '' : 's') + ' past due</div>' +
             '</div>' +
           '</div>' +
-          '<a href="javascript:void(0)" onclick="if(window.cNav)window.cNav(\'invoices\',null)" style="font-size:11px;color:var(--teal);text-decoration:none">View all →</a>' +
+          '<a href="javascript:void(0)" data-gl-action="cNav" data-gl-arg1="invoices" data-gl-arg2="" style="font-size:11px;color:var(--teal);text-decoration:none">View all →</a>' +
         '</div>' +
         '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
           bucketHtml('CURRENT',    data.buckets.current,   data.counts.current,   'var(--muted)',  'rgba(255,255,255,.07)') +

@@ -478,6 +478,14 @@
   }
 
   // ── Form: GMP-INSP-001 Daily Pre-Op Sanitation Inspection ──
+  // Was a single expression in an onclick that queried the same child twice
+  // to read and then write its display. One lookup now.
+  window.glToggleHistDetail = function(row){
+    var d = row && row.querySelector ? row.querySelector('.gl-hist-detail') : null;
+    if(!d) return;
+    d.style.display = d.style.display === 'none' ? 'block' : 'none';
+  };
+
   window.glOpenPreOpForm = function(task){
     task = task || {};
     var areas = ['Filling Line 1','Filling Line 2','Pasteurizer','Fermentation Tanks','CIP Skid','Floors / Drains','Cooler / Warehouse'];
@@ -2493,7 +2501,7 @@
         (rows.length ? rows.map(function(r){
           var devBadge = r.has_deviation ? '<span style="font-size:10px;color:#ff8579;background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.3);padding:2px 7px;border-radius:10px;margin-left:6px">⚠</span>' : '';
           var sigBadge = r.status === 'signed' ? '<span style="font-size:10px;color:#5fcf9e">✓</span>' : '<span style="font-size:10px;color:#f5c842">○</span>';
-          return '<div class="gl-hist-row" data-id="' + r.id + '" style="padding:11px 13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:9px;margin-bottom:6px;cursor:pointer" onclick="this.querySelector(\'.gl-hist-detail\').style.display=this.querySelector(\'.gl-hist-detail\').style.display===\'none\'?\'block\':\'none\'">' +
+          return '<div class="gl-hist-row" data-id="' + r.id + '" style="padding:11px 13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:9px;margin-bottom:6px;cursor:pointer" data-gl-action="glToggleHistDetail" data-gl-el="">' +
             '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px">' +
               '<div style="flex:1;min-width:0">' +
                 '<div style="font-size:12px;color:#fff;font-weight:600">' + sigBadge + ' ' + esc(r.form_code) + devBadge + '</div>' +

@@ -18,7 +18,7 @@
       var isOwner=u.email==='mike@goodliquid.com';
       var rolePicker=isOwner
         ? '<span style="font-size:11px;color:var(--muted)">admin (owner)</span>'
-        : '<select onchange="window.glAdminChangeRole(\''+u.id+'\',this.value)" style="background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer">'
+        : '<select data-gl-action="glAdminChangeRole" data-gl-on="change" data-gl-arg1="'+u.id+'" data-gl-el-prop="value" style="background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer">'
           +'<option value="admin"'+(u.role==='admin'?' selected':'')+'>admin</option>'
           +'<option value="sales"'+(u.role==='sales'?' selected':'')+'>sales</option>'
           +'<option value="warehouse"'+(u.role==='warehouse'?' selected':'')+'>warehouse</option>'
@@ -221,7 +221,7 @@
         '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:12px;margin-bottom:12px;font-size:12px;color:#cfd9e6;line-height:1.7">' +
           'Sync reads your Gmail and files every message to or from a client or lead into their correspondence panel — including replies and mail sent from your phone. It runs automatically while the CRM is open, and hourly on a schedule. The button below is for a deep backfill or an on-demand refresh.' +
         '</div>' +
-        '<button id="gl-sync-all-btn" onclick="window.glSyncAllEmail(this)" style="width:100%;padding:13px;background:rgba(0,229,192,.1);color:var(--teal);border:1px solid rgba(0,229,192,.3);border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;margin-bottom:10px">🔄 Sync email history from Gmail</button>' +
+        '<button id="gl-sync-all-btn" data-gl-action="glSyncAllEmail" data-gl-el="" style="width:100%;padding:13px;background:rgba(0,229,192,.1);color:var(--teal);border:1px solid rgba(0,229,192,.3);border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;margin-bottom:10px">🔄 Sync email history from Gmail</button>' +
         // Persistent result line — stays put so the outcome can't be missed.
         '<div id="gl-sync-result" style="display:none;font-size:12px;line-height:1.55;margin-bottom:12px;padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px"></div>' +
 
