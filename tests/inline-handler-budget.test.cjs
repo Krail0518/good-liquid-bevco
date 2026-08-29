@@ -72,7 +72,7 @@ function countIn(rel) {
  * file not listed here is budgeted at zero, so a new handler anywhere fails.
  */
 const BUDGET = {
-  'index.html': 234,
+  'index.html': 136,
   'crm-index-core.js': 65,
   'src/modules/invoicing/invoice-builder.js': 20,
   'src/modules/invoicing/invoice-patches.js': 20,
@@ -172,9 +172,17 @@ const allSrc = tracked.map((f) => {
   return fs.existsSync(p) ? strip(fs.readFileSync(p, 'utf8'), f.endsWith('.js')) : '';
 }).join('\n');
 const used = [...allSrc.matchAll(/data-gl-action="([A-Za-z_$][\w$]*)"/g)].map((m) => m[1]);
+// Three registration forms, all of which must count:
+//   glRegisterAction('name', fn)
+//   glRegisterActions({ name: fn, ... })
+//   glRegisterGlobalActions(['name', ...])   <- the generated registry
+// Missing the third made every one of the 82 generated names read as
+// unregistered, i.e. as 82 dead controls, when they were all fine.
 const registered = [...allSrc.matchAll(/glRegisterAction\(\s*'([^']+)'/g)].map((m) => m[1])
   .concat([...allSrc.matchAll(/glRegisterActions\(\s*\{([^}]*)\}/g)]
-    .flatMap((m) => [...m[1].matchAll(/(\w+)\s*:/g)].map((x) => x[1])));
+    .flatMap((m) => [...m[1].matchAll(/(\w+)\s*:/g)].map((x) => x[1])))
+  .concat([...allSrc.matchAll(/glRegisterGlobalActions\(\s*\[([\s\S]*?)\]/g)]
+    .flatMap((m) => [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1])));
 const unknown = [...new Set(used)].filter((u) => !registered.includes(u));
 check('every data-gl-action names a registered action',
   unknown.length === 0,

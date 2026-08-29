@@ -83,6 +83,37 @@
     Object.keys(map || {}).forEach(function (k) { window.glRegisterAction(k, map[k]); });
   };
 
+  /**
+   * Register action names that resolve to an existing global at CALL time.
+   *
+   * The functions these name are declared across crm-index-core.js and 45
+   * modules, and load order means most do not exist when this file runs.
+   * Registering a thunk defers the lookup without weakening anything: the
+   * ALLOWLIST IS THE SET OF NAMES, and a name absent from this list is still
+   * unreachable no matter what globals exist. It is the difference between
+   * "any global" and "these 82".
+   *
+   * A name that resolves to nothing at call time is reported the same way an
+   * unregistered action is — a dead control has to be loud.
+   */
+  window.glRegisterGlobalActions = function glRegisterGlobalActions(names) {
+    (names || []).forEach(function (name) {
+      window.glRegisterAction(name, function () {
+        var fn = window[name];
+        if (typeof fn !== 'function') {
+          console.error('[gl-actions] "' + name + '" is registered but no such global ' +
+            'exists at call time. The control is dead. Was its module renamed or ' +
+            'did it fail to load?');
+          if (typeof window.addNotification === 'function') {
+            window.addNotification('Control not available', name + ' is not loaded.', 'warning');
+          }
+          return;
+        }
+        return fn.apply(this, arguments);
+      });
+    });
+  };
+
   /** Read-only view, for tests and for debugging a dead control. */
   window.glActionNames = function glActionNames() { return Object.keys(registry).sort(); };
 
