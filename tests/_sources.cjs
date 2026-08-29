@@ -38,6 +38,15 @@ const CORE_FILES = [
   'src/modules/customers/client-notes.js',
   'src/modules/customers/tags.js',
   'src/modules/customers/email-templates.js',
+  'src/modules/production/time-report.js',
+  'src/modules/customers/document-storage.js',
+  'src/modules/pipeline/revenue-forecast.js',
+  'src/modules/pipeline/stale-deals.js',
+  'src/modules/pipeline/multi-pipeline.js',
+  'src/modules/customers/health-score.js',
+  'src/modules/customers/health-score-ai.js',
+  'src/modules/production/time-tracking.js',
+  'src/modules/production/tour-booking.js',
 ];
 
 function read(f) {
