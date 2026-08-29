@@ -22,7 +22,7 @@
  * All four now go through glCheckedInsert and stop on failure.
  *
  * NOT INCLUDED: index.html's saveInvoice. It has the same shape but is
- * unreachable — cNav runs nav guards first and crm-permissions.js
+ * unreachable — cNav runs nav guards first and src/services/permissions-service.js
  * unconditionally intercepts the 'newinv' page, so #cpg-newinv never
  * activates. The live invoice write is src/modules/invoicing/invoice-patches.js, which already
  * checks its result. Verified before deciding to leave it alone; "fixing"

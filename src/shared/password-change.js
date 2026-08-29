@@ -411,7 +411,7 @@ async function sendMailgunEmail(to, subject, body, opts){
       return false;
     }
     // Stash the returned provider message id so the email_log wrapper
-    // (crm-email.js wrapSend IIFE) can record it on the row. For Gmail sends
+    // (src/services/email.js wrapSend IIFE) can record it on the row. For Gmail sends
     // this is the Gmail message id; for a Mailgun fallback send it's the
     // Mailgun id. (Note: Gmail has no open/click webhook like Mailgun, so
     // delivered/opened/clicked tracking only populates for Mailgun-sent mail.)

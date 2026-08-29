@@ -1,4 +1,4 @@
-/* crm-seo.js — SEO meta tags, structured data, GA4 */
+/* seo.js — SEO meta tags, structured data, GA4 */
 (function(){
   'use strict';
 

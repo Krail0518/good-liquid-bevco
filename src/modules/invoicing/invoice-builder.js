@@ -35,7 +35,7 @@
   //
   // Elements with their own onclick are purpose-built and already route to
   // openNewInvoiceBuilder correctly — including the sidebar nav item, which
-  // goes through cNav() and the 'newinv' nav guard in crm-permissions.js.
+  // goes through cNav() and the 'newinv' nav guard in src/services/permissions-service.js.
   document.addEventListener('click', function(e){
     var el = e.target.closest('button,a,.cni');
     if(!el) return;

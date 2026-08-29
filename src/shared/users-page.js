@@ -61,10 +61,10 @@ function openChangeRole(uid){
   document.getElementById('role-modal').classList.add('show');
 }
 function closeRoleModal(){document.getElementById('role-modal').classList.remove('show');changeRoleUserId=null}
-/* saveRole / deactivateUser — thin wrappers over crm-permissions.js.
+/* saveRole / deactivateUser — thin wrappers over src/services/permissions-service.js.
    The bodies that used to live here were the legacy pair, and they never
    worked: both called renderPermissionsPanel() BEFORE the update and OUTSIDE
-   the try. That function is declared inside the crm-permissions.js IIFE and is
+   the try. That function is declared inside the src/services/permissions-service.js IIFE and is
    never exported, so the bare call threw a ReferenceError and the
    `supa.from('profiles').update(...)` line below it was never reached. Role
    changes and deactivations therefore did nothing at all — a deactivated staff

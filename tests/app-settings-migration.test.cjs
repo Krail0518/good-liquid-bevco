@@ -1,6 +1,6 @@
 /*
  * app-settings-migration.test.cjs — regression guard for the one-time
- * localStorage -> app_settings migration in crm-auth.js.
+ * localStorage -> app_settings migration in src/services/auth.js.
  *
  * WHY THIS EXISTS
  * ---------------
@@ -12,14 +12,14 @@
  * the SMS recipient and alert phone, five notification toggles, the Dropbox
  * Sign template map, the Stripe publishable key and the Sentry DSN.
  *
- * Run:  node app-settings-migration.test.cjs [path-to-crm-auth.js]
+ * Run:  node app-settings-migration.test.cjs [path-to-src/services/auth.js]
  */
 
 const fs = require('fs');
 const vm = require('vm');
 const path = require('path');
 
-const TARGET = process.argv[2] || path.join(__dirname, '..', 'crm-auth.js');
+const TARGET = process.argv[2] || path.join(__dirname, '..', 'src/services/auth.js');
 
 const LEGACY = {
   gl_sms_to: '"ops@goodliquid.com"',
@@ -79,7 +79,7 @@ function makeSupa(mode, captured, seeded) {
   };
 }
 
-/* Load crm-auth.js into a sandbox with just enough of a browser to run. */
+/* Load src/services/auth.js into a sandbox with just enough of a browser to run. */
 function loadModule(localStorage, supa) {
   const src = fs.readFileSync(TARGET, 'utf8');
   const win = {
