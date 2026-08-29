@@ -356,7 +356,17 @@ const gaps=await pg.evaluate(async()=>{
   // so tapping it on a phone did nothing.
   const dashTab=[...document.querySelectorAll('.crm-bnav-item')].find(b=>/Dashboard/i.test(b.textContent||''));
   o.mobileTabFound=!!dashTab;
-  o.mobileTabTargetsRealPage=!!dashTab && /cNav\('dashboard'/.test(dashTab.getAttribute('onclick')||'');
+  // Matches EITHER wiring. The check that matters is that the tab names the
+  // REAL page 'dashboard' -- the original bug was a tab pointing at a page name
+  // that did not exist, so tapping it did nothing. GL-DEF-01 moved this control
+  // from an inline onclick to data-gl-action, and reading getAttribute('onclick')
+  // alone made it look broken when it was not. The behavioural check below
+  // (click it, expect #cpg-dashboard) passed throughout.
+  o.mobileTabTargetsRealPage=!!dashTab && (
+    /cNav\('dashboard'/.test(dashTab.getAttribute('onclick')||'') ||
+    (dashTab.getAttribute('data-gl-action')==='glBnavGo' &&
+     dashTab.getAttribute('data-gl-arg1')==='dashboard')
+  );
   if(dashTab){ try{ dashTab.click(); }catch(e){ o.mobileTabThrew=e.message; } }
   await new Promise(r=>setTimeout(r,200));
   o.mobileTabShowsPage=!!document.getElementById('cpg-dashboard');
