@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "good-liquid",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", ".", "-p", "3799", "--no-clipboard"],
+      "port": 3799
+    }
+  ]
+}

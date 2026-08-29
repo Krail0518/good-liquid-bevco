@@ -100,3 +100,28 @@ unchanged), **portal customer** (own client only), **self-registered stranger**
 - Edge functions: `gh workflow run "Deploy Supabase"`. The local Supabase CLI
   token is expired; the CI secret works.
 - Every migration gets a `ROLLBACK:` note at the top.
+
+## Engineering standard
+
+The rules above are the operational ones — they came from real incidents and
+they win any conflict. They sit inside a broader standard that also governs
+review, release, and how the two AI agents divide work:
+
+- `docs/standards/Good_Liquid_Bev_Co_CRM_AI_Engineering_Standard_v2.docx` —
+  the source document (17 sections + the automation addendum)
+- `docs/standards/engineering-standard.md`, `security-rules.md`,
+  `database-rules.md`, `modular-architecture.md`, `ai-review-policy.md`
+- `AGENTS.md` — Claude implements, ChatGPT/Codex reviews independently
+- `docs/plans/technical-debt.md` — the §12 register
+- `prompts/` — review and change-request templates
+
+Findings are graded BLOCKER / HIGH / MEDIUM / LOW / INFORMATIONAL. BLOCKER and
+HIGH block release unless the owner explicitly accepts the risk.
+
+`src/modules/` is a migration target, not a filing cabinet. Extract one
+capability at a time behind its own PR — `index.html` hardcodes ~37
+order-dependent root-absolute script tags and Vercel serves from the repo root,
+so a bulk move breaks the site.
+
+Note: there is a second stale duplicate at `C:\Users\mike\Desktop\goodliquid`
+(209 commits behind as of 2026-08-28). Ignore it, as with the Downloads copy.

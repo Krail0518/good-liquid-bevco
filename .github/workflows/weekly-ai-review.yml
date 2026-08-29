@@ -1,0 +1,107 @@
+# Weekly deep review — standard §14 and Setup Instruction #1.
+#
+# STATUS: the schedule and the run scaffolding below are real. The review step
+# itself is not yet connected to a reviewer, and that is called out in the job
+# rather than hidden behind a green check — a job that passes while doing
+# nothing is worse than no job, because it reads as coverage. Tracked as GL-030.
+#
+# ── The timezone problem, and why the cron looks like this ───────────────────
+# GitHub Actions cron is UTC and has no DST handling. A single `0 12 * * 2` is
+# 08:00 America/New_York in summer and 07:00 in winter, so the "Tuesday 8am"
+# review silently drifts an hour for roughly five months of the year. Setup
+# Instruction #1 explicitly requires configuring the intended timezone rather
+# than assuming UTC.
+#
+# There is no cron timezone field, so the standard workaround is to fire at
+# BOTH candidate hours and let the job decide: 11:00 UTC is 08:00 EDT, 12:00
+# UTC is 08:00 EST. Exactly one of the two matches 08:00 New York on any given
+# Tuesday; the other exits immediately. That costs one no-op run a week and is
+# correct year round.
+
+name: Weekly AI Review
+
+on:
+  schedule:
+    - cron: '0 11,12 * * 2'   # 08:00 America/New_York, EDT and EST respectively
+  workflow_dispatch:
+
+concurrency:
+  group: weekly-ai-review
+  cancel-in-progress: false
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # Fire only on the run that is genuinely 08:00 in New York. A manual
+      # dispatch always proceeds — the point of dispatch is to run it now.
+      - name: Is it 08:00 in New York?
+        id: when
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            echo "Manual dispatch — proceeding regardless of the hour."
+            exit 0
+          fi
+          NY_HOUR=$(TZ=America/New_York date +%H)
+          echo "New York hour is $NY_HOUR"
+          if [ "$NY_HOUR" = "08" ]; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            echo "Not 08:00 in New York — this is the other DST candidate run. Exiting."
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.when.outputs.proceed == 'true'
+        with:
+          fetch-depth: 0   # the review needs history to diff since the last one
+
+      # Collect what Setup Instruction #1 asks the review to consider. This part
+      # is real and useful on its own: it produces the input a reviewer needs.
+      - name: Gather the review input
+        if: steps.when.outputs.proceed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p review-input
+          SINCE=$(git log -1 --format=%cI --before="7 days ago" 2>/dev/null || echo "")
+          echo "## Changes since the last review" > review-input/summary.md
+          git log --since="7 days ago" --oneline >> review-input/summary.md || true
+          echo >> review-input/summary.md
+          echo "## Migrations touched" >> review-input/summary.md
+          git log --since="7 days ago" --name-only --format="" -- supabase/migrations/ | sort -u >> review-input/summary.md || true
+          echo >> review-input/summary.md
+          echo "## Open pull requests" >> review-input/summary.md
+          gh pr list --state open --limit 50 >> review-input/summary.md || true
+          echo >> review-input/summary.md
+          echo "## Technical debt register" >> review-input/summary.md
+          sed -n '1,60p' docs/plans/technical-debt.md >> review-input/summary.md || true
+          cat review-input/summary.md
+
+      - name: Upload the review input
+        if: steps.when.outputs.proceed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-review-input
+          path: review-input/
+          retention-days: 30
+
+      # The reviewer itself is not wired up. Fail loudly rather than pass
+      # silently: a green check here would assert that a review happened.
+      - name: Reviewer not connected
+        if: steps.when.outputs.proceed == 'true'
+        run: |
+          echo "::warning::The AI reviewer is not connected yet (GL-030)."
+          echo "The review input has been collected and uploaded as an artifact,"
+          echo "but no reviewer has read it and no findings have been produced."
+          echo
+          echo "Per Setup Instruction #1 the reviewer must write findings to a"
+          echo "predictable location — a GitHub issue using"
+          echo ".github/ISSUE_TEMPLATE/ai-review-finding.md — carrying:"
+          echo "  finding id, severity, affected files, explanation,"
+          echo "  recommended remediation, release-blocking status."
+          echo
+          echo "Until that exists, this workflow does not constitute a review gate."
+          exit 1
