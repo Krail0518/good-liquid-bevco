@@ -866,3 +866,9 @@ RLS      public.training_records | enabled=t
 RLS      public.user_permissions | enabled=t
 RLS      public.vendors | enabled=t
 RLS      public.yield_logs | enabled=t
+SECRET   gl_cron_secret | len=64 | known_published=f
+SECRET   gl_gmail_client_id | len=72 | known_published=f
+SECRET   gl_gmail_client_secret | len=35 | known_published=f
+SECRET   gl_gmail_connected_email | len=19 | known_published=f
+SECRET   gl_gmail_refresh_token | len=103 | known_published=f
+SECRET   gl_notify_secret | len=64 | known_published=f
