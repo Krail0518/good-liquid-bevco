@@ -31,8 +31,8 @@ const ROOT = path.resolve(__dirname, '..');
 const CORE_FILES = [
   'index.html',
   'crm-index-core.js',
-  // Capabilities extracted out of the core, in load order. Regenerated from
-  // the actual <script> tags in index.html, so it cannot drift.
+  // Extracted capabilities, in load order. Regenerated from the actual
+  // <script> tags in index.html, so it cannot drift.
   'src/modules/invoicing/ar-aging.js',
   'src/modules/invoicing/pay-link.js',
   'src/modules/customers/client-notes.js',
@@ -57,6 +57,14 @@ const CORE_FILES = [
   'src/modules/shared/ai-chat.js',
   'src/modules/production/ai-optimizer.js',
   'src/modules/shared/mobile-menu.js',
+  'src/modules/shared/ai-insights.js',
+  'src/modules/pipeline/referrals.js',
+  'src/modules/shared/permissions.js',
+  'src/modules/shared/users-page.js',
+  'src/modules/shared/pwa-install.js',
+  'src/modules/shared/email-composer.js',
+  'src/modules/shared/correspondence.js',
+  'src/modules/pipeline/deal-detail.js',
 ];
 
 function read(f) {
