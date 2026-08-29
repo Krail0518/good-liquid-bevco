@@ -71,8 +71,14 @@ regexes = [
 paths = [
   # This file quotes key SHAPES, not keys.
   '''\.gitleaks\.toml$''',
-  # Vendored third-party bundles saved from a browser (Chart.js, ~205 KB
-  # minified each). Minified code trips the entropy heuristic constantly, and
-  # these are not ours to edit.
+  # index_files/ was five vendored "Save page as" artifacts (Chart.js and
+  # supabase-js, ~205 KB minified each). The files were DELETED from the working
+  # tree, but this entry must STAY: the history scan (`gitleaks git .`) still
+  # walks every commit that contained them, and minified code trips the entropy
+  # heuristic constantly.
+  #
+  # Deleting a file removes it from HEAD, never from history. An exemption for a
+  # deleted path is therefore NOT stale in a history-scanning context. I removed
+  # this entry once on exactly that mistaken reasoning and CI caught it.
   '''^index_files/''',
 ]
