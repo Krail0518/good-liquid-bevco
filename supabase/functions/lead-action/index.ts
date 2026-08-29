@@ -16,7 +16,7 @@
 //
 // Deploy: supabase functions deploy lead-action --no-verify-jwt
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.112.4';
 import { verifyBooking, signBooking } from '../_shared/booking-token.ts';
 
 const esc = (s: unknown) =>

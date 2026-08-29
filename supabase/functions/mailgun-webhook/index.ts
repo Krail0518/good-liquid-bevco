@@ -8,7 +8,7 @@
 //
 // Optional: Set MAILGUN_WEBHOOK_SIGNING_KEY in Edge Function secrets to verify HMAC.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.112.4";
 
 async function verifyMailgunSignature(timestamp: string, token: string, signature: string, signingKey: string): Promise<boolean> {
   // HMAC-SHA256(signing_key, timestamp + token) === signature

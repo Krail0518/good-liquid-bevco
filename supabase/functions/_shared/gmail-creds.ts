@@ -11,7 +11,7 @@
 // minted under a different client) is precisely the failure mode that took
 // Gmail sending down for a day.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.112.4';
 
 export interface GmailCreds {
   clientId: string;

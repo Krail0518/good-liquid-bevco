@@ -14,7 +14,7 @@
 //   Actions:    forward('https://ufjkeqmxwuyhbqyugcgg.supabase.co/functions/v1/mailgun-inbound')
 //               stop()
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.112.4";
 
 async function verifySignature(
   timestamp: string,

@@ -27,10 +27,13 @@
  *
  * WHAT IS ASSERTED, AND WHAT IS BASELINED
  * ---------------------------------------
- * Pinning the 18 live functions is a real change that has to be deployed and
- * exercised, not smuggled into a test commit. So the CURRENT state is frozen as
- * a baseline: this cannot get WORSE while that work is scheduled. A new
- * floating import fails immediately, and the counts may only go down.
+ * The esm.sh imports are now pinned (GL-046, all 18 functions), so that
+ * baseline is zero and a reintroduced floating specifier fails immediately.
+ *
+ * The CDN Subresource Integrity gap (GL-047) is still frozen at its current
+ * count rather than fixed: a wrong integrity hash blocks the script site-wide,
+ * so it needs a hash taken from the served file and a browser check, which is
+ * its own change. This cannot get WORSE meanwhile.
  *
  * Run:  node tests/supply-chain-pinning.test.cjs
  */
@@ -83,10 +86,16 @@ const isPinned = (u) => /@\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.]+)?(?:\/|$|\?)/.test(u
 const floating = remoteImports.filter((r) => !isPinned(r.url));
 const floatingUrls = [...new Set(floating.map((r) => r.url))];
 
-// Frozen 2026-08-29: 18 files, 1 distinct floating specifier
-// (https://esm.sh/@supabase/supabase-js@2). Numbers may only go DOWN.
-const BASELINE_FLOATING_FILES = 18;
-const BASELINE_FLOATING_URLS = 1;
+// GL-046 is FIXED: all 18 edge functions were pinned to
+// @supabase/supabase-js@2.112.4 (the exact build esm.sh already served for
+// @2, so the change was behaviour-preserving by construction). The baseline is
+// therefore ZERO, and any reintroduced floating specifier fails immediately.
+//
+// It stays zero. Anything imported into a function holding
+// SUPABASE_SERVICE_ROLE_KEY must name an exact version, because that key
+// bypasses RLS entirely.
+const BASELINE_FLOATING_FILES = 0;
+const BASELINE_FLOATING_URLS = 0;
 
 check('no NEW floating remote import in an edge function',
   floating.length <= BASELINE_FLOATING_FILES,

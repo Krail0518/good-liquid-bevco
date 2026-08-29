@@ -19,7 +19,7 @@
 //
 // Deploy: supabase functions deploy attention-digest --no-verify-jwt
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.112.4";
 import { corsHeaders, jsonResponse, handlePreflight } from "../_shared/cors.ts";
 import { isCronCall } from "../_shared/cron-auth.ts";
 import { requireStaff } from "../_shared/auth.ts";

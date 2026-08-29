@@ -20,7 +20,7 @@
 //
 // Deploy: supabase functions deploy booking-approve --no-verify-jwt
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.112.4';
 import {
   fmtLocalDate, fmtLocalTime, tzLabel, buildICS, googleCalURL, sendMail,
 } from '../_shared/booking-email.ts';

@@ -13,7 +13,7 @@
 //
 // Deploy: supabase functions deploy booking-availability --no-verify-jwt
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.112.4';
 import { jsonResponse, errorResponse, handlePreflight } from '../_shared/cors.ts';
 import { localToUTC } from '../_shared/booking-email.ts';
 import { getBusyIntervals } from '../_shared/google-calendar.ts';
