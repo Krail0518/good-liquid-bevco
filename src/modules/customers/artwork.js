@@ -1,5 +1,5 @@
 /* ============================================================
-   crm-artwork.js — per-client label artwork, multiple SKUs
+   artwork.js — per-client label artwork, multiple SKUs
    ============================================================
    One row per SKU in client_artwork; each SKU carries a name, optional notes,
    an approval status, and an uploaded artwork file (client-docs bucket, opened

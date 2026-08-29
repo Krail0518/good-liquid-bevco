@@ -157,7 +157,7 @@
   }
 
   // Wrap glOpenEditClient to inject the email panel after the modal opens.
-  // crm-edit-client.js always loads before this file, so glOpenEditClient
+  // edit-client.js always loads before this file, so glOpenEditClient
   // is guaranteed to be defined synchronously at this point.
   (function(){
     var orig = window.glOpenEditClient;

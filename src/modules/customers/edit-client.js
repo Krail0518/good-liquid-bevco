@@ -267,7 +267,7 @@
           '<div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:var(--teal)">EDIT CLIENT</div>' +
           '<button id="gl-ec-close" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer">✕</button>' +
         '</div>' +
-        // Onboarding status + send/copy link (crm-onboarding.js). Admins land
+        // Onboarding status + send/copy link (onboarding.js). Admins land
         // HERE when they click a client card — openClientDetail is only shown
         // to viewers — so the section must live in this form too.
         (typeof window.glClientOnboardingSection === 'function' ? window.glClientOnboardingSection(c) : '') +

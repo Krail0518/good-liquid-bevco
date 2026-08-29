@@ -1,5 +1,5 @@
 /* ============================================================
-   crm-client-detail.js — shared client-detail info sections
+   client-detail.js — shared client-detail info sections
    ============================================================
    Both client-detail popups (openClientDetail and viewClientEnhanced in
    index.html) previously hid any field that was empty, so a client with
@@ -173,7 +173,7 @@
     docs += docRow('Process Authority letter', c.paLetterOnFile, c.paLetterFilePath, true, c.paLetterExpires, '');
     out += section('COMPLIANCE DOCUMENTS', '<div style="display:flex;flex-direction:column;gap:8px">' + docs + '</div>');
 
-    // ── ONBOARDING ── (rendered by crm-onboarding.js; guarded so a
+    // ── ONBOARDING ── (rendered by onboarding.js; guarded so a
     // load-order change can't take down the whole popup)
     if(typeof window.glClientOnboardingSection === 'function'){
       out += window.glClientOnboardingSection(c);
