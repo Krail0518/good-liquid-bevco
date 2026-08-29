@@ -1190,7 +1190,7 @@
     if(!confirm('Mark this deal as ' + stage + '?')) return;
     stageEl.value = stage;
     stageEl.dispatchEvent(new Event('change'));
-    var saveBtn = document.querySelector('[onclick="saveDealDetail()"]');
+    var saveBtn = document.querySelector('[data-gl-action="saveDealDetail"]');
     if(saveBtn) saveBtn.click();
   };
 

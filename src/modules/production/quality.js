@@ -120,7 +120,7 @@
         var when = r.reported_at ? new Date(r.reported_at).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—';
         var sevLabel = (SEVERITY.find(function(x){ return x[0] === r.severity; }) || ['',''])[1] || r.severity;
         var statLabel = (STATUSES.find(function(x){ return x[0] === r.status; }) || ['',''])[1] || r.status;
-        return '<tr style="cursor:pointer" onclick="window.glOpenEditDefect(\'' + esc(r.id) + '\')">' +
+        return '<tr style="cursor:pointer" data-gl-action="glOpenEditDefect" data-gl-arg1="' + esc(r.id) + '">' +
           '<td style="padding:11px;color:var(--white);font-weight:600">' + when + '</td>' +
           '<td style="padding:11px;color:var(--muted)">' + esc(r.run_ref || '—') + '</td>' +
           '<td style="padding:11px;color:var(--muted)">' + esc(r.category || '—') + '</td>' +
@@ -326,7 +326,7 @@
     }
     host.innerHTML = '<table class="ctbl"><thead><tr><th>Vendor</th><th>Category</th><th>Approval</th><th>Lead time</th><th>Contact</th><th>COI</th></tr></thead><tbody>' +
       rows.map(function(v){
-        return '<tr style="cursor:pointer" onclick="window.glOpenEditVendor(\'' + esc(v.id) + '\')">' +
+        return '<tr style="cursor:pointer" data-gl-action="glOpenEditVendor" data-gl-arg1="' + esc(v.id) + '">' +
           '<td style="padding:11px;color:var(--white);font-weight:600">' + esc(v.name) + '</td>' +
           '<td style="padding:11px;color:var(--muted)">' + esc(v.category || '—') + '</td>' +
           '<td style="padding:11px">' + approvalBadge(v) + certWarning(v) + '</td>' +

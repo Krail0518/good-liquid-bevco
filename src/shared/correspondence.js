@@ -48,7 +48,7 @@ function glRenderCorrespondence(key, rows){
     var lbl = inb
       ? '<span style="font-size:10px;letter-spacing:1px;color:#6b9fff">' + inboundLabel + '</span>'
       : '<span style="font-size:10px;letter-spacing:1px;color:var(--muted)">→ SENT</span>';
-    return '<div onclick="glShowEmailFull(\'' + key + '\',' + i + ')" title="Click to read the full message" ' +
+    return '<div data-gl-action="glShowEmailFull" data-gl-arg1="' + esc(key) + '" data-gl-arg2=" + i + " title="Click to read the full message" ' +
         'style="background:' + (inb?'rgba(26,111,255,.07)':'rgba(255,255,255,.02)') + ';border:1px solid ' +
         (inb?'rgba(26,111,255,.25)':'rgba(255,255,255,.06)') + ';border-radius:6px;padding:8px 10px;cursor:pointer">' +
       '<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:3px">' + lbl +
@@ -559,7 +559,7 @@ async function ddpLoadCorrespondence(d){
         // email address in an HTML attribute is a quoting trap (a stray quote
         // silently truncates the attribute and kills the handler).
         '<button class="gl-corr-sync" title="Pull the latest email in from Gmail" style="font-size:11px;padding:4px 10px;background:rgba(255,255,255,.05);color:var(--muted);border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer">🔄 Sync</button>' +
-        '<button onclick="openLeadEmailComposer()" style="font-size:11px;padding:4px 12px;background:rgba(26,111,255,.15);color:#6b9fff;border:1px solid rgba(26,111,255,.35);border-radius:6px;cursor:pointer">✉️ New email</button>' +
+        '<button data-gl-action="openLeadEmailComposer" style="font-size:11px;padding:4px 12px;background:rgba(26,111,255,.15);color:#6b9fff;border:1px solid rgba(26,111,255,.35);border-radius:6px;cursor:pointer">✉️ New email</button>' +
       '</span>' +
     '</div>';
 
@@ -571,7 +571,7 @@ async function ddpLoadCorrespondence(d){
     : '<span style="font-size:12px;color:var(--muted);line-height:1.4">Draft a follow-up whenever you like.</span>';
   var nudge = '<div style="background:' + (stale ? 'rgba(245,200,66,.08)' : 'rgba(255,255,255,.03)') + ';border:1px solid ' + (stale ? 'rgba(245,200,66,.3)' : 'rgba(255,255,255,.1)') + ';border-radius:8px;padding:10px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
       nudgeNote +
-      '<button onclick="ddpNudgeLead()" style="font-size:12px;white-space:nowrap;padding:5px 13px;background:rgba(245,200,66,.18);color:#f5c842;border:1px solid rgba(245,200,66,.45);border-radius:6px;cursor:pointer;font-weight:700">✍️ Draft nudge</button>' +
+      '<button data-gl-action="ddpNudgeLead" style="font-size:12px;white-space:nowrap;padding:5px 13px;background:rgba(245,200,66,.18);color:#f5c842;border:1px solid rgba(245,200,66,.45);border-radius:6px;cursor:pointer;font-weight:700">✍️ Draft nudge</button>' +
     '</div>';
 
   if(!rows.length){

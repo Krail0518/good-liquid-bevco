@@ -185,7 +185,7 @@
             'Held in this browser only — they are not part of the FDA record and no one else can see them. ' +
             'Reason: ' + esc(why) +
           '</div>' +
-          '<button class="cbtn pri" onclick="window.glRetryCipPending()">Retry save</button>' +
+          '<button class="cbtn pri" data-gl-action="glRetryCipPending">Retry save</button>' +
         '</div>';
     } else if(window.glCipOffline){
       banner =
@@ -208,7 +208,7 @@
         var unsaved = r._localOnly
           ? ' <span style="color:#ff8579;font-size:9px;font-weight:700;letter-spacing:.4px">NOT SAVED</span>'
           : '';
-        return '<tr style="cursor:pointer" onclick="window.glOpenCipDetail(\'' + esc(r.id) + '\')">' +
+        return '<tr style="cursor:pointer" data-gl-action="glOpenCipDetail" data-gl-arg1="' + esc(r.id) + '">' +
           '<td style="padding:11px;color:var(--white);font-weight:600">' + when + unsaved + '</td>' +
           '<td style="padding:11px;color:var(--muted)">' + esc(r.line_area || '—') + '</td>' +
           '<td style="padding:11px;color:var(--muted);font-size:11px">' + esc(r.method || '—') + '</td>' +

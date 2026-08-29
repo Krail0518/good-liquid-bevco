@@ -37,9 +37,9 @@ function renderUsers(){
         <span style="padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;background:${rs.bg};color:${rs.color};border:1px solid ${rs.border}">${rs.label}</span>
         <span class="cbdg ${u.status==='active'?'active':'draft'}">${esc(u.status)}</span>
         ${!isSelf && canAction('manage_users')?`
-        <button class="cbtn" style="font-size:10px;padding:4px 9px" onclick="openChangeRole('${u.id}')">Change role</button>
-        <button class="cbtn" style="font-size:10px;padding:4px 9px" onclick="resetPw('${u.id}')">Reset PW</button>
-        <button class="cbtn red" style="font-size:10px;padding:4px 9px" onclick="deactivateUser('${u.id}')">${u.status==='active'?'Deactivate':'Reactivate'}</button>
+        <button class="cbtn" style="font-size:10px;padding:4px 9px" data-gl-action="openChangeRole" data-gl-arg1="${esc(u.id)}">Change role</button>
+        <button class="cbtn" style="font-size:10px;padding:4px 9px" data-gl-action="resetPw" data-gl-arg1="${esc(u.id)}">Reset PW</button>
+        <button class="cbtn red" style="font-size:10px;padding:4px 9px" data-gl-action="deactivateUser" data-gl-arg1="${esc(u.id)}">${u.status==='active'?'Deactivate':'Reactivate'}</button>
         `:''}
       </div>
     </div>`;

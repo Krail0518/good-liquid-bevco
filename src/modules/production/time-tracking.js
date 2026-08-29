@@ -152,7 +152,7 @@ async function openTimeTracker() {
   modal.className = 'modal-ov show';
   modal.innerHTML = `
     <div class="modal-box" style="width:560px;max-height:80vh;overflow-y:auto">
-      <div class="modal-title">⏱️ Time Tracking <span class="modal-close" onclick="closeTimeTracker()">✕</span></div>
+      <div class="modal-title">⏱️ Time Tracking <span class="modal-close" data-gl-action="closeTimeTracker">✕</span></div>
 
       <div style="background:rgba(0,229,192,.06);border:1px solid rgba(0,229,192,.18);border-radius:12px;padding:18px;margin-bottom:18px">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
@@ -177,7 +177,7 @@ async function openTimeTracker() {
         <div class="frow"><div class="flbl">Notes</div><input class="finp" id="tt-notes" placeholder="What are you working on?"></div>
         <div style="display:flex;align-items:center;gap:12px;margin-top:12px">
           <div id="tt-display" style="font-family:var(--ff-disp);font-size:36px;letter-spacing:4px;color:var(--teal);min-width:120px">00:00:00</div>
-          <button id="tt-start-btn" onclick="toggleTimer()" style="flex:1;padding:12px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:800;font-size:14px;cursor:pointer">▶ Start</button>
+          <button id="tt-start-btn" data-gl-action="toggleTimer" style="flex:1;padding:12px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:800;font-size:14px;cursor:pointer">▶ Start</button>
         </div>
       </div>
 
@@ -293,7 +293,7 @@ function renderTimeTracker() {
           <div style="font-size:12px;font-weight:600;color:var(--white)">${esc(e.clientName)} — ${esc(e.activity)}</div>
           <div style="font-size:10px;color:var(--muted)">${esc(e.date)} ${e.notes ? '· ' + esc(e.notes) : ''}</div>
         </div>
-        <button class="cbtn red" style="font-size:10px;padding:2px 7px" onclick="deleteTimeEntry('${e.id}')">✕</button>
+        <button class="cbtn red" style="font-size:10px;padding:2px 7px" data-gl-action="deleteTimeEntry" data-gl-arg1="${esc(e.id)}">✕</button>
       </div>`
     ).join('');
   }

@@ -84,7 +84,7 @@
     var host = document.getElementById('prun-capacity'); if(!host) return;
     var lines = (window.glProductionLines || []).filter(function(l){ return l.active !== false; });
     if(!lines.length){
-      host.innerHTML = '<div style="font-size:11px;color:#6b87ad;font-style:italic;padding:6px 12px">No production lines configured. <button onclick="window.glOpenProductionLines()" style="background:none;border:0;color:#00e5c0;cursor:pointer;text-decoration:underline;font-size:11px">Set them up →</button></div>';
+      host.innerHTML = '<div style="font-size:11px;color:#6b87ad;font-style:italic;padding:6px 12px">No production lines configured. <button data-gl-action="glOpenProductionLines" style="background:none;border:0;color:#00e5c0;cursor:pointer;text-decoration:underline;font-size:11px">Set them up →</button></div>';
       return;
     }
     function weekRange(offset){
@@ -141,7 +141,7 @@
       var bar = document.createElement('div');
       bar.id = 'prun-toolbar';
       bar.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-bottom:8px';
-      bar.innerHTML = '<button class="cbtn" style="font-size:11px;padding:5px 10px" onclick="window.glOpenProductionLines()">⚙ Production lines</button>';
+      bar.innerHTML = '<button class="cbtn" style="font-size:11px;padding:5px 10px" data-gl-action="glOpenProductionLines">⚙ Production lines</button>';
       host.parentNode.insertBefore(bar, host.parentNode.firstChild.nextSibling);
     }
     renderCapacityWidget();

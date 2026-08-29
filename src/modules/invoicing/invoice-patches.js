@@ -351,11 +351,11 @@
     var SI='width:60px;background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:6px;padding:3px 6px;font-size:12px;font-weight:600;text-align:center';
     var opts=fmts.map(function(f){return'<option value="'+f.value+'"'+(f.value===fmt?' selected':'')+'>'+f.label+'</option>';}).join('');
     var row=document.createElement('div');row.id=uid;row.setAttribute('style',RS);row.setAttribute('data-gl-total',total);
-    row.innerHTML='<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Canning</div><select id="'+uid+'-format" onchange="window.glUpdateCan(\''+uid+'\')" style="'+SS+'">'+opts+'</select></div>'
-      +'<div style="text-align:center"><input id="'+uid+'-cases" type="number" min="1" value="'+cases+'" onchange="window.glUpdateCan(\''+uid+'\')" style="'+SI+'"/><div id="'+uid+'-cans" style="font-size:10px;color:var(--muted);margin-top:3px">'+cans.toLocaleString()+' cans</div></div>'
+    row.innerHTML='<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Canning</div><select id="'+uid+'-format" data-gl-action="glUpdateCan" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" style="'+SS+'">'+opts+'</select></div>'
+      +'<div style="text-align:center"><input id="'+uid+'-cases" type="number" min="1" value="'+cases+'" data-gl-action="glUpdateCan" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" style="'+SI+'"/><div id="'+uid+'-cans" style="font-size:10px;color:var(--muted);margin-top:3px">'+cans.toLocaleString()+' cans</div></div>'
       +'<div style="text-align:right;padding-right:4px"><div id="'+uid+'-pcase" style="font-size:12px;color:#fff;font-weight:600">'+window.glUsd(pcase)+'/case</div><div id="'+uid+'-pcan" style="font-size:10px;color:var(--muted);margin-top:3px">'+window.glUsd(pc,4)+'/can</div></div>'
       +'<div id="'+uid+'-total" style="text-align:right;font-size:14px;font-weight:700;color:#fff">'+window.glUsd(total)+'</div>'
-      +'<div style="text-align:center"><button onclick="window.glRemoveLine(\''+uid+'\')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0;line-height:1">x</button></div>';
+      +'<div style="text-align:center"><button data-gl-action="glRemoveLine" data-gl-arg1="' + esc(uid) + '" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0;line-height:1">x</button></div>';
     return row;
   };
   window.glBuildBtlRow=function(uid,qty,fmt,fmts,pu){
@@ -365,11 +365,11 @@
     var SI='width:60px;background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:6px;padding:3px 6px;font-size:12px;font-weight:600;text-align:center';
     var opts=fmts.map(function(f){return'<option value="'+f.value+'"'+(f.value===fmt?' selected':'')+'>'+f.label+'</option>';}).join('');
     var row=document.createElement('div');row.id=uid;row.setAttribute('style',RS);row.setAttribute('data-gl-total',total);
-    row.innerHTML='<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Bottling</div><select id="'+uid+'-format" onchange="window.glUpdateBtl(\''+uid+'\')" style="'+SS+'">'+opts+'</select></div>'
-      +'<div style="text-align:center"><input id="'+uid+'-qty" type="number" min="1" value="'+qty+'" onchange="window.glUpdateBtl(\''+uid+'\')" style="'+SI+'"/><div style="font-size:10px;color:var(--muted);margin-top:3px">bottles</div></div>'
+    row.innerHTML='<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Bottling</div><select id="'+uid+'-format" data-gl-action="glUpdateBtl" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" style="'+SS+'">'+opts+'</select></div>'
+      +'<div style="text-align:center"><input id="'+uid+'-qty" type="number" min="1" value="'+qty+'" data-gl-action="glUpdateBtl" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" style="'+SI+'"/><div style="font-size:10px;color:var(--muted);margin-top:3px">bottles</div></div>'
       +'<div style="text-align:right;padding-right:4px"><div id="'+uid+'-punit" style="font-size:12px;color:#fff;font-weight:600">'+window.glUsd(pu,4)+'/btl</div></div>'
       +'<div id="'+uid+'-total" style="text-align:right;font-size:14px;font-weight:700;color:#fff">'+window.glUsd(total)+'</div>'
-      +'<div style="text-align:center"><button onclick="window.glRemoveLine(\''+uid+'\')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0;line-height:1">x</button></div>';
+      +'<div style="text-align:center"><button data-gl-action="glRemoveLine" data-gl-arg1="' + esc(uid) + '" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0;line-height:1">x</button></div>';
     return row;
   };
   window.glOpenPricing=async function(){
@@ -570,15 +570,15 @@
     var row=document.createElement('div');row.id=uid;row.setAttribute('style',RS);row.setAttribute('data-gl-total',total);row.setAttribute('data-pu-override','0');
     row.innerHTML=
       '<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Canning</div>'+
-      '<select id="'+uid+'-format" onchange="window.glUpdateCan(\''+uid+'\')" style="'+SS+'">'+opts+'</select>'+
+      '<select id="'+uid+'-format" data-gl-action="glUpdateCan" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" style="'+SS+'">'+opts+'</select>'+
       '<input id="'+uid+'-desc" type="text" placeholder="Description (optional)" value="'+(descPrefill||'').replace(/"/g,'&quot;')+'" style="'+DSTY+'"/></div>'+
-      '<div style="text-align:center"><input id="'+uid+'-cases" type="number" min="1" value="'+cases+'" onchange="window.glUpdateCan(\''+uid+'\')" style="'+SI+'"/>'+
+      '<div style="text-align:center"><input id="'+uid+'-cases" type="number" min="1" value="'+cases+'" data-gl-action="glUpdateCan" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" style="'+SI+'"/>'+
       '<div id="'+uid+'-cans" style="font-size:10px;color:var(--muted);margin-top:3px">'+cans.toLocaleString()+' cans</div></div>'+
       '<div style="text-align:right;padding-right:4px">'+
-      '<input id="'+uid+'-pcase" type="number" step="0.01" min="0" value="'+pcase.toFixed(2)+'" onchange="window.glUpdateCanPrice(\''+uid+'\')" title="$/case — edit to override the default rate" style="'+PSTY+'"/>'+
+      '<input id="'+uid+'-pcase" type="number" step="0.01" min="0" value="'+pcase.toFixed(2)+'" data-gl-action="glUpdateCanPrice" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" title="$/case — edit to override the default rate" style="'+PSTY+'"/>'+
       '<div id="'+uid+'-pcan" style="font-size:10px;color:var(--muted);margin-top:3px">'+window.glUsd(pc,4)+'/can <a href="javascript:window.glResetCanPrice(\''+uid+'\')" style="color:var(--teal);text-decoration:none;margin-left:4px" title="Reset to default rate">&#x21BA;</a></div></div>'+
       '<div id="'+uid+'-total" style="text-align:right;font-size:14px;font-weight:700;color:#fff">'+window.glUsd(total)+'</div>'+
-      '<div style="text-align:center"><button onclick="window.glRemoveLine(\''+uid+'\')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0;line-height:1">x</button></div>';
+      '<div style="text-align:center"><button data-gl-action="glRemoveLine" data-gl-arg1="' + esc(uid) + '" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0;line-height:1">x</button></div>';
     return row;
   };
 
@@ -591,15 +591,15 @@
     var row=document.createElement('div');row.id=uid;row.setAttribute('style',RS);row.setAttribute('data-gl-total',total);row.setAttribute('data-pu-override','0');
     row.innerHTML=
       '<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Bottling</div>'+
-      '<select id="'+uid+'-format" onchange="window.glUpdateBtl(\''+uid+'\')" style="'+SS+'">'+opts+'</select>'+
+      '<select id="'+uid+'-format" data-gl-action="glUpdateBtl" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" style="'+SS+'">'+opts+'</select>'+
       '<input id="'+uid+'-desc" type="text" placeholder="Description (optional)" value="'+(descPrefill||'').replace(/"/g,'&quot;')+'" style="'+DSTY+'"/></div>'+
-      '<div style="text-align:center"><input id="'+uid+'-qty" type="number" min="1" value="'+qty+'" onchange="window.glUpdateBtl(\''+uid+'\')" style="'+SI+'"/>'+
+      '<div style="text-align:center"><input id="'+uid+'-qty" type="number" min="1" value="'+qty+'" data-gl-action="glUpdateBtl" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" style="'+SI+'"/>'+
       '<div style="font-size:10px;color:var(--muted);margin-top:3px">bottles</div></div>'+
       '<div style="text-align:right;padding-right:4px">'+
-      '<input id="'+uid+'-punit" type="number" step="0.0001" min="0" value="'+pu.toFixed(4)+'" onchange="window.glUpdateBtlPrice(\''+uid+'\')" title="$/bottle — edit to override the default rate" style="'+PSTY+'"/>'+
+      '<input id="'+uid+'-punit" type="number" step="0.0001" min="0" value="'+pu.toFixed(4)+'" data-gl-action="glUpdateBtlPrice" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" title="$/bottle — edit to override the default rate" style="'+PSTY+'"/>'+
       '<div style="font-size:10px;color:var(--muted);margin-top:3px">$/btl <a href="javascript:window.glResetBtlPrice(\''+uid+'\')" style="color:var(--teal);text-decoration:none;margin-left:4px" title="Reset to default rate">&#x21BA;</a></div></div>'+
       '<div id="'+uid+'-total" style="text-align:right;font-size:14px;font-weight:700;color:#fff">'+window.glUsd(total)+'</div>'+
-      '<div style="text-align:center"><button onclick="window.glRemoveLine(\''+uid+'\')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0;line-height:1">x</button></div>';
+      '<div style="text-align:center"><button data-gl-action="glRemoveLine" data-gl-arg1="' + esc(uid) + '" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0;line-height:1">x</button></div>';
     return row;
   };
 
@@ -617,12 +617,12 @@
       '<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">'+label+'</div>'+
       '<input id="'+uid+'-subtype" type="text" value="'+descDefault+'" placeholder="Service type" style="'+SIT+'"/>'+
       '<input id="'+uid+'-desc" type="text" placeholder="Description (optional)" value="'+safePrefill+'" style="'+DSTY+'"/></div>'+
-      '<div style="text-align:center"><input id="'+uid+'-qty" type="number" min="0" step="any" value="'+qty+'" onchange="window.glUpdateManual(\''+uid+'\')" style="'+SI+'"/>'+
+      '<div style="text-align:center"><input id="'+uid+'-qty" type="number" min="0" step="any" value="'+qty+'" data-gl-action="glUpdateManual" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" style="'+SI+'"/>'+
       '<div style="font-size:10px;color:var(--muted);margin-top:3px">qty</div></div>'+
       '<div style="text-align:right;padding-right:4px">'+
-      '<input id="'+uid+'-price" type="number" min="0" step="any" value="'+price+'" onchange="window.glUpdateManual(\''+uid+'\')" style="'+SI+';width:80px;" placeholder="Unit $"/></div>'+
+      '<input id="'+uid+'-price" type="number" min="0" step="any" value="'+price+'" data-gl-action="glUpdateManual" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" style="'+SI+';width:80px;" placeholder="Unit $"/></div>'+
       '<div id="'+uid+'-total" style="text-align:right;font-size:14px;font-weight:700;color:#fff">'+window.glUsd(total)+'</div>'+
-      '<div style="text-align:center"><button onclick="window.glRemoveLine(\''+uid+'\')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0;line-height:1">x</button></div>';
+      '<div style="text-align:center"><button data-gl-action="glRemoveLine" data-gl-arg1="' + esc(uid) + '" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0;line-height:1">x</button></div>';
     return row;
   };
 

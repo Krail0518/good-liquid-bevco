@@ -113,7 +113,7 @@
   }
 
   function requestTile(emoji, kind, title, subtitle){
-    return '<div onclick="window.glOpenCustomerRequest(\'' + kind + '\')" style="background:#142238;border:1px solid rgba(0,229,192,.18);border-radius:12px;padding:16px 18px;cursor:pointer;transition:background .15s,border-color .15s" onmouseover="this.style.background=\'#1a2c48\';this.style.borderColor=\'rgba(0,229,192,.4)\'" onmouseout="this.style.background=\'#142238\';this.style.borderColor=\'rgba(0,229,192,.18)\'">' +
+    return '<div data-gl-action="glOpenCustomerRequest" data-gl-arg1="' + esc(kind) + '" style="background:#142238;border:1px solid rgba(0,229,192,.18);border-radius:12px;padding:16px 18px;cursor:pointer;transition:background .15s,border-color .15s" onmouseover="this.style.background=\'#1a2c48\';this.style.borderColor=\'rgba(0,229,192,.4)\'" onmouseout="this.style.background=\'#142238\';this.style.borderColor=\'rgba(0,229,192,.18)\'">' +
       '<div style="font-size:22px">' + emoji + '</div>' +
       '<div style="font-size:14px;font-weight:700;color:#fff;margin-top:6px">' + escHtml(title) + '</div>' +
       '<div style="font-size:11px;color:#6b87ad;margin-top:2px">' + escHtml(subtitle) + '</div>' +
@@ -589,7 +589,7 @@
                   '<option value="Other">Other document</option>' +
                 '</select>' +
                 '<input id="gl-cp-agm-file" type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" style="flex:1;min-width:170px;padding:7px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#eef4ff;font-size:12px">' +
-                '<button onclick="window.glPortalUploadAgreement()" style="padding:8px 14px;background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.35);border-radius:6px;color:#00e5c0;font-weight:700;font-size:12px;cursor:pointer">⬆ Upload</button>' +
+                '<button data-gl-action="glPortalUploadAgreement" style="padding:8px 14px;background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.35);border-radius:6px;color:#00e5c0;font-weight:700;font-size:12px;cursor:pointer">⬆ Upload</button>' +
               '</div>' +
               '<div id="gl-cp-agm-msg" style="display:none;font-size:12px;margin-top:8px"></div>' +
             '</div>' +
@@ -1159,13 +1159,13 @@
         '<td style="font-size:11px;color:var(--muted)">' + lastLogin + '</td>' +
         '<td>' + (inactive ? '<span style="font-size:10px;letter-spacing:1px;color:#e74c3c;font-weight:700">DISABLED</span>' : '<span style="font-size:10px;letter-spacing:1px;color:#5fcf9e;font-weight:700">ACTIVE</span>') + '</td>' +
         '<td>' +
-          '<button class="cbtn" style="font-size:10px;padding:3px 8px" onclick="window.glCpResendInvite(\'' + r.id + '\',\'' + esc(r.email) + '\')">Resend invite</button> ' +
+          '<button class="cbtn" style="font-size:10px;padding:3px 8px" data-gl-action="glCpResendInvite" data-gl-arg1="' + esc(r.id) + '" data-gl-arg2="' + esc(r.email) + '">Resend invite</button> ' +
           (role === 'member'
-            ? '<button class="cbtn" style="font-size:10px;padding:3px 8px;color:#00e5c0;border-color:rgba(0,229,192,.35)" onclick="window.glCpSetRole(\'' + r.id + '\',\'owner\')">Make owner</button> '
+            ? '<button class="cbtn" style="font-size:10px;padding:3px 8px;color:#00e5c0;border-color:rgba(0,229,192,.35)" data-gl-action="glCpSetRole" data-gl-arg1="' + esc(r.id) + '" data-gl-arg2="owner">Make owner</button> '
             : '') +
           (inactive
-            ? '<button class="cbtn" style="font-size:10px;padding:3px 8px;color:#5fcf9e" onclick="window.glCpSetActive(\'' + r.id + '\',true)">Reactivate</button>'
-            : '<button class="cbtn red" style="font-size:10px;padding:3px 8px" onclick="window.glCpSetActive(\'' + r.id + '\',false)">Deactivate</button>') +
+            ? '<button class="cbtn" style="font-size:10px;padding:3px 8px;color:#5fcf9e" data-gl-action="glCpSetActive" data-gl-arg1="' + esc(r.id) + '" data-gl-arg2="true">Reactivate</button>'
+            : '<button class="cbtn red" style="font-size:10px;padding:3px 8px" data-gl-action="glCpSetActive" data-gl-arg1="' + esc(r.id) + '" data-gl-arg2="false">Deactivate</button>') +
         '</td>' +
       '</tr>';
     }).join('');

@@ -141,7 +141,7 @@ openDocUploadModal = function() {
       <input type="file" id="doc-file-input" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.xlsx,.csv"
         style="width:100%;padding:9px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:12px">
       <div style="font-size:10px;color:var(--muted);margin-top:4px">PDF, Word, images, spreadsheets accepted.</div>`;
-    const saveBtn = modal.querySelector('button[onclick="saveDocument()"]');
+    const saveBtn = modal.querySelector('button[data-gl-action="saveDocument"]');
     if(saveBtn) saveBtn.parentElement.insertBefore(row, saveBtn.parentElement.querySelector('.frow:last-of-type'));
   }
 };

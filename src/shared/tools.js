@@ -362,7 +362,7 @@
     var rowsHtml = rows.map(function(r){
       var d = r.show_date ? window.fmtLocalDate(r.show_date, {month:'short',year:'numeric'}) : '—';
       var p = roi(r);
-      return '<tr style="cursor:pointer" onclick="window.glEditTradeShow(\'' + esc(r.id) + '\')">' +
+      return '<tr style="cursor:pointer" data-gl-action="glEditTradeShow" data-gl-arg1="' + esc(r.id) + '">' +
         '<td style="padding:11px;font-weight:600;color:var(--white)">' + esc(r.name || '(untitled)') + '</td>' +
         '<td style="padding:11px;color:var(--muted)">' + d + '</td>' +
         '<td style="padding:11px;color:var(--muted)">' + fmt$(r.cost) + '</td>' +
@@ -969,7 +969,7 @@
         posts.map(function(p){
           var m = channelMeta(p.channel);
           var col = statusColor(p.status);
-          return '<div onclick="window.glOpenEditContent(\'' + esc(p.id) + '\')" style="font-size:11px;color:var(--white);background:' + col + '22;border-left:3px solid ' + col + ';padding:4px 7px;border-radius:4px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(p.title || '') + '">' +
+          return '<div data-gl-action="glOpenEditContent" data-gl-arg1="' + esc(p.id) + '" style="font-size:11px;color:var(--white);background:' + col + '22;border-left:3px solid ' + col + ';padding:4px 7px;border-radius:4px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(p.title || '') + '">' +
             (m[0] ? m[1].split(' ')[0] + ' ' : '') + esc((p.title || '').slice(0, 20)) +
           '</div>';
         }).join('') +

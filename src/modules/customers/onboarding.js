@@ -318,8 +318,8 @@
       '<div style="background:rgba(255,255,255,.04);border-radius:10px;padding:14px;font-size:13px;line-height:1.9">' +
         '<div id="gl-cd-ob-status-' + cid + '" style="margin-bottom:10px;color:var(--muted)">Checking status…</div>' +
         '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-          '<button onclick="window.glSendOnboardingLink(\'' + cid + '\')" style="padding:8px 14px;background:rgba(0,229,192,.1);border:1px solid rgba(0,229,192,.3);border-radius:8px;color:var(--teal);font-weight:700;font-size:12px;cursor:pointer">📨 Send / resend onboarding email</button>' +
-          '<button onclick="window.glCopyOnboardingLink(\'' + cid + '\')" style="padding:8px 14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--white);font-weight:700;font-size:12px;cursor:pointer">🔗 Copy link</button>' +
+          '<button data-gl-action="glSendOnboardingLink" data-gl-arg1="' + esc(cid) + '" style="padding:8px 14px;background:rgba(0,229,192,.1);border:1px solid rgba(0,229,192,.3);border-radius:8px;color:var(--teal);font-weight:700;font-size:12px;cursor:pointer">📨 Send / resend onboarding email</button>' +
+          '<button data-gl-action="glCopyOnboardingLink" data-gl-arg1="' + esc(cid) + '" style="padding:8px 14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--white);font-weight:700;font-size:12px;cursor:pointer">🔗 Copy link</button>' +
         '</div>' +
       '</div>' +
     '</div>';

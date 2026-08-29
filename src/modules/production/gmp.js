@@ -75,7 +75,7 @@
       '<div style="max-width:1000px;margin:0 auto">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:6px">' +
           '<div style="font-family:var(--ff-disp);font-size:24px;letter-spacing:2px;color:var(--teal)">🧾 DAILY GMP</div>' +
-          '<button onclick="window.glOpenDailyGMP()" style="padding:12px 20px;background:linear-gradient(135deg,#00e5c0,#00c4a7);color:#04231d;border:none;border-radius:9px;font-weight:800;font-size:14px;cursor:pointer">➕ Log today’s GMP</button>' +
+          '<button data-gl-action="glOpenDailyGMP" style="padding:12px 20px;background:linear-gradient(135deg,#00e5c0,#00c4a7);color:#04231d;border:none;border-radius:9px;font-weight:800;font-size:14px;cursor:pointer">➕ Log today’s GMP</button>' +
         '</div>' +
         '<div style="font-size:12.5px;color:var(--muted);margin-bottom:18px;line-height:1.6">Enter the shared details (date, shift, line, run, operator) once — they fan out to every register below. Deviations flag automatically and show under “Open deviations”.</div>' +
         '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:16px">' +

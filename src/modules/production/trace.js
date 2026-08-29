@@ -138,9 +138,9 @@
             '<span style="font-size:11px;color:#eef4ff;background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.3);border-radius:20px;padding:4px 12px;white-space:nowrap">'+esc(run.stage||'—')+'</span>' +
           '</div>' +
           '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">' +
-            '<button onclick="window.glAddLotInput('+rid+')" style="padding:9px 14px;background:rgba(0,229,192,.12);color:var(--teal);border:1px solid rgba(0,229,192,.3);border-radius:7px;cursor:pointer;font-size:12px;font-weight:700">＋ Add input</button>' +
-            '<button onclick="window.glAddLotShipment('+rid+')" style="padding:9px 14px;background:rgba(0,229,192,.12);color:var(--teal);border:1px solid rgba(0,229,192,.3);border-radius:7px;cursor:pointer;font-size:12px;font-weight:700">＋ Add shipment</button>' +
-            '<button onclick="window.glRunMockRecall('+rid+',\''+lotEsc+'\')" style="padding:9px 14px;background:rgba(245,200,66,.16);color:#f5c842;border:1px solid rgba(245,200,66,.4);border-radius:7px;cursor:pointer;font-size:12px;font-weight:700">🚨 Run mock recall</button>' +
+            '<button data-gl-action="glAddLotInput" data-gl-arg1="+rid+" style="padding:9px 14px;background:rgba(0,229,192,.12);color:var(--teal);border:1px solid rgba(0,229,192,.3);border-radius:7px;cursor:pointer;font-size:12px;font-weight:700">＋ Add input</button>' +
+            '<button data-gl-action="glAddLotShipment" data-gl-arg1="+rid+" style="padding:9px 14px;background:rgba(0,229,192,.12);color:var(--teal);border:1px solid rgba(0,229,192,.3);border-radius:7px;cursor:pointer;font-size:12px;font-weight:700">＋ Add shipment</button>' +
+            '<button data-gl-action="glRunMockRecall" data-gl-arg1="+rid+" data-gl-arg2="' + esc(lotEsc) + '" style="padding:9px 14px;background:rgba(245,200,66,.16);color:#f5c842;border:1px solid rgba(245,200,66,.4);border-radius:7px;cursor:pointer;font-size:12px;font-weight:700">🚨 Run mock recall</button>' +
           '</div>' +
         '</div>' +
         // Backward

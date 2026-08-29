@@ -281,7 +281,7 @@
       '</tr></thead><tbody>' +
       (rows || '<tr><td colspan="5" style="padding:12px;text-align:center;color:#a0aec0">No invoices</td></tr>') +
       '</tbody></table>' +
-      '<div style="margin-top:16px;text-align:right"><button onclick="window.print()" style="padding:8px 18px;background:#3182ce;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px">🖨️ Print Statement</button></div>';
+      '<div style="margin-top:16px;text-align:right"><button data-gl-action="print" style="padding:8px 18px;background:#3182ce;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px">🖨️ Print Statement</button></div>';
     openModal('gl-statement-modal', 'Statement of Account', html);
   };
 
@@ -526,7 +526,7 @@
         '<td style="padding:6px 8px;text-transform:capitalize">' + esc(t.frequency) + '</td>' +
         '<td style="padding:6px 8px">' + esc(t.next_run||'') + '</td>' +
         '<td style="padding:6px 8px"><span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:' + statusColor + '">' + esc(t.status) + '</span></td>' +
-        '<td style="padding:6px 8px"><button onclick="window.glPauseRecurring(\'' + esc(t.id) + '\',\'' + esc(t.status) + '\')" style="font-size:11px;padding:2px 8px;border-radius:4px;border:1px solid #718096;background:#fff;cursor:pointer">' + (t.status==='active'?'Pause':'Resume') + '</button></td></tr>';
+        '<td style="padding:6px 8px"><button data-gl-action="glPauseRecurring" data-gl-arg1="' + esc(t.id) + '" data-gl-arg2="' + esc(t.status) + '" style="font-size:11px;padding:2px 8px;border-radius:4px;border:1px solid #718096;background:#fff;cursor:pointer">' + (t.status==='active'?'Pause':'Resume') + '</button></td></tr>';
     }).join('') || '<tr><td colspan="7" style="padding:12px;text-align:center;color:#a0aec0">No templates yet</td></tr>';
     var html = '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px">' +
       '<thead><tr style="background:#edf2f7"><th style="padding:6px 8px;text-align:left">Client</th><th style="padding:6px 8px;text-align:left">Description</th>' +

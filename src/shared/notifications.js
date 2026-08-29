@@ -141,7 +141,7 @@ function renderNotifList(){
   const colors={'info':'rgba(26,111,255,.15)','success':'rgba(29,158,117,.15)','warning':'rgba(231,76,60,.15)','stale':'rgba(245,200,66,.15)','reminder':'rgba(0,229,192,.15)','email':'rgba(26,111,255,.15)'};
   const fresh = notifications.filter(notifIsFresh);
   if(!fresh.length){el.innerHTML='<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">No notifications in the last 48 hours.</div>';return;}
-  el.innerHTML=fresh.map(n=>`<div class="notif-item ${n.read?'':'unread'}" onclick="markNotifRead('${n.id}')">
+  el.innerHTML=fresh.map(n=>`<div class="notif-item ${n.read?'':'unread'}" data-gl-action="markNotifRead" data-gl-arg1="${esc(n.id)}">
     <div class="notif-ico" style="background:${colors[n.type]||colors.info}">${icons[n.type]||'🔔'}</div>
     <div style="flex:1"><div class="notif-title">${esc(n.title)}</div><div class="notif-sub">${esc(n.sub)}</div><div class="notif-time">${n.time}</div></div>
   </div>`).join('');

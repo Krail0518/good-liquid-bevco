@@ -172,7 +172,7 @@
         '<input class="finp" type="number" min="0" step="0.01" value="'+(l.unitPrice||'')+'" placeholder="0.00" oninput="glUpdLinePrice('+i+',this.value)" style="width:90px;text-align:center;font-size:13px;padding:4px">' +
       '</div>' +
       '<div id="ginv-lt-'+i+'" style="text-align:right;font-weight:700;color:var(--teal);font-size:13px;padding-top:6px">'+glFmt(l.total||0)+'</div>' +
-      '<div style="text-align:center;padding-top:4px"><button onclick="glRemLine('+i+')" style="background:none;border:none;color:rgba(231,76,60,.6);cursor:pointer;font-size:16px;padding:4px">&#x2715;</button></div>' +
+      '<div style="text-align:center;padding-top:4px"><button data-gl-action="glRemLine" data-gl-arg1="+i+" style="background:none;border:none;color:rgba(231,76,60,.6);cursor:pointer;font-size:16px;padding:4px">&#x2715;</button></div>' +
     '</div>';
   }
 
@@ -241,11 +241,11 @@
       '</div>'+
 
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px">'+
-        '<button onclick="glAddLine(\'canning\')" class="cbtn" style="font-size:11px">+ &#x1F9C3; Canning</button>'+
-        '<button onclick="glAddLine(\'bottling\')" class="cbtn" style="font-size:11px">+ &#x1F37E; Bottling</button>'+
-        '<button onclick="glAddLine(\'rd\')" class="cbtn" style="font-size:11px">+ &#x1F9EA; R&amp;D / IP</button>'+
-        '<button onclick="glAddLine(\'hours\')" class="cbtn" style="font-size:11px">+ &#x23F1; Production Hours</button>'+
-        '<button onclick="glAddLine(\'custom\')" class="cbtn" style="font-size:11px;background:rgba(0,229,192,.08);border-color:rgba(0,229,192,.3);color:var(--teal)">+ &#x270F;&#xFE0F; Custom Line</button>'+
+        '<button data-gl-action="glAddLine" data-gl-arg1="canning" class="cbtn" style="font-size:11px">+ &#x1F9C3; Canning</button>'+
+        '<button data-gl-action="glAddLine" data-gl-arg1="bottling" class="cbtn" style="font-size:11px">+ &#x1F37E; Bottling</button>'+
+        '<button data-gl-action="glAddLine" data-gl-arg1="rd" class="cbtn" style="font-size:11px">+ &#x1F9EA; R&amp;D / IP</button>'+
+        '<button data-gl-action="glAddLine" data-gl-arg1="hours" class="cbtn" style="font-size:11px">+ &#x23F1; Production Hours</button>'+
+        '<button data-gl-action="glAddLine" data-gl-arg1="custom" class="cbtn" style="font-size:11px;background:rgba(0,229,192,.08);border-color:rgba(0,229,192,.3);color:var(--teal)">+ &#x270F;&#xFE0F; Custom Line</button>'+
       '</div>'+
 
       '<div style="font-size:11px;letter-spacing:2px;color:var(--teal);margin-bottom:10px">ADD-ONS (manual)</div>'+
@@ -271,9 +271,9 @@
       '</div>'+
 
       '<div style="display:flex;gap:10px;padding-top:16px;border-top:1px solid rgba(255,255,255,.07)">'+
-        '<button onclick="glSaveInvoice()" class="cbtn pri" style="flex:1;font-size:14px">&#x1F4BE; Save Invoice</button>'+
-        '<button onclick="glSaveAndSend()" class="cbtn" style="flex:1;font-size:14px;background:rgba(26,111,255,.12);border-color:rgba(26,111,255,.35);color:#6b9fff">&#x1F4E4; Save &amp; Send</button>'+
-        '<button onclick="glExportPDF()" class="cbtn" style="flex:1;font-size:14px;background:rgba(0,229,192,.08);border-color:rgba(0,229,192,.3);color:var(--teal)">&#x1F4C4; Save &amp; Export PDF</button>'+
+        '<button data-gl-action="glSaveInvoice" class="cbtn pri" style="flex:1;font-size:14px">&#x1F4BE; Save Invoice</button>'+
+        '<button data-gl-action="glSaveAndSend" class="cbtn" style="flex:1;font-size:14px;background:rgba(26,111,255,.12);border-color:rgba(26,111,255,.35);color:#6b9fff">&#x1F4E4; Save &amp; Send</button>'+
+        '<button data-gl-action="glExportPDF" class="cbtn" style="flex:1;font-size:14px;background:rgba(0,229,192,.08);border-color:rgba(0,229,192,.3);color:var(--teal)">&#x1F4C4; Save &amp; Export PDF</button>'+
         '<button data-gl-close="#gl-inv-builder" data-gl-close-mode="hide" class="cbtn" style="font-size:14px">Cancel</button>'+
       '</div>';
   }

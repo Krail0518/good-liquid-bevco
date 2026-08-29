@@ -206,7 +206,7 @@
 
     function buildHeader(showBack){
       var backBtn = showBack
-        ? '<button class="cbtn" onclick="window.glShowPermList()" style="font-size:11px;padding:6px 12px;margin-right:10px">← Back to users</button>'
+        ? '<button class="cbtn" data-gl-action="glShowPermList" style="font-size:11px;padding:6px 12px;margin-right:10px">← Back to users</button>'
         : '';
       return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 18px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">' +
         '<div>' +
@@ -219,7 +219,7 @@
         '</div>' +
         '<div style="display:flex;align-items:center;gap:8px">' +
           backBtn +
-          '<button class="cbtn" onclick="window.glOpenPermDefaults()" style="font-size:11px;padding:6px 12px">Edit defaults</button>' +
+          '<button class="cbtn" data-gl-action="glOpenPermDefaults" style="font-size:11px;padding:6px 12px">Edit defaults</button>' +
         '</div>' +
       '</div>';
     }
@@ -270,7 +270,7 @@
         else if(isSelf) removeBtn = '<span style="font-size:10px;color:var(--muted);margin-left:6px">You</span>';
         else if(!iAmSuper) removeBtn = ''; // non-super admins don't see Remove
         else removeBtn = '<button class="cbtn" onclick="event.stopPropagation();window.removeUser(\'' + u.id + '\')" style="font-size:11px;padding:5px 11px;background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#ff8579;margin-right:6px">Remove</button>';
-        return '<tr style="cursor:pointer' + (inactive ? ';opacity:.55' : '') + '" onclick="window.glRenderPermMatrixFor(\'' + u.id + '\')">' +
+        return '<tr style="cursor:pointer' + (inactive ? ';opacity:.55' : '') + '" data-gl-action="glRenderPermMatrixFor" data-gl-arg1="' + esc(u.id) + '">' +
           '<td style="padding:12px 14px;font-weight:700">' + esc(nameLabel) + nameCellExtra + '</td>' +
           '<td style="padding:12px 14px;color:var(--muted);font-size:12px">' + esc(u.email||'') + '</td>' +
           '<td style="padding:12px 14px"><span style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:' + roleColor + ';font-weight:700">' + esc(u.role||'sales') + '</span></td>' +
@@ -318,7 +318,7 @@
         var note = u.role === 'admin'
           ? '<span style="font-size:10px;color:#f5c842">admin override</span>'
           : (hasOverride
-              ? '<span style="font-size:10px;color:#6b9fff;cursor:pointer" onclick="window.glClearPerm(\'' + userId + '\',\'' + c.id + '\')" title="Click to revert to default">overridden — revert</span>'
+              ? '<span style="font-size:10px;color:#6b9fff;cursor:pointer" data-gl-action="glClearPerm" data-gl-arg1="' + esc(userId) + '" data-gl-arg2="' + esc(c.id) + '" title="Click to revert to default">overridden — revert</span>'
               : '<span style="font-size:10px;color:var(--muted)">default (' + (c.default_on ? 'on' : 'off') + ')</span>');
         var isOdd = idx % 2;
         var rowBg = isOdd ? 'background:rgba(255,255,255,.05)' : '';
