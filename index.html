@@ -4951,7 +4951,8 @@ const SUPA_KEY = 'sb_publishable_-37mkPw8uLzEJM21T9jJOA_YQRQ7ikB';
 /* If the URL carries ?inspector=TOKEN, inject the X-Inspector-Token
    header on every supabase-js request. The new RLS policies on the
    six core compliance tables (compliance_records, production_runs,
-   defects, hold_tags, audit_log, cip_logs) check this header via
+   defects, hold_tags, audit_log, and the deprecated cip_logs --
+   see ADR-0001; it is empty and nothing reads it) check this header via
    public.is_valid_inspector_token() and grant anon SELECT when the
    token is live (unrevoked + within valid_from..valid_until). Other
    tables stay locked — the header is no master key. This makes the

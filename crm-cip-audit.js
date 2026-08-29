@@ -73,27 +73,89 @@
     } catch(e){ console.warn('[GL cip] load threw', e); }
     return null;
   }
-  function loadLocal(){ try { return JSON.parse(localStorage.getItem('gl_cip_logs') || '[]'); } catch(e){ return []; } }
-  function saveLocal(){ localStorage.setItem('gl_cip_logs', JSON.stringify(window.glCipLogs)); }
+  // Records that never reached Supabase.
+  //
+  // When dbInsert() in crm-compliance.js is rejected it keeps the operator's
+  // work in localStorage under 'gl_cache_<table>' and raises a notification.
+  // This page used to look for its own key, 'gl_cip_logs', which nothing has
+  // ever written — saveLocal() was declared and never called, so the fallback
+  // could only ever return []. A CIP cycle whose save was rejected therefore
+  // showed up here as "No cycles logged yet": an FDA-required sanitation
+  // record simply missing, indistinguishable from a cycle nobody logged.
+  var LOCAL_KEY = 'gl_cache_compliance_records';   // written by crm-compliance.js
+  var CIP_FORM  = 'GMP-SAN-002';
+
+  function loadLocal(){
+    var raw;
+    try { raw = JSON.parse(localStorage.getItem(LOCAL_KEY) || '[]'); } catch(e){ return []; }
+    if(!Array.isArray(raw)) return [];
+    return raw
+      .filter(function(r){ return r && r._localOnly && r.form_code === CIP_FORM; })
+      .map(function(r){
+        var m = mapComplianceCipRow(r);
+        m._localOnly = true;
+        m._dbError   = r._dbError || null;
+        return m;
+      });
+  }
 
   async function refresh(){
-    var rows = await loadFromSupabase();
+    var rows  = await loadFromSupabase();
     var local = loadLocal();
-    if(rows === null){
-      // DB unreachable or threw — show whatever's in localStorage.
-      window.glCipLogs = local;
-    } else if(rows.length === 0 && local.length > 0){
-      // DB returned 0 but localStorage has cycles — probably means a save
-      // got rejected (likely RLS) and the operator's work is sitting in
-      // localStorage only. Merge so we still show their entries instead
-      // of silently wiping them, and surface the gap to the admin.
-      window.glCipLogs = local;
-      console.warn('[GL cip] DB returned 0 rows but localStorage has ' + local.length + ' — DB save likely rejected. Check RLS on public.cip_logs.');
-    } else {
-      window.glCipLogs = rows;
-    }
+    // Local-only records are shown whatever the DB returned. The old code
+    // only fell back when the DB came back completely empty, so a rejected
+    // save was hidden the moment one other cycle existed server-side — which
+    // is the normal case, and the case that matters.
+    var dbRows = rows === null ? [] : rows;
+    var seen   = {};
+    dbRows.forEach(function(r){ if(r && r.id) seen[r.id] = 1; });
+    var pending = local.filter(function(r){ return !seen[r.id]; });
+    window.glCipLogs    = pending.concat(dbRows);
+    window.glCipPending = pending;
+    window.glCipOffline = (rows === null);
     render();
   }
+
+  // Re-attempt the inserts that were rejected. Each cached row carries the
+  // full compliance_records payload it was built from, so the retry sends the
+  // original record rather than a reconstruction of it.
+  window.glRetryCipPending = async function(){
+    if(!window.supa){ alert('Not connected to the database.'); return; }
+    var raw;
+    try { raw = JSON.parse(localStorage.getItem(LOCAL_KEY) || '[]'); } catch(e){ raw = []; }
+    if(!Array.isArray(raw)) raw = [];
+
+    var kept = [], sent = 0, failMsg = null;
+    for(var i = 0; i < raw.length; i++){
+      var r = raw[i];
+      if(!(r && r._localOnly && r.form_code === CIP_FORM)){ kept.push(r); continue; }
+      var payload = Object.assign({}, r);
+      // Drop the client-side placeholders; let the server assign its own.
+      delete payload.id; delete payload.created_at;
+      delete payload._localOnly; delete payload._dbError;
+      var res = null;
+      try { res = await window.supa.from('compliance_records').insert([payload]).select(); }
+      catch(e){ res = { error: { message: String((e && e.message) || e) } }; }
+      // A write RLS silently drops returns 0 rows and no error, so the row
+      // count is the only reliable proof the record actually landed.
+      if(res && !res.error && Array.isArray(res.data) && res.data.length === 1){ sent++; }
+      else {
+        failMsg = failMsg || (res && res.error && res.error.message) ||
+                  'the database accepted the request but stored no row (check RLS on compliance_records)';
+        r._dbError = failMsg;
+        kept.push(r);
+      }
+    }
+    try { localStorage.setItem(LOCAL_KEY, JSON.stringify(kept)); } catch(e){}
+
+    var note = window.addNotification;
+    if(typeof note === 'function'){
+      if(sent && !failMsg) note('CIP records saved', sent + ' pending cycle' + (sent === 1 ? '' : 's') + ' reached the database.', 'success');
+      else if(sent)        note('CIP records partly saved', sent + ' saved; the rest still failing — ' + failMsg, 'warning');
+      else                 note('CIP retry failed', failMsg || 'nothing pending', 'warning');
+    } else if(failMsg) alert('Retry failed: ' + failMsg);
+    await refresh();
+  };
 
   function render(){
     var host = document.getElementById('cip-body');
@@ -107,19 +169,47 @@
     if(drafts) subBits.push(drafts + ' draft' + (drafts === 1 ? '' : 's') + ' awaiting PCQI sign-off');
     if(sub) sub.textContent = subBits.join(' · ');
 
+    // A record sitting in localStorage is NOT filed. Say so on the page —
+    // the operator who logged it is the one who has to re-file it, and a
+    // console.warn is invisible to them.
+    var pending = window.glCipPending || [];
+    var banner = '';
+    if(pending.length){
+      var why = (pending[0] && pending[0]._dbError) || 'the database rejected the write';
+      banner =
+        '<div style="margin:10px 14px;padding:12px 14px;border:1px solid #ff8579;border-radius:8px;background:rgba(255,133,121,.10)">' +
+          '<div style="color:#ff8579;font-weight:700;font-size:12px;margin-bottom:4px">' +
+            pending.length + ' cycle' + (pending.length === 1 ? '' : 's') + ' NOT saved to the database' +
+          '</div>' +
+          '<div style="color:var(--muted);font-size:11px;line-height:1.5;margin-bottom:9px">' +
+            'Held in this browser only — they are not part of the FDA record and no one else can see them. ' +
+            'Reason: ' + esc(why) +
+          '</div>' +
+          '<button class="cbtn pri" onclick="window.glRetryCipPending()">Retry save</button>' +
+        '</div>';
+    } else if(window.glCipOffline){
+      banner =
+        '<div style="margin:10px 14px;padding:10px 14px;border:1px solid #f5c842;border-radius:8px;background:rgba(245,200,66,.08);color:#f5c842;font-size:11px">' +
+          'Could not reach the database — this list may be out of date.' +
+        '</div>';
+    }
+
     if(!rows.length){
-      host.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No cycles logged yet. Click "+ Log Cycle" above to open the canonical 9-step FDA form. FDA-required between every run.</div>';
+      host.innerHTML = banner + '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No cycles logged yet. Click "+ Log Cycle" above to open the canonical 9-step FDA form. FDA-required between every run.</div>';
       return;
     }
-    var hint = '<div style="font-size:11px;color:var(--muted);padding:8px 14px 12px;line-height:1.5">Showing canonical 9-step CIP records (form <code>GMP-SAN-002</code>). Click any row to see the full step-by-step detail.</div>';
+    var hint = banner + '<div style="font-size:11px;color:var(--muted);padding:8px 14px 12px;line-height:1.5">Showing canonical 9-step CIP records (form <code>GMP-SAN-002</code>). Click any row to see the full step-by-step detail.</div>';
     var RES_COLOR = { pass:'#5fcf9e', fail:'#ff8579', draft:'#f5c842', pending:'#9aa7bd' };
     host.innerHTML = hint + '<table class="ctbl"><thead><tr><th>When</th><th>Equipment</th><th>Steps done</th><th>Chemicals</th><th>Operator</th><th>PAA ppm</th><th>Result</th></tr></thead><tbody>' +
       rows.map(function(r){
         var when = r.cycle_at ? new Date(r.cycle_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '—';
         var resColor = RES_COLOR[r.result] || '#9aa7bd';
         var resLabel = (r.result || 'pending').toUpperCase();
+        var unsaved = r._localOnly
+          ? ' <span style="color:#ff8579;font-size:9px;font-weight:700;letter-spacing:.4px">NOT SAVED</span>'
+          : '';
         return '<tr style="cursor:pointer" onclick="window.glOpenCipDetail(\'' + esc(r.id) + '\')">' +
-          '<td style="padding:11px;color:var(--white);font-weight:600">' + when + '</td>' +
+          '<td style="padding:11px;color:var(--white);font-weight:600">' + when + unsaved + '</td>' +
           '<td style="padding:11px;color:var(--muted)">' + esc(r.line_area || '—') + '</td>' +
           '<td style="padding:11px;color:var(--muted);font-size:11px">' + esc(r.method || '—') + '</td>' +
           '<td style="padding:11px;color:var(--muted);font-size:11px">' + esc((r.chemicals||[]).join(', ') || '—') + '</td>' +

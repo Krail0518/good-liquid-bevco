@@ -177,13 +177,10 @@
   var TEMPLATES=[];
   async function loadDashboard(){
     // Pull the register definitions + records in parallel.
-    var tpls=[], recent=[], devs=[], cip=[], defects=[], holds=[];
+    var tpls=[], recent=[], devs=[];
     try{ tpls=await rest('gmp_templates?active=eq.true&order=sort_order.asc&select=form_code,title,category'); }catch(e){}
     try{ recent=await rest('compliance_records?order=recorded_at.desc&limit=50&select=form_code,record_date,status,has_deviation,signature_name,data'); }catch(e){}
     try{ devs=await rest('compliance_records?has_deviation=eq.true&order=recorded_at.desc&limit=50&select=form_code,record_date,deviation_notes,corrective_action,data'); }catch(e){}
-    try{ cip=await rest('cip_logs?order=cycle_at.desc&limit=1&select=id'); }catch(e){}
-    try{ defects=await rest('defects?order=created_at.desc&limit=1&select=id'); }catch(e){}
-    try{ holds=await rest('hold_tags?order=created_at.desc&limit=1&select=id'); }catch(e){}
     var docs=[]; try{ docs=await rest('gmp_documents?active=eq.true&order=sort_order.asc&select=doc_code,title,category,description,file_url,file_type,rev'); }catch(e){}
     var suppliers=[]; try{ suppliers=await rest('vendors?order=name.asc&select=name,category,approval_status,food_safety_cert,cert_expires,risk_level,materials'); }catch(e){}
     var ncr=[]; try{ ncr=await rest('defects?order=reported_at.desc&limit=50&select=reported_at,run_ref,category,severity,status,owner,description,root_cause,corrective_action,preventive_action,due_date,verified_at,ncr_number'); }catch(e){}

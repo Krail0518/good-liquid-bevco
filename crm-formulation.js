@@ -83,9 +83,21 @@
   // ── The house list ──────────────────────────────────────────
   var CACHE = null;
 
+  // Only a load that actually reached the server may fill CACHE.
+  //
+  // This used to do `CACHE = CACHE || []` when Supabase was not ready yet, and
+  // again when the fetch threw. [] is truthy, so the `if(CACHE && !force)`
+  // guard above then short-circuited on every later call and the house list
+  // stayed empty for the rest of the session. One early call — the warm-up
+  // poll, or any form that binds before the client is up — was enough.
+  //
+  // The visible damage was on deals: an empty dropdown never seeds, ticking
+  // "formulation done" cannot auto-pick a house, and the deal saves with
+  // formulation_vendor: null. Formulation revenue was attributed to no one.
+  // Leaving CACHE null instead means the next call simply retries.
   window.glLoadFormulators = async function glLoadFormulators(force){
     if(CACHE && !force) return CACHE;
-    if(!sb()) return (CACHE = CACHE || []);
+    if(!sb()) return CACHE || [];
     try {
       var r = await sb().from('formulators').select('name,active,sort_order')
         .eq('active', true).order('sort_order', { ascending: true }).order('name', { ascending: true });
@@ -93,7 +105,7 @@
       CACHE = (r.data || []).map(function(f){ return f.name; }).filter(Boolean);
     } catch(e){
       console.warn('[GL] formulators load failed', e);
-      CACHE = CACHE || [];
+      return CACHE || [];
     }
     return CACHE;
   };

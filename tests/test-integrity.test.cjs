@@ -133,5 +133,28 @@ const sweepSrc = fs.readFileSync(path.join(TESTS, 'full-sweep.cjs'), 'utf8');
 check('full-sweep applies the same ALWAYS_APP_BUG override',
   /ALWAYS_APP_BUG/.test(sweepSrc) && /ALWAYS_APP_BUG\.test\(m\)/.test(sweepSrc));
 
+// ── a test nobody runs is the same bug in a different place ──────────
+// GL-034 was the suite crediting itself for work it wasn't doing. A test
+// file that exists but is wired into no workflow does exactly that, and is
+// harder to notice: the file sits right there in tests/, it passes when run
+// by hand, and it silently guards nothing. Four had accumulated -- including
+// the one written to guard GL-034 itself.
+console.log('');
+const WF_DIR = path.join(__dirname, '..', '.github', 'workflows');
+let workflowText = '';
+for (const w of fs.readdirSync(WF_DIR)) {
+  if (/\.ya?ml$/.test(w)) workflowText += fs.readFileSync(path.join(WF_DIR, w), 'utf8');
+}
+const wired = new Set(
+  [...workflowText.matchAll(/tests\/([A-Za-z0-9._-]+\.(?:cjs|mjs))/g)].map((m) => m[1])
+);
+const unwired = fs.readdirSync(TESTS)
+  .filter((f) => /\.(cjs|mjs)$/.test(f))
+  .filter((f) => !wired.has(f));
+check('every test file is actually run by a workflow',
+  unwired.length === 0,
+  unwired.join(', ') + ' -- present in tests/ but referenced by no workflow, ' +
+  'so it guards nothing');
+
 console.log('\n' + (failures === 0 ? 'ALL PASSED' : failures + ' CHECK(S) FAILED'));
 process.exit(failures === 0 ? 0 : 1);
