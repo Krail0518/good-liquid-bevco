@@ -33,7 +33,11 @@ const CORE_FILES = [
   'crm-index-core.js',
   // Capabilities extracted out of the core, in load order. Add each new one
   // here as GL-037 proceeds — that is the whole reason this file exists.
-  'src/modules/ar-aging.js',
+  'src/modules/invoicing/ar-aging.js',
+  'src/modules/invoicing/pay-link.js',
+  'src/modules/customers/client-notes.js',
+  'src/modules/customers/tags.js',
+  'src/modules/customers/email-templates.js',
 ];
 
 function read(f) {
