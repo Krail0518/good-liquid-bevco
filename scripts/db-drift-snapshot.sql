@@ -65,6 +65,22 @@ funcs as (
 buckets as (
   select format('BUCKET   %s | public=%s', id, public) as line
     from storage.buckets
+),
+-- GL-013. A credential that was ever committed to the repository is public
+-- forever, so the only fact worth tracking is whether production still
+-- ACCEPTS it. Never the value: this output is committed as the baseline, so
+-- it records a boolean and a length, and the secret itself stays in Vault.
+--
+-- 'gl-notify-2026-abc123' shipped as a literal in 20260721_tour_alerts.sql and
+-- authenticated the database's own triggers to the notify-deal edge function.
+-- It was rotated on 2026-07-30. If it is ever live again -- a replayed
+-- migration, a restored backup, a hand edit -- this line flips and drift fails.
+secrets as (
+  select format('SECRET   %s | len=%s | known_published=%s',
+                name,
+                length(decrypted_secret),
+                (decrypted_secret in ('gl-notify-2026-abc123', 'PASTE_SECRET_HERE'))) as line
+    from vault.decrypted_secrets
 )
 select line
   from (
@@ -73,5 +89,6 @@ select line
     union all select line from grants
     union all select line from funcs
     union all select line from buckets
+    union all select line from secrets
   ) all_facts
  order by line;

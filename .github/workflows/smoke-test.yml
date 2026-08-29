@@ -115,6 +115,9 @@ jobs:
       # a public URL 400s and a signed one expires. No browser needed.
       - name: Run compliance-photos storage tests
         run: node tests/compliance-photos.test.cjs
+      # A credential committed to the repo is public forever. No browser needed.
+      - name: Run committed-secret tests
+        run: node tests/committed-secrets.test.cjs
 
       - name: Run smoke test
         env:
