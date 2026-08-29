@@ -113,7 +113,7 @@
   }
 
   function requestTile(emoji, kind, title, subtitle){
-    return '<div data-gl-action="glOpenCustomerRequest" data-gl-arg1="' + esc(kind) + '" style="background:#142238;border:1px solid rgba(0,229,192,.18);border-radius:12px;padding:16px 18px;cursor:pointer;transition:background .15s,border-color .15s" onmouseover="this.style.background=\'#1a2c48\';this.style.borderColor=\'rgba(0,229,192,.4)\'" onmouseout="this.style.background=\'#142238\';this.style.borderColor=\'rgba(0,229,192,.18)\'">' +
+    return '<div class="gl-portal-card" data-gl-action="glOpenCustomerRequest" data-gl-arg1="' + esc(kind) + '" style="background:#142238;border:1px solid rgba(0,229,192,.18);border-radius:12px;padding:16px 18px;cursor:pointer;transition:background .15s,border-color .15s">' +
       '<div style="font-size:22px">' + emoji + '</div>' +
       '<div style="font-size:14px;font-weight:700;color:#fff;margin-top:6px">' + escHtml(title) + '</div>' +
       '<div style="font-size:11px;color:#6b87ad;margin-top:2px">' + escHtml(subtitle) + '</div>' +

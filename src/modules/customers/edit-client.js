@@ -1083,7 +1083,7 @@
       if(r.daysLeft < 0)      { sev = '#ff8579'; txt = 'EXPIRED ' + (-r.daysLeft) + 'd ago'; }
       else if(r.daysLeft < 8) { sev = '#ff8579'; txt = 'in ' + r.daysLeft + 'd'; }
       else                    { sev = '#f5c842'; txt = 'in ' + r.daysLeft + 'd'; }
-      return '<div class="gl-comp-row" data-cid="' + r.clientId + '" style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-radius:8px;cursor:pointer;transition:background .15s" onmouseover="this.style.background=\'rgba(255,255,255,.04)\'" onmouseout="this.style.background=\'transparent\'">' +
+      return '<div class="gl-comp-row" data-cid="' + r.clientId + '" style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-radius:8px;cursor:pointer;transition:background .15s">' +
         '<div style="display:flex;align-items:center;gap:10px;min-width:0">' +
           '<span style="font-size:14px">📄</span>' +
           '<div style="min-width:0">' +

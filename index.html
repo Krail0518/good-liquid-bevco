@@ -1280,6 +1280,24 @@ select option, .fsel option {
   /* Sidebar drawer covers more of the screen */
   #crm-sidebar.show { width: 92vw !important; }
 }
+
+/* ── GL-DEF-01: hover affordances that were inline handlers ──────────────
+   Each of these was a pair of on* attributes: one assigning a colour, one
+   assigning the base colour back. The mouse-out half restated a value the
+   element's own inline style already carried, so it was a duplicate of a
+   fact the markup already knew, kept in sync by hand.
+
+   As :hover, mouse-out needs no code at all.
+
+   !important because the base values ARE inline styles on the same
+   elements, which otherwise outrank a stylesheet. gl-comp-row and
+   gl-prun-card already existed and are each rendered in exactly one place,
+   so they are targeted directly rather than given a second class. */
+.gl-hov-teal-border:hover,
+.gl-prun-card:hover  { border-color: rgba(0,229,192,.35) !important; }
+.gl-portal-card:hover{ background: #1a2c48 !important;
+                       border-color: rgba(0,229,192,.4) !important; }
+.gl-comp-row:hover   { background: rgba(255,255,255,.04) !important; }
 </style>
 </head>
 <body>
