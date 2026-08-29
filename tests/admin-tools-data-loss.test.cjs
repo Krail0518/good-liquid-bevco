@@ -31,7 +31,7 @@ const path = require('path');
 const vm = require('vm');
 
 const ROOT = path.join(__dirname, '..');
-const adminTools = fs.readFileSync(path.join(ROOT, 'crm-admin-tools.js'), 'utf8');
+const adminTools = fs.readFileSync(path.join(ROOT, 'src/shared/admin-tools.js'), 'utf8');
 const compliance = fs.readFileSync(path.join(ROOT, 'src/modules/production/compliance.js'), 'utf8');
 const auth = fs.readFileSync(path.join(ROOT, 'src/services/auth.js'), 'utf8');
 

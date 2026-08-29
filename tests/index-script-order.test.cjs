@@ -139,6 +139,24 @@ const strays = onDisk.filter((f) =>
 check('every file under src/ sits in modules, services or shared',
   strays.length === 0,
   strays.join(', ') + ' — a fourth location means the taxonomy is not a rule');
+// GL-037 is finished: every capability lives under src/, and the only
+// crm-*.js left at the repo root is the entry point everything loads after.
+//
+// Without this check the structure erodes the easy way -- someone adds one
+// file at the root because that is where the others used to be, then the
+// next person copies them. Naming the single exception makes adding a
+// second one a decision rather than a drift.
+const rootCrm = fs.readdirSync(ROOT).filter((f) => /^crm-.*\.js$/.test(f)).sort();
+check('crm-index-core.js is the only crm-*.js at the repo root',
+  rootCrm.length === 1 && rootCrm[0] === 'crm-index-core.js',
+  'found: ' + rootCrm.join(', ') + ' — everything else belongs under src/');
+
+// The scaffold's domain folders are the taxonomy. An empty one is honest
+// (nothing in this codebase is inventory management yet); a MISSING one
+// means someone deleted a category rather than deciding about it.
+for (const d of ['src/modules', 'src/services', 'src/shared']) {
+  check('the ' + d + ' folder exists', fs.existsSync(path.join(ROOT, d)));
+}
 // ── it must stay a classic, blocking script ──────────────────────────
 const coreTag = tags.find((a) => /\/crm-index-core\.js/.test(a)) || '';
 check('the core script has no defer',

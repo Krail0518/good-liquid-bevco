@@ -1,4 +1,4 @@
-/* crm-nav.js — Public-site navigation and CRM exit helpers */
+/* nav.js — Public-site navigation and CRM exit helpers */
 (function(){
   'use strict';
 
