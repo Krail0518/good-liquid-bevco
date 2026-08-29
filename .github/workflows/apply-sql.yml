@@ -75,7 +75,7 @@ jobs:
 
       # ref: main is the load-bearing line. Without it the checkout follows the
       # dispatch ref and unmerged SQL becomes executable.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: main
 
