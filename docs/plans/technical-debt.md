@@ -35,9 +35,15 @@ probe, the three-identity pricing check holds in both directions, invoice
 enumeration returns a uniform miss, and all nine plain-node suites pass on
 `main`.
 
-Two things the audit asked for that are NOT code and remain outstanding:
-the `production-db` environment reviewers (GitHub dashboard), and connecting
-a reviewer to the weekly workflow.
+Two things the audit asked for were not code. Both are now done:
+
+- The weekly review calls an independent reviewer (#324). It needs the
+  `OPENAI_API_KEY` secret, which only the owner can supply; until then the job
+  fails deliberately rather than reporting green.
+- The `production-db` environment was created on 2026-08-29 with a required
+  reviewer, so the `apply-sql.yml` gate (#298) is enforced rather than merely
+  referenced. It had never existed: a workflow naming an environment does not
+  create it, so the gate read as protection while providing none.
 
 ---
 
