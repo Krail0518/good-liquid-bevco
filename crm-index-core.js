@@ -5096,3 +5096,90 @@ window.glCdTask = function glCdTask(clientId){
   if(el) el.value = clientId;
   glCloseClientDetailOverlay();
 };
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   GL-DEF-01 — handlers extracted from on* attributes in index.html.
+
+   They live here rather than in index.html because that file has carried no
+   inline script since GL-037, and because currentInvId is declared in this
+   file: the four invoice-modal buttons read it, so their replacements have to
+   be in the same scope to see the live value.
+   ═══════════════════════════════════════════════════════════════════ */
+
+// cNav's second argument is the sidebar item to highlight — for New Invoice
+// that is the 6th .cni. Three separate buttons used this same expression.
+window.glNavNewInvoice = function glNavNewInvoice(){
+  return cNav('newinv', document.querySelectorAll('.cni')[5]);
+};
+
+// The bottom nav additionally marks its own button active.
+window.glBnavGo = function glBnavGo(page, el){
+  cNav(page);
+  if(typeof crmBnavSet === 'function') crmBnavSet(el);
+};
+
+// Login: Enter moves from the username box to the password box, and Enter in
+// the password box submits.
+window.glPwUserEnter = function glPwUserEnter(ev){
+  if(!ev || ev.key !== 'Enter') return;
+  var el = document.getElementById('pw-input');
+  if(el) el.focus();
+};
+window.glPwSubmitEnter = function glPwSubmitEnter(ev){
+  if(ev && ev.key === 'Enter') checkPw();
+};
+
+// Chat: Enter sends, Shift+Enter keeps its newline.
+window.glChatKeydown = function glChatKeydown(ev){
+  if(!ev || ev.key !== 'Enter' || ev.shiftKey) return;
+  ev.preventDefault();
+  if(typeof window.sendChatMsg === 'function') window.sendChatMsg();
+};
+
+// Swap the password overlay for the reset one.
+window.glShowResetOverlay = function glShowResetOverlay(){
+  var pw = document.getElementById('pw-ov');
+  var rs = document.getElementById('reset-overlay');
+  if(pw) pw.classList.remove('show');
+  if(rs) rs.classList.add('show');
+};
+
+// "Same as ..." checkboxes hide a block. Two controls, one behaviour, so the
+// target id travels as an argument instead of being baked into two handlers.
+window.glToggleNcBlock = function glToggleNcBlock(blockId, checked){
+  var el = document.getElementById(blockId);
+  if(el) el.style.display = checked ? 'none' : 'grid';
+};
+
+// Module entry points. The old attributes guarded on the module being present
+// and alerted if it was not; that stays, because these say something specific
+// about WHICH module is missing.
+window.glOpenOnboardPickerBtn = function glOpenOnboardPickerBtn(){
+  if(window.glOpenOnboardPicker) return window.glOpenOnboardPicker();
+  alert('Onboarding module not loaded yet.');
+};
+window.glOpenInvitePickerBtn = function glOpenInvitePickerBtn(){
+  if(window.glOpenInvitePicker) return window.glOpenInvitePicker();
+  alert('Portal module not loaded yet.');
+};
+window.glNewQuote = function glNewQuote(){
+  if(typeof glOpenQuoteBuilder === 'function') return glOpenQuoteBuilder(null, null);
+};
+
+// The invoice modal's four actions. Each was guarded on currentInvId, which is
+// declared in this file and reassigned by viewInvoice().
+window.glInvSend = function glInvSend(){
+  if(currentInvId) openSendInvoiceModal(currentInvId);
+};
+window.glInvEdit = function glInvEdit(){
+  if(currentInvId && window.openEditInvoice) window.openEditInvoice(currentInvId);
+};
+window.glInvPdf = function glInvPdf(){
+  if(currentInvId) downloadInvoicePDF(currentInvId);
+};
+window.glInvAiDraft = function glInvAiDraft(){
+  if(!currentInvId) return;
+  var i = (window.invoices || []).find(function(x){ return x.id === currentInvId; });
+  if(i) aiDraftEmail(i.clientName, i.id, i.amount, i.status);
+};
