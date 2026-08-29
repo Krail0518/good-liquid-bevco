@@ -1195,7 +1195,7 @@
     var safeUrl = hasUrl ? p.url : 'javascript:void(0)';
     var newTab = (hasUrl && p.url.indexOf('http') === 0) ? ' target="_blank" rel="noopener"' : '';
     var onclickAttr = hasUrl ? '' : ' onclick="if(typeof navTo===\'function\')navTo(\'contact\')"';
-    return '<a href="' + esc(safeUrl) + '"'+newTab+onclickAttr+' style="text-decoration:none;display:flex;flex-direction:column;gap:11px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:22px;transition:border-color .15s" onmouseover="this.style.borderColor=\'rgba(0,229,192,.35)\'" onmouseout="this.style.borderColor=\'rgba(255,255,255,.08)\'">' +
+    return '<a class="gl-hov-teal-border" href="' + esc(safeUrl) + '"'+newTab+onclickAttr+' style="text-decoration:none;display:flex;flex-direction:column;gap:11px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:22px;transition:border-color .15s">' +
       (p.tag ? '<span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:600;letter-spacing:1px;background:' + col + '22;color:' + col + ';border:1px solid ' + col + '44;width:fit-content">' + esc(p.tag) + '</span>' : '') +
       '<div style="font-family:var(--ff-disp);font-size:16px;letter-spacing:.5px;color:#fff;line-height:1.3">' + esc(p.title || 'Untitled') + '</div>' +
       '<div style="font-size:13px;color:var(--muted);line-height:1.65">' + esc(p.excerpt || '') + '</div>' +

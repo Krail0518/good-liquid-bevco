@@ -58,8 +58,13 @@ const render=await pg.evaluate(()=>{
   const m=document.getElementById('art-mount');
   return {
     existing: /Mango 12oz/.test(m.innerText),
-    view: !!m.querySelector('a[onclick*="glOpenClientDoc"]'),
-    download: !!m.querySelector('a[onclick*="glDownloadClientDoc"]'),
+    // Matches EITHER wiring on purpose. What matters is that a View and a
+    // Download control exist and name the right action -- not whether they
+    // are wired through an inline onclick or data-gl-action. GL-DEF-01 is
+    // migrating every control from the first to the second, and a test keyed
+    // to the mechanism fails on a change that breaks nothing.
+    view: !!m.querySelector('a[onclick*="glOpenClientDoc"], a[data-gl-action="glOpenClientDoc"]'),
+    download: !!m.querySelector('a[onclick*="glDownloadClientDoc"], a[data-gl-action="glDownloadClientDoc"]'),
     nameInput: !!m.querySelector('.gl-art-name'),
     fileInput: !!m.querySelector('.gl-art-file'),
     addBtn: !!m.querySelector('.gl-art-add')

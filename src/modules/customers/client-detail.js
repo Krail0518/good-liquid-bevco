@@ -69,8 +69,8 @@
   }
   function viewBtn(path){
     var p = esc(String(path).replace(/'/g,''));
-    return ' <a href="#" onclick="event.preventDefault();window.glOpenClientDoc(\'' + p + '\')" style="color:'+TEAL+';font-weight:700">📄 View</a>'
-         + ' <a href="#" onclick="event.preventDefault();window.glDownloadClientDoc(\'' + p + '\')" style="color:'+TEAL+';font-weight:700">⬇ Download</a>';
+    return ' <a href="#" data-gl-action="glOpenClientDoc" data-gl-prevent="" data-gl-arg1="' + p + '" style="color:'+TEAL+';font-weight:700">📄 View</a>'
+         + ' <a href="#" data-gl-action="glDownloadClientDoc" data-gl-prevent="" data-gl-arg1="' + p + '" style="color:'+TEAL+';font-weight:700">⬇ Download</a>';
   }
 
   var CONTACT_TYPE = {owner:'Owner',executive:'Executive',purchasing:'Purchasing',freight:'Freight / Logistics',sales:'Sales',other:'Other'};

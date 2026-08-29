@@ -191,11 +191,11 @@ function svcChange(){
   document.getElementById('svc-fields').innerHTML=html;
   let addons='';
   if(svc==='canning'||svc==='copacking'){
-    addons=`<div class="addon-card" onclick="toggleAddon(this,'past')"><div class="addon-card-t">🔥 Flash Pasteurization</div><div class="addon-card-p">5¢ per can</div></div>
-    <div class="addon-card" onclick="toggleAddon(this,'nitro')"><div class="addon-card-t">💨 Nitrogen Dosing</div><div class="addon-card-p">3¢ per can</div></div>`;
+    addons=`<div class="addon-card" data-gl-action="toggleAddon" data-gl-el-at="1" data-gl-arg1="past"><div class="addon-card-t">🔥 Flash Pasteurization</div><div class="addon-card-p">5¢ per can</div></div>
+    <div class="addon-card" data-gl-action="toggleAddon" data-gl-el-at="1" data-gl-arg1="nitro"><div class="addon-card-t">💨 Nitrogen Dosing</div><div class="addon-card-p">3¢ per can</div></div>`;
   }else if(svc==='bottling'){
-    addons=`<div class="addon-card" onclick="toggleAddon(this,'pastbtl')"><div class="addon-card-t">🔥 Flash Pasteurization</div><div class="addon-card-p">$0.20/btl</div></div>
-    <div class="addon-card" onclick="toggleAddon(this,'overlbl')"><div class="addon-card-t">🏷️ Over-Top Labels</div><div class="addon-card-p">$0.20/btl</div></div>`;
+    addons=`<div class="addon-card" data-gl-action="toggleAddon" data-gl-el-at="1" data-gl-arg1="pastbtl"><div class="addon-card-t">🔥 Flash Pasteurization</div><div class="addon-card-p">$0.20/btl</div></div>
+    <div class="addon-card" data-gl-action="toggleAddon" data-gl-el-at="1" data-gl-arg1="overlbl"><div class="addon-card-t">🏷️ Over-Top Labels</div><div class="addon-card-p">$0.20/btl</div></div>`;
   }
   document.getElementById('addon-grid').innerHTML=addons;
   updatePreview();

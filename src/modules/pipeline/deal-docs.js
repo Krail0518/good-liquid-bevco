@@ -65,8 +65,8 @@
   function viewLinks(fp){
     if(!fp) return '<span style="color:#f5c842">⚠ no file stored</span>';
     var p = esc(String(fp).replace(/'/g,''));
-    return '<a href="#" onclick="event.preventDefault();window.glOpenClientDoc(\''+p+'\')" style="color:#00e5c0;font-weight:700">📄 View</a>' +
-      ' <a href="#" onclick="event.preventDefault();window.glDownloadClientDoc(\''+p+'\')" style="color:#00e5c0;font-weight:700">⬇ Download</a>';
+    return '<a href="#" data-gl-action="glOpenClientDoc" data-gl-prevent="" data-gl-arg1="'+p+'" style="color:#00e5c0;font-weight:700">📄 View</a>' +
+      ' <a href="#" data-gl-action="glDownloadClientDoc" data-gl-prevent="" data-gl-arg1="'+p+'" style="color:#00e5c0;font-weight:700">⬇ Download</a>';
   }
 
   function docRow(r){

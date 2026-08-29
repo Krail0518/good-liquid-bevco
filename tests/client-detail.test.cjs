@@ -45,11 +45,15 @@ const out=await pg.evaluate(()=>{
   o.sparseNotOnFile = /not on file/.test(sparse);
   o.sparseNoneProducts = /None specified/.test(sparse);
 
-  // 2a) PA letter uploaded (has file path) -> a View link that calls glOpenClientDoc.
+  // 2a) PA letter uploaded (has file path) -> a View link naming glOpenClientDoc.
+  //     Matches a call paren OR the quote that follows it in
+  //     data-gl-action="glOpenClientDoc". GL-DEF-01 is migrating every control
+  //     from inline onclick to the attribute, and an assertion keyed to the
+  //     mechanism fails on a change that breaks nothing.
   const withFile = window.glClientInfoSections({
     name:'Doc Co', paLetterOnFile:true, paLetterFilePath:'c1/compliance/pa_letter_123.pdf', paLetterExpires:'2027-01-01'
   });
-  o.paView = /Process Authority letter/.test(withFile) && /glOpenClientDoc\(/.test(withFile) && /View/.test(withFile);
+  o.paView = /Process Authority letter/.test(withFile) && /glOpenClientDoc(\(|")/.test(withFile) && /View/.test(withFile);
 
   // 2b) PA letter marked on file but NO stored file -> explicit warning, no View.
   const noFile = window.glClientInfoSections({ name:'Gap Co', paLetterOnFile:true, paLetterFilePath:'' });
