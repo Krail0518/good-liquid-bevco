@@ -112,7 +112,7 @@
     ov.innerHTML = '<div style="background:#101d33;border:1px solid #23345c;border-radius:16px;max-width:640px;width:100%;padding:22px 22px 26px;box-shadow:0 20px 70px rgba(0,0,0,.5)">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
         '<div style="font-family:var(--ff-disp,inherit);font-size:18px;letter-spacing:1px;color:#00e5c0">AUTO FOLLOW-UPS</div>' +
-        '<button onclick="document.getElementById(\'gl-followups-overlay\').remove()" style="background:none;border:none;color:#9aa7bd;font-size:22px;cursor:pointer;line-height:1">×</button>' +
+        '<button data-gl-close="#gl-followups-overlay" style="background:none;border:none;color:#9aa7bd;font-size:22px;cursor:pointer;line-height:1">×</button>' +
       '</div>' +
       '<div id="gl-followups-mount"></div></div>';
     document.body.appendChild(ov);

@@ -284,7 +284,7 @@
       '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:22px;width:100%;max-width:560px;color:#fff">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
           '<div style="font-family:var(--ff-disp);font-size:17px;letter-spacing:1.5px;color:var(--teal)">🔍 SCHEDULE AUDIT</div>' +
-          '<button onclick="document.getElementById(\'gl-ar-audit\').remove()" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+          '<button data-gl-close="#gl-ar-audit" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
         '</div>' +
         '<label style="'+LAB+'">Audit date <span style="color:#f5c842">*</span></label>' +
         '<input id="ar-a-date" type="date" value="'+todayISO()+'" style="'+INP+'">' +
@@ -298,7 +298,7 @@
         '<textarea id="ar-a-summary" style="'+INP+';min-height:56px;resize:vertical"></textarea>' +
         '<div id="ar-a-err" style="display:none;color:#ff8579;font-size:12px;margin-top:8px"></div>' +
         '<div style="display:flex;gap:10px;margin-top:14px">' +
-          '<button onclick="document.getElementById(\'gl-ar-audit\').remove()" style="flex:1;padding:11px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:8px;color:#dfe7f1;font-size:13px;cursor:pointer">Cancel</button>' +
+          '<button data-gl-close="#gl-ar-audit" style="flex:1;padding:11px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:8px;color:#dfe7f1;font-size:13px;cursor:pointer">Cancel</button>' +
           '<button id="ar-a-save" style="flex:1;padding:11px;background:rgba(0,229,192,.14);border:1px solid rgba(0,229,192,.35);border-radius:8px;color:var(--teal);font-weight:700;font-size:13px;cursor:pointer">Schedule</button>' +
         '</div>' +
       '</div>';
@@ -349,7 +349,7 @@
       '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:22px;width:100%;max-width:560px;color:#fff">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
           '<div style="font-family:var(--ff-disp);font-size:17px;letter-spacing:1.5px;color:var(--teal)">＋ ADD FINDING</div>' +
-          '<button onclick="document.getElementById(\'gl-ar-finding\').remove()" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+          '<button data-gl-close="#gl-ar-finding" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
         '</div>' +
         '<label style="'+LAB+'">Clause / reference</label>' +
         '<input id="ar-f-clause" placeholder="e.g. 11.2.3.1" style="'+INP+'">' +
@@ -359,7 +359,7 @@
         '<select id="ar-f-sev" style="'+INP+'"><option value="minor">Minor</option><option value="medium" selected>Medium</option><option value="major">Major</option><option value="critical">Critical</option></select>' +
         '<div id="ar-f-err" style="display:none;color:#ff8579;font-size:12px;margin-top:8px"></div>' +
         '<div style="display:flex;gap:10px;margin-top:14px">' +
-          '<button onclick="document.getElementById(\'gl-ar-finding\').remove()" style="flex:1;padding:11px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:8px;color:#dfe7f1;font-size:13px;cursor:pointer">Cancel</button>' +
+          '<button data-gl-close="#gl-ar-finding" style="flex:1;padding:11px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:8px;color:#dfe7f1;font-size:13px;cursor:pointer">Cancel</button>' +
           '<button id="ar-f-save" style="flex:1;padding:11px;background:rgba(0,229,192,.14);border:1px solid rgba(0,229,192,.35);border-radius:8px;color:var(--teal);font-weight:700;font-size:13px;cursor:pointer">Add finding</button>' +
         '</div>' +
       '</div>';
@@ -440,7 +440,7 @@
       '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:22px;width:100%;max-width:600px;color:#fff">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
           '<div style="font-family:var(--ff-disp);font-size:17px;letter-spacing:1.5px;color:var(--teal)">📋 NEW MANAGEMENT REVIEW</div>' +
-          '<button onclick="document.getElementById(\'gl-ar-review\').remove()" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+          '<button data-gl-close="#gl-ar-review" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
         '</div>' +
         '<label style="'+LAB+'">Review date <span style="color:#f5c842">*</span></label>' +
         '<input id="ar-r-date" type="date" value="'+todayISO()+'" style="'+INP+'">' +
@@ -453,7 +453,7 @@
         '<textarea id="ar-r-actions" style="'+INP+';min-height:56px;resize:vertical"></textarea>' +
         '<div id="ar-r-err" style="display:none;color:#ff8579;font-size:12px;margin-top:8px"></div>' +
         '<div style="display:flex;gap:10px;margin-top:14px">' +
-          '<button onclick="document.getElementById(\'gl-ar-review\').remove()" style="flex:1;padding:11px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:8px;color:#dfe7f1;font-size:13px;cursor:pointer">Cancel</button>' +
+          '<button data-gl-close="#gl-ar-review" style="flex:1;padding:11px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:8px;color:#dfe7f1;font-size:13px;cursor:pointer">Cancel</button>' +
           '<button id="ar-r-save" style="flex:1;padding:11px;background:rgba(0,229,192,.14);border:1px solid rgba(0,229,192,.35);border-radius:8px;color:var(--teal);font-weight:700;font-size:13px;cursor:pointer">Save review</button>' +
         '</div>' +
       '</div>';

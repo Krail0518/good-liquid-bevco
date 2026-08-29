@@ -647,7 +647,7 @@
     ov.innerHTML = '<div style="max-width:760px;margin:0 auto;background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:24px;color:#eef4ff;font-family:Arial,Helvetica,sans-serif">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
         '<div style="font-size:18px;font-weight:900;color:#00e5c0;letter-spacing:2px">EDIT DEFAULTS</div>' +
-        '<button onclick="document.getElementById(\'gl-perm-defaults\').remove()" style="background:none;border:0;color:#6b87ad;font-size:22px;cursor:pointer">×</button>' +
+        '<button data-gl-close="#gl-perm-defaults" style="background:none;border:0;color:#6b87ad;font-size:22px;cursor:pointer">×</button>' +
       '</div>' +
       '<div style="font-size:12px;color:#9ca3af;margin-bottom:16px;line-height:1.5">These are the components a NEW staff user sees by default. Existing per-user overrides keep their explicit setting; users with no override use the default below.</div>' +
       '<table style="width:100%;border-collapse:collapse;font-size:13px">' +

@@ -106,7 +106,7 @@ function openArAging(){
     <div style="background:#142238;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:28px;width:100%;max-width:1100px;max-height:90vh;overflow-y:auto">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
         <div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:2px;color:#f5c842">📋 ACCOUNTS RECEIVABLE (A/R) AGING REPORT</div>
-        <button onclick="document.getElementById('ar-aging-overlay').remove()" style="background:none;border:none;color:var(--muted);font-size:24px;cursor:pointer">✕</button>
+        <button data-gl-close="#ar-aging-overlay" style="background:none;border:none;color:var(--muted);font-size:24px;cursor:pointer">✕</button>
       </div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:18px">Customers with unpaid invoices, sorted by worst-aged first. Click a row to drill into that client.</div>
       ${rows.length === 0 ? '<div style="padding:60px;text-align:center;color:#5fcf9e;font-size:14px">✓ No outstanding receivables.</div>' : `
@@ -132,7 +132,7 @@ function openArAging(){
         </table>
       `}
       <div style="margin-top:18px;padding-top:18px;border-top:1px solid rgba(255,255,255,.08);text-align:right">
-        <button onclick="document.getElementById('ar-aging-overlay').remove()" style="padding:10px 18px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#fff;cursor:pointer">Close</button>
+        <button data-gl-close="#ar-aging-overlay" style="padding:10px 18px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#fff;cursor:pointer">Close</button>
       </div>
     </div>`;
   ov.addEventListener('click', e => { if(e.target === ov) ov.remove(); });

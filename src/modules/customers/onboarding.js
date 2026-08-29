@@ -336,7 +336,7 @@
         '<div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:var(--teal);margin-bottom:6px">🚀 CLIENT ONBOARDINGS</div>' +
         '<div style="font-size:12.5px;color:var(--muted);margin-bottom:16px;line-height:1.6">Every onboarding you\'ve started from the pipeline. <b>Invited</b> = sent, not opened. <b>Opened</b> = they started it. <b>Submitted</b> = done (their answers are on the client record).</div>' +
         '<div id="gl-ob-list" style="font-size:13px;color:#9aa7bd">Loading…</div>' +
-        '<div style="display:flex;justify-content:flex-end;margin-top:16px"><button onclick="document.getElementById(\'gl-onboardings-modal\').remove()" style="padding:11px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer">Close</button></div>' +
+        '<div style="display:flex;justify-content:flex-end;margin-top:16px"><button data-gl-close="#gl-onboardings-modal" style="padding:11px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer">Close</button></div>' +
       '</div>';
     document.body.appendChild(ov);
     var list = ov.querySelector('#gl-ob-list');

@@ -63,7 +63,7 @@
     ov.innerHTML = '<div style="background:#142238;border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:24px;width:100%;max-width:920px;max-height:90vh;overflow-y:auto;color:#eef4ff;font-family:Arial,Helvetica,sans-serif">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
         '<div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:#f5c842">📩 CUSTOMER REQUESTS</div>' +
-        '<button onclick="document.getElementById(\'gl-cri-modal\').remove()" style="background:none;border:0;color:#9aa7bd;font-size:22px;cursor:pointer">×</button>' +
+        '<button data-gl-close="#gl-cri-modal" style="background:none;border:0;color:#9aa7bd;font-size:22px;cursor:pointer">×</button>' +
       '</div>' +
       '<div style="display:flex;gap:6px;margin-bottom:14px" id="gl-cri-filters">' +
         '<button data-status="new" class="gl-cri-pill act">New</button>' +
@@ -212,7 +212,7 @@
         '</div>',
         '<div style="margin-top:10px;display:flex;gap:8px">',
           '<button onclick="cNav(\'ai-settings\')" style="font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid rgba(245,200,66,.4);background:rgba(245,200,66,.08);color:#f5c842;cursor:pointer">Account Security</button>',
-          '<button onclick="document.getElementById(\'gl-new-ip-banner\').remove()" style="font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#9ca3af;cursor:pointer">Dismiss</button>',
+          '<button data-gl-close="#gl-new-ip-banner" style="font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#9ca3af;cursor:pointer">Dismiss</button>',
         '</div>',
       '</div>'
     ].join('');

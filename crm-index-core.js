@@ -3347,7 +3347,7 @@ function openAISettings(){
       <div style="background:rgba(29,158,117,.1);border:1px solid rgba(29,158,117,.3);border-radius:8px;padding:12px 14px;font-size:13px;color:#1D9E75;margin-bottom:18px">✅ AI features are active. Model: <code style="font-family:var(--ff-mono);font-size:12px">${AI_MODEL}</code></div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:20px;line-height:1.5">To rotate the key: run <code style="font-family:var(--ff-mono);font-size:11px;color:#9ca3af">supabase secrets set ANTHROPIC_API_KEY=sk-ant-...</code> in PowerShell. No frontend change needed.</div>
       <div style="display:flex;gap:10px">
-        <button onclick="document.getElementById('ai-settings-overlay').remove()" style="flex:1;padding:13px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:800;cursor:pointer;font-size:14px">Close</button>
+        <button data-gl-close="#ai-settings-overlay" style="flex:1;padding:13px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:800;cursor:pointer;font-size:14px">Close</button>
       </div>
     </div>`;
   document.body.appendChild(ov);
@@ -3417,7 +3417,7 @@ function showAIModal(title, content, loading=false) {
     <div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:32px;width:100%;max-width:620px;max-height:85vh;overflow-y:auto">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
         <div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:var(--teal)">🤖 ${title}</div>
-        <button onclick="document.getElementById('ai-modal').remove()" style="background:none;border:none;color:var(--muted);font-size:24px;cursor:pointer">✕</button>
+        <button data-gl-close="#ai-modal" style="background:none;border:none;color:var(--muted);font-size:24px;cursor:pointer">✕</button>
       </div>
       <div id="ai-modal-body" style="font-size:14px;color:var(--white);line-height:1.8;white-space:pre-wrap">
         ${loading ? '<div style="text-align:center;padding:40px;color:var(--teal)">🤖 AI is thinking...</div>' : content}
@@ -3425,7 +3425,7 @@ function showAIModal(title, content, loading=false) {
       ${loading ? '' : `
       <div style="display:flex;gap:10px;margin-top:20px">
         <button onclick="navigator.clipboard.writeText(document.getElementById('ai-modal-body').innerText).then(()=>alert('Copied!'))" style="flex:1;padding:11px;background:rgba(0,229,192,.1);border:1px solid rgba(0,229,192,.3);border-radius:8px;color:var(--teal);cursor:pointer;font-weight:700">Copy</button>
-        <button onclick="document.getElementById('ai-modal').remove()" style="padding:11px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer">Close</button>
+        <button data-gl-close="#ai-modal" style="padding:11px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer">Close</button>
       </div>`}
     </div>`;
   m.addEventListener('click', e=>{ if(e.target===m) m.remove(); });
@@ -3914,7 +3914,7 @@ function openClientDetail(cid) {
             <span style="display:inline-block;margin-top:4px;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(0,229,192,.1);color:var(--teal);border:1px solid rgba(0,229,192,.3)">${esc(c.service)}</span>
           </div>
         </div>
-        <button onclick="document.getElementById('client-detail-overlay').remove()" style="background:none;border:none;color:var(--muted);font-size:24px;cursor:pointer">✕</button>
+        <button data-gl-close="#client-detail-overlay" style="background:none;border:none;color:var(--muted);font-size:24px;cursor:pointer">✕</button>
       </div>
 
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">
@@ -3976,7 +3976,7 @@ function openClientDetail(cid) {
         <button onclick="createForClient('${c.id}');document.getElementById('client-detail-overlay').remove()" style="flex:1;min-width:140px;padding:11px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:800;cursor:pointer;font-size:13px">+ New Invoice</button>
         <button onclick="aiSummarizeClient('${c.id}')" style="flex:1;min-width:140px;padding:11px;background:rgba(0,229,192,.1);border:1px solid rgba(0,229,192,.3);border-radius:8px;color:var(--teal);cursor:pointer;font-weight:700;font-size:13px">🤖 AI Summary</button>
         <button onclick="window.glQuoteFromClient&&window.glQuoteFromClient('${c.id}')" style="flex:1;min-width:140px;padding:11px;background:rgba(26,111,255,.1);border:1px solid rgba(26,111,255,.35);border-radius:8px;color:#6b9fff;cursor:pointer;font-weight:700;font-size:13px">📋 Quote Builder</button>
-        <button onclick="document.getElementById('client-detail-overlay').remove()" style="padding:11px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer;font-size:13px">Close</button>
+        <button data-gl-close="#client-detail-overlay" style="padding:11px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer;font-size:13px">Close</button>
       </div>
     </div>`;
   ov.addEventListener('click', e=>{ if(e.target===ov) ov.remove(); });
@@ -4058,7 +4058,7 @@ function openReports() {
     <div style="background:#142238;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:32px;width:100%;max-width:800px;max-height:90vh;overflow-y:auto">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:28px">
         <div style="font-family:var(--ff-disp);font-size:24px;letter-spacing:2px;color:var(--teal)">📊 MONTHLY REPORTS</div>
-        <button onclick="document.getElementById('reports-overlay').remove()" style="background:none;border:none;color:var(--muted);font-size:24px;cursor:pointer">✕</button>
+        <button data-gl-close="#reports-overlay" style="background:none;border:none;color:var(--muted);font-size:24px;cursor:pointer">✕</button>
       </div>
 
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:28px">
@@ -4117,7 +4117,7 @@ function openReports() {
       <div style="display:flex;gap:10px;margin-top:24px">
         <button onclick="openArAging()" style="flex:1;padding:12px;background:rgba(245,200,66,.1);border:1px solid rgba(245,200,66,.3);border-radius:8px;color:#f5c842;font-weight:700;cursor:pointer;font-size:13px">📋 Accounts Receivable (A/R) Aging — Full Drill-Down</button>
         <button onclick="aiGenerateInsights()" style="flex:1;padding:12px;background:rgba(0,229,192,.1);border:1px solid rgba(0,229,192,.3);border-radius:8px;color:var(--teal);font-weight:700;cursor:pointer;font-size:13px">🤖 AI Business Insights</button>
-        <button onclick="document.getElementById('reports-overlay').remove()" style="padding:12px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer">Close</button>
+        <button data-gl-close="#reports-overlay" style="padding:12px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--muted);cursor:pointer">Close</button>
       </div>
     </div>`;
   ov.addEventListener('click', e=>{ if(e.target===ov) ov.remove(); });
@@ -4567,7 +4567,7 @@ function viewClientEnhanced(clientId) {
             <div style="font-size:11px;color:var(--muted)">${esc(client.contact)} · ${esc(client.service)}</div>
           </div>
         </div>
-        <button onclick="document.getElementById('client-detail-overlay').remove()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer">✕</button>
+        <button data-gl-close="#client-detail-overlay" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer">✕</button>
       </div>
 
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-bottom:20px">
