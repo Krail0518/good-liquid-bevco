@@ -31,8 +31,8 @@ const ROOT = path.resolve(__dirname, '..');
 const CORE_FILES = [
   'index.html',
   'crm-index-core.js',
-  // Capabilities extracted out of the core, in load order. Add each new one
-  // here as GL-037 proceeds — that is the whole reason this file exists.
+  // Capabilities extracted out of the core, in load order. Regenerated from
+  // the actual <script> tags in index.html, so it cannot drift.
   'src/modules/invoicing/ar-aging.js',
   'src/modules/invoicing/pay-link.js',
   'src/modules/customers/client-notes.js',
@@ -47,6 +47,16 @@ const CORE_FILES = [
   'src/modules/customers/health-score-ai.js',
   'src/modules/production/time-tracking.js',
   'src/modules/production/tour-booking.js',
+  'src/modules/shared/notifications.js',
+  'src/modules/shared/calendar.js',
+  'src/modules/shared/tasks.js',
+  'src/modules/shared/password-change.js',
+  'src/modules/invoicing/follow-up.js',
+  'src/modules/shared/ai-meeting-notes.js',
+  'src/modules/shared/ai-drafts.js',
+  'src/modules/shared/ai-chat.js',
+  'src/modules/production/ai-optimizer.js',
+  'src/modules/shared/mobile-menu.js',
 ];
 
 function read(f) {
