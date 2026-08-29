@@ -77,10 +77,19 @@
  *   /src/modules/invoicing/pay-link.js
  *   /src/modules/invoicing/pricing-settings.js
  *
+ *   /src/modules/pipeline/attention.js
+ *   /src/modules/pipeline/booking-review.js
+ *   /src/modules/pipeline/calendar.js
+ *   /src/modules/pipeline/deal-brief.js
  *   /src/modules/pipeline/deal-detail.js
+ *   /src/modules/pipeline/deal-docs.js
+ *   /src/modules/pipeline/followups.js
+ *   /src/modules/pipeline/formulation.js
+ *   /src/modules/pipeline/meeting-notes.js
  *   /src/modules/pipeline/multi-pipeline.js
  *   /src/modules/pipeline/referrals.js
  *   /src/modules/pipeline/revenue-forecast.js
+ *   /src/modules/pipeline/scheduling.js
  *   /src/modules/pipeline/stale-deals.js
  *
  *   /src/modules/production/ai-optimizer.js

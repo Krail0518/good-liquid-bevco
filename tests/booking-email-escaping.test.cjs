@@ -163,7 +163,7 @@ check('stripAngles is still applied at ingestion (defence in depth)',
   'escaping at the template is the fix, but the strip keeps payloads out of storage');
 check('what gets persisted is still the stripped value',
   /booker_name:\s*safeName/.test(src) && /notes:\s*safeNotes/.test(src),
-  'the row feeds crm-calendar.js, which tests/calendar-xss.test.cjs covers');
+  'the row feeds src/modules/pipeline/calendar.js, which tests/calendar-xss.test.cjs covers');
 
 console.log('\n' + (failures === 0 ? 'ALL PASSED' : failures + ' CHECK(S) FAILED'));
 process.exit(failures === 0 ? 0 : 1);
