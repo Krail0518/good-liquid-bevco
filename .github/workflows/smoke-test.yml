@@ -118,6 +118,10 @@ jobs:
       # A credential committed to the repo is public forever. No browser needed.
       - name: Run committed-secret tests
         run: node tests/committed-secrets.test.cjs
+      # client-docs is private: no URL may be persisted, the file_path column
+      # must exist, and the page must offer a way back out. No browser needed.
+      - name: Run documents storage tests
+        run: node tests/documents-storage.test.cjs
 
       - name: Run smoke test
         env:
