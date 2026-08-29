@@ -31,6 +31,9 @@ const ROOT = path.resolve(__dirname, '..');
 const CORE_FILES = [
   'index.html',
   'crm-index-core.js',
+  // Capabilities extracted out of the core, in load order. Add each new one
+  // here as GL-037 proceeds — that is the whole reason this file exists.
+  'src/modules/ar-aging.js',
 ];
 
 function read(f) {
