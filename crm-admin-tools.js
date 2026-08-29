@@ -1033,13 +1033,56 @@
     var ov = document.createElement('div');
     ov.id = 'gl-clear-cache-modal';
     ov.setAttribute('style','position:fixed;inset:0;z-index:900;background:rgba(6,13,26,.85);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px');
+    /* These blobs are NOT unconditionally safe to wipe, which is what this
+       modal used to claim while pre-checking every one that had data.
+
+       Each is the source that an index.html backfill reads on its way into
+       Supabase, and every backfill deliberately bails WITHOUT setting its
+       `<key>_migrated` flag when the insert is rejected — the blob is kept on
+       purpose as the surviving copy. Deleting an un-migrated key here destroys
+       the only copy of that data, from a screen headed "safe to wipe" with the
+       box already ticked.
+
+       So a key is only offered for deletion when its migration flag is set.
+       Un-migrated keys with data are listed unchecked, in the warning colour,
+       and require a second explicit confirmation. */
+    var TRANSIENT_KEYS = ['gl_active_timer'];   // genuinely per-device, no cloud copy expected
+    function migrationState(k){
+      if(TRANSIENT_KEYS.indexOf(k) !== -1) return 'transient';
+      try {
+        if(localStorage.getItem(k + '_migrated') === '1') return 'migrated';
+      } catch(e){}
+      return 'unmigrated';
+    }
+
+    var unmigratedWithData = [];
     var stateRows = APP_STATE_KEYS.map(function(k){
       var len = present[k];
       var hasData = len !== undefined && len > 2;
-      return '<label style="display:flex;align-items:center;gap:9px;padding:6px 0;font-size:12px;color:'+(hasData?'#fff':'var(--muted)')+'">'+
-        '<input type="checkbox" class="gl-cc-state" data-k="'+k+'"'+(hasData?' checked':'')+'>'+
+      var state = migrationState(k);
+      var risky = hasData && state === 'unmigrated';
+      if(risky) unmigratedWithData.push(k);
+
+      var colour = risky ? '#f5c842' : (hasData ? '#fff' : 'var(--muted)');
+      var note;
+      if(risky){
+        note = '<span style="color:#f5c842;font-size:10px">~'+len+' bytes — NOT yet migrated to Supabase. '+
+               'Deleting this destroys the only copy.</span>';
+      } else if(hasData && state === 'migrated'){
+        note = '<span style="color:var(--muted);font-size:10px">~'+len+' bytes — already in Supabase</span>';
+      } else if(hasData){
+        note = '<span style="color:var(--muted);font-size:10px">~'+len+' bytes — per-device only</span>';
+      } else {
+        note = '<span style="color:var(--muted);font-size:10px">(empty)</span>';
+      }
+
+      // Pre-check only what is genuinely safe: has data, and is either already
+      // in Supabase or never belonged there.
+      var preCheck = hasData && state !== 'unmigrated';
+      return '<label style="display:flex;align-items:center;gap:9px;padding:6px 0;font-size:12px;color:'+colour+'">'+
+        '<input type="checkbox" class="gl-cc-state" data-k="'+k+'" data-risky="'+(risky?'1':'0')+'"'+(preCheck?' checked':'')+'>'+
         '<code style="font-family:var(--ff-mono);font-size:11px">'+k+'</code>'+
-        (hasData?'<span style="color:var(--muted);font-size:10px">~'+len+' bytes</span>':'<span style="color:var(--muted);font-size:10px">(empty)</span>')+
+        note+
       '</label>';
     }).join('');
     var configRows = CONFIG_KEYS.map(function(k){
@@ -1054,7 +1097,12 @@
       '<div style="background:#142238;border:1px solid rgba(231,76,60,.3);border-radius:14px;padding:26px;width:100%;max-width:520px;max-height:88vh;overflow-y:auto">' +
         '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:#ff8579;margin-bottom:6px">🗑️ CLEAR LOCAL CACHE</div>' +
         '<div style="font-size:12px;color:var(--muted);margin-bottom:18px;line-height:1.6">Wipes selected keys from this browser\'s localStorage. Cloud data (Supabase) is untouched.</div>' +
-        '<div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">APP STATE (safe to wipe)</div>' +
+        '<div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">APP STATE</div>' +
+        (unmigratedWithData.length
+          ? '<div style="background:rgba(245,200,66,.06);border:1px solid rgba(245,200,66,.25);border-radius:6px;padding:9px 12px;font-size:11px;color:#f5c842;margin-bottom:10px;line-height:1.5">'+
+            '⚠ ' + unmigratedWithData.length + ' key' + (unmigratedWithData.length===1?' has':'s have') +
+            ' data that is <b>not yet in Supabase</b>. Those are unchecked and shown in amber — deleting one destroys the only copy.</div>'
+          : '') +
         '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:10px 14px;margin-bottom:14px">' + stateRows + '</div>' +
         '<div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">CONFIGURATION (unchecked by default)</div>' +
         '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:10px 14px;margin-bottom:14px">' + configRows + '</div>' +
@@ -1072,6 +1120,24 @@
         toRemove.push(cb.getAttribute('data-k'));
       });
       if(toRemove.length === 0){ alert('Nothing selected.'); return; }
+
+      // Second gate for anything holding the only copy. The generic confirm
+      // below lists key names, which tells an admin nothing about which of
+      // them is unrecoverable.
+      var risky = [];
+      ov.querySelectorAll('input.gl-cc-state:checked').forEach(function(cb){
+        if(cb.getAttribute('data-risky') === '1') risky.push(cb.getAttribute('data-k'));
+      });
+      if(risky.length){
+        if(!confirm(
+          'PERMANENT DATA LOSS\n\n' +
+          risky.length + ' selected key' + (risky.length===1?' has':'s have') +
+          ' data that has NOT been migrated to Supabase:\n\n  ' + risky.join('\n  ') +
+          '\n\nThis browser holds the only copy. Deleting cannot be undone and the ' +
+          'data is not recoverable from the cloud.\n\nDelete anyway?'
+        )) return;
+      }
+
       if(!confirm('Remove ' + toRemove.length + ' localStorage keys and reload?\n\n' + toRemove.join('\n'))) return;
       toRemove.forEach(function(k){ try { localStorage.removeItem(k); } catch(e){} });
       location.reload();

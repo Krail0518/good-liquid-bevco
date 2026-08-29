@@ -41,6 +41,30 @@ Deno.serve(async (req) => {
   if (!signing || !signing.signature || !signing.timestamp || !signing.token) {
     return new Response("missing signature", { status: 401 });
   }
+  // Reject stale callbacks BEFORE spending a constant-time HMAC on them.
+  // The signature proves Mailgun produced this payload; it does not prove
+  // Mailgun produced it recently. Without a freshness check a single captured
+  // callback stays valid forever, so anyone who ever observed one could replay
+  // it to flip an email_log row back to delivered/opened/bounced at will —
+  // the signature would verify every time, because it is the same real
+  // signature. Mailgun signs `timestamp + token`, so the timestamp is covered
+  // by the HMAC and cannot be edited without breaking it.
+  {
+    const ts = Number(signing.timestamp);
+    if (!Number.isFinite(ts)) {
+      return new Response("bad timestamp", { status: 401 });
+    }
+    // Mailgun sends Unix seconds. Allow a window either side: generous enough
+    // for retries and clock skew, short enough that a captured callback is
+    // useless within minutes.
+    const skewSeconds = Math.abs(Math.floor(Date.now() / 1000) - ts);
+    const MAX_AGE = 15 * 60;
+    if (skewSeconds > MAX_AGE) {
+      console.warn(`[mailgun-webhook] rejected stale callback: ${skewSeconds}s outside the window`);
+      return new Response("stale callback", { status: 401 });
+    }
+  }
+
   {
     const ok = await verifyMailgunSignature(signing.timestamp, signing.token, signing.signature, signingKey);
     if (!ok) return new Response("bad signature", { status: 401 });
