@@ -39,7 +39,8 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write   # only used by the update_baseline path
+  contents: write        # only used by the update_baseline path
+  pull-requests: read    # the Dependabot gate below reads the PR file list
 
 jobs:
   drift:
@@ -51,8 +52,56 @@ jobs:
           # Needed so the update path can commit back to the branch.
           ref: ${{ github.head_ref || github.ref_name }}
 
+      # Dependabot pull requests run in a restricted context and cannot read
+      # Actions secrets, so SUPABASE_ACCESS_TOKEN arrives empty and this check
+      # can only fail. `drift` is a REQUIRED status check, so that made every
+      # Dependabot PR permanently unmergeable — four of them were already stuck
+      # when this was found.
+      #
+      # A permanently red required check is worse than the check not existing:
+      # it teaches everyone that red is normal. That is the same failure this
+      # repository's whole test strategy is built to avoid.
+      #
+      # Skipping is safe ONLY because such a PR cannot reach authorization at
+      # all — the github-actions ecosystem updates workflow files and nothing
+      # else. That is VERIFIED here, not assumed: if a Dependabot PR ever
+      # touches a file outside .github/, this fails loudly instead of skipping.
+      - name: Decide whether drift can run
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.actor }}" != "dependabot[bot]" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          NUM="${{ github.event.pull_request.number }}"
+          if [ -z "$NUM" ]; then
+            echo "Dependabot actor outside a pull request — running drift normally."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          FILES=$(gh api "repos/${{ github.repository }}/pulls/$NUM/files" --paginate --jq '.[].filename')
+          echo "Files in this Dependabot PR:"
+          echo "$FILES" | sed 's/^/  /'
+          OUTSIDE=$(printf '%s\n' "$FILES" | grep -v '^\.github/' || true)
+          if [ -n "$OUTSIDE" ]; then
+            echo ""
+            echo "::error::A Dependabot PR touched files outside .github/, so it cannot be"
+            echo "::error::assumed unable to affect authorization. Drift must run, but the"
+            echo "::error::token is unavailable in this context. Review manually:"
+            printf '%s\n' "$OUTSIDE" | sed 's/^/  /'
+            exit 1
+          fi
+          echo ""
+          echo "Dependabot PR touches only .github/ — it cannot change any policy,"
+          echo "grant, RLS flag or bucket. Skipping the live drift query, which"
+          echo "cannot run without repository secrets in this context."
+          echo "run=false" >> "$GITHUB_OUTPUT"
+
       - name: Check for authorization drift
-        if: ${{ github.event.inputs.update_baseline != 'true' }}
+        if: ${{ github.event.inputs.update_baseline != 'true' && steps.gate.outputs.run != 'false' }}
         env:
           # Read-only use: the script runs one SELECT-only snapshot query.
           # Passed as a header from the runner environment, never echoed.
