@@ -79,7 +79,7 @@ check('the core script is referenced root-absolutely',
 // core still calls into them — renderArAgingSection() from openReports(),
 // openArAging() from an onclick — so a module that loads BEFORE the core,
 // or that defers, breaks those calls. Same contract as the core itself.
-const modules = srcs.filter((x) => x.startsWith('/src/modules/'));
+const modules = srcs.filter((x) => x.startsWith('/src/'));
 check('every extracted module loads after the core script',
   modules.every((m) => srcs.indexOf(m) > coreAt),
   'modules: ' + modules.join(', ') + ' — the core calls into them, so they ',
@@ -93,7 +93,7 @@ for (const m of modules) {
   check('module exists on disk: ' + m,
     fs.existsSync(path.join(ROOT, m.slice(1))));
 }
-// Every module on disk must actually be loaded. A file under src/modules
+// Every module on disk must actually be loaded. A file anywhere under src/
 // with no script tag is dead weight that looks like shipped code — the same
 // shape as a test wired to no workflow (GL-039).
 function walkModules(dir, acc) {
@@ -104,8 +104,8 @@ function walkModules(dir, acc) {
   }
   return acc;
 }
-const onDisk = fs.existsSync(path.join(ROOT, 'src/modules'))
-  ? walkModules(path.join(ROOT, 'src/modules'), []).map((f) =>
+const onDisk = fs.existsSync(path.join(ROOT, 'src'))
+  ? walkModules(path.join(ROOT, 'src'), []).map((f) =>
       '/' + path.relative(ROOT, f).split(path.sep).join('/'))
   : [];
 const unloaded = onDisk.filter((f) => !srcs.includes(f));
@@ -125,6 +125,20 @@ check('no module contains a stray "moved to" pointer',
 check('the core lists every extracted module in its manifest',
   onDisk.every((f) => fs.readFileSync(path.join(ROOT, 'crm-index-core.js'), 'utf8').includes(f)),
   'the manifest is how someone reading the core finds where a capability went');
+// The agreed taxonomy (GL-037): business capabilities under
+// src/modules/<domain>/, infrastructure under src/services/, cross-cutting
+// helpers under src/shared/. There is exactly ONE shared location -- there
+// were briefly two, src/modules/shared and src/shared, which is the kind of
+// ambiguity that makes people file things by coin toss.
+check('there is no second shared folder under src/modules',
+  !fs.existsSync(path.join(ROOT, 'src/modules/shared')),
+  'src/shared is the one shared location; two of them means neither is the rule');
+const ALLOWED_ROOTS = ['src/modules', 'src/services', 'src/shared'];
+const strays = onDisk.filter((f) =>
+  !ALLOWED_ROOTS.some((r) => f.startsWith('/' + r + '/')));
+check('every file under src/ sits in modules, services or shared',
+  strays.length === 0,
+  strays.join(', ') + ' — a fourth location means the taxonomy is not a rule');
 // ── it must stay a classic, blocking script ──────────────────────────
 const coreTag = tags.find((a) => /\/crm-index-core\.js/.test(a)) || '';
 check('the core script has no defer',
