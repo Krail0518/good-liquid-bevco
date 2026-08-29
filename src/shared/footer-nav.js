@@ -1,4 +1,4 @@
-/* crm-footer-fix.js — Override footer/nav links with direct event listeners
+/* footer-nav.js — Override footer/nav links with direct event listeners
    Fixes escaped-quote onclick attributes in the generated HTML */
 (function(){
   'use strict';
