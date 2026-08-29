@@ -1,5 +1,5 @@
 /* ============================================================
-   crm-onboarding.js — pipeline lead → client → self-service intake
+   onboarding.js — pipeline lead → client → self-service intake
    ============================================================
    The whole staff side of client onboarding, kept in its own module (the
    public intake page is onboard.html; the schema + token RPCs are migration
@@ -302,7 +302,7 @@
     } catch(e){ el.innerHTML = '<span style="color:var(--muted)">Status unavailable.</span>'; }
   }
 
-  // Section HTML consumed by glClientInfoSections (crm-client-detail.js).
+  // Section HTML consumed by glClientInfoSections (client-detail.js).
   // The popup builder is synchronous, so this renders instantly with a
   // placeholder and fills the live status as soon as the element mounts.
   window.glClientOnboardingSection = function(c){

@@ -1,5 +1,5 @@
 /* ============================================================
-   crm-intake.js — staff view / edit of the product intake
+   intake.js — staff view / edit of the product intake
    ============================================================
    Shows the questionnaire answers (from intake-questions.js / the
    product_intake table) on a lead's Deal Details panel and on a client card,

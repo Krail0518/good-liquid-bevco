@@ -1,5 +1,5 @@
 /*
- * artwork.test.cjs — the artwork / SKU manager (crm-artwork.js).
+ * artwork.test.cjs — the artwork / SKU manager (src/modules/customers/artwork.js).
  * Verifies the core: existing SKUs render with View/Download, the add form is
  * present, adding a SKU (name + file) uploads to storage and inserts one
  * client_artwork row carrying the sku_name + stored file_path, and deleting a

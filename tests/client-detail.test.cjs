@@ -1,6 +1,6 @@
 /*
  * client-detail.test.cjs — the shared client-detail info block
- * (crm-client-detail.js, window.glClientInfoSections). Verifies the two
+ * (src/modules/customers/client-detail.js, window.glClientInfoSections). Verifies the two
  * things the fix is about: (1) every section renders even when the client is
  * sparse, so the read-only card no longer hides half the fields; (2) an
  * uploaded compliance document exposes a "View" link, and a doc marked

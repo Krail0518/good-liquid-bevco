@@ -50,11 +50,21 @@
  * error. This file calls into several of them, always at runtime -- a
  * template literal or a click -- never at load time.
  *
+ *   /src/modules/customers/artwork.js
+ *   /src/modules/customers/client-detail.js
+ *   /src/modules/customers/client-email.js
  *   /src/modules/customers/client-notes.js
  *   /src/modules/customers/document-storage.js
+ *   /src/modules/customers/edit-client.js
  *   /src/modules/customers/email-templates.js
  *   /src/modules/customers/health-score-ai.js
  *   /src/modules/customers/health-score.js
+ *   /src/modules/customers/intake.js
+ *   /src/modules/customers/onboarding.js
+ *   /src/modules/customers/portal-customer.js
+ *   /src/modules/customers/portal-public.js
+ *   /src/modules/customers/portal.js
+ *   /src/modules/customers/requests.js
  *   /src/modules/customers/tags.js
  *
  *   /src/modules/invoicing/accounting.js
@@ -2479,7 +2489,7 @@ Greet them by first name (${firstName}). Acknowledge what they're building and w
 window.openLeadEmailComposer = openLeadEmailComposer;
 
 // The pipeline→client→onboarding flow (glConvertLeadToOnboarding, the
-// onboardings board, prefill mapping) lives in its own module, crm-onboarding.js
+// onboardings board, prefill mapping) lives in its own module, src/modules/customers/onboarding.js
 // — kept out of index.html on purpose. The "🚀 Convert to Client & Onboard"
 // button above calls window.glConvertLeadToOnboarding, defined there.
 
@@ -3171,7 +3181,7 @@ function openDealDetail(stage, idx){
   if(!d) return;
   currentDealStage = stage;
   currentDealIdx = idx;
-  // Bridge to window so external modules (crm-onboarding.js) can read which
+  // Bridge to window so external modules (src/modules/customers/onboarding.js) can read which
   // lead is open — index.html keeps these as lexical `let`, invisible to
   // other scripts otherwise.
   window.currentDealStage = stage;
