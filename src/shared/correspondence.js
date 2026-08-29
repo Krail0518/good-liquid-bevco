@@ -86,7 +86,7 @@ function glShowEmailFull(key, i){
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px">' +
         '<div style="font-size:11px;letter-spacing:1.5px;color:' + (inb?'#6b9fff':'var(--teal)') + '">' +
           (inb ? '← RECEIVED' : '→ SENT') + '</div>' +
-        '<button onclick="document.getElementById(\'gl-email-full\').remove()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1">&#x2715;</button>' +
+        '<button data-gl-close="#gl-email-full" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1">&#x2715;</button>' +
       '</div>' +
       '<div style="font-size:16px;font-weight:700;line-height:1.35;margin-bottom:6px">' + glCorrEsc(row.subject || '(no subject)') + '</div>' +
       '<div style="font-size:11px;color:var(--muted);margin-bottom:14px">' + who + ' &middot; ' + glCorrEsc(glCorrWhen(row)) + '</div>' +

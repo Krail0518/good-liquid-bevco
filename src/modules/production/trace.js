@@ -167,7 +167,7 @@
       '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:22px;width:100%;max-width:520px;color:#fff">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
           '<div style="font-family:var(--ff-disp);font-size:17px;letter-spacing:1.5px;color:var(--teal)">＋ ADD LOT INPUT</div>' +
-          '<button onclick="document.getElementById(\'gl-trace-input\').remove()" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button></div>' +
+          '<button data-gl-close="#gl-trace-input" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button></div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
           '<div style="grid-column:1/3"><label style="display:block;font-size:11px;color:#9aa7bd;margin:0 0 4px">Material *</label><input id="ti-material" style="'+INP+'"></div>' +
           '<div><label style="display:block;font-size:11px;color:#9aa7bd;margin:0 0 4px">Lot code</label><input id="ti-lot" style="'+INP+'"></div>' +
@@ -179,7 +179,7 @@
         '</div>' +
         '<div id="ti-msg" style="display:none;font-size:12.5px;margin:10px 0 0;padding:9px 12px;border-radius:8px"></div>' +
         '<div style="display:flex;gap:10px;margin-top:14px">' +
-          '<button onclick="document.getElementById(\'gl-trace-input\').remove()" style="flex:1;padding:11px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:8px;color:#dfe7f1;font-size:13px;cursor:pointer">Cancel</button>' +
+          '<button data-gl-close="#gl-trace-input" style="flex:1;padding:11px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:8px;color:#dfe7f1;font-size:13px;cursor:pointer">Cancel</button>' +
           '<button id="ti-save" style="flex:1;padding:11px;background:rgba(0,229,192,.14);border:1px solid rgba(0,229,192,.35);border-radius:8px;color:var(--teal);font-weight:700;font-size:13px;cursor:pointer">Save input</button>' +
         '</div>' +
       '</div>';
@@ -223,7 +223,7 @@
       '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:22px;width:100%;max-width:520px;color:#fff">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
           '<div style="font-family:var(--ff-disp);font-size:17px;letter-spacing:1.5px;color:var(--teal)">＋ ADD SHIPMENT</div>' +
-          '<button onclick="document.getElementById(\'gl-trace-ship\').remove()" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button></div>' +
+          '<button data-gl-close="#gl-trace-ship" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button></div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
           '<div style="grid-column:1/3"><label style="display:block;font-size:11px;color:#9aa7bd;margin:0 0 4px">Customer *</label><input id="ts-customer" style="'+INP+'"></div>' +
           '<div><label style="display:block;font-size:11px;color:#9aa7bd;margin:0 0 4px">Lot code</label><input id="ts-lot" style="'+INP+'"></div>' +
@@ -234,7 +234,7 @@
         '</div>' +
         '<div id="ts-msg" style="display:none;font-size:12.5px;margin:10px 0 0;padding:9px 12px;border-radius:8px"></div>' +
         '<div style="display:flex;gap:10px;margin-top:14px">' +
-          '<button onclick="document.getElementById(\'gl-trace-ship\').remove()" style="flex:1;padding:11px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:8px;color:#dfe7f1;font-size:13px;cursor:pointer">Cancel</button>' +
+          '<button data-gl-close="#gl-trace-ship" style="flex:1;padding:11px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:8px;color:#dfe7f1;font-size:13px;cursor:pointer">Cancel</button>' +
           '<button id="ts-save" style="flex:1;padding:11px;background:rgba(0,229,192,.14);border:1px solid rgba(0,229,192,.35);border-radius:8px;color:var(--teal);font-weight:700;font-size:13px;cursor:pointer">Save shipment</button>' +
         '</div>' +
       '</div>';
@@ -277,7 +277,7 @@
       '<div style="background:#142238;border:1px solid rgba(245,200,66,.3);border-radius:16px;padding:22px;width:100%;max-width:520px;color:#fff">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
           '<div style="font-family:var(--ff-disp);font-size:17px;letter-spacing:1.5px;color:#f5c842">🚨 MOCK RECALL</div>' +
-          '<button onclick="document.getElementById(\'gl-trace-recall\').remove()" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button></div>' +
+          '<button data-gl-close="#gl-trace-recall" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button></div>' +
         '<div style="font-size:12px;color:#9aa7bd;margin-bottom:14px;line-height:1.5">Reconcile units produced against units you can account for on lot <b style="color:#eef4ff">'+esc(lotCode||'—')+'</b>. A ≥98% reconciliation passes; ≥100% is a clean pass.</div>' +
         '<div id="gl-recall-form">' +
           '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
@@ -290,7 +290,7 @@
           '<textarea id="mr-notes" style="'+INP+';min-height:52px;resize:vertical"></textarea>' +
           '<div id="mr-msg" style="display:none;font-size:12.5px;margin:10px 0 0;padding:9px 12px;border-radius:8px"></div>' +
           '<div style="display:flex;gap:10px;margin-top:14px">' +
-            '<button onclick="document.getElementById(\'gl-trace-recall\').remove()" style="flex:1;padding:11px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:8px;color:#dfe7f1;font-size:13px;cursor:pointer">Cancel</button>' +
+            '<button data-gl-close="#gl-trace-recall" style="flex:1;padding:11px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:8px;color:#dfe7f1;font-size:13px;cursor:pointer">Cancel</button>' +
             '<button id="mr-run" style="flex:1;padding:11px;background:rgba(245,200,66,.16);border:1px solid rgba(245,200,66,.4);border-radius:8px;color:#f5c842;font-weight:700;font-size:13px;cursor:pointer">🚨 Run recall</button>' +
           '</div>' +
         '</div>' +
@@ -333,7 +333,7 @@
             '<div style="font-size:12px;color:#9aa7bd;margin-top:2px">reconciled ('+esc(accounted)+' of '+esc(produced)+' units)</div>' +
             '<div style="display:inline-block;margin-top:12px;font-size:13px;font-weight:800;letter-spacing:1px;color:'+(passed?'#04231d':'#2a0d0a')+';background:'+(passed?'#5fcf9e':'#ff8579')+';border-radius:20px;padding:6px 18px">'+(passed?'PASS':'FAIL')+'</div>' +
           '</div>' +
-          '<div style="text-align:right;margin-top:6px"><button onclick="document.getElementById(\'gl-trace-recall\').remove()" style="padding:10px 16px;background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.3);border-radius:8px;color:var(--teal);font-weight:700;font-size:13px;cursor:pointer">Done</button></div>';
+          '<div style="text-align:right;margin-top:6px"><button data-gl-close="#gl-trace-recall" style="padding:10px 16px;background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.3);border-radius:8px;color:var(--teal);font-weight:700;font-size:13px;cursor:pointer">Done</button></div>';
         renderRecentRecalls();
       } catch(e){
         btn.disabled = false;

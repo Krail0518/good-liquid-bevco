@@ -274,7 +274,7 @@
         '<button onclick="glSaveInvoice()" class="cbtn pri" style="flex:1;font-size:14px">&#x1F4BE; Save Invoice</button>'+
         '<button onclick="glSaveAndSend()" class="cbtn" style="flex:1;font-size:14px;background:rgba(26,111,255,.12);border-color:rgba(26,111,255,.35);color:#6b9fff">&#x1F4E4; Save &amp; Send</button>'+
         '<button onclick="glExportPDF()" class="cbtn" style="flex:1;font-size:14px;background:rgba(0,229,192,.08);border-color:rgba(0,229,192,.3);color:var(--teal)">&#x1F4C4; Save &amp; Export PDF</button>'+
-        '<button onclick="document.getElementById(\'gl-inv-builder\').classList.remove(\'show\')" class="cbtn" style="font-size:14px">Cancel</button>'+
+        '<button data-gl-close="#gl-inv-builder" data-gl-close-mode="hide" class="cbtn" style="font-size:14px">Cancel</button>'+
       '</div>';
   }
 
@@ -292,7 +292,7 @@
       ov.innerHTML='<div style="background:#0a1628;border:1px solid rgba(0,229,192,.18);border-radius:18px;width:100%;max-width:820px;margin:0 auto;overflow:hidden">'+
         '<div style="background:#142238;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.07)">'+
           '<div style="display:flex;align-items:center;gap:10px"><div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:var(--white)">NEW INVOICE</div><span id="gl-inv-pricing-badge" style="display:none;font-size:10px;letter-spacing:1.5px;padding:3px 8px;border-radius:4px;background:rgba(245,200,66,.14);color:#f5c842;font-weight:700"></span></div>'+
-          '<button onclick="document.getElementById(\'gl-inv-builder\').classList.remove(\'show\')" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer">&#x2715;</button>'+
+          '<button data-gl-close="#gl-inv-builder" data-gl-close-mode="hide" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer">&#x2715;</button>'+
         '</div>'+
         '<div style="padding:24px" id="gl-inv-body"></div>'+
       '</div>';

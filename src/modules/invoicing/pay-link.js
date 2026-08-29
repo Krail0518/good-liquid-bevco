@@ -33,7 +33,7 @@ function generatePayLink(invId){
   modal.className = 'modal-ov show';
   modal.innerHTML = `
     <div class="modal-box" style="width:480px">
-      <div class="modal-title">💳 Payment Link — ${inv.id} <span class="modal-close" onclick="this.closest('.modal-ov').remove()">✕</span></div>
+      <div class="modal-title">💳 Payment Link — ${inv.id} <span class="modal-close" data-gl-close="">✕</span></div>
       <div style="background:rgba(0,229,192,.06);border:1px solid rgba(0,229,192,.15);border-radius:10px;padding:16px;margin-bottom:16px">
         <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Share this link with ${esc(inv.clientName)} to request payment:</div>
         <div style="font-family:var(--ff-mono);font-size:11px;color:var(--teal);word-break:break-all;line-height:1.6">${payUrl}</div>
@@ -57,7 +57,7 @@ function generatePayLink(invId){
       </div>
       <div style="display:flex;gap:8px">
         <button class="cbtn pri" onclick="navigator.clipboard.writeText('${payUrl}').then(()=>alert('Link copied!'))" style="flex:1">📋 Copy Link</button>
-        <button class="cbtn" onclick="this.closest('.modal-ov').remove()">Close</button>
+        <button class="cbtn" data-gl-close="">Close</button>
       </div>
     </div>`;
   modal.addEventListener('click', e => { if(e.target === modal) modal.remove(); });

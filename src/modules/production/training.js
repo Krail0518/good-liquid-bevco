@@ -215,7 +215,7 @@
       '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:22px;width:100%;max-width:560px;color:#fff">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
           '<div style="font-family:var(--ff-disp);font-size:17px;letter-spacing:1.5px;color:var(--teal)">'+(editing?'✏️ EDIT TRAINING RECORD':'＋ ADD TRAINING RECORD')+'</div>' +
-          '<button onclick="document.getElementById(\'gl-training-edit\').remove()" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+          '<button data-gl-close="#gl-training-edit" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
         '</div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 12px">' +
           '<div>'+fld('Employee name', 'tr-employee', 'text', rec.employee_name, true, 'e.g. Jane Smith')+'</div>' +
@@ -231,7 +231,7 @@
         '<div id="tr-msg" style="display:none;font-size:12.5px;margin:12px 0 0;padding:9px 12px;border-radius:8px"></div>' +
         '<div style="display:flex;gap:10px;margin-top:14px">' +
           (editing ? '<button id="tr-delete" style="padding:11px 14px;background:rgba(255,133,121,.12);border:1px solid rgba(255,133,121,.4);border-radius:8px;color:#ff8579;font-size:13px;cursor:pointer">Delete</button>' : '') +
-          '<button onclick="document.getElementById(\'gl-training-edit\').remove()" style="flex:1;padding:11px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:8px;color:#dfe7f1;font-size:13px;cursor:pointer">Cancel</button>' +
+          '<button data-gl-close="#gl-training-edit" style="flex:1;padding:11px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:8px;color:#dfe7f1;font-size:13px;cursor:pointer">Cancel</button>' +
           '<button id="tr-save" style="flex:1;padding:11px;background:rgba(0,229,192,.14);border:1px solid rgba(0,229,192,.35);border-radius:8px;color:var(--teal);font-weight:700;font-size:13px;cursor:pointer">💾 Save</button>' +
         '</div>' +
       '</div>';

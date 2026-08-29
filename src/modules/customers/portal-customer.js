@@ -139,7 +139,7 @@
       '<div style="background:#142238;border:1px solid rgba(0,229,192,.25);border-radius:14px;padding:28px;width:100%;max-width:520px;color:#eef4ff">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
           '<div style="font-size:18px;font-weight:900;color:#00e5c0;letter-spacing:2px">' + escHtml((labels[kind]||labels.other).toUpperCase()) + '</div>' +
-          '<button onclick="document.getElementById(\'gl-cust-req\').remove()" style="background:none;border:0;color:#6b87ad;font-size:22px;cursor:pointer">×</button>' +
+          '<button data-gl-close="#gl-cust-req" style="background:none;border:0;color:#6b87ad;font-size:22px;cursor:pointer">×</button>' +
         '</div>' +
         '<div style="font-size:12px;color:#9ca3af;margin-bottom:18px;line-height:1.5">Mike will reply by email within 1 business day.</div>' +
         '<div style="font-size:11px;letter-spacing:1.5px;color:#6b87ad;margin-bottom:6px">SUBJECT (OPTIONAL)</div>' +
@@ -148,7 +148,7 @@
         '<textarea id="gl-cr-body" rows="6" placeholder="' + escHtml(placeholders[kind] || placeholders.other) + '" style="width:100%;padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#eef4ff;font-size:13px;margin-bottom:14px;box-sizing:border-box;font-family:inherit;resize:vertical"></textarea>' +
         '<div id="gl-cr-msg" style="display:none;margin-bottom:10px;padding:8px 12px;border-radius:6px;font-size:12px"></div>' +
         '<div style="display:flex;gap:10px;justify-content:flex-end">' +
-          '<button onclick="document.getElementById(\'gl-cust-req\').remove()" class="cbtn" style="background:rgba(255,255,255,.06);color:#eef4ff;border:1px solid rgba(255,255,255,.12);padding:9px 16px;border-radius:6px;font-size:13px;cursor:pointer">Cancel</button>' +
+          '<button data-gl-close="#gl-cust-req" class="cbtn" style="background:rgba(255,255,255,.06);color:#eef4ff;border:1px solid rgba(255,255,255,.12);padding:9px 16px;border-radius:6px;font-size:13px;cursor:pointer">Cancel</button>' +
           '<button id="gl-cr-send" class="cbtn pri" style="background:#00e5c0;color:#0a1628;border:0;padding:9px 20px;border-radius:6px;font-size:13px;font-weight:800;cursor:pointer">Submit</button>' +
         '</div>' +
       '</div>';

@@ -82,14 +82,14 @@ async function openClientNote(clientId){
   modal.className = 'modal-ov show';
   modal.innerHTML = `
     <div class="modal-box" style="width:500px">
-      <div class="modal-title">📝 Notes — ${esc(client.name)} <span class="modal-close" onclick="this.closest('.modal-ov').remove()">✕</span></div>
+      <div class="modal-title">📝 Notes — ${esc(client.name)} <span class="modal-close" data-gl-close="">✕</span></div>
       <div style="max-height:280px;overflow-y:auto;margin-bottom:12px" id="cn-list">
         <div style="color:var(--muted);font-size:13px">Loading…</div>
       </div>
       <textarea class="finp" id="cn-input" rows="3" placeholder="Add a note…" style="resize:none;margin-bottom:10px"></textarea>
       <div style="display:flex;gap:8px">
         <button class="cbtn pri" onclick="saveClientNote('${clientId}')" style="flex:1">Add Note</button>
-        <button class="cbtn" onclick="this.closest('.modal-ov').remove()">Close</button>
+        <button class="cbtn" data-gl-close="">Close</button>
       </div>
     </div>`;
   modal.addEventListener('click', e => { if(e.target === modal) modal.remove(); });

@@ -67,7 +67,7 @@ async function openEmailTemplates(){
   modal.className = 'modal-ov show';
   modal.innerHTML = `
     <div class="modal-box" style="width:600px;max-height:85vh;overflow-y:auto">
-      <div class="modal-title">📧 Email Templates <span class="modal-close" onclick="document.getElementById('email-templates-modal').classList.remove('show')">✕</span></div>
+      <div class="modal-title">📧 Email Templates <span class="modal-close" data-gl-close="#email-templates-modal" data-gl-close-mode="hide">✕</span></div>
       <div id="et-list"></div>
       <div style="margin-top:16px;border-top:1px solid rgba(255,255,255,.07);padding-top:16px">
         <div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:10px">CREATE NEW TEMPLATE</div>

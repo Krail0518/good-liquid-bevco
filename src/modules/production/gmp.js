@@ -174,7 +174,7 @@
     ov.innerHTML =
       '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:22px;width:100%;max-width:720px;color:#fff">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">'+(onlyCode?('🛡️ '+esc(singleTitle.toUpperCase())):'🧾 LOG TODAY’S GMP')+'</div>' +
-          '<button onclick="document.getElementById(\'gl-gmp-daily\').remove()" style="background:none;border:none;color:#9aa7bd;font-size:22px;cursor:pointer">✕</button></div>' +
+          '<button data-gl-close="#gl-gmp-daily" style="background:none;border:none;color:#9aa7bd;font-size:22px;cursor:pointer">✕</button></div>' +
         '<div style="font-size:12px;color:#9aa7bd;margin-bottom:14px;line-height:1.5">'+(onlyCode?'Shared details (date, operator, line) are recorded with this entry.':'Shared details are typed once and copied into every form you fill in below.')+'</div>' +
         '<div style="background:rgba(0,229,192,.05);border:1px solid rgba(0,229,192,.18);border-radius:10px;padding:12px 14px;margin-bottom:14px">' +
           '<div style="font-size:10.5px;letter-spacing:1.5px;color:var(--teal);margin-bottom:8px">SHARED — ENTERED ONCE</div>' +
@@ -301,7 +301,7 @@
           '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
             '<div style="font-family:var(--ff-disp);font-size:17px;letter-spacing:1.5px;color:var(--teal)">'+esc(tpl.title)+'</div>' +
             '<div><button onclick="window.glOpenDailyGMP('+(tpl.in_daily===false?("'"+esc(code)+"'"):'')+')" style="padding:8px 14px;background:rgba(0,229,192,.12);color:var(--teal);border:1px solid rgba(0,229,192,.3);border-radius:7px;cursor:pointer;font-size:12px;margin-right:8px">➕ New entry</button>' +
-            '<button onclick="document.getElementById(\'gl-gmp-reg\').remove()" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button></div></div>' +
+            '<button data-gl-close="#gl-gmp-reg" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button></div></div>' +
           (recs.length ? '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'+head+body+'</table></div>'
                        : '<div style="color:#9aa7bd;padding:20px 0">No records yet. Click ➕ New entry to log one.</div>') +
         '</div>';
@@ -364,7 +364,7 @@
       ov.innerHTML =
         '<div style="background:#142238;border:1px solid rgba(245,200,66,.25);border-radius:16px;padding:22px;width:100%;max-width:820px;color:#fff">' +
           '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="font-family:var(--ff-disp);font-size:17px;letter-spacing:1.5px;color:#f5c842">⚠️ OPEN DEVIATIONS</div>' +
-          '<button onclick="document.getElementById(\'gl-gmp-dev\').remove()" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button></div>' +
+          '<button data-gl-close="#gl-gmp-dev" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button></div>' +
           (recs.length ? rows : '<div style="color:#5fcf9e;padding:16px 0">✓ No deviations flagged. Clean board.</div>') +
         '</div>';
       // Delegated handler: each ⤴ Raise NCR button looks up its rec by index.
@@ -397,7 +397,7 @@
       '<div style="background:#142238;border:1px solid rgba(245,200,66,.3);border-radius:16px;padding:22px;width:100%;max-width:520px;color:#fff">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
           '<div style="font-family:var(--ff-disp);font-size:17px;letter-spacing:1.5px;color:#f5c842">🔒 AUDITOR ACCESS LINK</div>' +
-          '<button onclick="document.getElementById(\'gl-gmp-auditor\').remove()" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+          '<button data-gl-close="#gl-gmp-auditor" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
         '</div>' +
         '<div style="font-size:12px;color:#9aa7bd;margin-bottom:14px;line-height:1.5">A read-only login for an auditor to review your GMP registers, deviations, and records. No CRM account, nothing can be changed.</div>' +
         '<div id="gmp-aud-step1">' +
@@ -411,7 +411,7 @@
           '<input id="gmp-aud-purpose" placeholder="Annual audit / mock recall / etc." style="width:100%;padding:10px;background:#0a1628;border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#fff;font-size:13px">' +
           '<div id="gmp-aud-err" style="display:none;color:#ff8579;font-size:12px;margin-top:8px"></div>' +
           '<div style="display:flex;gap:10px;margin-top:14px">' +
-            '<button onclick="document.getElementById(\'gl-gmp-auditor\').remove()" style="flex:1;padding:11px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:8px;color:#dfe7f1;font-size:13px;cursor:pointer">Cancel</button>' +
+            '<button data-gl-close="#gl-gmp-auditor" style="flex:1;padding:11px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:8px;color:#dfe7f1;font-size:13px;cursor:pointer">Cancel</button>' +
             '<button id="gmp-aud-gen" style="flex:1;padding:11px;background:rgba(245,200,66,.16);border:1px solid rgba(245,200,66,.4);border-radius:8px;color:#f5c842;font-weight:700;font-size:13px;cursor:pointer">🔒 Generate link</button>' +
           '</div>' +
         '</div>' +
@@ -456,7 +456,7 @@
           '<button id="gmp-aud-copy" style="padding:10px 14px;background:rgba(245,200,66,.16);border:1px solid rgba(245,200,66,.4);border-radius:7px;color:#f5c842;font-weight:700;font-size:12px;cursor:pointer;white-space:nowrap">Copy</button>' +
         '</div>' +
         '<div style="font-size:11px;color:#9aa7bd;margin-top:10px;line-height:1.5">Send this link to the auditor. It opens a read-only portal — they can view every register, deviation, and record, but cannot edit, sign, or delete anything. Revoke or expire access anytime from Compliance → inspector tokens.</div>' +
-        '<div style="text-align:right;margin-top:12px"><button onclick="document.getElementById(\'gl-gmp-auditor\').remove()" style="padding:10px 16px;background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.3);border-radius:8px;color:var(--teal);font-weight:700;font-size:13px;cursor:pointer">Done</button></div>';
+        '<div style="text-align:right;margin-top:12px"><button data-gl-close="#gl-gmp-auditor" style="padding:10px 16px;background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.3);border-radius:8px;color:var(--teal);font-weight:700;font-size:13px;cursor:pointer">Done</button></div>';
       var linkEl = s2.querySelector('#gmp-aud-link');
       s2.querySelector('#gmp-aud-copy').addEventListener('click', function(){
         linkEl.select();
@@ -497,7 +497,7 @@
       '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:22px;width:100%;max-width:760px;color:#fff">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
           '<div style="font-family:var(--ff-disp);font-size:17px;letter-spacing:1.5px;color:var(--teal)">📄 DOCUMENTS</div>' +
-          '<button onclick="document.getElementById(\'gl-gmp-docs\').remove()" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
+          '<button data-gl-close="#gl-gmp-docs" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
         '</div>' +
         (docs.length ? rows : '<div style="color:#9aa7bd;padding:20px 0">No documents posted yet.</div>') +
       '</div>';
