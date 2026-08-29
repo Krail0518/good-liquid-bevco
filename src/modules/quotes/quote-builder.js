@@ -60,7 +60,7 @@
   //   nitrogen / pasteurization → per can
   //   tray + case erector       → per case (24 cans)
   //   pallet + pallet wrap      → per pallet (casesPerPallet cases each)
-  // Read a DB-backed price (pricing_settings, loaded by crm-pricing-settings.js)
+  // Read a DB-backed price (pricing_settings, loaded by src/modules/invoicing/pricing-settings.js)
   // with a hard-coded fallback so quoting still works if the table is unreachable.
   function px(key, fallback){
     return (typeof window !== 'undefined' && typeof window.glPrice === 'function')

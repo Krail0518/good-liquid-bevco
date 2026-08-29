@@ -14,7 +14,7 @@
  * `async function quickPaid` TWICE at top level in the same <script> block.
  * The later declaration wins, so the live implementation was the shorter one,
  * which wrote only {status:'paid'} — never paid_at or paid_method, which
- * crm-accounting.js reads for AR aging — and matched on invoice_number only.
+ * src/modules/invoicing/accounting.js reads for AR aging — and matched on invoice_number only.
  * The fuller version above it was dead code.
  *
  * All four now route through glPersistInvoiceStatus. This file tests that

@@ -24,7 +24,7 @@
  * NOT INCLUDED: index.html's saveInvoice. It has the same shape but is
  * unreachable — cNav runs nav guards first and crm-permissions.js
  * unconditionally intercepts the 'newinv' page, so #cpg-newinv never
- * activates. The live invoice write is crm-invoice-patches.js, which already
+ * activates. The live invoice write is src/modules/invoicing/invoice-patches.js, which already
  * checks its result. Verified before deciding to leave it alone; "fixing"
  * dead code would add risk for no benefit.
  *
