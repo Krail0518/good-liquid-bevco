@@ -26,6 +26,18 @@
   function getSB(){ return window.supa || null; }
   var esc = window.glEsc;
 
+  // Row hover used to be two inline handlers per row assigning
+  // this.style.background. As CSS it is one rule for the whole table and
+  // mouse-out needs no logic at all. !important because the base row
+  // background is an inline style, which otherwise outranks a stylesheet.
+  (function injectPermStyles(){
+    if(document.getElementById('gl-perm-styles')) return;
+    var st = document.createElement('style');
+    st.id = 'gl-perm-styles';
+    st.textContent = '.gl-perm-row:hover{background:rgba(0,229,192,.08) !important}';
+    (document.head || document.documentElement).appendChild(st);
+  }());
+
   var perms = {
     loaded:    false,
     isAdmin:   false,
@@ -238,7 +250,7 @@
         // Edge case: every staff row is inactive AND we're filtering them
         // out — show an empty state that explains how to bring them back.
         var emptyToggle = inactiveStaff.length
-          ? ' <a href="#" onclick="event.preventDefault();window.glToggleInactiveVisibility();" style="color:var(--teal);text-decoration:none">Show ' + inactiveStaff.length + ' inactive</a>'
+          ? ' <a href="#" data-gl-action="glToggleInactiveVisibility" data-gl-prevent="" style="color:var(--teal);text-decoration:none">Show ' + inactiveStaff.length + ' inactive</a>'
           : '';
         return '<div style="color:var(--muted);padding:20px 0">No active staff to show.' + emptyToggle + '</div>';
       }
@@ -264,12 +276,12 @@
         // Deactivate stays available to any admin.
         var deactivateBtn = (isOwner || isSelf)
           ? ''
-          : '<button class="cbtn" onclick="event.stopPropagation();window.glToggleUserActive(\'' + u.id + '\')" style="font-size:11px;padding:5px 11px;background:' + (inactive ? 'rgba(29,158,117,.14);border-color:rgba(29,158,117,.4);color:#5fcf9e' : 'rgba(245,200,66,.12);border-color:rgba(245,200,66,.35);color:#f5c842') + ';margin-right:6px">' + (inactive ? 'Reactivate' : 'Deactivate') + '</button>';
+          : '<button class="cbtn" data-gl-action="glToggleUserActive" data-gl-arg1="' + esc(u.id) + '" style="font-size:11px;padding:5px 11px;background:' + (inactive ? 'rgba(29,158,117,.14);border-color:rgba(29,158,117,.4);color:#5fcf9e' : 'rgba(245,200,66,.12);border-color:rgba(245,200,66,.35);color:#f5c842') + ';margin-right:6px">' + (inactive ? 'Reactivate' : 'Deactivate') + '</button>';
         var removeBtn;
         if(isOwner)  removeBtn = '<span style="font-size:10px;color:var(--muted);margin-left:6px">Owner</span>';
         else if(isSelf) removeBtn = '<span style="font-size:10px;color:var(--muted);margin-left:6px">You</span>';
         else if(!iAmSuper) removeBtn = ''; // non-super admins don't see Remove
-        else removeBtn = '<button class="cbtn" onclick="event.stopPropagation();window.removeUser(\'' + u.id + '\')" style="font-size:11px;padding:5px 11px;background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#ff8579;margin-right:6px">Remove</button>';
+        else removeBtn = '<button class="cbtn" data-gl-action="removeUser" data-gl-arg1="' + esc(u.id) + '" style="font-size:11px;padding:5px 11px;background:rgba(231,76,60,.12);border-color:rgba(231,76,60,.35);color:#ff8579;margin-right:6px">Remove</button>';
         return '<tr style="cursor:pointer' + (inactive ? ';opacity:.55' : '') + '" data-gl-action="glRenderPermMatrixFor" data-gl-arg1="' + esc(u.id) + '">' +
           '<td style="padding:12px 14px;font-weight:700">' + esc(nameLabel) + nameCellExtra + '</td>' +
           '<td style="padding:12px 14px;color:var(--muted);font-size:12px">' + esc(u.email||'') + '</td>' +
@@ -278,12 +290,12 @@
           '<td style="padding:12px 14px;text-align:right;white-space:nowrap">' +
             removeBtn +
             deactivateBtn +
-            '<button class="cbtn" onclick="event.stopPropagation();window.glRenderPermMatrixFor(\'' + u.id + '\')" style="font-size:11px;padding:5px 14px;background:rgba(0,229,192,.12);border-color:rgba(0,229,192,.35);color:var(--teal)">Manage →</button>' +
+            '<button class="cbtn" data-gl-action="glRenderPermMatrixFor" data-gl-arg1="' + esc(u.id) + '" style="font-size:11px;padding:5px 14px;background:rgba(0,229,192,.12);border-color:rgba(0,229,192,.35);color:var(--teal)">Manage →</button>' +
           '</td>' +
         '</tr>';
       }).join('');
       var toggleLink = inactiveStaff.length === 0 ? '' :
-        '<a href="#" onclick="event.preventDefault();window.glToggleInactiveVisibility();" ' +
+        '<a href="#" data-gl-action="glToggleInactiveVisibility" data-gl-prevent="" ' +
           'style="font-size:11px;letter-spacing:1px;color:var(--muted);text-decoration:none;font-weight:500;text-transform:none">' +
           (perms.showInactive
             ? '(showing ' + inactiveStaff.length + ' inactive · click to hide)'
@@ -309,9 +321,6 @@
       if(!u) return '<div style="color:var(--muted);padding:20px 0">User not found.</div>';
       var userOverrides = byUser[userId] || {};
       var B = 'border:1px solid rgba(255,255,255,.28)';
-      var HOVER_ON  = "this.style.background='rgba(0,229,192,.08)'";
-      var HOVER_OFF_EVEN = "this.style.background=''";
-      var HOVER_OFF_ODD  = "this.style.background='rgba(255,255,255,.05)'";
       function rowHtml(c, idx){
         var hasOverride = Object.prototype.hasOwnProperty.call(userOverrides, c.id);
         var effective = hasOverride ? userOverrides[c.id] : c.default_on;
@@ -322,10 +331,9 @@
               : '<span style="font-size:10px;color:var(--muted)">default (' + (c.default_on ? 'on' : 'off') + ')</span>');
         var isOdd = idx % 2;
         var rowBg = isOdd ? 'background:rgba(255,255,255,.05)' : '';
-        var hoverOff = isOdd ? HOVER_OFF_ODD : HOVER_OFF_EVEN;
         var checked = effective ? ' checked' : '';
         var disabled = u.role === 'admin' ? ' disabled' : '';
-        return '<tr style="' + rowBg + ';transition:background .1s" onmouseover="' + HOVER_ON + '" onmouseout="' + hoverOff + '">' +
+        return '<tr style="' + rowBg + ';transition:background .1s" class="gl-perm-row">' +
           '<td style="padding:10px 12px;font-weight:600;' + B + '">' +
             esc(c.label) +
             (c.description ? '<div style="font-size:11px;color:var(--muted);font-weight:400;margin-top:3px;white-space:normal">' + esc(c.description) + '</div>' : '') +
@@ -333,7 +341,7 @@
           '<td style="padding:10px 12px;text-align:center;width:72px;' + B + '">' +
             '<label style="cursor:' + (u.role==='admin'?'default':'pointer') + ';display:block">' +
               '<input type="checkbox"' + checked + disabled +
-                ' onchange="window.glTogglePerm(\'' + userId + '\',\'' + c.id + '\',this.checked)"' +
+                ' data-gl-action="glTogglePerm" data-gl-on="change" data-gl-arg1="' + esc(userId) + '" data-gl-arg2="' + esc(c.id) + '" data-gl-el-prop="checked"' +
                 ' style="width:18px;height:18px;cursor:' + (u.role==='admin'?'default':'pointer') + ';accent-color:var(--teal)">' +
             '</label>' +
           '</td>' +
@@ -364,7 +372,7 @@
         : '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;background:rgba(26,111,255,.06);border:1px solid rgba(26,111,255,.18);border-radius:8px">' +
             '<span style="font-size:11px;letter-spacing:1px;color:#6b9fff;font-weight:700">APPLY PRESET</span>' +
             '<select id="gl-preset-' + userId + '" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);color:#eef4ff;padding:5px 8px;border-radius:6px;font-size:12px"><option value="">Choose a preset…</option>' + presetOpts + '</select>' +
-            '<button onclick="(function(){var v=document.getElementById(\'gl-preset-' + userId + '\').value;if(v)window.glApplyRolePreset(\'' + userId + '\',v);})()" class="cbtn" style="font-size:11px;padding:5px 12px">Apply</button>' +
+            '<button data-gl-action="glApplyPresetFor" data-gl-arg1="' + esc(userId) + '" class="cbtn" style="font-size:11px;padding:5px 12px">Apply</button>' +
             '<span style="font-size:10px;color:var(--muted)">Overwrites all of this user\'s current overrides.</span>' +
           '</div>';
 
@@ -375,7 +383,7 @@
       var roleControl =
         '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 10px;padding:8px 12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:8px">' +
           '<span style="font-size:10px;letter-spacing:1.5px;color:var(--muted);font-weight:700">ROLE</span>' +
-          '<select id="gl-role-' + u.id + '" ' + (isSelf?'disabled':'') + ' onchange="window.glChangeUserRole(\'' + u.id + '\',this.value)" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);color:#eef4ff;padding:5px 10px;border-radius:6px;font-size:12px">' + roleOpts + '</select>' +
+          '<select id="gl-role-' + u.id + '" ' + (isSelf?'disabled':'') + ' data-gl-action="glChangeUserRole" data-gl-on="change" data-gl-arg1="' + esc(u.id) + '" data-gl-el-prop="value" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);color:#eef4ff;padding:5px 10px;border-radius:6px;font-size:12px">' + roleOpts + '</select>' +
           (isSelf
             ? '<span style="font-size:10px;color:var(--muted)">— you can\'t change your own role (locked out risk)</span>'
             : '<span style="font-size:10px;color:var(--muted)">Admin role bypasses every gate. Changing to Sales/Viewer makes the per-component overrides apply.</span>') +
@@ -385,7 +393,7 @@
         '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 14px;padding:8px 12px;background:rgba(124,58,237,.06);border:1px solid rgba(124,58,237,.2);border-radius:8px">' +
           '<span style="font-size:10px;letter-spacing:1.5px;color:#c4b5fd;font-weight:700">NOTIFICATIONS</span>' +
           '<label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#eef4ff;cursor:pointer">' +
-            '<input type="checkbox"' + (digestOn?' checked':'') + ' onchange="window.glToggleUserNotify(\'' + u.id + '\',\'notify_daily_digest\',this.checked)" style="width:14px;height:14px;cursor:pointer;accent-color:#c4b5fd">' +
+            '<input type="checkbox"' + (digestOn?' checked':'') + ' data-gl-action="glToggleUserNotify" data-gl-on="change" data-gl-arg1="' + esc(u.id) + '" data-gl-arg2="notify_daily_digest" data-gl-el-prop="checked" style="width:14px;height:14px;cursor:pointer;accent-color:#c4b5fd">' +
             '<span>📨 Send Daily Digest email at 7am</span>' +
           '</label>' +
           '<span style="font-size:10px;color:var(--muted)">Uncheck to opt this user out of the morning digest.</span>' +
@@ -641,7 +649,7 @@
       return '<tr>' +
         '<td style="padding:8px;font-weight:600">' + esc(c.label) + '</td>' +
         '<td style="padding:8px;color:var(--muted);font-size:11px">' + esc(c.description||'') + '</td>' +
-        '<td style="padding:8px;text-align:center"><label style="cursor:pointer"><input type="checkbox"' + (c.default_on?' checked':'') + ' onchange="window.glSetDefault(\'' + c.id + '\',this.checked)"></label></td>' +
+        '<td style="padding:8px;text-align:center"><label style="cursor:pointer"><input type="checkbox"' + (c.default_on?' checked':'') + ' data-gl-action="glSetDefault" data-gl-on="change" data-gl-arg1="' + esc(c.id) + '" data-gl-el-prop="checked"></label></td>' +
       '</tr>';
     }).join('');
     ov.innerHTML = '<div style="max-width:760px;margin:0 auto;background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:24px;color:#eef4ff;font-family:Arial,Helvetica,sans-serif">' +
@@ -833,6 +841,17 @@
         'page.reports':    true
       }
     }
+  };
+
+  // Reads the preset <select> for this user and applies it. This was an
+  // inline IIFE in an onclick attribute -- real logic living in markup,
+  // which is the shape that cannot survive dropping unsafe-inline.
+  window.glApplyPresetFor = function(userId){
+    var sel = document.getElementById('gl-preset-' + userId);
+    if(!sel){ console.error('[perms] preset select missing for user ' + userId); return; }
+    var v = sel.value;
+    if(!v) return;                       // nothing chosen; the old IIFE did the same
+    return window.glApplyRolePreset(userId, v);
   };
 
   window.glApplyRolePreset = async function(userId, presetKey){

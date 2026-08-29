@@ -74,7 +74,7 @@ function countIn(rel) {
 const BUDGET = {
   'crm-index-core.js': 39,
   'index.html': 23,
-  'src/services/permissions-service.js': 12,
+  'src/services/permissions-service.js': 0,
   'src/modules/invoicing/invoice-builder.js': 10,
   'src/shared/tools.js': 6,
   'src/modules/customers/portal-customer.js': 5,
@@ -152,17 +152,43 @@ const allSrc = tracked.map((f) => {
   const p = path.join(ROOT, f);
   return fs.existsSync(p) ? strip(fs.readFileSync(p, 'utf8'), f.endsWith('.js')) : '';
 }).join('\n');
-const used = [...allSrc.matchAll(/data-gl-action="([A-Za-z_$][\w$]*)"/g)].map((m) => m[1]);
+// Scanned from the RAW sources, NOT the comment-stripped copy, and that
+// direction is deliberate.
+//
+// The stripper treats any /* as a block comment. src/modules/customers/
+// portal-customer.js line 591 carries a file input with
+// accept="/*,.pdf,.doc,..." — the /* in that attribute value opened a comment
+// that ran 519 lines, so a THIRD of the customer portal was invisible here.
+// Hiding in that region was data-gl-action="glPortalUploadAgreement", used but
+// registered nowhere: a dead Upload button on the portal, which this check
+// exists precisely to catch, passing green.
+//
+// A dead-control guard must fail loudly rather than miss silently, so the scan
+// now reads raw text and the one genuine documentation example is named
+// explicitly below. A new doc example costs one line here; a dead button costs
+// a customer a working page.
+const DOCUMENTED_EXAMPLES = new Set([
+  // src/shared/actions.js explains the attribute shape with a worked example:
+  //   <button data-gl-action="deleteDoc" data-gl-arg1="${esc(d.id)}">
+  'deleteDoc',
+]);
+const rawAll = tracked.map((f) => {
+  const p = path.join(ROOT, f);
+  return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
+}).join('\n');
+const used = [...rawAll.matchAll(/data-gl-action="([A-Za-z_$][\w$]*)"/g)]
+  .map((m) => m[1])
+  .filter((n) => !DOCUMENTED_EXAMPLES.has(n));
 // Three registration forms, all of which must count:
 //   glRegisterAction('name', fn)
 //   glRegisterActions({ name: fn, ... })
 //   glRegisterGlobalActions(['name', ...])   <- the generated registry
 // Missing the third made every one of the 82 generated names read as
 // unregistered, i.e. as 82 dead controls, when they were all fine.
-const registered = [...allSrc.matchAll(/glRegisterAction\(\s*'([^']+)'/g)].map((m) => m[1])
-  .concat([...allSrc.matchAll(/glRegisterActions\(\s*\{([^}]*)\}/g)]
+const registered = [...rawAll.matchAll(/glRegisterAction\(\s*'([^']+)'/g)].map((m) => m[1])
+  .concat([...rawAll.matchAll(/glRegisterActions\(\s*\{([^}]*)\}/g)]
     .flatMap((m) => [...m[1].matchAll(/(\w+)\s*:/g)].map((x) => x[1])))
-  .concat([...allSrc.matchAll(/glRegisterGlobalActions\(\s*\[([\s\S]*?)\]/g)]
+  .concat([...rawAll.matchAll(/glRegisterGlobalActions\(\s*\[([\s\S]*?)\]/g)]
     .flatMap((m) => [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1])));
 const unknown = [...new Set(used)].filter((u) => !registered.includes(u));
 check('every data-gl-action names a registered action',
