@@ -65,6 +65,10 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: bash scripts/check-db-drift.sh --update
 
+      # NOTE: this commit is made with GITHUB_TOKEN, and GitHub deliberately
+      # does NOT trigger workflows from it (the recursion guard). So the
+      # baseline commit will not re-run this check by itself — push any
+      # human-authored commit, or re-dispatch, to see it go green.
       - name: Commit the regenerated baseline
         if: ${{ github.event.inputs.update_baseline == 'true' }}
         run: |
