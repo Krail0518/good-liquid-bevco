@@ -75,6 +75,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return errorResponse('Please shorten your note', 400);
   }
 
+  /* Defence in depth against stored XSS. These fields come from an anonymous
+     caller and are later rendered on staff screens and interpolated into the
+     approval email's HTML. Rendering is the primary defence and must stay
+     correct on its own, but angle brackets have no legitimate use in a name,
+     company or tour note — dropping them here means a payload never reaches
+     storage in the first place. Strip rather than reject so a stray "<" in a
+     note does not fail an otherwise valid booking.
+     Everything below persists or sends these SAFE_* values, never the raw ones. */
+  const stripAngles = (v: unknown) => String(v ?? '').replace(/[<>]/g, '');
+  const safeName    = stripAngles(booker_name).trim();
+  const safeCompany = booker_company ? stripAngles(booker_company).trim() : null;
+  const safeNotes   = notes ? stripAngles(notes) : null;
+
+  if (!safeName) return errorResponse('Please enter your name', 400);
+
   const supa = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
@@ -188,12 +203,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
     .insert([{
       page_id,
       cal_event_id:   null,
-      booker_name:    String(booker_name),
+      booker_name:    safeName,
       booker_email:   String(booker_email),
-      booker_company: booker_company ? String(booker_company) : null,
+      booker_company: safeCompany,
       start_at:       startAt.toISOString(),
       end_at:         endAt.toISOString(),
-      notes:          notes ? String(notes) : null,
+      notes:          safeNotes,
       status:         'pending',
     }])
     .select('id')
@@ -231,7 +246,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // ── Email: booker "request received" (NO calendar invite yet) ───────────
   const bookerText = [
-    `Hi ${booker_name},`,
+    `Hi ${safeName},`,
     '',
     'Thanks for requesting a tour with Good Liquid Bev Co!',
     '',
@@ -254,7 +269,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:#222">
   <div style="background:#0f1624;padding:24px 32px;border-radius:10px">
     <h2 style="color:#00e5c0;margin:0 0 6px">Tour request received ✓</h2>
-    <p style="color:#c8d8f0;margin:0 0 24px">Hi ${booker_name} — thanks! We’ll confirm your time shortly.</p>
+    <p style="color:#c8d8f0;margin:0 0 24px">Hi ${safeName} — thanks! We’ll confirm your time shortly.</p>
     <div style="background:#192337;border-radius:8px;padding:20px;margin-bottom:20px">
       <div style="margin-bottom:12px">
         <span style="color:#6b87ad;font-size:12px;text-transform:uppercase;letter-spacing:1px">Requested date</span><br>
@@ -297,10 +312,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
       `📅  ${dateLabel}`,
       `🕐  ${timeLabel} (${tzLbl})`,
       '',
-      `👤  Name: ${booker_name}`,
+      `👤  Name: ${safeName}`,
       `📧  Email: ${booker_email}`,
-      booker_company ? `🏢  Company: ${booker_company}` : null,
-      notes          ? `📝  Notes: ${notes}`             : null,
+      safeCompany ? `🏢  Company: ${safeCompany}` : null,
+      safeNotes   ? `📝  Notes: ${safeNotes}`         : null,
       '',
       `Approve: ${approveUrl}`,
       `Decline: ${declineUrl}`,
@@ -314,9 +329,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
     <h2 style="color:#f5c842;margin:0 0 6px">Tour request — needs your OK</h2>
     <div style="background:#192337;border-radius:8px;padding:20px;margin:16px 0">
       <div style="margin-bottom:10px"><span style="color:#6b87ad;font-size:12px;text-transform:uppercase;letter-spacing:1px">When</span><br><span style="color:#fff;font-size:15px">${dateLabel} · ${timeLabel} ${tzLbl}</span></div>
-      <div style="margin-bottom:10px"><span style="color:#6b87ad;font-size:12px;text-transform:uppercase;letter-spacing:1px">Who</span><br><span style="color:#fff;font-size:15px">${booker_name}${booker_company ? ' · ' + booker_company : ''}</span></div>
+      <div style="margin-bottom:10px"><span style="color:#6b87ad;font-size:12px;text-transform:uppercase;letter-spacing:1px">Who</span><br><span style="color:#fff;font-size:15px">${safeName}${safeCompany ? ' · ' + safeCompany : ''}</span></div>
       <div><span style="color:#6b87ad;font-size:12px;text-transform:uppercase;letter-spacing:1px">Contact</span><br><span style="color:#fff;font-size:15px">${booker_email}</span></div>
-      ${notes ? `<div style="margin-top:10px"><span style="color:#6b87ad;font-size:12px;text-transform:uppercase;letter-spacing:1px">Notes</span><br><span style="color:#c8d8f0;font-size:14px">${String(notes).replace(/</g,'&lt;')}</span></div>` : ''}
+      ${safeNotes ? `<div style="margin-top:10px"><span style="color:#6b87ad;font-size:12px;text-transform:uppercase;letter-spacing:1px">Notes</span><br><span style="color:#c8d8f0;font-size:14px">${safeNotes}</span></div>` : ''}
     </div>
     <div style="margin:22px 0">
       <a href="${approveUrl}" style="display:inline-block;padding:12px 26px;background:#00c4a7;color:#0d1420;border-radius:8px;text-decoration:none;font-size:14px;font-weight:800;margin-right:10px">✓ Approve</a>
@@ -328,7 +343,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     await sendMail({
       to:      hostEmail,
-      subject: `Approve tour? ${booker_name} — ${dateLabel}`,
+      subject: `Approve tour? ${safeName} — ${dateLabel}`,
       text:    hostText,
       html:    hostHtml,
     });
@@ -348,8 +363,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
         event:  'tour_requested',
         secret: notifySecret,
         data: {
-          name:       booker_name,
-          company:    booker_company || '',
+          name:       safeName,
+          company:    safeCompany || '',
           email:      booker_email,
           date:       dateLabel,
           time:       startLabel,

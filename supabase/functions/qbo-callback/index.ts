@@ -36,6 +36,51 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return errorResponse('Missing required env vars', 500);
   }
 
+  /* ── CSRF: verify and CONSUME the state before doing anything else ──
+     This endpoint holds the service-role key and writes qbo_tokens, and Intuit
+     will redirect anyone who completes an authorization. Previously `state`
+     was read and then used for nothing, so a stranger who ran the flow against
+     their own QuickBooks company could have this callback overwrite the stored
+     tokens and realm_id — silently repointing the CRM's accounting integration
+     at a company they control. Invoices pushed afterwards go to them.
+
+     A staff session cannot be required here: this is a top-level browser
+     redirect from Intuit and carries no Authorization header. The state IS the
+     credential, so it must be checked against what qbo-connect stored.
+
+     DELETE ... RETURNING makes the check and the consumption one atomic step:
+     the row comes back only if it existed, and it is gone afterwards, so a
+     replayed redirect finds nothing. */
+  if (!state) {
+    return errorResponse('Missing state — start the connection from the CRM', 400);
+  }
+  const srvHeaders = {
+    apikey: supaSrvKey,
+    Authorization: `Bearer ${supaSrvKey}`,
+    'Content-Type': 'application/json',
+    Prefer: 'return=representation',
+  };
+  let stateRow: { expires_at?: string } | null = null;
+  try {
+    const del = await fetch(
+      `${supaUrl}/rest/v1/qbo_oauth_states?state=eq.${encodeURIComponent(state)}`,
+      { method: 'DELETE', headers: srvHeaders },
+    );
+    const rows = await del.json();
+    if (Array.isArray(rows) && rows.length) stateRow = rows[0];
+  } catch (e) {
+    console.error('[qbo-callback] state lookup failed', e);
+    return errorResponse('Could not verify the connection request', 502);
+  }
+  if (!stateRow) {
+    // Unknown, already used, or forged.
+    console.warn('[qbo-callback] rejected unrecognised OAuth state');
+    return errorResponse('This connection link is invalid or has already been used. Start again from the CRM.', 403);
+  }
+  if (stateRow.expires_at && new Date(stateRow.expires_at).getTime() < Date.now()) {
+    return errorResponse('This connection link has expired. Start again from the CRM.', 403);
+  }
+
   // Exchange code for tokens.
   const body = new URLSearchParams();
   body.set('grant_type', 'authorization_code');
