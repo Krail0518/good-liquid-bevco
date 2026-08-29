@@ -264,7 +264,7 @@
       '<div style="display:grid;grid-template-columns:1fr 260px;gap:20px;align-items:end;margin-bottom:20px">'+
         '<div><div class="flbl">Discount (%)</div>'+
           '<div style="display:flex;align-items:center;gap:8px">'+
-            '<input class="finp" type="number" id="ginv-disc" min="0" max="100" placeholder="0" value="'+(INV.discount||'')+'" oninput="glApplyDiscount(this.value)" style="width:100px;font-size:14px">'+
+            '<input class="finp" type="number" id="ginv-disc" min="0" max="100" placeholder="0" value="'+(INV.discount||'')+'" data-gl-action="glApplyDiscount" data-gl-el-prop="value" data-gl-on="input" style="width:100px;font-size:14px">'+
             '<span style="font-size:13px;color:var(--muted)">% off subtotal</span>'+
           '</div></div>'+
         '<div id="ginv-totals-box" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:16px">'+renderTotals()+'</div>'+

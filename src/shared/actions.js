@@ -153,6 +153,15 @@
     // and rewriting the functions to agree on one would be a behaviour change
     // smuggled into a mechanical conversion.
     var args = readArgs(el);
+
+    // data-gl-el-prop="value" appends a PROPERTY of the element rather than
+    // the element itself: filterClients(this.value),
+    // toggleSelectAllInvoices(this.checked). Passing the element and letting
+    // the function read .value would have meant editing those functions, which
+    // is a behaviour change smuggled into a conversion.
+    var prop = el.getAttribute('data-gl-el-prop');
+    if (prop) args.push(el[prop]);
+
     var elAt = el.getAttribute('data-gl-el-at');
     if (elAt !== null) {
       var pos = parseInt(elAt, 10);
