@@ -468,7 +468,7 @@
       '<div>Date: _________________________________</div>' +
       '<div style="margin-top:24px;color:#666;font-size:10px">Audit-ready report — for monthly QC review and external auditor packages. Generated from compliance_records table covering the last 30 days.</div>' +
       '</body></html>';
-    w.document.write(html); w.document.close();
+    w.document.write(html); w.document.close(); if(window.glBindPopupControls) window.glBindPopupControls(w);
   };
 
   // ============================================================
