@@ -220,16 +220,112 @@ check('no module injects a <style> element at runtime',
 // this document's CSP, so a <style> inside that HTML is subject to
 // style-src-elem. Until these carry a <link> instead, the directive cannot
 // drop 'unsafe-inline'. The count may shrink, never grow.
-const POPUP_STYLE_BUDGET = 10;
+const POPUP_STYLE_BUDGET = 11;
+
+// Finding these needs a scanner, not a line regex. The first version asked
+// whether a line had a quote before '<style', and missed the invoice PDF popup
+// in crm-index-core.js entirely: that HTML is a multi-line template literal, so
+// the backtick sits ~60 lines above the '<style' and there is no quote on that
+// line at all. It reported 10 sites when there were 11 — and a guard that
+// undercounts is worse than none, because the budget then blesses exactly what
+// it failed to see.
+//
+// So walk the file tracking string, template and comment state, and record
+// '<style' only where it appears INSIDE a string or template. Strings are
+// consumed before comments on purpose: an accept="/*,.pdf" attribute once
+// opened a phantom block comment and blinded a different scan for 519 lines.
+// REGEX LITERALS have to be skipped too, and that is the part with teeth.
+// compliance.js does .replace(/"/g, '&quot;') in a dozen places. Treated as
+// ordinary characters, that bare " opens a string that then swallows everything
+// up to the next " in the file — which is how a version of this scanner lost
+// two of the eleven sites while looking perfectly reasonable.
+//
+// Telling a regex from a division needs the standard heuristic: a '/' starts a
+// regex when the previous meaningful character is one that cannot end an
+// expression. Good enough here, and the ground truth is checked below.
+const BEFORE_REGEX = new Set(['(', ',', '=', ':', '[', '!', '&', '|', '?', '{', '}', ';', '+', '-', '*', '%', '<', '>', '~', '^', null]);
+
+function findGeneratedStyleTags(src) {
+  // Record OFFSETS and convert to line numbers at the end. Counting lines
+  // during the walk gets them wrong, because the escape and regex skips jump
+  // over newlines without ever seeing them — that reported the invoice PDF
+  // popup 96 lines away from where it actually lives.
+  const offsets = [];
+  let i = 0, quote = null, comment = null, prev = null;
+  while (i < src.length) {
+    const c = src[i], next = src[i + 1];
+
+    if (comment) {
+      if (comment === 'line' && c === '\n') comment = null;
+      else if (comment === 'block' && c === '*' && next === '/') { comment = null; i++; }
+      i++;
+      continue;
+    }
+
+    if (quote) {
+      if (c === '\\') { i += 2; continue; }
+      if (c === quote) { quote = null; i++; continue; }
+      if (c === '<' && src.startsWith('<style', i)) offsets.push(i);
+      i++;
+      continue;
+    }
+
+    if (c === '/' && next === '/') { comment = 'line'; i += 2; continue; }
+    if (c === '/' && next === '*') { comment = 'block'; i += 2; continue; }
+
+    if (c === '/' && BEFORE_REGEX.has(prev)) {          // regex literal — skip it
+      i++;
+      while (i < src.length) {
+        if (src[i] === '\\') { i += 2; continue; }
+        if (src[i] === '[') { while (i < src.length && src[i] !== ']') { if (src[i] === '\\') i++; i++; } }
+        if (src[i] === '/' || src[i] === '\n') break;
+        i++;
+      }
+      i++;
+      prev = '/';
+      continue;
+    }
+
+    if (c === '"' || c === "'" || c === '`') { quote = c; i++; continue; }
+    if (!/\s/.test(c)) prev = c;
+    i++;
+  }
+  return offsets.map((off) => src.slice(0, off).split('\n').length);
+}
+
+// Calibrate the scanner against the three traps that actually caught it out,
+// because a miscounting guard is the failure mode here: it blesses whatever it
+// cannot see. Each fixture below is a bug this scanner shipped with at some
+// point in one afternoon.
+const SCANNER_FIXTURES = [
+  // A line regex saw this one, so it was never at risk.
+  ["var h = '<style>a{}</style>';",                        [1], 'single-quoted string'],
+  // Missed: the backtick is lines above, so the line has no quote on it.
+  ['var h = `<html>\n<head>\n  <style>\n  a{}\n  </style>',  [3], 'multi-line template literal'],
+  // Missed: /"/ is a regex, and its " opened a string that ate the rest.
+  ['s.replace(/"/g, "x");\nvar h = \'<style>a{}</style>\';', [2], 'regex literal containing a quote'],
+  // False positive: prose in a comment is not a generated tag.
+  ['// it used to be <style> here\nvar x = 1;',             [],  'mention inside a line comment'],
+  ['/* was <style> once */\nvar x = 1;',                    [],  'mention inside a block comment'],
+];
+let scannerOk = true;
+const scannerDetail = [];
+for (const [src, expected, label] of SCANNER_FIXTURES) {
+  const got = findGeneratedStyleTags(src);
+  if (JSON.stringify(got) !== JSON.stringify(expected)) {
+    scannerOk = false;
+    scannerDetail.push(label + ': expected ' + JSON.stringify(expected) + ', got ' + JSON.stringify(got));
+  }
+}
+check('the <style> scanner still handles templates, regexes and comments',
+  scannerOk, scannerDetail.join('\n          '));
+
 const popupStyleSites = [];
 for (const p of jsFiles) {
-  const src = fs.readFileSync(p, 'utf8');
-  src.split('\n').forEach((line, i) => {
-    // a '<style' inside a JS string literal — i.e. HTML being generated
-    if (/['"`][^'"`]*<style\b/.test(line)) {
-      popupStyleSites.push(path.relative(ROOT, p).split(path.sep).join('/') + ':' + (i + 1));
-    }
-  });
+  const rel = path.relative(ROOT, p).split(path.sep).join('/');
+  for (const ln of findGeneratedStyleTags(fs.readFileSync(p, 'utf8'))) {
+    popupStyleSites.push(rel + ':' + ln);
+  }
 }
 console.log('    (<style> blocks generated into popups/reports: ' +
             popupStyleSites.length + ' of ' + POPUP_STYLE_BUDGET + ' allowed)');
