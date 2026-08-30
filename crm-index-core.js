@@ -1580,7 +1580,12 @@ async function saveInvoice(status){
   const{lines,total,desc}=calcTotal();
   const date=document.getElementById('inv-date').value||new Date().toISOString().split('T')[0];
   const notes=document.getElementById('inv-notes')?.value||'';
-  const num='GL-'+new Date().getFullYear()+'-'+(Math.floor(Math.random()*9000)+1000);
+  // Was: 'GL-' + year + '-' + Math.floor(Math.random()*9000). Two problems.
+  // Math.random gave 9,000 values a year, so a collision was a birthday
+  // problem rather than an exotic one; and the shape it produced
+  // ('GL-2026-4271') matches none of the stored rows, every one of which is
+  // 'GL-<n>'. The database allocates both correctly now.
+  const num = await window.glAllocateInvoiceNumber();
   // Write to Supabase
   try {
     const {error} = await supa.from('invoices').insert([{
@@ -5228,4 +5233,34 @@ window.glTempPassword = function glTempPassword(len){
     if(byte[0] < max) out += alphabet.charAt(byte[0] % alphabet.length);
   }
   return 'GL!' + out + 'aZ1';
+};
+
+/* ── Invoice numbers (EXT-024) ────────────────────────────────────────
+   Allocated by the database, under a transaction advisory lock, so two staff
+   saving at the same moment cannot compute the same number.
+
+   invoices.invoice_number already carries a UNIQUE constraint in production —
+   it predates this and is not something a migration in this repo created — so
+   a collision was never able to produce two rows sharing a number. What it
+   produced was a failed save with a constraint-violation message, which is
+   safe but reads to the user as the app being broken.
+
+   The fallback matters as much as the RPC. If the call fails the save must
+   still go through, so it falls back to the old local computation and lets the
+   unique constraint be the backstop. Losing the ability to invoice because a
+   numbering helper is unavailable would be a worse outcome than a rare retry. */
+window.glAllocateInvoiceNumber = async function glAllocateInvoiceNumber(){
+  try {
+    if (window.supa && window.supa.rpc) {
+      const r = await window.supa.rpc('gl_next_invoice_number');
+      if (!r.error && r.data) return String(r.data);
+      if (r.error) console.warn('[GL] invoice number RPC failed, falling back', r.error.message);
+    }
+  } catch (e) { console.warn('[GL] invoice number RPC threw, falling back', e); }
+  // Local fallback: highest trailing number seen in the loaded list, +1.
+  var ids = (window.invoices || []).map(function(i){
+    var m = /([0-9]+)$/.exec(String(i.id || ''));
+    return m ? parseInt(m[1], 10) : 0;
+  });
+  return 'GL-' + ((ids.length ? Math.max.apply(null, ids) : 1000) + 1);
 };
