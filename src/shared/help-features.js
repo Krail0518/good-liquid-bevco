@@ -1878,6 +1878,13 @@
   function subscribe(){
     var sb = window.supa;
     if(!sb || typeof sb.channel !== 'function'){ setTimeout(subscribe, 400); return; }
+    // invoices is staff-only, so an anonymous visitor has no business holding a
+    // realtime subscription on it — it delivered nothing (RLS) and cost a
+    // WebSocket on every public page view. Polled, not checked once: this runs
+    // at DOMContentLoaded and sign-in happens later without a page reload, so a
+    // one-shot check would silently kill the "Payment received" notification.
+    // Verified against a live admin session before relying on this global.
+    if(!window.currentUser){ setTimeout(subscribe, 2000); return; }
     if(channel) return; // already subscribed
     channel = sb.channel('gl-invoices-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'invoices' }, function(payload){

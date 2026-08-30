@@ -35,6 +35,12 @@
 
   // ── Dashboard banner: "N new customer requests" ────────────────────────
   async function refreshDashboardBanner(){
+    // customer_requests is staff-only. Without a staff session every call here
+    // is a 401 that RLS refuses, and the 60s interval below kept making them
+    // for anyone reading the marketing site. Checked per call rather than only
+    // at start-up so the polling also stops at sign-out, when auth.js clears
+    // window.currentUser.
+    if(!window.currentUser) return;
     var dash = document.getElementById('cpg-dashboard');
     if(!dash) return;
     var existing = document.getElementById('gl-cust-req-banner');
@@ -163,6 +169,13 @@
   // Boot: render banner once dashboard is visible, and subscribe to changes.
   function watchDash(){
     if(!window.supa){ setTimeout(watchDash, 500); return; }
+    // Wait for a staff session before starting the poll or opening a realtime
+    // channel on a staff-only table. Polled rather than checked once: this runs
+    // at DOMContentLoaded and sign-in happens later WITHOUT a page reload, so a
+    // single check would mean staff never got the banner at all. Verified on a
+    // live admin session — window.currentUser is set once signed in, and absent
+    // for an anonymous visitor.
+    if(!window.currentUser){ setTimeout(watchDash, 2000); return; }
     refreshDashboardBanner();
     setInterval(refreshDashboardBanner, 60000); // poll every 60s as a fallback
     try {
