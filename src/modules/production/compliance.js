@@ -2031,21 +2031,7 @@
       var formatTs = function(d){ if(!d) return ''; var x = new Date(d); return x.toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}); };
       var html =
         '<!doctype html><html><head><meta charset="utf-8"><title>Good Liquid Bev Co — Compliance Export</title>' +
-        '<style>' +
-          'body{font-family:Helvetica,Arial,sans-serif;color:#0a1628;margin:24px;line-height:1.4;font-size:11px}' +
-          'h1{font-size:18px;letter-spacing:1px;margin:0 0 4px}' +
-          '.meta{color:#555;font-size:10px;margin-bottom:18px}' +
-          '.rec{border:1px solid #ddd;border-radius:6px;padding:10px 12px;margin-bottom:10px;page-break-inside:avoid}' +
-          '.rec h3{margin:0 0 4px;font-size:12px;letter-spacing:1px}' +
-          '.rec .head{color:#888;font-size:10px;margin-bottom:6px}' +
-          '.rec table{width:100%;border-collapse:collapse;font-size:10px;margin-top:4px}' +
-          '.rec table td{padding:3px 6px;border-bottom:1px dotted #eee;vertical-align:top}' +
-          '.rec table td:first-child{color:#888;width:30%}' +
-          '.dev{background:#fef0ef;border-left:3px solid #d34;padding:6px 10px;margin-top:6px}' +
-          '.sig{margin-top:6px;padding-top:6px;border-top:1px solid #eee;font-size:10px;color:#555}' +
-          '.signed-yes{color:#0a8}' +
-          '@media print { .no-print{display:none} body{margin:12px} }' +
-        '</style></head><body>' +
+        '<link rel="stylesheet" href="' + location.origin + '/gl-print-records.css"></head><body>' +
         '<h1>Good Liquid Bev Co — Compliance Records Export</h1>' +
         '<div class="meta">2011 51st Ave E, Palmetto, FL 34221 · Date range: ' + escHtml(dr.from) + ' to ' + escHtml(dr.to) +
         ' · ' + rows.length + ' records · Exported ' + formatTs(new Date()) + (signedOnly() ? ' · PCQI-signed only' : '') + '</div>' +
@@ -3213,7 +3199,7 @@
     if(!w){ alert('Pop-up blocked'); return; }
     var html =
       '<!doctype html><html><head><meta charset="utf-8"><title>Mock Recall Report — ' + esc(lot) + '</title>' +
-      '<style>body{font-family:Helvetica,Arial,sans-serif;color:#0a1628;margin:24px;font-size:12px;line-height:1.5}h1{font-size:20px;margin:0 0 4px}.meta{color:#666;font-size:11px;margin-bottom:14px}h2{font-size:14px;border-bottom:2px solid #0a8;padding-bottom:4px;margin-top:18px}.row{padding:6px 8px;border-bottom:1px solid #eee;font-size:11px}.kpi{display:inline-block;margin-right:18px;padding:8px 14px;background:#f5f5f5;border-radius:6px}.kpi b{font-size:18px;color:#0a8;display:block}@media print{.no-print{display:none}}</style>' +
+      '<link rel="stylesheet" href="' + location.origin + '/gl-print-report.css">' +
       '</head><body>' +
       '<h1>Mock Recall Report</h1>' +
       '<div class="meta">Good Liquid Bev Co · 2011 51st Ave E, Palmetto, FL 34221 · Generated ' + fmtTs(new Date()) + '</div>' +
@@ -3675,7 +3661,7 @@
     }
     w.document.write(
       '<!doctype html><html><head><meta charset="utf-8"><title>' + esc(rec.form_code) + ' — ' + esc(rec.id) + '</title>' +
-      '<style>body{font-family:Helvetica,Arial,sans-serif;color:#0a1628;margin:24px;font-size:12px;line-height:1.5}h1{font-size:18px;margin:0 0 4px}.meta{color:#666;font-size:11px;margin-bottom:14px}.sig{margin-top:14px;padding-top:8px;border-top:2px solid #0a8;font-size:11px}.dev{background:#fef0ef;border-left:3px solid #c41e3a;padding:8px 10px;margin-top:10px;font-size:11px}@media print{.no-print{display:none}body{margin:14px}}</style>' +
+      '<link rel="stylesheet" href="' + location.origin + '/gl-print-record.css">' +
       '</head><body>' +
       '<h1>' + esc(rec.form_code) + '</h1>' +
       '<div class="meta">Good Liquid Bev Co · 2011 51st Ave E, Palmetto, FL 34221 · Record ' + esc(rec.id) + '</div>' +
@@ -4287,7 +4273,7 @@
     if(!w){ alert('Pop-up blocked'); return; }
     w.document.write(
       '<!doctype html><html><head><meta charset="utf-8"><title>Lot QR — ' + esc(lot) + '</title>' +
-      '<style>body{font-family:Helvetica,Arial,sans-serif;margin:24px;color:#0a1628}.sticker{display:inline-block;border:2px solid #0a8;padding:18px 22px;border-radius:10px;text-align:center;margin:8px;break-inside:avoid}.sticker h2{font-size:14px;letter-spacing:1px;margin:0 0 8px;color:#0a8}.sticker .lot{font-family:monospace;font-size:14px;margin-bottom:8px;font-weight:700}.sticker img{display:block;margin:0 auto 6px}.sticker .url{font-size:9px;color:#666;max-width:240px;word-break:break-all}@media print{body{margin:8px}.no-print{display:none}}</style>' +
+      '<link rel="stylesheet" href="' + location.origin + '/gl-print-lot-sticker.css">' +
       '</head><body>' +
       '<div class="no-print" style="margin-bottom:14px"><button data-gl-action="print" style="padding:8px 16px;background:#0a8;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:700">🖨️ Print sticker</button> <button data-gl-action="close" style="margin-left:6px">Close</button> · Print up to 4 copies for the pallet, BOL, master case, and warehouse copy.</div>' +
       '<div class="sticker"><h2>GOOD LIQUID BEV CO</h2><div class="lot">' + esc(lot) + '</div><img src="' + qrUrl + '" width="180" height="180" alt="QR"><div class="url">' + esc(traceUrl) + '</div></div>'.repeat(4) +

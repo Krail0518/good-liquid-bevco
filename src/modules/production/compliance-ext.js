@@ -435,7 +435,7 @@
     var w = window.open('','_blank');
     if(!w){ alert('Pop-up blocked'); return; }
     var html = '<!doctype html><html><head><meta charset="utf-8"><title>Monthly QC Report — ' + fmtDate(new Date()) + '</title>' +
-      '<style>body{font-family:Helvetica,Arial,sans-serif;color:#0a1628;margin:24px;font-size:11px;line-height:1.5}h1{font-size:20px;margin:0 0 4px;color:#0a8}.meta{color:#666;font-size:11px;margin-bottom:18px}h2{font-size:14px;border-bottom:2px solid #0a8;padding-bottom:4px;margin-top:18px}.kpi{display:inline-block;margin-right:16px;margin-bottom:8px;padding:8px 12px;background:#f5f5f5;border-radius:6px}.kpi b{font-size:18px;color:#0a8;display:block}.dev{padding:5px 8px;border-bottom:1px solid #eee;font-size:10px}.dev b{color:#c41e3a}@media print{.no-print{display:none}body{margin:12px}}</style>' +
+      '<link rel="stylesheet" href="' + location.origin + '/gl-print-compliance-day.css">' +
       '</head><body>' +
       '<h1>Compliance Monthly Report</h1>' +
       '<div class="meta">Good Liquid Bev Co · ' + fmtDate(new Date(Date.now()-30*86400000)) + ' to ' + fmtDate(new Date()) + ' · generated ' + fmtTs(new Date()) + '</div>' +

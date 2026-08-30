@@ -228,22 +228,7 @@
     var sched = run.scheduled_date ? window.fmtLocalDate(run.scheduled_date, {weekday:'long',month:'long',day:'numeric',year:'numeric'}) : '—';
 
     return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Run Sheet · ' + esc(run.run_name||'') + '</title>' +
-      '<style>' +
-      'body{font-family:Arial,sans-serif;max-width:780px;margin:30px auto;color:#111;font-size:13px;line-height:1.5}' +
-      '.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0F6E56;padding-bottom:18px;margin-bottom:24px}' +
-      '.brand{font-size:20px;font-weight:900;color:#0F6E56;letter-spacing:2px}' +
-      '.brand-sub{font-size:10px;color:#666;margin-top:3px}' +
-      'h2{font-size:14px;letter-spacing:2px;color:#0F6E56;margin:24px 0 10px;text-transform:uppercase}' +
-      '.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}' +
-      '.box{background:#f7f7f7;border:1px solid #ddd;border-radius:6px;padding:12px}' +
-      '.lbl{font-size:9px;letter-spacing:2px;color:#999;text-transform:uppercase;margin-bottom:3px}' +
-      '.val{font-weight:600;color:#111;font-size:14px}' +
-      '.allergen{background:#fee;border:1px solid #fcc;color:#c33;padding:12px;border-radius:6px;font-size:12px}' +
-      '.sig-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;margin-top:48px}' +
-      '.sig-line{border-bottom:1px solid #333;height:32px;margin-bottom:6px}' +
-      '.sig-lbl{font-size:10px;color:#666;text-transform:uppercase;letter-spacing:1px}' +
-      '@media print{body{margin:0;padding:20px}}' +
-      '</style></head><body>' +
+      '<link rel="stylesheet" href="' + location.origin + '/gl-print-tools.css"></head><body>' +
       '<div class="hdr">' +
         '<div><div class="brand">GOOD LIQUID BEV CO</div><div class="brand-sub">RUN SHEET · 2011 51st Ave E, Unit 100, Palmetto FL 34221</div></div>' +
         '<div style="text-align:right"><h2 style="margin:0;border:none;font-size:18px">' + esc(run.run_name||'Untitled Run') + '</h2><div style="color:#666;font-size:11px;margin-top:2px">Printed ' + new Date().toLocaleString() + '</div></div>' +

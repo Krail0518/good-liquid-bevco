@@ -1,0 +1,6 @@
+/* gl-print-records.css — extracted verbatim from src/modules/production/compliance.js.
+   This is written into a print/report popup. A window.open('') document
+   inherits the opener's CSP, so the <style> element it used to be would
+   be blocked once style-src-elem drops 'unsafe-inline'. Linked by
+   absolute URL because the popup's base URL is not the site root. */
+body{font-family:Helvetica,Arial,sans-serif;color:#0a1628;margin:24px;line-height:1.4;font-size:11px}h1{font-size:18px;letter-spacing:1px;margin:0 0 4px}.meta{color:#555;font-size:10px;margin-bottom:18px}.rec{border:1px solid #ddd;border-radius:6px;padding:10px 12px;margin-bottom:10px;page-break-inside:avoid}.rec h3{margin:0 0 4px;font-size:12px;letter-spacing:1px}.rec .head{color:#888;font-size:10px;margin-bottom:6px}.rec table{width:100%;border-collapse:collapse;font-size:10px;margin-top:4px}.rec table td{padding:3px 6px;border-bottom:1px dotted #eee;vertical-align:top}.rec table td:first-child{color:#888;width:30%}.dev{background:#fef0ef;border-left:3px solid #d34;padding:6px 10px;margin-top:6px}.sig{margin-top:6px;padding-top:6px;border-top:1px solid #eee;font-size:10px;color:#555}.signed-yes{color:#0a8}@media print { .no-print{display:none} body{margin:12px} }

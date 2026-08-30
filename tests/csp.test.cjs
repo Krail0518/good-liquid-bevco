@@ -24,29 +24,34 @@
  * matters for script-src, but the assertion stays — it is free, and it
  * documents the trap.
  *
- * style-src STILL CARRIES 'unsafe-inline', AND WHY
- * ------------------------------------------------
- * Two different things need it, and only one has been dealt with:
+ * style-src IS SPLIT IN TWO (GL-DEF-02)
+ * -------------------------------------
+ * CSP3 governs style elements and style attributes with separate directives,
+ * and here they deserve opposite treatment:
  *
- *   style ELEMENTS (style-src-elem) — the 7 inline <style> blocks were moved
- *     to .css files and the 10 runtime document.createElement('style') calls
- *     moved into crm-runtime.css. Both are guarded below so they cannot come
- *     back. What still blocks tightening style-src-elem is the <style> blocks
- *     written into print/report popups: a window.open('') document inherits
- *     the opener's CSP — verified, not assumed, by writing an inline <script>
- *     into such a document against production and watching it not run — so
- *     those blocks would stop applying and compliance reports would print
- *     unstyled.
+ *   style-src-elem 'self' — STRICT, no 'unsafe-inline'. Every style ELEMENT
+ *     is now an external file: 7 inline <style> blocks from the pages, 10
+ *     document.createElement('style') calls, and 11 blocks generated into
+ *     print/report popups. That last group mattered because a window.open('')
+ *     document inherits the opener's CSP — verified, not assumed, by writing
+ *     an inline <script> into such a document against production and watching
+ *     it not run. They are <link>s at location.origin now; a popup is
+ *     same-origin, so 'self' covers them.
  *
- *   style ATTRIBUTES (style-src-attr) — roughly 6,000 style="..." attributes.
- *     A nonce cannot cover a style attribute; only 'unsafe-inline' does. This
- *     one is not going away without converting them all to classes.
+ *   style-src-attr 'unsafe-inline' — UNAVOIDABLE. Roughly 6,000 style="..."
+ *     attributes, and no nonce or hash can ever cover a style attribute. This
+ *     half does not move without converting them all to classes.
  *
- * The security difference between the two is worth knowing, because it is why
- * the element half is worth chasing at all: a <style> ELEMENT can carry
- * attribute selectors, which is the primitive behind CSS keylogging and CSS
- * exfiltration. A style ATTRIBUTE applies only to the element it sits on and
- * cannot select anything, so it is a far weaker tool for an attacker.
+ * The split is worth the effort precisely because the two halves are not
+ * equally dangerous. A <style> ELEMENT can carry attribute selectors, which is
+ * the primitive behind CSS keylogging and CSS exfiltration. A style ATTRIBUTE
+ * applies only to the element it sits on and cannot select anything. So the
+ * half that has been locked down is the half an attacker actually wants.
+ *
+ * plain style-src is deliberately LEFT permissive underneath both. Firefox
+ * before 122 ignores style-src-elem/attr and reads style-src; making that
+ * strict would break inline style attributes there rather than protect anyone.
+ * Browsers that understand the specific directives use those instead.
  *
  * Run:  node tests/csp.test.cjs
  */
@@ -220,7 +225,7 @@ check('no module injects a <style> element at runtime',
 // this document's CSP, so a <style> inside that HTML is subject to
 // style-src-elem. Until these carry a <link> instead, the directive cannot
 // drop 'unsafe-inline'. The count may shrink, never grow.
-const POPUP_STYLE_BUDGET = 11;
+const POPUP_STYLE_BUDGET = 0;
 
 // Finding these needs a scanner, not a line regex. The first version asked
 // whether a line had a quote before '<style', and missed the invoice PDF popup
@@ -336,10 +341,38 @@ check('generated <style> blocks are not increasing',
   '. Generate a <link rel="stylesheet"> pointing at location.origin instead — ' +
   "a popup is same-origin, so 'self' covers it.");
 
-check("style-src 'unsafe-inline' is still justified",
-  !style.includes("'unsafe-inline'") || popupStyleSites.length > 0 ||
-    /style\s*=\s*"/i.test(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8')),
-  'nothing inline remains, so style-src can be tightened');
+// ── the style-src split ─────────────────────────────────────────────
+// CSP3 lets the two halves be governed separately, which is the whole point:
+// every style ELEMENT is now an external file, so style-src-elem can be strict,
+// while style-src-attr must keep 'unsafe-inline' for the ~6,000 style="..."
+// attributes, since no nonce or hash can ever cover a style attribute.
+const styleElem = directives['style-src-elem'] || [];
+const styleAttr = directives['style-src-attr'] || [];
+
+check("style-src-elem does not allow 'unsafe-inline'",
+  styleElem.length > 0 && !styleElem.includes("'unsafe-inline'"),
+  'got: ' + styleElem.join(' ') + ' — this is the half that was earned by ' +
+  'moving 7 page blocks, 10 runtime injections and 11 generated blocks out to ' +
+  'files; it is also the half that matters, because only a <style> ELEMENT can ' +
+  'carry the attribute selectors used for CSS exfiltration');
+
+check('style-src-elem still allows the Google Fonts stylesheet',
+  styleElem.includes('https://fonts.googleapis.com'),
+  'got: ' + styleElem.join(' '));
+
+check("style-src-attr is present and carries 'unsafe-inline'",
+  styleAttr.includes("'unsafe-inline'"),
+  'got: ' + styleAttr.join(' ') + ' — without this every style="..." attribute ' +
+  'in the CRM stops applying, which is most of its layout');
+
+// style-src itself is deliberately LEFT permissive as the fallback. Firefox
+// before 122 ignores style-src-elem/attr entirely and reads style-src; making
+// that strict would break those browsers instead of protecting them. The two
+// specific directives take precedence wherever they are understood.
+check("style-src is kept permissive as the pre-CSP3 fallback",
+  style.includes("'unsafe-inline'"),
+  'browsers without style-src-elem/attr fall back to this one; tightening it ' +
+  'would strip inline style attributes there and break the layout');
 
 console.log('\n' + (failures === 0 ? 'ALL PASSED' : failures + ' CHECK(S) FAILED'));
 process.exit(failures === 0 ? 0 : 1);
