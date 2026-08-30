@@ -35,7 +35,17 @@
 -- to record a declined request because the slot was later taken would be
 -- absurd, and 'declined' is a status already in live use.
 
-create extension if not exists btree_gist;
+-- Into `extensions`, not public. Installing it into public adds 138 gbt_*
+-- functions to the schema the authorization baseline tracks, which buries any
+-- real drift under noise — I did exactly that on the first attempt and the
+-- drift gate caught it. Every other extension here (pgcrypto, uuid-ossp,
+-- pg_stat_statements) already lives in `extensions`.
+--
+-- The exclusion constraint resolves its operator class by OID at creation, so
+-- the schema it lives in does not affect the constraint afterwards. Verified
+-- after moving it: an overlapping booking is still blocked and a free slot is
+-- still allowed.
+create extension if not exists btree_gist with schema extensions;
 
 alter table public.bookings
   add constraint bookings_no_overlap
