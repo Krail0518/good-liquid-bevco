@@ -196,5 +196,57 @@ check('every data-gl-action names a registered action',
   unknown.join(', ') + ' — these controls are dead: the dispatcher logs an ' +
   'error and does nothing, which looks exactly like a working button');
 
+// ── data-gl-action written into ANOTHER document ──────────────────────
+// The dispatcher listens on THIS document. Markup rendered into a popup
+// (window.open + document.write) has no listener at all, so a data-gl-action
+// button there is dead — and it fails silently, because the dispatcher that
+// would report an unregistered action is not present either.
+//
+// This is not hypothetical. GL-DEF-01 phase 5 converted the Print and Close
+// buttons in five compliance report popups from onclick="window.print()" to
+// data-gl-action, and they stopped working. Restoring the inline handlers is
+// not possible either: a window.open('') document inherits the opener's CSP,
+// which no longer allows inline script. They are bound from the opener instead,
+// via glBindPopupControls.
+//
+// So: a file that writes into a foreign document AND emits data-gl-action must
+// also bind those controls.
+// Scoped to the popup's CONSTRUCTION REGION — between window.open() and the
+// matching document.write() — not the whole file. A first version asked only
+// whether the file contained both, and reported three false positives:
+// invoice-builder, quote-builder and tools all write popups AND use
+// data-gl-action, but in main-document markup, twice at a line AFTER the write.
+// A guard that cries wolf gets switched off, so it has to look where the markup
+// actually goes.
+const unbound = [];
+for (const f of tracked) {
+  const p = path.join(ROOT, f);
+  if (!fs.existsSync(p)) continue;
+  const src = fs.readFileSync(p, 'utf8');
+  const lines = src.split('\n');
+
+  lines.forEach((line, i) => {
+    if (!/\.document\.write\(/.test(line)) return;
+    // Walk back to where this popup began; cap the span so an unrelated
+    // window.open far above cannot pull in the whole file.
+    let start = i;
+    for (let j = i; j >= 0 && i - j < 120; j--) {
+      if (/window\.open\(/.test(lines[j])) { start = j; break; }
+      start = j;
+    }
+    const region = lines.slice(start, i + 1).join('\n');
+    if (!/data-gl-action="/.test(region)) return;          // nothing delegated in this popup
+    if (/glBindPopupControls/.test(src)) return;           // already bound in this file
+    unbound.push(f + ':' + (i + 1));
+  });
+}
+
+check('every file writing data-gl-action into a popup binds those controls',
+  unbound.length === 0,
+  unbound.join(', ') +
+  '\n          The dispatcher listens on the main document only. Call ' +
+  'window.glBindPopupControls(w) after w.document.close(), or those buttons ' +
+  'are dead and nothing will say so.');
+
 console.log('\n' + (failures === 0 ? 'ALL PASSED' : failures + ' CHECK(S) FAILED'));
 process.exit(failures === 0 ? 0 : 1);

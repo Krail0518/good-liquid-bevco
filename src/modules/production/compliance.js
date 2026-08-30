@@ -2086,6 +2086,7 @@
       html += '</body></html>';
       w.document.write(html);
       w.document.close();
+      if(window.glBindPopupControls) window.glBindPopupControls(w);
     });
   };
 
@@ -3233,7 +3234,7 @@
       '<div class="row">Date: _________________________________</div>' +
       '<div class="row" style="margin-top:14px;color:#666;font-size:10px">This is a mock-recall exercise per FSP-VER-002 annual review requirement. No actual product was withdrawn.</div>' +
       '</body></html>';
-    w.document.write(html); w.document.close();
+    w.document.write(html); w.document.close(); if(window.glBindPopupControls) window.glBindPopupControls(w);
   }
 
   // ── (11) Vendor FSP-SC-001 fields ──
@@ -3752,6 +3753,7 @@
       '</body></html>'
     );
     w.document.close();
+    if(window.glBindPopupControls) window.glBindPopupControls(w);
   }
   // Hook into history rows
   (function hookHistoryPrint(){
@@ -4376,6 +4378,7 @@
       '</body></html>'
     );
     w.document.close();
+    if(window.glBindPopupControls) window.glBindPopupControls(w);
   };
   // Add a "Lot sticker" button to Trace Lot tab results
   (function hookTraceQr(){

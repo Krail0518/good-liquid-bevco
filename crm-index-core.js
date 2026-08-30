@@ -5265,3 +5265,38 @@ window.glAllocateInvoiceNumber = async function glAllocateInvoiceNumber(){
   });
   return 'GL-' + ((ids.length ? Math.max.apply(null, ids) : 1000) + 1);
 };
+
+/* ── Popup print/close buttons ────────────────────────────────────────
+   The compliance report views are written into a window.open('','_blank')
+   popup. Their Print and Close buttons carry data-gl-action, but the
+   dispatcher runs in THIS document — the popup has no listener at all, so
+   those buttons did nothing.
+
+   They used to be onclick="window.print()" and onclick="window.close()",
+   which worked because an inline handler needs no dispatcher. GL-DEF-01
+   phase 5 converted them along with everything else, and converting markup
+   that is rendered into a different document was wrong: the conversion is
+   only valid where the dispatcher is listening.
+
+   Restoring the inline handlers is not an option either. A document created
+   by window.open('') inherits the opener's CSP, and script-src no longer
+   permits inline script.
+
+   The popup is same-origin, so the opener can simply bind them. No script
+   runs in the popup, which keeps it CSP-clean, and 'close'/'print' stop
+   depending on window.close/window.print being resolved by name — 'close'
+   in particular would otherwise resolve to the browser's own window.close.
+
+   Safe to call after any popup write: if the document has no such buttons it
+   does nothing. */
+window.glBindPopupControls = function glBindPopupControls(w){
+  try {
+    if(!w || !w.document) return;
+    w.document.querySelectorAll('[data-gl-action="print"]').forEach(function(b){
+      b.addEventListener('click', function(){ w.focus(); w.print(); });
+    });
+    w.document.querySelectorAll('[data-gl-action="close"]').forEach(function(b){
+      b.addEventListener('click', function(){ w.close(); });
+    });
+  } catch(e){ console.warn('[GL] could not bind popup controls', e); }
+};
