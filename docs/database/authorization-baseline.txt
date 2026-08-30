@@ -27,6 +27,7 @@ FUNC     public.gl_onboarding_intake_get(p_token text) | secdef=t | search_path=
 FUNC     public.gl_onboarding_intake_submit(p_token text, p jsonb) | secdef=t | search_path=public | acl=postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_onboarding_submit(p_token text, p_data jsonb) | secdef=t | search_path=public | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres,anon=X/postgres
 FUNC     public.gl_purge_expired_qbo_states() | secdef=t | search_path=public | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.gl_rate_limit_hit(p_bucket text, p_limit integer, p_window_seconds integer) | secdef=t | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_secret_get(p_name text) | secdef=t | search_path="" | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_secret_set(p_name text, p_value text) | secdef=t | search_path="" | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_send_quote_decks(p_deal_id uuid) | secdef=t | search_path=public, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
@@ -814,6 +815,7 @@ RLS      public.deal_documents | enabled=t
 RLS      public.deals | enabled=t
 RLS      public.defects | enabled=t
 RLS      public.documents | enabled=t
+RLS      public.edge_rate_limits | enabled=t
 RLS      public.email_log | enabled=t
 RLS      public.email_schedule | enabled=t
 RLS      public.email_templates | enabled=t
