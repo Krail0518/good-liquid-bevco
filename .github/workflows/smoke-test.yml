@@ -278,6 +278,14 @@ jobs:
       - name: Run migration rollback-note test
         run: node tests/migration-rollback-notes.test.cjs
 
+      # Can the repo rebuild its own database? It could not. Ten core tables —
+      # profiles, clients, invoices, deals among them — lived only in
+      # production, ~30 migrations shared a version prefix so the CLI collided
+      # on schema_migrations_pkey, and one could never have run at all. Static;
+      # no database needed.
+      - name: Run migration replayable test
+        run: node tests/migration-replayable.test.cjs
+
       # Third-party code must be pinned, and the secret scanner's allowlist
       # must not be able to hide a service_role key. No off-the-shelf tool
       # covers this repo's dependencies — there is no package.json, so the real

@@ -554,7 +554,7 @@
 (function(){
   /* Pay link storage: source of truth is the
      invoices.stripe_payment_link column added by
-     20260523_activities_calendar_pipeline_paylinks.sql. The
+     20260523000000_activities_calendar_pipeline_paylinks.sql. The
      legacy gl_invoice_paylinks {invId: url} blob is preserved
      ONLY as a fallback for renderers that need a sync read
      before the DB has loaded — every write goes to the DB. */
@@ -1146,7 +1146,7 @@
     "    AND name LIKE public.current_customer_client_id()::text || '/%'\n" +
     "  );\n\n" +
     "-- Needs public.is_gl_staff() (20260807020000_tenant_isolation_guard.sql)\n" +
-    "-- and public.current_customer_client_id() (20260518_customer_portal.sql).";
+    "-- and public.current_customer_client_id() (20260518000004_customer_portal.sql).";
 
   function showSqlModal(title, sql){
     var prior = document.getElementById('gl-sql-modal'); if(prior) prior.remove();

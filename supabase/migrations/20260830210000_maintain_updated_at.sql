@@ -96,17 +96,27 @@ begin
       continue;
     end if;
 
-    -- Already maintained by some trigger? Leave it alone.
+    trg_name := 'trg_' || t || '_updated_at';
+
+    -- Skip if the column is already maintained, OR if a trigger of the name
+    -- this would use already exists.
+    --
+    -- The name check is not belt-and-braces. Checking only for a trigger that
+    -- runs set_updated_at was not enough: replaying this history from scratch
+    -- creates trg_quotes_updated_at earlier, bound to a DIFFERENT function, and
+    -- this then failed with "trigger already exists". Production never hit it
+    -- because production's state and a from-scratch rebuild are not the same
+    -- thing — which is the entire lesson of GL-055.
     select exists (
       select 1
       from pg_trigger tg
       join pg_class cl on cl.oid = tg.tgrelid
       join pg_namespace n on n.oid = cl.relnamespace
-      join pg_proc p on p.oid = tg.tgfoid
+      left join pg_proc p on p.oid = tg.tgfoid
       where n.nspname = 'public'
         and cl.relname = t
         and not tg.tgisinternal
-        and p.proname = 'set_updated_at'
+        and (p.proname = 'set_updated_at' or tg.tgname = trg_name)
     ) into has_trg;
 
     if has_trg then
@@ -114,7 +124,6 @@ begin
       continue;
     end if;
 
-    trg_name := 'trg_' || t || '_updated_at';
     execute format(
       'create trigger %I before update on public.%I for each row execute function public.set_updated_at()',
       trg_name, t);

@@ -15,7 +15,7 @@
 /* ═══════════════════════════════════════════
    TIME TRACKING PER JOB
    Source of truth is the public.time_entries table in Supabase
-   (see 20260523_time_entries_table.sql). One row per timer
+   (see 20260523000012_time_entries_table.sql). One row per timer
    session; ended_at = NULL means "still running" and a partial
    unique index enforces one running timer per user across devices.
    timeEntries / activeTimer kept as in-memory caches refreshed

@@ -71,7 +71,7 @@ buckets as (
 -- ACCEPTS it. Never the value: this output is committed as the baseline, so
 -- it records a boolean and a length, and the secret itself stays in Vault.
 --
--- 'gl-notify-2026-abc123' shipped as a literal in 20260721_tour_alerts.sql and
+-- 'gl-notify-2026-abc123' shipped as a literal in 20260721000000_tour_alerts.sql and
 -- authenticated the database's own triggers to the notify-deal edge function.
 -- It was rotated on 2026-07-30. If it is ever live again -- a replayed
 -- migration, a restored backup, a hand edit -- this line flips and drift fails.

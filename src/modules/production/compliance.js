@@ -2571,7 +2571,7 @@
     var r = await window.supa.from('compliance_records').select('*').eq('status','signed').gte('signed_at', sevenDaysAgo).order('signed_at',{ ascending: false }).limit(500);
     var rows = r.data || [];
     // Pull all acks for these records in one shot (replaces the old
-    // gl_weekly_ack localStorage store — see migration 20260519_followup_acks_waivers.sql).
+    // gl_weekly_ack localStorage store — see migration 20260519000000_followup_acks_waivers.sql).
     var acks = await loadWeeklyAcksFor(rows.map(function(rec){ return rec.id; }));
     var unacked = rows.filter(function(rec){ return !acks[rec.id]; });
     var acked   = rows.filter(function(rec){ return !!acks[rec.id]; });

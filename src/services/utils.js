@@ -79,7 +79,7 @@
   /* ── Super-user check ──
      UI gate that hides destructive buttons (Delete client, Remove
      user, etc.) for non-super admins. The server-side enforcement
-     lives in 20260523_super_user_rls_enforcement.sql — RLS policies
+     lives in 20260523000010_super_user_rls_enforcement.sql — RLS policies
      consult public.is_super_user() which reads profiles.is_super_user
      for the calling user, so a DevTools call bypassing this UI
      check still bounces at the database. This JS function is

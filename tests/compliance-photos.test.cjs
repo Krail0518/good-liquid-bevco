@@ -4,7 +4,7 @@
  * WHY THIS EXISTS
  * ---------------
  * src/modules/production/compliance.js had uploaded to a "compliance-photos" Storage bucket since
- * 20260517_phase3_extras.sql shipped its RLS policies. The bucket was never
+ * 20260517000001_phase3_extras.sql shipped its RLS policies. The bucket was never
  * created, so three features had never worked: hold-tag evidence photos,
  * defect/NCR photos, and PCQI-signed controlled documents.
  *

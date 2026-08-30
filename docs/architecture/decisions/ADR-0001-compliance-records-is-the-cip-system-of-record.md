@@ -8,9 +8,9 @@
 Two tables in `public` could plausibly hold CIP (clean-in-place) sanitation
 cycles, and it was not written down anywhere which one does.
 
-`cip_logs` was created in `20260516_new_feature_tables.sql` with its own RLS
+`cip_logs` was created in `20260516000000_new_feature_tables.sql` with its own RLS
 policy, an index on `cycle_at`, an `updated_at` trigger, and later columns
-added in `20260518_schema_gap_pack.sql`. It looks like a maintained table.
+added in `20260518000013_schema_gap_pack.sql`. It looks like a maintained table.
 
 `compliance_records` holds the generic GMP register. CIP cycles are filed
 through it under `form_code = 'GMP-SAN-002'`, the canonical 9-step FDA form.

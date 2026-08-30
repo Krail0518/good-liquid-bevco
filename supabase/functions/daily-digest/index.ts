@@ -2,7 +2,7 @@
 // to every staff profile that hasn't opted out.
 //
 // Deploy:   supabase functions deploy daily-digest --no-verify-jwt
-// Schedule: pg_cron job (see migration 20260520_daily_digest_cron.sql) calls
+// Schedule: pg_cron job (see migration 20260520000003_daily_digest_cron.sql) calls
 //           this function once a day at 11:00 UTC (7:00 AM ET).
 //
 // What goes in the email:
@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
   // ── 1) Recipients: every admin/staff profile that hasn't opted out ─────
-  // The opt-out column is added by 20260520_daily_digest_cron.sql. If a
+  // The opt-out column is added by 20260520000003_daily_digest_cron.sql. If a
   // deployment runs before the migration, fall back to "all admins".
   let recipients: Array<{ email: string; name?: string | null }> = [];
   try {

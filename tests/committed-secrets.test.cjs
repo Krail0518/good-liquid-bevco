@@ -3,7 +3,7 @@
  *
  * WHY THIS EXISTS
  * ---------------
- * 20260721_tour_alerts.sql created the notify-deal shared secret like this:
+ * 20260721000000_tour_alerts.sql created the notify-deal shared secret like this:
  *
  *     PERFORM vault.create_secret(
  *       'gl-notify-2026-abc123',
@@ -94,11 +94,11 @@ check('the published literal is never used as a value again',
   usedAsValue.join('\n          '));
 
 // ── the amended migration must carry its own guard ──────────────────
-const tour = fs.readFileSync(path.join(MIG, '20260721_tour_alerts.sql'), 'utf8');
-check('20260721_tour_alerts.sql generates the secret in-database',
+const tour = fs.readFileSync(path.join(MIG, '20260721000000_tour_alerts.sql'), 'utf8');
+check('20260721000000_tour_alerts.sql generates the secret in-database',
   /gen_random_uuid\(\)/.test(tour),
   'it previously shipped the value as a literal');
-check('20260721_tour_alerts.sql refuses to leave the published literal live',
+check('20260721000000_tour_alerts.sql refuses to leave the published literal live',
   /RAISE EXCEPTION/i.test(tour) && tour.includes(LEAKED),
   'replaying it against a database that already holds the leaked value should fail loudly');
 

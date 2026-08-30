@@ -499,7 +499,7 @@
 
 /* ============================================================
    COMPLIANCE SQL-BACKED PACK (PR E)
-   Four enhancements requiring the 20260518_phase4_sql_pack.sql migration:
+   Four enhancements requiring the 20260518000003_phase4_sql_pack.sql migration:
      #10 Multi-PCQI sign-off (second signature on compliance_records)
      #11 Inspector read-only mode (anon token-bound view)
      #16 Multi-facility scoping (facilities table + facility_id stamping)
