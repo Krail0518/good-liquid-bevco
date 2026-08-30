@@ -462,7 +462,7 @@ function openCustomerPortal(customer){
       <td>${esc(String(i.svc||'').substring(0,30))}…</td>
       <td style="font-weight:700">$${(window.fmtUsd?window.fmtUsd(i.amount):Number(i.amount||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))}</td>
       <td>${esc(i.date)}</td>
-      <td><span class="cbdg ${esc(i.status)}">${esc(i.status)}</span></td>
+      <td><span class="cbdg ${esc(effectiveInvoiceStatus(i))}">${esc(effectiveInvoiceStatus(i))}</span></td>
     </tr>`).join('') :
     '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">No invoices yet.</td></tr>';
 }
@@ -548,43 +548,129 @@ function cNav(page,el){
 }
 
 /* Dashboard */
-/* Effective invoice status — shows a `pending` invoice as `overdue` once its
-   due date has PASSED, so the dashboard agrees with the database between
-   nightly runs.
-   Exposed on window so fix.js IIFEs can share the same logic.
+/* Effective invoice status.
 
-   COMPARE DATES, NOT MOMENTS. The previous version did:
+   THE RULE, as set by the business rather than inferred:
+   an unpaid invoice is shown as overdue once its due date is more than
+   GRACE days in the past — 21 (three weeks) by default — and only while the
+   overdue flag is switched on at all. Both are settings, editable from the
+   Invoices page and stored org-wide in app_settings:
 
-       const due = new Date(inv.dueDate);          // '2026-08-30'
+       invoice_overdue_enabled      true  — show overdue at all
+       invoice_overdue_grace_days   21    — days past due before it counts
+
+   Exposed on window so fix.js IIFEs share the same logic.
+
+   TWO EARLIER BUGS, BOTH GONE, BOTH WORTH REMEMBERING
+
+   The original compared a parsed date to a moment:
+
+       const due = new Date(inv.dueDate);      // '2026-08-30'
        if (due < new Date()) return 'overdue';
 
-   new Date('2026-08-30') parses a date-only string as UTC MIDNIGHT, and the
-   right-hand side is a moment. So an invoice due today counted as overdue from
-   00:00 UTC — 8pm the PREVIOUS evening in Florida (UTC-4). Customers were shown
-   as late a day early, and the A/R tallies inherited it.
+   A date-only string parses as UTC MIDNIGHT while the right side is a moment,
+   so in Florida (UTC-4) an invoice due TOMORROW turned overdue at 8pm TONIGHT.
 
-   The nightly `mark-overdue-invoices` cron job has always used
-   `due_date < current_date`, which is correct. This now matches it, so the
-   dashboard and the database no longer disagree.
+   Fixing that, I switched to `due < today` on the reasoning that an invoice is
+   not late on the day it falls due. Wrong: every invoice here is issued "Due on
+   receipt", and the rule was never mine to infer. Dates are now compared as ISO
+   STRINGS against a locally-derived today, which removes the timezone drift,
+   and the threshold comes from the setting rather than from an assumption.
 
-   (An earlier comment here claimed there was no cron job. There is: it runs at
-   02:00 daily and flips pending invoices whose due date has passed.) */
+   A STORED 'overdue' IS HONOURED, NOT RECOMPUTED
+   Someone marking an invoice overdue is a decision, and this function does not
+   overrule it just because the grace period has not elapsed. GL-1024 is exactly
+   that case: stored overdue while nought days past due. The grace period governs
+   the AUTOMATIC flip of a pending invoice; it does not un-mark a human's call.
+
+   The one thing that does suppress a stored overdue is the flag being switched
+   off — "turn overdue off" would mean little if the ones already marked stayed
+   red. */
 function effectiveInvoiceStatus(inv){
   if(!inv) return 'draft';
-  if(inv.status === 'paid' || inv.status === 'overdue' || inv.status === 'draft') return inv.status;
-  if(inv.status === 'pending' && inv.dueDate){
+  if(inv.status === 'paid' || inv.status === 'draft') return inv.status;
+
+  // Settings may not have loaded yet; the defaults are the documented rule.
+  const get = (typeof window !== 'undefined' && typeof window.glGetSetting === 'function')
+    ? window.glGetSetting : function(k, d){ return d; };
+  const enabled = get('invoice_overdue_enabled', true);
+  if(enabled === false) return inv.status === 'overdue' ? 'pending' : (inv.status || 'draft');
+
+  let grace = Number(get('invoice_overdue_grace_days', 21));
+  if(!isFinite(grace) || grace < 0) grace = 21;
+
+  // A status already set to overdue stands, whether by the nightly job or by
+  // hand. Only the automatic promotion below waits for the grace period.
+  if(inv.status === 'overdue') return 'overdue';
+
+  if(inv.dueDate){
     const due = String(inv.dueDate).slice(0, 10);
-    const n = new Date();
-    // Local date, not UTC: "today" means today where the business is.
-    const today = n.getFullYear() + '-' +
-                  String(n.getMonth() + 1).padStart(2, '0') + '-' +
-                  String(n.getDate()).padStart(2, '0');
-    // ISO dates compare correctly as strings, which sidesteps parsing entirely.
-    if(/^\d{4}-\d{2}-\d{2}$/.test(due) && due < today){ return 'overdue'; }
+    if(/^\d{4}-\d{2}-\d{2}$/.test(due)){
+      // Add the grace to the DUE date and compare dates, never moments. Built
+      // through Date only to do the arithmetic, then read back as local parts.
+      const parts = due.split('-');
+      const cutoff = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+      cutoff.setDate(cutoff.getDate() + grace);
+      const n = new Date();
+      const today = new Date(n.getFullYear(), n.getMonth(), n.getDate());
+      if(today > cutoff) return 'overdue';
+    }
   }
   return inv.status || 'draft';
 }
 window.effectiveInvoiceStatus = effectiveInvoiceStatus;
+
+/* ═══ OVERDUE POLICY ═══
+   Two org-wide settings behind the controls in the Invoices header. They are
+   stored in app_settings, not localStorage, so the policy is the same for every
+   member of staff rather than per-browser.
+
+   glSaveAppSetting returns false when the write did not land — an RLS rejection
+   arrives as 0 rows with no error — so these report the failure instead of
+   leaving the checkbox showing a policy the database never accepted. */
+window.glSyncOverdueControls = function glSyncOverdueControls(){
+  var on   = document.getElementById('inv-overdue-on');
+  var days = document.getElementById('inv-overdue-days');
+  if(!on && !days) return;
+  var get = (typeof window.glGetSetting === 'function') ? window.glGetSetting : function(k,d){ return d; };
+  var enabled = get('invoice_overdue_enabled', true);
+  var grace   = Number(get('invoice_overdue_grace_days', 21));
+  if(!isFinite(grace) || grace < 0) grace = 21;
+  if(on)   on.checked = enabled !== false;
+  if(days){ days.value = grace; days.disabled = (enabled === false); }
+};
+
+window.glSetOverdueEnabled = async function glSetOverdueEnabled(checked){
+  var want = (checked === true || checked === 'true');
+  var ok = await window.glSaveAppSetting('invoice_overdue_enabled', want);
+  if(!ok){
+    if(typeof toast === 'function') toast('Could not save the overdue setting', 'err');
+    window.glSyncOverdueControls();          // put the control back to the truth
+    return;
+  }
+  window.glSyncOverdueControls();
+  if(typeof renderInvoices === 'function') renderInvoices();
+  if(typeof renderDash === 'function') renderDash();
+  if(typeof toast === 'function') toast(want ? 'Overdue flagging on' : 'Overdue flagging off');
+};
+
+window.glSetOverdueGraceDays = async function glSetOverdueGraceDays(value){
+  var n = Math.round(Number(value));
+  if(!isFinite(n) || n < 0 || n > 365){
+    if(typeof toast === 'function') toast('Enter a number of days between 0 and 365', 'err');
+    window.glSyncOverdueControls();
+    return;
+  }
+  var ok = await window.glSaveAppSetting('invoice_overdue_grace_days', n);
+  if(!ok){
+    if(typeof toast === 'function') toast('Could not save the overdue setting', 'err');
+    window.glSyncOverdueControls();
+    return;
+  }
+  if(typeof renderInvoices === 'function') renderInvoices();
+  if(typeof renderDash === 'function') renderDash();
+  if(typeof toast === 'function') toast('Overdue after ' + n + ' day' + (n === 1 ? '' : 's'));
+};
 /* Money formatter that keeps precision: full $ under $1K, 1-decimal K
    from $1K to $1M, 2-decimal M above. Avoids $2,312.50 → "$2K". */
 function fmtMoneyShort(n){
@@ -1099,15 +1185,18 @@ function renderInvoices(){
     <td style="color:var(--muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.svc)}</td>
     <td style="font-weight:600">$${(window.fmtUsd?window.fmtUsd(i.amount):Number(i.amount||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))}</td>
     <td style="color:var(--muted)">${esc(i.date)}</td>
-    <td><span class="cbdg ${esc(i.status)}">${esc(i.status)}</span></td>
+    <td><span class="cbdg ${esc(effectiveInvoiceStatus(i))}">${esc(effectiveInvoiceStatus(i))}</span></td>
     <td data-gl-action="glSwallowClick"><div style="display:flex;gap:3px">
       ${i.status!=='paid'?`<button class="cbtn grn" style="font-size:10px;padding:3px 7px" data-gl-action="quickPaid" data-gl-arg1="${esc(i.id)}">Paid</button>`:''}
+      ${i.status==='paid'?`<button class="cbtn" style="font-size:10px;padding:3px 7px" data-gl-action="quickUnpaid" data-gl-arg1="${esc(i.id)}" title="Mark unpaid — returns the invoice to pending and clears the recorded payment">↩ Unpaid</button>`:''}
       ${effectiveInvoiceStatus(i)==='overdue'?`<button class="cbtn" style="font-size:10px;padding:3px 7px;background:rgba(245,200,66,.12);border-color:rgba(245,200,66,.35);color:#f5c842" data-gl-action="sendInvoiceSmsReminder" data-gl-arg1="${esc(i.id)}" title="Send SMS reminder">📱</button>`:''}
       <button class="cbtn" style="font-size:10px;padding:3px 7px" data-gl-action="viewInvoice" data-gl-arg1="${esc(i.id)}">👁</button>
       <button class="cbtn" style="font-size:10px;padding:3px 7px;background:rgba(231,76,60,.1);border-color:rgba(231,76,60,.35);color:#ff8579" data-gl-action="deleteInvoice" data-gl-arg1="${esc(i.id)}" title="Delete invoice">🗑</button>
     </div></td>
   </tr>`).join('');
   renderInvBulkBar();
+  // Keep the overdue controls showing the stored policy rather than a stale value.
+  if(typeof window.glSyncOverdueControls === 'function') window.glSyncOverdueControls();
 }
 function setInvFilter(el,f){document.querySelectorAll('#inv-pills .cpill').forEach(p=>p.classList.remove('act'));el.classList.add('act');invFilter=f;renderInvoices()}
 function filterInvoices(q){invSearch=q.toLowerCase();renderInvoices()}
@@ -1206,6 +1295,47 @@ async function quickPaid(id){
   renderInvoices();renderDash();
   glNotifyDeal('invoice_paid_manual',{invoice_number:id,client:i.clientName||'',amount:String(i.amount||'')});
 }
+
+/* Mark a paid invoice unpaid again — the inverse of quickPaid, which did not
+   exist. Once an invoice was marked paid there was NO route back: the row's
+   only remaining actions were view and delete, so correcting a mis-click meant
+   deleting and re-creating the invoice, or editing the database by hand.
+
+   Returns the invoice to 'pending' and clears the payment fields, rather than
+   guessing 'overdue'. Whether it is overdue is not this function's business —
+   effectiveInvoiceStatus decides that from the due date and the overdue policy,
+   and the nightly job writes it once the grace period has passed. Choosing a
+   status here is what produced an invoice sitting at 'overdue' on the day it
+   was issued.
+
+   Same checked-write discipline as quickPaid: local state is only updated after
+   the server confirms rows changed, because RLS rejects silently and an
+   unchecked write would leave this browser showing 'pending' while the database
+   still says 'paid'. */
+async function quickUnpaid(id){
+  const i = invoices.find(x => x.id === id);
+  if(!i) return;
+  if(!confirm('Mark ' + id + ' as unpaid?\n\nIt goes back to pending and the recorded payment is cleared.')) return;
+
+  const prev = { status: i.status, paid_at: i.paid_at, paid_amount: i.paid_amount };
+  const res = await glPersistInvoiceStatus(i, {
+    status: 'pending', paid_at: null, paid_amount: null, paid_method: null,
+  });
+  if(!res.ok){
+    i.status = prev.status; i.paid_at = prev.paid_at; i.paid_amount = prev.paid_amount;
+    if(typeof addNotification === 'function') addNotification('Mark unpaid failed', id + ' is still marked paid: ' + res.reason, 'error');
+    else alert('Mark unpaid failed — ' + id + ' is still marked paid: ' + res.reason);
+    renderInvoices(); renderDash();
+    return;
+  }
+  i.status = 'pending';
+  i.paid_at = null;
+  i.paid_amount = null;
+  renderInvoices(); renderDash();
+  if(typeof window.glAudit === 'function') window.glAudit('invoice_mark_unpaid', id);
+  if(typeof addNotification === 'function') addNotification('Marked unpaid', id + ' is pending again', 'success');
+}
+window.quickUnpaid = quickUnpaid;
 
 /* Invoice detail */
 function viewInvoice(id){

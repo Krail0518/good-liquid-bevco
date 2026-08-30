@@ -207,16 +207,18 @@ async function callHelper(src, mode, inv) {
   r = await callHelper(src, 'throw', { id: 'GL-1042', supaId: 'uuid-1' });
   check('thrown error -> ok:false rather than an unhandled rejection', r.res.ok === false, JSON.stringify(r.res));
 
-  // ── effectiveInvoiceStatus: an invoice due TODAY is not late yet ────
+  // ── effectiveInvoiceStatus: the overdue POLICY ──────────────────────
   //
-  // The old comparison was `new Date(inv.dueDate) < new Date()`. A date-only
-  // string parses as UTC midnight while the right side is a moment, so an
-  // invoice due today read as overdue from 8pm the previous evening in Florida
-  // (UTC-4) — customers shown as late a day early, and the A/R tallies
-  // inherited it. The nightly mark-overdue-invoices job uses
-  // `due_date < current_date`; these assertions pin the client to that rule.
-  // indexCore() already returns index.html plus every core script joined
-  // together — the same text the rest of this file reads.
+  // The rule is the business's, not an inference: an unpaid invoice is shown
+  // overdue only once it is more than GRACE days past due (21 by default), and
+  // only while the flag is on. Both come from app_settings.
+  //
+  // This function has now been wrong twice, in opposite directions, which is
+  // why each boundary below is pinned rather than spot-checked:
+  //   the original compared a UTC-midnight date to a moment, so an invoice due
+  //     TOMORROW went overdue at 8pm tonight;
+  //   an intermediate version used `due < today`, reporting a genuinely late
+  //     invoice as pending.
   const effSrc = html;
   const effMatch = /function effectiveInvoiceStatus\(inv\)\{[\s\S]*?\n\}/.exec(effSrc);
   check('effectiveInvoiceStatus is still findable',
@@ -224,7 +226,14 @@ async function callHelper(src, mode, inv) {
     'without it the assertions below would silently test nothing');
 
   if (effMatch) {
-    const effectiveInvoiceStatus = new Function('return (' + effMatch[0] + ')')();
+    // The function reads policy through window.glGetSetting; give it one.
+    const makeStatus = (settings) => {
+      const win = {
+        glGetSetting: (k, d) => (k in settings ? settings[k] : d),
+      };
+      const fn = new Function('window', 'return (' + effMatch[0] + ')')(win);
+      return fn;
+    };
     const iso = (offsetDays) => {
       const d = new Date();
       d.setDate(d.getDate() + offsetDays);
@@ -232,27 +241,55 @@ async function callHelper(src, mode, inv) {
              String(d.getMonth() + 1).padStart(2, '0') + '-' +
              String(d.getDate()).padStart(2, '0');
     };
-    const status = (offsetDays, s) =>
-      effectiveInvoiceStatus({ status: s || 'pending', dueDate: iso(offsetDays) });
 
-    check('an invoice due TODAY is still pending, not overdue',
-      status(0) === 'pending',
-      'got "' + status(0) + '" — due today is not late yet, and this is the ' +
-      'exact case that reported customers as late a day early');
+    const dflt = makeStatus({});                       // defaults: on, 21 days
+    const pending = (days) => dflt({ status: 'pending', dueDate: iso(days) });
 
-    check('an invoice due TOMORROW is still pending',
-      status(1) === 'pending', 'got "' + status(1) + '"');
+    check('DEFAULT policy is three weeks: 21 days past due is NOT yet overdue',
+      pending(-21) === 'pending',
+      'got "' + pending(-21) + '" at exactly 21 days past due');
 
-    check('an invoice due YESTERDAY is overdue',
-      status(-1) === 'overdue', 'got "' + status(-1) + '"');
+    check('22 days past due IS overdue',
+      pending(-22) === 'overdue', 'got "' + pending(-22) + '"');
+
+    check('an invoice due today is not overdue under a three-week grace',
+      pending(0) === 'pending', 'got "' + pending(0) + '"');
+
+    check('an invoice a week past due is not overdue yet',
+      pending(-7) === 'pending', 'got "' + pending(-7) + '"');
+
+    // The ORIGINAL timezone bug: a date-only string parsed as UTC midnight
+    // against a moment, so this flipped at 8pm the previous evening.
+    check('an invoice due TOMORROW is never overdue',
+      pending(1) === 'pending', 'got "' + pending(1) + '"');
+
+    check('the grace period is configurable, not hardcoded',
+      makeStatus({ invoice_overdue_grace_days: 3 })({ status: 'pending', dueDate: iso(-5) }) === 'overdue' &&
+      makeStatus({ invoice_overdue_grace_days: 90 })({ status: 'pending', dueDate: iso(-30) }) === 'pending',
+      '3-day grace must flag a 5-day-old invoice; 90-day grace must not flag a 30-day-old one');
+
+    check('turning the flag OFF suppresses overdue, including a stored one',
+      makeStatus({ invoice_overdue_enabled: false })({ status: 'pending', dueDate: iso(-999) }) === 'pending' &&
+      makeStatus({ invoice_overdue_enabled: false })({ status: 'overdue', dueDate: iso(-999) }) === 'pending',
+      'switching it off must clear the flag everywhere, or the switch means nothing');
+
+    check('a status already set to overdue is honoured, not recomputed',
+      dflt({ status: 'overdue', dueDate: iso(0) }) === 'overdue',
+      'GL-1024 is exactly this: stored overdue while 0 days past due. The grace ' +
+      'period governs the automatic flip, not a decision somebody already made.');
 
     check('a paid invoice is never reported overdue, whatever its due date',
-      status(-30, 'paid') === 'paid', 'got "' + status(-30, 'paid') + '"');
+      dflt({ status: 'paid', dueDate: iso(-999) }) === 'paid');
 
     check('a missing or malformed due date does not become overdue',
-      effectiveInvoiceStatus({ status: 'pending', dueDate: null }) === 'pending' &&
-      effectiveInvoiceStatus({ status: 'pending', dueDate: 'not-a-date' }) === 'pending',
+      dflt({ status: 'pending', dueDate: null }) === 'pending' &&
+      dflt({ status: 'pending', dueDate: 'not-a-date' }) === 'pending',
       'an unparseable date must not silently mark someone late');
+
+    check('a nonsense grace value falls back to the documented 21 days',
+      makeStatus({ invoice_overdue_grace_days: 'abc' })({ status: 'pending', dueDate: iso(-22) }) === 'overdue' &&
+      makeStatus({ invoice_overdue_grace_days: -5 })({ status: 'pending', dueDate: iso(-1) }) === 'pending',
+      'a bad setting must not turn into "everything is overdue"');
   }
 
   console.log('\n' + (failures === 0 ? 'ALL PASSED' : failures + ' CHECK(S) FAILED'));
