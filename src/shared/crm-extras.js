@@ -1795,7 +1795,13 @@
   // Sign out on browser close when remember is false.
   window.addEventListener('beforeunload', function(){
     if(localStorage.getItem('gl_remember') === '0' && window.supa && window.supa.auth){
-      try { window.supa.auth.signOut({ scope: 'local' }); } catch(e){}
+      // signOut returns a promise, so the try/catch only ever covered a
+      // synchronous throw. Inside beforeunload the page is going away and the
+      // result genuinely does not matter, but an unhandled rejection still
+      // reaches fix.js and Sentry, so the promise is handled explicitly.
+      try {
+        Promise.resolve(window.supa.auth.signOut({ scope: 'local' })).catch(function(){});
+      } catch(e){}
     }
   });
 

@@ -1665,7 +1665,11 @@ async function saveReferrer(){
 const _origLogout = logoutCRM;
 function logoutCRM(){
   crmInited = false;
-  supa.auth.signOut();
+  // Fire-and-forget on purpose — the local session is cleared and the UI exits
+  // below whether or not the server round-trip succeeds, so logout must not
+  // depend on the network. But the call returns a promise, and an unhandled
+  // rejection here goes straight to Sentry via fix.js. Handled, not awaited.
+  Promise.resolve(supa.auth.signOut()).catch(function(){});
   currentUser=null;
   exitCRM();
   const em=document.getElementById('pw-email');

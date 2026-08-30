@@ -1888,7 +1888,21 @@
         if(status === 'SUBSCRIBED') console.log('[GL] realtime: subscribed to invoices');
         else if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED'){
           console.warn('[GL] realtime channel status:', status, '— will retry in 5s');
-          try { sb.removeChannel(channel); } catch(e){}
+          // removeChannel returns a PROMISE, so this try/catch never saw its
+          // failure. supabase-js 2.106.2 rejects here with "Maximum call stack
+          // size exceeded" from its channel-leave path, and with nothing
+          // handling the promise each one became an unhandled rejection —
+          // ~18 during startup on a returning visit, measured against
+          // production. fix.js pipes unhandledrejection straight to
+          // Sentry.captureException, so once staff are logged in that is quota
+          // spent on noise that also buries real errors.
+          //
+          // The catch is deliberately silent: a failed leave is not actionable,
+          // because the channel is discarded and rebuilt on the next line
+          // either way. The outer try stays for a synchronous throw.
+          try {
+            Promise.resolve(sb.removeChannel(channel)).catch(function(){});
+          } catch(e){}
           channel = null;
           setTimeout(subscribe, 5000);
         }
