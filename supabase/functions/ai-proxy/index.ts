@@ -25,6 +25,7 @@
 
 import { corsHeaders, jsonResponse, errorResponse, handlePreflight } from '../_shared/cors.ts';
 import { requireStaff } from '../_shared/auth.ts';
+import { checkRateLimit, rateLimitMessage } from '../_shared/rate-limit.ts';
 
 const API_KEY = Deno.env.get('ANTHROPIC_API_KEY') || '';
 
@@ -37,6 +38,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // A valid JWT alone is not enough — portal customers hold one too.
   const _auth = await requireStaff(req);
   if (!_auth.ok) return errorResponse(_auth.error || 'Forbidden', _auth.status);
+
+  // Bound how often ONE account can spend money here. Authorization above says
+  // who may call; this says how often. Keyed by user so one account cannot
+  // exhaust everyone else's budget. Fails open by design — see rate-limit.ts.
+  const _rl = await checkRateLimit(
+    'ai-proxy:' + (_auth.userId || 'role:' + (_auth.role || 'unknown')),
+    60, 60,
+  );
+  if (_rl.degraded) console.warn('[ai-proxy] rate limit check degraded:', _rl.degraded);
+  if (!_rl.allowed) return errorResponse(rateLimitMessage('AI'), 429);
 
   if (!API_KEY) return errorResponse('ANTHROPIC_API_KEY not configured', 500);
 
