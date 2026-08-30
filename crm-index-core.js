@@ -4969,8 +4969,18 @@ viewClientEnhanced = function(clientId){
 ═══════════════════════════════════════════ */
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').then(reg => {
+    // updateViaCache:'none' makes the browser fetch sw.js itself past the HTTP
+    // cache. Without it a browser can keep running the PREVIOUS worker for up
+    // to 24 hours, which matters here: the purge of cross-origin cache entries
+    // lives in the new worker's activate handler, so a stale script means the
+    // stale data stays. This was observed directly — a seeded cross-origin
+    // entry survived repeated re-registration until the script fetch bypassed
+    // the cache.
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(reg => {
       console.log('SW registered:', reg.scope);
+      // Ask for a script check immediately rather than waiting for the
+      // browser's own schedule.
+      if (reg.update) { try { reg.update(); } catch (e) {} }
     }).catch(err => {
       console.log('SW registration failed:', err);
     });
