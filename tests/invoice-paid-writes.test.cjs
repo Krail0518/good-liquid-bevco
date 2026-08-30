@@ -207,6 +207,54 @@ async function callHelper(src, mode, inv) {
   r = await callHelper(src, 'throw', { id: 'GL-1042', supaId: 'uuid-1' });
   check('thrown error -> ok:false rather than an unhandled rejection', r.res.ok === false, JSON.stringify(r.res));
 
+  // ── effectiveInvoiceStatus: an invoice due TODAY is not late yet ────
+  //
+  // The old comparison was `new Date(inv.dueDate) < new Date()`. A date-only
+  // string parses as UTC midnight while the right side is a moment, so an
+  // invoice due today read as overdue from 8pm the previous evening in Florida
+  // (UTC-4) — customers shown as late a day early, and the A/R tallies
+  // inherited it. The nightly mark-overdue-invoices job uses
+  // `due_date < current_date`; these assertions pin the client to that rule.
+  // indexCore() already returns index.html plus every core script joined
+  // together — the same text the rest of this file reads.
+  const effSrc = html;
+  const effMatch = /function effectiveInvoiceStatus\(inv\)\{[\s\S]*?\n\}/.exec(effSrc);
+  check('effectiveInvoiceStatus is still findable',
+    !!effMatch,
+    'without it the assertions below would silently test nothing');
+
+  if (effMatch) {
+    const effectiveInvoiceStatus = new Function('return (' + effMatch[0] + ')')();
+    const iso = (offsetDays) => {
+      const d = new Date();
+      d.setDate(d.getDate() + offsetDays);
+      return d.getFullYear() + '-' +
+             String(d.getMonth() + 1).padStart(2, '0') + '-' +
+             String(d.getDate()).padStart(2, '0');
+    };
+    const status = (offsetDays, s) =>
+      effectiveInvoiceStatus({ status: s || 'pending', dueDate: iso(offsetDays) });
+
+    check('an invoice due TODAY is still pending, not overdue',
+      status(0) === 'pending',
+      'got "' + status(0) + '" — due today is not late yet, and this is the ' +
+      'exact case that reported customers as late a day early');
+
+    check('an invoice due TOMORROW is still pending',
+      status(1) === 'pending', 'got "' + status(1) + '"');
+
+    check('an invoice due YESTERDAY is overdue',
+      status(-1) === 'overdue', 'got "' + status(-1) + '"');
+
+    check('a paid invoice is never reported overdue, whatever its due date',
+      status(-30, 'paid') === 'paid', 'got "' + status(-30, 'paid') + '"');
+
+    check('a missing or malformed due date does not become overdue',
+      effectiveInvoiceStatus({ status: 'pending', dueDate: null }) === 'pending' &&
+      effectiveInvoiceStatus({ status: 'pending', dueDate: 'not-a-date' }) === 'pending',
+      'an unparseable date must not silently mark someone late');
+  }
+
   console.log('\n' + (failures === 0 ? 'ALL PASSED' : failures + ' CHECK(S) FAILED'));
   process.exit(failures === 0 ? 0 : 1);
 })().catch((e) => { console.error(e); process.exit(1); });
