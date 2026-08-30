@@ -131,11 +131,29 @@
       palletCost = pallets * ((pkg.palletOn ? (pkg.palletEach || 0) : 0) +
                               (pkg.palletWrapOn ? (pkg.palletWrapEach || 0) : 0));
     }
+    // ── Manual overrides win over the calculation ──
+    // A quote is a commercial document, not a spreadsheet output: sometimes the
+    // number you have to put in front of a customer is not the number the rate
+    // card produces. Any of these can be typed over, and an overridden cell
+    // keeps its value when other inputs change — same contract as fillPerCan,
+    // which has always worked this way.
+    if(isNum(tier.addonsOverride))    perCan    = (tier.fillPerCan || 0) + tier.addonsOverride;
+    if(isNum(tier.caseExtraOverride)) caseExtra = tier.caseExtraOverride;
+    if(isNum(tier.palletCostOverride)) palletCost = tier.palletCostOverride;
+
+    var runTotal = perCan * cans + caseExtra * cases + palletCost;
+    if(isNum(tier.runTotalOverride)) runTotal = tier.runTotalOverride;
+
     return {
       perCan: perCan, caseExtra: caseExtra, pallets: pallets, palletCost: palletCost,
-      runTotal: perCan * cans + caseExtra * cases + palletCost
+      runTotal: runTotal
     };
   }
+
+  // An override is only in force when it is a real number. 0 is a legitimate
+  // override — "this line is free" — so a plain truthiness test would silently
+  // drop it back to the calculated value.
+  function isNum(v){ return typeof v === 'number' && isFinite(v); }
 
   // Bottling packaging defaults (per bottle / per case / per pallet). Same
   // DB-backed pattern as canning; a 6-pack case counts as one "case".
@@ -310,7 +328,13 @@
             '</select>' +
           '</div>' +
           '<div><div style="'+LBL+'">PACKAGE FORMAT</div>' +
-            '<select id="gl-qb-fmt" style="'+INP+'"></select>' +
+            /* An editable combobox, not a dropdown. The presets carry
+               size-specific can rates, but quoting a format that is not on the
+               list is an ordinary thing to want and the <select> made it
+               impossible. Type anything: the preset can-rates simply stop
+               applying, and those prices are editable in the add-ons grid. */
+            '<input id="gl-qb-fmt" list="gl-qb-fmt-list" autocomplete="off" placeholder="Pick one, or type your own…" style="'+INP+'">' +
+            '<datalist id="gl-qb-fmt-list"></datalist>' +
           '</div>' +
         '</div>' +
 
@@ -407,7 +431,11 @@
       var t = typeEl.value;
       state.productType = t;
       var fmts = DECK[t].formats;
-      fmtEl.innerHTML = fmts.map(function(f){ return '<option>'+esc(f)+'</option>'; }).join('');
+      // Suggestions now, not the only choices — they populate the datalist and
+      // the field itself stays free text.
+      var dl = ov.querySelector('#gl-qb-fmt-list');
+      if(dl) dl.innerHTML = fmts.map(function(f){ return '<option value="'+esc(f)+'">'; }).join('');
+      fmtEl.value = fmts[0];
       state.format = fmts[0];
       applyCanRates();
       rebuildAddons();
@@ -422,7 +450,14 @@
       state.pkg.canPrintedPerCan = canRate('printed', state.format);
     }
     typeEl.addEventListener('change', function(){ rebuildFormats(); state.tiers=[]; renderTiers(); });
-    fmtEl.addEventListener('change', function(){ state.format = fmtEl.value; applyCanRates(); rebuildAddons(); rerenderTiers(); });
+    // 'input' as well as 'change': a typed format has to take effect while you
+    // are typing it, not only once focus leaves the field.
+    ['change','input'].forEach(function(evt){
+      fmtEl.addEventListener(evt, function(){
+        state.format = fmtEl.value;
+        applyCanRates(); rebuildAddons(); rerenderTiers();
+      });
+    });
     rebuildFormats();
 
     // The packaging/add-on defaults are read synchronously from the price cache;
@@ -637,22 +672,41 @@
         inp.addEventListener('input', function(){
           var idx  = parseInt(inp.getAttribute('data-tier-idx'),10);
           var field = inp.getAttribute('data-tier-field');
-          var val  = parseFloat(inp.value)||0;
-          state.tiers[idx][field] = val;
+          var raw  = String(inp.value).trim();
+          var tier = state.tiers[idx];
+
+          // The *Override fields are the manual-entry cells. Emptying one hands
+          // the cell back to the calculation, which is the only way out once a
+          // number has been typed — without it the first keystroke would be
+          // permanent.
+          var OVERRIDES = ['addonsOverride','caseExtraOverride','palletCostOverride','runTotalOverride'];
+          if(OVERRIDES.indexOf(field) >= 0){
+            if(raw === ''){ delete tier[field]; }
+            else { tier[field] = parseFloat(raw) || 0; }
+            renderTiers();
+            return;
+          }
+
+          var val = parseFloat(raw) || 0;
+          tier[field] = val;
+
+          // Typing a can/bottle count means you want THAT count, not cases×24.
+          if(field === 'cans' || field === 'bottles') tier._countOverride = true;
+
           if(field === 'cases'){
             if(isCanning){
-              state.tiers[idx].cans = Math.round(val * CANS_PER_CASE);
+              if(!tier._countOverride) tier.cans = Math.round(val * CANS_PER_CASE);
               var deck = autoRate(val);
-              if(!state.tiers[idx]._fillOverride) state.tiers[idx].fillPerCan = deck;
+              if(!tier._fillOverride) tier.fillPerCan = deck;
             } else if(isBottling){
-              state.tiers[idx].bottles = Math.round(val * BTLS_PER_CASE);
+              if(!tier._countOverride) tier.bottles = Math.round(val * BTLS_PER_CASE);
               var deck2 = autoRate(val);
-              if(!state.tiers[idx]._rateOverride) state.tiers[idx].ratePerBtl = deck2;
+              if(!tier._rateOverride) tier.ratePerBtl = deck2;
             }
           }
           if(field === 'fillPerCan' || field === 'ratePerBtl'){
-            state.tiers[idx]._fillOverride = true;
-            state.tiers[idx]._rateOverride = true;
+            tier._fillOverride = true;
+            tier._rateOverride = true;
           }
           renderTiers();
         });
@@ -678,14 +732,21 @@
         var palletCell = x.pallets
           ? x.pallets + ' × ' + fmtUsd((x.palletCost/x.pallets)) + '<div style="color:var(--muted);font-size:10px">' + fmtUsd(x.palletCost) + '</div>'
           : '—';
+        // Every number in this row is typed over-able. The ones that used to be
+        // plain text — cans, add-ons, packaging, pallets, the run total — are
+        // inputs now, and an edited cell holds its value instead of being
+        // recalculated out from under you.
         return '<tr>' +
           '<td style="'+TD+'">' + numInp(i,'cases',tier.cases,0,60) + '</td>' +
-          '<td style="'+TD+';color:var(--muted)">' + fmtNum(tier.cans||0) + '</td>' +
+          '<td style="'+TD+'">' + ovrInp(i,'cans',tier.cans||0,tier._countOverride,68,1) + '</td>' +
           '<td style="'+TD+'">' + rateInp(i,'fillPerCan',tier.fillPerCan,tier._fillOverride) + '</td>' +
-          '<td style="'+TDM+';color:var(--muted)">' + fmtUsd(addonsPerCan) + '</td>' +
-          '<td style="'+TDM+';color:var(--muted)">' + fmtUsd(x.caseExtra) + '</td>' +
-          '<td style="'+TDM+';color:var(--muted);font-size:11px">' + palletCell + '</td>' +
-          '<td style="'+TDM+'">' + fmtUsd(x.runTotal) + '</td>' +
+          '<td style="'+TDM+'">' + ovrInp(i,'addonsOverride',addonsPerCan,isNum(tier.addonsOverride),64,0.01) + '</td>' +
+          '<td style="'+TDM+'">' + ovrInp(i,'caseExtraOverride',x.caseExtra,isNum(tier.caseExtraOverride),64,0.01) + '</td>' +
+          '<td style="'+TDM+';font-size:11px">' +
+            ovrInp(i,'palletCostOverride',x.palletCost,isNum(tier.palletCostOverride),68,0.01) +
+            '<div style="color:var(--muted);font-size:10px;margin-top:2px">' + (x.pallets ? x.pallets + ' pallet' + (x.pallets===1?'':'s') : '—') + '</div>' +
+          '</td>' +
+          '<td style="'+TDM+'">' + ovrInp(i,'runTotalOverride',x.runTotal,isNum(tier.runTotalOverride),82,0.01) + '</td>' +
           '<td style="'+TD+'"><button data-del-tier="'+i+'" class="cbtn" style="padding:3px 8px;font-size:11px;color:#ff8579;border-color:rgba(255,133,121,.3)">✕</button></td>' +
         '</tr>';
       } else if(isBottling){
@@ -719,6 +780,23 @@
     function numInp(i, field, val, step, width){
       return '<input data-tier-idx="'+i+'" data-tier-field="'+field+'" type="number" min="0" step="'+(step||1)+'" value="'+(val||0)+'" style="width:'+(width||60)+'px;padding:5px 6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:4px;color:#fff;font-size:12px">';
     }
+    // A cell that shows a CALCULATED value but accepts a typed one. Yellow
+    // border once overridden, so at a glance you can see which numbers on a
+    // quote are the rate card's and which are yours. Clearing the box hands the
+    // cell back to the calculation.
+    function ovrInp(i, field, val, overridden, width, step){
+      var border = overridden ? 'rgba(245,200,66,.5)' : 'rgba(255,255,255,.12)';
+      var colour = overridden ? '#f5c842' : 'var(--muted)';
+      var title  = overridden
+        ? 'Custom value — clear the box to go back to the calculated one'
+        : 'Calculated. Type over it to set your own.';
+      return '<input data-tier-idx="' + i + '" data-tier-field="' + field + '"' +
+        ' type="number" step="' + (step || 0.01) + '" value="' + (Math.round((val || 0) * 100) / 100) + '"' +
+        ' style="width:' + (width || 68) + 'px;padding:5px 6px;background:rgba(255,255,255,.04);' +
+        'border:1px solid ' + border + ';border-radius:4px;color:' + colour + ';font-size:12px"' +
+        ' title="' + title + '">';
+    }
+
     function rateInp(i, field, val, overridden){
       var border = overridden ? 'rgba(245,200,66,.5)' : 'rgba(255,255,255,.12)';
       return '<input data-tier-idx="'+i+'" data-tier-field="'+field+'" type="number" min="0" step="0.01" value="'+(val||0)+'" style="width:68px;padding:5px 6px;background:rgba(255,255,255,.04);border:1px solid '+border+';border-radius:4px;color:#fff;font-size:12px" title="'+(overridden?'Custom rate':'Deck rate — edit to override')+'">';
