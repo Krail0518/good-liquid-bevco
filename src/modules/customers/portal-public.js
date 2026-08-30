@@ -209,8 +209,11 @@
     var token = supaRow && supaRow.data && supaRow.data.share_token;
     if(!token){
       token = randToken();
-      var upd = await sb.from('invoices').update({ share_token: token }).eq('id', inv.supaId);
+      var upd = await sb.from('invoices').update({ share_token: token }).eq('id', inv.supaId).select();
       if(upd.error){ alert('Failed to set share token: '+upd.error.message); return null; }
+      // Without this the function returns a link built from a token that was
+      // never stored — the customer gets a URL that cannot resolve.
+      if(!upd.data || !upd.data.length){ alert('Failed to set share token' + " (nothing was saved — you may not have permission)"); return null; }
     }
     var link = window.location.origin + window.location.pathname + '?invoice_view=' + token;
     return link;

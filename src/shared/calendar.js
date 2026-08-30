@@ -327,8 +327,9 @@ async function updateProdStatus(id,status){
   if(!ev) return;
   ev.prodStatus = status;
   if(window.supa){
-    const r = await window.supa.from('cal_events').update({ prod_status: status }).eq('id', id);
+    const r = await window.supa.from('cal_events').update({ prod_status: status }).eq('id', id).select();
     if(r.error){ alert('Status update failed: ' + r.error.message); return; }
+    if(!r.data || !r.data.length){ alert('Status update failed' + " (nothing was saved — you may not have permission)"); return; }
   }
   renderProductionRuns();
 }

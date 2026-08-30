@@ -158,8 +158,9 @@ async function toggleTask(id){
   const r = await window.supa.from('tasks').update({
     done: nextDone,
     done_at: nextDone ? new Date().toISOString() : null
-  }).eq('id', id);
+  }).eq('id', id).select();
   if(r.error){ alert('Update failed: ' + r.error.message); return; }
+  if(!r.data || !r.data.length){ alert('Update failed' + " (nothing was saved — you may not have permission)"); return; }
   t.done = nextDone;
   renderTasks();
   if(typeof glAudit === 'function') glAudit(nextDone ? 'task_completed' : 'task_reopened', null, { task_id: id });

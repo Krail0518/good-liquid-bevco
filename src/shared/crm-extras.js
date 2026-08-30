@@ -609,8 +609,9 @@
     saveLinks(m);
     // Persist to the canonical column too.
     if(window.supa){
-      window.supa.from('invoices').update({ stripe_payment_link: url || null }).eq('invoice_number', invId).then(function(r){
+      window.supa.from('invoices').update({ stripe_payment_link: url || null }).eq('invoice_number', invId).select().then(function(r){
         if(r.error) console.warn('[GL] pay link DB update failed', r.error.message);
+        else if(!r.data || !r.data.length) console.warn('[GL] pay link DB update affected 0 rows — not saved');
       });
     }
   };

@@ -218,8 +218,9 @@ async function toggleTimer() {
       ended_at: new Date(endMs).toISOString(),
       seconds:  elapsed,
       hours:    Number((elapsed/3600).toFixed(2))
-    }).eq('id', activeTimer.id);
+    }).eq('id', activeTimer.id).select();
     if(r.error){ alert('Stop timer failed: ' + r.error.message); return; }
+    if(!r.data || !r.data.length){ alert('Stop timer failed (nothing was saved — you may not have permission)'); return; }
     clearInterval(timerInterval); timerInterval = null;
     document.getElementById('tt-start-btn').textContent = '▶ Start';
     document.getElementById('tt-start-btn').style.background = 'var(--teal)';

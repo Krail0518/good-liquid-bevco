@@ -4356,8 +4356,9 @@ async function adjustInventory(id,delta){
   if(!item) return;
   const newQty = Math.max(0, item.qty + delta);
   if(!window.supa){ item.qty = newQty; renderInventory(); return; }
-  const r = await window.supa.from('inventory').update({ qty: newQty }).eq('id', id);
+  const r = await window.supa.from('inventory').update({ qty: newQty }).eq('id', id).select();
   if(r.error){ alert('Update failed: ' + r.error.message); return; }
+  if(!r.data || !r.data.length){ alert('Update failed' + " (nothing was saved — you may not have permission)"); return; }
   item.qty = newQty;
   renderInventory();
 }
