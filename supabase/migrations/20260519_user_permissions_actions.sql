@@ -8,6 +8,12 @@
 -- delete them, or see dashboards but NOT export the backup.
 --
 -- Idempotent. Safe to re-run.
+--
+-- NOTE: one description used a BACKSLASH-escaped apostrophe (customer's),
+-- which is not valid under standard_conforming_strings and made this file
+-- unrunnable on a fresh database — found by replaying the history into a new
+-- project. Corrected to the SQL-standard doubled quote; the stored text is
+-- identical to what production already holds.
 -- ============================================================
 
 insert into public.permission_components (id, label, category, description, default_on, sort_order) values
@@ -20,7 +26,7 @@ insert into public.permission_components (id, label, category, description, defa
   ('action.export.bulk',            'Admin backup export',        'action', 'Download a ZIP of every table — sensitive data.',                                  false, 306),
   ('action.export.csv',             'Export invoices CSV',        'action', 'Bulk export the invoices table to spreadsheet.',                                   true,  307),
   ('action.customer.invite',        'Invite customer portal',     'action', 'Create or re-invite a customer portal login.',                                     true,  308),
-  ('action.customer.deactivate',    'Deactivate customer portal', 'action', 'Disable a customer\'s portal access.',                                             false, 309),
+  ('action.customer.deactivate',    'Deactivate customer portal', 'action', 'Disable a customer''s portal access.',                                             false, 309),
   ('action.referral.pay',           'Mark referral commission paid', 'action', 'Flip a referral commission to paid status.',                                    false, 310),
   ('action.user.invite',            'Invite staff user',          'action', 'Create a new staff login (CRM admin area).',                                       false, 311)
 on conflict (id) do nothing;
