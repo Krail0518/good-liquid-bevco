@@ -457,7 +457,12 @@
     link.id        = 'nav-scheduling';
     link.className = 'cni';
     link.innerHTML = '<span class="cni-ico">🔗</span>Scheduling Link';
-    link.setAttribute('onclick', "cNav('scheduling',this)");
+    // Was setAttribute('onclick', ...). An inline handler assembled at
+    // runtime is still an inline handler and CSP blocks it identically.
+    // cNav(page, el) highlights el, which data-gl-el supplies.
+    link.setAttribute('data-gl-action', 'cNav');
+    link.setAttribute('data-gl-arg1', 'scheduling');
+    link.setAttribute('data-gl-el', '');
     // Insert after the production calendar nav item
     var prodCal = document.getElementById('nav-production-cal');
     var ref = prodCal ? prodCal.nextSibling : null;

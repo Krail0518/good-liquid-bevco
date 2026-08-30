@@ -178,9 +178,12 @@
     'glPwSubmitEnter',
     'glPwUserEnter',
     'glQuoteFromDeal',
+    'glReloadPage',
     'glRemLine',
     'glRemoveLine',
     'glRenderPermMatrixFor',
+    'glResetBtlPrice',
+    'glResetCanPrice',
     'glRetryCipPending',
     'glRunMockRecall',
     'glSaveAndSend',
@@ -320,5 +323,5 @@
     'viewInvoice',
   ]);
 
-  console.log('[GL] 298 actions registered');
+  console.log('[GL] 301 actions registered');
 }());

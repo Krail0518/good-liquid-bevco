@@ -5183,3 +5183,9 @@ window.glInvAiDraft = function glInvAiDraft(){
   var i = (window.invoices || []).find(function(x){ return x.id === currentInvId; });
   if(i) aiDraftEmail(i.clientName, i.id, i.amount, i.status);
 };
+
+// The "Reload" link shown on a connection error. It was
+// href="javascript:location.reload()" -- a real control, not a placeholder, so
+// dropping 'unsafe-inline' would have silently broken the one thing offered to
+// a user whose connection just failed.
+window.glReloadPage = function glReloadPage(){ location.reload(); };

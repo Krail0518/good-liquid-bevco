@@ -1192,9 +1192,9 @@
     var col = tagColor(p.tag);
     var hasUrl = p.url && p.url !== '#';
     // Null/# URLs: scroll to contact form instead of jumping to top of page.
-    var safeUrl = hasUrl ? p.url : 'javascript:void(0)';
+    var safeUrl = hasUrl ? p.url : '#';
     var newTab = (hasUrl && p.url.indexOf('http') === 0) ? ' target="_blank" rel="noopener"' : '';
-    var onclickAttr = hasUrl ? '' : ' data-gl-action="navTo" data-gl-arg1="contact"';
+    var onclickAttr = hasUrl ? '' : ' data-gl-action="navTo" data-gl-prevent="" data-gl-arg1="contact"';
     return '<a class="gl-hov-teal-border" href="' + esc(safeUrl) + '"'+newTab+onclickAttr+' style="text-decoration:none;display:flex;flex-direction:column;gap:11px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:22px;transition:border-color .15s">' +
       (p.tag ? '<span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:600;letter-spacing:1px;background:' + col + '22;color:' + col + ';border:1px solid ' + col + '44;width:fit-content">' + esc(p.tag) + '</span>' : '') +
       '<div style="font-family:var(--ff-disp);font-size:16px;letter-spacing:.5px;color:#fff;line-height:1.3">' + esc(p.title || 'Untitled') + '</div>' +
@@ -1457,7 +1457,7 @@
               '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + low.length + ' item' + (low.length === 1 ? '' : 's') + ' at or below reorder threshold</div>' +
             '</div>' +
           '</div>' +
-          '<a href="javascript:void(0)" data-gl-action="cNav" data-gl-arg1="inventory" data-gl-arg2="" style="font-size:11px;color:var(--teal);text-decoration:none">Open inventory →</a>' +
+          '<a href="#" data-gl-action="cNav" data-gl-prevent="" data-gl-arg1="inventory" data-gl-arg2="" style="font-size:11px;color:var(--teal);text-decoration:none">Open inventory →</a>' +
         '</div>' +
         '<div>' + rows + '</div>' +
       '</div>';

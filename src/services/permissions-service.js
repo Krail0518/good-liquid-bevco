@@ -1110,7 +1110,10 @@
     var createBtn = modal.querySelector('button.cbtn.pri');
     if(createBtn && !createBtn.__glPresetHooked){
       createBtn.__glPresetHooked = true;
-      var origHandler = createBtn.getAttribute('onclick');
+      // The button's handler used to live in an onclick attribute, which this
+      // hook re-invoked through new Function(). Both halves of that are gone:
+      // the attribute (GL-DEF-01) and eval (script-src has no 'unsafe-eval',
+      // so it was already being blocked and swallowed by the catch below).
       createBtn.removeAttribute('onclick');
       createBtn.addEventListener('click', function(){
         var emailEl = document.getElementById('inv-email');
@@ -1119,10 +1122,7 @@
         var preset = presetEl && presetEl.value || '';
         if(email && preset) window.glPendingPresetByEmail[email] = preset;
         try {
-          if(origHandler){
-            // Re-invoke the original inline handler text
-            new Function(origHandler).call(createBtn);
-          } else if(typeof window.createInvitedUser === 'function'){
+          if(typeof window.createInvitedUser === 'function'){
             window.createInvitedUser();
           }
         } catch(e){ console.warn('[GL preset hook] handler threw', e); }

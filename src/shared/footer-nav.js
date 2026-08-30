@@ -13,7 +13,7 @@
       footerLinks.forEach(function(a){
         var text = a.textContent.trim();
         if(sections[text]){
-          a.href = 'javascript:void(0)';
+          a.href = '#';
           a.removeAttribute('onclick');
           a.addEventListener('click', function(e){
             e.preventDefault();
@@ -25,7 +25,7 @@
       navLinks.forEach(function(a){
         var text = a.textContent.trim();
         if(sections[text]){
-          a.href = 'javascript:void(0)';
+          a.href = '#';
           a.removeAttribute('onclick');
           a.addEventListener('click', function(e){
             e.preventDefault();
