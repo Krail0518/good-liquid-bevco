@@ -548,16 +548,39 @@ function cNav(page,el){
 }
 
 /* Dashboard */
-/* Effective invoice status — flips a `pending` invoice to `overdue` when
-   its due_date is in the past. The DB column doesn't auto-update; this
-   keeps the dashboard tallies honest without a cron job.
-   Exposed on window so fix.js IIFEs can share the same logic. */
+/* Effective invoice status — shows a `pending` invoice as `overdue` once its
+   due date has PASSED, so the dashboard agrees with the database between
+   nightly runs.
+   Exposed on window so fix.js IIFEs can share the same logic.
+
+   COMPARE DATES, NOT MOMENTS. The previous version did:
+
+       const due = new Date(inv.dueDate);          // '2026-08-30'
+       if (due < new Date()) return 'overdue';
+
+   new Date('2026-08-30') parses a date-only string as UTC MIDNIGHT, and the
+   right-hand side is a moment. So an invoice due today counted as overdue from
+   00:00 UTC — 8pm the PREVIOUS evening in Florida (UTC-4). Customers were shown
+   as late a day early, and the A/R tallies inherited it.
+
+   The nightly `mark-overdue-invoices` cron job has always used
+   `due_date < current_date`, which is correct. This now matches it, so the
+   dashboard and the database no longer disagree.
+
+   (An earlier comment here claimed there was no cron job. There is: it runs at
+   02:00 daily and flips pending invoices whose due date has passed.) */
 function effectiveInvoiceStatus(inv){
   if(!inv) return 'draft';
   if(inv.status === 'paid' || inv.status === 'overdue' || inv.status === 'draft') return inv.status;
   if(inv.status === 'pending' && inv.dueDate){
-    const due = new Date(inv.dueDate);
-    if(!isNaN(due.getTime()) && due < new Date()){ return 'overdue'; }
+    const due = String(inv.dueDate).slice(0, 10);
+    const n = new Date();
+    // Local date, not UTC: "today" means today where the business is.
+    const today = n.getFullYear() + '-' +
+                  String(n.getMonth() + 1).padStart(2, '0') + '-' +
+                  String(n.getDate()).padStart(2, '0');
+    // ISO dates compare correctly as strings, which sidesteps parsing entirely.
+    if(/^\d{4}-\d{2}-\d{2}$/.test(due) && due < today){ return 'overdue'; }
   }
   return inv.status || 'draft';
 }
