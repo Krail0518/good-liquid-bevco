@@ -74,7 +74,9 @@ function sendResetLink(){
   document.getElementById('reset-success').style.display='block';
   const u=users.find(x=>x.email.toLowerCase()===email.toLowerCase());
   if(u){
-    const tempPw='GL'+Math.random().toString(36).substring(2,8).toUpperCase();
+    // This one is EMAILED to the user, so predictability here is directly
+    // exploitable by anyone who knows roughly when the reset happened.
+    const tempPw=window.glTempPassword();
     sendMailgunEmail(email,'[Good Liquid CRM] Password Reset',
       `Hi ${u.name},\n\nYour temporary password is: ${tempPw}\n\nPlease log in and change it immediately.\n\nGood Liquid Bev Co`);
   }

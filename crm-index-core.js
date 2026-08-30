@@ -5189,3 +5189,33 @@ window.glInvAiDraft = function glInvAiDraft(){
 // dropping 'unsafe-inline' would have silently broken the one thing offered to
 // a user whose connection just failed.
 window.glReloadPage = function glReloadPage(){ location.reload(); };
+
+/* ── Temporary passwords (EXT-029) ────────────────────────────────────
+   These were built with Math.random(), which is not a cryptographic RNG: its
+   output is predictable from a handful of observed values, and V8 seeds it per
+   context. One of the three call sites EMAILS the result as a reset password,
+   so a predictable value there is directly usable by anyone who knows roughly
+   when a reset happened.
+
+   crypto.getRandomValues is the right primitive and is available in every
+   browser this app supports.
+
+   Rejection sampling, not a bare modulo: 256 is not a multiple of the alphabet
+   length, so a bare byte modulo would make the first few characters measurably more
+   likely. The bias is small but there is no reason to accept it.
+
+   The 'GL!' prefix and 'aZ1' suffix are kept deliberately — they guarantee an
+   upper, a lower, a digit and a symbol, so the result still satisfies whatever
+   complexity rule the auth provider applies. */
+window.glTempPassword = function glTempPassword(len){
+  var alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'; // no O/0/I/l
+  var n = Math.max(12, len || 16);
+  var max = 256 - (256 % alphabet.length);
+  var byte = new Uint8Array(1);
+  var out = '';
+  while(out.length < n){
+    crypto.getRandomValues(byte);
+    if(byte[0] < max) out += alphabet.charAt(byte[0] % alphabet.length);
+  }
+  return 'GL!' + out + 'aZ1';
+};
