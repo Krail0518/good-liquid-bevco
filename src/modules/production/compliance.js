@@ -1843,9 +1843,25 @@
   };
 
   // ── (2) FDA audit export — CSV + print-to-PDF ──
+  // Neutralise spreadsheet formula injection. A cell beginning =, +, - or @
+  // (or a tab / carriage return, which Excel strips before parsing) is read as
+  // a FORMULA, not text, so a value typed into the CRM by a lead or a customer
+  // can execute in whoever opens the export. Quoting does not help: the quotes
+  // are consumed by the CSV parser and the formula survives.
+  //
+  // The guard deliberately does NOT fire on plain numbers. Invoice amounts and
+  // credits are legitimately negative, and prefixing '-25.00' would turn every
+  // negative figure into text and break the sums the export exists for. A
+  // leading '-' only matters when what follows is not simply a number.
+  function csvNeutralise(s){
+    if(/^[=+@\t\r]/.test(s)) return "'" + s;
+    if(/^-/.test(s) && !/^-?\d+(\.\d+)?$/.test(s)) return "'" + s;
+    return s;
+  }
   function escCsv(v){
     if(v === null || v === undefined) return '';
     var s = (typeof v === 'object') ? JSON.stringify(v) : String(v);
+    s = csvNeutralise(s);
     if(/[",\n\r]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
     return s;
   }
