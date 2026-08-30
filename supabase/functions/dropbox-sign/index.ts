@@ -22,6 +22,7 @@
 
 import { jsonResponse, errorResponse, handlePreflight } from '../_shared/cors.ts';
 import { requireStaff } from '../_shared/auth.ts';
+import { checkRateLimit, rateLimitMessage } from '../_shared/rate-limit.ts';
 
 const HS_BASE = 'https://api.hellosign.com/v3';
 
@@ -35,6 +36,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // A valid JWT alone is not enough — portal customers hold one too.
   const _auth = await requireStaff(req);
   if (!_auth.ok) return errorResponse(_auth.error || 'Forbidden', _auth.status);
+
+  // Bound how often ONE account can spend money here. Authorization above says
+  // who may call; this says how often. Keyed by user so one account cannot
+  // exhaust everyone else's budget. Fails open by design — see rate-limit.ts.
+  const _rl = await checkRateLimit(
+    'dropbox-sign:' + (_auth.userId || 'role:' + (_auth.role || 'unknown')),
+    10, 300,
+  );
+  if (_rl.degraded) console.warn('[dropbox-sign] rate limit check degraded:', _rl.degraded);
+  if (!_rl.allowed) return errorResponse(rateLimitMessage('signature'), 429);
 
   const key = Deno.env.get('HELLOSIGN_API_KEY');
   if (!key) return errorResponse('HELLOSIGN_API_KEY not configured', 500);
