@@ -82,7 +82,7 @@ Special cases:
 
 | Secret | Location | Access |
 |---|---|---|
-| Supabase anon key | `fix.js` (public) | Safe — anon key + RLS is the Supabase design |
+| Supabase publishable key (`sb_publishable_…`) | `src/services/auth.js` (public, ships in page source) | Safe by design — the security model assumes an attacker has it, which is why `scripts/security-invariants.sh` probes production *using* it |
 | Mailgun API key | Supabase Edge Function secret (`MAILGUN_API_KEY`) | Never in the browser |
 | Anthropic API key | Supabase Edge Function secret (`ANTHROPIC_API_KEY`) | Never in the browser |
 | Stripe secret key | Supabase Edge Function secret | Never in the browser |
@@ -98,7 +98,7 @@ Enforced via `vercel.json` on every response:
 
 ```
 default-src 'self'
-script-src  'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com
+script-src  'self' cdn.jsdelivr.net cdnjs.cloudflare.com
             browser.sentry-cdn.com www.googletagmanager.com
 style-src   'self' 'unsafe-inline' fonts.googleapis.com
 font-src    'self' fonts.gstatic.com
@@ -108,7 +108,26 @@ object-src  'none'
 upgrade-insecure-requests
 ```
 
-`'unsafe-inline'` is required because the SPA uses inline `<script>` blocks throughout `index.html`. A future hardening pass should extract these to external files and move to a nonce-based policy.
+`script-src` no longer carries `'unsafe-inline'` (removed 2026-08-29, GL-DEF-01).
+Getting there took more than deleting the token, because that allowance covers
+three separate things:
+
+- **134 inline `on*` handlers** across 26 files, replaced by a delegated
+  dispatcher with a 301-name allowlist (`src/shared/actions.js`). The allowlist
+  is the security gain: a converted control can reach only what is registered,
+  where an inline handler could call any global on the page.
+- **6 inline `<script>` blocks** (~1,072 lines) on the five secondary pages,
+  moved verbatim to external files.
+- **29 `javascript:` URLs**, 8 of which were built at runtime and so invisible
+  to any scan of the markup — including a functional `location.reload()`
+  recovery link.
+
+`tests/csp.test.cjs` fails if `'unsafe-inline'` returns while nothing justifies
+it, and `tests/inline-handler-budget.test.cjs` fails if the handler count rises
+above zero.
+
+`style-src` still carries `'unsafe-inline'`. The codebase builds `style="..."`
+attributes almost everywhere; that is a separate and much larger piece of work.
 
 Additional headers set: `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `Strict-Transport-Security`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy` (camera, microphone, geolocation off).
 
@@ -139,7 +158,10 @@ Additional headers set: `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: 
 
 ## 9. Hardening backlog (future work)
 
-- [ ] Replace `'unsafe-inline'` in CSP with nonce-based approach (requires moving inline scripts to external files)
+- [x] Remove `'unsafe-inline'` from `script-src` — done 2026-08-29 by eliminating
+      every inline handler, inline `<script>` block and `javascript:` URL, rather
+      than by adding nonces. Nothing needs a nonce because nothing is inline.
+- [ ] Do the same for `style-src` (much larger: inline `style="..."` is used throughout)
 - [ ] Add CAPTCHA on the login form to slow credential stuffing
 - [ ] Set up Supabase Auth rate-limiting (already on by default for SaaS plan; verify for self-hosted)
 - [ ] Periodic review of `login_events` for anomalous patterns (many new IPs, off-hours logins)
