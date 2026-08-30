@@ -97,9 +97,42 @@ unchanged), **portal customer** (own client only), **self-registered stranger**
 
 - Site: push to `main` → Vercel.
 - Migrations: apply via the Supabase MCP `apply_migration`, and commit the file.
-- Edge functions: `gh workflow run "Deploy Supabase"`. The local Supabase CLI
-  token is expired; the CI secret works.
+- Edge functions: `gh workflow run "Deploy Supabase"`. Deploy through CI rather
+  than from a laptop so every function is built in the same environment — the
+  deployed `entrypoint_path` of all 28 is a CI runner path, and it should stay
+  that way.
 - Every migration gets a `ROLLBACK:` note at the top.
+
+**The local Supabase CLI works.** This file used to say its token was expired
+and gave that as the reason to use CI. That was true once and stopped being
+true, and it cost real detours — the CLI is the only way to replay migrations,
+which is how the missing-bootstrap problem below was eventually found. Verified
+2026-08-30 on v2.109.1: `projects list`, `link`, `db push` and `functions list`
+all authenticate. Two real limits remain:
+
+- `db dump` needs Docker, which is not installed here.
+- `db push` cannot replay this history as it stands — see GL-057.
+
+If a command fails, read the error rather than assuming the token. That is the
+general lesson: an instruction that says "X is broken" ages badly, and this one
+sent people the long way round for weeks after it stopped being true.
+
+### The migration history cannot rebuild the database (GL-055, GL-057)
+
+Ten core tables — `profiles`, `clients`, `invoices`, `deals`, `activity`,
+`referrals`, `referrers`, `sales_decks`, `bottling_rates`, `canning_rates` —
+existed in production and in **no migration**. `profiles` is what
+`is_gl_staff()` reads, so every staff RLS policy rested on a table the repo
+never created. `20260515000000_bootstrap_core_tables.sql` now creates them.
+
+Still true, and worth knowing before you try: roughly 30 migrations share a
+date-only version prefix, so `supabase db push` collides on
+`schema_migrations_pkey`, and two pairs sort into the wrong dependency order.
+A from-scratch rebuild does not work yet.
+
+This is the same lesson as the RLS incident at the top of this file, in a
+different costume: **what is in the repository is not the same as what is in the
+database, and only trying it finds the difference.**
 
 ## Engineering standard
 
