@@ -46,7 +46,7 @@ function makeLocalStorage(seed) {
 
 /*
  * What `select` returns matters as much as what `upsert` does.
- * 20260525_security_hardening.sql seeds app_settings with EMPTY defaults for
+ * 20260525000001_security_hardening.sql seeds app_settings with EMPTY defaults for
  * sign_templates ({}), stripe_pub_key (null) and sentry_dsn (null). Those rows
  * load into GL_APP_SETTINGS before the bridge runs, so a naive
  * `key in GL_APP_SETTINGS` guard treats them as already migrated and skips the

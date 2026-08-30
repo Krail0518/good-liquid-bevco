@@ -15,7 +15,7 @@
 /* ═══════════════════════════════════════════
    CLIENT NOTES
    Per-client sticky notes. Source of truth is the public.client_notes
-   table in Supabase (see 20260523_client_notes_table.sql). Notes
+   table in Supabase (see 20260523000002_client_notes_table.sql). Notes
    render in the modal directly from a Supabase SELECT — no in-memory
    cache to drift, no localStorage to lose on cache clear.
    The first time the new code loads on a browser that has the legacy

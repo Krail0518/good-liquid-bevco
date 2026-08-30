@@ -36,7 +36,7 @@ CREATE EXTENSION IF NOT EXISTS pg_net;
 -- Generated in-database, exactly as the rotation migration does, so the value
 -- never exists outside Postgres. The guard below and the SECRET facts in
 -- scripts/db-drift-snapshot.sql make a regression here fail loudly.
-DO $
+DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM vault.secrets WHERE name = 'gl_notify_secret') THEN
     PERFORM vault.create_secret(
@@ -45,10 +45,10 @@ BEGIN
       'notify-deal shared secret. Generated in-db; never exported.'
     );
   END IF;
-END $;
+END $$;
 
 -- Refuse to leave the published literal in place, however it got there.
-DO $
+DO $$
 BEGIN
   IF EXISTS (
     SELECT 1 FROM vault.decrypted_secrets
@@ -57,7 +57,7 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'gl_notify_secret is the literal published in git history; rotate it (see 20260730002000_rotate_notify_secret.sql)';
   END IF;
-END $;
+END $$;
 
 -- 4. Trigger: new deal added to pipeline
 CREATE OR REPLACE FUNCTION trigger_notify_new_deal()

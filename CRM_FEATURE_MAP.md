@@ -335,7 +335,7 @@ Three mechanisms, used in combination:
 
 ### Compliance / Regulatory Tables
 
-`inspector_tokens` · `facilities` · `client_allergen_declarations` (see migration `20260518_phase4_sql_pack.sql`)
+`inspector_tokens` · `facilities` · `client_allergen_declarations` (see migration `20260518000003_phase4_sql_pack.sql`)
 
 ---
 

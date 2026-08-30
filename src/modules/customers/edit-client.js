@@ -39,7 +39,7 @@
           if(!confirm('Server reported: ' + q.error.message + '\n\nRemove from this session anyway?')) return false;
         } else if(q && Array.isArray(q.data) && q.data.length === 0){
           console.warn('[GL] invoice delete: 0 rows affected (likely RLS DELETE policy missing on invoices)');
-          alert('Could not delete on the server (RLS denied).\n\nRun the migration:\n  supabase/migrations/20260518_invoices_delete_policy.sql\n\nThe invoice has not been removed.');
+          alert('Could not delete on the server (RLS denied).\n\nRun the migration:\n  supabase/migrations/20260518000009_invoices_delete_policy.sql\n\nThe invoice has not been removed.');
           return false;
         }
       } catch(e){

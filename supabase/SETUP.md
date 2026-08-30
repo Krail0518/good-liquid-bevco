@@ -44,8 +44,8 @@ supabase db push
 ```
 
 That runs both:
-- `migrations/20260516_new_feature_tables.sql` (14 tables + indexes + RLS)
-- `migrations/20260516_qbo_tokens.sql` (single-row OAuth token store)
+- `migrations/20260516000000_new_feature_tables.sql` (14 tables + indexes + RLS)
+- `migrations/20260516000001_qbo_tokens.sql` (single-row OAuth token store)
 
 ### Verify it worked
 

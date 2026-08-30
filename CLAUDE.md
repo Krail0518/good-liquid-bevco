@@ -26,7 +26,7 @@ single-tenant (Good Liquid staff only); per-row ownership is not the threat
 model here."*
 
 That was true when written. **The customer portal shipped the same day** —
-`20260518_customer_portal.sql` sits beside `20260518_rls_authed_all.sql` — and
+`20260518000004_customer_portal.sql` sits beside `20260518000012_rls_authed_all.sql` — and
 nobody revisited the assumption. For months, any portal customer could read
 every other client's data.
 

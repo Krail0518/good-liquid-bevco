@@ -1536,7 +1536,7 @@ const SUPA_KEY = 'sb_publishable_-37mkPw8uLzEJM21T9jJOA_YQRQ7ikB';
    token is live (unrevoked + within valid_from..valid_until). Other
    tables stay locked — the header is no master key. This makes the
    FDA-inspector emailed-link flow actually work end-to-end instead
-   of landing on an empty page. See 20260523_inspector_mode_server_side.sql. */
+   of landing on an empty page. See 20260523000005_inspector_mode_server_side.sql. */
 const _glInspectorToken = (function(){
   try {
     const t = new URL(window.location.href).searchParams.get('inspector');
@@ -1770,7 +1770,7 @@ async function loadSupabaseData(){
   // Activity feed: pull from `activity_feed` via loadActivities (kind→type mapping).
   try { await loadActivities(); } catch(e){ console.warn('[GL] loadActivities failed', e); }
   // Hydrate the follow-up log from Supabase (replaces the old gl_followup_log
-  // localStorage store — see migration 20260519_followup_acks_waivers.sql).
+  // localStorage store — see migration 20260519000000_followup_acks_waivers.sql).
   try { await loadFollowupLog(); } catch(e){ console.warn('[GL] loadFollowupLog failed', e); }
   // Deal activity timestamps — must load before checkStaleDeals() runs at login.
   try { await loadDealActivity(); } catch(e){ console.warn('[GL] loadDealActivity failed', e); }

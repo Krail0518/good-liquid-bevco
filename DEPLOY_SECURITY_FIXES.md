@@ -27,9 +27,9 @@ This is the most important step — it closes the customer-data holes.
    **https://supabase.com/dashboard/project/ufjkeqmxwuyhbqyugcgg/sql/new**
    (log in if prompted)
 2. Open the migration file and copy **all** of its text:
-   **https://raw.githubusercontent.com/Krail0518/good-liquid-bevco/main/supabase/migrations/20260725_security_audit_hardening.sql**
+   **https://raw.githubusercontent.com/Krail0518/good-liquid-bevco/main/supabase/migrations/20260725000000_security_audit_hardening.sql**
    (if that shows "404", the PR isn't merged yet — use this branch link instead:
-   https://raw.githubusercontent.com/Krail0518/good-liquid-bevco/claude/crm-page-loading-issue-y9leun/supabase/migrations/20260725_security_audit_hardening.sql )
+   https://raw.githubusercontent.com/Krail0518/good-liquid-bevco/claude/crm-page-loading-issue-y9leun/supabase/migrations/20260725000000_security_audit_hardening.sql )
 3. Paste it into the SQL editor and press **Run** (bottom-right).
 4. You should see **"Success. No rows returned."** That's it — the RLS holes are closed.
 

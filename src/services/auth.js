@@ -78,7 +78,7 @@
         name:p.name||(authUser.email||'').split('@')[0],
         role:p.role||null, status:p.status||null,
         // is_super_user: read from the profile column when it exists
-        // (after 20260523_super_user_rls_enforcement.sql is applied).
+        // (after 20260523000010_super_user_rls_enforcement.sql is applied).
         // glIsSuperUser() falls back to the owner-email check when this
         // is undefined so the UI gate works either way.
         is_super_user: typeof p.is_super_user === 'boolean' ? p.is_super_user : undefined,
@@ -233,7 +233,7 @@
     } catch(e){ console.warn('[GL] app_settings save threw',e); return false; }
   };
 
-  /* A seeded-but-empty default is not a real value. 20260525_security_hardening.sql
+  /* A seeded-but-empty default is not a real value. 20260525000001_security_hardening.sql
      seeds app_settings with sign_templates '{}', stripe_pub_key 'null' and
      sentry_dsn 'null'. Those rows load into GL_APP_SETTINGS, so a plain
      `key in GL_APP_SETTINGS` test reports the setting as already migrated and
@@ -483,7 +483,7 @@
     if(sb&&uuidRe.test(u.id||'')){
       try{
         // updated_at is bumped automatically by the trg_profiles_updated_at
-        // trigger (see 20260522_profiles_updated_at.sql) — don't send it
+        // trigger (see 20260522000000_profiles_updated_at.sql) — don't send it
         // here or the UPDATE 400's against deployments that haven't run
         // the migration yet.
         // .select() makes PostgREST return the updated rows, so a silent RLS
