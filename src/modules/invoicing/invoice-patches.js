@@ -501,7 +501,7 @@
     var pc = CPC ? (pcase/CPC) : 0;
     var total = pcase*cases;
     var pcanEl = document.getElementById(uid+'-pcan');
-    if(pcanEl) pcanEl.innerHTML = window.glUsd(pc,4)+'/can <a href="javascript:window.glResetCanPrice(\''+uid+'\')" style="color:var(--teal);text-decoration:none;margin-left:4px" title="Reset to default rate">&#x21BA;</a>';
+    if(pcanEl) pcanEl.innerHTML = window.glUsd(pc,4)+'/can <a href="#" data-gl-action="glResetCanPrice" data-gl-prevent="" data-gl-arg1="'+uid+'" style="color:var(--teal);text-decoration:none;margin-left:4px" title="Reset to default rate">&#x21BA;</a>';
     var cansEl = document.getElementById(uid+'-cans');
     if(cansEl) cansEl.textContent=(cases*CPC).toLocaleString()+' cans';
     var te=document.getElementById(uid+'-total');
@@ -576,7 +576,7 @@
       '<div id="'+uid+'-cans" style="font-size:10px;color:var(--muted);margin-top:3px">'+cans.toLocaleString()+' cans</div></div>'+
       '<div style="text-align:right;padding-right:4px">'+
       '<input id="'+uid+'-pcase" type="number" step="0.01" min="0" value="'+pcase.toFixed(2)+'" data-gl-action="glUpdateCanPrice" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" title="$/case — edit to override the default rate" style="'+PSTY+'"/>'+
-      '<div id="'+uid+'-pcan" style="font-size:10px;color:var(--muted);margin-top:3px">'+window.glUsd(pc,4)+'/can <a href="javascript:window.glResetCanPrice(\''+uid+'\')" style="color:var(--teal);text-decoration:none;margin-left:4px" title="Reset to default rate">&#x21BA;</a></div></div>'+
+      '<div id="'+uid+'-pcan" style="font-size:10px;color:var(--muted);margin-top:3px">'+window.glUsd(pc,4)+'/can <a href="#" data-gl-action="glResetCanPrice" data-gl-prevent="" data-gl-arg1="'+uid+'" style="color:var(--teal);text-decoration:none;margin-left:4px" title="Reset to default rate">&#x21BA;</a></div></div>'+
       '<div id="'+uid+'-total" style="text-align:right;font-size:14px;font-weight:700;color:#fff">'+window.glUsd(total)+'</div>'+
       '<div style="text-align:center"><button data-gl-action="glRemoveLine" data-gl-arg1="' + esc(uid) + '" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0;line-height:1">x</button></div>';
     return row;
@@ -597,7 +597,7 @@
       '<div style="font-size:10px;color:var(--muted);margin-top:3px">bottles</div></div>'+
       '<div style="text-align:right;padding-right:4px">'+
       '<input id="'+uid+'-punit" type="number" step="0.0001" min="0" value="'+pu.toFixed(4)+'" data-gl-action="glUpdateBtlPrice" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" title="$/bottle — edit to override the default rate" style="'+PSTY+'"/>'+
-      '<div style="font-size:10px;color:var(--muted);margin-top:3px">$/btl <a href="javascript:window.glResetBtlPrice(\''+uid+'\')" style="color:var(--teal);text-decoration:none;margin-left:4px" title="Reset to default rate">&#x21BA;</a></div></div>'+
+      '<div style="font-size:10px;color:var(--muted);margin-top:3px">$/btl <a href="#" data-gl-action="glResetBtlPrice" data-gl-prevent="" data-gl-arg1="'+uid+'" style="color:var(--teal);text-decoration:none;margin-left:4px" title="Reset to default rate">&#x21BA;</a></div></div>'+
       '<div id="'+uid+'-total" style="text-align:right;font-size:14px;font-weight:700;color:#fff">'+window.glUsd(total)+'</div>'+
       '<div style="text-align:center"><button data-gl-action="glRemoveLine" data-gl-arg1="' + esc(uid) + '" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;opacity:.5;padding:0;line-height:1">x</button></div>';
     return row;

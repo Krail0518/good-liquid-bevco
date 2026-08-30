@@ -104,7 +104,7 @@
     var sb=getSupa();
     if(!sb){
       showErr('');
-      if(err){err.innerHTML='Connection error. <a href="javascript:location.reload()" style="color:var(--teal)">Reload page</a> and try again.';err.style.display='block';}
+      if(err){err.innerHTML='Connection error. <a href="#" data-gl-action="glReloadPage" data-gl-prevent="" style="color:var(--teal)">Reload page</a> and try again.';err.style.display='block';}
       return;
     }
     try{
