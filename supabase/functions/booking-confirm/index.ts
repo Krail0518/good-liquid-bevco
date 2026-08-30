@@ -241,6 +241,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
     .single();
 
   if (bookErr || !booking) {
+    // 23P01 is exclusion_violation — bookings_no_overlap rejected this row
+    // because another pending/confirmed booking already covers the slot.
+    //
+    // That is not a server fault and must not read as one. The conflict check
+    // above and this insert are separate statements, so two people clicking
+    // the same slot can both pass the check; the constraint is what actually
+    // decides, and the loser deserves "someone just took it", not "failed".
+    //
+    // 409 rather than 500: the request was well formed and the client should
+    // pick another slot, not retry this one.
+    if (bookErr && (bookErr.code === '23P01' || /bookings_no_overlap/.test(bookErr.message || ''))) {
+      return errorResponse('That time was just booked by someone else — please pick another slot.', 409);
+    }
     console.error('[booking-confirm] booking insert error:', bookErr);
     return errorResponse('Failed to save booking', 500);
   }
