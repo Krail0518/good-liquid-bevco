@@ -196,6 +196,15 @@
     _zipLoading = new Promise(function(resolve, reject){
       var s = document.createElement('script');
       s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+      // A script injected from JS is exactly as privileged as one written into
+      // the markup, and it was the only kind with no integrity check — the
+      // supply-chain test scans static <script src> tags and could not see it.
+      // Hash taken from the file cdnjs actually serves and confirmed stable
+      // across two fetches. crossOrigin is required for SRI to be enforced on
+      // a cross-origin script; cdnjs sends access-control-allow-origin.
+      s.integrity = 'sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG';
+      s.crossOrigin = 'anonymous';
+      s.referrerPolicy = 'no-referrer';
       s.async = true;
       s.onload = function(){ resolve(window.JSZip); };
       s.onerror = function(){ _zipLoading = null; reject(new Error('jszip load failed')); };
