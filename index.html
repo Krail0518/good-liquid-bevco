@@ -1328,7 +1328,19 @@
       <div id="cpg-invoices" class="cpg">
         <div class="cph">
           <div><div class="cpt">INVOICES</div><div class="cps" id="inv-sub">0 invoices</div></div>
-          <button class="cbtn pri" data-gl-action="glNavNewInvoice">+ New invoice</button>
+          <div style="display:flex;align-items:center;gap:14px">
+            <!-- Overdue policy. Stored org-wide in app_settings, so changing it
+                 here changes it for everyone, not just this browser. -->
+            <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer" title="Show an invoice as overdue once it is this many days past due. Turn off to stop flagging overdue entirely.">
+              <input type="checkbox" id="inv-overdue-on" data-gl-action="glSetOverdueEnabled" data-gl-el-prop="checked">
+              <span>Flag overdue after</span>
+              <input type="number" id="inv-overdue-days" min="0" max="365" step="1"
+                     data-gl-action="glSetOverdueGraceDays" data-gl-el-prop="value"
+                     style="width:52px;padding:3px 6px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:6px;color:#eef4ff;font-size:11px">
+              <span>days</span>
+            </label>
+            <button class="cbtn pri" data-gl-action="glNavNewInvoice">+ New invoice</button>
+          </div>
         </div>
         <div class="csrow"><span>🔍</span><input type="text" placeholder="Search invoices…" data-gl-action="filterInvoices" data-gl-el-prop="value" data-gl-on="input"></div>
         <div class="cpills" id="inv-pills">
