@@ -238,6 +238,16 @@ jobs:
 
       # The delegated action dispatcher (GL-DEF-01 phase 1). Needs a browser:
       # source assertions cannot prove a delegated listener actually fires.
+      # Every data-gl-action ON SCREEN must resolve to a registered action.
+      # The source scan in inline-handler-budget cannot see an attribute built
+      # from a variable, which is how 15 GMP tiles shipped dead. This reads the
+      # live DOM instead, so it does not care how the attribute was written.
+      - name: Run action coverage test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/action-coverage.test.cjs
+
       - name: Run action dispatcher test
         env:
           NODE_PATH: /tmp/pw/node_modules

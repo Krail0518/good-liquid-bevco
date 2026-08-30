@@ -317,7 +317,16 @@ function showPanel(name,el){
 
 /* ═══ ADMIN GATE ═══ */
 function openAdmin(){document.getElementById('pw-ov').classList.add('show');setTimeout(()=>document.getElementById('pw-input').focus(),100)}
-function closePw(){document.getElementById('pw-ov').classList.remove('show');document.getElementById('pw-input').value='';document.getElementById('pw-err').style.display='none'}
+// Null-safe because this runs on EVERY Escape keypress, on every page this
+// file loads into — including ?portal=1, where the admin gate does not exist.
+// Unguarded, the first getElementById returned null and a customer pressing
+// Escape in the portal got a TypeError, which also skipped the rest of the
+// handler below it. Found by exercising the portal, not by reading this line.
+function closePw(){
+  var ov=document.getElementById('pw-ov'); if(ov)ov.classList.remove('show');
+  var inp=document.getElementById('pw-input'); if(inp)inp.value='';
+  var err=document.getElementById('pw-err'); if(err)err.style.display='none';
+}
 
 /* ═══════════════════════════════════════
    SUPABASE AUTH + MULTI-USER LOGIN
@@ -1232,7 +1241,9 @@ function viewInvoice(id){
   document.getElementById('btn-overdue').style.display=inv.status==='overdue'?'none':'';
   document.getElementById('inv-detail').classList.add('show');
 }
-function closeDetail(){document.getElementById('inv-detail').classList.remove('show')}
+// Null-safe: inv-detail is CRM-only markup and this is reachable from the
+// global Escape handler, which runs in the portal too.
+function closeDetail(){var d=document.getElementById('inv-detail');if(d)d.classList.remove('show')}
 async function markStatus(s){
   if(!currentInvId) return;
   const i=invoices.find(x=>x.id===currentInvId);
@@ -1307,8 +1318,13 @@ function renderActivity(){
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
     closePw();
-    if(document.getElementById('inv-detail').classList.contains('show'))closeDetail();
-    closeRefModal();closeAddReferrer();
+    // inv-detail is CRM-only markup. In the portal it is null, and reading
+    // .classList off it threw before closeRefModal/closeAddReferrer could run,
+    // so one missing element silently disabled the rest of this handler.
+    var det=document.getElementById('inv-detail');
+    if(det&&det.classList.contains('show'))closeDetail();
+    if(typeof closeRefModal==='function')closeRefModal();
+    if(typeof closeAddReferrer==='function')closeAddReferrer();
   }
 });
 

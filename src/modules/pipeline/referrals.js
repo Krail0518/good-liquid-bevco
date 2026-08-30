@@ -98,7 +98,9 @@ function openRefModal(){
   document.getElementById('ref-modal').classList.add('show');
   calcRefComm();
 }
-function closeRefModal(){document.getElementById('ref-modal').classList.remove('show')}
+// Null-safe: reachable from the global Escape handler, which also runs in the
+// customer portal where ref-modal does not exist.
+function closeRefModal(){var m=document.getElementById('ref-modal');if(m)m.classList.remove('show')}
 
 function calcRefComm(){
   const deal=parseFloat(document.getElementById('ref-deal')?.value)||0;
@@ -144,7 +146,8 @@ function openRefForReferrer(rid){
 }
 
 function openAddReferrer(){document.getElementById('add-ref-modal').classList.add('show')}
-function closeAddReferrer(){document.getElementById('add-ref-modal').classList.remove('show')}
+// Null-safe for the same reason as closeRefModal above.
+function closeAddReferrer(){var m=document.getElementById('add-ref-modal');if(m)m.classList.remove('show')}
 
 /* The Supabase-backed saveReferrer() is further down (search "Override
    saveReferrer"). A dead first declaration used to sit here: same name, same
