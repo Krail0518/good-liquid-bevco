@@ -1036,7 +1036,9 @@
     });
   }
 
-  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  // Staff-only data; deferred until a staff session exists (GL-052).
+  function glBoot(){ if(window.glWhenStaff) window.glWhenStaff(boot); else boot(); }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', glBoot);
   else boot();
 
   console.log('[GL] compliance SQL-backed pack — 4 features: multi-PCQI + inspector mode + multi-facility + customer allergens');

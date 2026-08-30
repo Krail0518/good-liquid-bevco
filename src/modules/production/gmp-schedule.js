@@ -39,6 +39,11 @@
 
   // ── The board: three groups (overdue / due today / done today) ──
   window.glRenderGMPSchedule = async function glRenderGMPSchedule(){
+    // Staff-only tables. Several triggers reach this — boot, a
+    // MutationObserver watching for the page node, and cNav — so the guard
+    // belongs here rather than on any one of them. Deferred, not disabled:
+    // the boot path runs through glWhenStaff and fires again at sign-in.
+    if(!window.currentUser) return;
     var host = document.getElementById('cpg-gmpsched');
     if(!host) return;
 
@@ -235,7 +240,10 @@
 
   // Render the board into its page container once the DOM is ready.
   function boot(){ try { if(document.getElementById('cpg-gmpsched')) window.glRenderGMPSchedule(); } catch(e){} }
-  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+  // Staff-only data: do not load it for a logged-out visitor. Deferred
+  // rather than skipped, because sign-in happens after this runs.
+  function glBoot(){ if(window.glWhenStaff) window.glWhenStaff(boot); else boot(); }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', glBoot); else glBoot();
   // Re-render if the page node appears later (SPA builds it after login).
   try {
     var mo = new MutationObserver(function(){ var h = document.getElementById('cpg-gmpsched'); if(h && !h.getAttribute('data-gmpsched-ready')){ h.setAttribute('data-gmpsched-ready','1'); window.glRenderGMPSchedule(); } });

@@ -3919,7 +3919,11 @@
   (function autoFspReminder(){
     var lastSeen = null;
     setInterval(async function(){
-      if(!window.supa) return;
+      // Staff-only, and this is a TIMER: without the session check it polled
+      // compliance_records forever in the background of the public marketing
+      // site, not just once at load (GL-052). Checked per tick rather than
+      // once, so it also stops at sign-out.
+      if(!window.supa || !window.currentUser) return;
       try {
         var r = await window.supa.from('compliance_records').select('id,form_code,record_date,recorded_at,data,status').eq('form_code','FSP-VER-002').order('recorded_at',{ascending:false}).limit(1);
         if(!r.data || !r.data[0]) return;
@@ -4521,7 +4525,10 @@
     new MutationObserver(function(){
       if(dash.classList.contains('act') && !dash.querySelector('#gl-audit-scorecard')) renderAuditScorecard();
     }).observe(dash, { attributes:true, childList:true, attributeFilter:['class'] });
-    if(dash.classList.contains('act')) renderAuditScorecard();
+    // The scorecard reads hold_tags and defects — staff-only. The observer
+    // above only fires when the dashboard is shown, but this initial call ran
+    // for anyone loading the marketing page (GL-052).
+    if(dash.classList.contains('act') && window.currentUser) renderAuditScorecard();
   })();
 
   // ============================================================
@@ -4560,6 +4567,8 @@
     return alerts;
   }
   async function renderTrendAlerts(){
+    // Staff-only; see glWhenStaff in crm-index-core.js (GL-052).
+    if(!window.currentUser) return;
     var dash = document.getElementById('cpg-dashboard');
     if(!dash) return;
     var existing = dash.querySelector('#gl-trend-alerts');

@@ -400,7 +400,9 @@
   (function warm(){
     var tries = 0;
     var t = setInterval(function(){
-      if(sb()){ clearInterval(t); window.glLoadFormulators(); return; }
+      // Wait for a staff session as well as for Supabase: formulators is a
+      // staff-only table and this warm-up fired on the public site (GL-052).
+      if(sb() && window.currentUser){ clearInterval(t); window.glLoadFormulators(); return; }
       if(++tries > 40) clearInterval(t);
     }, 250);
   }());
