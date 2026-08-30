@@ -673,9 +673,9 @@
 
   function activateInspectorMode(data){
     document.documentElement.classList.add('gl-inspector-mode');
-    var style = document.createElement('style');
-    style.textContent = '.gl-inspector-mode input,.gl-inspector-mode textarea,.gl-inspector-mode select{pointer-events:none!important;background:#f8fafc!important;color:#0f172a!important}.gl-inspector-mode button:not([data-inspector-ok]){opacity:.4!important;pointer-events:none!important}.gl-inspector-mode [data-write],.gl-inspector-mode .danger,.gl-inspector-mode [data-action="delete"]{display:none!important}.gl-inspector-mode a[onclick*=\'openAdmin\']{pointer-events:none!important;opacity:.4!important}';
-    document.head.appendChild(style);
+    // The .gl-inspector-mode rules are in crm-runtime.css; they do nothing
+    // until the class above is on <html>, which is what makes them safe to
+    // ship globally.
     var banner = document.createElement('div');
     banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#dc2626;color:#fff;padding:10px;text-align:center;font:600 14px system-ui;z-index:99999';
     banner.innerHTML = '🔒 INSPECTOR MODE — read-only view for ' + escHtml(data.inspector) + (data.agency ? ' (' + escHtml(data.agency) + ')' : '') + ' • expires ' + fmtDate(data.valid_until);

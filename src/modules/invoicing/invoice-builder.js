@@ -5,21 +5,8 @@
   /* glEnsureClients: inline guard (was a private fn in fix.js) */
   function glEnsureClients(){ window.clients = window.clients || []; }
 
-  /* ── CSS: ensure dynamic modals always appear above CRM panel ── */
-  (function(){
-    var s = document.createElement('style');
-    s.textContent =
-      // z-index 700 (not 650): other full-screen overlays such as the client
-      // detail view also sit at 650, and with equal z-index the element later
-      // in the DOM wins — so the builder could be painted behind whichever
-      // overlay opened most recently. 700 keeps it reliably on top.
-      '#gl-inv-builder{position:fixed!important;inset:0!important;z-index:700!important;background:rgba(6,13,26,.95)!important;backdrop-filter:blur(16px);display:none;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto}' +
-      '#gl-inv-builder.show{display:flex!important}' +
-      '#gl-fmt-picker,#gl-rd-picker{position:fixed!important;inset:0!important;z-index:700!important}' +
-      '.gl-picker-btn{width:100%;text-align:left;padding:14px 16px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:10px;color:var(--white);cursor:pointer;margin-bottom:8px;display:block;transition:border-color .2s}' +
-      '.gl-picker-btn:hover{border-color:var(--teal);background:rgba(0,229,192,.06)}';
-    document.head.appendChild(s);
-  })();
+  /* The #gl-inv-builder / picker rules that keep these modals above the CRM
+     panel are in crm-runtime.css, including why the z-index is 700. */
 
   /* ── INTERCEPT ALL NEW INVOICE ENTRY POINTS ── */
   window.openNewInvoice = function(){ window.openNewInvoiceBuilder(); };

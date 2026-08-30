@@ -1,0 +1,115 @@
+/* crm-runtime.css — CSS that used to be injected at runtime by
+   document.createElement('style').
+
+   These ten blocks were built as JS strings and appended to document.head (or,
+   in one case, to an overlay) while the page ran. That made them <style>
+   ELEMENTS, which is what style-src-elem governs — so none of them could
+   survive dropping 'unsafe-inline'. All ten are static CSS, so they simply
+   belong in a stylesheet.
+
+   Moving them is behaviour-preserving because each is either injected
+   unconditionally at load, or scoped to a class/id that only exists once the
+   feature is on screen: '.gl-inspector-mode' rules do nothing until inspector
+   mode adds that class, '@keyframes' do nothing until something animates.
+
+   Loaded last in <head> so it sits after index.css, matching the order the
+   runtime injection produced.
+
+   Each block is byte-identical to the string its module was building; the CSS
+   was evaluated out of the source rather than retyped. */
+
+/* ── request-inspector ───────────────────────────────────────
+   was: src/modules/customers/requests.js:78 */
+.gl-cri-pill{padding:6px 14px;border-radius:6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:#9aa7bd;font-size:11px;letter-spacing:1px;text-transform:uppercase;cursor:pointer}.gl-cri-pill.act{background:rgba(245,200,66,.15);border-color:rgba(245,200,66,.4);color:#f5c842}
+
+/* ── invoice-builder ─────────────────────────────────────────
+   was: src/modules/invoicing/invoice-builder.js:10 */
+/* z-index 700, not 650: other full-screen overlays such as the client detail
+   view also sit at 650, and with equal z-index the element later in the DOM
+   wins — so the builder could be painted behind whichever overlay opened most
+   recently. 700 keeps it reliably on top. */
+#gl-inv-builder{position:fixed!important;inset:0!important;z-index:700!important;background:rgba(6,13,26,.95)!important;backdrop-filter:blur(16px);display:none;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto}#gl-inv-builder.show{display:flex!important}#gl-fmt-picker,#gl-rd-picker{position:fixed!important;inset:0!important;z-index:700!important}.gl-picker-btn{width:100%;text-align:left;padding:14px 16px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:10px;color:var(--white);cursor:pointer;margin-bottom:8px;display:block;transition:border-color .2s}.gl-picker-btn:hover{border-color:var(--teal);background:rgba(0,229,192,.06)}
+
+/* ── inspector-mode ──────────────────────────────────────────
+   was: src/modules/production/compliance-ext.js:676 */
+.gl-inspector-mode input,.gl-inspector-mode textarea,.gl-inspector-mode select{pointer-events:none!important;background:#f8fafc!important;color:#0f172a!important}.gl-inspector-mode button:not([data-inspector-ok]){opacity:.4!important;pointer-events:none!important}.gl-inspector-mode [data-write],.gl-inspector-mode .danger,.gl-inspector-mode [data-action="delete"]{display:none!important}.gl-inspector-mode a[onclick*='openAdmin']{pointer-events:none!important;opacity:.4!important}
+
+/* ── theme-refresh ───────────────────────────────────────────
+   was: src/modules/production/compliance.js:3353 */
+#crm-panel { background: #243653 !important; }
+#crm-panel #crm-top { background: #1c2c46 !important; }
+#crm-panel #crm-sidebar { background: #1c2c46 !important; }
+#crm-panel .crm-main { background: #243653 !important; }
+#crm-panel .inv-detail { background: #243653 !important; }
+#crm-panel .inv-preview { background: #1c2c46 !important; }
+#crm-panel .modal-box { background: #243653 !important; }
+#crm-panel .cmc,
+#crm-panel .ccard,
+#crm-panel .kcol,
+#crm-panel .ref-card,
+#crm-panel .rref-card,
+#crm-panel .panel-card,
+#crm-panel .pt-wrap { background: #2e486b !important; border-color: rgba(255,255,255,.1) !important; }
+#crm-panel .kcard { background: #243653 !important; border-color: rgba(255,255,255,.1) !important; }
+#crm-panel .kcard:hover { border-color: rgba(0,229,192,.32) !important; }
+#crm-panel .fsel,
+#crm-panel .finp { background: rgba(255,255,255,.08) !important; border-color: rgba(255,255,255,.16) !important; }
+#crm-panel .ctbl tr:hover td { background: rgba(255,255,255,.06) !important; }
+#crm-panel .ctbl td { border-bottom-color: rgba(255,255,255,.08) !important; }
+#crm-panel .ctbl th { border-bottom-color: rgba(255,255,255,.12) !important; }
+#crm-panel .cni { color: #b9c5d6 !important; }
+#crm-panel .cni:hover { background: rgba(255,255,255,.08) !important; color: #fff !important; }
+#crm-panel .cni.act { background: rgba(0,229,192,.12) !important; color: var(--teal) !important; border-color: rgba(0,229,192,.32) !important; font-weight:600; }
+#crm-panel .cni-sec {
+font-size: 11px !important;
+letter-spacing: 2.5px !important;
+color: #7fc6f5 !important;
+font-weight: 800 !important;
+text-transform: uppercase !important;
+padding: 11px 8px 9px 14px !important;
+margin: 12px 0 4px !important;
+background: linear-gradient(90deg, rgba(127,198,245,.10), rgba(127,198,245,.02)) !important;
+border-left: 3px solid #7fc6f5 !important;
+border-radius: 0 8px 8px 0 !important;
+}
+#crm-panel .cni-sec:first-of-type { margin-top: 4px !important; }
+#crm-panel .crm-brand-name { color:#fff !important; }
+#crm-panel .crm-brand-sub { color: rgba(255,255,255,.55) !important; }
+
+/* ── compliance-mobile ───────────────────────────────────────
+   was: src/modules/production/compliance.js:3985 */
+@media (max-width: 768px) {
+#gl-comp-modal > div, #gl-mock-modal > div, #gl-doc-modal > div, #gl-app-modal > div, #gl-limits-modal > div, #gl-export-modal > div {
+max-width: 100% !important; max-height: 95vh !important;
+}
+#gl-comp-modal table { font-size: 10px; }
+#gl-comp-modal table th, #gl-comp-modal table td { padding: 5px 3px !important; }
+#gl-comp-modal [style*="grid-template-columns:1fr 1fr"], #gl-comp-modal [style*="grid-template-columns: 1fr 1fr"] {
+grid-template-columns: 1fr !important;
+}
+#comp-body [style*="grid-template-columns:1fr 1fr 1fr 1fr"] {
+grid-template-columns: 1fr 1fr !important; gap: 6px !important;
+}
+#comp-body > div:first-child { flex-wrap: wrap !important; }
+#comp-body > div:first-child button { font-size: 10px !important; padding: 4px 8px !important; }
+}
+
+/* ── permission-rows ─────────────────────────────────────────
+   was: src/services/permissions-service.js:35 */
+.gl-perm-row:hover{background:rgba(0,229,192,.08) !important}
+
+/* ── busy-pill-spinner ───────────────────────────────────────
+   was: src/shared/admin-tools.js:877 */
+@keyframes gl-spin{to{transform:rotate(360deg)}}
+
+/* ── ai-chat-widget ──────────────────────────────────────────
+   was: src/shared/ai-chat-widget.js:214 */
+#ai-hub-messages .chat-msg.bot { line-height:1.7; font-size:13px; }#ai-hub-messages .chat-msg.bot ul, #ai-hub-messages .chat-msg.bot ol { margin:6px 0 8px 0; }#ai-hub-messages .chat-msg.bot li { margin-bottom:3px; }#ai-hub-messages .chat-msg.bot strong { color:#e8f0fe; }#gl-chat-messages .chat-msg.bot { line-height:1.6; font-size:13px; }
+
+/* ── loading-skeletons ───────────────────────────────────────
+   was: src/shared/crm-extras.js:798 */
+@keyframes gl-pulse{0%,100%{opacity:.4}50%{opacity:1}}.gl-skel{display:block;height:10px;border-radius:4px;background:rgba(255,255,255,.06);animation:gl-pulse 1.2s ease-in-out infinite}.gl-skel-row{display:grid;grid-template-columns:140px 1fr 1fr 100px 80px;gap:14px;padding:14px 12px;border-bottom:1px solid rgba(255,255,255,.04)}
+
+/* ── capacity-badge-pulse ────────────────────────────────────
+   was: src/shared/public-ops.js:144 */
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.85)}}

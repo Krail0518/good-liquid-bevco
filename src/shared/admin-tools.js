@@ -873,12 +873,7 @@
     p.setAttribute('style','position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:9999;background:#142238;border:1px solid rgba(0,229,192,.35);border-radius:20px;padding:8px 18px;color:var(--teal);font-size:12px;font-weight:600;font-family:var(--ff-body);box-shadow:0 4px 20px rgba(0,0,0,.5);display:flex;align-items:center;gap:9px;pointer-events:none;opacity:0;transition:opacity .18s');
     p.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border:2px solid rgba(0,229,192,.3);border-top-color:var(--teal);border-radius:50%;animation:gl-spin .8s linear infinite"></span><span id="gl-busy-text">Working…</span>';
     document.body.appendChild(p);
-    if(!document.getElementById('gl-busy-style')){
-      var s = document.createElement('style');
-      s.id = 'gl-busy-style';
-      s.textContent = '@keyframes gl-spin{to{transform:rotate(360deg)}}';
-      document.head.appendChild(s);
-    }
+    // @keyframes gl-spin is in crm-runtime.css.
     return p;
   }
   window.glStartBusy = function(label){

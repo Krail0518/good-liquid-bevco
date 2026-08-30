@@ -9,33 +9,44 @@
  * less protection. Two things follow:
  *
  *   1. The directives that are currently correct should stay correct.
- *   2. The one that is knowingly weak — script-src 'unsafe-inline' — should
- *      be recorded as such, with what it would actually take to remove, so it
- *      does not read as an oversight to the next person.
+ *   2. The one that is knowingly weak should be recorded as such, with what it
+ *      would actually take to remove, so it does not read as an oversight.
  *
- * WHY 'unsafe-inline' IS STILL HERE
- * ---------------------------------
- * GL-037 moved index.html's ~9,300-line inline <script> into
- * crm-index-core.js, so no inline <script> element remains. That is not what
- * keeps 'unsafe-inline' though. Inline EVENT HANDLERS need it too, and the
- * codebase has, measured:
+ * script-src NO LONGER CARRIES 'unsafe-inline'
+ * --------------------------------------------
+ * It did until GL-DEF-01, which removed all 550 inline handler sites and the
+ * inline <script> blocks. The checks that measured that exception are kept
+ * below, now as ratchets: if a handler ever reappears, the count is printed,
+ * and if somebody re-adds 'unsafe-inline' the justification check fails.
  *
- *     234  on*="..." attributes in index.html markup
- *      21  href="javascript:..." links
- *     319  on*="..." handlers built inside JS template literals
- *     ---
- *     574  sites
+ * Adding a nonce or a hash to script-src would be actively harmful: a CSP
+ * carrying either causes browsers to IGNORE 'unsafe-inline'. That no longer
+ * matters for script-src, but the assertion stays — it is free, and it
+ * documents the trap.
  *
- * The 319 are generated at runtime with interpolated arguments
- * (onclick="deleteDoc('${d.id}')"), so no static rewrite reaches them.
- * Removing 'unsafe-inline' means a data-action dispatch layer and rewriting
- * every one of those templates — a change that would break the entire CRM if
- * it were done carelessly, and one that cannot be verified without a browser.
+ * style-src STILL CARRIES 'unsafe-inline', AND WHY
+ * ------------------------------------------------
+ * Two different things need it, and only one has been dealt with:
  *
- * Adding a nonce or a hash would be actively harmful here: a CSP that carries
- * either causes browsers to IGNORE 'unsafe-inline', which would disable all
- * 574 handlers at once. The test below asserts that mistake is not made while
- * the handlers still exist.
+ *   style ELEMENTS (style-src-elem) — the 7 inline <style> blocks were moved
+ *     to .css files and the 10 runtime document.createElement('style') calls
+ *     moved into crm-runtime.css. Both are guarded below so they cannot come
+ *     back. What still blocks tightening style-src-elem is the <style> blocks
+ *     written into print/report popups: a window.open('') document inherits
+ *     the opener's CSP — verified, not assumed, by writing an inline <script>
+ *     into such a document against production and watching it not run — so
+ *     those blocks would stop applying and compliance reports would print
+ *     unstyled.
+ *
+ *   style ATTRIBUTES (style-src-attr) — roughly 6,000 style="..." attributes.
+ *     A nonce cannot cover a style attribute; only 'unsafe-inline' does. This
+ *     one is not going away without converting them all to classes.
+ *
+ * The security difference between the two is worth knowing, because it is why
+ * the element half is worth chasing at all: a <style> ELEMENT can carry
+ * attribute selectors, which is the primitive behind CSS keylogging and CSS
+ * exfiltration. A style ATTRIBUTE applies only to the element it sits on and
+ * cannot select anything, so it is a far weaker tool for an attacker.
  *
  * Run:  node tests/csp.test.cjs
  */
@@ -135,17 +146,104 @@ for (const f of fs.readdirSync(ROOT).filter((x) => /^crm-.*\.js$/.test(x))) {
     .match(/\bon(click|change|input|submit|keyup|keydown|blur|focus|mouseover|mouseout|load|error)\s*=\s*["']/gi) || []).length;
 }
 const totalHandlers = staticHandlers + jsHrefs + runtimeHandlers;
-console.log('    (inline handler sites: ' + staticHandlers + ' markup + ' +
-            jsHrefs + ' javascript: + ' + runtimeHandlers + ' runtime = ' + totalHandlers + ')');
+console.log('    (raw on*=" text occurrences, comments included: ' + staticHandlers +
+            ' markup + ' + jsHrefs + ' javascript: + ' + runtimeHandlers +
+            ' in crm-*.js = ' + totalHandlers + ')');
 
-check("'unsafe-inline' is still justified by real inline handlers",
-  !script.includes("'unsafe-inline'") || totalHandlers > 0,
-  "no inline handlers remain, so script-src 'unsafe-inline' can finally be dropped");
+// This is a RAW text count: it matches inside comments too. crm-index-core.js
+// explains EXT-036 by quoting the two handlers it removed, which is why the
+// number is 2 and not 0 with no handler anywhere in the codebase. Left raw on
+// purpose — a comment-stripper is what blinded the dead-control scan once
+// already — but that makes it useless as a justification, so the authority for
+// "are there handlers" is tests/inline-handler-budget.test.cjs, whose budget is
+// zero and which reads raw source for the same reason.
+check("script-src does not carry 'unsafe-inline'",
+  !script.includes("'unsafe-inline'"),
+  'GL-DEF-01 removed all 550 handler sites to earn this. If it needs to come ' +
+  'back, inline-handler-budget.test.cjs is the file that says why it is needed.');
 
 check('index.html has no inline <script> element',
   [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].length === 0,
   'GL-037 extracted it; a new one would add a second reason to keep ' +
   "'unsafe-inline' beyond the handlers");
+
+// ── style-src ────────────────────────────────────────────────────────
+const style = directives['style-src'] || [];
+
+check('style-src still allows the Google Fonts stylesheet host',
+  style.includes('https://fonts.googleapis.com'),
+  'got: ' + style.join(' '));
+
+check('style-src does not allow arbitrary hosts',
+  !style.includes('*') && !style.includes('https:'),
+  'got: ' + style.join(' '));
+
+// No page may carry an inline <style> element. These were extracted to .css
+// files so that style-src-elem can eventually drop 'unsafe-inline'; a new one
+// would silently re-add a reason to keep it.
+const PAGES = fs.readdirSync(ROOT).filter((f) => f.endsWith('.html'));
+const withInlineStyle = PAGES.filter((f) =>
+  /<style\b[^>]*>/i.test(fs.readFileSync(path.join(ROOT, f), 'utf8')));
+
+check('no page has an inline <style> element',
+  withInlineStyle.length === 0,
+  withInlineStyle.join(', ') + '\n          Move it to a .css file and <link> it ' +
+  'where the block was, so the cascade order does not change.');
+
+// The same rule for CSS built at runtime: document.createElement('style') is a
+// style ELEMENT too, and style-src-elem governs it exactly like a markup one.
+// All ten former call sites now live in crm-runtime.css.
+const jsFiles = [];
+(function walk(dir) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.name === 'node_modules' || e.name === '.git') continue;
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) walk(p);
+    else if (e.name.endsWith('.js')) jsFiles.push(p);
+  }
+})(path.join(ROOT, 'src'));
+for (const f of fs.readdirSync(ROOT).filter((x) => /^crm-.*\.js$/.test(x))) {
+  jsFiles.push(path.join(ROOT, f));
+}
+
+const injectors = jsFiles.filter((p) =>
+  /createElement\(\s*['"]style['"]\s*\)/.test(fs.readFileSync(p, 'utf8')))
+  .map((p) => path.relative(ROOT, p).split(path.sep).join('/'));
+
+check('no module injects a <style> element at runtime',
+  injectors.length === 0,
+  injectors.join(', ') + '\n          Static CSS belongs in crm-runtime.css. ' +
+  'A <style> element built at runtime is governed by style-src-elem exactly ' +
+  'like one in markup, so this is what keeps the directive loose.');
+
+// The remaining blocker, measured. Popups written with document.write inherit
+// this document's CSP, so a <style> inside that HTML is subject to
+// style-src-elem. Until these carry a <link> instead, the directive cannot
+// drop 'unsafe-inline'. The count may shrink, never grow.
+const POPUP_STYLE_BUDGET = 10;
+const popupStyleSites = [];
+for (const p of jsFiles) {
+  const src = fs.readFileSync(p, 'utf8');
+  src.split('\n').forEach((line, i) => {
+    // a '<style' inside a JS string literal — i.e. HTML being generated
+    if (/['"`][^'"`]*<style\b/.test(line)) {
+      popupStyleSites.push(path.relative(ROOT, p).split(path.sep).join('/') + ':' + (i + 1));
+    }
+  });
+}
+console.log('    (<style> blocks generated into popups/reports: ' +
+            popupStyleSites.length + ' of ' + POPUP_STYLE_BUDGET + ' allowed)');
+
+check('generated <style> blocks are not increasing',
+  popupStyleSites.length <= POPUP_STYLE_BUDGET,
+  popupStyleSites.join(', ') + '\n          Budget is ' + POPUP_STYLE_BUDGET +
+  '. Generate a <link rel="stylesheet"> pointing at location.origin instead — ' +
+  "a popup is same-origin, so 'self' covers it.");
+
+check("style-src 'unsafe-inline' is still justified",
+  !style.includes("'unsafe-inline'") || popupStyleSites.length > 0 ||
+    /style\s*=\s*"/i.test(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8')),
+  'nothing inline remains, so style-src can be tightened');
 
 console.log('\n' + (failures === 0 ? 'ALL PASSED' : failures + ' CHECK(S) FAILED'));
 process.exit(failures === 0 ? 0 : 1);

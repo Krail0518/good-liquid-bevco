@@ -208,23 +208,10 @@
     }
   }
 
-  /* ── Inject CSS for proper bot-bubble line-height ─────────── */
-  function injectChatCss() {
-    if (document.getElementById('gl-chat-css-v2')) return;
-    var s = document.createElement('style');
-    s.id = 'gl-chat-css-v2';
-    s.textContent =
-      '#ai-hub-messages .chat-msg.bot { line-height:1.7; font-size:13px; }' +
-      '#ai-hub-messages .chat-msg.bot ul, #ai-hub-messages .chat-msg.bot ol { margin:6px 0 8px 0; }' +
-      '#ai-hub-messages .chat-msg.bot li { margin-bottom:3px; }' +
-      '#ai-hub-messages .chat-msg.bot strong { color:#e8f0fe; }' +
-      '#gl-chat-messages .chat-msg.bot { line-height:1.6; font-size:13px; }';
-    document.head.appendChild(s);
-  }
+  /* Bot-bubble line-height lives in crm-runtime.css. */
 
   function boot() {
     redirectChatBtn();
-    injectChatCss();
   }
 
   if (document.readyState !== 'loading') setTimeout(boot, 400);

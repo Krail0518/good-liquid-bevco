@@ -793,16 +793,7 @@
 (function(){
   window._glLoading = false;
 
-  // Style the pulsing skeleton row.
-  if(!document.getElementById('gl-skeleton-style')){
-    var s = document.createElement('style');
-    s.id = 'gl-skeleton-style';
-    s.textContent =
-      '@keyframes gl-pulse{0%,100%{opacity:.4}50%{opacity:1}}' +
-      '.gl-skel{display:block;height:10px;border-radius:4px;background:rgba(255,255,255,.06);animation:gl-pulse 1.2s ease-in-out infinite}' +
-      '.gl-skel-row{display:grid;grid-template-columns:140px 1fr 1fr 100px 80px;gap:14px;padding:14px 12px;border-bottom:1px solid rgba(255,255,255,.04)}';
-    document.head.appendChild(s);
-  }
+  // The skeleton row styles and @keyframes gl-pulse are in crm-runtime.css.
 
   function injectSkeleton(targetId, cols){
     var el = document.getElementById(targetId);
