@@ -938,6 +938,18 @@
         if(typeof addNotification==='function')addNotification('Cloud sync skipped','Saved locally — Supabase client not loaded.','warning');
         return;
       }
+      // Allocate at SAVE time, not when the form was rendered. #ginv-id was
+      // filled in when the builder opened and may be minutes stale by now;
+      // editing an existing invoice must keep its own number.
+      if(!editingSupaId){
+        try {
+          if(typeof window.glAllocateInvoiceNumber === 'function'){
+            invId = await window.glAllocateInvoiceNumber();
+            var _idEl = document.getElementById('ginv-id');
+            if(_idEl) _idEl.value = invId;   // show what will actually be saved
+          }
+        } catch(e){ console.warn('[GL] invoice number allocation failed, keeping field value', e); }
+      }
       var payload = {
         invoice_number:invId,
         // Only null the client_id for offline-local IDs (minted as 'c_'+Date.now()).
