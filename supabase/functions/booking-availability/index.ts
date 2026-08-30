@@ -30,6 +30,28 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!page_id) return errorResponse('page_id required', 400);
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return errorResponse('date must be YYYY-MM-DD', 400);
 
+  // ── Bound the date to a real booking window ──────────────────────────
+  // This endpoint is public, takes no auth, and calls Google Calendar on every
+  // request through getBusyIntervals(). The format check accepted any valid
+  // date, including 9999-12-31, so anyone could walk dates indefinitely and
+  // spend Mike's Calendar API quota — the one resource here that is metered by
+  // somebody else and cannot be recovered by scaling.
+  //
+  // A tour cannot be booked in the past or years out, so a date outside the
+  // window is answered from the request itself and never reaches Google. This
+  // is deliberately not a rate limiter: it removes the incentive rather than
+  // counting requests, and it needs no state.
+  const MAX_DAYS_AHEAD = 365;
+  const asked = Date.parse(date + 'T00:00:00Z');
+  const today = Date.parse(new Date().toISOString().slice(0, 10) + 'T00:00:00Z');
+  if (!Number.isFinite(asked)) return errorResponse('date must be YYYY-MM-DD', 400);
+  const daysOut = Math.round((asked - today) / 86400000);
+  if (daysOut < -1 || daysOut > MAX_DAYS_AHEAD) {
+    // Shaped exactly like a normal empty day so the widget needs no special
+    // case: it simply shows nothing available.
+    return jsonResponse({ ok: true, slots: [], calendarChecked: false });
+  }
+
   const supa = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
   const { data: page } = await supa.from('booking_pages').select('*').eq('id', page_id).eq('is_active', true).maybeSingle() as { data: any };
