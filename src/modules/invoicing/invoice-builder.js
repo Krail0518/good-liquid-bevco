@@ -207,7 +207,7 @@
         '<input class="finp" type="number" min="0" step="0.01" value="'+(l.unitPrice||'')+'" placeholder="0.00" data-gl-action="glUpdLinePrice" data-gl-on="input" data-gl-arg1="'+i+'" data-gl-el-prop="value" style="width:90px;text-align:center;font-size:13px;padding:4px">' +
       '</div>' +
       '<div id="ginv-lt-'+i+'" style="text-align:right;font-weight:700;color:var(--teal);font-size:13px;padding-top:6px">'+glFmt(l.total||0)+'</div>' +
-      '<div style="text-align:center;padding-top:4px"><button data-gl-action="glRemLine" data-gl-arg1="+i+" style="background:none;border:none;color:rgba(231,76,60,.6);cursor:pointer;font-size:16px;padding:4px">&#x2715;</button></div>' +
+      '<div style="text-align:center;padding-top:4px"><button data-gl-action="glRemLine" data-gl-arg1="' + i + '" style="background:none;border:none;color:rgba(231,76,60,.6);cursor:pointer;font-size:16px;padding:4px">&#x2715;</button></div>' +
     '</div>';
   }
 

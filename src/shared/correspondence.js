@@ -48,7 +48,12 @@ function glRenderCorrespondence(key, rows){
     var lbl = inb
       ? '<span style="font-size:10px;letter-spacing:1px;color:#6b9fff">' + inboundLabel + '</span>'
       : '<span style="font-size:10px;letter-spacing:1px;color:var(--muted)">→ SENT</span>';
-    return '<div data-gl-action="glShowEmailFull" data-gl-arg1="' + esc(key) + '" data-gl-arg2=" + i + " title="Click to read the full message" ' +
+    // data-gl-arg2 was written as  data-gl-arg2=" + i + "  — the concatenation
+    // never left the string, so every row rendered the literal text " + i + "
+    // as its index. glShowEmailFull looked up rows[" + i + "], got undefined,
+    // and returned silently: clicking an email did nothing at all, with no
+    // error to show for it.
+    return '<div data-gl-action="glShowEmailFull" data-gl-arg1="' + esc(key) + '" data-gl-arg2="' + i + '" title="Click to read the full message" ' +
         'style="background:' + (inb?'rgba(26,111,255,.07)':'rgba(255,255,255,.02)') + ';border:1px solid ' +
         (inb?'rgba(26,111,255,.25)':'rgba(255,255,255,.06)') + ';border-radius:6px;padding:8px 10px;cursor:pointer">' +
       '<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:3px">' + lbl +
