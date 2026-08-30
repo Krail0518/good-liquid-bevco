@@ -100,7 +100,9 @@ Enforced via `vercel.json` on every response:
 default-src 'self'
 script-src  'self' cdn.jsdelivr.net cdnjs.cloudflare.com
             browser.sentry-cdn.com www.googletagmanager.com
-style-src   'self' 'unsafe-inline' fonts.googleapis.com
+style-src   'self' 'unsafe-inline' fonts.googleapis.com   (fallback only)
+style-src-elem 'self' fonts.googleapis.com
+style-src-attr 'unsafe-inline'
 font-src    'self' fonts.gstatic.com
 connect-src 'self' *.supabase.co wss://*.supabase.co sentry.io api.ipify.org
 frame-src   'self' js.stripe.com hooks.stripe.com
@@ -126,8 +128,28 @@ three separate things:
 it, and `tests/inline-handler-budget.test.cjs` fails if the handler count rises
 above zero.
 
-`style-src` still carries `'unsafe-inline'`. The codebase builds `style="..."`
-attributes almost everywhere; that is a separate and much larger piece of work.
+`style-src` is split, and the two halves are deliberately different.
+
+`style-src-elem` is strict. Every style ELEMENT is an external file now: 7
+inline `<style>` blocks in the pages, 10 `document.createElement('style')`
+calls, and 11 blocks generated into print and report popups. That last group
+mattered because a `window.open('')` document inherits the opener's CSP, so
+those blocks are governed too — checked against production rather than assumed.
+They are `<link>`s at `location.origin` now; a popup is same-origin.
+
+`style-src-attr` keeps `'unsafe-inline'` and is not going to lose it soon.
+The CRM builds roughly 6,000 `style="..."` attributes, and no nonce or hash can
+cover a style attribute — only `'unsafe-inline'` does. Removing it means
+converting them all to classes.
+
+The split is worth having because the halves are not equally dangerous. A
+`<style>` element can carry attribute selectors, which is how CSS is used for
+keylogging and exfiltration. A style attribute applies only to the element it
+sits on and cannot select anything.
+
+Plain `style-src` is left permissive underneath both, on purpose: Firefox
+before 122 ignores the specific directives and reads it, so tightening it would
+break inline style attributes on those browsers instead of protecting anyone.
 
 Additional headers set: `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `Strict-Transport-Security`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy` (camera, microphone, geolocation off).
 
@@ -161,7 +183,13 @@ Additional headers set: `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: 
 - [x] Remove `'unsafe-inline'` from `script-src` — done 2026-08-29 by eliminating
       every inline handler, inline `<script>` block and `javascript:` URL, rather
       than by adding nonces. Nothing needs a nonce because nothing is inline.
-- [ ] Do the same for `style-src` (much larger: inline `style="..."` is used throughout)
+- [x] Do the same for `style-src-elem` — done 2026-08-30 by moving all 28
+      style elements (7 page blocks, 10 runtime injections, 11 generated into
+      popups) into stylesheets. Verified by serving the real CSP locally and
+      confirming an inline `<style>` no longer applies while a linked one does.
+- [ ] `style-src-attr` still needs `'unsafe-inline'` for ~6,000 `style="..."`
+      attributes. No nonce can cover a style attribute, so this one only moves
+      by converting them to classes.
 - [ ] Add CAPTCHA on the login form to slow credential stuffing
 - [ ] Set up Supabase Auth rate-limiting (already on by default for SaaS plan; verify for self-hosted)
 - [ ] Periodic review of `login_events` for anomalous patterns (many new IPs, off-hours logins)

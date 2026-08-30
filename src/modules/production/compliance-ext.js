@@ -435,7 +435,7 @@
     var w = window.open('','_blank');
     if(!w){ alert('Pop-up blocked'); return; }
     var html = '<!doctype html><html><head><meta charset="utf-8"><title>Monthly QC Report — ' + fmtDate(new Date()) + '</title>' +
-      '<style>body{font-family:Helvetica,Arial,sans-serif;color:#0a1628;margin:24px;font-size:11px;line-height:1.5}h1{font-size:20px;margin:0 0 4px;color:#0a8}.meta{color:#666;font-size:11px;margin-bottom:18px}h2{font-size:14px;border-bottom:2px solid #0a8;padding-bottom:4px;margin-top:18px}.kpi{display:inline-block;margin-right:16px;margin-bottom:8px;padding:8px 12px;background:#f5f5f5;border-radius:6px}.kpi b{font-size:18px;color:#0a8;display:block}.dev{padding:5px 8px;border-bottom:1px solid #eee;font-size:10px}.dev b{color:#c41e3a}@media print{.no-print{display:none}body{margin:12px}}</style>' +
+      '<link rel="stylesheet" href="' + location.origin + '/gl-print-compliance-day.css">' +
       '</head><body>' +
       '<h1>Compliance Monthly Report</h1>' +
       '<div class="meta">Good Liquid Bev Co · ' + fmtDate(new Date(Date.now()-30*86400000)) + ' to ' + fmtDate(new Date()) + ' · generated ' + fmtTs(new Date()) + '</div>' +
@@ -673,9 +673,9 @@
 
   function activateInspectorMode(data){
     document.documentElement.classList.add('gl-inspector-mode');
-    var style = document.createElement('style');
-    style.textContent = '.gl-inspector-mode input,.gl-inspector-mode textarea,.gl-inspector-mode select{pointer-events:none!important;background:#f8fafc!important;color:#0f172a!important}.gl-inspector-mode button:not([data-inspector-ok]){opacity:.4!important;pointer-events:none!important}.gl-inspector-mode [data-write],.gl-inspector-mode .danger,.gl-inspector-mode [data-action="delete"]{display:none!important}.gl-inspector-mode a[onclick*=\'openAdmin\']{pointer-events:none!important;opacity:.4!important}';
-    document.head.appendChild(style);
+    // The .gl-inspector-mode rules are in crm-runtime.css; they do nothing
+    // until the class above is on <html>, which is what makes them safe to
+    // ship globally.
     var banner = document.createElement('div');
     banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#dc2626;color:#fff;padding:10px;text-align:center;font:600 14px system-ui;z-index:99999';
     banner.innerHTML = '🔒 INSPECTOR MODE — read-only view for ' + escHtml(data.inspector) + (data.agency ? ' (' + escHtml(data.agency) + ')' : '') + ' • expires ' + fmtDate(data.valid_until);

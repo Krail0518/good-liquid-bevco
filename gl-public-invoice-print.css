@@ -1,0 +1,14 @@
+/* gl-public-invoice-print.css — extracted verbatim from
+   src/modules/customers/portal-public.js.
+
+   Unlike the other gl-print-*.css files this one is not for a popup: the
+   public invoice view replaces document.body.innerHTML in the main page, so
+   the <link> is root-relative rather than built from location.origin. It is
+   still its own file rather than a block in crm-runtime.css, because these
+   rules are deliberately scoped to this one view — folded into the shared
+   sheet they would change how every other page in the CRM prints. */
+@media print {
+  body { background:#fff!important }
+  div[style*="max-width:720px"] { box-shadow:none!important; border:0!important }
+  #gl-pub-print, #gl-pub-pay-card, #gl-pub-pay-ach { display:none }
+}

@@ -9,33 +9,49 @@
  * less protection. Two things follow:
  *
  *   1. The directives that are currently correct should stay correct.
- *   2. The one that is knowingly weak — script-src 'unsafe-inline' — should
- *      be recorded as such, with what it would actually take to remove, so it
- *      does not read as an oversight to the next person.
+ *   2. The one that is knowingly weak should be recorded as such, with what it
+ *      would actually take to remove, so it does not read as an oversight.
  *
- * WHY 'unsafe-inline' IS STILL HERE
- * ---------------------------------
- * GL-037 moved index.html's ~9,300-line inline <script> into
- * crm-index-core.js, so no inline <script> element remains. That is not what
- * keeps 'unsafe-inline' though. Inline EVENT HANDLERS need it too, and the
- * codebase has, measured:
+ * script-src NO LONGER CARRIES 'unsafe-inline'
+ * --------------------------------------------
+ * It did until GL-DEF-01, which removed all 550 inline handler sites and the
+ * inline <script> blocks. The checks that measured that exception are kept
+ * below, now as ratchets: if a handler ever reappears, the count is printed,
+ * and if somebody re-adds 'unsafe-inline' the justification check fails.
  *
- *     234  on*="..." attributes in index.html markup
- *      21  href="javascript:..." links
- *     319  on*="..." handlers built inside JS template literals
- *     ---
- *     574  sites
+ * Adding a nonce or a hash to script-src would be actively harmful: a CSP
+ * carrying either causes browsers to IGNORE 'unsafe-inline'. That no longer
+ * matters for script-src, but the assertion stays — it is free, and it
+ * documents the trap.
  *
- * The 319 are generated at runtime with interpolated arguments
- * (onclick="deleteDoc('${d.id}')"), so no static rewrite reaches them.
- * Removing 'unsafe-inline' means a data-action dispatch layer and rewriting
- * every one of those templates — a change that would break the entire CRM if
- * it were done carelessly, and one that cannot be verified without a browser.
+ * style-src IS SPLIT IN TWO (GL-DEF-02)
+ * -------------------------------------
+ * CSP3 governs style elements and style attributes with separate directives,
+ * and here they deserve opposite treatment:
  *
- * Adding a nonce or a hash would be actively harmful here: a CSP that carries
- * either causes browsers to IGNORE 'unsafe-inline', which would disable all
- * 574 handlers at once. The test below asserts that mistake is not made while
- * the handlers still exist.
+ *   style-src-elem 'self' — STRICT, no 'unsafe-inline'. Every style ELEMENT
+ *     is now an external file: 7 inline <style> blocks from the pages, 10
+ *     document.createElement('style') calls, and 11 blocks generated into
+ *     print/report popups. That last group mattered because a window.open('')
+ *     document inherits the opener's CSP — verified, not assumed, by writing
+ *     an inline <script> into such a document against production and watching
+ *     it not run. They are <link>s at location.origin now; a popup is
+ *     same-origin, so 'self' covers them.
+ *
+ *   style-src-attr 'unsafe-inline' — UNAVOIDABLE. Roughly 6,000 style="..."
+ *     attributes, and no nonce or hash can ever cover a style attribute. This
+ *     half does not move without converting them all to classes.
+ *
+ * The split is worth the effort precisely because the two halves are not
+ * equally dangerous. A <style> ELEMENT can carry attribute selectors, which is
+ * the primitive behind CSS keylogging and CSS exfiltration. A style ATTRIBUTE
+ * applies only to the element it sits on and cannot select anything. So the
+ * half that has been locked down is the half an attacker actually wants.
+ *
+ * plain style-src is deliberately LEFT permissive underneath both. Firefox
+ * before 122 ignores style-src-elem/attr and reads style-src; making that
+ * strict would break inline style attributes there rather than protect anyone.
+ * Browsers that understand the specific directives use those instead.
  *
  * Run:  node tests/csp.test.cjs
  */
@@ -135,17 +151,228 @@ for (const f of fs.readdirSync(ROOT).filter((x) => /^crm-.*\.js$/.test(x))) {
     .match(/\bon(click|change|input|submit|keyup|keydown|blur|focus|mouseover|mouseout|load|error)\s*=\s*["']/gi) || []).length;
 }
 const totalHandlers = staticHandlers + jsHrefs + runtimeHandlers;
-console.log('    (inline handler sites: ' + staticHandlers + ' markup + ' +
-            jsHrefs + ' javascript: + ' + runtimeHandlers + ' runtime = ' + totalHandlers + ')');
+console.log('    (raw on*=" text occurrences, comments included: ' + staticHandlers +
+            ' markup + ' + jsHrefs + ' javascript: + ' + runtimeHandlers +
+            ' in crm-*.js = ' + totalHandlers + ')');
 
-check("'unsafe-inline' is still justified by real inline handlers",
-  !script.includes("'unsafe-inline'") || totalHandlers > 0,
-  "no inline handlers remain, so script-src 'unsafe-inline' can finally be dropped");
+// This is a RAW text count: it matches inside comments too. crm-index-core.js
+// explains EXT-036 by quoting the two handlers it removed, which is why the
+// number is 2 and not 0 with no handler anywhere in the codebase. Left raw on
+// purpose — a comment-stripper is what blinded the dead-control scan once
+// already — but that makes it useless as a justification, so the authority for
+// "are there handlers" is tests/inline-handler-budget.test.cjs, whose budget is
+// zero and which reads raw source for the same reason.
+check("script-src does not carry 'unsafe-inline'",
+  !script.includes("'unsafe-inline'"),
+  'GL-DEF-01 removed all 550 handler sites to earn this. If it needs to come ' +
+  'back, inline-handler-budget.test.cjs is the file that says why it is needed.');
 
 check('index.html has no inline <script> element',
   [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].length === 0,
   'GL-037 extracted it; a new one would add a second reason to keep ' +
   "'unsafe-inline' beyond the handlers");
+
+// ── style-src ────────────────────────────────────────────────────────
+const style = directives['style-src'] || [];
+
+check('style-src still allows the Google Fonts stylesheet host',
+  style.includes('https://fonts.googleapis.com'),
+  'got: ' + style.join(' '));
+
+check('style-src does not allow arbitrary hosts',
+  !style.includes('*') && !style.includes('https:'),
+  'got: ' + style.join(' '));
+
+// No page may carry an inline <style> element. These were extracted to .css
+// files so that style-src-elem can eventually drop 'unsafe-inline'; a new one
+// would silently re-add a reason to keep it.
+const PAGES = fs.readdirSync(ROOT).filter((f) => f.endsWith('.html'));
+const withInlineStyle = PAGES.filter((f) =>
+  /<style\b[^>]*>/i.test(fs.readFileSync(path.join(ROOT, f), 'utf8')));
+
+check('no page has an inline <style> element',
+  withInlineStyle.length === 0,
+  withInlineStyle.join(', ') + '\n          Move it to a .css file and <link> it ' +
+  'where the block was, so the cascade order does not change.');
+
+// The same rule for CSS built at runtime: document.createElement('style') is a
+// style ELEMENT too, and style-src-elem governs it exactly like a markup one.
+// All ten former call sites now live in crm-runtime.css.
+const jsFiles = [];
+(function walk(dir) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.name === 'node_modules' || e.name === '.git') continue;
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) walk(p);
+    else if (e.name.endsWith('.js')) jsFiles.push(p);
+  }
+})(path.join(ROOT, 'src'));
+for (const f of fs.readdirSync(ROOT).filter((x) => /^crm-.*\.js$/.test(x))) {
+  jsFiles.push(path.join(ROOT, f));
+}
+
+const injectors = jsFiles.filter((p) =>
+  /createElement\(\s*['"]style['"]\s*\)/.test(fs.readFileSync(p, 'utf8')))
+  .map((p) => path.relative(ROOT, p).split(path.sep).join('/'));
+
+check('no module injects a <style> element at runtime',
+  injectors.length === 0,
+  injectors.join(', ') + '\n          Static CSS belongs in crm-runtime.css. ' +
+  'A <style> element built at runtime is governed by style-src-elem exactly ' +
+  'like one in markup, so this is what keeps the directive loose.');
+
+// The remaining blocker, measured. Popups written with document.write inherit
+// this document's CSP, so a <style> inside that HTML is subject to
+// style-src-elem. Until these carry a <link> instead, the directive cannot
+// drop 'unsafe-inline'. The count may shrink, never grow.
+const POPUP_STYLE_BUDGET = 0;
+
+// Finding these needs a scanner, not a line regex. The first version asked
+// whether a line had a quote before '<style', and missed the invoice PDF popup
+// in crm-index-core.js entirely: that HTML is a multi-line template literal, so
+// the backtick sits ~60 lines above the '<style' and there is no quote on that
+// line at all. It reported 10 sites when there were 11 — and a guard that
+// undercounts is worse than none, because the budget then blesses exactly what
+// it failed to see.
+//
+// So walk the file tracking string, template and comment state, and record
+// '<style' only where it appears INSIDE a string or template. Strings are
+// consumed before comments on purpose: an accept="/*,.pdf" attribute once
+// opened a phantom block comment and blinded a different scan for 519 lines.
+// REGEX LITERALS have to be skipped too, and that is the part with teeth.
+// compliance.js does .replace(/"/g, '&quot;') in a dozen places. Treated as
+// ordinary characters, that bare " opens a string that then swallows everything
+// up to the next " in the file — which is how a version of this scanner lost
+// two of the eleven sites while looking perfectly reasonable.
+//
+// Telling a regex from a division needs the standard heuristic: a '/' starts a
+// regex when the previous meaningful character is one that cannot end an
+// expression. Good enough here, and the ground truth is checked below.
+const BEFORE_REGEX = new Set(['(', ',', '=', ':', '[', '!', '&', '|', '?', '{', '}', ';', '+', '-', '*', '%', '<', '>', '~', '^', null]);
+
+function findGeneratedStyleTags(src) {
+  // Record OFFSETS and convert to line numbers at the end. Counting lines
+  // during the walk gets them wrong, because the escape and regex skips jump
+  // over newlines without ever seeing them — that reported the invoice PDF
+  // popup 96 lines away from where it actually lives.
+  const offsets = [];
+  let i = 0, quote = null, comment = null, prev = null;
+  while (i < src.length) {
+    const c = src[i], next = src[i + 1];
+
+    if (comment) {
+      if (comment === 'line' && c === '\n') comment = null;
+      else if (comment === 'block' && c === '*' && next === '/') { comment = null; i++; }
+      i++;
+      continue;
+    }
+
+    if (quote) {
+      if (c === '\\') { i += 2; continue; }
+      if (c === quote) { quote = null; i++; continue; }
+      if (c === '<' && src.startsWith('<style', i)) offsets.push(i);
+      i++;
+      continue;
+    }
+
+    if (c === '/' && next === '/') { comment = 'line'; i += 2; continue; }
+    if (c === '/' && next === '*') { comment = 'block'; i += 2; continue; }
+
+    if (c === '/' && BEFORE_REGEX.has(prev)) {          // regex literal — skip it
+      i++;
+      while (i < src.length) {
+        if (src[i] === '\\') { i += 2; continue; }
+        if (src[i] === '[') { while (i < src.length && src[i] !== ']') { if (src[i] === '\\') i++; i++; } }
+        if (src[i] === '/' || src[i] === '\n') break;
+        i++;
+      }
+      i++;
+      prev = '/';
+      continue;
+    }
+
+    if (c === '"' || c === "'" || c === '`') { quote = c; i++; continue; }
+    if (!/\s/.test(c)) prev = c;
+    i++;
+  }
+  return offsets.map((off) => src.slice(0, off).split('\n').length);
+}
+
+// Calibrate the scanner against the three traps that actually caught it out,
+// because a miscounting guard is the failure mode here: it blesses whatever it
+// cannot see. Each fixture below is a bug this scanner shipped with at some
+// point in one afternoon.
+const SCANNER_FIXTURES = [
+  // A line regex saw this one, so it was never at risk.
+  ["var h = '<style>a{}</style>';",                        [1], 'single-quoted string'],
+  // Missed: the backtick is lines above, so the line has no quote on it.
+  ['var h = `<html>\n<head>\n  <style>\n  a{}\n  </style>',  [3], 'multi-line template literal'],
+  // Missed: /"/ is a regex, and its " opened a string that ate the rest.
+  ['s.replace(/"/g, "x");\nvar h = \'<style>a{}</style>\';', [2], 'regex literal containing a quote'],
+  // False positive: prose in a comment is not a generated tag.
+  ['// it used to be <style> here\nvar x = 1;',             [],  'mention inside a line comment'],
+  ['/* was <style> once */\nvar x = 1;',                    [],  'mention inside a block comment'],
+];
+let scannerOk = true;
+const scannerDetail = [];
+for (const [src, expected, label] of SCANNER_FIXTURES) {
+  const got = findGeneratedStyleTags(src);
+  if (JSON.stringify(got) !== JSON.stringify(expected)) {
+    scannerOk = false;
+    scannerDetail.push(label + ': expected ' + JSON.stringify(expected) + ', got ' + JSON.stringify(got));
+  }
+}
+check('the <style> scanner still handles templates, regexes and comments',
+  scannerOk, scannerDetail.join('\n          '));
+
+const popupStyleSites = [];
+for (const p of jsFiles) {
+  const rel = path.relative(ROOT, p).split(path.sep).join('/');
+  for (const ln of findGeneratedStyleTags(fs.readFileSync(p, 'utf8'))) {
+    popupStyleSites.push(rel + ':' + ln);
+  }
+}
+console.log('    (<style> blocks generated into popups/reports: ' +
+            popupStyleSites.length + ' of ' + POPUP_STYLE_BUDGET + ' allowed)');
+
+check('generated <style> blocks are not increasing',
+  popupStyleSites.length <= POPUP_STYLE_BUDGET,
+  popupStyleSites.join(', ') + '\n          Budget is ' + POPUP_STYLE_BUDGET +
+  '. Generate a <link rel="stylesheet"> pointing at location.origin instead — ' +
+  "a popup is same-origin, so 'self' covers it.");
+
+// ── the style-src split ─────────────────────────────────────────────
+// CSP3 lets the two halves be governed separately, which is the whole point:
+// every style ELEMENT is now an external file, so style-src-elem can be strict,
+// while style-src-attr must keep 'unsafe-inline' for the ~6,000 style="..."
+// attributes, since no nonce or hash can ever cover a style attribute.
+const styleElem = directives['style-src-elem'] || [];
+const styleAttr = directives['style-src-attr'] || [];
+
+check("style-src-elem does not allow 'unsafe-inline'",
+  styleElem.length > 0 && !styleElem.includes("'unsafe-inline'"),
+  'got: ' + styleElem.join(' ') + ' — this is the half that was earned by ' +
+  'moving 7 page blocks, 10 runtime injections and 11 generated blocks out to ' +
+  'files; it is also the half that matters, because only a <style> ELEMENT can ' +
+  'carry the attribute selectors used for CSS exfiltration');
+
+check('style-src-elem still allows the Google Fonts stylesheet',
+  styleElem.includes('https://fonts.googleapis.com'),
+  'got: ' + styleElem.join(' '));
+
+check("style-src-attr is present and carries 'unsafe-inline'",
+  styleAttr.includes("'unsafe-inline'"),
+  'got: ' + styleAttr.join(' ') + ' — without this every style="..." attribute ' +
+  'in the CRM stops applying, which is most of its layout');
+
+// style-src itself is deliberately LEFT permissive as the fallback. Firefox
+// before 122 ignores style-src-elem/attr entirely and reads style-src; making
+// that strict would break those browsers instead of protecting them. The two
+// specific directives take precedence wherever they are understood.
+check("style-src is kept permissive as the pre-CSP3 fallback",
+  style.includes("'unsafe-inline'"),
+  'browsers without style-src-elem/attr fall back to this one; tightening it ' +
+  'would strip inline style attributes there and break the layout');
 
 console.log('\n' + (failures === 0 ? 'ALL PASSED' : failures + ' CHECK(S) FAILED'));
 process.exit(failures === 0 ? 0 : 1);

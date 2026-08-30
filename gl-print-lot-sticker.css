@@ -1,0 +1,6 @@
+/* gl-print-lot-sticker.css — extracted verbatim from src/modules/production/compliance.js.
+   This is written into a print/report popup. A window.open('') document
+   inherits the opener's CSP, so the <style> element it used to be would
+   be blocked once style-src-elem drops 'unsafe-inline'. Linked by
+   absolute URL because the popup's base URL is not the site root. */
+body{font-family:Helvetica,Arial,sans-serif;margin:24px;color:#0a1628}.sticker{display:inline-block;border:2px solid #0a8;padding:18px 22px;border-radius:10px;text-align:center;margin:8px;break-inside:avoid}.sticker h2{font-size:14px;letter-spacing:1px;margin:0 0 8px;color:#0a8}.sticker .lot{font-family:monospace;font-size:14px;margin-bottom:8px;font-weight:700}.sticker img{display:block;margin:0 auto 6px}.sticker .url{font-size:9px;color:#666;max-width:240px;word-break:break-all}@media print{body{margin:8px}.no-print{display:none}}

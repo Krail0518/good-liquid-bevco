@@ -138,17 +138,9 @@
     host.style.display = 'inline-flex';
   }
 
-  // Inject the pulse keyframe once (shared with the dot in the badge).
-  function injectPulse(){
-    if(document.getElementById('gl-capacity-style')) return;
-    var s = document.createElement('style');
-    s.id = 'gl-capacity-style';
-    s.textContent = '@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.85)}}';
-    document.head.appendChild(s);
-  }
+  // The @keyframes pulse this badge uses is in crm-runtime.css.
 
   function start(){
-    injectPulse();
     if(document.getElementById('gl-capacity-badge')) renderBadge();
     else setTimeout(start, 600);
   }

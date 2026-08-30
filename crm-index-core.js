@@ -3572,28 +3572,7 @@ async function downloadInvoicePDF(invId) {
     : '';
 
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${inv.id} — Good Liquid Bev Co</title>
-  <style>
-    @page { size: letter; margin: 0.5in; }
-    body{font-family:Arial,sans-serif;max-width:700px;margin:24px auto;color:#1a1a1a;font-size:14px}
-    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px;padding-bottom:20px;border-bottom:3px solid #0F6E56}
-    .brand{font-size:22px;font-weight:900;color:#0F6E56;letter-spacing:2px}
-    .brand-sub{font-size:11px;color:#666;margin-top:2px}
-    .inv-title{font-size:28px;font-weight:900;color:#1a1a1a;text-align:right}
-    .inv-num{font-size:14px;color:#0F6E56;text-align:right;font-weight:700}
-    .meta{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:28px}
-    .meta-box h4{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#999;margin-bottom:6px}
-    .meta-box p{font-size:14px;color:#1a1a1a;margin:0;line-height:1.6}
-    table{width:100%;border-collapse:collapse;margin:24px 0}
-    th{background:#0F6E56;color:white;padding:12px 16px;text-align:left;font-size:12px;letter-spacing:1px}
-    td{padding:12px 16px;border-bottom:1px solid #eee}
-    .total-row{font-weight:900;font-size:18px;color:#0F6E56}
-    .status-badge{display:inline-block;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;
-      background:${inv.status==='paid'?'#d1fae5':inv.status==='overdue'?'#fee2e2':'#fef3c7'};
-      color:${inv.status==='paid'?'#065f46':inv.status==='overdue'?'#991b1b':'#92400e'}}
-    .footer{margin-top:40px;padding-top:16px;border-top:1px solid #eee;font-size:11px;color:#999;text-align:center}
-    .print-hint{position:fixed;top:14px;right:14px;background:#0F6E56;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.2);z-index:9999}
-    @media print { .print-hint { display:none } }
-  </style></head><body>
+  <link rel="stylesheet" href="${location.origin}/gl-print-invoice-pdf.css"></head><body>
   <div class="print-hint">In the print dialog, choose <b>Save as PDF</b> as the destination.</div>
   <div class="header">
     <div>
@@ -3604,7 +3583,7 @@ async function downloadInvoicePDF(invId) {
     <div>
       <div class="inv-title">INVOICE</div>
       <div class="inv-num">${inv.id}</div>
-      <div style="text-align:right;margin-top:6px"><span class="status-badge">${inv.status.toUpperCase()}</span></div>
+      <div style="text-align:right;margin-top:6px"><span class="status-badge ${inv.status==='paid'?'is-paid':inv.status==='overdue'?'is-overdue':'is-open'}">${inv.status.toUpperCase()}</span></div>
     </div>
   </div>
   <div class="meta">
@@ -3652,7 +3631,27 @@ async function downloadInvoicePDF(invId) {
   w.document.open();
   w.document.write(html);
   w.document.close();
-  setTimeout(function(){ try { w.focus(); w.print(); } catch(e){} }, 350);
+  // Print once, when the stylesheet has actually arrived.
+  //
+  // The invoice CSS used to be an inline <style> in the template above, so it
+  // was applied by the time document.close() returned and a fixed 350ms wait
+  // was harmless. It is now an external <link>, and a bare timeout is a race:
+  // lose it and the customer gets an unstyled invoice with no sign anything
+  // went wrong. onload waits for stylesheets, which is exactly the guarantee
+  // needed here, and it is what the other five print popups already use.
+  //
+  // The timeout stays as a fallback rather than being replaced. A document
+  // built with document.write is an odd enough object that if onload does not
+  // fire, "no print dialog at all" would be a worse failure than the unstyled
+  // page this is guarding against. The flag makes sure only one of them wins.
+  var printed = false;
+  var printOnce = function(){
+    if (printed) return;
+    printed = true;
+    try { w.focus(); w.print(); } catch(e){}
+  };
+  w.onload = printOnce;
+  setTimeout(printOnce, 1500);
 }
 
 // ─── SEND INVOICE BY EMAIL ───

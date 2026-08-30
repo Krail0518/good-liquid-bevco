@@ -1094,34 +1094,7 @@
     // Preview before the first save has no number yet — the database assigns it on save.
     var qref = data.quoteNumber || 'DRAFT';
     return '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Production Quote '+esc(qref)+'</title>' +
-    '<style>' +
-      '*{box-sizing:border-box}' +
-      'body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;color:#1a2240;font-size:13px}' +
-      '.header{background:#0a1628;color:#fff;padding:28px 36px;display:flex;justify-content:space-between;align-items:flex-start}' +
-      '.brand{font-size:26px;font-weight:900;letter-spacing:2px;color:#fff}' +
-      '.brand-sub{font-size:11px;color:#9aa7bd;margin-top:6px;line-height:1.7}' +
-      '.quote-label{text-align:right}' +
-      '.quote-label h2{font-size:20px;font-weight:700;color:#fff;margin:0 0 6px}' +
-      '.quote-label div{font-size:12px;color:#9aa7bd;margin-bottom:3px}' +
-      '.divider{height:4px;background:linear-gradient(90deg,#1a6fff,#00e5c0)}' +
-      '.body{padding:32px 36px}' +
-      '.client-row{display:flex;justify-content:space-between;margin-bottom:28px}' +
-      '.client-label{font-size:9px;letter-spacing:2px;color:#9aa7bd;margin-bottom:6px}' +
-      '.client-name{font-size:22px;font-weight:900;color:#1a2240}' +
-      '.section-title{font-size:11px;letter-spacing:2px;color:#1a6fff;font-weight:700;margin-bottom:12px}' +
-      'table{width:100%;border-collapse:collapse;margin-bottom:16px}' +
-      'th{background:#0a1628;color:#9aa7bd;padding:10px 12px;text-align:left;font-size:11px;letter-spacing:1px}' +
-      'td{padding:12px;border-bottom:1px solid #eee;font-size:13px;color:#1a2240}' +
-      'tr:nth-child(even) td{background:#f9fbff}' +
-      'td.blue{color:#1a6fff;font-weight:700}' +
-      '.incl{display:grid;grid-template-columns:1fr 1fr;gap:0 24px;margin-bottom:24px;font-size:12px}' +
-      '.check{color:#1a6fff;margin-right:6px}' +
-      '.terms-box{border-left:4px solid #1a6fff;background:#f3f6fb;padding:16px 20px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.8}' +
-      '.terms-box p{margin:0 0 6px}' +
-      '.footer{background:#0a1628;color:#9aa7bd;padding:20px 36px;display:flex;justify-content:space-between;align-items:center;font-size:11px;margin-top:32px}' +
-      '.footer b{color:#fff}' +
-      '@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}' +
-    '</style></head><body>' +
+    '<link rel="stylesheet" href="' + location.origin + '/gl-print-quote.css"></head><body>' +
     '<div class="header">' +
       '<div>' +
         '<div class="brand">GOOD LIQUID BEV CO</div>' +

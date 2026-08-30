@@ -129,7 +129,7 @@
           '</div>' +
         '</div>' +
       '</div>' +
-      '<style>@media print { body { background:#fff!important } div[style*="max-width:720px"] { box-shadow:none!important; border:0!important } #gl-pub-print, #gl-pub-pay-card, #gl-pub-pay-ach { display:none } }</style>';
+      '<link rel="stylesheet" href="/gl-public-invoice-print.css">';
     var printBtn = document.getElementById('gl-pub-print');
     if(printBtn) printBtn.onclick = function(){ window.print(); };
 

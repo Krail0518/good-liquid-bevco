@@ -71,19 +71,7 @@
 
     var html =
       '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Quote '+quoteId+'</title>' +
-      '<style>body{font-family:Arial,sans-serif;margin:0;padding:40px;color:#1a1a2e;font-size:13px}' +
-        '.header{display:flex;justify-content:space-between;margin-bottom:40px}' +
-        '.brand{font-size:28px;font-weight:900;letter-spacing:2px}.brand span{color:#00e5c0}' +
-        'table{width:100%;border-collapse:collapse;margin-bottom:20px}' +
-        'th{background:#0a1628;color:#fff;padding:10px 12px;text-align:left;font-size:11px}' +
-        'td{padding:10px 12px;border-bottom:1px solid #eee;font-size:12px}' +
-        'tr:nth-child(even) td{background:#f9f9f9}' +
-        '.grand{font-size:18px;color:#1a6fff;font-weight:900}' +
-        '.footer{margin-top:40px;padding-top:20px;border-top:2px solid #eee;font-size:11px;color:#999;display:flex;justify-content:space-between}' +
-        '.badge{display:inline-block;background:#e8fff9;border:1px solid #00e5c0;color:#00695c;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700}' +
-        '.qbadge{display:inline-block;background:#eef3ff;border:1px solid #1a6fff;color:#0c3a8a;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700}' +
-        '.terms{background:#f3f6fb;border:1px solid #dde4ef;border-radius:8px;padding:14px;margin-top:18px;font-size:12px;line-height:1.7;color:#1a2240}' +
-      '</style></head><body>' +
+      '<link rel="stylesheet" href="' + location.origin + '/gl-print-export.css"></head><body>' +
       '<div class="header"><div>' +
         '<div class="brand">GOOD <span>LIQUID</span> BEV CO</div>' +
         '<div style="font-size:11px;color:#666;margin-top:6px;line-height:1.8">2011 51st Ave E, Unit 100<br>Palmetto, FL 34221<br>Mike@GoodLiquid.com &middot; (803) 493-5065<br>goodliquidbevco.com</div>' +
@@ -793,16 +781,7 @@
 (function(){
   window._glLoading = false;
 
-  // Style the pulsing skeleton row.
-  if(!document.getElementById('gl-skeleton-style')){
-    var s = document.createElement('style');
-    s.id = 'gl-skeleton-style';
-    s.textContent =
-      '@keyframes gl-pulse{0%,100%{opacity:.4}50%{opacity:1}}' +
-      '.gl-skel{display:block;height:10px;border-radius:4px;background:rgba(255,255,255,.06);animation:gl-pulse 1.2s ease-in-out infinite}' +
-      '.gl-skel-row{display:grid;grid-template-columns:140px 1fr 1fr 100px 80px;gap:14px;padding:14px 12px;border-bottom:1px solid rgba(255,255,255,.04)}';
-    document.head.appendChild(s);
-  }
+  // The skeleton row styles and @keyframes gl-pulse are in crm-runtime.css.
 
   function injectSkeleton(targetId, cols){
     var el = document.getElementById(targetId);

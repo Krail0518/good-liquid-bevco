@@ -75,9 +75,7 @@
       '<div id="gl-cri-list"><div style="padding:30px;text-align:center;color:#9aa7bd">Loading…</div></div>' +
     '</div>';
     document.body.appendChild(ov);
-    var style = document.createElement('style');
-    style.textContent = '.gl-cri-pill{padding:6px 14px;border-radius:6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:#9aa7bd;font-size:11px;letter-spacing:1px;text-transform:uppercase;cursor:pointer}.gl-cri-pill.act{background:rgba(245,200,66,.15);border-color:rgba(245,200,66,.4);color:#f5c842}';
-    ov.appendChild(style);
+    // The .gl-cri-* rules for this overlay are in crm-runtime.css.
     ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
 
     var currentStatus = 'new';

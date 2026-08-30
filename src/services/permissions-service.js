@@ -26,17 +26,10 @@
   function getSB(){ return window.supa || null; }
   var esc = window.glEsc;
 
-  // Row hover used to be two inline handlers per row assigning
-  // this.style.background. As CSS it is one rule for the whole table and
-  // mouse-out needs no logic at all. !important because the base row
-  // background is an inline style, which otherwise outranks a stylesheet.
-  (function injectPermStyles(){
-    if(document.getElementById('gl-perm-styles')) return;
-    var st = document.createElement('style');
-    st.id = 'gl-perm-styles';
-    st.textContent = '.gl-perm-row:hover{background:rgba(0,229,192,.08) !important}';
-    (document.head || document.documentElement).appendChild(st);
-  }());
+  // Row hover is the .gl-perm-row:hover rule in crm-runtime.css. It was
+  // injected from here as a <style> element until style-src-elem stopped
+  // allowing that. The rule is unchanged, !important included: the base row
+  // background is an inline style, which would otherwise outrank it.
 
   var perms = {
     loaded:    false,
