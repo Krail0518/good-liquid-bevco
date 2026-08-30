@@ -120,8 +120,9 @@ async function deleteTemplate(id){
   if(!confirm('Delete this template?')) return;
   if(!window.supa){ return; }
   // Soft-delete via active=false so any historical references survive.
-  const r = await window.supa.from('email_templates').update({ active: false }).eq('id', id);
+  const r = await window.supa.from('email_templates').update({ active: false }).eq('id', id).select();
   if(r.error){ alert('Delete failed: ' + r.error.message); return; }
+  if(!r.data || !r.data.length){ alert('Delete failed' + " (nothing was saved — you may not have permission)"); return; }
   await loadEmailTemplates();
   renderEmailTemplates();
 }

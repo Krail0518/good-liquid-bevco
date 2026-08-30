@@ -127,7 +127,10 @@ function toggleNotifPanel(){
 
 async function markAllNotifRead(){
   if(window.supa && window.currentUser){
-    await window.supa.from('notifications').update({ read: true, read_at: new Date().toISOString() }).eq('user_id', window.currentUser.id).eq('read', false);
+    // .select() so a silent refusal is visible in the console rather than the
+    // badge simply clearing itself and coming back on the next load.
+    var _mr = await window.supa.from('notifications').update({ read: true, read_at: new Date().toISOString() }).eq('user_id', window.currentUser.id).eq('read', false).select();
+    if(_mr && !_mr.error && (!_mr.data || !_mr.data.length)) console.warn('[GL] mark-all-read affected 0 rows — the badge was cleared locally only');
   }
   notifications.forEach(n=>n.read=true);
   updateNotifBadge();
