@@ -275,3 +275,12 @@ jobs:
       # while holding SUPABASE_SERVICE_ROLE_KEY. No browser needed.
       - name: Run supply-chain pinning tests
         run: node tests/supply-chain-pinning.test.cjs
+
+      # Staff identity must fail CLOSED. A missing profiles row, a failed
+      # lookup or a thrown error must deny the login rather than fabricate an
+      # active 'sales' identity — Supabase signup is open, so that path handed
+      # a self-registered stranger the CRM shell.
+      - name: Run auth fail-closed tests
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+        run: node tests/auth-fail-closed.test.cjs
