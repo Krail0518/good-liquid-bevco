@@ -149,6 +149,54 @@ check('every CDN script names an exact version',
   cdnUnversioned.length === 0,
   cdnUnversioned.map((t) => t.url).join(', '));
 
+/* ── 2b. scripts injected at RUNTIME ─────────────────────────────────
+ * The check above reads <script src> tags out of the HTML. That is a real gap:
+ * a script created with document.createElement('script') is exactly as
+ * privileged, and it is invisible to a scan of the markup.
+ *
+ * Two were found that way — JSZip in billing-admin.js and jsPDF in
+ * password-change.js — both loaded from a CDN with no integrity attribute,
+ * while the static Chart.js tag beside them had one. The guard passed the
+ * whole time. An external audit found them, not this test.
+ *
+ * Any assignment of .src to a cross-origin URL must be accompanied by
+ * .integrity. googletagmanager is exempt: it is a loader whose content changes
+ * per request by design, so it cannot be hashed — it is constrained by the CSP
+ * allowlist instead.
+ */
+const SRI_EXEMPT_HOSTS = [
+  // Analytics loader: content is generated per request, so no fixed hash
+  // exists. Reachable only because script-src names this host explicitly.
+  'www.googletagmanager.com',
+];
+
+const dynamicLoads = [];
+for (const f of walk(path.join(ROOT, 'src')).concat([path.join(ROOT, 'crm-index-core.js')])) {
+  if (!f.endsWith('.js')) continue;
+  const src = fs.readFileSync(f, 'utf8');
+  const lines = src.split('\n');
+  lines.forEach((line, i) => {
+    const m = /(\w+)\.src\s*=\s*['"`](https?:\/\/[^'"`]+)/.exec(line);
+    if (!m) return;
+    const host = (() => { try { return new URL(m[2]).host; } catch (e) { return ''; } })();
+    if (SRI_EXEMPT_HOSTS.includes(host)) return;
+    // Match on the VARIABLE, not on proximity. A line-window check breaks
+    // the moment someone writes a comment between the two assignments —
+    // which is exactly what happened while fixing this: the integrity line
+    // landed seven lines below the src line and the guard cried wolf.
+    const varName = m[1];
+    if (new RegExp('\\b' + varName + '\\.integrity\\s*=').test(src)) return;
+    dynamicLoads.push(path.relative(ROOT, f).split(path.sep).join('/') + ':' + (i + 1) + ' -> ' + m[2]);
+  });
+}
+
+check('every dynamically injected cross-origin script sets .integrity',
+  dynamicLoads.length === 0,
+  dynamicLoads.join('\n          ') +
+  '\n          A script created in JS is as privileged as one in the markup. ' +
+  'Set .integrity and .crossOrigin, or add the host to SRI_EXEMPT_HOSTS with ' +
+  'a reason if it genuinely cannot be hashed.');
+
 /* ── 3. the secret scanner's allowlist cannot hide a service_role key ── */
 // This is the part of the scanner most likely to rot. Broadening the allowlist
 // is a one-line change that makes the whole job decorative, and nothing about

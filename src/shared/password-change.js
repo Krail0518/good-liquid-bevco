@@ -97,6 +97,10 @@ function ensureJsPdf(){
   _jsPdfLoading = new Promise(function(resolve, reject){
     const s = document.createElement('script');
     s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    // See the note in billing-admin.js — same reasoning, same source.
+    s.integrity = 'sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk';
+    s.crossOrigin = 'anonymous';
+    s.referrerPolicy = 'no-referrer';
     s.async = true;
     s.onload = function(){
       if(window.jspdf && window.jspdf.jsPDF) resolve(window.jspdf.jsPDF);
