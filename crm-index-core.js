@@ -1188,7 +1188,7 @@ function renderInvoices(){
     <td><span class="cbdg ${esc(effectiveInvoiceStatus(i))}">${esc(effectiveInvoiceStatus(i))}</span></td>
     <td data-gl-action="glSwallowClick"><div style="display:flex;gap:3px">
       ${i.status!=='paid'?`<button class="cbtn grn" style="font-size:10px;padding:3px 7px" data-gl-action="quickPaid" data-gl-arg1="${esc(i.id)}">Paid</button>`:''}
-      ${i.status==='paid'?`<button class="cbtn" style="font-size:10px;padding:3px 7px" data-gl-action="quickUnpaid" data-gl-arg1="${esc(i.id)}" title="Mark unpaid — returns the invoice to pending and clears the recorded payment">↩ Unpaid</button>`:''}
+      ${(i.status==='paid'||i.status==='overdue')?`<button class="cbtn" style="font-size:10px;padding:3px 7px" data-gl-action="quickUnpaid" data-gl-arg1="${esc(i.id)}" title="${i.status==='paid'?'Mark unpaid — returns the invoice to pending and clears the recorded payment':'Clear the overdue flag — returns the invoice to pending'}">↩ ${i.status==='paid'?'Unpaid':'Pending'}</button>`:''}
       ${effectiveInvoiceStatus(i)==='overdue'?`<button class="cbtn" style="font-size:10px;padding:3px 7px;background:rgba(245,200,66,.12);border-color:rgba(245,200,66,.35);color:#f5c842" data-gl-action="sendInvoiceSmsReminder" data-gl-arg1="${esc(i.id)}" title="Send SMS reminder">📱</button>`:''}
       <button class="cbtn" style="font-size:10px;padding:3px 7px" data-gl-action="viewInvoice" data-gl-arg1="${esc(i.id)}">👁</button>
       <button class="cbtn" style="font-size:10px;padding:3px 7px;background:rgba(231,76,60,.1);border-color:rgba(231,76,60,.35);color:#ff8579" data-gl-action="deleteInvoice" data-gl-arg1="${esc(i.id)}" title="Delete invoice">🗑</button>
@@ -1315,7 +1315,13 @@ async function quickPaid(id){
 async function quickUnpaid(id){
   const i = invoices.find(x => x.id === id);
   if(!i) return;
-  if(!confirm('Mark ' + id + ' as unpaid?\n\nIt goes back to pending and the recorded payment is cleared.')) return;
+  // Reachable from a paid invoice AND from an overdue one, and "mark unpaid"
+  // reads as nonsense on something that was never paid. Ask the question the
+  // button actually answers.
+  const wasPaid = i.status === 'paid';
+  if(!confirm(wasPaid
+    ? 'Mark ' + id + ' as unpaid?\n\nIt goes back to pending and the recorded payment is cleared.'
+    : 'Clear the overdue flag on ' + id + '?\n\nIt goes back to pending. If it is still past due, the nightly job will flag it again once the grace period has passed.')) return;
 
   const prev = { status: i.status, paid_at: i.paid_at, paid_amount: i.paid_amount };
   const res = await glPersistInvoiceStatus(i, {
@@ -1323,8 +1329,8 @@ async function quickUnpaid(id){
   });
   if(!res.ok){
     i.status = prev.status; i.paid_at = prev.paid_at; i.paid_amount = prev.paid_amount;
-    if(typeof addNotification === 'function') addNotification('Mark unpaid failed', id + ' is still marked paid: ' + res.reason, 'error');
-    else alert('Mark unpaid failed — ' + id + ' is still marked paid: ' + res.reason);
+    if(typeof addNotification === 'function') addNotification(wasPaid ? 'Mark unpaid failed' : 'Could not clear overdue', id + ' is unchanged: ' + res.reason, 'error');
+    else alert((wasPaid ? 'Mark unpaid failed — ' : 'Could not clear overdue — ') + id + ' is unchanged: ' + res.reason);
     renderInvoices(); renderDash();
     return;
   }
@@ -1333,7 +1339,7 @@ async function quickUnpaid(id){
   i.paid_amount = null;
   renderInvoices(); renderDash();
   if(typeof window.glAudit === 'function') window.glAudit('invoice_mark_unpaid', id);
-  if(typeof addNotification === 'function') addNotification('Marked unpaid', id + ' is pending again', 'success');
+  if(typeof addNotification === 'function') addNotification(wasPaid ? 'Marked unpaid' : 'Overdue cleared', id + ' is pending again', 'success');
 }
 window.quickUnpaid = quickUnpaid;
 
