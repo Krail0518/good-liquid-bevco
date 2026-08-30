@@ -68,13 +68,15 @@
   async function _glFetchProfile(sb,authUser){
     try{
       var r=await sb.from('profiles').select('*').eq('id',authUser.id).maybeSingle();
-      if(r.error){console.warn('[GL] profile fetch error',r.error);return null;}
-      if(!r.data)return null;
+      // Two different denials. Both refuse the login; only the messages differ,
+      // so an outage does not read to the user as "you are not staff".
+      if(r.error){console.warn('[GL] profile fetch error',r.error);return {ok:false,reason:'error'};}
+      if(!r.data)return {ok:false,reason:'missing'};
       var p=r.data;
-      return {
+      return {ok:true,profile:{
         id:p.id, email:p.email||authUser.email,
         name:p.name||(authUser.email||'').split('@')[0],
-        role:p.role||'sales', status:p.status||'active',
+        role:p.role||null, status:p.status||null,
         // is_super_user: read from the profile column when it exists
         // (after 20260523_super_user_rls_enforcement.sql is applied).
         // glIsSuperUser() falls back to the owner-email check when this
@@ -83,8 +85,8 @@
         initials:p.initials||(authUser.email||'?').slice(0,2).toUpperCase(),
         color:p.color||'#1a6fff', tc:p.tc||'#fff',
         lastLogin:'Just now'
-      };
-    }catch(e){console.error('[GL] profile fetch threw',e);return null;}
+      }};
+    }catch(e){console.error('[GL] profile fetch threw',e);return {ok:false,reason:'error'};}
   }
 
   /* ── checkPw — Supabase Auth (bcrypt). Falls back to customerLogins only. ── */
@@ -110,14 +112,45 @@
     try{
       var r=await sb.auth.signInWithPassword({email:email,password:pw});
       if(r.error||!r.data||!r.data.user){showErr();return;}
-      var profile=await _glFetchProfile(sb,r.data.user);
-      if(!profile){
-        profile={
-          id:r.data.user.id, email:r.data.user.email,
-          name:(r.data.user.email||'').split('@')[0], role:'sales', status:'active',
-          initials:(r.data.user.email||'?').slice(0,2).toUpperCase(),
-          color:'#1a6fff', tc:'#fff', lastLogin:'Just now'
-        };
+      // ── Staff identity fails CLOSED ────────────────────────────────────
+      // This used to fabricate { role:'sales', status:'active' } whenever the
+      // profile lookup came back empty — which happens on a missing row, a
+      // failed query OR a thrown exception. Supabase signup is open, so a
+      // self-registered stranger reached the CRM shell that way, and a
+      // transient 500 promoted anyone who happened to be signing in.
+      //
+      // The database was never fooled: RLS refuses their queries, which is why
+      // the production invariant probe passes. But an authenticated stranger
+      // being shown the staff UI contradicts
+      // 20260828175051_staff_profile_requires_invite.sql, and "the database
+      // will catch it" is exactly the kind of second line of defence that
+      // stops being true the moment someone adds a permissive policy.
+      //
+      // No row, no role, or no active status now means no login. The session
+      // is signed out so a refusal cannot leave a half-authenticated tab.
+      var fetched=await _glFetchProfile(sb,r.data.user);
+      if(!fetched.ok){
+        try{ await sb.auth.signOut(); }catch(e){}
+        showErr(fetched.reason==='error'
+          ? 'Could not verify your account. Try again in a moment.'
+          : 'This account is not set up for CRM access.');
+        return;
+      }
+      var profile=fetched.profile;
+      // Deny-list, not allow-list, and deliberately so. An allow-list of the
+      // staff roles I could find would lock out any role I had not seen, and
+      // getting that wrong locks a real person out of their own CRM. What the
+      // finding actually requires is that a row EXISTS, is ACTIVE, and carries
+      // a role — plus that it is not a portal role, since customer_users is
+      // constrained to exactly ('owner','member').
+      var PORTAL_ROLES=['owner','member'];
+      var roleOk = !!profile.role && PORTAL_ROLES.indexOf(profile.role)===-1;
+      if(profile.status!=='active' || !roleOk){
+        try{ await sb.auth.signOut(); }catch(e){}
+        showErr(profile.status && profile.status!=='active'
+          ? 'This account has been disabled.'
+          : 'This account is not set up for CRM access.');
+        return;
       }
       // Merge into window.users so other UI lookups find the profile
       window.users=window.users||[];
