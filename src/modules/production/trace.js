@@ -355,6 +355,8 @@
 
   // ── Recent mock recalls list ──
   async function renderRecentRecalls(){
+    // Staff-only; see glWhenStaff in crm-index-core.js (GL-052).
+    if(!window.currentUser) return;
     var host = document.getElementById('gl-trace-recent');
     if(!host) return;
     if(!sb()){ host.innerHTML = '<div style="color:#ff8579;font-size:12px">Supabase not ready.</div>'; return; }

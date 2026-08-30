@@ -136,9 +136,11 @@
   }
   // Run once on init + once per hour while CRM is open
   if(document.readyState === 'complete' || document.readyState === 'interactive'){
-    setTimeout(expireOldQuotes, 4000);
+    setTimeout(function(){ if(window.glWhenStaff) window.glWhenStaff(expireOldQuotes); else expireOldQuotes(); }, 4000);
   } else {
-    document.addEventListener('DOMContentLoaded', function(){ setTimeout(expireOldQuotes, 4000); });
+    document.addEventListener('DOMContentLoaded', function(){
+      setTimeout(function(){ if(window.glWhenStaff) window.glWhenStaff(expireOldQuotes); else expireOldQuotes(); }, 4000);
+    });
   }
   setInterval(expireOldQuotes, 3600000);
 

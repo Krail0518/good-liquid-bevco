@@ -159,6 +159,36 @@ function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){retur
    role/name in the database is the single source of truth. */
 let users=window.users=[];
 let currentUser=null;
+
+/* Run fn once a STAFF SESSION exists (GL-052).
+ *
+ * Modules boot at DOMContentLoaded and immediately load their data. On the
+ * public marketing site nobody is signed in, so every one of those loads was a
+ * query against a staff-only table that RLS refused — invisible waste on every
+ * public page view, and console noise that buries real errors.
+ *
+ * The obvious gate — "if (!window.currentUser) return;" — is a trap, and it is
+ * the one that nearly shipped in GL-047. Sign-in happens LATER and WITHOUT a
+ * page reload, so a one-shot check at boot never sees a staff user and the
+ * feature silently never loads for anybody. Hence the poll: it costs a variable
+ * read every two seconds and it cannot disable a feature.
+ *
+ * Uncapped on purpose. A visitor may read the marketing page for an hour before
+ * clicking Admin, and a capped wait would quietly stop honouring the login.
+ *
+ * window.currentUser is the right signal: auth.js sets it after a successful
+ * staff login and clears it on sign-out. Verified against a live admin session
+ * rather than assumed — it was the one fact that could not be settled by
+ * reading the code, because crm-index-core.js also keeps a module-scoped
+ * currentUser and only one of the two is the shared one.
+ */
+window.glWhenStaff = function glWhenStaff(fn){
+  if (typeof fn !== 'function') return;
+  (function wait(){
+    if (window.currentUser) { try { fn(); } catch(e){ console.error('[gl] glWhenStaff callback threw', e); } return; }
+    setTimeout(wait, 2000);
+  }());
+};
 /* Bridged to window so fix.js can override/extend and index.html's filter
    (renderUsers area) reads the same merged table. fix.js mutates this in place. */
 const PERMISSIONS=window.PERMISSIONS={

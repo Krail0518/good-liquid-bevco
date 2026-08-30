@@ -19,6 +19,12 @@ const REC={id:'54d7acaa-3c48-4fb5-849a-31f807ef388d',employee_name:'Zack Weeks',
 
 const PAGE=`<!doctype html><meta charset="utf-8"><body><div id="cpg-training"></div>
 <script>
+// training_records is staff-only, and glRenderTraining now refuses to load it
+// without a staff session (GL-052) — the public marketing site used to query
+// it for every anonymous visitor. This harness renders staff UI, so it has to
+// say who it is, the same way smoke.test.cjs forces an admin session rather
+// than performing a real login.
+window.currentUser={id:'test-admin',email:'test@local',role:'admin',is_admin:true,name:'Test Admin'};
 var REC=${JSON.stringify(REC)};
 function res(data){var p=Promise.resolve({data:data,error:null});
   p.eq=function(){return res(data)};p.order=function(){return res(data)};

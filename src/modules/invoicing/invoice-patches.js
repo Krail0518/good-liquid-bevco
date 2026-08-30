@@ -401,7 +401,8 @@
       setTimeout(function(){btn.textContent='Save';btn.style.color='';},2000);
     }else{btn.textContent='Error';}
   };
-  window.glLoadRates();
+  // Rates are staff-only; deferred so the public site does not query them.
+  if(window.glWhenStaff) window.glWhenStaff(window.glLoadRates); else window.glLoadRates();
   console.log('[GL] Invoice pricing loaded');
 }());
 
@@ -723,7 +724,7 @@
     }else{btn.textContent='Error';}
   };
 
-  window.glLoadRates();
+  if(window.glWhenStaff) window.glWhenStaff(window.glLoadRates); else window.glLoadRates();
   console.log('[GL] Invoice patch v2 loaded');
 }());
 /* ============================================================

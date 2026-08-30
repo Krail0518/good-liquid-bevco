@@ -126,8 +126,14 @@
   }
 
   // Reflect the ready count on the pipeline button shortly after load + hourly.
-  function refreshBadge() { window.glFollowupCount().then(updateBadge).catch(function () {}); }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { setTimeout(refreshBadge, 2500); });
-  else setTimeout(refreshBadge, 2500);
+  // lead_followups is staff-only; without a session every refresh was a 401
+  // on the public site, including the hourly one below (GL-052).
+  function refreshBadge() {
+    if (!window.currentUser) return;
+    window.glFollowupCount().then(updateBadge).catch(function () {});
+  }
+  function glBadgeBoot(){ if(window.glWhenStaff) window.glWhenStaff(refreshBadge); else refreshBadge(); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { setTimeout(glBadgeBoot, 2500); });
+  else setTimeout(glBadgeBoot, 2500);
   setInterval(refreshBadge, 3600000);
 })();
