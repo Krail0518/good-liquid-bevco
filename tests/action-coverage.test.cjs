@@ -187,6 +187,67 @@ const PAGES = ['gmp', 'compliance', 'invoices', 'clients', 'dashboard'];
     'data-gl-action="name"; if it must be dynamic, make sure the section is ' +
     'rendered by the PAGES list above so this test can see it.');
 
+// ── data-gl-* attributes whose concatenation never left the string ────
+//
+// This renders perfectly and does nothing:
+//
+//     '<div data-gl-action="glShowEmailFull" data-gl-arg2=" + i + " …'
+//                                                          ^^^^^^^
+// The + i + is INSIDE the JS string, so every row emits the literal text
+// " + i + " as its argument. The handler looked up rows[" + i + "], got
+// undefined, and returned silently — clicking an email in the correspondence
+// list did nothing at all, with no error anywhere.
+//
+// Five of these were in the codebase: the email reader, the invoice builder's
+// remove-line button, and three buttons on Trace/Recall. All five looked
+// correct, were registered actions, and were dead. One of them sat on the SAME
+// LINE as a correctly written arg2, which is how easy this is to miss.
+//
+// The correct form closes the JS string first:  data-gl-arg1="' + esc(x) + '"
+// The broken form does not:                     data-gl-arg1="+x+"
+const strandedAttrs = [];
+const walkJs = (dir) => {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.name === 'node_modules' || e.name === '.git') continue;
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) { walkJs(p); continue; }
+    if (!/\.(js|html)$/.test(e.name)) continue;
+    fs.readFileSync(p, 'utf8').split(/\r?\n/).forEach((line, i) => {
+      if (/^\s*(\/\/|\*)/.test(line)) return;            // prose may show the bug
+      for (const m of line.matchAll(/data-gl-[a-z0-9-]+="([^"]*)"/g)) {
+        const v = m[1];
+        if (!v.includes('+')) continue;                  // a static value is fine
+        const closesTheString = /^'\s*\+/.test(v) && /\+\s*'$/.test(v);
+        if (!closesTheString) {
+          strandedAttrs.push(path.relative(ROOT, p).split(path.sep).join('/') +
+                             ':' + (i + 1) + '  ' + m[0].slice(0, 60));
+        }
+      }
+    });
+  }
+};
+walkJs(path.join(ROOT, 'src'));
+for (const f of fs.readdirSync(ROOT).filter((x) => /^crm-.*\.js$/.test(x) || x === 'index.html')) {
+  const p = path.join(ROOT, f);
+  fs.readFileSync(p, 'utf8').split(/\r?\n/).forEach((line, i) => {
+    if (/^\s*(\/\/|\*)/.test(line)) return;
+    for (const m of line.matchAll(/data-gl-[a-z0-9-]+="([^"]*)"/g)) {
+      const v = m[1];
+      if (!v.includes('+')) continue;
+      if (!(/^'\s*\+/.test(v) && /\+\s*'$/.test(v))) {
+        strandedAttrs.push(f + ':' + (i + 1) + '  ' + m[0].slice(0, 60));
+      }
+    }
+  });
+}
+
+check('no data-gl-* attribute has its concatenation stuck inside the string',
+  strandedAttrs.length === 0,
+  strandedAttrs.join('\n          ') +
+  '\n          Write data-gl-arg1="\' + esc(x) + \'" — close the JS string, ' +
+  'concatenate, reopen. As written the attribute carries the literal text ' +
+  'instead of the value, and the control does nothing when clicked.');
+
   await browser.close();
   server.close();
 
