@@ -572,7 +572,7 @@
     row.innerHTML=
       '<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Canning</div>'+
       '<select id="'+uid+'-format" data-gl-action="glUpdateCan" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" style="'+SS+'">'+opts+'</select>'+
-      '<input id="'+uid+'-desc" type="text" placeholder="Description (optional)" value="'+(descPrefill||'').replace(/"/g,'&quot;')+'" style="'+DSTY+'"/></div>'+
+      '<input id="'+uid+'-desc" type="text" placeholder="Description (optional)" value="'+(descPrefill||'').replace(/"/g,'&quot;').replace(/'/g, '&#39;')+'" style="'+DSTY+'"/></div>'+
       '<div style="text-align:center"><input id="'+uid+'-cases" type="number" min="1" value="'+cases+'" data-gl-action="glUpdateCan" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" style="'+SI+'"/>'+
       '<div id="'+uid+'-cans" style="font-size:10px;color:var(--muted);margin-top:3px">'+cans.toLocaleString()+' cans</div></div>'+
       '<div style="text-align:right;padding-right:4px">'+
@@ -593,7 +593,7 @@
     row.innerHTML=
       '<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Bottling</div>'+
       '<select id="'+uid+'-format" data-gl-action="glUpdateBtl" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" style="'+SS+'">'+opts+'</select>'+
-      '<input id="'+uid+'-desc" type="text" placeholder="Description (optional)" value="'+(descPrefill||'').replace(/"/g,'&quot;')+'" style="'+DSTY+'"/></div>'+
+      '<input id="'+uid+'-desc" type="text" placeholder="Description (optional)" value="'+(descPrefill||'').replace(/"/g,'&quot;').replace(/'/g, '&#39;')+'" style="'+DSTY+'"/></div>'+
       '<div style="text-align:center"><input id="'+uid+'-qty" type="number" min="1" value="'+qty+'" data-gl-action="glUpdateBtl" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" style="'+SI+'"/>'+
       '<div style="font-size:10px;color:var(--muted);margin-top:3px">bottles</div></div>'+
       '<div style="text-align:right;padding-right:4px">'+
@@ -612,7 +612,7 @@
   window.glBuildManualRow=function(uid,label,descDefault,qty,price,descPrefill){
     var total=qty*price;
     var DSTY='width:100%;background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:3px 6px;font-size:11px;margin-top:4px';
-    var safePrefill = String(descPrefill||'').replace(/"/g,'&quot;');
+    var safePrefill = String(descPrefill||'').replace(/"/g,'&quot;').replace(/'/g, '&#39;');
     var row=document.createElement('div');row.id=uid;row.setAttribute('style',RS);row.setAttribute('data-gl-total',total);
     row.innerHTML=
       '<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">'+label+'</div>'+

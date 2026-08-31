@@ -321,6 +321,15 @@ jobs:
       - name: Run JS walker fixtures
         run: node tests/_jsscan.test.cjs
 
+      # Every local esc()/escHtml() is EXTRACTED FROM THE SHIPPED SOURCE and run
+      # against payloads in four contexts: element, double-quoted attribute,
+      # single-quoted attribute, and entity smuggling. Fifteen escapers did not
+      # encode the apostrophe when this first ran. Also holds the raw-HTML sink
+      # count as a ratchet, and keeps eval / new Function / srcdoc at zero.
+      # Static; no browser needed.
+      - name: Run XSS sink and escaper tests
+        run: node tests/xss-sinks.test.cjs
+
       # Third-party code must be pinned, and the secret scanner's allowlist
       # must not be able to hide a service_role key. No off-the-shelf tool
       # covers this repo's dependencies — there is no package.json, so the real

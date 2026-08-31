@@ -38,9 +38,7 @@
   function sb(){ return window.supa || null; }
 
   function esc(s){
-    return String(s == null ? '' : s).replace(/[<>&"]/g, function(c){
-      return { '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;' }[c];
-    });
+    return String(s == null ? '' : s).replace(/[<>&"']/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]; });
   }
 
   // Accepts either the camelCase shape the CRM keeps in memory or the raw

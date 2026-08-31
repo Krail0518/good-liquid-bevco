@@ -19,8 +19,8 @@
   'use strict';
 
   function esc(s){
-    return String(s == null ? '' : s).replace(/[<>&"]/g, function(ch){
-      return { '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;' }[ch];
+    return String(s == null ? '' : s).replace(/[<>&"']/g, function(ch){
+      return { '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;' }[ch];
     });
   }
   var MUTED = 'var(--muted)', WHITE = 'var(--white)', TEAL = 'var(--teal)';

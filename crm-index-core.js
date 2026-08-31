@@ -2462,7 +2462,7 @@ function renderKanban(){
         // contact + phone + product), so the pipeline search finds a card by
         // company name or email even when that field isn't shown on the card.
         const _search = [d.name,d.co,d.contactName,d.email,d.phone,d.service,d.productType,d.notes]
-          .filter(Boolean).join(' ').toLowerCase().replace(/"/g,'&quot;');
+          .filter(Boolean).join(' ').toLowerCase().replace(/"/g,'&quot;').replace(/'/g, '&#39;');
         return`<div class="kcard" data-search="${_search}" data-gl-action="openDealDetail" data-gl-arg1="${stage}" data-gl-arg2="${di}" style="cursor:pointer;border-left:3px solid ${obColor}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px">
           <div><div class="kc-n">${esc(d.name)}</div><div class="kc-co">${esc(d.co)}</div></div>
@@ -2927,7 +2927,7 @@ ${capsDoc ? '--- GOOD LIQUID CAPABILITIES & PRICING REFERENCE ---\n' + capsDoc :
             '<div style="font-size:20px;font-weight:900;color:#00b89a;letter-spacing:2px;margin-bottom:4px">GOOD LIQUID BEV CO</div>' +
             '<div style="font-size:11px;color:#6b87ad">2011 51st Ave E, Unit 100 · Palmetto, FL 34221 · Mike@GoodLiquid.com · (803) 493-5065</div>' +
           '</div>' +
-          '<div style="padding:0 28px 28px;white-space:pre-wrap;font-size:14px;line-height:1.7">'+body.replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];})+'</div>' +
+          '<div style="padding:0 28px 28px;white-space:pre-wrap;font-size:14px;line-height:1.7">'+body.replace(/[&<>']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;'}[c]; })+'</div>' +
           '<div style="padding:14px 28px;border-top:1px solid #e5e7eb;font-size:11px;color:#9ca3af;text-align:center">Good Liquid Bev Co · goodliquidbevco.com</div>' +
         '</div>';
 

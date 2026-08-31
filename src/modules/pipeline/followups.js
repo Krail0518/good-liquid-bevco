@@ -13,7 +13,7 @@
 (function () {
   'use strict';
   function sb() { return window.supa || null; }
-  function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
   function elOf(m) { return typeof m === 'string' ? document.getElementById(m) : m; }
 
   window.glFollowupCount = async function () {

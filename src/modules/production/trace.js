@@ -25,9 +25,7 @@
 
   function sb(){ return window.supa || null; }
   function esc(s){
-    return String(s == null ? '' : s).replace(/[<>&"]/g, function(c){
-      return { '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;' }[c];
-    });
+    return String(s == null ? '' : s).replace(/[<>&"']/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]; });
   }
   function todayISO(){ try { return new Date().toISOString().slice(0,10); } catch(e){ return ''; } }
   function overlay(id){
@@ -137,7 +135,7 @@
         return '<div style="background:#142238;border:1px solid '+accent+';border-radius:12px;padding:16px 18px;margin-bottom:12px">' +
           '<div style="font-size:10.5px;letter-spacing:1.5px;color:'+(accent==='rgba(245,200,66,.25)'?'#f5c842':'var(--teal)')+';margin-bottom:10px">'+title+'</div>'+inner+'</div>';
       };
-      var lotEsc = String(lotCode).replace(/'/g, "\\'").replace(/"/g,'&quot;');
+      var lotEsc = String(lotCode).replace(/'/g, "\\'").replace(/"/g,'&quot;').replace(/'/g, '&#39;');
       var rid = run.id;
 
       panel.innerHTML =

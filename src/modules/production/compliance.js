@@ -772,7 +772,7 @@
     ov.style.cssText = 'position:fixed;inset:0;z-index:9500;background:rgba(6,13,26,.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:30px';
     var rowsHtml = list.map(function(n, i){
       return '<div style="display:grid;grid-template-columns:1fr 30px;gap:6px;align-items:center;padding:4px 0">' +
-        '<input class="gl-cem-name finp" data-idx="'+i+'" value="'+String(n).replace(/"/g,'&quot;')+'" style="font-size:12px">' +
+        '<input class="gl-cem-name finp" data-idx="'+i+'" value="'+String(n).replace(/"/g,'&quot;').replace(/'/g, '&#39;')+'" style="font-size:12px">' +
         '<button class="gl-cem-del" data-idx="'+i+'" style="background:none;border:none;color:rgba(231,76,60,.7);cursor:pointer;font-size:18px;line-height:1">&times;</button>' +
       '</div>';
     }).join('');
@@ -844,7 +844,7 @@
       var sel = document.getElementById('gl-cf-equip');
       if(sel){
         var cur = sel.value;
-        var opts = newList.map(function(n){ return '<option value="'+String(n).replace(/"/g,'&quot;')+'">'+n+'</option>'; }).join('');
+        var opts = newList.map(function(n){ return '<option value="'+String(n).replace(/"/g,'&quot;').replace(/'/g, '&#39;')+'">'+n+'</option>'; }).join('');
         opts += '<option value="__add__" style="color:#00e5c0">+ Add new equipment…</option>';
         opts += '<option value="__edit__" style="color:#c4a4f8">✎ Edit list…</option>';
         sel.innerHTML = opts;
@@ -908,7 +908,7 @@
           if(added){
             // Rebuild the dropdown options with the new entry, leave sentinels at end
             var list = loadCipEquipCache();
-            var opts = list.map(function(n){ return '<option value="'+String(n).replace(/"/g,'&quot;')+'">'+n+'</option>'; }).join('');
+            var opts = list.map(function(n){ return '<option value="'+String(n).replace(/"/g,'&quot;').replace(/'/g, '&#39;')+'">'+n+'</option>'; }).join('');
             opts += '<option value="__add__" style="color:#00e5c0">+ Add new equipment…</option>';
             opts += '<option value="__edit__" style="color:#c4a4f8">✎ Edit list…</option>';
             sel.innerHTML = opts;
@@ -3615,7 +3615,7 @@
         '<span style="font-size:16px">🙈</span>' +
         '<div style="flex:1"><b>Applicability filter active</b> — hiding ' + hidden.size + ' task type' + (hidden.size===1?'':'s') +
           (hiddenCount ? ' (' + hiddenCount + ' card' + (hiddenCount===1?'':'s') + ' hidden today)' : ' (no matching tasks today)') +
-          '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">Hidden: ' + String(hiddenLabels).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }) + '</div>' +
+          '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">Hidden: ' + String(hiddenLabels).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }) + '</div>' +
         '</div>' +
         '<button id="gl-applic-banner-edit" style="background:rgba(196,164,248,.14);border:1px solid rgba(196,164,248,.4);color:#c4a4f8;font-size:11px;padding:5px 11px;border-radius:5px;cursor:pointer">Edit</button>' +
         '<button id="gl-applic-banner-clear" style="background:none;border:1px solid rgba(255,255,255,.12);color:#9aa7bd;font-size:11px;padding:5px 11px;border-radius:5px;cursor:pointer">Show all</button>';

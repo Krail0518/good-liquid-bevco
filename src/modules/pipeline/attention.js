@@ -29,9 +29,7 @@
 
   function sb(){ return window.supa || null; }
   function esc(s){
-    return String(s == null ? '' : s).replace(/[<>&"]/g, function(c){
-      return { '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;' }[c];
-    });
+    return String(s == null ? '' : s).replace(/[<>&"']/g, function(c){ return {'<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;',"'":'&#39;'}[c]; });
   }
   var DAY = 86400000;
   function daysSince(ms){ return ms ? Math.floor((Date.now()-ms)/DAY) : 0; }

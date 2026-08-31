@@ -20,7 +20,7 @@
   function tileHtml(src, label){
     if(src){
       return '<a href="' + src + '" target="_blank" rel="noopener" style="display:block;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.02);aspect-ratio:4/3;position:relative">' +
-        '<img src="' + src + '" alt="' + (label||'Facility photo').replace(/"/g,'&quot;') + '" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block">' +
+        '<img src="' + src + '" alt="' + (label||'Facility photo').replace(/"/g,'&quot;').replace(/'/g, '&#39;') + '" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block">' +
         (label ? '<div style="position:absolute;left:0;right:0;bottom:0;padding:10px 12px;background:linear-gradient(to top,rgba(0,0,0,.7),transparent);color:#fff;font-size:11px;letter-spacing:1px;font-family:var(--ff-disp)">' + label + '</div>' : '') +
       '</a>';
     }
@@ -164,9 +164,9 @@
           '<button id="gl-cap-close" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button>' +
         '</div>' +
         '<div style="font-size:12px;color:#9aa7bd;margin-bottom:18px;line-height:1.6">Shown in the hero of the public site. Set what visitors should see right now.</div>' +
-        '<div class="frow"><div class="flbl">Quarter label</div><input class="finp" id="gl-cap-quarter" value="' + (c.quarter||'').replace(/"/g,'&quot;') + '" placeholder="Q3 2026"></div>' +
+        '<div class="frow"><div class="flbl">Quarter label</div><input class="finp" id="gl-cap-quarter" value="' + (c.quarter||'').replace(/"/g,'&quot;').replace(/'/g, '&#39;') + '" placeholder="Q3 2026"></div>' +
         '<div class="frow"><div class="flbl">% booked</div><input class="finp" id="gl-cap-booked" type="number" min="0" max="100" value="' + (parseInt(c.booked,10)||0) + '"></div>' +
-        '<div class="frow"><div class="flbl">Next-quarter line</div><input class="finp" id="gl-cap-next" value="' + (c.next_label||'').replace(/"/g,'&quot;') + '" placeholder="Q4 opens Oct 1"></div>' +
+        '<div class="frow"><div class="flbl">Next-quarter line</div><input class="finp" id="gl-cap-next" value="' + (c.next_label||'').replace(/"/g,'&quot;').replace(/'/g, '&#39;') + '" placeholder="Q4 opens Oct 1"></div>' +
         '<div style="background:rgba(0,229,192,.05);border:1px solid rgba(0,229,192,.15);border-radius:8px;padding:11px;font-size:11px;color:#9aa7bd;margin:8px 0 16px">Preview: <span id="gl-cap-preview" style="color:var(--teal);font-weight:600"></span></div>' +
         '<div style="display:flex;gap:8px">' +
           '<button id="gl-cap-save" class="cbtn pri" style="flex:1">💾 Save</button>' +
@@ -715,7 +715,7 @@
     return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:14px;margin-bottom:10px">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
         '<div style="font-family:var(--ff-disp);font-size:10px;letter-spacing:2px;color:var(--teal)">' + esc(label) + '</div>' +
-        '<button class="gl-copy-btn cbtn" style="font-size:10px;padding:4px 10px" data-text="' + t.replace(/"/g,'&quot;') + '">📋 Copy</button>' +
+        '<button class="gl-copy-btn cbtn" style="font-size:10px;padding:4px 10px" data-text="' + t.replace(/"/g,'&quot;').replace(/'/g, '&#39;') + '">📋 Copy</button>' +
       '</div>' +
       '<div style="font-size:13px;color:var(--white);line-height:1.6;white-space:pre-wrap">' + t + '</div>' +
     '</div>';
