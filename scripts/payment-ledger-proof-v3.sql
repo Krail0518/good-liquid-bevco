@@ -1,11 +1,7 @@
--- Payment ledger — live behavioural proof, v2.  SUPERSEDED by v3.
+-- Payment ledger — live behavioural proof, v3.
 --
--- Kept because its 26/26 production output is cited in the response of 31
--- August. The guard it exercises was itself bypassable by an ordinary edit to
--- invoices.amount; scripts/payment-ledger-proof-v3.sql adds those cases.
---
--- 26 assertions covering the original design AND the four defects the external
--- auditor found in it on 31 August 2026:
+-- 35 assertions covering the original design, the four defects the external
+-- auditor found in it, and the invoice-edit bypass found in the fix for those:
 --
 --   2.1 CRITICAL  the guard trusted current_setting('gl.payment_apply'), which
 --                 any SQL-capable caller can set. Reproduced before fixing: an
@@ -160,6 +156,93 @@ begin
   insert into proof(id,assertion,observed,verdict) values ('G1','a currency we do not settle is refused',v::text, case when v->>'reason'='unsupported_currency' then 'PASS' else 'FAIL' end);
   v := public.gl_apply_payment_event('stripe','prf_e7','NO-SUCH',10,'usd','card',null);
   insert into proof(id,assertion,observed,verdict) values ('G2','an unknown invoice is refused',v::text, case when v->>'reason'='unknown_invoice' then 'PASS' else 'FAIL' end);
+
+  -- ── H. invoice edits cannot invalidate the projection (round three) ────
+  -- The second guard returned early whenever the five PAYMENT columns were
+  -- unchanged, and returned before reading the ledger. amount, invoice_number
+  -- and is_credit_memo were not in that condition, so an ordinary invoice edit
+  -- skipped the invariant entirely.
+  insert into public.invoices (invoice_number, client_name, service, amount, status)
+  values ('PRF-H1','Proof','x',1000,'pending'), ('PRF-H2','Proof','x',1000,'pending'),
+         ('PRF-H3','Proof','x',1000,'pending'), ('PRF-H4','Proof','x',1000,'pending'),
+         ('PRF-H5','Proof','x',1000,'pending'), ('PRF-H6','Proof','x',1000,'pending'),
+         ('PRF-H7','Proof','x',1000,'pending'), ('PRF-H8','Proof','x',1000,'pending');
+  v := public.gl_apply_payment_event('stripe','prf_h1','PRF-H1',1000,'usd','card','ch1');
+  v := public.gl_apply_payment_event('stripe','prf_h2','PRF-H2',1000,'usd','card','ch2');
+  v := public.gl_apply_payment_event('stripe','prf_h3','PRF-H3',400,'usd','card','ch3');
+  v := public.gl_apply_payment_event('stripe','prf_h4','PRF-H4',1000,'usd','card','ch4');
+  v := public.gl_apply_payment_event('stripe','prf_h5','PRF-H5',1000,'usd','card','ch5');
+  v := public.gl_apply_payment_event('stripe','prf_h6','PRF-H6',1000,'usd','card','ch6');
+  v := public.gl_apply_payment_event('stripe','prf_h7','PRF-H7',1000,'usd','card','ch7');
+
+  begin
+    update public.invoices set amount=2000 where invoice_number='PRF-H1';
+    insert into proof(id,assertion,observed,verdict) values ('T1','increase amount after full payment','ALLOWED','FAIL');
+  exception when insufficient_privilege then
+    insert into proof(id,assertion,observed,verdict) values ('T1','increase amount after full payment','refused 42501','PASS');
+  end;
+
+  begin
+    update public.invoices set amount=500 where invoice_number='PRF-H2';
+    insert into proof(id,assertion,observed,verdict) values ('T2','decrease amount below the ledger net','ALLOWED','FAIL');
+  exception when insufficient_privilege then
+    insert into proof(id,assertion,observed,verdict) values ('T2','decrease amount below the ledger net','refused 42501','PASS');
+  end;
+
+  begin
+    update public.invoices set amount=800 where invoice_number='PRF-H3';
+    select status, paid_amount into st, pa from public.invoices where invoice_number='PRF-H3';
+    insert into proof(id,assertion,observed,verdict) values ('T3','change amount on a partially paid invoice',
+      'status='||st||' paid_amount='||coalesce(pa::text,'NULL'),
+      case when st='pending' and pa=400 then 'PASS' else 'FAIL' end);
+  exception when others then
+    insert into proof(id,assertion,observed,verdict) values ('T3','change amount on a partially paid invoice','refused '||sqlstate,'FAIL');
+  end;
+
+  begin
+    update public.invoices set is_credit_memo=true where invoice_number='PRF-H4';
+    insert into proof(id,assertion,observed,verdict) values ('T4','toggle is_credit_memo with ledger rows','ALLOWED','FAIL');
+  exception when insufficient_privilege then
+    insert into proof(id,assertion,observed,verdict) values ('T4','toggle is_credit_memo with ledger rows','refused 42501','PASS');
+  end;
+
+  begin
+    update public.invoices set invoice_number='PRF-H5-R' where invoice_number='PRF-H5';
+    insert into proof(id,assertion,observed,verdict) values ('T5','rename invoice_number with ledger rows','ALLOWED','FAIL');
+  exception when insufficient_privilege then
+    insert into proof(id,assertion,observed,verdict) values ('T5','rename invoice_number with ledger rows','refused 42501','PASS');
+  when foreign_key_violation then
+    insert into proof(id,assertion,observed,verdict) values ('T5','rename invoice_number with ledger rows','refused 23503','PASS');
+  end;
+
+  begin
+    update public.invoices set status='pending', paid_at=null where invoice_number='PRF-H6';
+    insert into proof(id,assertion,observed,verdict) values ('T6','paid -> pending while fully covered','ALLOWED','FAIL');
+  exception when insufficient_privilege then
+    insert into proof(id,assertion,observed,verdict) values ('T6','paid -> pending while fully covered','refused 42501','PASS');
+  end;
+
+  begin
+    update public.invoices set paid_method='Wire transfer' where invoice_number='PRF-H7';
+    insert into proof(id,assertion,observed,verdict) values ('T7','forge paid_method','ALLOWED','FAIL');
+  exception when insufficient_privilege then
+    insert into proof(id,assertion,observed,verdict) values ('T7','forge paid_method','refused 42501','PASS');
+  end;
+
+  -- Legitimate edits must still work, or the guard has simply frozen the table.
+  begin
+    update public.invoices set amount=1500 where invoice_number='PRF-H8';
+    insert into proof(id,assertion,observed,verdict) values ('L1','raise amount on an UNPAID invoice','allowed','PASS');
+  exception when others then
+    insert into proof(id,assertion,observed,verdict) values ('L1','raise amount on an UNPAID invoice','BLOCKED: '||sqlerrm,'FAIL');
+  end;
+  begin
+    update public.invoices set notes='ordinary edit' where invoice_number='PRF-H1';
+    insert into proof(id,assertion,observed,verdict) values ('L2','ordinary edit on a paid invoice','allowed','PASS');
+  exception when others then
+    insert into proof(id,assertion,observed,verdict) values ('L2','ordinary edit on a paid invoice','BLOCKED: '||sqlerrm,'FAIL');
+  end;
+
 end
 $p$;
 
