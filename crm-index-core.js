@@ -1208,13 +1208,67 @@ function filterInvoices(q){invSearch=q.toLowerCase();renderInvoices()}
    updates the screen, fires the paid alert, and leaves the invoice unpaid in
    the database (CLAUDE.md rule 4). Every mark-paid path goes through here so
    the check exists once rather than four times (§11). */
+/* Persist an invoice status change.
+
+   Paid state no longer travels as an UPDATE. `invoices.status` is derived from
+   the payment ledger inside a locked transaction, and a database trigger
+   refuses any direct write to status='paid', paid_at, paid_amount, paid_method
+   or stripe_session_id -- so the UPDATE this function used to send would now be
+   rejected outright with 42501. Marking paid becomes a recorded, attributed
+   payment event; marking unpaid becomes a reversing event. Everything else
+   (draft, sent, pending, overdue, void) is still an ordinary column write,
+   because those assert nothing about money having moved.
+
+   See supabase/migrations/20260831000000_payment_event_ledger.sql. */
 async function glPersistInvoiceStatus(inv, patch){
   if(!window.supa) return {ok:false, reason:'Not connected to the database.'};
+  const invoiceNumber = inv.id;
   try{
+    if(patch && patch.status === 'paid'){
+      const r = await window.supa.rpc('gl_record_manual_payment', {
+        p_invoice_number: invoiceNumber,
+        p_amount: null,                       // null means "settle the balance"
+        p_method: patch.paid_method || 'manual',
+        p_reference: null,
+      });
+      if(r.error) return {ok:false, reason:r.error.message};
+      const v = r.data || {};
+      if(v.applied === false && v.reason === 'nothing_outstanding') return {ok:true, verdict:v};
+      if(v.applied === false){
+        return {ok:false, reason:'The server did not record the payment (' + (v.reason || 'declined') + ').'};
+      }
+      return {ok:true, verdict:v};
+    }
+
+    // Clearing paid state -- the "mark unpaid" / "clear overdue" route.
+    const clearsPaid = patch && ('paid_at' in patch) && patch.paid_at === null;
+    if(clearsPaid){
+      const r = await window.supa.rpc('gl_reverse_invoice_payments', {
+        p_invoice_number: invoiceNumber,
+        p_reason: 'Marked unpaid from the CRM',
+      });
+      if(r.error) return {ok:false, reason:r.error.message};
+      const v = r.data || {};
+      if(v.applied === false){
+        return {ok:false, reason:'The server did not reverse the payment (' + (v.reason || 'declined') + ').'};
+      }
+      // The reversal lands the invoice on 'pending'. If the caller asked for a
+      // different non-paid status, apply that as an ordinary write afterwards.
+      if(patch.status && patch.status !== 'pending'){
+        const s = await window.supa.from('invoices').update({ status: patch.status })
+          .eq('invoice_number', invoiceNumber).select('invoice_number');
+        if(s.error) return {ok:false, reason:s.error.message};
+        if(!Array.isArray(s.data) || s.data.length === 0){
+          return {ok:false, reason:'Payment reversed, but the status change was rejected — 0 rows updated.'};
+        }
+      }
+      return {ok:true, verdict:v};
+    }
+
     const base = window.supa.from('invoices').update(patch);
     const r = inv.supaId
       ? await base.eq('id', inv.supaId).select('invoice_number')
-      : await base.eq('invoice_number', inv.id).select('invoice_number');
+      : await base.eq('invoice_number', invoiceNumber).select('invoice_number');
     if(r.error) return {ok:false, reason:r.error.message};
     if(!Array.isArray(r.data) || r.data.length === 0){
       return {ok:false, reason:'The server rejected the change — 0 rows updated.'};

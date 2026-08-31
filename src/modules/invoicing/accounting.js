@@ -397,18 +397,30 @@
         var ref = document.getElementById('gl-pmt-ref').value.trim();
         if (!amt || amt <= 0) { notify('Enter a valid amount.', 'error'); return; }
         saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
-        var { data: pmt, error: pErr } = await SB().from('invoice_payments')
-          .insert({ invoice_number: invId, amount: amt, method: method, reference: ref || null, paid_at: todayStr() })
-          .select().single();
-        if (pErr) { notify('Error: ' + pErr.message, 'error'); saveBtn.disabled = false; saveBtn.textContent = 'Save Payment'; return; }
-        payments.push(pmt);
-        totalPaid += amt;
-        remaining -= amt;
+        // One RPC, one transaction. This used to be an INSERT into
+        // invoice_payments followed by a separate UPDATE marking the invoice
+        // paid -- the audit's GL-024. Between those two statements the balance
+        // could be read by anyone, and if the second failed the payment was
+        // recorded against an invoice that still said it was owed. The RPC
+        // locks the invoice, appends the ledger row and derives the status
+        // together, so there is no window and no second failure mode.
+        var rpc = await SB().rpc('gl_record_manual_payment', {
+          p_invoice_number: invId,
+          p_amount: amt,
+          p_method: method,
+          p_reference: ref || null,
+        });
+        if (rpc.error) { notify('Error: ' + rpc.error.message, 'error'); saveBtn.disabled = false; saveBtn.textContent = 'Save Payment'; return; }
+        var verdict = rpc.data || {};
+        if (verdict.applied === false) {
+          notify('Payment not recorded: ' + (verdict.reason || 'the server declined it'), 'error');
+          saveBtn.disabled = false; saveBtn.textContent = 'Save Payment';
+          return;
+        }
+        totalPaid = Number(verdict.paid_total) || (totalPaid + amt);
+        remaining = (Number(inv.amount) || 0) - totalPaid;
         notify('Payment of ' + fmt$(amt) + ' recorded.', 'success');
-        if (remaining <= 0.01) {
-          var paidQ = await SB().from('invoices').update({ status: 'paid' }).eq('invoice_number', invId).select();
-          if (paidQ.error) { notify('Payment recorded, but marking the invoice paid failed: ' + paidQ.error.message, 'error'); modal.remove(); return; }
-          if (Array.isArray(paidQ.data) && paidQ.data.length === 0) { notify('Payment recorded, but the server rejected marking the invoice paid (0 rows changed).', 'error'); modal.remove(); return; }
+        if (verdict.status === 'paid') {
           if (inv) inv.status = 'paid';
           modal.remove();
           if (confirm('Invoice fully paid! Send payment receipt to client?')) window.glSendPaymentReceipt(invId);

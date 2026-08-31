@@ -73,16 +73,32 @@ function makeSupa(mode, calls) {
       };
       return q;
     },
+    /* Paid state stopped being an UPDATE. It is derived from the payment
+       ledger inside a locked transaction, and a database trigger refuses any
+       direct write to it — so the helper now calls an RPC and has to read the
+       VERDICT the RPC returns, not just `error`. That is the same defect in a
+       new shape: {applied:false} with no error is this design's version of
+       "zero rows, no error", and it must not report success. */
+    rpc(name, args) {
+      calls.push({ rpc: name, args });
+      if (mode === 'error') return Promise.resolve({ data: null, error: { message: 'permission denied' } });
+      if (mode === 'throw') return Promise.reject(new Error('network down'));
+      if (mode === 'declined') return Promise.resolve({ data: { applied: false, reason: 'unknown_invoice' }, error: null });
+      if (name === 'gl_reverse_invoice_payments') {
+        return Promise.resolve({ data: { applied: true, reason: 'reversed', status: 'pending' }, error: null });
+      }
+      return Promise.resolve({ data: { applied: true, reason: 'applied', status: 'paid', paid_total: 1042 }, error: null });
+    },
   };
 }
 
-async function callHelper(src, mode, inv) {
+async function callHelper(src, mode, inv, patch) {
   const calls = [];
   const sandbox = { window: { supa: makeSupa(mode, calls) }, console };
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
   vm.runInContext(src + '\n; globalThis.__fn = glPersistInvoiceStatus;', sandbox);
-  const res = await sandbox.__fn(inv, { status: 'paid', paid_at: 'NOW', paid_method: 'manual' });
+  const res = await sandbox.__fn(inv, patch || { status: 'paid', paid_at: 'NOW', paid_method: 'manual' });
   return { res, calls };
 }
 
@@ -160,10 +176,25 @@ async function callHelper(src, mode, inv) {
     statusWrites.length > 0,
     'the pattern stopped matching — this rule is now asserting nothing');
 
-  check('the helper itself performs the invoice update',
-    /glPersistInvoiceStatus[\s\S]{0,900}?from\('invoices'\)\.update\(patch\)/.test(html),
-    'the single permitted write lives inside the helper; if it moved, this ' +
-    'rule has nothing left to protect');
+  // This used to assert that the helper performed the invoice UPDATE itself.
+  // It no longer does one for paid state, and must not: a database trigger now
+  // refuses any direct write to status='paid', paid_at, paid_amount,
+  // paid_method or stripe_session_id, so that UPDATE would be rejected with
+  // 42501. Paid state is derived from the payment ledger. The rule this check
+  // exists to protect — that the single mark-paid route lives in one place —
+  // is unchanged; only the mechanism moved.
+  const helperSrc = html.slice(html.indexOf('async function glPersistInvoiceStatus'));
+  check('the helper routes marking paid through the ledger RPC',
+    /gl_record_manual_payment/.test(helperSrc.slice(0, 2500)),
+    'marking paid must go through gl_record_manual_payment; a direct UPDATE ' +
+    'is refused by the database with 42501');
+  check('the helper routes marking unpaid through the reversal RPC',
+    /gl_reverse_invoice_payments/.test(helperSrc.slice(0, 2500)),
+    'clearing paid state must be a reversing ledger event, not a column write');
+  check('the helper still performs a plain update for non-paid statuses',
+    /from\('invoices'\)\.update\(patch\)/.test(helperSrc.slice(0, 2500)),
+    'draft/sent/pending/overdue/void assert nothing about money and must ' +
+    'still be ordinary writes — with .select() and a rows-affected check');
 
   for (const fn of ['bulkMarkPaid', 'quickPaid', 'markStatus']) {
     const at = html.indexOf('async function ' + fn);
@@ -183,28 +214,71 @@ async function callHelper(src, mode, inv) {
     process.exit(1);
   }
 
-  let r = await callHelper(src, 'ok', { id: 'GL-1042', supaId: 'uuid-1' });
-  check('success -> ok:true', r.res.ok === true, JSON.stringify(r.res));
-  check('success -> addressed the row by supaId when present',
+  const PAID = { status: 'paid', paid_at: 'NOW', paid_method: 'manual' };
+  const UNPAID = { status: 'pending', paid_at: null, paid_amount: null, paid_method: null };
+  const SENT = { status: 'sent' };
+
+  // ── marking paid: a ledger event, and its verdict must be read ──────
+  let r = await callHelper(src, 'ok', { id: 'GL-1042', supaId: 'uuid-1' }, PAID);
+  check('mark paid -> ok:true', r.res.ok === true, JSON.stringify(r.res));
+  check('mark paid -> calls gl_record_manual_payment',
+    r.calls[0] && r.calls[0].rpc === 'gl_record_manual_payment', JSON.stringify(r.calls[0]));
+  check('mark paid -> names the invoice by its number',
+    r.calls[0] && r.calls[0].args && r.calls[0].args.p_invoice_number === 'GL-1042',
+    JSON.stringify(r.calls[0]));
+  check('mark paid -> sends no amount, meaning "settle the balance"',
+    r.calls[0] && r.calls[0].args && r.calls[0].args.p_amount === null,
+    'a hard-coded amount here would silently under- or over-pay a partially ' +
+    'paid invoice');
+
+  // This is the new shape of the old bug. {applied:false} arrives with NO
+  // error, exactly as an RLS refusal arrives as zero rows with no error.
+  r = await callHelper(src, 'declined', { id: 'GL-1042', supaId: 'uuid-1' }, PAID);
+  check('a declined verdict -> ok:false, not silent success',
+    r.res.ok === false, JSON.stringify(r.res));
+  check('a declined verdict -> reason names why the server refused',
+    /unknown_invoice/i.test(r.res.reason || ''), JSON.stringify(r.res));
+
+  r = await callHelper(src, 'error', { id: 'GL-1042', supaId: 'uuid-1' }, PAID);
+  check('mark paid, database error -> ok:false', r.res.ok === false);
+  check('mark paid, database error -> reason carries the message',
+    /permission denied/i.test(r.res.reason || ''), JSON.stringify(r.res));
+
+  r = await callHelper(src, 'throw', { id: 'GL-1042', supaId: 'uuid-1' }, PAID);
+  check('mark paid, thrown error -> ok:false rather than an unhandled rejection',
+    r.res.ok === false, JSON.stringify(r.res));
+
+  // ── marking unpaid: a reversing event ───────────────────────────────
+  r = await callHelper(src, 'ok', { id: 'GL-1042', supaId: 'uuid-1' }, UNPAID);
+  check('mark unpaid -> calls gl_reverse_invoice_payments',
+    r.calls[0] && r.calls[0].rpc === 'gl_reverse_invoice_payments', JSON.stringify(r.calls[0]));
+  check('mark unpaid -> ok:true', r.res.ok === true, JSON.stringify(r.res));
+
+  r = await callHelper(src, 'declined', { id: 'GL-1042', supaId: 'uuid-1' }, UNPAID);
+  check('mark unpaid, declined verdict -> ok:false', r.res.ok === false, JSON.stringify(r.res));
+
+  // ── every other status: still an ordinary, checked write ────────────
+  r = await callHelper(src, 'ok', { id: 'GL-1042', supaId: 'uuid-1' }, SENT);
+  check('a non-paid status is an ordinary update, not an RPC',
+    r.calls[0] && r.calls[0].table === 'invoices' && !r.calls[0].rpc, JSON.stringify(r.calls[0]));
+  check('a non-paid status write addresses the row by supaId when present',
     r.calls[0].by === 'id=uuid-1', JSON.stringify(r.calls[0]));
-  check('the write asks for rows back (.select)', !!r.calls[0].selected,
+  check('a non-paid status write asks for rows back (.select)', !!r.calls[0].selected,
     'no .select() recorded — a silent RLS rejection would be invisible');
 
-  r = await callHelper(src, 'ok', { id: 'GL-1042' });
-  check('success -> falls back to invoice_number when there is no supaId',
+  r = await callHelper(src, 'ok', { id: 'GL-1042' }, SENT);
+  check('a non-paid status write falls back to invoice_number when there is no supaId',
     r.calls[0].by === 'invoice_number=GL-1042', JSON.stringify(r.calls[0]));
 
-  r = await callHelper(src, 'norows', { id: 'GL-1042', supaId: 'uuid-1' });
+  r = await callHelper(src, 'norows', { id: 'GL-1042', supaId: 'uuid-1' }, SENT);
   check('0 rows returned -> ok:false (the silent RLS rejection)', r.res.ok === false, JSON.stringify(r.res));
   check('0 rows returned -> reason mentions it was rejected',
     /0 rows|rejected/i.test(r.res.reason || ''), JSON.stringify(r.res));
 
-  r = await callHelper(src, 'error', { id: 'GL-1042', supaId: 'uuid-1' });
+  r = await callHelper(src, 'error', { id: 'GL-1042', supaId: 'uuid-1' }, SENT);
   check('database error -> ok:false', r.res.ok === false);
-  check('database error -> reason carries the message',
-    /permission denied/i.test(r.res.reason || ''), JSON.stringify(r.res));
 
-  r = await callHelper(src, 'throw', { id: 'GL-1042', supaId: 'uuid-1' });
+  r = await callHelper(src, 'throw', { id: 'GL-1042', supaId: 'uuid-1' }, SENT);
   check('thrown error -> ok:false rather than an unhandled rejection', r.res.ok === false, JSON.stringify(r.res));
 
   // ── effectiveInvoiceStatus: the overdue POLICY ──────────────────────
