@@ -57,6 +57,7 @@ set search_path = public, extensions;
 -- reconciliation cannot drift apart on it.
 create or replace function public.gl_payment_tolerance()
 returns numeric language sql immutable
+set search_path = public, extensions
 as $tol$ select 0.005::numeric $tol$;
 
 -- THE single definition of what an invoice's status should be, given its
