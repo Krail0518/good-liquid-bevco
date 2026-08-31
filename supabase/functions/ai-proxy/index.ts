@@ -46,9 +46,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const _rl = await checkRateLimit(
     'ai-proxy:' + (_auth.userId || 'role:' + (_auth.role || 'unknown')),
     60, 60,
-    // Anthropic tokens are dollars, and nothing operational breaks if AI
-    // pauses for a few minutes. No argument for spending unmetered money
-    // while the meter is broken.
+    // Anthropic tokens are dollars per call and nothing breaks operationally
+    // if AI pauses. No argument for spending unmetered money while the meter
+    // is broken.
     { onOutage: 'closed' },
   );
   if (_rl.degraded) console.warn('[ai-proxy] rate limit check degraded:', _rl.degraded);

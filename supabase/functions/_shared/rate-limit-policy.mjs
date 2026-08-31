@@ -2,94 +2,61 @@
 //
 // Plain JavaScript on purpose, following email-text.mjs and oauth-errors.mjs:
 // Deno imports it directly, and tests/rate-limit-outage.test.cjs imports THIS
-// module rather than a transliteration of the TypeScript one. That matters more
-// than it looks. The first version of that test stripped types from
-// rate-limit.ts with regexes, and the stripper quietly rewrote
-// `{ degraded: why }` into `{ degraded }` — it parsed, so the "does it parse"
-// guard passed, and the assertions were then running against a module subtly
-// unlike the shipped one. A test that exercises a copy proves things about the
-// copy.
+// module rather than a transliteration of the TypeScript one.
 //
-// THE DECISION THIS FILE ENCODES
-// -----------------------------
-// The limiter used to fail open, unconditionally and without limit: if the
-// counter was unreachable, every call proceeded. The reasoning was that a
-// limiter which takes email and AI down when a table blips does more damage
-// than the abuse it prevents.
+// THE ANSWER IS: FAIL CLOSED. ALL FOUR ENDPOINTS.
 //
-// That is half right, and the external auditor was right to reject it.
-// "Fails open" and "unbounded" are separate decisions and the first does not
-// require the second. An outage is exactly when someone with a stolen session
-// would prefer to be running, and "the table is unavailable" is a state an
-// attacker can sometimes cause.
+// This is the third answer to the same question, and the reasoning matters more
+// than the rule.
 //
-// So the behaviour is chosen per endpoint, by what one call costs against what
-// being down costs:
+//   First answer — fail open, unconditionally. Wrong: an outage is exactly when
+//   someone with a stolen session would prefer to be running, and "the table is
+//   unavailable" is a state an attacker can sometimes cause.
 //
-//   'allowance'  mailgun-send, send-sms — a fraction of a cent per call, and
-//                being down means a customer does not get their invoice.
-//                Keep working, but only for a bounded number of calls.
+//   Second answer — fail closed for the expensive endpoints, and a bounded
+//   emergency allowance for mailgun-send and send-sms so customers still get
+//   their invoices during a blip. The auditor rejected this too, and was right:
+//   the allowance lived in a Map inside one Deno isolate. Concurrent and
+//   cold-started isolates each get their own, so "20 per 5 minutes" was never a
+//   cluster-wide ceiling. It was a local backstop being described as a global
+//   bound, which is worse than no bound at all — it reads like a limit in the
+//   code and in the documentation, and is not one.
 //
-//   'closed'     ai-proxy, dropbox-sign — dollars per call, and nothing breaks
-//                operationally if they pause. There is no argument for spending
-//                unmetered money while the meter is broken.
-
-/* Per-isolate emergency allowance.
-   Deno reuses an isolate across requests for a while but gives no guarantee, so
-   this is a ceiling on one warm instance rather than a cluster-wide budget — a
-   backstop, not a second limiter. Deliberately small for that reason: several
-   isolates each spending their allowance must still add up to an amount worth
-   shrugging at. */
-const allowanceUsed = new Map();
-
-/** Reset the per-isolate counters. Tests only; never called in production. */
-export function _resetAllowance() {
-  allowanceUsed.clear();
-}
-
-/**
- * Spend one unit of the emergency allowance for `key`.
- * Returns true if there was budget left.
- *
- * `key` is the ENDPOINT, not the full bucket. Buckets carry the user id, so
- * keying this per bucket would give every user their own emergency allowance —
- * and an attacker who can pick user ids would mint a fresh one per request,
- * which is not a bound at all.
- */
-export function spendAllowance(key, limit, windowSeconds, now = Date.now()) {
-  const cur = allowanceUsed.get(key);
-  if (!cur || now >= cur.resetAt) {
-    allowanceUsed.set(key, { count: 1, resetAt: now + windowSeconds * 1000 });
-    return true;
-  }
-  if (cur.count >= limit) return false;
-  cur.count++;
-  return true;
-}
+//   Third answer — fail closed everywhere, which is also what the operational
+//   argument actually supports once you look at it properly. gl_rate_limit_hit
+//   lives in the same Postgres as invoices, clients and templates. If it cannot
+//   be reached, the CRM cannot read the invoice it wants to email either. The
+//   allowance was protecting the ability to send mail in a situation where
+//   there is nothing to send. It bought nothing and cost a real bound.
+//
+// A durable cluster-wide allowance would need shared state that survives the
+// database being down — a second store, with its own availability and its own
+// failure modes, to protect a code path that is useless while the first store
+// is down. That is not worth building. If a genuine emergency allowance is ever
+// wanted, the place for it is a provider-side hard budget (Anthropic, Twilio,
+// Mailgun, Dropbox Sign), which is enforced by someone else's infrastructure
+// and cannot be defeated by ours being unavailable.
 
 /**
  * Decide what happens when the counter could not be consulted.
  *
- * @param bucket        The full bucket key, e.g. `mailgun-send:<user id>`.
- * @param why           Why the check could not run, for the log.
- * @param opts          { onOutage, outageAllowance, outageWindowSeconds }
- * @returns             { allowed, degraded, outage? }
+ * Always refuses. The signature keeps `opts` so call sites remain explicit
+ * about having considered the question, and so a future durable design has
+ * somewhere to land — but there is no option that permits the call.
+ *
+ * @param bucket  The full bucket key, e.g. `mailgun-send:<user id>`.
+ * @param why     Why the check could not run, for the log.
+ * @returns       { allowed: false, degraded, outage: true }
  */
 export function degradedVerdict(bucket, why, opts = {}) {
-  // Default to fail-closed: an endpoint whose author forgets to choose must get
-  // the safe one, because the expensive mistake here is spending money you
-  // cannot count.
-  const policy = opts.onOutage || 'closed';
-  if (policy === 'closed') {
-    return { allowed: false, degraded: why, outage: true };
-  }
-  const endpoint = String(bucket).split(':')[0] || String(bucket);
-  const ok = spendAllowance(
-    endpoint,
-    opts.outageAllowance == null ? 5 : opts.outageAllowance,
-    opts.outageWindowSeconds == null ? 300 : opts.outageWindowSeconds,
-  );
-  return ok
-    ? { allowed: true, degraded: why }
-    : { allowed: false, degraded: why + ' (emergency allowance exhausted)', outage: true };
+  return { allowed: false, degraded: why, outage: true };
+}
+
+/**
+ * True when a policy value would have permitted spending during an outage.
+ * Exported so the test can assert that no call site declares one, rather than
+ * relying on a comment to keep them honest.
+ */
+export function permitsSpendingWhileDegraded(policy) {
+  return policy === 'allowance';
 }
