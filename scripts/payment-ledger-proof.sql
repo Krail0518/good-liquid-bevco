@@ -1,5 +1,14 @@
 -- Payment ledger — live behavioural proof.
 --
+-- SUPERSEDED IN PART, 31 August 2026. The external auditor found four defects
+-- in the design this file was written against, and 20260831120000_payment_ledger_hardening.sql
+-- fixed them. The assertions below still hold, but they are no longer the
+-- whole story: the current run is scripts/payment-ledger-proof-v2.sql, which
+-- adds the forgeable-guard, cumulative-overpayment, excess-refund and
+-- derived-state cases. Kept because the 23/23 output it produced is cited in
+-- the response of 31 August and should stay reproducible.
+
+--
 -- tests/payment-ledger.test.cjs proves the SOURCE says the right things. This
 -- proves the DATABASE does the right things, which is the half a source scan
 -- can never reach. Run it against any environment that has had

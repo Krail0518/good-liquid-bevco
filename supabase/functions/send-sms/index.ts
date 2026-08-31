@@ -45,9 +45,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const _rl = await checkRateLimit(
     'send-sms:' + (_auth.userId || 'role:' + (_auth.role || 'unknown')),
     10, 60,
-    // About a cent per message, and these carry alerts someone is waiting
-    // on. Bounded rather than closed.
-    { onOutage: 'allowance', outageAllowance: 10, outageWindowSeconds: 300 },
+    // Was a bounded 'allowance'; same reasoning as mailgun-send. A per-isolate
+    // ceiling described as a global one is worse than no ceiling.
+    { onOutage: 'closed' },
   );
   if (_rl.degraded) console.warn('[send-sms] rate limit check degraded:', _rl.degraded);
   if (!_rl.allowed) {

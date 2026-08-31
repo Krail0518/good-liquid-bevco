@@ -1,34 +1,36 @@
 #!/usr/bin/env node
 /* What the paid-vendor limiter does when the counter itself is unreachable.
  *
- * WHY THIS EXISTS
- * ---------------
- * The limiter used to fail open, unconditionally and without limit: if
- * `gl_rate_limit_hit` could not be reached, every call proceeded. The external
- * auditor rejected that, correctly. "Fails open" and "unbounded" are separate
- * decisions and the first does not require the second — an outage is exactly
- * when someone with a stolen session would prefer to be running, and "the
- * table is unavailable" is a state they can sometimes cause.
+ * THE RULE: all four endpoints fail closed. There is no allowance.
  *
- * The behaviour is now chosen per endpoint by unit cost against operational
- * cost, and this file holds that choice in place. Two properties matter and
- * neither is visible by reading one file:
+ * This has been answered three times and the history is the point.
  *
- *   1. The DEFAULT is fail-closed. A future endpoint whose author forgets to
- *      choose must get the safe one.
- *   2. The allowance is BOUNDED. It is easy to write an allowance that resets
- *      on every call and therefore bounds nothing.
+ *   1. Fail open, unconditionally. The external auditor rejected it: an outage
+ *      is exactly when someone with a stolen session would prefer to be
+ *      running, and "the table is unavailable" is a state an attacker can
+ *      sometimes cause.
  *
- * HOW IT TESTS THE REAL MODULE
- * ----------------------------
- * The decision lives in `_shared/rate-limit-policy.mjs`, plain JavaScript that
- * Deno and Node both load, so this imports the SHIPPED module. The first
- * version of this file instead stripped types out of rate-limit.ts with
- * regexes. That stripper rewrote `{ degraded: why }` into `{ degraded }` — it
- * still parsed, so the "does it parse" guard passed, and every assertion after
- * it was quietly running against a module unlike the deployed one. Requiring
- * the .ts directly is not an option either: Node 20 on the CI runner cannot
- * strip types, so it would pass here and fail there.
+ *   2. Fail closed for the expensive endpoints; a bounded emergency allowance
+ *      for mailgun-send and send-sms. Rejected too, and correctly: the
+ *      allowance lived in a Map inside one Deno isolate, so concurrent and
+ *      cold-started isolates each got their own. "20 per 5 minutes" was never
+ *      cluster-wide. A per-isolate ceiling described as a global one is worse
+ *      than no ceiling, because it reads like a bound in the code, in the
+ *      tests and in the documentation.
+ *
+ *   3. Fail closed everywhere — which is what the operational argument
+ *      supports anyway. gl_rate_limit_hit shares a database with the invoices
+ *      mailgun-send exists to email. While it is down there is nothing to send.
+ *
+ * This file therefore asserts the ABSENCE of a spending path, which is the
+ * awkward kind of test to write: it has to fail if someone reintroduces one.
+ *
+ * It imports the shipped `rate-limit-policy.mjs`. An earlier version stripped
+ * types out of rate-limit.ts with regexes instead, and the stripper rewrote
+ * `{ degraded: why }` into `{ degraded }` — it parsed, so the parse guard
+ * passed, and the assertions were running against a module unlike the deployed
+ * one. Requiring the .ts is not an option either: CI runs Node 20, which cannot
+ * strip types.
  *
  * Run:  node tests/rate-limit-outage.test.cjs
  */
@@ -39,6 +41,7 @@ const ROOT = path.resolve(__dirname, '..');
 const SHARED = path.join(ROOT, 'supabase', 'functions', '_shared');
 const POLICY = path.join(SHARED, 'rate-limit-policy.mjs');
 const TS = path.join(SHARED, 'rate-limit.ts');
+const ENDPOINTS = ['ai-proxy', 'dropbox-sign', 'mailgun-send', 'send-sms'];
 
 let failures = 0;
 function check(name, ok, detail) {
@@ -53,7 +56,6 @@ function check(name, ok, detail) {
 
   const raw = fs.readFileSync(TS, 'utf8');
 
-  // ── the TypeScript wrapper delegates rather than duplicating ──────────────
   check('rate-limit.ts imports the policy module',
     /from '\.\/rate-limit-policy\.mjs'/.test(raw),
     'if the decision is reimplemented in the .ts, this file stops testing the ' +
@@ -61,87 +63,70 @@ function check(name, ok, detail) {
   check('every degraded path goes through degradedVerdict',
     (raw.match(/degradedVerdict\(/g) || []).length >= 3 &&
     !/allowed:\s*true,\s*degraded:/.test(raw),
-    'a hand-rolled `{allowed:true, degraded:…}` anywhere in the wrapper is an ' +
-    'unbounded fail-open that bypasses the policy');
+    'a hand-rolled {allowed:true, degraded:…} in the wrapper is a fail-open ' +
+    'that bypasses the policy entirely');
   check('a separate message exists for an outage refusal',
-    /export function rateLimitOutageMessage/.test(raw),
-    '"try again in a minute" is advice for a caller who hit a limit. Someone ' +
-    'refused because the counter is down did not hit a limit.');
+    /export function rateLimitOutageMessage/.test(raw));
 
-  // ── the policy itself, executed ───────────────────────────────────────────
   const policy = await import('file:///' + POLICY.split(path.sep).join('/'));
-  const { degradedVerdict, _resetAllowance } = policy;
+  const { degradedVerdict, permitsSpendingWhileDegraded } = policy;
 
-  _resetAllowance();
-  let r = degradedVerdict('ai-proxy:u1', 'connection refused', { onOutage: 'closed' });
-  check('policy closed -> refused, and flagged as an outage',
-    r.allowed === false && r.outage === true && r.degraded === 'connection refused',
-    JSON.stringify(r));
-
-  r = degradedVerdict('some-new-endpoint:u1', 'connection refused');
-  check('no policy given -> fail-closed by default',
-    r.allowed === false && r.outage === true, JSON.stringify(r) +
-    '  the expensive mistake is spending money you cannot count');
-
-  // Allowance endpoints: bounded, and the bound actually bites.
-  _resetAllowance();
-  const opts = { onOutage: 'allowance', outageAllowance: 3, outageWindowSeconds: 300 };
-  const verdicts = [];
-  for (let i = 0; i < 6; i++) {
-    verdicts.push(degradedVerdict('mailgun-send:u1', 'rpc 500', opts).allowed);
+  // The core property: nothing gets through, whatever is asked for.
+  const attempts = [
+    ['no options at all', undefined],
+    ["policy 'closed'", { onOutage: 'closed' }],
+    ["policy 'allowance' (the removed one)", { onOutage: 'allowance', outageAllowance: 20 }],
+    ['a made-up policy', { onOutage: 'please' }],
+    ['a huge allowance', { onOutage: 'allowance', outageAllowance: 1e9, outageWindowSeconds: 1 }],
+  ];
+  for (const [label, opts] of attempts) {
+    const r = degradedVerdict('mailgun-send:u1', 'connection refused', opts);
+    check('refused with ' + label,
+      r.allowed === false && r.outage === true && !!r.degraded, JSON.stringify(r));
   }
-  check('an allowance endpoint keeps working while degraded',
-    verdicts.slice(0, 3).every((v) => v === true), JSON.stringify(verdicts));
-  check('the allowance is BOUNDED — call 4 onward is refused',
-    verdicts.slice(3).every((v) => v === false), JSON.stringify(verdicts) +
-    '  an allowance that never runs out is the unbounded fail-open this ' +
-    'change exists to remove');
 
-  r = degradedVerdict('mailgun-send:u1', 'rpc 500', opts);
-  check('an exhausted allowance is reported as an outage, not a rate limit',
-    r.allowed === false && r.outage === true && /allowance exhausted/.test(r.degraded || ''),
-    JSON.stringify(r));
+  // Repeated calls must not find a budget. If someone reintroduces a counter,
+  // the Nth call is where it would show up.
+  let permitted = 0;
+  for (let i = 0; i < 50; i++) {
+    if (degradedVerdict('mailgun-send:u' + (i % 7), 'rpc 500', { onOutage: 'allowance' }).allowed) permitted++;
+  }
+  check('50 degraded calls across 7 users permit none of them',
+    permitted === 0, permitted + ' were permitted');
 
-  // Keyed per endpoint, not per bucket: buckets carry the user id, so an
-  // attacker who can pick user ids would mint a fresh allowance per request.
-  r = degradedVerdict('mailgun-send:u2', 'rpc 500', opts);
-  check('the allowance is shared across users of one endpoint',
-    r.allowed === false, JSON.stringify(r) +
-    '  keyed per user, every user id would mint a fresh allowance and the ' +
-    'bound would mean nothing');
+  check('the reason is carried through for the log',
+    degradedVerdict('x:1', 'rpc 503').degraded === 'rpc 503');
 
-  r = degradedVerdict('send-sms:u1', 'rpc 500', opts);
-  check('a different endpoint has its own allowance', r.allowed === true, JSON.stringify(r));
+  check('permitsSpendingWhileDegraded still names the dangerous value',
+    permitsSpendingWhileDegraded('allowance') === true &&
+    permitsSpendingWhileDegraded('closed') === false,
+    'the call-site check below relies on this helper meaning what it says');
 
-  // The window has to expire, or the allowance is a one-time budget for the
-  // life of the isolate rather than a rate.
-  _resetAllowance();
-  const now = 1_000_000;
-  policy.spendAllowance('x', 1, 60, now);
-  check('the allowance refuses a second call inside the window',
-    policy.spendAllowance('x', 1, 60, now + 1000) === false);
-  check('the allowance resets once the window has passed',
-    policy.spendAllowance('x', 1, 60, now + 61_000) === true,
-    'without a reset this is a lifetime budget, not a rate');
-
-  // ── the four call sites carry a deliberate policy ─────────────────────────
+  // ── no call site may ask to keep spending ────────────────────────────────
   console.log('');
-  const EXPECTED = {
-    'ai-proxy': 'closed',
-    'dropbox-sign': 'closed',
-    'mailgun-send': 'allowance',
-    'send-sms': 'allowance',
-  };
-  for (const [fn, want] of Object.entries(EXPECTED)) {
+  for (const fn of ENDPOINTS) {
     const s = fs.readFileSync(path.join(ROOT, 'supabase', 'functions', fn, 'index.ts'), 'utf8');
-    check(fn + ' declares onOutage: ' + want,
-      new RegExp("onOutage:\\s*'" + want + "'").test(s),
-      'the choice must be explicit at the call site, where the cost of a ' +
-      'single call is the thing being reasoned about');
+    const declared = (s.match(/onOutage:\s*'([a-z]+)'/) || [])[1];
+    check(fn + " declares onOutage: 'closed'", declared === 'closed',
+      'declared: ' + declared);
+    check(fn + ' declares no allowance', !permitsSpendingWhileDegraded(declared) &&
+      !/outageAllowance/.test(s),
+      'an allowance here would be a per-isolate bound presented as a global one');
     check(fn + ' answers an outage refusal with 503, not 429',
       /rateLimitOutageMessage\([^)]*\),\s*503/.test(s),
       'a 429 tells the caller they hit a limit; they did not');
   }
+
+  // ── and the policy module itself offers no way back ──────────────────────
+  console.log('');
+  const psrc = fs.readFileSync(POLICY, 'utf8');
+  check('the policy module holds no in-memory counter',
+    !/new Map\(/.test(psrc) && !/allowanceUsed/.test(psrc),
+    'a per-isolate Map is what made the previous bound illusory');
+  check('degradedVerdict has exactly one return shape',
+    (psrc.match(/return \{ allowed:/g) || []).length === 1 &&
+    /return \{ allowed: false/.test(psrc),
+    'a second return is where a permitted path would reappear');
 
   console.log('\n' + (failures ? failures + ' FAILED' : 'All checks passed') + '\n');
   process.exit(failures ? 1 : 0);

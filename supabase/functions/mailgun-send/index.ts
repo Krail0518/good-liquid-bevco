@@ -73,9 +73,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const _rl = await checkRateLimit(
     'mailgun-send:' + (_auth.userId || 'role:' + (_auth.role || 'unknown')),
     30, 60,
-    // A fraction of a cent per send, and being down means a customer does
-    // not receive their invoice. Keep working, but bounded.
-    { onOutage: 'allowance', outageAllowance: 20, outageWindowSeconds: 300 },
+    // Was a bounded 'allowance'. That bound lived in one Deno isolate, so it
+    // was never cluster-wide -- and the counter shares a database with the
+    // invoices this function exists to email, so while it is down there is
+    // nothing to send anyway.
+    { onOutage: 'closed' },
   );
   if (_rl.degraded) console.warn('[mailgun-send] rate limit check degraded:', _rl.degraded);
   if (!_rl.allowed) {

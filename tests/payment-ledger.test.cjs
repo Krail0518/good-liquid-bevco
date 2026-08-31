@@ -23,6 +23,7 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 const MIGRATION = path.join(ROOT, 'supabase', 'migrations', '20260831000000_payment_event_ledger.sql');
+const HARDENING = path.join(ROOT, 'supabase', 'migrations', '20260831120000_payment_ledger_hardening.sql');
 
 let failures = 0;
 function check(name, ok, detail) {
@@ -41,7 +42,11 @@ console.log('\nPayment ledger — source invariants\n');
 const migrationExists = fs.existsSync(MIGRATION);
 check('the payment ledger migration is present', migrationExists, MIGRATION);
 
-const sql = migrationExists ? read(MIGRATION) : '';
+// Both migrations together define the current design. The first shipped a
+// guard that trusted a session GUC; the second replaced it. Reading only the
+// first would assert the superseded design.
+const sql = (migrationExists ? read(MIGRATION) : '') +
+            (fs.existsSync(HARDENING) ? read(HARDENING) : '');
 
 check('a ROLLBACK note is present, as every migration in this repo requires',
   /^--\s*ROLLBACK:/m.test(sql));
@@ -64,6 +69,56 @@ check('the guard covers every column that asserts a payment',
     .every((c) => new RegExp('new\\.' + c + '\\s+is distinct from old\\.' + c).test(sql)),
   'Missing one of these leaves a column through which paid state can be ' +
   'forged without the ledger.');
+
+// ── the defects the auditor found in the first design ────────────────────
+// Each of these shipped, and each is asserted here so it cannot come back.
+
+// Scoped to the hardening migration rather than the concatenation of both.
+// Migration history is immutable: 20260831000000 still contains the GUC text
+// and always will. What matters is that the LAST definition of the guard does
+// not use it — which is why the check below comes first.
+const hardening = fs.existsSync(HARDENING) ? read(HARDENING) : '';
+
+// Comments stripped, because the hardening migration's header NAMES the defect
+// it removes. Matching prose flagged that explanation as the defect itself —
+// the same read-the-text-not-the-code mistake this suite exists to catch.
+const hardeningCode = hardening.replace(/^\s*--.*$/gm, '');
+
+check('the current guard definition lives in the hardening migration',
+  /create or replace function public\.gl_guard_invoice_paid_state/.test(hardeningCode),
+  'if the guard is not redefined here, the forgeable one from the first ' +
+  'migration is still the effective definition');
+
+check('the guard does NOT trust a session setting',
+  !/current_setting\(\s*'gl\.payment_apply'/.test(hardeningCode),
+  'gl.payment_apply was a custom GUC any SQL-capable caller could set before ' +
+  'writing paid state. Reproduced against staging: an invoice with ZERO ledger ' +
+  'rows was driven to paid / 9999 by two lines of SQL.');
+
+check('the guard checks the write against the ledger instead',
+  /cannot mark % paid: the payment ledger records/.test(sql),
+  'the replacement is an invariant, not a permission: to mark an invoice paid ' +
+  'you must have inserted ledger rows that add up, and the ledger is ' +
+  'append-only and bounded above');
+
+check('payments are bounded by the REMAINING balance, not the invoice total',
+  /net_after > inv_amount/.test(sql),
+  'comparing each event to the invoice total let two distinct 700 events both ' +
+  'pass against a 1000 invoice, reaching 1400');
+
+check('refunds cannot drive the ledger negative',
+  /new\.amount < 0 and net_after < 0/.test(sql),
+  'abs(coalesce(p_amount, ...)) with no cap let a refund exceed what was paid');
+
+check('the bounds live in a trigger, not only in the RPCs',
+  /before insert on public\.invoice_payments/.test(sql),
+  'in the RPCs alone they would hold only for callers who use the RPCs -- the ' +
+  'same mistake as trusting a session flag');
+
+check('paid_amount is always the ledger net, never erased',
+  /paid_amount = greatest\(net, 0\)/.test(sql),
+  'the refund path used to null paid_amount whenever the invoice was no longer ' +
+  'fully paid, discarding a real partial balance that every other path keeps');
 
 check('the racing insert is caught and answered as a duplicate, not raised',
   /exception when unique_violation then[\s\S]{0,300}duplicate_event/i.test(sql),
