@@ -286,6 +286,17 @@ jobs:
       - name: Run migration replayable test
         run: node tests/migration-replayable.test.cjs
 
+      # Invoice paid state is derived from an append-only payment ledger inside
+      # one locked transaction; nothing may write it directly. This checks the
+      # source half — that the migration defines the guard, the uniqueness that
+      # settles a duplicate webhook, and append-only enforcement, and that no
+      # client or edge path writes paid state around them. The behavioural half
+      # needs a live database and lives in scripts/payment-ledger-proof.sql,
+      # which rolls back and can therefore be run against production. Neither
+      # half substitutes for the other. Static; no database needed.
+      - name: Run payment ledger tests
+        run: node tests/payment-ledger.test.cjs
+
       # Third-party code must be pinned, and the secret scanner's allowlist
       # must not be able to hide a service_role key. No off-the-shelf tool
       # covers this repo's dependencies — there is no package.json, so the real
