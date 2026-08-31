@@ -297,6 +297,16 @@ jobs:
       - name: Run payment ledger tests
         run: node tests/payment-ledger.test.cjs
 
+      # The four Edge Functions that call a paid vendor used to fail OPEN,
+      # unboundedly, when the usage counter was unreachable. "Fails open" and
+      # "unbounded" are separate decisions; an outage is exactly when a stolen
+      # session would prefer to be running. Outage behaviour is now chosen per
+      # endpoint by unit cost, defaults to fail-closed, and the emergency
+      # allowance is bounded. Imports the shipped policy module, so it tests the
+      # code that runs. No database needed.
+      - name: Run rate-limit outage tests
+        run: node tests/rate-limit-outage.test.cjs
+
       # Third-party code must be pinned, and the secret scanner's allowlist
       # must not be able to hide a service_role key. No off-the-shelf tool
       # covers this repo's dependencies — there is no package.json, so the real

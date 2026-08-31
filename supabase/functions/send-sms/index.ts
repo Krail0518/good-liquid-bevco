@@ -25,7 +25,7 @@
 
 import { jsonResponse, errorResponse, handlePreflight } from '../_shared/cors.ts';
 import { requireStaff } from '../_shared/auth.ts';
-import { checkRateLimit, rateLimitMessage } from '../_shared/rate-limit.ts';
+import { checkRateLimit, rateLimitMessage, rateLimitOutageMessage } from '../_shared/rate-limit.ts';
 
 Deno.serve(async (req: Request): Promise<Response> => {
   const pre = handlePreflight(req);
@@ -40,13 +40,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // Bound how often ONE account can spend money here. Authorization above says
   // who may call; this says how often. Keyed by user so one account cannot
-  // exhaust everyone else's budget. Fails open by design — see rate-limit.ts.
+  // exhaust everyone else's budget. What happens when the counter itself
+  // is down is chosen per endpoint — see rate-limit.ts.
   const _rl = await checkRateLimit(
     'send-sms:' + (_auth.userId || 'role:' + (_auth.role || 'unknown')),
     10, 60,
+    // About a cent per message, and these carry alerts someone is waiting
+    // on. Bounded rather than closed.
+    { onOutage: 'allowance', outageAllowance: 10, outageWindowSeconds: 300 },
   );
   if (_rl.degraded) console.warn('[send-sms] rate limit check degraded:', _rl.degraded);
-  if (!_rl.allowed) return errorResponse(rateLimitMessage('SMS'), 429);
+  if (!_rl.allowed) {
+    return _rl.outage
+      ? errorResponse(rateLimitOutageMessage('SMS'), 503)
+      : errorResponse(rateLimitMessage('SMS'), 429);
+  }
 
   const sid   = Deno.env.get('TWILIO_ACCOUNT_SID');
   const token = Deno.env.get('TWILIO_AUTH_TOKEN');
