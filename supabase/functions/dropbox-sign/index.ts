@@ -22,7 +22,7 @@
 
 import { jsonResponse, errorResponse, handlePreflight } from '../_shared/cors.ts';
 import { requireStaff } from '../_shared/auth.ts';
-import { checkRateLimit, rateLimitMessage } from '../_shared/rate-limit.ts';
+import { checkRateLimit, rateLimitMessage, rateLimitOutageMessage } from '../_shared/rate-limit.ts';
 
 const HS_BASE = 'https://api.hellosign.com/v3';
 
@@ -39,13 +39,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // Bound how often ONE account can spend money here. Authorization above says
   // who may call; this says how often. Keyed by user so one account cannot
-  // exhaust everyone else's budget. Fails open by design — see rate-limit.ts.
+  // exhaust everyone else's budget. What happens when the counter itself
+  // is down is chosen per endpoint — see rate-limit.ts.
   const _rl = await checkRateLimit(
     'dropbox-sign:' + (_auth.userId || 'role:' + (_auth.role || 'unknown')),
     10, 300,
+    // An envelope costs real money per send and signing can wait.
+    { onOutage: 'closed' },
   );
   if (_rl.degraded) console.warn('[dropbox-sign] rate limit check degraded:', _rl.degraded);
-  if (!_rl.allowed) return errorResponse(rateLimitMessage('signature'), 429);
+  if (!_rl.allowed) {
+    return _rl.outage
+      ? errorResponse(rateLimitOutageMessage('signature'), 503)
+      : errorResponse(rateLimitMessage('signature'), 429);
+  }
 
   const key = Deno.env.get('HELLOSIGN_API_KEY');
   if (!key) return errorResponse('HELLOSIGN_API_KEY not configured', 500);

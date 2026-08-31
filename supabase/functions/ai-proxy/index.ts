@@ -25,7 +25,7 @@
 
 import { corsHeaders, jsonResponse, errorResponse, handlePreflight } from '../_shared/cors.ts';
 import { requireStaff } from '../_shared/auth.ts';
-import { checkRateLimit, rateLimitMessage } from '../_shared/rate-limit.ts';
+import { checkRateLimit, rateLimitMessage, rateLimitOutageMessage } from '../_shared/rate-limit.ts';
 
 const API_KEY = Deno.env.get('ANTHROPIC_API_KEY') || '';
 
@@ -41,13 +41,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // Bound how often ONE account can spend money here. Authorization above says
   // who may call; this says how often. Keyed by user so one account cannot
-  // exhaust everyone else's budget. Fails open by design — see rate-limit.ts.
+  // exhaust everyone else's budget. What happens when the counter itself
+  // is down is chosen per endpoint — see rate-limit.ts.
   const _rl = await checkRateLimit(
     'ai-proxy:' + (_auth.userId || 'role:' + (_auth.role || 'unknown')),
     60, 60,
+    // Anthropic tokens are dollars, and nothing operational breaks if AI
+    // pauses for a few minutes. No argument for spending unmetered money
+    // while the meter is broken.
+    { onOutage: 'closed' },
   );
   if (_rl.degraded) console.warn('[ai-proxy] rate limit check degraded:', _rl.degraded);
-  if (!_rl.allowed) return errorResponse(rateLimitMessage('AI'), 429);
+  if (!_rl.allowed) {
+    return _rl.outage
+      ? errorResponse(rateLimitOutageMessage('AI'), 503)
+      : errorResponse(rateLimitMessage('AI'), 429);
+  }
 
   if (!API_KEY) return errorResponse('ANTHROPIC_API_KEY not configured', 500);
 
