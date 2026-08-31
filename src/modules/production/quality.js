@@ -511,7 +511,7 @@
 
     function ingRowHtml(i, idx){
       return '<div style="display:grid;grid-template-columns:1.5fr 70px 70px 90px 30px;gap:6px;margin-bottom:5px" data-idx="' + idx + '">' +
-        '<input class="finp gl-ing" data-k="name" placeholder="Ingredient" value="' + (i.name||'').replace(/"/g,'&quot;') + '">' +
+        '<input class="finp gl-ing" data-k="name" placeholder="Ingredient" value="' + (i.name||'').replace(/"/g,'&quot;').replace(/'/g, '&#39;') + '">' +
         '<input class="finp gl-ing" data-k="qty_per_gal" type="number" step="any" placeholder="qty/gal" value="' + (i.qty_per_gal||'') + '">' +
         '<select class="fsel gl-ing" data-k="unit"><option' + (i.unit==='oz' ? ' selected' : '') + '>oz</option><option' + (i.unit==='ml' ? ' selected' : '') + '>ml</option><option' + (i.unit==='g' ? ' selected' : '') + '>g</option><option' + (i.unit==='lb' ? ' selected' : '') + '>lb</option><option' + (i.unit==='ea' ? ' selected' : '') + '>ea</option></select>' +
         '<input class="finp gl-ing" data-k="cost_per_unit" type="number" step="any" placeholder="$/unit" value="' + (i.cost_per_unit||'') + '">' +

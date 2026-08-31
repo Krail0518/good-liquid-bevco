@@ -24,9 +24,7 @@
 
   function sb(){ return window.supa || null; }
   function esc(s){
-    return String(s == null ? '' : s).replace(/[<>&"]/g, function(c){
-      return { '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;' }[c];
-    });
+    return String(s == null ? '' : s).replace(/[<>&"']/g, function(c){ return {'<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;',"'":'&#39;'}[c]; });
   }
   function elOf(m){ return typeof m === 'string' ? document.querySelector(m) : m; }
   function slug(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,44) || ('t-'+Math.random().toString(36).slice(2,7)); }

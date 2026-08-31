@@ -21,7 +21,7 @@
         '<div style="font-size:12px;color:var(--muted);margin-bottom:18px;line-height:1.6">Drops the GA4 (gtag) script into the page so you can track public site traffic. IP addresses are anonymized.</div>' +
         (saved ? '<div style="background:rgba(29,158,117,.08);border:1px solid rgba(29,158,117,.25);border-radius:8px;padding:10px 14px;font-size:12px;color:#1D9E75;margin-bottom:14px">✓ Currently tracking with ID <code>' + saved.replace(/</g,'&lt;') + '</code></div>' : '') +
         '<div class="frow"><div class="flbl">Measurement ID</div>' +
-          '<input class="finp" id="gl-ga-input" placeholder="G-XXXXXXXXXX" value="' + saved.replace(/"/g,'&quot;') + '" style="font-family:var(--ff-mono)">' +
+          '<input class="finp" id="gl-ga-input" placeholder="G-XXXXXXXXXX" value="' + saved.replace(/"/g,'&quot;').replace(/'/g, '&#39;') + '" style="font-family:var(--ff-mono)">' +
         '</div>' +
         '<div style="font-size:11px;color:var(--muted);margin-bottom:18px;line-height:1.6">Find it in <span style="color:var(--teal)">analytics.google.com → Admin → Data Streams → your stream → Measurement ID</span>. Starts with <code>G-</code>.</div>' +
         '<div style="display:flex;gap:8px">' +
@@ -566,10 +566,10 @@
           '⚠ Browser-to-Twilio is blocked by CORS. This UI talks to a Supabase Edge Function (template in deploy notes). Deploy that function with your Twilio credentials before SMS will fire.' +
         '</div>' +
         '<div class="frow"><div class="flbl">Your phone number (E.164)</div>' +
-          '<input class="finp" id="gl-sms-phone" placeholder="+18034935065" value="'+phone.replace(/"/g,'&quot;')+'" style="font-family:var(--ff-mono)">' +
+          '<input class="finp" id="gl-sms-phone" placeholder="+18034935065" value="'+phone.replace(/"/g,'&quot;').replace(/'/g, '&#39;')+'" style="font-family:var(--ff-mono)">' +
         '</div>' +
         '<div class="frow"><div class="flbl">Edge Function URL</div>' +
-          '<input class="finp" id="gl-sms-url" value="'+url.replace(/"/g,'&quot;')+'" style="font-family:var(--ff-mono);font-size:11px">' +
+          '<input class="finp" id="gl-sms-url" value="'+url.replace(/"/g,'&quot;').replace(/'/g, '&#39;')+'" style="font-family:var(--ff-mono);font-size:11px">' +
         '</div>' +
         '<div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin:14px 0 8px">ALERT ME WHEN</div>' +
         '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:18px">'+togglesHtml+'</div>' +
@@ -1054,7 +1054,7 @@
         '<div style="font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.6">Optional. Paste a Sentry DSN to mirror client-side errors to your Sentry project (in addition to the built-in Supabase error_log).</div>' +
         (dsn ? '<div style="background:rgba(29,158,117,.08);border:1px solid rgba(29,158,117,.25);border-radius:8px;padding:10px 14px;font-size:12px;color:#1D9E75;margin-bottom:14px">✓ Sentry active</div>' : '') +
         '<div class="frow"><div class="flbl">DSN</div>' +
-          '<input class="finp" id="gl-sentry-input" placeholder="https://xxxxx@oXXXX.ingest.sentry.io/YYYY" value="' + dsn.replace(/"/g,'&quot;') + '" style="font-family:var(--ff-mono);font-size:11px">' +
+          '<input class="finp" id="gl-sentry-input" placeholder="https://xxxxx@oXXXX.ingest.sentry.io/YYYY" value="' + dsn.replace(/"/g,'&quot;').replace(/'/g, '&#39;') + '" style="font-family:var(--ff-mono);font-size:11px">' +
         '</div>' +
         '<div style="font-size:11px;color:var(--muted);margin-bottom:18px;line-height:1.6">Find it at <span style="color:var(--teal)">sentry.io → Settings → Projects → [your project] → Client Keys (DSN)</span>.</div>' +
         '<div style="display:flex;gap:8px">' +
@@ -1134,10 +1134,10 @@
           '⚠ Browser-to-Stripe-API is blocked by CORS. This UI talks to a Supabase Edge Function (template in deploy notes). Deploy that function with your Stripe SECRET key before live charges fire.' +
         '</div>' +
         '<div class="frow"><div class="flbl">Stripe PUBLISHABLE key (optional, for embedded UI)</div>' +
-          '<input class="finp" id="gl-stripe-pub" placeholder="pk_live_... or pk_test_..." value="'+pub.replace(/"/g,'&quot;')+'" style="font-family:var(--ff-mono);font-size:11px">' +
+          '<input class="finp" id="gl-stripe-pub" placeholder="pk_live_... or pk_test_..." value="'+pub.replace(/"/g,'&quot;').replace(/'/g, '&#39;')+'" style="font-family:var(--ff-mono);font-size:11px">' +
         '</div>' +
         '<div class="frow"><div class="flbl">Edge Function URL</div>' +
-          '<input class="finp" id="gl-stripe-url" value="'+url.replace(/"/g,'&quot;')+'" style="font-family:var(--ff-mono);font-size:11px">' +
+          '<input class="finp" id="gl-stripe-url" value="'+url.replace(/"/g,'&quot;').replace(/'/g, '&#39;')+'" style="font-family:var(--ff-mono);font-size:11px">' +
         '</div>' +
         '<div style="font-size:11px;color:var(--muted);margin-bottom:18px;line-height:1.6">Distinct from the static <b>Payment Link manager</b> (💳 on any invoice row) — that\'s for re-using a Stripe Payment Link you created in the dashboard. This creates a unique Checkout Session for the invoice\'s exact amount and client email.</div>' +
         '<div style="display:flex;gap:8px">' +
@@ -1351,7 +1351,7 @@
           '⚠ Routes through a Supabase Edge Function (template in deploy notes). Deploy with your Dropbox Sign API key before requests will send.' +
         '</div>' +
         '<div class="frow"><div class="flbl">Edge Function URL</div>' +
-          '<input class="finp" id="gl-sign-url" value="' + url.replace(/"/g,'&quot;') + '" style="font-family:var(--ff-mono);font-size:11px">' +
+          '<input class="finp" id="gl-sign-url" value="' + url.replace(/"/g,'&quot;').replace(/'/g, '&#39;') + '" style="font-family:var(--ff-mono);font-size:11px">' +
         '</div>' +
         '<div style="font-size:11px;letter-spacing:2px;color:var(--muted);margin:14px 0 8px">SAVED TEMPLATES</div>' +
         '<div id="gl-sign-tpls" style="margin-bottom:12px">' + tplRows + '</div>' +
@@ -1415,13 +1415,13 @@
           '<select class="fsel" id="gl-sign-tpl">' + tplOptions + '</select>' +
         '</div>' +
         '<div class="frow"><div class="flbl">Signer name</div>' +
-          '<input class="finp" id="gl-sign-sname" value="' + (context.signerName||'').replace(/"/g,'&quot;') + '">' +
+          '<input class="finp" id="gl-sign-sname" value="' + (context.signerName||'').replace(/"/g,'&quot;').replace(/'/g, '&#39;') + '">' +
         '</div>' +
         '<div class="frow"><div class="flbl">Signer email</div>' +
-          '<input class="finp" id="gl-sign-semail" value="' + (context.signerEmail||'').replace(/"/g,'&quot;') + '">' +
+          '<input class="finp" id="gl-sign-semail" value="' + (context.signerEmail||'').replace(/"/g,'&quot;').replace(/'/g, '&#39;') + '">' +
         '</div>' +
         '<div class="frow"><div class="flbl">Title</div>' +
-          '<input class="finp" id="gl-sign-title" value="' + (context.title||'').replace(/"/g,'&quot;') + '">' +
+          '<input class="finp" id="gl-sign-title" value="' + (context.title||'').replace(/"/g,'&quot;').replace(/'/g, '&#39;') + '">' +
         '</div>' +
         '<div class="frow"><div class="flbl">Message to signer (optional)</div>' +
           '<textarea class="finp" id="gl-sign-msg" rows="3">' + (context.message||'') + '</textarea>' +
@@ -1658,7 +1658,7 @@
           '⚠ Routes through three Supabase Edge Functions (qbo-connect, qbo-callback, qbo-push-invoice). Deploy them with your Intuit app credentials before connecting.' +
         '</div>' +
         '<div class="frow"><div class="flbl">Edge Function base URL</div>' +
-          '<input class="finp" id="gl-qbo-base" value="' + getBase().replace(/"/g,'&quot;') + '" style="font-family:var(--ff-mono);font-size:11px">' +
+          '<input class="finp" id="gl-qbo-base" value="' + getBase().replace(/"/g,'&quot;').replace(/'/g, '&#39;') + '" style="font-family:var(--ff-mono);font-size:11px">' +
           '<div style="font-size:10px;color:#9aa7bd;margin-top:4px">e.g. https://&lt;project-ref&gt;.supabase.co/functions/v1</div>' +
         '</div>' +
         '<div style="display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.03);border-radius:8px;padding:12px;margin:14px 0">' +

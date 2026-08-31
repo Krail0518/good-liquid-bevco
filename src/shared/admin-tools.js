@@ -373,7 +373,7 @@
                       '<div style="font-family:var(--ff-mono);font-size:13px;color:#fff;margin-bottom:14px;word-break:break-all">' + opts.email + '</div>' : '') +
         '<div style="font-size:11px;letter-spacing:1.5px;color:#9aa7bd;margin-bottom:4px">TEMPORARY PASSWORD</div>' +
         '<div style="display:flex;gap:8px;margin-bottom:18px">' +
-          '<input class="finp" id="gl-reveal-pw" readonly type="password" value="' + (opts.password||'').replace(/"/g,'&quot;') + '" style="flex:1;font-family:var(--ff-mono);font-size:13px;color:#fff">' +
+          '<input class="finp" id="gl-reveal-pw" readonly type="password" value="' + (opts.password||'').replace(/"/g,'&quot;').replace(/'/g, '&#39;') + '" style="flex:1;font-family:var(--ff-mono);font-size:13px;color:#fff">' +
           '<button class="cbtn" id="gl-reveal-toggle" style="white-space:nowrap">Reveal</button>' +
           '<button class="cbtn pri" id="gl-reveal-copy" style="white-space:nowrap">Copy</button>' +
         '</div>' +
@@ -403,9 +403,7 @@
      the refresh token never touches a clipboard. */
 
   function glEsc(s){
-    return String(s == null ? '' : s).replace(/[<>&]/g, function(c){
-      return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];
-    });
+    return String(s == null ? '' : s).replace(/[<>&']/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;',"'":'&#39;'}[c]; });
   }
 
   // Pull the most useful error text out of a supa.functions.invoke result.
@@ -922,9 +920,7 @@
    ============================================================ */
 (function(){
   function escapeHtml(s){
-    return (s||'').replace(/[&<>"]/g, function(c){
-      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
-    });
+    return (s||'').replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; });
   }
 
   window.glPreviewFollowup = function(){

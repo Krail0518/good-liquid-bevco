@@ -1132,7 +1132,7 @@
         return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:14px;margin-bottom:10px">' +
           '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
             '<div style="font-family:var(--ff-disp);font-size:10px;letter-spacing:2px;color:var(--teal)">PROMPT ' + (i+1) + '</div>' +
-            '<button class="gl-img-copy cbtn" data-text="' + esc(p).replace(/"/g,'&quot;') + '" style="font-size:10px;padding:4px 10px">📋 Copy</button>' +
+            '<button class="gl-img-copy cbtn" data-text="' + esc(p).replace(/"/g,'&quot;').replace(/'/g, '&#39;') + '" style="font-size:10px;padding:4px 10px">📋 Copy</button>' +
           '</div>' +
           '<div style="font-size:13px;color:var(--white);line-height:1.6;white-space:pre-wrap">' + esc(p) + '</div>' +
         '</div>';
@@ -1286,7 +1286,7 @@
         return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:14px;margin-bottom:10px">' +
           '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
             '<div style="font-family:var(--ff-disp);font-size:10px;letter-spacing:2px;color:var(--teal)">EMAIL ' + (i+1) + '</div>' +
-            '<button class="gl-drip-copy cbtn" data-text="' + esc(p).replace(/"/g,'&quot;') + '" style="font-size:10px;padding:4px 10px">📋 Copy</button>' +
+            '<button class="gl-drip-copy cbtn" data-text="' + esc(p).replace(/"/g,'&quot;').replace(/'/g, '&#39;') + '" style="font-size:10px;padding:4px 10px">📋 Copy</button>' +
           '</div>' +
           '<div style="font-size:13px;color:var(--white);line-height:1.6;white-space:pre-wrap">' + esc(p) + '</div>' +
         '</div>';
@@ -1375,7 +1375,7 @@
         return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:14px;margin-bottom:10px">' +
           '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
             '<div><span style="font-family:var(--ff-disp);font-size:10px;letter-spacing:2px;color:var(--teal)">VERSION ' + (i+1) + '</span>' + warn + '</div>' +
-            '<button class="gl-li-copy cbtn" data-text="' + esc(p).replace(/"/g,'&quot;') + '" style="font-size:10px;padding:4px 10px">📋 Copy</button>' +
+            '<button class="gl-li-copy cbtn" data-text="' + esc(p).replace(/"/g,'&quot;').replace(/'/g, '&#39;') + '" style="font-size:10px;padding:4px 10px">📋 Copy</button>' +
           '</div>' +
           '<div style="font-size:13px;color:var(--white);line-height:1.6;white-space:pre-wrap">' + esc(p) + '</div>' +
         '</div>';

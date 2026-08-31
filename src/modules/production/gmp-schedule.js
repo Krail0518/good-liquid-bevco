@@ -21,9 +21,7 @@
 
   function sb(){ return window.supa || null; }
   function esc(s){
-    return String(s == null ? '' : s).replace(/[<>&"]/g, function(c){
-      return { '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;' }[c];
-    });
+    return String(s == null ? '' : s).replace(/[<>&"']/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]; });
   }
   function todayISO(){ try { return new Date().toISOString().slice(0,10); } catch(e){ return ''; } }
   function daysAgoISO(n){ try { return new Date(Date.now() - n*86400000).toISOString().slice(0,10); } catch(e){ return ''; } }
