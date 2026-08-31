@@ -24,6 +24,7 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const MIGRATION = path.join(ROOT, 'supabase', 'migrations', '20260831000000_payment_event_ledger.sql');
 const HARDENING = path.join(ROOT, 'supabase', 'migrations', '20260831120000_payment_ledger_hardening.sql');
+const COMPLETE = path.join(ROOT, 'supabase', 'migrations', '20260831180000_payment_invariant_complete.sql');
 
 let failures = 0;
 function check(name, ok, detail) {
@@ -46,7 +47,8 @@ check('the payment ledger migration is present', migrationExists, MIGRATION);
 // guard that trusted a session GUC; the second replaced it. Reading only the
 // first would assert the superseded design.
 const sql = (migrationExists ? read(MIGRATION) : '') +
-            (fs.existsSync(HARDENING) ? read(HARDENING) : '');
+            (fs.existsSync(HARDENING) ? read(HARDENING) : '') +
+            (fs.existsSync(COMPLETE) ? read(COMPLETE) : '');
 
 check('a ROLLBACK note is present, as every migration in this repo requires',
   /^--\s*ROLLBACK:/m.test(sql));
@@ -77,7 +79,10 @@ check('the guard covers every column that asserts a payment',
 // Migration history is immutable: 20260831000000 still contains the GUC text
 // and always will. What matters is that the LAST definition of the guard does
 // not use it — which is why the check below comes first.
-const hardening = fs.existsSync(HARDENING) ? read(HARDENING) : '';
+// The newest migration holds the effective definitions. Reading the middle
+// one would assert a guard that has itself been replaced -- the same trap as
+// reading the first one after the second shipped.
+const hardening = fs.existsSync(COMPLETE) ? read(COMPLETE) : '';
 
 // Comments stripped, because the hardening migration's header NAMES the defect
 // it removes. Matching prose flagged that explanation as the defect itself —
@@ -94,6 +99,49 @@ check('the guard does NOT trust a session setting',
   'gl.payment_apply was a custom GUC any SQL-capable caller could set before ' +
   'writing paid state. Reproduced against staging: an invoice with ZERO ledger ' +
   'rows was driven to paid / 9999 by two lines of SQL.');
+
+// ── the invoice-edit bypass, round three ───────────────────────────
+// The second guard returned early whenever the five PAYMENT columns were
+// unchanged, and returned before reading the ledger. amount, invoice_number
+// and is_credit_memo were not in that condition, so an ordinary invoice edit
+// skipped the invariant entirely. Reproduced on staging: raising amount from
+// 1000 to 2000 on a fully paid invoice left status=paid with 1000 of cover.
+
+for (const col of ['amount', 'invoice_number', 'is_credit_memo']) {
+  check('the early return accounts for a change to ' + col,
+    new RegExp('new\\.' + col + '\\s+is not distinct from old\\.' + col).test(hardeningCode),
+    'omitting it lets an ordinary edit to that column skip the whole check');
+}
+
+check('the derived status has ONE definition, shared by every caller',
+  /create or replace function public\.gl_invoice_derived_status/.test(hardeningCode) &&
+  (hardeningCode.match(/gl_invoice_derived_status\(/g) || []).length >= 4,
+  'the projection trigger, the guard and the migration reconciliation must ' +
+  'call the same function, or migration-time and runtime behaviour diverge');
+
+check('status is enforced in BOTH directions',
+  /contradicts the ledger/.test(hardeningCode),
+  'the previous guard only refused paid-without-cover; it permitted a fully ' +
+  'covered invoice being set back to pending');
+
+check('the ledger may never exceed the invoice amount',
+  /ledger net % exceeds the invoice amount/.test(hardeningCode));
+
+check('renaming an invoice that has ledger rows is refused',
+  /payment event\(s\) are keyed to the current number/.test(hardeningCode));
+
+check('toggling is_credit_memo with ledger rows is refused',
+  /cannot change is_credit_memo/.test(hardeningCode),
+  'credit memos are exempt from the coverage rules, so the flag decides ' +
+  'which rules apply');
+
+check('paid_method must correspond to a real ledger event',
+  /paid_method % on % matches no payment event/.test(hardeningCode),
+  'it was described as ledger-derived while only stripe_session_id was checked');
+
+check('the rounding tolerance is named, not inlined',
+  /create or replace function public\.gl_payment_tolerance/.test(hardeningCode),
+  'the guard, the projection and the reconciliation must not drift apart on it');
 
 check('the guard checks the write against the ledger instead',
   /cannot mark % paid: the payment ledger records/.test(sql),
