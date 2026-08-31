@@ -101,6 +101,23 @@
     + '"todos_complete_keys": array of ai_key strings — taken ONLY from the OPEN TO-DOS listed — that the new emails or notes show are now DONE. IMPORTANT: an email marked [OUT] is one WE (Good Liquid) sent. If an [OUT] email fulfills one of the open "you" to-dos — e.g. a to-do says "send the quote" and an [OUT] email contains or promises that quote, or a to-do says "reply to them" and we replied — mark that to-do complete. Also complete a to-do when an [IN] reply clearly resolves it. Match on meaning, not exact wording. When genuinely unsure, leave it open.\n'
     + 'Be concise and factual. If nothing material changed, return empty arrays and keep the status accurate.';
 
+  /* ACCEPTED RISK, reviewed 2026-08-31 (auditor item F).
+     The writes in this file that touch ai_briefs / ai_brief_todos as BACKGROUND
+   state -- stale, ball, ball_since, and the AI-driven completion of a to-do --
+   are deliberately unchecked. Each one asserts nothing to the user: nobody is
+   told the write happened, no screen claims a saved state because of it, and
+   the brief regenerates on the next open if the write was refused. Adding an
+   alert to a background touch is noise pretending to be rigour, and it trains
+   people to dismiss the alerts that do matter.
+
+   The ONE write in this file that is user-facing -- the to-do checkbox a
+   person ticks -- IS checked, and reverts the box when the server refuses.
+   The distinction is who is making a claim, not which table is written.
+
+   Compensating control: the brief is derived, never authoritative. Nothing
+   downstream reads ai_briefs as a record of fact.
+   Review: revisit if a brief ever becomes an input to a decision that is not
+   re-derivable, e.g. if ball/stale start driving automation or reporting. */
   async function summarize(ctx){
     var kind = ctx.kind, id = ctx.id;
     var brief = await loadBrief(kind,id);
@@ -262,8 +279,27 @@
     // wire checkboxes
     Array.prototype.forEach.call(host.querySelectorAll('.gl-br-chk'), function(c){
       c.addEventListener('change', async function(){
-        var tid = this.getAttribute('data-id'), on = this.checked;
-        try { await sb().from('ai_brief_todos').update({ done:on, done_at: on ? new Date().toISOString() : null }).eq('id', tid); } catch(e){}
+        var box = this;
+        var tid = box.getAttribute('data-id'), on = box.checked;
+        // A checkbox the user ticks IS an assertion, so this one is checked
+        // where the fire-and-forget brief state elsewhere in this file is not.
+        // It used to swallow everything in `catch(e){}` and repaint as if the
+        // tick had saved; a refusal left the box ticked until the next reload.
+        var r;
+        try {
+          r = await sb().from('ai_brief_todos')
+            .update({ done:on, done_at: on ? new Date().toISOString() : null })
+            .eq('id', tid).select('id');
+        } catch(e){
+          r = { error: { message: (e && e.message) ? e.message : String(e) } };
+        }
+        if(r.error || !Array.isArray(r.data) || r.data.length === 0){
+          box.checked = !on;               // put the box back where it was
+          var why = r.error ? r.error.message : 'the server rejected the change';
+          if(typeof window.addNotification === 'function') window.addNotification('To-do not saved', why, 'error');
+          else console.warn('[brief] to-do not saved:', why);
+          return;
+        }
         paint(host, ctx, { noRefresh:true });
       });
     });

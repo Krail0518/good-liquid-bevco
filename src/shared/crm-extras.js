@@ -572,11 +572,29 @@
       var legacy = {}; try { legacy = JSON.parse(blob) || {}; } catch(_e){ return; }
       var ids = Object.keys(legacy);
       if(!ids.length){ localStorage.setItem('gl_invoice_paylinks_migrated','1'); return; }
+      // The migrated flag is only set if EVERY write landed. It used to be set
+      // unconditionally after the loop, while the writes themselves were
+      // unchecked -- so an RLS refusal (zero rows, no error) lost the pay link
+      // AND guaranteed the backfill could never retry. That is the shape of
+      // GL-001: a one-shot migration that records success it did not have.
+      // The local blob is also left in place, so nothing is destroyed by a
+      // partial run and the next load picks up where this one stopped.
+      var failed = [];
       for(var i=0;i<ids.length;i++){
         var invId = ids[i]; var url = legacy[invId];
         if(!url) continue;
         // Match by invoice_number since the legacy keys are GL-2026-XYZ strings.
-        await window.supa.from('invoices').update({ stripe_payment_link: url }).eq('invoice_number', invId);
+        var r = await window.supa.from('invoices')
+          .update({ stripe_payment_link: url })
+          .eq('invoice_number', invId)
+          .select('invoice_number');
+        if(r.error || !Array.isArray(r.data) || r.data.length === 0){
+          failed.push(invId + (r.error ? ' (' + r.error.message + ')' : ' (0 rows)'));
+        }
+      }
+      if(failed.length){
+        console.warn('[GL] invoice_paylinks backfill incomplete, will retry next load:', failed.join(', '));
+        return;                       // flag deliberately NOT set
       }
       localStorage.setItem('gl_invoice_paylinks_migrated','1');
     } catch(e){ console.warn('[GL] invoice_paylinks backfill threw', e); }

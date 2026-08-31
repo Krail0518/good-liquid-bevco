@@ -307,6 +307,20 @@ jobs:
       - name: Run rate-limit outage tests
         run: node tests/rate-limit-outage.test.cjs
 
+      # A refused write must not report success. RLS refuses SILENTLY -- zero
+      # rows, no error -- and this repo attributes ~40 bugs to writes that
+      # inspected only `error`. Carries an explicit allowlist with a reason per
+      # entry, so an exemption cannot outlive its justification. Static.
+      - name: Run checked-mutation tests
+        run: node tests/checked-mutations.test.cjs
+
+      # Fixtures for the shared JS walker the scanning guards use. Three
+      # separate scanners in this repo have silently mis-parsed a regex literal
+      # or a template string, and a guard that mis-parses blesses whatever it
+      # could not see -- so the walker itself has ground truth. Static.
+      - name: Run JS walker fixtures
+        run: node tests/_jsscan.test.cjs
+
       # Third-party code must be pinned, and the secret scanner's allowlist
       # must not be able to hide a service_role key. No off-the-shelf tool
       # covers this repo's dependencies — there is no package.json, so the real
