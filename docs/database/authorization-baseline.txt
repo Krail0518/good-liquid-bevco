@@ -21,6 +21,8 @@ FUNC     public.gl_check_cron_secret(candidate text) | secdef=t | search_path=""
 FUNC     public.gl_cron_health() | secdef=t | search_path="" | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_derive_invoice_paid_state() | secdef=t | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_enforce_ledger_bounds() | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
+FUNC     public.gl_guard_compliance_signature() | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
+FUNC     public.gl_guard_hold_disposition() | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_guard_invoice_paid_state() | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_invoice_derived_status(p_amount numeric, p_is_credit_memo boolean, p_current_status text, p_net numeric) | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_invoice_paid_total(p_invoice_number text) | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
