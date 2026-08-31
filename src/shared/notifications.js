@@ -156,7 +156,22 @@ async function markNotifRead(id){
   updateNotifBadge();
   renderNotifList();
   if(window.supa && id && !String(id).startsWith('tmp')){
-    await window.supa.from('notifications').update({ read: true, read_at: new Date().toISOString() }).eq('id', id);
+    // Low stakes -- the worst case is a badge that reappears on reload -- but
+    // "reads as done and is not" is the same defect in miniature, and a silent
+    // one is harder to diagnose than a logged one. Local state is deliberately
+    // NOT reverted: the notification really has been seen, and yanking it back
+    // out of the list would be more confusing than a stale badge.
+    var r;
+    try {
+      r = await window.supa.from('notifications')
+        .update({ read: true, read_at: new Date().toISOString() }).eq('id', id).select('id');
+    } catch(e){
+      r = { error: { message: (e && e.message) ? e.message : String(e) } };
+    }
+    if(r.error || !Array.isArray(r.data) || r.data.length === 0){
+      console.warn('[GL] notification', id, 'was not marked read:',
+        r.error ? r.error.message : '0 rows updated — it will reappear on reload');
+    }
   }
 }
 

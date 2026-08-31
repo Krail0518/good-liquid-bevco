@@ -3281,9 +3281,19 @@
                   var ar = modal.querySelector('#gl-ven-allergen-risk'); if(ar && ar.value) patch.allergen_risk = ar.value;
                   var ss = modal.querySelector('#gl-ven-supplier-status'); if(ss && ss.value) patch.supplier_status = ss.value;
                   if(Object.keys(patch).length){
-                    await window.supa.from('vendors').update(patch).eq('id', r.data[0].id);
+                    // These are food-safety supplier fields -- approval date,
+                    // GFSI certificate, allergen risk. The write was swallowed
+                    // and blamed on missing columns, so a refusal looked like a
+                    // schema gap and the operator was told nothing either way.
+                    var vr = await window.supa.from('vendors')
+                      .update(patch).eq('id', r.data[0].id).select('id');
+                    if(vr.error || !Array.isArray(vr.data) || vr.data.length === 0){
+                      var why = vr.error ? vr.error.message : 'the server rejected the change — 0 rows updated';
+                      if(typeof window.toast === 'function') window.toast('Vendor FSP fields NOT saved: ' + why, 'err');
+                      else console.warn('[GL vendor FSP] not saved:', why);
+                    }
                   }
-                } catch(e){ console.warn('[GL vendor FSP] patch failed (columns may not exist yet)', e); }
+                } catch(e){ console.warn('[GL vendor FSP] patch threw', e); }
               }, 600);
             }, true);
           }

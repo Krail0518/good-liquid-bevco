@@ -70,20 +70,34 @@
       //     slot, and label artwork becomes SKU entries. NDAs, formulas and
       //     anything else stay linked to the client's Documents card. A failure
       //     here must not sink the whole conversion — the client is already made.
+      var carryOverProblems = [];
       try {
         var realDealId = (d.id && !String(d.id).startsWith('tmp_')) ? d.id : null;
         if(realDealId){
           var dd = await sb().from('deal_documents').select('*').eq('deal_id', realDealId);
           var docs = (dd.data) || [];
           if(docs.length){
-            await sb().from('deal_documents').update({ client_id: clientId }).eq('deal_id', realDealId);
+            // Both writes are checked. Neither used to be, and the second one
+            // sets pa_letter_on_file -- a compliance flag. A silent refusal
+            // there means a client shows as having a Process Authority letter
+            // on file, or not, incorrectly, while onboarding reports success.
+            var linked = await sb().from('deal_documents')
+              .update({ client_id: clientId }).eq('deal_id', realDealId).select('id');
+            if(linked.error || !Array.isArray(linked.data) || linked.data.length === 0){
+              carryOverProblems.push('documents were not linked to the client' +
+                (linked.error ? ' (' + linked.error.message + ')' : ' (0 rows)'));
+            }
 
             var paDocs = docs.filter(function(x){ return x.doc_type === 'Process Authority Letter' && x.file_path; })
               .sort(function(a, b){ return new Date(b.created_at) - new Date(a.created_at); });
             if(paDocs.length){
-              await sb().from('clients')
+              var pa = await sb().from('clients')
                 .update({ pa_letter_file_path: paDocs[0].file_path, pa_letter_on_file: true })
-                .eq('id', clientId);
+                .eq('id', clientId).select('id');
+              if(pa.error || !Array.isArray(pa.data) || pa.data.length === 0){
+                carryOverProblems.push('the Process Authority letter was NOT recorded on the client' +
+                  (pa.error ? ' (' + pa.error.message + ')' : ' (0 rows)'));
+              }
             }
 
             var labels = docs.filter(function(x){ return x.doc_type === 'Label / Artwork' && x.file_path; });
@@ -97,7 +111,20 @@
             }
           }
         }
-      } catch(docErr){ console.warn('[onboarding] document carry-over failed', docErr); }
+      } catch(docErr){
+        console.warn('[onboarding] document carry-over failed', docErr);
+        carryOverProblems.push((docErr && docErr.message) ? docErr.message : String(docErr));
+      }
+
+      // The conversion itself still succeeds — the client exists and the
+      // onboarding link is what the operator is waiting for. But a compliance
+      // flag that did not save has to be SEEN, not left in the console.
+      if(carryOverProblems.length){
+        var msg = 'Client created, but some documents did not carry over:\n\n• ' +
+                  carryOverProblems.join('\n• ');
+        if(typeof addNotification === 'function') addNotification('Document carry-over incomplete', carryOverProblems.join('; '), 'error');
+        else alert(msg);
+      }
 
       // 2) Create the onboarding row, prefilled — RPC returns the secret token.
       var prefill = {

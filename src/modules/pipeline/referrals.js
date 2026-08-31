@@ -60,15 +60,39 @@ function renderReferrals(){
 
 function setRefFilter(el,f){document.querySelectorAll('#ref-pills .cpill').forEach(p=>p.classList.remove('act'));el.classList.add('act');refFilter=f;renderReferrals()}
 
-function payComm(id){
+/* Mark a referral commission paid.
+   This used to flip local state, write an activity-feed entry and re-render
+   BEFORE firing the update, then only console.warn on error — and it never
+   looked at the row count at all. RLS refuses silently, with zero rows and no
+   error, so a refusal left the screen saying a commission had been paid when
+   the database disagreed. Money-adjacent and user-visible: persist first, and
+   only then claim it happened. */
+async function payComm(id){
   const r=referrals.find(x=>x.id===id);
-  if(r&&confirm(`Pay $${r.commAmount.toLocaleString()} commission to ${r.referrerName}?`)){
-    r.status='paid';r.datePaid=new Date().toISOString().split('T')[0];
-    renderReferrals();renderDash();
-    activities.unshift({type:'ref',icon:'🤝',name:`Commission paid — ${r.referrerName}`,detail:`$${r.commAmount.toLocaleString()} for ${r.clientName} referral`,time:'Just now'});saveActivities();
-    renderActivity();
-    supa.from('referrals').update({status:'paid', date_paid: r.datePaid}).eq('id', id).then(function(res){ if(res.error) console.warn('payComm Supabase error:', res.error.message); });
+  if(!r) return;
+  if(!confirm(`Pay $${r.commAmount.toLocaleString()} commission to ${r.referrerName}?`)) return;
+
+  const datePaid = new Date().toISOString().split('T')[0];
+  if(window.supa && id && !String(id).startsWith('ref')){
+    let res;
+    try {
+      res = await window.supa.from('referrals')
+        .update({status:'paid', date_paid: datePaid}).eq('id', id).select('id');
+    } catch(e){
+      res = { error: { message: (e && e.message) ? e.message : String(e) } };
+    }
+    if(res.error || !Array.isArray(res.data) || res.data.length === 0){
+      const why = res.error ? res.error.message : 'the server rejected the change — 0 rows updated';
+      if(typeof addNotification === 'function') addNotification('Commission NOT marked paid', r.referrerName + ': ' + why, 'error');
+      else alert('Commission not marked paid — ' + why);
+      return;
+    }
   }
+
+  r.status='paid'; r.datePaid=datePaid;
+  renderReferrals();renderDash();
+  activities.unshift({type:'ref',icon:'🤝',name:`Commission paid — ${r.referrerName}`,detail:`$${r.commAmount.toLocaleString()} for ${r.clientName} referral`,time:'Just now'});saveActivities();
+  renderActivity();
 }
 
 async function updateRefStatus(id,status){
@@ -78,20 +102,35 @@ async function updateRefStatus(id,status){
     const actual=prompt(`Enter actual deal value for ${r.clientName} (est. $${r.dealValue.toLocaleString()}):`,r.dealValue);
     if(actual){r.dealValue=parseFloat(actual)||r.dealValue;r.commAmount=Math.round(r.dealValue*r.rate/100);}
   }
+  // Persist to Supabase — without this every status change was per-device
+  // and disappeared on refresh. The write is now checked: it used to be
+  // swallowed by a catch that only warned to the console, so a refusal left
+  // the pipeline showing a stage the database never accepted.
+  const prevStatus = r.status;
+  if(window.supa && r.id && !String(r.id).startsWith('ref')){
+    const patch = { status: status };
+    if(status==='won'){
+      patch.deal_value        = r.dealValue;
+      patch.commission_amount = r.commAmount;
+    }
+    let res;
+    try {
+      res = await window.supa.from('referrals').update(patch).eq('id', r.id).select('id');
+    } catch(e){
+      res = { error: { message: (e && e.message) ? e.message : String(e) } };
+    }
+    if(res.error || !Array.isArray(res.data) || res.data.length === 0){
+      const why = res.error ? res.error.message : 'the server rejected the change — 0 rows updated';
+      r.status = prevStatus;
+      renderReferrals();renderDash();
+      if(typeof addNotification === 'function') addNotification('Referral not saved', r.clientName + ' is unchanged: ' + why, 'error');
+      else alert('Referral status not saved — ' + why);
+      return;
+    }
+  }
+
   r.status=status;
   renderReferrals();renderDash();
-  // Persist to Supabase — without this every status change was per-device
-  // and disappeared on refresh.
-  try {
-    if(window.supa && r.id && !String(r.id).startsWith('ref')){
-      const patch = { status: status };
-      if(status==='won'){
-        patch.deal_value       = r.dealValue;
-        patch.commission_amount = r.commAmount;
-      }
-      await window.supa.from('referrals').update(patch).eq('id', r.id);
-    }
-  } catch(e){ console.warn('[GL] referral status save failed', e); }
 }
 
 function openRefModal(){
