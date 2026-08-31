@@ -108,6 +108,18 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: bash scripts/check-db-drift.sh
 
+      # The drift check above proves nothing CHANGED. This proves the standing
+      # arrangement is sound: that every unconditional permissive policy is
+      # ANDed with a RESTRICTIVE guard covering the same table, command and
+      # role. The external auditor accepted constrain-don't-rewrite but rejected
+      # the evidence for it -- "policy counts do not prove complete effective
+      # coverage" -- and they were right. Same token, same read-only pattern.
+      - name: Check permissive-to-restrictive RLS coverage
+        if: ${{ github.event.inputs.update_baseline != 'true' && steps.gate.outputs.run != 'false' }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: bash scripts/check-rls-coverage.sh
+
       - name: Regenerate the baseline
         if: ${{ github.event.inputs.update_baseline == 'true' }}
         env:
