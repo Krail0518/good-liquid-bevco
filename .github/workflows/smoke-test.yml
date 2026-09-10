@@ -144,6 +144,9 @@ jobs:
       # The GL-DEF-01 ratchet: inline handlers may only go down, never up.
       - name: Run inline-handler budget
         run: node tests/inline-handler-budget.test.cjs
+      # The install pop-up is staff-only; it must never reach the public site.
+      - name: Run PWA install gating tests
+        run: node tests/pwa-install-gating.test.cjs
       # The weekly review gate must never pass without actually reviewing.
       - name: Run AI review gate tests
         run: node tests/ai-review.test.cjs
