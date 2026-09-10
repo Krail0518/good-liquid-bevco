@@ -393,6 +393,7 @@ window.loginUser = function loginUser(u){
   document.getElementById('crm-panel').classList.add('show');
   document.body.style.overflow = 'hidden';
   if(!crmInited) initCRM();
+  maybeShowInstallBanner();  // staff-only install nudge; no-op if none was offered
   addAIToolbar();
   addNotifBadge();
   checkStaleDeals();
@@ -504,7 +505,7 @@ function removeCustomerLogin(id){
   renderCustomerLogins();
 }
 
-function exitCRM(){document.getElementById('crm-panel').classList.remove('show');document.body.style.overflow=''}
+function exitCRM(){document.getElementById('crm-panel').classList.remove('show');document.body.style.overflow='';document.getElementById('pwa-install-banner')?.remove()}
 
 /* ═══ CRM CORE ═══ */
 let crmInited=false,invFilter='all',invSearch='',currentInvId=window.currentInvId=null,selAddons={},refFilter='all';
@@ -1680,6 +1681,7 @@ window.checkPw = async function checkPw(){
     document.body.style.overflow='hidden';
     updateCRMForUser();
     initCRM();
+    maybeShowInstallBanner();  // staff-only install nudge
   } else {
     inp.classList.add('wrong');
     errEl.textContent = 'Incorrect email or password.';

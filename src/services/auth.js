@@ -577,6 +577,10 @@
     if(u.role==='admin'){var nu=$('nav-users'),nc=$('nav-customers');if(nu)nu.style.display='flex';if(nc)nc.style.display='flex';var tbu=$('top-btn-users'),tbb=$('top-btn-backup'),tbd=$('top-btn-digest');if(tbu)tbu.style.display='';if(tbb)tbb.style.display='';if(tbd)tbd.style.display='';}
     var panel=$('crm-panel');if(panel)panel.classList.add('show');document.body.style.overflow='hidden';
     if(!window.crmInited&&typeof initCRM==='function')initCRM();
+    // Staff-only install nudge. pwa-install.js stashes the beforeinstallprompt
+    // event and never mounts the banner on the marketing site or the customer
+    // portal; this is where it becomes available. No-op if none was offered.
+    if(typeof window.maybeShowInstallBanner==='function')window.maybeShowInstallBanner();
     if(typeof addAIToolbar==='function')addAIToolbar();
     if(typeof addNotifBadge==='function')addNotifBadge();
     if(typeof checkStaleDeals==='function')checkStaleDeals();

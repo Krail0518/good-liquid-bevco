@@ -25,6 +25,9 @@
     var p=document.getElementById('crm-panel');if(p)p.classList.remove('show');
     document.body.style.overflow='';
     var b=document.getElementById('gl-chat-bubble');if(b)b.style.display='none';
+    // The install nudge is staff-only and sits on top of the CRM shell.
+    // Dropping it here keeps it from lingering over the public site.
+    var pb=document.getElementById('pwa-install-banner');if(pb)pb.remove();
   };
 
 }());
