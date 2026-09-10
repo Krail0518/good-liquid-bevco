@@ -167,9 +167,31 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const firstResponseFixes: { id: string; at: string }[] = [];
   const followupCandidates: { deal: any; days: number; emails: string[]; hint: string }[] = [];
 
-  // Existing ready follow-ups so we don't stack duplicates.
-  const { data: existingF } = await supa.from('lead_followups').select('deal_id').eq('status', 'ready') as { data: any[] };
-  const haveReady = new Set((existingF || []).map((r) => r.deal_id));
+  // Existing pending follow-ups, so we don't stack duplicates.
+  //
+  // CHECK THE ERROR. This read used to discard it, and `data` is null on
+  // failure, so a failed lookup was indistinguishable from an empty queue and
+  // the run drafted the entire list a second time. It worked on roughly 700
+  // hourly runs and failed on two (2026-09-08 21:00, 2026-09-10 02:00), which
+  // stacked three drafts per lead and put duplicate emails in front of eight
+  // real prospects. Rule 4 in CLAUDE.md, in the read direction: not seeing a
+  // row is not the same as there being no row.
+  //
+  // When we cannot see the queue we skip the drafting job entirely. Missing a
+  // nudge for an hour costs nothing; sending a lead the same email twice costs
+  // credibility we do not get back. The SLA watchdog above is unaffected and
+  // still runs.
+  const existingF = await supa.from('lead_followups').select('deal_id, to_email').eq('status', 'ready');
+  if (existingF.error) {
+    console.error('[lead-automations] cannot read pending follow-ups, skipping drafts:', existingF.error.message);
+  }
+  const queueReadable = !existingF.error;
+  const haveReady = new Set((existingF.data || []).map((r: any) => r.deal_id).filter(Boolean));
+  // Also key on the address. One contact can hold two open deals, and the
+  // recipient experiences the address, not the deal id.
+  const haveReadyEmail = new Set(
+    (existingF.data || []).map((r: any) => String(r.to_email || '').toLowerCase()).filter(Boolean),
+  );
 
   for (const d of openDeals) {
     if (d.handled_at) continue;
@@ -193,7 +215,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     // (2) Follow-up: ball on them, quiet past threshold, nothing queued yet.
     const ballOnThem = lastOut && (!lastIn || lastOut > lastIn);
-    if (ballOnThem && !haveReady.has(d.id)) {
+    const alreadyQueued = haveReady.has(d.id) || emails.some((e) => haveReadyEmail.has(e));
+    if (queueReadable && ballOnThem && !alreadyQueued) {
       const days = Math.floor((nowMs - lastOut) / 864e5);
       if (days >= FOLLOWUP_QUIET_DAYS) {
         // most recent inbound body as a hint
@@ -221,8 +244,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   // Generate follow-up drafts (cap per run so one cron tick can't fan out huge).
+  //
+  // Two deals can share a contact address, and both would pass the pre-loop
+  // check because neither was queued when it ran. drafting keeps track within
+  // the run so the second one is skipped before we spend a model call on it.
+  const drafting = new Set<string>();
   let drafted = 0;
+  let refusedDuplicate = 0;
   for (const c of followupCandidates.slice(0, 20)) {
+    const addr = String(c.emails[0] || '').toLowerCase();
+    if (addr && drafting.has(addr)) continue;
+    if (addr) drafting.add(addr);
     const draft = await draftFollowup({
       name: c.deal.name || '', co: c.deal.client_name || '', product: c.deal.product_type || '',
       lastInboundHint: c.hint, days: c.days, bookingUrl,
@@ -237,7 +269,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
       reason: `No reply in ${c.days} days`,
       status: 'ready',
     }]).select('id');
-    if (!ins.error) drafted++;
+    if (!ins.error) { drafted++; continue; }
+    // 23505 is the partial unique index doing its job: this lead already has a
+    // draft waiting. Expected, not an incident — but counted, because a run
+    // that hits it means the in-code guard above missed something.
+    if (ins.error.code === '23505') { refusedDuplicate++; continue; }
+    console.error('[lead-automations] draft insert failed:', ins.error.message);
+  }
+  if (refusedDuplicate) {
+    console.warn(`[lead-automations] ${refusedDuplicate} duplicate draft(s) refused by the unique index`);
   }
 
   // Notify Mike (WhatsApp + email) via notify-deal.
@@ -272,5 +312,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
     await notify('followups_ready', { count: String(drafted), review_url: reviewUrl });
   }
 
-  return jsonResponse({ ok: true, sla_overdue: slaOverdue.length, followups_drafted: drafted, open_leads: openDeals.length });
+  return jsonResponse({
+    ok: true,
+    sla_overdue: slaOverdue.length,
+    followups_drafted: drafted,
+    followups_refused_duplicate: refusedDuplicate,
+    followups_skipped_queue_unreadable: !queueReadable,
+    open_leads: openDeals.length,
+  });
 });
