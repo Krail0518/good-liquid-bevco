@@ -1,14 +1,19 @@
 /*
  * pwa-install.js — extracted from crm-index-core.js (GL-037).
  *
- * VERBATIM move: the code below is byte-for-byte what was in the core, so
- * this diff is a relocation and nothing else.
- *
  * Loads AFTER crm-index-core.js and must stay a CLASSIC script — no defer,
  * async or type="module". Its top-level declarations become window
  * properties, which is how the inline on* handlers in index.html resolve
  * them. A module-scoped version would leave those handlers dead with no
  * error to show for it.
+ *
+ * index.html serves three audiences from one page: the public marketing
+ * site, the staff CRM, and (?portal=1) the customer portal. The install
+ * banner advertises the STAFF CRM, so it must never appear to the other
+ * two. beforeinstallprompt fires on page load, long before anyone signs
+ * in, so the prompt is captured immediately and the banner is held back
+ * until #crm-panel opens — which happens only on staff sign-in, and never
+ * in portal mode (that replaces document.body.innerHTML outright).
  *
  * Declares: showInstallBanner, installPWA
  */
@@ -19,10 +24,35 @@ let deferredPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredPrompt = e;
-  showInstallBanner();
+  if(staffCrmIsOpen()) showInstallBanner();
+  else waitForStaffCrm();
 });
 
+/* The staff CRM is open iff #crm-panel carries .show — see loginUser() in
+   crm-index-core.js. On the public marketing page the element exists but
+   never gets the class; in portal mode it does not exist at all. */
+function staffCrmIsOpen(){
+  const panel = document.getElementById('crm-panel');
+  return !!panel && panel.classList.contains('show');
+}
+
+let staffCrmWatcher = null;
+function waitForStaffCrm(){
+  if(staffCrmWatcher) return;
+  const panel = document.getElementById('crm-panel');
+  if(!panel) return;                       // portal mode — nothing to wait for
+  staffCrmWatcher = new MutationObserver(() => {
+    if(!staffCrmIsOpen()) return;
+    staffCrmWatcher.disconnect();
+    staffCrmWatcher = null;
+    showInstallBanner();
+  });
+  staffCrmWatcher.observe(panel, {attributes:true, attributeFilter:['class']});
+}
+
 function showInstallBanner(){
+  if(!deferredPrompt) return;
+  if(!staffCrmIsOpen()) return;
   if(document.getElementById('pwa-install-banner')) return;
   const banner = document.createElement('div');
   banner.id = 'pwa-install-banner';
@@ -52,6 +82,10 @@ async function installPWA(){
 }
 
 window.addEventListener('appinstalled', () => {
+  deferredPrompt = null;
+  if(staffCrmWatcher){ staffCrmWatcher.disconnect(); staffCrmWatcher = null; }
   document.getElementById('pwa-install-banner')?.remove();
-  addNotification('📱 App installed!', 'Good Liquid CRM is now on your home screen', 'success');
+  if(staffCrmIsOpen()){
+    addNotification('📱 App installed!', 'Good Liquid CRM is now on your home screen', 'success');
+  }
 });

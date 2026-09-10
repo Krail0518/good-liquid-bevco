@@ -708,11 +708,12 @@
     subhead('📲', 'PWA INSTALLATION') +
     intro('Install the Good Liquid CRM as a progressive web app (PWA) on your device — adds an icon to your home screen or taskbar. Works on Chrome (Android + desktop), Safari (iOS), and Edge.') +
     bullets([
-      'A "📲 Install Good Liquid CRM" banner appears at the top of the page when the browser decides the app is installable (requires HTTPS, a web manifest, and a service worker — all already in place).',
+      'A "📲 Install Good Liquid CRM" banner appears once you are signed in, when the browser decides the app is installable (requires HTTPS, a web manifest, and a service worker — all already in place).',
+      'It is staff-only on purpose: the public marketing site and the customer portal share this page, and neither should be invited to install the CRM.',
       'Click the banner to trigger the browser\'s native install prompt.',
       'Once installed, the CRM opens in its own window without browser chrome.'
     ]) +
-    whereToFind('Top-of-page banner (appears automatically when Chrome / Edge signals the app can be installed)') +
+    whereToFind('Banner inside the CRM after sign-in (appears automatically when Chrome / Edge signals the app can be installed)') +
     subhead('🔄', 'SOFT REFRESH / PAGE RESUME') +
     intro('If you refresh or navigate away while inside the CRM, the app remembers which page you were on and returns you there after re-login. No need to navigate back manually.') +
     bullets([
