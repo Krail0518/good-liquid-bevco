@@ -168,14 +168,15 @@ for (const [label, re] of FORBIDDEN) {
 // Set to the count observed on 2026-08-31. A ratchet, not a target: it exists
 // so that adding one is a decision someone makes in a pull request, not a
 // thing that happens.
-// 2026-09-11: 606 → 610. The quote builder gained multi-format sections and
-// free-text custom lines, which added exactly four sinks: the section tab
-// strip, the format datalist, and the two custom-line tables. Every value
-// interpolated into them goes through the module's esc(): the format string,
-// the section label, and each line's description, unit, quantity and rate.
-// Raised here in the same pull request that adds them, which is what the
-// ratchet asks for.
-const SINK_BUDGET = 610;
+// 2026-09-11: 606 → 610 → 605. The quote builder briefly grew multi-format
+// sections and two custom-line tables (+4 sinks), then the whole tier engine
+// was replaced by a single line-item table, which removed more than it added.
+// A ratchet only works if it moves DOWN when the count genuinely drops, so it
+// is set to the count observed after that change rather than left slack.
+// Every value interpolated into the remaining quote-builder sinks goes through
+// the module's esc(): the format string and each line's description, unit,
+// quantity and unit price.
+const SINK_BUDGET = 605;
 let sinkCount = 0;
 const RAW = /\.(innerHTML|outerHTML)\s*(=|\+=)|insertAdjacentHTML\s*\(|document\.write(ln)?\s*\(/;
 for (const f of files) {
