@@ -156,20 +156,82 @@ Deno.serve(async (req: Request): Promise<Response> => {
     .not('stage', 'in', `(${[...CLOSED].map((s) => `"${s}"`).join(',')})`) as { data: any[] };
   const openDeals = (deals || []);
 
+  // ORDER BY IS LOAD-BEARING, NOT COSMETIC.
+  //
+  // This read decides whether the ball is on the lead and how long they have
+  // been quiet, which is the whole basis for drafting a nudge. It had no order
+  // and a row cap, so it received an ARBITRARY slice of email_log — and
+  // PostgREST caps the response below the .limit() we ask for anyway. Once the
+  // table passed the cap the slice stopped including the newest rows, so a
+  // lead emailed twenty minutes ago looked untouched since their previous
+  // contact and got drafted again.
+  //
+  // That is exactly what happened on 2026-09-10: two leads emailed at 22:36
+  // were re-drafted at 23:00, with reasons of 29 and 31 days — measured from
+  // their AUGUST contact, which was the most recent one the slice contained.
+  //
+  // Newest first means the rows that matter are always inside whatever the
+  // server returns. The cap then only ever costs us ancient history, which
+  // this function does not use.
   const sinceIso = new Date(nowMs - 150 * 864e5).toISOString();
-  const { data: mailData } = await supa.from('email_log')
+  const mailRes = await supa.from('email_log')
     .select('to_email, from_email, direction, sent_at, created_at, body_preview')
-    .gte('sent_at', sinceIso).limit(5000) as { data: any[] };
-  const mail: MailRow[] = (mailData || []) as MailRow[];
+    .gte('sent_at', sinceIso)
+    .order('sent_at', { ascending: false })
+    .limit(5000);
+  if (mailRes.error) {
+    // Same reasoning as the pending-draft read below: an unreadable mail
+    // history means every lead looks quiet, which is the one state that makes
+    // this function write to people. Refuse to draft rather than guess.
+    console.error('[lead-automations] cannot read email_log, skipping drafts:', mailRes.error.message);
+  }
+  const mailReadable = !mailRes.error;
+  const mail: MailRow[] = (mailRes.data || []) as MailRow[];
   const bodyByKey = new Map<string, string>(); // latest inbound snippet per lead (for the draft hint)
 
   const slaOverdue: string[] = [];
   const firstResponseFixes: { id: string; at: string }[] = [];
   const followupCandidates: { deal: any; days: number; emails: string[]; hint: string }[] = [];
 
-  // Existing ready follow-ups so we don't stack duplicates.
-  const { data: existingF } = await supa.from('lead_followups').select('deal_id').eq('status', 'ready') as { data: any[] };
-  const haveReady = new Set((existingF || []).map((r) => r.deal_id));
+  // Existing pending follow-ups, so we don't stack duplicates.
+  //
+  // CHECK THE ERROR. This read used to discard it, and `data` is null on
+  // failure, so a failed lookup was indistinguishable from an empty queue and
+  // the run drafted the entire list a second time. It worked on roughly 700
+  // hourly runs and failed on two (2026-09-08 21:00, 2026-09-10 02:00), which
+  // stacked three drafts per lead and put duplicate emails in front of eight
+  // real prospects. Rule 4 in CLAUDE.md, in the read direction: not seeing a
+  // row is not the same as there being no row.
+  //
+  // When we cannot see the queue we skip the drafting job entirely. Missing a
+  // nudge for an hour costs nothing; sending a lead the same email twice costs
+  // credibility we do not get back. The SLA watchdog above is unaffected and
+  // still runs.
+  const existingF = await supa.from('lead_followups').select('deal_id, to_email').eq('status', 'ready');
+  if (existingF.error) {
+    console.error('[lead-automations] cannot read pending follow-ups, skipping drafts:', existingF.error.message);
+  }
+  const queueReadable = !existingF.error;
+
+  // Addresses we have nudged inside the quiet window, read from our OWN send
+  // log rather than from email_log. A second, independent source: if the mail
+  // history is incomplete for any reason, this still knows we wrote to them.
+  const cooldownSince = new Date(nowMs - FOLLOWUP_QUIET_DAYS * 864e5).toISOString();
+  const recentSent = await supa.from('lead_followups')
+    .select('to_email').eq('status', 'sent').gte('sent_at', cooldownSince);
+  if (recentSent.error) {
+    console.error('[lead-automations] cannot read recent sends:', recentSent.error.message);
+  }
+  const cooldownReadable = !recentSent.error;
+  const nudgedRecently = new Set(
+    (recentSent.data || []).map((r: any) => String(r.to_email || '').toLowerCase()).filter(Boolean),
+  );
+  const haveReady = new Set((existingF.data || []).map((r: any) => r.deal_id).filter(Boolean));
+  // Also key on the address. One contact can hold two open deals, and the
+  // recipient experiences the address, not the deal id.
+  const haveReadyEmail = new Set(
+    (existingF.data || []).map((r: any) => String(r.to_email || '').toLowerCase()).filter(Boolean),
+  );
 
   for (const d of openDeals) {
     if (d.handled_at) continue;
@@ -193,7 +255,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     // (2) Follow-up: ball on them, quiet past threshold, nothing queued yet.
     const ballOnThem = lastOut && (!lastIn || lastOut > lastIn);
-    if (ballOnThem && !haveReady.has(d.id)) {
+    const alreadyQueued = haveReady.has(d.id) || emails.some((e) => haveReadyEmail.has(e));
+    const inCooldown = emails.some((e) => nudgedRecently.has(e));
+    if (queueReadable && mailReadable && cooldownReadable && ballOnThem && !alreadyQueued && !inCooldown) {
       const days = Math.floor((nowMs - lastOut) / 864e5);
       if (days >= FOLLOWUP_QUIET_DAYS) {
         // most recent inbound body as a hint
@@ -221,8 +285,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   // Generate follow-up drafts (cap per run so one cron tick can't fan out huge).
+  //
+  // Two deals can share a contact address, and both would pass the pre-loop
+  // check because neither was queued when it ran. drafting keeps track within
+  // the run so the second one is skipped before we spend a model call on it.
+  const drafting = new Set<string>();
   let drafted = 0;
+  let refusedDuplicate = 0;
   for (const c of followupCandidates.slice(0, 20)) {
+    const addr = String(c.emails[0] || '').toLowerCase();
+    if (addr && drafting.has(addr)) continue;
+    if (addr) drafting.add(addr);
     const draft = await draftFollowup({
       name: c.deal.name || '', co: c.deal.client_name || '', product: c.deal.product_type || '',
       lastInboundHint: c.hint, days: c.days, bookingUrl,
@@ -237,7 +310,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
       reason: `No reply in ${c.days} days`,
       status: 'ready',
     }]).select('id');
-    if (!ins.error) drafted++;
+    if (!ins.error) { drafted++; continue; }
+    // 23505 is the partial unique index doing its job: this lead already has a
+    // draft waiting. Expected, not an incident — but counted, because a run
+    // that hits it means the in-code guard above missed something.
+    if (ins.error.code === '23505') { refusedDuplicate++; continue; }
+    console.error('[lead-automations] draft insert failed:', ins.error.message);
+  }
+  if (refusedDuplicate) {
+    console.warn(`[lead-automations] ${refusedDuplicate} duplicate draft(s) refused by the unique index`);
   }
 
   // Notify Mike (WhatsApp + email) via notify-deal.
@@ -272,5 +353,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
     await notify('followups_ready', { count: String(drafted), review_url: reviewUrl });
   }
 
-  return jsonResponse({ ok: true, sla_overdue: slaOverdue.length, followups_drafted: drafted, open_leads: openDeals.length });
+  return jsonResponse({
+    ok: true,
+    sla_overdue: slaOverdue.length,
+    followups_drafted: drafted,
+    followups_refused_duplicate: refusedDuplicate,
+    followups_skipped_queue_unreadable: !queueReadable,
+    followups_skipped_mail_unreadable: !mailReadable,
+    followups_skipped_cooldown_unreadable: !cooldownReadable,
+    open_leads: openDeals.length,
+  });
 });
