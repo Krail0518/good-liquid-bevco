@@ -156,11 +156,37 @@ Deno.serve(async (req: Request): Promise<Response> => {
     .not('stage', 'in', `(${[...CLOSED].map((s) => `"${s}"`).join(',')})`) as { data: any[] };
   const openDeals = (deals || []);
 
+  // ORDER BY IS LOAD-BEARING, NOT COSMETIC.
+  //
+  // This read decides whether the ball is on the lead and how long they have
+  // been quiet, which is the whole basis for drafting a nudge. It had no order
+  // and a row cap, so it received an ARBITRARY slice of email_log — and
+  // PostgREST caps the response below the .limit() we ask for anyway. Once the
+  // table passed the cap the slice stopped including the newest rows, so a
+  // lead emailed twenty minutes ago looked untouched since their previous
+  // contact and got drafted again.
+  //
+  // That is exactly what happened on 2026-09-10: two leads emailed at 22:36
+  // were re-drafted at 23:00, with reasons of 29 and 31 days — measured from
+  // their AUGUST contact, which was the most recent one the slice contained.
+  //
+  // Newest first means the rows that matter are always inside whatever the
+  // server returns. The cap then only ever costs us ancient history, which
+  // this function does not use.
   const sinceIso = new Date(nowMs - 150 * 864e5).toISOString();
-  const { data: mailData } = await supa.from('email_log')
+  const mailRes = await supa.from('email_log')
     .select('to_email, from_email, direction, sent_at, created_at, body_preview')
-    .gte('sent_at', sinceIso).limit(5000) as { data: any[] };
-  const mail: MailRow[] = (mailData || []) as MailRow[];
+    .gte('sent_at', sinceIso)
+    .order('sent_at', { ascending: false })
+    .limit(5000);
+  if (mailRes.error) {
+    // Same reasoning as the pending-draft read below: an unreadable mail
+    // history means every lead looks quiet, which is the one state that makes
+    // this function write to people. Refuse to draft rather than guess.
+    console.error('[lead-automations] cannot read email_log, skipping drafts:', mailRes.error.message);
+  }
+  const mailReadable = !mailRes.error;
+  const mail: MailRow[] = (mailRes.data || []) as MailRow[];
   const bodyByKey = new Map<string, string>(); // latest inbound snippet per lead (for the draft hint)
 
   const slaOverdue: string[] = [];
@@ -186,6 +212,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
     console.error('[lead-automations] cannot read pending follow-ups, skipping drafts:', existingF.error.message);
   }
   const queueReadable = !existingF.error;
+
+  // Addresses we have nudged inside the quiet window, read from our OWN send
+  // log rather than from email_log. A second, independent source: if the mail
+  // history is incomplete for any reason, this still knows we wrote to them.
+  const cooldownSince = new Date(nowMs - FOLLOWUP_QUIET_DAYS * 864e5).toISOString();
+  const recentSent = await supa.from('lead_followups')
+    .select('to_email').eq('status', 'sent').gte('sent_at', cooldownSince);
+  if (recentSent.error) {
+    console.error('[lead-automations] cannot read recent sends:', recentSent.error.message);
+  }
+  const cooldownReadable = !recentSent.error;
+  const nudgedRecently = new Set(
+    (recentSent.data || []).map((r: any) => String(r.to_email || '').toLowerCase()).filter(Boolean),
+  );
   const haveReady = new Set((existingF.data || []).map((r: any) => r.deal_id).filter(Boolean));
   // Also key on the address. One contact can hold two open deals, and the
   // recipient experiences the address, not the deal id.
@@ -216,7 +256,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // (2) Follow-up: ball on them, quiet past threshold, nothing queued yet.
     const ballOnThem = lastOut && (!lastIn || lastOut > lastIn);
     const alreadyQueued = haveReady.has(d.id) || emails.some((e) => haveReadyEmail.has(e));
-    if (queueReadable && ballOnThem && !alreadyQueued) {
+    const inCooldown = emails.some((e) => nudgedRecently.has(e));
+    if (queueReadable && mailReadable && cooldownReadable && ballOnThem && !alreadyQueued && !inCooldown) {
       const days = Math.floor((nowMs - lastOut) / 864e5);
       if (days >= FOLLOWUP_QUIET_DAYS) {
         // most recent inbound body as a hint
@@ -318,6 +359,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     followups_drafted: drafted,
     followups_refused_duplicate: refusedDuplicate,
     followups_skipped_queue_unreadable: !queueReadable,
+    followups_skipped_mail_unreadable: !mailReadable,
+    followups_skipped_cooldown_unreadable: !cooldownReadable,
     open_leads: openDeals.length,
   });
 });
