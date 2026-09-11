@@ -262,6 +262,12 @@
   /* ── Shared styles ──────────────────────────────────────────── */
   var INP  = 'width:100%;padding:8px 10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#fff;font-size:13px;font-family:var(--ff-body);box-sizing:border-box';
   var LBL  = 'font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:5px';
+  // Styles for the custom-line tables. Deliberately module scope: the TH/TD
+  // pair inside the modal closure is assigned part-way down that function, so
+  // a renderer that runs earlier would read undefined and emit a broken style.
+  var QTH   = 'background:#0a1628;color:#9aa7bd;font-size:10px;letter-spacing:1.5px;padding:8px 10px;text-align:left;white-space:nowrap';
+  var QTD   = 'padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.06);color:#fff';
+  var QCELL = 'padding:5px 6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:4px;color:#fff;font-size:12px;box-sizing:border-box';
   var OVER = 'position:fixed;inset:0;z-index:950;background:rgba(6,13,26,.9);backdrop-filter:blur(8px);display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto';
 
   /* ── Modal ──────────────────────────────────────────────────── */
@@ -318,6 +324,15 @@
           '</div>' +
         '</div>' +
 
+        /* ── Section tabs ──
+           A quote can price more than one format for the same client: 12oz and
+           16oz cans, or cans and bottles, on one document with one quote
+           number. Each section owns its own product type, format, volume tiers
+           and add-ons; everything below this strip edits the SELECTED section.
+           A one-section quote looks and behaves exactly as it always did. */
+        '<div style="'+LBL+'">FORMATS ON THIS QUOTE</div>' +
+        '<div id="gl-qb-sections" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:16px"></div>' +
+
         /* ── Row 2: Product type / format ── */
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px">' +
           '<div><div style="'+LBL+'">PRODUCT TYPE</div>' +
@@ -348,6 +363,15 @@
 
         /* ── Add-ons ── */
         '<div id="gl-qb-addons" style="margin-bottom:18px"></div>' +
+
+        /* ── Custom lines ──
+           The escape hatch. Everything above prices from the standard deck, so
+           anything the deck does not model had nowhere to go and the quote had
+           to be written by hand outside the system. These are free text with a
+           quantity and a price, like the invoice builder's custom line.
+           Section lines price one format; quote lines price the whole job. */
+        '<div id="gl-qb-lines" style="margin-bottom:18px"></div>' +
+        '<div id="gl-qb-qlines" style="margin-bottom:18px"></div>' +
 
         /* ── Notes ── */
         /* ── Client request from website ── */
@@ -417,8 +441,118 @@
         'Best,\nMike Krail\nGood Liquid Beverage Co.\nmike@goodliquidbevco.com';
     }
 
-    /* ── Local state ── */
-    var state = { productType:'canning', format:'12oz Sleek', tiers:[], savedId:null, pkg:defaultCanningPkg(), bpkg:defaultBottlingPkg() };
+    /* ── Local state ──
+       A quote is a LIST of sections. Each one is what the whole quote used to
+       be: a product type, a package format, its volume tiers, its packaging
+       config and its own custom lines.
+
+       state.productType / .format / .tiers / .pkg / .bpkg / .lines are
+       accessors onto the SELECTED section. That is deliberate: every pricing,
+       rendering and add-on function below was written against those five
+       names, and pointing them at the active section means all of that code
+       keeps working untouched instead of being rewritten by hand. Constrain,
+       don't rewrite. */
+    function newSection(productType, format){
+      productType = productType || 'canning';
+      format = format || (DECK[productType] || DECK.canning).formats[0];
+      return {
+        productType: productType,
+        format: format,
+        tiers: [],
+        pkg: defaultCanningPkg(format),
+        bpkg: defaultBottlingPkg(),
+        lines: []          // custom lines belonging to THIS format
+      };
+    }
+    var state = {
+      sections: [newSection()],
+      activeIdx: 0,
+      quoteLines: [],      // custom lines that apply to the whole quote
+      savedId: null
+    };
+    function cur(){ return state.sections[state.activeIdx] || state.sections[0]; }
+    ['productType','format','tiers','pkg','bpkg','lines'].forEach(function(k){
+      Object.defineProperty(state, k, {
+        get: function(){ return cur()[k]; },
+        set: function(v){ cur()[k] = v; },
+        enumerable: false, configurable: true
+      });
+    });
+
+    /* ── Section tabs ── */
+    function sectionLabel(s){
+      if(s.format) return s.format;
+      return s.productType === 'bottling' ? 'Bottling' : s.productType === 'keg' ? 'Keg Filling' : 'Canning';
+    }
+    function renderSectionTabs(){
+      var bar = ov.querySelector('#gl-qb-sections'); if(!bar) return;
+      var multi = state.sections.length > 1;
+      bar.innerHTML = state.sections.map(function(s, i){
+        var on = i === state.activeIdx;
+        return '<span class="gl-qb-tab" data-idx="'+i+'" style="display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;' +
+          (on ? 'background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.45);color:#00e5c0'
+              : 'background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:#9aa7bd') + '">' +
+          esc(sectionLabel(s)) +
+          (multi ? '<span class="gl-qb-tab-x" data-idx="'+i+'" title="Remove this format" style="color:#ff8579;font-weight:800;padding:0 2px">&times;</span>' : '') +
+        '</span>';
+      }).join('') +
+      '<button id="gl-qb-add-section" class="cbtn" style="font-size:12px;padding:6px 12px">+ Add Format</button>' +
+      '<button id="gl-qb-dup-section" class="cbtn" style="font-size:12px;padding:6px 12px" title="Copy this format’s tiers and add-ons into a new one">⧉ Duplicate</button>';
+
+      bar.querySelectorAll('.gl-qb-tab').forEach(function(el){
+        el.addEventListener('click', function(e){
+          if(e.target.classList.contains('gl-qb-tab-x')) return;   // the × handles itself
+          selectSection(parseInt(el.getAttribute('data-idx'),10));
+        });
+      });
+      bar.querySelectorAll('.gl-qb-tab-x').forEach(function(x){
+        x.addEventListener('click', function(e){
+          e.stopPropagation();
+          var i = parseInt(x.getAttribute('data-idx'),10);
+          var s = state.sections[i];
+          // Only ask when there is something to lose. An empty section the user
+          // just added should close without a dialog.
+          var hasWork = (s.tiers && s.tiers.length) || (s.lines && s.lines.length);
+          if(hasWork && !confirm('Remove ' + sectionLabel(s) + ' and its pricing from this quote?')) return;
+          state.sections.splice(i, 1);
+          if(!state.sections.length) state.sections.push(newSection());
+          selectSection(Math.min(state.activeIdx, state.sections.length - 1));
+        });
+      });
+      var addBtn = bar.querySelector('#gl-qb-add-section');
+      if(addBtn) addBtn.addEventListener('click', function(){
+        state.sections.push(newSection());
+        selectSection(state.sections.length - 1);
+      });
+      // Quoting 16oz right after 12oz is the common case: same volumes, same
+      // add-ons, different size. Copy the section and change the format rather
+      // than rebuilding the tier table by hand. Deck rates re-derive from the
+      // new format as soon as it is picked.
+      var dupBtn = bar.querySelector('#gl-qb-dup-section');
+      if(dupBtn) dupBtn.addEventListener('click', function(){
+        var copy = JSON.parse(JSON.stringify(cur()));
+        state.sections.push(copy);
+        selectSection(state.sections.length - 1);
+        fmtEl.focus(); fmtEl.select();
+      });
+    }
+
+    // Point the type/format controls, the add-on panel and the tier table at
+    // the selected section. Assigning .value does NOT fire 'change', so this
+    // never trips the handler that clears tiers on a real type change.
+    function selectSection(i){
+      state.activeIdx = Math.max(0, Math.min(i, state.sections.length - 1));
+      var s = cur();
+      typeEl.value = s.productType;
+      var dl = ov.querySelector('#gl-qb-fmt-list');
+      if(dl) dl.innerHTML = (DECK[s.productType] || DECK.canning).formats
+        .map(function(f){ return '<option value="'+esc(f)+'">'; }).join('');
+      fmtEl.value = s.format;
+      renderSectionTabs();
+      rebuildAddons();
+      renderTiers();
+      renderCustomLines();
+    }
 
     /* ── Wire close ── */
     ov.querySelector('#gl-qb-close').addEventListener('click', function(){ ov.remove(); });
@@ -449,13 +583,18 @@
       state.pkg.canShrinkPerCan  = canRate('shrink',  state.format);
       state.pkg.canPrintedPerCan = canRate('printed', state.format);
     }
-    typeEl.addEventListener('change', function(){ rebuildFormats(); state.tiers=[]; renderTiers(); });
+    typeEl.addEventListener('change', function(){
+      rebuildFormats(); state.tiers=[]; renderTiers();
+      renderSectionTabs(); renderCustomLines();
+    });
     // 'input' as well as 'change': a typed format has to take effect while you
     // are typing it, not only once focus leaves the field.
     ['change','input'].forEach(function(evt){
       fmtEl.addEventListener(evt, function(){
         state.format = fmtEl.value;
         applyCanRates(); rebuildAddons(); rerenderTiers();
+        renderSectionTabs();   // the tab is named after the format
+        renderCustomLines();   // so is the section's custom-line heading
       });
     });
     rebuildFormats();
@@ -618,6 +757,96 @@
           '</div>';
         el.querySelector('#gl-qb-empty-keg-on').checked = true;
       }
+    }
+
+    /* ── Custom lines ──────────────────────────────────────────
+       One line is { desc, qty, unit, rate }. The extended amount is qty × rate
+       and is always shown, so a line reads the same on screen as on the PDF.
+       Blank-description lines are dropped at save time rather than nagging
+       while you type. */
+    function lineTotal(l){ return (parseFloat(l.qty)||0) * (parseFloat(l.rate)||0); }
+
+    function customLineRows(list, scope){
+      if(!list.length){
+        return '<div style="font-size:12px;color:var(--muted);padding:6px 0">None yet.</div>';
+      }
+      return '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:560px">' +
+        '<thead><tr>' +
+          '<th style="'+QTH+'">Description</th><th style="'+QTH+'">Qty</th><th style="'+QTH+'">Unit</th>' +
+          '<th style="'+QTH+'">Price</th><th style="'+QTH+'">Amount</th><th style="'+QTH+'"></th>' +
+        '</tr></thead><tbody>' +
+        list.map(function(l, i){
+          return '<tr>' +
+            '<td style="'+QTD+'"><input data-ln-scope="'+scope+'" data-ln-idx="'+i+'" data-ln-field="desc" value="'+esc(l.desc||'')+'" placeholder="e.g. Kratom filtration setup" style="'+QCELL+';min-width:200px"></td>' +
+            '<td style="'+QTD+'"><input data-ln-scope="'+scope+'" data-ln-idx="'+i+'" data-ln-field="qty" type="number" step="any" value="'+esc(l.qty==null?'':l.qty)+'" style="'+QCELL+';width:80px"></td>' +
+            '<td style="'+QTD+'"><input data-ln-scope="'+scope+'" data-ln-idx="'+i+'" data-ln-field="unit" value="'+esc(l.unit||'')+'" placeholder="each" style="'+QCELL+';width:90px"></td>' +
+            '<td style="'+QTD+'"><input data-ln-scope="'+scope+'" data-ln-idx="'+i+'" data-ln-field="rate" type="number" step="0.01" value="'+esc(l.rate==null?'':l.rate)+'" style="'+QCELL+';width:90px"></td>' +
+            '<td style="'+QTD+';color:#00e5c0;font-weight:700">'+fmtUsd(lineTotal(l))+'</td>' +
+            '<td style="'+QTD+'"><button data-ln-del-scope="'+scope+'" data-ln-del="'+i+'" style="background:none;border:none;color:#ff8579;cursor:pointer;font-size:15px">&times;</button></td>' +
+          '</tr>';
+        }).join('') +
+        '</tbody></table></div>';
+    }
+
+    function renderCustomLines(){
+      var secEl = ov.querySelector('#gl-qb-lines');
+      var qEl   = ov.querySelector('#gl-qb-qlines');
+      if(!secEl || !qEl) return;
+      var s = cur();
+      s.lines = s.lines || [];
+      state.quoteLines = state.quoteLines || [];
+
+      secEl.innerHTML =
+        '<div style="'+LBL+'">CUSTOM LINES — ' + esc(sectionLabel(s).toUpperCase()) + '</div>' +
+        '<div style="font-size:11px;color:#6b87ad;margin:-4px 0 8px">Anything not on the price deck that applies to this format only.</div>' +
+        customLineRows(s.lines, 'section') +
+        '<button id="gl-qb-add-line" class="cbtn" style="font-size:12px;padding:6px 14px;margin-top:8px">+ Custom Line</button>';
+
+      qEl.innerHTML =
+        '<div style="'+LBL+'">CUSTOM LINES — WHOLE QUOTE</div>' +
+        '<div style="font-size:11px;color:#6b87ad;margin:-4px 0 8px">One-off charges that span the job, whatever formats are on it.</div>' +
+        customLineRows(state.quoteLines, 'quote') +
+        '<button id="gl-qb-add-qline" class="cbtn" style="font-size:12px;padding:6px 14px;margin-top:8px">+ Quote-wide Line</button>';
+
+      function listFor(scope){ return scope === 'quote' ? state.quoteLines : cur().lines; }
+
+      [secEl, qEl].forEach(function(host){
+        host.querySelectorAll('[data-ln-field]').forEach(function(inp){
+          inp.addEventListener('input', function(){
+            var list = listFor(inp.getAttribute('data-ln-scope'));
+            var l = list[parseInt(inp.getAttribute('data-ln-idx'),10)];
+            if(!l) return;
+            var f = inp.getAttribute('data-ln-field');
+            l[f] = (f === 'qty' || f === 'rate') ? (parseFloat(inp.value) || 0) : inp.value;
+            // Only the amount cell changes, so patch it rather than re-render:
+            // a full re-render on every keystroke would drop focus mid-word.
+            var cell = inp.closest('tr').children[4];
+            if(cell) cell.textContent = fmtUsd(lineTotal(l));
+            renderTiers();   // the running total below includes these
+          });
+        });
+        host.querySelectorAll('[data-ln-del]').forEach(function(btn){
+          btn.addEventListener('click', function(){
+            listFor(btn.getAttribute('data-ln-del-scope')).splice(parseInt(btn.getAttribute('data-ln-del'),10), 1);
+            renderCustomLines(); renderTiers();
+          });
+        });
+      });
+
+      var a1 = secEl.querySelector('#gl-qb-add-line');
+      if(a1) a1.addEventListener('click', function(){
+        cur().lines.push({ desc:'', qty:1, unit:'each', rate:0 });
+        renderCustomLines();
+        var inputs = secEl.querySelectorAll('[data-ln-field="desc"]');
+        if(inputs.length) inputs[inputs.length-1].focus();
+      });
+      var a2 = qEl.querySelector('#gl-qb-add-qline');
+      if(a2) a2.addEventListener('click', function(){
+        state.quoteLines.push({ desc:'', qty:1, unit:'each', rate:0 });
+        renderCustomLines();
+        var inputs = qEl.querySelectorAll('[data-ln-field="desc"]');
+        if(inputs.length) inputs[inputs.length-1].focus();
+      });
     }
 
     function addonToggle(id, label, defaultRate, unit){
@@ -871,7 +1100,27 @@
         addons.push({ id:base, label:label, rate:parseFloat(rateEl.value)||0 });
       });
 
+      // The add-on checkboxes above belong to the SELECTED section, so read
+      // them into that section before snapshotting. Every other section
+      // already holds its own pkg/bpkg from when it was on screen.
+      var sections = state.sections.map(function(s){
+        return {
+          productType: s.productType,
+          format:      s.format,
+          tiers:       s.tiers || [],
+          pkg:         JSON.parse(JSON.stringify(s.pkg  || {})),
+          bpkg:        JSON.parse(JSON.stringify(s.bpkg || {})),
+          // Drop the blank rows that come from clicking "+ Custom Line" and
+          // then thinking better of it.
+          lines:       (s.lines || []).filter(function(l){ return String(l.desc||'').trim(); }),
+          inclusions:  inclusionsForType(s.productType)
+        };
+      });
+      var quoteLines = (state.quoteLines || []).filter(function(l){ return String(l.desc||'').trim(); });
+
       return {
+        sections:      sections,
+        quoteLines:    quoteLines,
         clientId:      (function(){
           var typed = (ov.querySelector('#gl-qb-client-name')||{}).value||'';
           if(clientId) return clientId;
@@ -883,18 +1132,43 @@
         quoteNumber:   quoteNumber,
         quoteDate:     quoteDate,
         validDays:     validDays,
-        productType:   productType,
-        packageFormat: packageFormat,
-        tiers:         state.tiers,
+        // Legacy single-format fields, taken from the FIRST section. The
+        // quotes table still has NOT NULL product_type and package_format
+        // columns, and the quote history list, the deal panel and every saved
+        // quote read them. Keeping them populated means nothing downstream
+        // has to learn about sections to keep working.
+        productType:   sections[0] ? sections[0].productType : productType,
+        packageFormat: sections[0] ? sections[0].format      : packageFormat,
+        tiers:         sections[0] ? sections[0].tiers       : state.tiers,
         addons:        addons,
         pkg:           JSON.parse(JSON.stringify(state.pkg || {})),
         bpkg:          JSON.parse(JSON.stringify(state.bpkg || {})),
-        inclusions:    inclusionsForType(productType),
+        // Union across sections, in first-seen order. A quote with cans and
+        // bottles on it has to show what is included for both.
+        inclusions:    (function(){
+          var seen = {}, out = [];
+          sections.forEach(function(s){
+            inclusionsForType(s.productType).forEach(function(x){
+              if(!seen[x]){ seen[x] = 1; out.push(x); }
+            });
+          });
+          return out.length ? out : inclusionsForType(productType);
+        })(),
         notes:         notes,
         clientName:    (ov.querySelector('#gl-qb-client-name')||{}).value || client.name || '',
         clientEmail:   (ov.querySelector('#gl-qb-client-email')||{}).value || client.email || '',
         contactName:   opts.contactName || ''
       };
+    }
+
+    // Priceable = any section has a volume tier, or there is a custom line
+    // somewhere. The old check looked only at the single tier list, so a
+    // quote made entirely of custom lines could not be saved at all.
+    function quoteHasContent(d){
+      var secs = d.sections || [];
+      if(secs.some(function(x){ return (x.tiers||[]).length || (x.lines||[]).length; })) return true;
+      if((d.quoteLines||[]).length) return true;
+      return (d.tiers||[]).length > 0;
     }
 
     /* ── Save ── */
@@ -904,7 +1178,7 @@
       if(!sb){ st.style.color='#ff8579'; st.textContent='Not connected.'; return null; }
       st.style.color='var(--muted)'; st.textContent='Saving…';
       var data = buildQuoteData();
-      if(!data.tiers.length){ st.style.color='#ff8579'; st.textContent='Add at least one tier before saving.'; return null; }
+      if(!quoteHasContent(data)){ st.style.color='#ff8579'; st.textContent='Add a volume tier or a custom line before saving.'; return null; }
       /* Take a number from the database now. Never fall back to a locally
          guessed one — quote_number is UNIQUE and a duplicate loses the save. */
       if(!data.quoteNumber){
@@ -931,6 +1205,11 @@
         // reopened quote can restore it. Kept inside the existing addons jsonb
         // array (id '__pkg__') to avoid a schema change; readers key by id.
         addons:         (data.addons||[]).concat([{ id:'__pkg__', pkg: data.pkg }]),
+        // Every format on the quote, and the free-text lines. product_type and
+        // package_format above describe sections[0] only; these two columns are
+        // the whole picture.
+        sections:       data.sections || [],
+        custom_lines:   data.quoteLines || [],
         inclusions:     data.inclusions,
         notes:          data.notes,
         pdf_html:       generateQuoteHTML(data)
@@ -953,7 +1232,7 @@
 
     ov.querySelector('#gl-qb-pdf').addEventListener('click', function(){
       var data = buildQuoteData();
-      if(!data.tiers.length){ ov.querySelector('#gl-qb-status').style.color='#ff8579'; ov.querySelector('#gl-qb-status').textContent='Add at least one tier.'; return; }
+      if(!quoteHasContent(data)){ ov.querySelector('#gl-qb-status').style.color='#ff8579'; ov.querySelector('#gl-qb-status').textContent='Add a volume tier or a custom line.'; return; }
       openPrintWindow(data);
     });
 
@@ -976,17 +1255,35 @@
 
       var contact   = data.contactName || data.clientName || 'there';
       var validThru = fmtDate(addDays(data.quoteDate, data.validDays));
-      var tierLines = data.tiers.map(function(t){
-        if(data.productType==='canning'){
-          var x = canningExtras(t, data.pkg);
-          return '<li>'+fmtNum(t.cases)+' cases ('+fmtNum(t.cans||0)+' cans) — '+fmtUsd(x.runTotal)+' all-in ('+fmtUsd((t.cans||0)?x.runTotal/(t.cans||1):0)+'/can)</li>';
-        } else if(data.productType==='bottling'){
-          var bx = bottlingExtras(t, data.bpkg);
-          return '<li>'+fmtNum(t.cases)+' cases ('+fmtNum(t.bottles||0)+' bottles) — '+fmtUsd(bx.runTotal)+' all-in</li>';
-        } else {
+      // The in-email summary walks every format on the quote, not just the
+      // first, and names each one when there is more than one. Custom lines
+      // are listed too — they are real money and used to be invisible here.
+      var _secs = (data.sections && data.sections.length) ? data.sections : [{
+        productType: data.productType, format: data.packageFormat,
+        tiers: data.tiers, pkg: data.pkg, bpkg: data.bpkg, lines: []
+      }];
+      var _multi = _secs.length > 1;
+      function _lineRows(list){
+        return (list||[]).filter(function(l){ return String(l.desc||'').trim(); }).map(function(l){
+          var qty = Number(l.qty)||0, rate = Number(l.rate)||0;
+          return '<li>'+esc(l.desc)+' — '+fmtNum(qty)+(l.unit ? ' '+esc(l.unit) : '')+' @ '+fmtUsd(rate)+' = '+fmtUsd(qty*rate)+'</li>';
+        }).join('');
+      }
+      var tierLines = _secs.map(function(sec){
+        var label = sec.format || (sec.productType === 'bottling' ? 'Bottling' : sec.productType === 'keg' ? 'Keg Filling' : 'Canning');
+        var rows = (sec.tiers||[]).map(function(t){
+          if(sec.productType==='canning'){
+            var x = canningExtras(t, sec.pkg);
+            return '<li>'+fmtNum(t.cases)+' cases ('+fmtNum(t.cans||0)+' cans) — '+fmtUsd(x.runTotal)+' all-in ('+fmtUsd((t.cans||0)?x.runTotal/(t.cans||1):0)+'/can)</li>';
+          } else if(sec.productType==='bottling'){
+            var bx = bottlingExtras(t, sec.bpkg);
+            return '<li>'+fmtNum(t.cases)+' cases ('+fmtNum(t.bottles||0)+' bottles) — '+fmtUsd(bx.runTotal)+' all-in</li>';
+          }
           return '<li>'+fmtNum(t.kegs||0)+' kegs — '+fmtUsd((t.laborPerKeg||0)+(t.kegCostPerKeg||0))+'/keg</li>';
-        }
-      }).join('');
+        }).join('') + _lineRows(sec.lines);
+        if(!rows) return '';
+        return _multi ? '<li style="list-style:none;margin-left:-20px;font-weight:700;padding-top:6px">'+esc(label)+'</li>' + rows : rows;
+      }).join('') + _lineRows(data.quoteLines);
 
       /* Build email HTML from the editable textarea, then append auto-generated quote summary */
       var rawBody   = ((ov.querySelector('#gl-qb-email-body')||{}).value || '').trim();
@@ -1029,14 +1326,22 @@
       }
     });
 
-    renderTiers();
+    // Paint tabs, add-ons, tiers and custom lines for the opening section.
+    // Runs last so the table styles declared further up this function are
+    // assigned before any renderer reads them.
+    selectSection(state.activeIdx);
   };
 
   /* ── PDF HTML generation (Stiiizy-format) ───────────────────── */
   function generateQuoteHTML(data){
-    var isCanning  = data.productType === 'canning';
-    var isBottling = data.productType === 'bottling';
-    var isKeg      = data.productType === 'keg';
+    // A quote carries one or more formats. Quotes saved before sections
+    // existed have no array, so treat those as the single format their own
+    // columns describe — every quote ever saved still renders.
+    var SECTIONS = (data.sections && data.sections.length) ? data.sections : [{
+      productType: data.productType, format: data.packageFormat,
+      tiers: data.tiers, pkg: data.pkg, bpkg: data.bpkg, lines: []
+    }];
+    var MULTI = SECTIONS.length > 1;
     var validUntil = fmtDate(addDays(data.quoteDate, data.validDays));
 
     // Addons lookup
@@ -1054,9 +1359,15 @@
       '</div>';
     }
 
-    // ── Tiers table (canning format) ──
-    var tiersTable = '';
-    if(isCanning){
+    // One priced block per format. The parameter is named `data` on purpose:
+    // the body below was written against data.pkg / data.tiers / data.bpkg and
+    // moves here verbatim, now pointed at one section rather than the quote.
+    // hasAddon / addonRate stay bound to the outer quote-level data.
+    function sectionTiers(data){
+      var isCanning  = data.productType === 'canning';
+      var isBottling = data.productType === 'bottling';
+      var tiersTable = '';
+      if(isCanning){
       var PK = data.pkg || {};
       tiersTable = (data.tiers||[]).map(function(t){
         var x   = canningExtras(t, PK);
@@ -1153,6 +1464,48 @@
         }).join('') +
         '</tbody></table>';
     }
+      return tiersTable;
+    }
+
+    // Free-text lines, priced qty × rate. This is the escape hatch for
+    // anything the standard deck does not model.
+    function linesTable(lines, heading){
+      var rows = (lines || []).filter(function(l){ return String(l.desc||'').trim(); });
+      if(!rows.length) return '';
+      var total = rows.reduce(function(a,l){ return a + (Number(l.qty)||0)*(Number(l.rate)||0); }, 0);
+      return '<div style="font-weight:700;margin:14px 0 8px;color:#0a1628">'+esc(heading)+'</div>' +
+        '<table style="width:100%;border-collapse:collapse;margin-bottom:16px">' +
+        '<thead><tr>' +
+          '<th style="'+PTH+'">Item</th>' +
+          '<th style="'+PTH+'">Qty</th>' +
+          '<th style="'+PTH+'">Unit Price</th>' +
+          '<th style="'+PTH+';color:#1a6fff">Amount</th>' +
+        '</tr></thead><tbody>' +
+        rows.map(function(l){
+          var qty = Number(l.qty)||0;
+          return '<tr>' +
+            '<td style="'+PTDC+'">'+esc(l.desc||'')+'</td>' +
+            '<td style="'+PTDC+'">'+fmtNum(qty)+(l.unit ? ' '+esc(l.unit) : '')+'</td>' +
+            '<td style="'+PTDC+'">'+fmtUsd(l.rate||0)+'</td>' +
+            '<td style="'+PTD_BLUE+'">'+fmtUsd(qty*(Number(l.rate)||0))+'</td>' +
+          '</tr>';
+        }).join('') +
+        '<tr><td colspan="3" style="'+PTDC+';text-align:right;font-weight:700">Subtotal</td>' +
+          '<td style="'+PTD_BLUE+'">'+fmtUsd(total)+'</td></tr>' +
+        '</tbody></table>';
+    }
+
+    // Assemble: a block per format, then the lines that span the whole job.
+    // The heading only appears on a multi-format quote, so a single-format
+    // one looks exactly as it always did.
+    var tiersTable = SECTIONS.map(function(sec){
+      var label = sec.format || (sec.productType === 'bottling' ? 'Bottling' : sec.productType === 'keg' ? 'Keg Filling' : 'Canning');
+      var heading = MULTI
+        ? '<div style="margin:22px 0 10px;padding:8px 14px;background:#0a1628;color:#fff;font-weight:700;letter-spacing:1px;border-radius:4px">'+esc(label)+'</div>'
+        : '';
+      return heading + sectionTiers(sec) + linesTable(sec.lines, 'Additional items — ' + label);
+    }).join('') +
+    linesTable(data.quoteLines || data.customLines, 'Additional items');
 
     // ── What's included ──
     var incl = (data.inclusions || inclusionsForType(data.productType));
@@ -1161,7 +1514,18 @@
     var col2 = incl.slice(half).map(function(s){ return '<div style="display:flex;gap:8px;margin-bottom:6px"><span style="color:#1a6fff;flex-shrink:0">&#10003;</span> '+s+'</div>'; }).join('');
 
     // ── Terms ──
-    var terms = termsForType(data.productType);
+    // Terms are per product type, so a quote with cans and bottles on it needs
+    // both sets. Union in first-seen order, de-duplicated: the pricing caveat
+    // is worded identically for canning and bottling and should appear once.
+    var terms = (function(){
+      var seen = {}, out = [];
+      SECTIONS.forEach(function(sec){
+        termsForType(sec.productType).forEach(function(t){
+          if(!seen[t]){ seen[t] = 1; out.push(t); }
+        });
+      });
+      return out.length ? out : termsForType(data.productType);
+    })();
     if(data.notes) terms = terms.concat(['<b>Additional Notes:</b> '+data.notes]);
 
     // PTH/PTDC/PTD_BLUE are defined at module scope (below). Declaring them
@@ -1194,8 +1558,14 @@
           (data.clientEmail ? '<div style="font-size:12px;color:#4a5568;margin-top:3px">'+esc(data.clientEmail)+'</div>' : '') +
         '</div>' +
         '<div style="text-align:right">' +
-          '<div class="client-label">PACKAGE FORMAT</div>' +
-          '<div style="font-size:19px;font-weight:900;color:#1a2240">'+esc(data.packageFormat)+'</div>' +
+          // On a multi-format quote this header used to name only the first
+          // format, which reads as though the other blocks were not quoted.
+          '<div class="client-label">'+(MULTI ? 'PACKAGE FORMATS' : 'PACKAGE FORMAT')+'</div>' +
+          '<div style="font-size:'+(MULTI ? '15' : '19')+'px;font-weight:900;color:#1a2240;line-height:1.4">' +
+            SECTIONS.map(function(sec){
+              return esc(sec.format || (sec.productType === 'bottling' ? 'Bottling' : sec.productType === 'keg' ? 'Keg Filling' : 'Canning'));
+            }).join('<br>') +
+          '</div>' +
         '</div>' +
       '</div>' +
       '<div class="section-title">VOLUME PRICING OPTIONS <span style="float:right;font-size:10px;color:#9aa7bd;font-weight:400;letter-spacing:0">All amounts USD</span></div>' +
