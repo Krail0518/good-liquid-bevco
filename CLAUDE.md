@@ -78,6 +78,16 @@ outside using only the public key, so it catches exactly the class of hole that
 code review cannot: dashboard drift and accidental exposure. CI runs it on every
 push and daily.
 
+It reports three outcomes, and the difference between two of them is the whole
+point. **FAIL** means the invariant was tested and is violated: someone can read
+the data, and re-running it changes nothing. **UNVERIFIED** means the probe never
+reached production, so it proved nothing; the run is still red, because an
+untested invariant must not ride a green check, but no exposure was observed.
+Read which one the run says before you act on it. It used to report a 504 from
+the gateway as `ANONYMOUS DATA VISIBLE` (GL-070), and a security alarm that
+cries wolf teaches people to re-run it, which is the reflex the whole file
+exists to prevent.
+
 Then verify your actual change the same way — reproduce the problem, apply the
 fix, reproduce again. Simulate a role with:
 

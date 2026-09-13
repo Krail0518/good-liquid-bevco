@@ -118,6 +118,12 @@ jobs:
       # A credential committed to the repo is public forever. No browser needed.
       - name: Run committed-secret tests
         run: node tests/committed-secrets.test.cjs
+      # security-invariants.sh must tell a timeout apart from a leak. It once
+      # reported a 504 as "ANONYMOUS DATA VISIBLE", and the fix for that is a
+      # classifier, so the classifier is tested: the real script is run against
+      # a local stub answering the way production did. No browser needed.
+      - name: Run security-invariant classifier tests
+        run: node tests/security-invariants-classifier.test.cjs
       # client-docs is private: no URL may be persisted, the file_path column
       # must exist, and the page must offer a way back out. No browser needed.
       - name: Run documents storage tests

@@ -15,22 +15,98 @@
 # It needs no secrets — only the publishable key, which is public by design.
 # That is the point: if this script can read your data, so can anyone.
 #
+# EVERY PROBE HAS THREE OUTCOMES, NEVER TWO.
+# The first version had two: a response it recognised as a refusal, and
+# "ANONYMOUS DATA VISIBLE" for everything else. On 2026-09-13 the daily run
+# met a 504 from the API gateway and reported `deals` and `profiles` as
+# world-readable. Nothing was exposed — the request never reached Postgres —
+# and the run was simply re-run until it went green.
+#
+# That is the worst thing a security alarm can do. It trains its readers to
+# treat a red run as noise and re-run it, which is precisely the reflex that
+# let the real hole survive, and the same "a check that cries wolf gets
+# ignored" that section 4 below was already careful about. So:
+#
+#   ok          the invariant was tested and holds
+#   FAIL        the invariant was tested and is VIOLATED — data is exposed
+#   UNVERIFIED  the probe could not reach the system, so it proved nothing
+#
+# UNVERIFIED still fails the run — an unchecked invariant must never ride a
+# green check, which is the lesson section 5 carries — but it never claims
+# exposure it did not observe. The summary at the bottom says which happened,
+# so the person reading the failure e-mail can tell "someone can read your
+# invoices" from "the gateway timed out".
+#
 # Usage:  bash scripts/security-invariants.sh
-# Exit 0 = all invariants hold. Exit 1 = something regressed.
+# Exit 0 = every invariant was tested and holds.
+# Exit 1 = an invariant is violated, OR one could not be tested.
 
 set -uo pipefail
 
-SUPA="https://ufjkeqmxwuyhbqyugcgg.supabase.co"
-ANON="sb_publishable_-37mkPw8uLzEJM21T9jJOA_YQRQ7ikB"
-SITE="https://www.goodliquidbevco.com"
+# Production by default. The overrides exist so tests/security-invariants-
+# classifier.test.cjs can point the probes at a local stub and prove the
+# classifier calls a timeout a timeout. CI sets neither, so CI probes
+# production; an overridden run announces itself loudly below so its output
+# can never be mistaken for one.
+SUPA="${GL_INVARIANT_SUPA_URL:-https://ufjkeqmxwuyhbqyugcgg.supabase.co}"
+SITE="${GL_INVARIANT_SITE_URL:-https://www.goodliquidbevco.com}"
+ANON="${GL_INVARIANT_ANON_KEY:-sb_publishable_-37mkPw8uLzEJM21T9jJOA_YQRQ7ikB}"
 FAILED=0
+# A probe that could not reach the system. Separate from FAILED because the
+# two mean opposite things to whoever reads the run, even though both are
+# red. Both contribute to the exit code.
+UNVERIFIED=0
 # Whether the authenticated-identity probe (section 5) actually produced a
 # verdict. The summary must not claim "all invariants hold" when the single
 # most important one was never evaluated.
 PROBE_VERDICT=0
 
+# Retry budget for the transport failures — a 5xx from the gateway, a reset
+# connection, a DNS blip. These are not verdicts, so they are retried before
+# the probe gives up and reports UNVERIFIED.
+PROBE_ATTEMPTS="${GL_INVARIANT_PROBE_ATTEMPTS:-3}"
+PROBE_BACKOFF="${GL_INVARIANT_PROBE_BACKOFF:-2}"
+
 pass(){ printf '  \033[32mok\033[0m   %s\n' "$1"; }
 fail(){ printf '  \033[31mFAIL\033[0m %s\n' "$1"; FAILED=1; }
+# Deliberately not called "skip": nothing here is optional. This is a probe
+# that came back with no information, and the run stays red because of it.
+unver(){ printf '  \033[33m????\033[0m UNVERIFIED — %s\n' "$1"; UNVERIFIED=1; }
+
+HTTP_CODE=000
+HTTP_BODY=""
+
+# Run one probe, retrying only the failures that are transport rather than
+# policy. Sets HTTP_CODE and HTTP_BODY. Returns 0 when a response arrived
+# that is worth classifying, 1 when every attempt failed to reach the API.
+#
+# A 401/403 is a RESPONSE, not a failure — it is usually the very refusal we
+# are hoping for — so it is never retried. Only 000 (no response at all),
+# 5xx, 408 and 429 are.
+http_probe(){
+  local attempt=1 rc out
+  while :; do
+    out=$(curl -s --max-time 20 -w '\n%{http_code}' "$@"); rc=$?
+    HTTP_CODE=$(printf '%s\n' "$out" | tail -n 1)
+    HTTP_BODY=$(printf '%s\n' "$out" | sed '$d')
+    case "$HTTP_CODE" in ''|*[!0-9]*) HTTP_CODE=000 ;; esac
+    if [ "$rc" -eq 0 ] && [ "$HTTP_CODE" != "000" ] && [ "$HTTP_CODE" -lt 500 ] \
+       && [ "$HTTP_CODE" -ne 408 ] && [ "$HTTP_CODE" -ne 429 ]; then
+      return 0
+    fi
+    [ "$attempt" -ge "$PROBE_ATTEMPTS" ] && return 1
+    [ "$PROBE_BACKOFF" -gt 0 ] && sleep $((attempt * PROBE_BACKOFF))
+    attempt=$((attempt + 1))
+  done
+}
+
+why(){ [ "$HTTP_CODE" = "000" ] && printf 'no response from the API' || printf 'HTTP %s' "$HTTP_CODE"; }
+snip(){ if [ -z "$HTTP_BODY" ]; then printf '(empty body)'; else printf '%s' "$HTTP_BODY" | head -c 120; fi; }
+
+if [ -n "${GL_INVARIANT_SUPA_URL:-}${GL_INVARIANT_SITE_URL:-}${GL_INVARIANT_ANON_KEY:-}" ]; then
+  printf '\n\033[33m!! TARGET OVERRIDDEN — this run probes %s / %s, NOT production.\033[0m\n' "$SUPA" "$SITE"
+  printf '\033[33m!! Its result says nothing about the live system.\033[0m\n'
+fi
 
 echo
 echo "── 1. No anonymous access to business data ───────────────────"
@@ -39,25 +115,42 @@ for t in clients invoices deals quotes profiles customer_users onboarding \
          expenses audit_log invoice_payments client_notes client_rate_overrides \
          formulas vendors production_runs sample_shipments referrals referrers \
          trade_shows content_calendar yield_logs defects company_docs qbo_tokens; do
-  body=$(curl -s --max-time 20 "$SUPA/rest/v1/$t?select=*&limit=1" -H "apikey: $ANON")
+  if ! http_probe "$SUPA/rest/v1/$t?select=*&limit=1" -H "apikey: $ANON"; then
+    unver "$t — the probe never reached the database ($(why)). This is NOT evidence of exposure."
+    continue
+  fi
   # Acceptable: permission denied (42501), or an empty set (RLS filtered all rows).
-  if echo "$body" | grep -q '42501'; then
+  if echo "$HTTP_BODY" | grep -q '42501'; then
     pass "$t — permission denied"
-  elif [ "$body" = "[]" ]; then
+  elif [ "$HTTP_BODY" = "[]" ]; then
     pass "$t — no rows visible"
+  elif [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+    # The API answered, successfully, with something other than an empty set.
+    # That is rows, and rows here are the incident this script exists for.
+    fail "$t — ANONYMOUS DATA VISIBLE: $(snip)"
   else
-    fail "$t — ANONYMOUS DATA VISIBLE: $(echo "$body" | head -c 120)"
+    # Answered, but with neither a refusal nor data: a 404 from a renamed
+    # table, a malformed request, an auth error of some other shape. It does
+    # not prove exposure and it does not prove safety.
+    unver "$t — unexpected $(why), so exposure is untested: $(snip)"
   fi
 done
 
 echo
 echo "── 2. No anonymous writes ────────────────────────────────────"
 for t in clients invoices deals; do
-  body=$(curl -s --max-time 20 -X DELETE "$SUPA/rest/v1/$t?id=neq.00000000-0000-0000-0000-000000000000" -H "apikey: $ANON")
-  if echo "$body" | grep -q '42501'; then
+  if ! http_probe -X DELETE "$SUPA/rest/v1/$t?id=neq.00000000-0000-0000-0000-000000000000" -H "apikey: $ANON"; then
+    unver "$t — the delete probe never reached the database ($(why)). NOT evidence the delete was allowed."
+    continue
+  fi
+  if echo "$HTTP_BODY" | grep -q '42501'; then
     pass "$t — delete refused"
+  elif [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+    # A 204 with an empty body is what a SUCCESSFUL anonymous delete looks
+    # like. This branch is the alarm.
+    fail "$t — ANONYMOUS DELETE NOT REFUSED: HTTP $HTTP_CODE $(snip)"
   else
-    fail "$t — ANONYMOUS DELETE NOT REFUSED: $(echo "$body" | head -c 120)"
+    unver "$t — the delete came back as an unexpected $(why), so no refusal by RLS was observed: $(snip)"
   fi
 done
 
@@ -72,44 +165,61 @@ echo "── 2b. The one open anon table stays tenant-free ───────
 # that assumptions expire silently. So assert it from outside, with the same
 # key an attacker would use: if the table ever gains a column that identifies
 # a client, the USING (true) stops being safe and this fails.
-cap=$(curl -s --max-time 20 "$SUPA/rest/v1/capacity?select=*&limit=1" -H "apikey: $ANON")
-if echo "$cap" | grep -q '42501'; then
+#
+# This one needed the three-outcome rule most, and in the dangerous direction:
+# a timeout body carries no column names either, so the old two-way test read
+# a 504 as "no tenant identifier" and PASSED.
+if ! http_probe "$SUPA/rest/v1/capacity?select=*&limit=1" -H "apikey: $ANON"; then
+  unver "capacity — the probe never reached the database ($(why)), so its columns were not inspected."
+elif echo "$HTTP_BODY" | grep -q '42501'; then
   pass "capacity — not anon-readable (policy tightened since; fine)"
-else
-  leaky=$(echo "$cap" | grep -oiE '"(client_id|client_name|customer_id|company|brand|account_id|owner|email)"' | sort -u | tr '
-' ' ')
+elif [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+  leaky=$(echo "$HTTP_BODY" | grep -oiE '"(client_id|client_name|customer_id|company|brand|account_id|owner|email)"' | sort -u | tr '\n' ' ')
   if [ -n "$leaky" ]; then
     fail "capacity — tenant-identifying column now anon-readable: $leaky"
   else
     pass "capacity — anon-readable but carries no tenant identifier"
   fi
+else
+  unver "capacity — unexpected $(why), so its columns were not inspected: $(snip)"
 fi
 
 echo
 echo "── 3. The public surface still works ─────────────────────────"
 # These SHOULD be reachable anonymously — the portal and public pages depend
 # on them. A failure here means a lockdown went too far and broke customers.
-code=$(curl -s --max-time 20 -o /dev/null -w '%{http_code}' -X POST "$SUPA/rest/v1/rpc/get_shared_invoice" \
-  -H "apikey: $ANON" -H 'Content-Type: application/json' -d '{"p_token":"probe"}')
-[ "$code" = "200" ] && pass "public invoice links (get_shared_invoice)" \
-                    || fail "public invoice links broken — HTTP $code"
+# An unreachable host is a different claim from a broken endpoint, and gets
+# the different label.
+probe_public(){   # $1 = label; rest = curl args
+  local label="$1"; shift
+  if ! http_probe "$@"; then
+    unver "$label — could not be reached ($(why)), so it was not tested."
+  elif [ "$HTTP_CODE" = "200" ]; then
+    pass "$label"
+  else
+    fail "$label — broken, HTTP $HTTP_CODE"
+  fi
+}
 
-code=$(curl -s --max-time 20 -o /dev/null -w '%{http_code}' -X POST "$SUPA/rest/v1/rpc/gl_onboarding_get" \
-  -H "apikey: $ANON" -H 'Content-Type: application/json' -d '{"p_token":"probe"}')
-[ "$code" = "200" ] && pass "client onboarding page (gl_onboarding_get)" \
-                    || fail "onboarding page broken — HTTP $code"
+probe_public "public invoice links (get_shared_invoice)" -X POST "$SUPA/rest/v1/rpc/get_shared_invoice" \
+  -H "apikey: $ANON" -H 'Content-Type: application/json' -d '{"p_token":"probe"}'
+
+probe_public "client onboarding page (gl_onboarding_get)" -X POST "$SUPA/rest/v1/rpc/gl_onboarding_get" \
+  -H "apikey: $ANON" -H 'Content-Type: application/json' -d '{"p_token":"probe"}'
 
 # Probed with an EMPTY payload so it validates and rejects without creating a
 # deal — reachability without side effects.
-body=$(curl -s --max-time 20 -X POST "$SUPA/rest/v1/rpc/submit_quote_request" \
-  -H "apikey: $ANON" -H 'Content-Type: application/json' -d '{"p":{}}')
-echo "$body" | grep -q 'brand_name is required' \
-  && pass "public quote form (submit_quote_request)" \
-  || fail "quote form unreachable or changed: $(echo "$body" | head -c 120)"
+if ! http_probe -X POST "$SUPA/rest/v1/rpc/submit_quote_request" \
+     -H "apikey: $ANON" -H 'Content-Type: application/json' -d '{"p":{}}'; then
+  unver "public quote form (submit_quote_request) — could not be reached ($(why)), so it was not tested."
+elif echo "$HTTP_BODY" | grep -q 'brand_name is required'; then
+  pass "public quote form (submit_quote_request)"
+else
+  fail "quote form unreachable or changed: $(snip)"
+fi
 
 for p in "/" "/?portal=1" "/onboard.html"; do
-  code=$(curl -sL --max-time 25 -o /dev/null -w '%{http_code}' "$SITE$p")
-  [ "$code" = "200" ] && pass "page $p" || fail "page $p — HTTP $code"
+  probe_public "page $p" -L --max-time 25 -o /dev/null "$SITE$p"
 done
 
 echo
@@ -146,7 +256,8 @@ echo "── 5. A self-registered stranger is not staff ────────
 # the run still ended "All security invariants hold" with exit 0 — the critical
 # invariant unverified behind a green check. That is the same defect this whole
 # audit has been chasing, so: when the probe is requested, any inability to
-# verify is a FAILURE.
+# verify fails the run. It reports UNVERIFIED rather than FAIL, because "we
+# could not ask" and "the answer was wrong" are different facts; both are red.
 #
 # The profile assertion is made SERVER-SIDE through the Supabase Management API,
 # so it does not depend on the new user getting a session, and works whether or
@@ -187,21 +298,33 @@ else
 
   # Run one statement server-side and echo the raw JSON body.
   # The token is passed via a header from the environment and never printed.
+  # Every statement here is a select or an idempotent delete, so retrying a
+  # gateway failure is safe — and an unreachable Management API says nothing
+  # about the invariant, exactly as in section 1.
   mgmt(){
-    curl -sS --max-time 30 -X POST \
+    if ! http_probe --max-time 30 -X POST \
       "https://api.supabase.com/v1/projects/$PROJECT_REF/database/query" \
       -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
       -H "Content-Type: application/json" \
-      --data "$(json_wrap "$1")"
+      --data "$(json_wrap "$1")"; then
+      # Says why rather than returning an empty string: this runs in a command
+      # substitution, so HTTP_CODE never reaches the caller, and "no response"
+      # is the one thing the caller most needs to print.
+      printf '{"unreachable":"the Management API could not be reached (%s)"}' "$(why)"
+      return 1
+    fi
+    printf '%s' "$HTTP_BODY"
   }
 
   if [ -z "$JSONTOOL" ]; then
-    fail "signup probe requested but neither jq nor node is available — cannot verify server-side"
+    unver "the signup probe was requested but neither jq nor node is available — it cannot be verified server-side"
   elif [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then
-    fail "signup probe requested but SUPABASE_ACCESS_TOKEN is not set — the profile assertion cannot be performed"
+    unver "the signup probe was requested but SUPABASE_ACCESS_TOKEN is not set — the profile assertion cannot be performed"
   else
     probe_email="invariant-probe-$(date +%s)-$RANDOM@example.invalid"
     probe_pw="Pr0be-$RANDOM-$RANDOM-Aa!"
+    # NOT retried: a signup is not idempotent, and a second attempt after a
+    # timeout could leave an account nobody cleans up.
     signup=$(curl -sS --max-time 25 -X POST "$SUPA/auth/v1/signup" \
       -H "apikey: $ANON" -H 'Content-Type: application/json' \
       -d "{\"email\":\"$probe_email\",\"password\":\"$probe_pw\"}")
@@ -215,14 +338,14 @@ else
       PROBE_VERDICT=1
       pass "self-service signup is disabled — a stranger cannot create an account"
     elif [ -z "$uid" ]; then
-      fail "signup probe could not obtain a user id — cannot verify the invariant. Response: $(printf '%s' "$signup" | head -c 200)"
+      unver "the signup probe could not obtain a user id, so the invariant was not tested. Response: $(printf '%s' "$signup" | head -c 200)"
     else
       # ── THE invariant, asserted server-side ──────────────────────
       PROBE_VERDICT=1
       prof=$(mgmt "select count(*)::int as n from public.profiles where id = '$uid';")
       n=$(jnum "$prof" n)
       if [ -z "$n" ]; then
-        fail "could not read profiles server-side — the invariant is UNVERIFIED. Response: $(printf '%s' "$prof" | head -c 200)"
+        unver "public.profiles could not be read server-side, so the invariant was not tested. Response: $(printf '%s' "$prof" | head -c 200)"
       elif [ "$n" -ne 0 ]; then
         fail "SELF-SIGNUP RECEIVED A STAFF PROFILE ($n row) — handle_new_user() is not gating on invited_at"
       else
@@ -236,20 +359,22 @@ else
       if [ "$an" = "1" ]; then
         pass "the probe account was really created (so the zero above is the trigger declining)"
       else
-        fail "probe account not found server-side — the profile check above proved nothing"
+        unver "the probe account was not found server-side, so the profile check above proved nothing"
       fi
 
       # ── Data access, when a session is available ─────────────────
       if [ -n "$tok" ]; then
-        auth=(-H "apikey: $ANON" -H "Authorization: Bearer $tok")
         for t in clients invoices formulas lot_documents customer_users; do
-          body=$(curl -sS --max-time 20 "$SUPA/rest/v1/$t?select=*&limit=1" "${auth[@]}")
-          if echo "$body" | grep -q '42501'; then
+          if ! http_probe "$SUPA/rest/v1/$t?select=*&limit=1" -H "apikey: $ANON" -H "Authorization: Bearer $tok"; then
+            unver "$t — the probe never reached the database ($(why)). NOT evidence of exposure to a self-registered account."
+          elif echo "$HTTP_BODY" | grep -q '42501'; then
             pass "$t — permission denied to a self-registered account"
-          elif [ "$body" = "[]" ]; then
+          elif [ "$HTTP_BODY" = "[]" ]; then
             pass "$t — no rows visible to a self-registered account"
+          elif [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            fail "$t — VISIBLE TO A SELF-REGISTERED ACCOUNT: $(snip)"
           else
-            fail "$t — VISIBLE TO A SELF-REGISTERED ACCOUNT: $(echo "$body" | head -c 160)"
+            unver "$t — unexpected $(why), so exposure to a self-registered account is untested: $(snip)"
           fi
         done
       else
@@ -267,6 +392,8 @@ else
       if [ "$left" = "0" ]; then
         pass "probe account deleted"
       else
+        # A real leftover, not a missed measurement: the account exists, or we
+        # cannot tell that it does not. Either way somebody must go and look.
         fail "probe account was NOT deleted (id $uid) — remove it by hand"
       fi
     fi
@@ -275,9 +402,19 @@ fi
 
 echo
 if [ "$FAILED" -ne 0 ]; then
-  echo "SECURITY INVARIANT VIOLATED — see failures above."
+  echo "SECURITY INVARIANT VIOLATED — see the FAIL lines above."
+  echo "This is a finding about the live system, not about this run. Do not re-run it."
   echo "If a lockdown broke a public flow, each supabase/migrations/2026080*.sql"
   echo "file carries a rollback note at the top."
+  [ "$UNVERIFIED" -ne 0 ] && echo "Some probes were also UNVERIFIED — their invariants were never tested."
+elif [ "$UNVERIFIED" -ne 0 ]; then
+  echo "NOT PROVEN — one or more probes could not reach the system, so the"
+  echo "invariants they cover were never tested. NO EXPOSURE WAS OBSERVED:"
+  echo "every probe that got an answer got the right one."
+  echo "Each UNVERIFIED line above says what came back instead. A gateway"
+  echo "timeout or a 5xx has already been retried ${PROBE_ATTEMPTS}x here; if it persists,"
+  echo "check the Supabase status page before reading anything else into it."
+  echo "The run stays red on purpose: an untested invariant must not ride a green check."
 elif [ "$PROBE_VERDICT" -eq 1 ]; then
   echo "All security invariants hold, including the authenticated-identity probe."
 else
@@ -288,4 +425,7 @@ else
   echo "so the invariant that failed on 2026-08-28 is UNVERIFIED by this run."
   echo "It runs on the daily schedule and on manual dispatch."
 fi
-exit "$FAILED"
+# Both reds exit 1. A violated invariant and an untested one are different
+# facts, reported differently above, but neither may leave CI green.
+if [ "$FAILED" -ne 0 ] || [ "$UNVERIFIED" -ne 0 ]; then exit 1; fi
+exit 0
