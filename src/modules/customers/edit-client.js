@@ -470,6 +470,10 @@
             '<div style="font-size:10px;color:#6b87ad;margin-top:8px;line-height:1.5">Negotiated rates for this client. Used by the invoice builder INSTEAD OF the global tier ladder when present. Leave format blank for hour-based services (R&D / Production / Consulting).</div>' +
           '</div>' +
           '<div style="border-top:1px solid rgba(255,255,255,.08);margin:14px 0 6px"></div>' +
+          '<div style="'+LABEL_STYLE+';margin-bottom:6px">🗂 PROJECTS &amp; MILESTONES</div>' +
+          '<div style="font-size:11px;color:#9aa7bd;margin-bottom:8px">What the customer sees in their portal. Milestone status, the note they read, and which premium services are unlocked.</div>' +
+          '<div id="gl-ec-projects" style="margin-bottom:14px"></div>' +
+          '<div style="border-top:1px solid rgba(255,255,255,.08);margin:14px 0 6px"></div>' +
           '<div style="'+LABEL_STYLE+';margin-bottom:6px">🎨 LABEL ARTWORK / SKUs</div>' +
           '<div style="font-size:11px;color:#9aa7bd;margin-bottom:8px">One entry per can design — add as many SKUs as the customer has (1 to 20+).</div>' +
           '<div id="gl-ec-artwork" style="margin-bottom:14px"></div>' +
@@ -886,6 +890,7 @@
     } catch(e){}
     if(typeof cdeLoadCorrespondence === 'function'){ try { cdeLoadCorrespondence(c); } catch(e){} }
     if(typeof window.glRenderArtwork === 'function'){ try { window.glRenderArtwork(clientId, ov.querySelector('#gl-ec-artwork')); } catch(e){} }
+    if(typeof window.glRenderProjects === 'function'){ try { window.glRenderProjects(ov.querySelector('#gl-ec-projects'), { clientId: clientId }); } catch(e){} }
     if(typeof window.glFormulationBind === 'function'){ try { window.glFormulationBind('gl-ec-form'); } catch(e){} }
 
     setTimeout(function(){ ov.querySelector('#gl-ec-name').focus(); }, 50);

@@ -62,8 +62,10 @@
  *   /src/modules/customers/intake.js
  *   /src/modules/customers/onboarding.js
  *   /src/modules/customers/portal-customer.js
+ *   /src/modules/customers/portal-project.js
  *   /src/modules/customers/portal-public.js
  *   /src/modules/customers/portal.js
+ *   /src/modules/customers/projects-admin.js
  *   /src/modules/customers/requests.js
  *   /src/modules/customers/tags.js
  *

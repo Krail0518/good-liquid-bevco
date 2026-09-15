@@ -355,3 +355,13 @@ jobs:
         env:
           NODE_PATH: /tmp/pw/node_modules
         run: node tests/auth-fail-closed.test.cjs
+
+      # The customer portal is the SECOND class of user in a database whose
+      # policies were written when there was only one — the exact shape of the
+      # 2026-05-18 incident. This pins the conclusions that took three design
+      # rounds to reach: internal data is protected by the ABSENCE of a customer
+      # policy, never by omitting a column from a query or a view, and ledger
+      # reads go through security definer RPCs. Static only — it reads migration
+      # text and source. The live half is scripts/rls-identity-invariants.sql.
+      - name: Run portal tenant-isolation tests
+        run: node tests/portal-tenant-isolation.test.cjs

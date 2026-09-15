@@ -168,6 +168,7 @@ for (const [label, re] of FORBIDDEN) {
 // Set to the count observed on 2026-08-31. A ratchet, not a target: it exists
 // so that adding one is a decision someone makes in a pull request, not a
 // thing that happens.
+//
 // 2026-09-11: 606 → 610. The quote builder gained multi-format sections and
 // free-text custom lines, which added exactly four sinks: the section tab
 // strip, the format datalist, and the two custom-line tables. Every value
@@ -175,7 +176,15 @@ for (const [label, re] of FORBIDDEN) {
 // the section label, and each line's description, unit, quantity and rate.
 // Raised here in the same pull request that adds them, which is what the
 // ratchet asks for.
-const SINK_BUDGET = 610;
+//
+// 2026-09-14: 610 -> 614. The client portal gained a project spine
+// (portal-project.js, projects-admin.js): a milestone tracker, a status card,
+// tab panels and the staff project admin. Every value interpolated into those
+// four sinks goes through the local escHtml()/esc() -- project name, product
+// name, milestone label, and the client-facing note, which is the one a
+// stranger-adjacent party can influence because staff type it on a customer's
+// behalf. Raised deliberately, in the same PR as the code.
+const SINK_BUDGET = 614;
 let sinkCount = 0;
 const RAW = /\.(innerHTML|outerHTML)\s*(=|\+=)|insertAdjacentHTML\s*\(|document\.write(ln)?\s*\(/;
 for (const f of files) {

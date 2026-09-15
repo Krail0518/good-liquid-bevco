@@ -276,12 +276,34 @@
     // it's not actually rendered downstream. Migration 20260521 restores
     // the column server-side; this SELECT stays defensive either way.
     var shs = rowsOf('sample shipments', await sb.from('sample_shipments').select('id, kind, qty, shipped_date, carrier, tracking, status').eq('client_id', customer.client_id).order('shipped_date', { ascending: false, nullsFirst: false }));
-    // Only show non-draft formulas to the customer
-    var fms = rowsOf('formulas', await sb.from('formulas').select('id, name, version, status, batch_size_gal, target_yield_cases, allergens, updated_at').eq('client_id', customer.client_id).neq('status', 'draft').order('updated_at', { ascending: false }));
+    // Formula STATUS only, through a SECURITY DEFINER RPC whose return type has
+    // no ingredients, notes or allergens in it. This used to be a direct
+    // .from('formulas') select with .neq('status','draft') — which filtered the
+    // UI and nothing else: RLS is row-level, so a customer could simply request
+    // ?select=ingredients and read their client's formulations, drafts
+    // included. Migration 20260914090300 made formulas staff-only. Do not
+    // reintroduce a direct read here; there is deliberately no column to ask for.
+    var fmsR = await sb.rpc('gl_portal_formula_status');
+    var fms = rowsOf('formulas', fmsR);
     var lds = rowsOf('documents', await sb.from('lot_documents').select('id, document_type, title, lot_number, file_name, file_size, file_path, mime_type, uploaded_at, production_run_id').eq('client_id', customer.client_id).order('uploaded_at', { ascending: false }));
     // Agreements (NDA, contracts, formulas) — deal_documents rows carried over
     // from the pipeline at convert time plus anything uploaded here or by staff.
     var agms = rowsOf('agreements', await sb.from('deal_documents').select('id, doc_type, name, notes, file_path, created_at').eq('client_id', customer.client_id).order('created_at', { ascending: false }));
+
+    // Projects, milestones and entitlements. Guarded the same way the artwork
+    // mount is: portal-project.js loads after this file in index.html, so a
+    // hard call would break the whole dashboard if the tag order ever moved.
+    var projData = { projects: [], milestones: {}, ents: {}, errors: [] };
+    if(typeof window.glPortalLoadProjects === 'function'){
+      try { projData = await window.glPortalLoadProjects(customer.client_id); }
+      catch(e){ loadErrors.push('projects: ' + (e && e.message || e)); }
+    }
+    (projData.errors || []).forEach(function(m){ loadErrors.push(m); });
+
+    var activeProject = (typeof window.glPortalActiveProject === 'function')
+      ? window.glPortalActiveProject(projData.projects) : null;
+    var activeMs  = (activeProject && projData.milestones[activeProject.id]) || [];
+    var activeEnt = (activeProject && projData.ents[activeProject.id]) || {};
 
     if(loadErrors.length) console.error('[GL portal] dashboard load errors', loadErrors);
     // One plain banner for the whole dashboard — sections that loaded fine
@@ -292,6 +314,49 @@
           '<a href="mailto:Mike@GoodLiquid.com" style="color:#f5c842;font-weight:700">Mike@GoodLiquid.com</a> if this keeps happening.' +
         '</div>'
       : '';
+
+    // ── Tab scaffolding ───────────────────────────────────────────────────
+    // Locked tabs stay in the bar. A service the client has not bought renders
+    // a real panel explaining it, never a disabled dead click — that surface is
+    // the reason the portal is tabbed at all. Entitlements come from
+    // gl_portal_entitlements(); the UI never decides what is unlocked.
+    var TABS = [
+      { id:'overview',  label:'Overview' },
+      { id:'documents', label:'Documents' },
+      { id:'formula',   label:'Formula' },
+      { id:'orders',    label:'Samples & Orders' },
+      { id:'renders',   label:'Renders',            service:'renders' },
+      { id:'artwork',   label:'Packaging & Artwork', service:'packaging_artwork' },
+      { id:'analytics', label:'Market Analytics',   service:'market_analytics' },
+      { id:'billing',   label:'Billing' }
+    ].map(function(t){
+      t.locked = !!(t.service && !activeEnt[t.service]);
+      return t;
+    });
+
+    var activeTab = (typeof window.glPortalActiveTab === 'function')
+      ? window.glPortalActiveTab('overview') : 'overview';
+    if(!TABS.some(function(t){ return t.id === activeTab; })) activeTab = 'overview';
+
+    function panel(id, inner){
+      return '<div data-gl-portal-panel="' + escHtml(id) + '"' +
+        (id === activeTab ? '' : ' hidden') + '>' + inner + '</div>';
+    }
+    function cardBlock(accent, title, inner){
+      return '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
+        '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:' + accent + ';font-weight:700">' + title + '</div>' +
+        inner +
+      '</div>';
+    }
+    function lockedOr(tab, unlockedHtml){
+      if(!tab.locked) return unlockedHtml;
+      return (typeof window.glPortalLockedPanel === 'function')
+        ? window.glPortalLockedPanel(tab.service) : '';
+    }
+    function tabById(id){
+      for(var i = 0; i < TABS.length; i++){ if(TABS[i].id === id) return TABS[i]; }
+      return { locked:false };
+    }
 
     var STATUS_COLOR = { paid:'#5fcf9e', pending:'#f5c842', overdue:'#e74c3c', quote:'#9aa7bd', expired:'#9aa7bd', draft:'#9aa7bd' };
     var paidTotal = invs.filter(function(i){ return i.status === 'paid'; }).reduce(function(s,i){ return s + (Number(i.amount)||0); }, 0);
@@ -395,15 +460,13 @@
     var FM_STATUS_COLOR = { benchtop:'#f5c842', approved:'#5fcf9e', archived:'#9aa7bd' };
     var fmRowsHtml = fms.length ? fms.map(function(f){
       var color = FM_STATUS_COLOR[f.status] || '#9aa7bd';
-      var meta = [];
-      if(f.batch_size_gal) meta.push(escHtml(String(f.batch_size_gal)) + ' gal batch');
-      if(f.target_yield_cases) meta.push(escHtml(String(f.target_yield_cases)) + ' case target');
-      var allergList = (f.allergens && f.allergens.length) ? f.allergens.join(', ') : '';
+      // Name, version, status, date. Nothing else. Batch size, target yield and
+      // allergens were rendered here before and are no longer returned by
+      // gl_portal_formula_status() — the Formula tab shows that the formula is
+      // moving, never what is in it.
       return '<div style="display:grid;grid-template-columns:1fr 130px 110px;gap:12px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.05);align-items:center">' +
         '<div>' +
           '<div style="font-size:13px;color:#fff;font-weight:700">' + escHtml(f.name || 'Formula') + ' <span style="font-size:11px;color:#6b87ad;font-weight:500">v' + escHtml(String(f.version||1)) + '</span></div>' +
-          (meta.length ? '<div style="font-size:11px;color:#6b87ad;margin-top:2px">' + meta.join(' · ') + '</div>' : '') +
-          (allergList ? '<div style="font-size:10px;color:#f5c842;margin-top:2px">Allergens: ' + escHtml(allergList) + '</div>' : '') +
         '</div>' +
         '<div style="text-align:right;font-size:11px;color:#9aa7bd">Updated ' + new Date(f.updated_at).toLocaleDateString() + '</div>' +
         '<div style="text-align:right">' +
@@ -501,9 +564,16 @@
         name: f.name,
         file_path: path,
         file_type: f.type || null,
+        // The customer uploaded this themselves, so it is theirs to see.
+        // deal_documents.client_visible defaults to FALSE (migration
+        // 20260914090400) so that staff uploads are internal until published —
+        // without this line a customer's own upload would vanish the moment it
+        // saved, which reads as data loss.
+        client_visible: true,
         uploaded_by: 'portal:' + (customer.email || '')
-      });
+      }).select('id');
       if(ins.error){ say('#ff8579', 'Could not save the document: ' + (ins.error.message || 'unknown')); return; }
+      if(!ins.data || !ins.data.length){ say('#ff8579', 'Could not save the document — it was rejected. Email it to Mike instead.'); return; }
       say('#5fcf9e', '✓ Uploaded — refreshing…');
       setTimeout(function(){ renderDashboard(customer); }, 600);
     };
@@ -552,26 +622,71 @@
             requestTile('❓', 'question', 'Ask a question',     'General question for Mike') +
           '</div>' +
 
-          '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
-            '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:#00e5c0;font-weight:700">YOUR INVOICES</div>' +
-            invRowsHtml +
-          '</div>' +
+          // ── Project header, picker and tab bar ──────────────────────────
+          (typeof window.glPortalProjectPicker === 'function'
+            ? window.glPortalProjectPicker(projData.projects, activeProject && activeProject.id) : '') +
+          (activeProject && typeof window.glPortalProjectHeader === 'function'
+            ? window.glPortalProjectHeader(activeProject) : '') +
+          (typeof window.glPortalTabBar === 'function'
+            ? window.glPortalTabBar(TABS, activeTab) : '') +
 
-          '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
-            '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:#6b9fff;font-weight:700">PRODUCTION RUNS</div>' +
-            prRowsHtml +
-          '</div>' +
+          // ── OVERVIEW ────────────────────────────────────────────────────
+          panel('overview',
+            (activeProject
+              ? (typeof window.glPortalStatusCard === 'function' ? window.glPortalStatusCard(activeMs) : '') +
+                cardBlock('#00e5c0', 'PROJECT PROGRESS',
+                  '<div style="padding:16px 18px">' +
+                    (typeof window.glPortalMilestoneTracker === 'function'
+                      ? window.glPortalMilestoneTracker(activeMs) : '') +
+                  '</div>')
+              : (typeof window.glPortalNoProjects === 'function' ? window.glPortalNoProjects() : '')) +
+            cardBlock('#6b9fff', 'PRODUCTION RUNS', prRowsHtml)
+          ) +
 
-          '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
-            '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:#f5c842;font-weight:700">SAMPLE SHIPMENTS</div>' +
-            shRowsHtml +
-          '</div>' +
+          // ── SAMPLES & ORDERS ────────────────────────────────────────────
+          panel('orders',
+            cardBlock('#f5c842', 'SAMPLE SHIPMENTS', shRowsHtml) +
+            cardBlock('#6b9fff', 'PRODUCTION RUNS', prRowsHtml)
+          ) +
 
-          '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
-            '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:#5fcf9e;font-weight:700">FORMULAS</div>' +
-            fmRowsHtml +
-          '</div>' +
+          // ── FORMULA ─────────────────────────────────────────────────────
+          panel('formula',
+            cardBlock('#5fcf9e', 'FORMULA STATUS', fmRowsHtml) +
+            '<div style="font-size:11px;color:#6b87ad;padding:0 4px 20px;line-height:1.6">' +
+              'This shows where each formula stands and which version we are on. ' +
+              'Formulation detail stays with Good Liquid — if you need a specific ' +
+              'document released, ask Mike and he can publish it to you.' +
+            '</div>'
+          ) +
 
+          // ── BILLING ─────────────────────────────────────────────────────
+          panel('billing',
+            cardBlock('#00e5c0', 'YOUR INVOICES', invRowsHtml)
+          ) +
+
+          // ── RENDERS / ANALYTICS (entitlement-gated) ─────────────────────
+          panel('renders',
+            lockedOr(tabById('renders'),
+              cardBlock('#00e5c0', 'PRODUCT RENDERS',
+                '<div style="padding:20px;text-align:center;color:#6b87ad;font-size:12px">' +
+                'Your renders will appear here as they are produced.</div>'))
+          ) +
+          panel('analytics',
+            lockedOr(tabById('analytics'),
+              cardBlock('#00e5c0', 'MARKET ANALYTICS',
+                '<div style="padding:20px;text-align:center;color:#6b87ad;font-size:12px">' +
+                'Your market analysis will appear here once it is ready.</div>'))
+          ) +
+
+          // ── PACKAGING & ARTWORK (entitlement-gated) ─────────────────────
+          panel('artwork',
+            lockedOr(tabById('artwork'),
+              cardBlock('#00e5c0', '🎨 MY LABEL ARTWORK / SKUs',
+                '<div style="padding:8px 18px 14px" id="gl-cp-artwork"><div style="font-size:11px;color:#6b87ad">Loading…</div></div>'))
+          ) +
+
+          // ── DOCUMENTS ───────────────────────────────────────────────────
+          panel('documents',
           '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
             '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:#7fc6f5;font-weight:700">📎 COAs & DOCUMENTS</div>' +
             ldRowsHtml +
@@ -595,15 +710,12 @@
             '</div>' +
           '</div>' +
 
-          '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
-            '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:#00e5c0;font-weight:700">🎨 MY LABEL ARTWORK / SKUs</div>' +
-            '<div style="padding:8px 18px 14px" id="gl-cp-artwork"><div style="font-size:11px;color:#6b87ad">Loading…</div></div>' +
-          '</div>' +
-
           (algs.length ? '<div style="background:#142238;border:1px solid rgba(255,255,255,.06);border-radius:12px;overflow:hidden;margin-bottom:24px">' +
             '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:#c4b5fd;font-weight:700">ALLERGEN DECLARATIONS</div>' +
             algRowsHtml +
-          '</div>' : '') +
+          '</div>' : '')
+          ) +
+          // ── end DOCUMENTS panel ─────────────────────────────────────────
 
           '<div style="padding:14px 18px;font-size:11px;color:#6b87ad;text-align:center">' +
             'Questions about your account? Email <a href="mailto:Mike@GoodLiquid.com" style="color:#00e5c0">Mike@GoodLiquid.com</a> or call (803) 493-5065.' +
@@ -612,8 +724,12 @@
       '</div>';
 
     // Customer-facing artwork/SKU manager (upload their own can designs).
-    if(typeof window.glRenderArtwork === 'function'){
-      try { window.glRenderArtwork(customer.client_id, document.getElementById('gl-cp-artwork')); } catch(e){}
+    // The mount point only exists when the Packaging & Artwork entitlement is
+    // granted — a locked tab renders the sales panel instead, so there is
+    // nothing to mount into and glRenderArtwork must not be called.
+    var artMount = document.getElementById('gl-cp-artwork');
+    if(artMount && typeof window.glRenderArtwork === 'function'){
+      try { window.glRenderArtwork(customer.client_id, artMount); } catch(e){}
     }
 
     document.getElementById('cp-signout').onclick = async function(){

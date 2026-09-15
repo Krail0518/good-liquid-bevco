@@ -2150,7 +2150,14 @@
 <script src="/src/modules/customers/portal-public.js"></script>
 <script src="/src/services/email.js"></script>
 <script src="/src/modules/invoicing/billing-admin.js"></script>
+<!-- portal-project.js must load BEFORE portal-customer.js: renderDashboard()
+     calls glPortalLoadProjects() and the tab builders while assembling the
+     page. Every call is typeof-guarded, so a wrong order degrades to a portal
+     with no project tabs rather than a blank screen — but the order is the
+     contract. -->
+<script src="/src/modules/customers/portal-project.js"></script>
 <script src="/src/modules/customers/portal-customer.js"></script>
+<script src="/src/modules/customers/projects-admin.js"></script>
 <script src="/src/services/integrations.js"></script>
 <script src="/src/modules/customers/edit-client.js"></script>
 <script src="/src/shared/public-ops.js"></script>
