@@ -225,6 +225,21 @@ check('the portal sets client_visible on customer uploads',
   /client_visible:\s*true/.test(portalSrc),
   'without it a customer uploads a file and it vanishes — reads as data loss');
 
+// Staff need a way to publish. Phase 1 shipped the column and the policy but
+// not the control, so every staff upload was internal with no way out short of
+// SQL — and the release check "staff can publish or hide a document" could not
+// be performed at all.
+const dealDocsSrc = blankComments(readIfExists('src/modules/pipeline/deal-docs.js'));
+check('staff can publish or hide a document from the CRM',
+  /update\(\s*\{\s*client_visible:\s*makeVisible\s*\}\s*\)[\s\S]{0,80}\.select\(/.test(dealDocsSrc),
+  'without this control every staff upload stays internal and the Atlas decision cannot be actioned');
+check('the visibility toggle treats 0 updated rows as failure',
+  /uq\.data\.length\s*===\s*0/.test(dealDocsSrc),
+  'RLS rejects an unauthorized update silently — CLAUDE.md rule 4');
+check('publishing a Formula document asks for a second confirmation',
+  /doc_type\s*===\s*'Formula'/.test(dealDocsSrc),
+  'the portal shows formula status only; a formula sheet can carry the formulation itself');
+
 // ── 10. Tenant consistency ─────────────────────────────────────────────────
 for (const t of ['deal_documents', 'client_artwork']) {
   check(t + ' has a composite tenant foreign key',

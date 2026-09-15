@@ -67,6 +67,22 @@
       ' <a href="#" data-gl-action="glDownloadClientDoc" data-gl-prevent="" data-gl-arg1="'+p+'" style="color:#00e5c0;font-weight:700">⬇ Download</a>';
   }
 
+  // Whether the client sees this document in their portal. Staff uploads start
+  // internal (deal_documents.client_visible defaults to false, migration
+  // 20260914090400), so publishing is always a deliberate act made here. This
+  // button only flips the flag — the portal's RLS policy is what enforces it.
+  // A lead-only document has no client_id and therefore no portal to appear in.
+  function visibilityControl(r){
+    if(!r.client_id) return '';
+    var on = r.client_visible === true;
+    return '<button type="button" class="gl-dd-vis" data-id="'+esc(r.id)+'" data-visible="'+(on?'1':'0')+'" ' +
+      'title="'+(on?'Hide from the client portal':'Publish to the client portal')+'" ' +
+      'style="padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;' +
+      (on ? 'background:rgba(95,207,158,.14);color:#5fcf9e;border:1px solid rgba(95,207,158,.4)'
+          : 'background:rgba(255,255,255,.04);color:#9aa7bd;border:1px solid rgba(255,255,255,.14)') + '">' +
+      (on ? '👁 Visible to client' : '🔒 Internal') + '</button>';
+  }
+
   function docRow(r){
     var st = typeStyle(r.doc_type);
     return '<div class="gl-dd-row" data-id="'+esc(r.id)+'" style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:10px 0;border-top:1px solid rgba(255,255,255,.06)">' +
@@ -74,6 +90,7 @@
           '<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">' +
             '<span style="padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;background:'+st.bg+';color:'+st.fg+';border:1px solid '+st.br+'">'+st.icon+' '+esc(r.doc_type)+'</span>' +
             '<span style="font-weight:700;color:#eef4ff;font-size:13px">'+esc(r.name || '(unnamed)')+'</span>' +
+            visibilityControl(r) +
           '</div>' +
           (r.notes ? '<div style="font-size:11.5px;color:#9aa7bd;margin-top:3px">'+esc(r.notes)+'</div>' : '') +
           '<div style="font-size:12px;margin-top:4px">'+viewLinks(r.file_path)+'</div>' +
@@ -192,6 +209,46 @@
         catch(e){ show('#ff8579','Delete failed: ' + (e.message || e)); return; }
         if(dq.error){ show('#ff8579','Delete failed: ' + dq.error.message); return; }
         if(Array.isArray(dq.data) && dq.data.length === 0){ show('#ff8579','The server rejected the delete (0 rows removed). The document is still attached.'); return; }
+        glRenderDealDocs(host, opts);
+      });
+    });
+
+    // Publish / hide. Confirms name the document, and a Formula-type document
+    // gets a stronger warning: the portal deliberately shows formula STATUS only,
+    // clients here are competing brands, and a formula sheet can carry the
+    // formulation itself. The database trigger gl_audit_document_visibility
+    // records every flip, so there is no client-side audit call to forget.
+    Array.prototype.forEach.call(host.querySelectorAll('.gl-dd-vis'), function(b){
+      b.addEventListener('click', async function(){
+        var btn = this;
+        var id = btn.getAttribute('data-id');
+        var makeVisible = btn.getAttribute('data-visible') !== '1';
+        var row = rows.filter(function(x){ return x.id === id; })[0] || {};
+        var label = '"' + (row.name || 'this document') + '"';
+        var question;
+        if(!makeVisible){
+          question = 'Hide ' + label + ' from the client portal?';
+        } else if(row.doc_type === 'Formula'){
+          question = 'This is a FORMULA document.\n\nThe client portal deliberately shows formula status only. ' +
+            'A formula sheet can contain the formulation itself, and clients here are competing brands.\n\n' +
+            'Publish ' + label + ' to the client anyway?';
+        } else {
+          question = 'Publish ' + label + ' to the client portal? The client will be able to view and download it.';
+        }
+        if(!confirm(question)) return;
+
+        btn.disabled = true;
+        var uq;
+        // .select() so a silent RLS rejection (no error, 0 rows) cannot pass as
+        // success — CLAUDE.md rule 4.
+        try { uq = await sb().from('deal_documents').update({ client_visible: makeVisible }).eq('id', id).select('id'); }
+        catch(e){ btn.disabled = false; show('#ff8579', 'Could not change visibility: ' + (e.message || e)); return; }
+        if(uq.error){ btn.disabled = false; show('#ff8579', 'Could not change visibility: ' + uq.error.message); return; }
+        if(!Array.isArray(uq.data) || uq.data.length === 0){
+          btn.disabled = false;
+          show('#ff8579', 'The server rejected the change (0 rows updated). Visibility is unchanged.');
+          return;
+        }
         glRenderDealDocs(host, opts);
       });
     });
