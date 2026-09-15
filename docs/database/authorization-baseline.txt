@@ -17,11 +17,18 @@ FUNC     public.get_shared_allergen_declaration(p_token text) | secdef=t | searc
 FUNC     public.get_shared_invoice(p_token text) | secdef=t | search_path=public | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres,anon=X/postgres
 FUNC     public.gl_apply_payment_event(p_provider text, p_event_id text, p_invoice_number text, p_amount numeric, p_currency text, p_method text, p_reference text) | secdef=t | search_path=public, extensions | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_apply_refund_event(p_provider text, p_event_id text, p_invoice_number text, p_amount numeric, p_reference text) | secdef=t | search_path=public, extensions | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.gl_audit_actor_email() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.gl_audit_artwork_project() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.gl_audit_document_visibility() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.gl_audit_entitlement() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.gl_audit_milestone() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.gl_can_read_formula(p_formula_id uuid) | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_check_cron_secret(candidate text) | secdef=t | search_path="" | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_cron_health() | secdef=t | search_path="" | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_derive_invoice_paid_state() | secdef=t | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_enforce_ledger_bounds() | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_guard_compliance_signature() | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
+FUNC     public.gl_guard_entitlement_append_only() | secdef=f | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_guard_hold_disposition() | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_guard_invoice_paid_state() | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_invoice_derived_status(p_amount numeric, p_is_credit_memo boolean, p_current_status text, p_net numeric) | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
@@ -39,6 +46,8 @@ FUNC     public.gl_onboarding_intake_submit(p_token text, p jsonb) | secdef=t | 
 FUNC     public.gl_onboarding_submit(p_token text, p_data jsonb) | secdef=t | search_path=public | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres,anon=X/postgres
 FUNC     public.gl_payment_method_label(p_method text, p_provider text) | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_payment_tolerance() | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
+FUNC     public.gl_portal_entitlements() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
+FUNC     public.gl_portal_formula_status() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_purge_expired_qbo_states() | secdef=t | search_path=public | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_rate_limit_hit(p_bucket text, p_limit integer, p_window_seconds integer) | secdef=t | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_record_manual_payment(p_invoice_number text, p_amount numeric, p_method text, p_reference text) | secdef=t | search_path=public, extensions | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
@@ -46,6 +55,8 @@ FUNC     public.gl_reverse_invoice_payments(p_invoice_number text, p_reason text
 FUNC     public.gl_secret_get(p_name text) | secdef=t | search_path="" | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_secret_set(p_name text, p_value text) | secdef=t | search_path="" | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_send_quote_decks(p_deal_id uuid) | secdef=t | search_path=public, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
+FUNC     public.gl_stamp_entitlement_event() | secdef=f | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.gl_stamp_project_milestones() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_tour_intake_submit(p jsonb) | secdef=t | search_path=public | acl=postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.handle_new_user() | secdef=t | search_path=public | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.is_admin_user() | secdef=t | search_path=public | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
@@ -126,6 +137,7 @@ GRANT    public.facilities | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRI
 GRANT    public.followup_log | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.formulas | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.formulators | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
+GRANT    public.gl_internal_notes | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.gmp_documents | anon | SELECT
 GRANT    public.gmp_documents | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.gmp_task_defs | anon | SELECT
@@ -165,6 +177,9 @@ GRANT    public.production_pipeline | authenticated | DELETE,INSERT,REFERENCES,S
 GRANT    public.production_runs | anon | SELECT
 GRANT    public.production_runs | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.profiles | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
+GRANT    public.project_entitlement_events | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
+GRANT    public.project_milestones | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
+GRANT    public.projects | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.qbo_tokens | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.quotes | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.recurring_invoices | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
@@ -393,7 +408,9 @@ POLICY   public.deal_activity | gl viewer no delete | RESTRICTIVE | {authenticat
 POLICY   public.deal_activity | gl viewer no insert | RESTRICTIVE | {authenticated} | INSERT | using=- | check=(NOT gl_is_viewer())
 POLICY   public.deal_activity | gl viewer no update | RESTRICTIVE | {authenticated} | UPDATE | using=(NOT gl_is_viewer()) | check=(NOT gl_is_viewer())
 POLICY   public.deal_activity | gl warehouse guard | RESTRICTIVE | {authenticated} | ALL | using=(NOT gl_is_warehouse()) | check=(NOT gl_is_warehouse())
-POLICY   public.deal_documents | deal_documents customer read | PERMISSIVE | {authenticated} | SELECT | using=(client_id = current_customer_client_id()) | check=-
+POLICY   public.deal_documents | deal_documents customer read | PERMISSIVE | {authenticated} | SELECT | using=(is_gl_staff() OR ((client_visible = true) AND (((project_id IS NULL) AND (client_id = current_customer_client_id())) OR ((project_id IS NOT NULL) AND (EXISTS ( SELECT 1
+   FROM projects p
+  WHERE ((p.id = deal_documents.project_id) AND (p.client_id = current_customer_client_id()) AND (p.archived_at IS NULL)))))))) | check=-
 POLICY   public.deal_documents | deal_documents customer upload | PERMISSIVE | {authenticated} | INSERT | using=- | check=((deal_id IS NULL) AND (client_id IS NOT NULL) AND (client_id = current_customer_client_id()))
 POLICY   public.deal_documents | deal_documents staff all | PERMISSIVE | {authenticated} | ALL | using=is_staff_user() | check=is_staff_user()
 POLICY   public.deal_documents | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=(is_gl_staff() OR ((client_id)::text = (current_customer_client_id())::text)) | check=-
@@ -489,7 +506,7 @@ POLICY   public.formulas | formulas staff insert | PERMISSIVE | {authenticated} 
 POLICY   public.formulas | formulas staff select | PERMISSIVE | {authenticated} | SELECT | using=is_staff_user() | check=-
 POLICY   public.formulas | formulas staff update | PERMISSIVE | {authenticated} | UPDATE | using=is_staff_user() | check=is_staff_user()
 POLICY   public.formulas | formulas super delete | PERMISSIVE | {authenticated} | DELETE | using=is_super_user() | check=-
-POLICY   public.formulas | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=(is_gl_staff() OR (client_id = (current_customer_client_id())::text)) | check=-
+POLICY   public.formulas | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=is_gl_staff() | check=-
 POLICY   public.formulas | gl viewer no delete | RESTRICTIVE | {authenticated} | DELETE | using=(NOT gl_is_viewer()) | check=-
 POLICY   public.formulas | gl viewer no insert | RESTRICTIVE | {authenticated} | INSERT | using=- | check=(NOT gl_is_viewer())
 POLICY   public.formulas | gl viewer no update | RESTRICTIVE | {authenticated} | UPDATE | using=(NOT gl_is_viewer()) | check=(NOT gl_is_viewer())
@@ -497,6 +514,8 @@ POLICY   public.formulas | gl warehouse guard | RESTRICTIVE | {authenticated} | 
 POLICY   public.formulators | formulators staff insert | PERMISSIVE | {authenticated} | INSERT | using=- | check=(is_gl_staff() AND (NOT gl_is_viewer()))
 POLICY   public.formulators | formulators staff read | PERMISSIVE | {authenticated} | SELECT | using=is_gl_staff() | check=-
 POLICY   public.formulators | formulators staff update | PERMISSIVE | {authenticated} | UPDATE | using=(is_gl_staff() AND (NOT gl_is_viewer())) | check=(is_gl_staff() AND (NOT gl_is_viewer()))
+POLICY   public.gl_internal_notes | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
+POLICY   public.gl_internal_notes | gl_internal_notes staff all | PERMISSIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
 POLICY   public.gmp_documents | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=is_gl_staff() | check=-
 POLICY   public.gmp_documents | gl viewer no delete | RESTRICTIVE | {authenticated} | DELETE | using=(NOT gl_is_viewer()) | check=-
 POLICY   public.gmp_documents | gl viewer no insert | RESTRICTIVE | {authenticated} | INSERT | using=- | check=(NOT gl_is_viewer())
@@ -669,6 +688,18 @@ POLICY   public.profiles | gl viewer no delete | RESTRICTIVE | {authenticated} |
 POLICY   public.profiles | gl viewer no insert | RESTRICTIVE | {authenticated} | INSERT | using=- | check=(NOT gl_is_viewer())
 POLICY   public.profiles | gl viewer no update | RESTRICTIVE | {authenticated} | UPDATE | using=(NOT gl_is_viewer()) | check=(NOT gl_is_viewer())
 POLICY   public.profiles | profiles super delete | PERMISSIVE | {authenticated} | DELETE | using=is_super_user() | check=-
+POLICY   public.project_entitlement_events | entitlement_events staff all | PERMISSIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
+POLICY   public.project_entitlement_events | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
+POLICY   public.project_milestones | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=(is_gl_staff() OR (EXISTS ( SELECT 1
+   FROM projects p
+  WHERE ((p.id = project_milestones.project_id) AND (p.client_id = current_customer_client_id()) AND (p.archived_at IS NULL))))) | check=-
+POLICY   public.project_milestones | project_milestones customer read | PERMISSIVE | {authenticated} | SELECT | using=((current_customer_client_id() IS NOT NULL) AND (EXISTS ( SELECT 1
+   FROM projects p
+  WHERE ((p.id = project_milestones.project_id) AND (p.client_id = current_customer_client_id()) AND (p.archived_at IS NULL))))) | check=-
+POLICY   public.project_milestones | project_milestones staff all | PERMISSIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
+POLICY   public.projects | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=(is_gl_staff() OR (((client_id)::text = (current_customer_client_id())::text) AND (archived_at IS NULL))) | check=-
+POLICY   public.projects | projects customer read | PERMISSIVE | {authenticated} | SELECT | using=((current_customer_client_id() IS NOT NULL) AND (client_id = current_customer_client_id()) AND (archived_at IS NULL)) | check=-
+POLICY   public.projects | projects staff all | PERMISSIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
 POLICY   public.qbo_tokens | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=is_gl_staff() | check=-
 POLICY   public.qbo_tokens | gl viewer no delete | RESTRICTIVE | {authenticated} | DELETE | using=(NOT gl_is_viewer()) | check=-
 POLICY   public.qbo_tokens | gl viewer no insert | RESTRICTIVE | {authenticated} | INSERT | using=- | check=(NOT gl_is_viewer())
@@ -840,6 +871,7 @@ RLS      public.facilities | enabled=t
 RLS      public.followup_log | enabled=t
 RLS      public.formulas | enabled=t
 RLS      public.formulators | enabled=t
+RLS      public.gl_internal_notes | enabled=t
 RLS      public.gmp_documents | enabled=t
 RLS      public.gmp_task_defs | enabled=t
 RLS      public.gmp_templates | enabled=t
@@ -868,6 +900,9 @@ RLS      public.production_lines | enabled=t
 RLS      public.production_pipeline | enabled=t
 RLS      public.production_runs | enabled=t
 RLS      public.profiles | enabled=t
+RLS      public.project_entitlement_events | enabled=t
+RLS      public.project_milestones | enabled=t
+RLS      public.projects | enabled=t
 RLS      public.qbo_oauth_states | enabled=t
 RLS      public.qbo_tokens | enabled=t
 RLS      public.quotes | enabled=t
