@@ -104,56 +104,13 @@
     };
   }
 
-  // Full cost breakdown for one canning tier given the packaging rates. Used by
-  // BOTH the live builder table and the generated quote PDF so a saved quote can
-  // never show a different number than the one on screen.
-  function canningExtras(tier, pkg){
-    pkg = pkg || {};
-    var cans = tier.cans || 0, cases = tier.cases || 0;
-    var perCan = (tier.fillPerCan || 0);
-    if(pkg.nitrogenOn) perCan += (pkg.nitrogenPerCan || 0);
-    if(pkg.pasteurOn)  perCan += (pkg.pasteurPerCan  || 0);
-    if(pkg.paktech4On) perCan += (pkg.paktech4PerCan || 0);
-    if(pkg.paktech6On) perCan += (pkg.paktech6PerCan || 0);
-    if(pkg.proper4On)  perCan += (pkg.proper4PerCan  || 0);
-    if(pkg.proper6On)  perCan += (pkg.proper6PerCan  || 0);
-    if(pkg.canBlankOn)   perCan += (pkg.canBlankPerCan   || 0);
-    if(pkg.canShrinkOn)  perCan += (pkg.canShrinkPerCan  || 0);
-    if(pkg.canPrintedOn) perCan += (pkg.canPrintedPerCan || 0);
-    var caseExtra = 0;
-    if(pkg.tray24On)   caseExtra += (pkg.tray24PerCase   || 0);
-    if(pkg.tray12On)   caseExtra += (pkg.tray12PerCase   || 0);
-    if(pkg.trayWrapOn) caseExtra += (pkg.trayWrapPerCase || 0);
-    var pallets = 0, palletCost = 0;
-    if(pkg.palletOn || pkg.palletWrapOn){
-      var cpp = pkg.casesPerPallet || 80;
-      pallets = cpp > 0 ? Math.ceil(cases / cpp) : 0;
-      palletCost = pallets * ((pkg.palletOn ? (pkg.palletEach || 0) : 0) +
-                              (pkg.palletWrapOn ? (pkg.palletWrapEach || 0) : 0));
-    }
-    // ── Manual overrides win over the calculation ──
-    // A quote is a commercial document, not a spreadsheet output: sometimes the
-    // number you have to put in front of a customer is not the number the rate
-    // card produces. Any of these can be typed over, and an overridden cell
-    // keeps its value when other inputs change — same contract as fillPerCan,
-    // which has always worked this way.
-    if(isNum(tier.addonsOverride))    perCan    = (tier.fillPerCan || 0) + tier.addonsOverride;
-    if(isNum(tier.caseExtraOverride)) caseExtra = tier.caseExtraOverride;
-    if(isNum(tier.palletCostOverride)) palletCost = tier.palletCostOverride;
-
-    var runTotal = perCan * cans + caseExtra * cases + palletCost;
-    if(isNum(tier.runTotalOverride)) runTotal = tier.runTotalOverride;
-
-    return {
-      perCan: perCan, caseExtra: caseExtra, pallets: pallets, palletCost: palletCost,
-      runTotal: runTotal
-    };
-  }
-
-  // An override is only in force when it is a real number. 0 is a legitimate
-  // override — "this line is free" — so a plain truthiness test would silently
-  // drop it back to the calculated value.
-  function isNum(v){ return typeof v === 'number' && isFinite(v); }
+  // canningExtras / bottlingExtras / isNum lived here. They computed a whole
+  // run total for one VOLUME TIER — per-can rate plus per-case packaging plus
+  // pallets, with per-cell manual overrides. A quote is a list of lines now,
+  // each priced as quantity times unit price, so the tier engine had no
+  // callers left. Deleted rather than kept: a pricing engine that still looks
+  // authoritative but is wired to nothing is a trap for whoever reads this
+  // next. The rates it used are still the source for insertDeckLines().
 
   // Bottling packaging defaults (per bottle / per case / per pallet). Same
   // DB-backed pattern as canning; a 6-pack case counts as one "case".
@@ -166,29 +123,6 @@
       palletOn:true,    palletEach:px('pallet_each',12),
       palletWrapOn:true, palletWrapEach:px('pallet_wrap_each',8),
       casesPerPallet:px('bottling_cases_per_pallet',50)
-    };
-  }
-
-  // Full cost breakdown for one bottling tier (mirror of canningExtras).
-  function bottlingExtras(tier, pkg){
-    pkg = pkg || {};
-    var bottles = tier.bottles || 0, cases = tier.cases || 0;
-    var perBtl = (tier.ratePerBtl || 0);
-    if(pkg.pasteurOn) perBtl += (pkg.pasteurPerBtl || 0);
-    if(pkg.otlOn)     perBtl += (pkg.otlPerBtl     || 0);
-    if(pkg.labelsOn)  perBtl += (pkg.labelsPerBtl  || 0);
-    var caseExtra = 0;
-    if(pkg.caseOn) caseExtra += (pkg.casePerCase || 0);
-    var pallets = 0, palletCost = 0;
-    if(pkg.palletOn || pkg.palletWrapOn){
-      var cpp = pkg.casesPerPallet || 50;
-      pallets = cpp > 0 ? Math.ceil(cases / cpp) : 0;
-      palletCost = pallets * ((pkg.palletOn ? (pkg.palletEach || 0) : 0) +
-                              (pkg.palletWrapOn ? (pkg.palletWrapEach || 0) : 0));
-    }
-    return {
-      perBtl: perBtl, caseExtra: caseExtra, pallets: pallets, palletCost: palletCost,
-      runTotal: perBtl * bottles + caseExtra * cases + palletCost
     };
   }
 
@@ -324,54 +258,46 @@
           '</div>' +
         '</div>' +
 
-        /* ── Section tabs ──
-           A quote can price more than one format for the same client: 12oz and
-           16oz cans, or cans and bottles, on one document with one quote
-           number. Each section owns its own product type, format, volume tiers
-           and add-ons; everything below this strip edits the SELECTED section.
-           A one-section quote looks and behaves exactly as it always did. */
-        '<div style="'+LBL+'">FORMATS ON THIS QUOTE</div>' +
-        '<div id="gl-qb-sections" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:16px"></div>' +
+        /* ── Rate card → lines ──
+           A quote is a LIST OF LINES now, like an invoice: description,
+           quantity, unit, unit price, amount, and a total at the bottom. The
+           customer can see where the number comes from, and two SKUs simply
+           add up instead of reading as the same option printed twice.
 
-        /* ── Row 2: Product type / format ── */
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px">' +
-          '<div><div style="'+LBL+'">PRODUCT TYPE</div>' +
-            '<select id="gl-qb-type" style="'+INP+'">' +
-              '<option value="canning">Canning</option>' +
-              '<option value="bottling">Bottling (750ml)</option>' +
-              '<option value="keg">Keg Filling</option>' +
-            '</select>' +
+           This panel is a generator, not the document. Pick a format and a
+           volume, tick what applies, and it inserts the priced lines the
+           rate card produces — fill, nitrogen, trays, cans, pallets. Run it
+           again for a second SKU or a second size and those lines append.
+           Every inserted line is then editable like any other. */
+        '<div style="'+LBL+'">ADD LINES FROM THE RATE CARD</div>' +
+        '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:14px;margin-bottom:18px">' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr 130px auto;gap:12px;align-items:end">' +
+            '<div><div style="'+LBL+'">PRODUCT TYPE</div>' +
+              '<select id="gl-qb-type" style="'+INP+'">' +
+                '<option value="canning">Canning</option>' +
+                '<option value="bottling">Bottling (750ml)</option>' +
+                '<option value="keg">Keg Filling</option>' +
+              '</select>' +
+            '</div>' +
+            '<div><div style="'+LBL+'">PACKAGE FORMAT</div>' +
+              /* An editable combobox, not a dropdown. The presets carry
+                 size-specific can rates, but quoting a format that is not on
+                 the list is an ordinary thing to want and the <select> made
+                 it impossible. Type anything: the preset can-rates simply
+                 stop applying, and every inserted price stays editable. */
+              '<input id="gl-qb-fmt" list="gl-qb-fmt-list" autocomplete="off" placeholder="Pick one, or type your own…" style="'+INP+'">' +
+              '<datalist id="gl-qb-fmt-list"></datalist>' +
+            '</div>' +
+            '<div><div id="gl-qb-vol-label" style="'+LBL+'">CASES</div>' +
+              '<input id="gl-qb-vol" type="number" min="1" step="1" value="200" style="'+INP+'">' +
+            '</div>' +
+            '<div><button id="gl-qb-insert" class="cbtn pri" style="font-size:12.5px;padding:9px 16px;white-space:nowrap">↓ Insert lines</button></div>' +
           '</div>' +
-          '<div><div style="'+LBL+'">PACKAGE FORMAT</div>' +
-            /* An editable combobox, not a dropdown. The presets carry
-               size-specific can rates, but quoting a format that is not on the
-               list is an ordinary thing to want and the <select> made it
-               impossible. Type anything: the preset can-rates simply stop
-               applying, and those prices are editable in the add-ons grid. */
-            '<input id="gl-qb-fmt" list="gl-qb-fmt-list" autocomplete="off" placeholder="Pick one, or type your own…" style="'+INP+'">' +
-            '<datalist id="gl-qb-fmt-list"></datalist>' +
-          '</div>' +
+          '<div id="gl-qb-addons" style="margin-top:14px"></div>' +
         '</div>' +
 
-        /* ── Volume tiers ── */
-        '<div style="'+LBL+';margin-bottom:8px">VOLUME PRICING TIERS</div>' +
-        '<div id="gl-qb-tiers" style="margin-bottom:8px"></div>' +
-        '<div style="display:flex;gap:8px;margin-bottom:20px">' +
-          '<button id="gl-qb-add-tier" class="cbtn" style="font-size:12px;padding:6px 14px">+ Add Tier</button>' +
-          '<button id="gl-qb-auto-tiers" class="cbtn" style="font-size:12px;padding:6px 14px">⚡ Load Standard Tiers</button>' +
-        '</div>' +
-
-        /* ── Add-ons ── */
-        '<div id="gl-qb-addons" style="margin-bottom:18px"></div>' +
-
-        /* ── Custom lines ──
-           The escape hatch. Everything above prices from the standard deck, so
-           anything the deck does not model had nowhere to go and the quote had
-           to be written by hand outside the system. These are free text with a
-           quantity and a price, like the invoice builder's custom line.
-           Section lines price one format; quote lines price the whole job. */
+        /* ── The document itself ── */
         '<div id="gl-qb-lines" style="margin-bottom:18px"></div>' +
-        '<div id="gl-qb-qlines" style="margin-bottom:18px"></div>' +
 
         /* ── Notes ── */
         /* ── Client request from website ── */
@@ -442,116 +368,23 @@
     }
 
     /* ── Local state ──
-       A quote is a LIST of sections. Each one is what the whole quote used to
-       be: a product type, a package format, its volume tiers, its packaging
-       config and its own custom lines.
-
-       state.productType / .format / .tiers / .pkg / .bpkg / .lines are
-       accessors onto the SELECTED section. That is deliberate: every pricing,
-       rendering and add-on function below was written against those five
-       names, and pointing them at the active section means all of that code
-       keeps working untouched instead of being rewritten by hand. Constrain,
-       don't rewrite. */
-    function newSection(productType, format){
-      productType = productType || 'canning';
-      format = format || (DECK[productType] || DECK.canning).formats[0];
-      return {
-        productType: productType,
-        format: format,
-        tiers: [],
-        pkg: defaultCanningPkg(format),
-        bpkg: defaultBottlingPkg(),
-        lines: []          // custom lines belonging to THIS format
-      };
-    }
+       lines IS the quote. productType / format / pkg / bpkg are the rate-card
+       settings the generator reads when it inserts lines. They are not the
+       document, so changing them afterwards does not silently reprice a line
+       already on it. */
     var state = {
-      sections: [newSection()],
-      activeIdx: 0,
-      quoteLines: [],      // custom lines that apply to the whole quote
+      lines: [],
+      productType: 'canning',
+      format: '12oz Sleek',
+      pkg: defaultCanningPkg(),
+      bpkg: defaultBottlingPkg(),
       savedId: null
     };
-    function cur(){ return state.sections[state.activeIdx] || state.sections[0]; }
-    ['productType','format','tiers','pkg','bpkg','lines'].forEach(function(k){
-      Object.defineProperty(state, k, {
-        get: function(){ return cur()[k]; },
-        set: function(v){ cur()[k] = v; },
-        enumerable: false, configurable: true
-      });
-    });
 
-    /* ── Section tabs ── */
-    function sectionLabel(s){
-      if(s.format) return s.format;
-      return s.productType === 'bottling' ? 'Bottling' : s.productType === 'keg' ? 'Keg Filling' : 'Canning';
-    }
-    function renderSectionTabs(){
-      var bar = ov.querySelector('#gl-qb-sections'); if(!bar) return;
-      var multi = state.sections.length > 1;
-      bar.innerHTML = state.sections.map(function(s, i){
-        var on = i === state.activeIdx;
-        return '<span class="gl-qb-tab" data-idx="'+i+'" style="display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;' +
-          (on ? 'background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.45);color:#00e5c0'
-              : 'background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:#9aa7bd') + '">' +
-          esc(sectionLabel(s)) +
-          (multi ? '<span class="gl-qb-tab-x" data-idx="'+i+'" title="Remove this format" style="color:#ff8579;font-weight:800;padding:0 2px">&times;</span>' : '') +
-        '</span>';
-      }).join('') +
-      '<button id="gl-qb-add-section" class="cbtn" style="font-size:12px;padding:6px 12px">+ Add Format</button>' +
-      '<button id="gl-qb-dup-section" class="cbtn" style="font-size:12px;padding:6px 12px" title="Copy this format’s tiers and add-ons into a new one">⧉ Duplicate</button>';
-
-      bar.querySelectorAll('.gl-qb-tab').forEach(function(el){
-        el.addEventListener('click', function(e){
-          if(e.target.classList.contains('gl-qb-tab-x')) return;   // the × handles itself
-          selectSection(parseInt(el.getAttribute('data-idx'),10));
-        });
-      });
-      bar.querySelectorAll('.gl-qb-tab-x').forEach(function(x){
-        x.addEventListener('click', function(e){
-          e.stopPropagation();
-          var i = parseInt(x.getAttribute('data-idx'),10);
-          var s = state.sections[i];
-          // Only ask when there is something to lose. An empty section the user
-          // just added should close without a dialog.
-          var hasWork = (s.tiers && s.tiers.length) || (s.lines && s.lines.length);
-          if(hasWork && !confirm('Remove ' + sectionLabel(s) + ' and its pricing from this quote?')) return;
-          state.sections.splice(i, 1);
-          if(!state.sections.length) state.sections.push(newSection());
-          selectSection(Math.min(state.activeIdx, state.sections.length - 1));
-        });
-      });
-      var addBtn = bar.querySelector('#gl-qb-add-section');
-      if(addBtn) addBtn.addEventListener('click', function(){
-        state.sections.push(newSection());
-        selectSection(state.sections.length - 1);
-      });
-      // Quoting 16oz right after 12oz is the common case: same volumes, same
-      // add-ons, different size. Copy the section and change the format rather
-      // than rebuilding the tier table by hand. Deck rates re-derive from the
-      // new format as soon as it is picked.
-      var dupBtn = bar.querySelector('#gl-qb-dup-section');
-      if(dupBtn) dupBtn.addEventListener('click', function(){
-        var copy = JSON.parse(JSON.stringify(cur()));
-        state.sections.push(copy);
-        selectSection(state.sections.length - 1);
-        fmtEl.focus(); fmtEl.select();
-      });
-    }
-
-    // Point the type/format controls, the add-on panel and the tier table at
-    // the selected section. Assigning .value does NOT fire 'change', so this
-    // never trips the handler that clears tiers on a real type change.
-    function selectSection(i){
-      state.activeIdx = Math.max(0, Math.min(i, state.sections.length - 1));
-      var s = cur();
-      typeEl.value = s.productType;
-      var dl = ov.querySelector('#gl-qb-fmt-list');
-      if(dl) dl.innerHTML = (DECK[s.productType] || DECK.canning).formats
-        .map(function(f){ return '<option value="'+esc(f)+'">'; }).join('');
-      fmtEl.value = s.format;
-      renderSectionTabs();
-      rebuildAddons();
-      renderTiers();
-      renderCustomLines();
+    // The volume box means cases for cans and bottles, and kegs for kegs.
+    function updateVolLabel(){
+      var lab = ov.querySelector('#gl-qb-vol-label');
+      if(lab) lab.textContent = (state.productType === 'keg') ? 'KEGS' : 'CASES';
     }
 
     /* ── Wire close ── */
@@ -573,7 +406,7 @@
       state.format = fmts[0];
       applyCanRates();
       rebuildAddons();
-      rerenderTiers();
+      updateVolLabel();
     }
     // Re-point the blank-can / shrink-label / printed-can rates at the current
     // format's prices (they are size-specific). Preserves the on/off toggles.
@@ -583,18 +416,17 @@
       state.pkg.canShrinkPerCan  = canRate('shrink',  state.format);
       state.pkg.canPrintedPerCan = canRate('printed', state.format);
     }
-    typeEl.addEventListener('change', function(){
-      rebuildFormats(); state.tiers=[]; renderTiers();
-      renderSectionTabs(); renderCustomLines();
-    });
+    // Switching product type re-points the rate card. It deliberately does NOT
+    // touch lines already on the quote: those are priced and agreed, and a quote
+    // that silently emptied itself when you reached for a second format would be
+    // worse than the problem it solves.
+    typeEl.addEventListener('change', function(){ rebuildFormats(); });
     // 'input' as well as 'change': a typed format has to take effect while you
     // are typing it, not only once focus leaves the field.
     ['change','input'].forEach(function(evt){
       fmtEl.addEventListener(evt, function(){
         state.format = fmtEl.value;
-        applyCanRates(); rebuildAddons(); rerenderTiers();
-        renderSectionTabs();   // the tab is named after the format
-        renderCustomLines();   // so is the section's custom-line heading
+        applyCanRates(); rebuildAddons();
       });
     });
     rebuildFormats();
@@ -608,7 +440,6 @@
         state.pkg  = defaultCanningPkg(state.format);
         state.bpkg = defaultBottlingPkg();
         rebuildAddons();
-        renderTiers();
       }).catch(function(){});
     }
 
@@ -633,36 +464,17 @@
       if(pickedFmt){ fmtEl.value = pickedFmt; state.format = pickedFmt; }
     }
 
-    /* ── Auto-populate volume pricing tiers ── */
-    var t2 = state.productType;
-    var caseList = (opts.suggestCasesList && opts.suggestCasesList.length) ? opts.suggestCasesList : (opts.suggestCases ? [opts.suggestCases] : []);
-
-    if(caseList.length){
-      /* One tier per selected volume — matches exactly what the client checked on the form */
-      state.tiers = caseList.map(function(sc){
-        if(t2==='canning')  return { cases:sc, cans:sc*CANS_PER_CASE, fillPerCan:autoRate(sc), nitrogenPerCan:0.03, trayPerCan:0.03 };
-        if(t2==='bottling') return { cases:sc, bottles:sc*BTLS_PER_CASE, ratePerBtl:autoRate(sc) };
-        return { kegs:Math.max(px('keg_minimum',40),sc), laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) };
-      });
-      renderTiers();
-    } else if(opts.productType){
-      /* Opening from a deal but no specific volume — load standard tiers so quote isn't blank */
-      if(t2==='canning'){
-        state.tiers = [
-          { cases:200,  cans:200*CANS_PER_CASE,  fillPerCan:autoRate(200),  nitrogenPerCan:0.03, trayPerCan:0.03 },
-          { cases:501,  cans:501*CANS_PER_CASE,  fillPerCan:autoRate(501),  nitrogenPerCan:0.03, trayPerCan:0.03 },
-          { cases:1000, cans:1000*CANS_PER_CASE, fillPerCan:autoRate(1000), nitrogenPerCan:0.03, trayPerCan:0.03 }
-        ];
-      } else if(t2==='bottling'){
-        state.tiers = [
-          { cases:220,  bottles:220*BTLS_PER_CASE,  ratePerBtl:autoRate(220) },
-          { cases:660,  bottles:660*BTLS_PER_CASE,  ratePerBtl:autoRate(660) },
-          { cases:1320, bottles:1320*BTLS_PER_CASE, ratePerBtl:autoRate(1320) }
-        ];
-      } else {
-        state.tiers = [{ kegs:px('keg_minimum',40), laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) }];
-      }
-      renderTiers();
+    /* ── Volume from the deal ──
+       Seeds the generator's volume box rather than building a tier table.
+       When the website form offered several volumes we take the first: those
+       were alternatives to choose between, and a line-item quote prices what
+       the customer is actually buying. Insert again for another volume. */
+    var suggestedVol = (opts.suggestCasesList && opts.suggestCasesList.length)
+      ? opts.suggestCasesList[0]
+      : (opts.suggestCases || null);
+    if(suggestedVol){
+      var volSeed = ov.querySelector('#gl-qb-vol');
+      if(volSeed) volSeed.value = suggestedVol;
     }
 
     /* ── Add-ons ── */
@@ -713,11 +525,11 @@
         ];
         canningMap.forEach(function(m){
           var cb = el.querySelector('#'+m[0]+'-on'), rt = el.querySelector('#'+m[0]+'-rate');
-          if(cb){ cb.checked = !!P[m[1]]; cb.addEventListener('change', function(){ P[m[1]] = cb.checked; renderTiers(); }); }
-          if(rt){ rt.addEventListener('input', function(){ P[m[2]] = parseFloat(rt.value)||0; renderTiers(); }); }
+          if(cb){ cb.checked = !!P[m[1]]; cb.addEventListener('change', function(){ P[m[1]] = cb.checked; }); }
+          if(rt){ rt.addEventListener('input', function(){ P[m[2]] = parseFloat(rt.value)||0; }); }
         });
         var cpp = el.querySelector('#gl-qb-cpp');
-        if(cpp) cpp.addEventListener('input', function(){ P.casesPerPallet = parseInt(cpp.value,10)||80; renderTiers(); });
+        if(cpp) cpp.addEventListener('input', function(){ P.casesPerPallet = parseInt(cpp.value,10)||80; });
       } else if(t === 'bottling'){
         var B = state.bpkg || (state.bpkg = defaultBottlingPkg());
         el.innerHTML =
@@ -744,11 +556,11 @@
         ];
         bottlingMap.forEach(function(m){
           var cb = el.querySelector('#'+m[0]+'-on'), rt = el.querySelector('#'+m[0]+'-rate');
-          if(cb){ cb.checked = !!B[m[1]]; cb.addEventListener('change', function(){ B[m[1]] = cb.checked; renderTiers(); }); }
-          if(rt){ rt.addEventListener('input', function(){ B[m[2]] = parseFloat(rt.value)||0; renderTiers(); }); }
+          if(cb){ cb.checked = !!B[m[1]]; cb.addEventListener('change', function(){ B[m[1]] = cb.checked; }); }
+          if(rt){ rt.addEventListener('input', function(){ B[m[2]] = parseFloat(rt.value)||0; }); }
         });
         var bcpp = el.querySelector('#gl-qb-bcpp');
-        if(bcpp) bcpp.addEventListener('input', function(){ B.casesPerPallet = parseInt(bcpp.value,10)||50; renderTiers(); });
+        if(bcpp) bcpp.addEventListener('input', function(){ B.casesPerPallet = parseInt(bcpp.value,10)||50; });
       } else {
         el.innerHTML =
           '<div style="'+LBL+'">ADD-ON SERVICES</div>' +
@@ -759,94 +571,154 @@
       }
     }
 
-    /* ── Custom lines ──────────────────────────────────────────
-       One line is { desc, qty, unit, rate }. The extended amount is qty × rate
-       and is always shown, so a line reads the same on screen as on the PDF.
-       Blank-description lines are dropped at save time rather than nagging
-       while you type. */
-    function lineTotal(l){ return (parseFloat(l.qty)||0) * (parseFloat(l.rate)||0); }
+    /* ── THE QUOTE DOCUMENT ──────────────────────────────────────
+       A quote is a list of lines: description, quantity, unit, unit price,
+       amount — and a total. The same shape as an invoice, for the same
+       reason: the customer can see where the number comes from.
 
-    function customLineRows(list, scope){
-      if(!list.length){
-        return '<div style="font-size:12px;color:var(--muted);padding:6px 0">None yet.</div>';
-      }
-      return '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:560px">' +
-        '<thead><tr>' +
-          '<th style="'+QTH+'">Description</th><th style="'+QTH+'">Qty</th><th style="'+QTH+'">Unit</th>' +
-          '<th style="'+QTH+'">Price</th><th style="'+QTH+'">Amount</th><th style="'+QTH+'"></th>' +
-        '</tr></thead><tbody>' +
-        list.map(function(l, i){
-          return '<tr>' +
-            '<td style="'+QTD+'"><input data-ln-scope="'+scope+'" data-ln-idx="'+i+'" data-ln-field="desc" value="'+esc(l.desc||'')+'" placeholder="e.g. Kratom filtration setup" style="'+QCELL+';min-width:200px"></td>' +
-            '<td style="'+QTD+'"><input data-ln-scope="'+scope+'" data-ln-idx="'+i+'" data-ln-field="qty" type="number" step="any" value="'+esc(l.qty==null?'':l.qty)+'" style="'+QCELL+';width:80px"></td>' +
-            '<td style="'+QTD+'"><input data-ln-scope="'+scope+'" data-ln-idx="'+i+'" data-ln-field="unit" value="'+esc(l.unit||'')+'" placeholder="each" style="'+QCELL+';width:90px"></td>' +
-            '<td style="'+QTD+'"><input data-ln-scope="'+scope+'" data-ln-idx="'+i+'" data-ln-field="rate" type="number" step="0.01" value="'+esc(l.rate==null?'':l.rate)+'" style="'+QCELL+';width:90px"></td>' +
-            '<td style="'+QTD+';color:#00e5c0;font-weight:700">'+fmtUsd(lineTotal(l))+'</td>' +
-            '<td style="'+QTD+'"><button data-ln-del-scope="'+scope+'" data-ln-del="'+i+'" style="background:none;border:none;color:#ff8579;cursor:pointer;font-size:15px">&times;</button></td>' +
-          '</tr>';
-        }).join('') +
-        '</tbody></table></div>';
+       This replaced a table of VOLUME TIERS, where every row was an
+       alternative the customer chose between and nothing ever summed. Two
+       SKUs at the same volume were impossible to express that way: they read
+       as one option printed twice. As lines they simply add up.
+
+       MONEY IS COMPUTED IN WHOLE CENTS. Amount is quantity times unit price
+       rounded to the cent, and the total sums those rounded amounts as
+       integers. Binary floats put 5341.599999999999 on a real invoice; what
+       is printed has to add up exactly to what is shown. */
+    function money(n){ return Math.round((Number(n) || 0) * 100) / 100; }
+    function centsOf(n){ return Math.round((Number(n) || 0) * 100); }
+    function lineAmount(l){ return money((Number(l.qty) || 0) * (Number(l.unitPrice) || 0)); }
+    function quoteTotal(){
+      var c = (state.lines || []).reduce(function(a, l){ return a + centsOf(lineAmount(l)); }, 0);
+      return c / 100;
     }
 
-    function renderCustomLines(){
-      var secEl = ov.querySelector('#gl-qb-lines');
-      var qEl   = ov.querySelector('#gl-qb-qlines');
-      if(!secEl || !qEl) return;
-      var s = cur();
-      s.lines = s.lines || [];
-      state.quoteLines = state.quoteLines || [];
+    function renderLines(){
+      var host = ov.querySelector('#gl-qb-lines'); if(!host) return;
+      var rows = (state.lines || []).map(function(l, i){
+        return '<tr>' +
+          '<td style="'+QTD+'"><input data-ln="'+i+'" data-f="desc" value="'+esc(l.desc || '')+'" placeholder="Description" style="'+QCELL+';width:100%;min-width:220px"></td>' +
+          '<td style="'+QTD+'"><input data-ln="'+i+'" data-f="qty" type="number" step="any" value="'+esc(l.qty == null ? '' : l.qty)+'" style="'+QCELL+';width:90px"></td>' +
+          '<td style="'+QTD+'"><input data-ln="'+i+'" data-f="unit" value="'+esc(l.unit || '')+'" placeholder="each" style="'+QCELL+';width:80px"></td>' +
+          '<td style="'+QTD+'"><input data-ln="'+i+'" data-f="unitPrice" type="number" step="0.01" value="'+esc(l.unitPrice == null ? '' : l.unitPrice)+'" style="'+QCELL+';width:100px"></td>' +
+          '<td style="'+QTD+';color:#00e5c0;font-weight:700;white-space:nowrap" data-amt="'+i+'">'+fmtUsd(lineAmount(l))+'</td>' +
+          '<td style="'+QTD+'"><button data-del="'+i+'" title="Remove line" style="background:none;border:none;color:#ff8579;cursor:pointer;font-size:16px">&times;</button></td>' +
+        '</tr>';
+      }).join('');
 
-      secEl.innerHTML =
-        '<div style="'+LBL+'">CUSTOM LINES — ' + esc(sectionLabel(s).toUpperCase()) + '</div>' +
-        '<div style="font-size:11px;color:#6b87ad;margin:-4px 0 8px">Anything not on the price deck that applies to this format only.</div>' +
-        customLineRows(s.lines, 'section') +
-        '<button id="gl-qb-add-line" class="cbtn" style="font-size:12px;padding:6px 14px;margin-top:8px">+ Custom Line</button>';
+      host.innerHTML =
+        '<div style="'+LBL+'">LINE ITEMS</div>' +
+        (state.lines.length
+          ? '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:640px">' +
+              '<thead><tr>' +
+                '<th style="'+QTH+'">Description</th><th style="'+QTH+'">Qty</th><th style="'+QTH+'">Unit</th>' +
+                '<th style="'+QTH+'">Unit Price</th><th style="'+QTH+'">Amount</th><th style="'+QTH+'"></th>' +
+              '</tr></thead><tbody>' + rows + '</tbody></table></div>'
+          : '<div style="font-size:12px;color:var(--muted);padding:10px 0">No lines yet. Insert them from the rate card above, or add one by hand.</div>') +
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px;flex-wrap:wrap">' +
+          '<button id="gl-qb-add-line" class="cbtn" style="font-size:12px;padding:6px 14px">+ Add Line</button>' +
+          '<div style="font-size:15px;font-weight:800;color:#fff">Total <span id="gl-qb-total" style="color:#00e5c0;margin-left:10px">'+fmtUsd(quoteTotal())+'</span></div>' +
+        '</div>';
 
-      qEl.innerHTML =
-        '<div style="'+LBL+'">CUSTOM LINES — WHOLE QUOTE</div>' +
-        '<div style="font-size:11px;color:#6b87ad;margin:-4px 0 8px">One-off charges that span the job, whatever formats are on it.</div>' +
-        customLineRows(state.quoteLines, 'quote') +
-        '<button id="gl-qb-add-qline" class="cbtn" style="font-size:12px;padding:6px 14px;margin-top:8px">+ Quote-wide Line</button>';
-
-      function listFor(scope){ return scope === 'quote' ? state.quoteLines : cur().lines; }
-
-      [secEl, qEl].forEach(function(host){
-        host.querySelectorAll('[data-ln-field]').forEach(function(inp){
-          inp.addEventListener('input', function(){
-            var list = listFor(inp.getAttribute('data-ln-scope'));
-            var l = list[parseInt(inp.getAttribute('data-ln-idx'),10)];
-            if(!l) return;
-            var f = inp.getAttribute('data-ln-field');
-            l[f] = (f === 'qty' || f === 'rate') ? (parseFloat(inp.value) || 0) : inp.value;
-            // Only the amount cell changes, so patch it rather than re-render:
-            // a full re-render on every keystroke would drop focus mid-word.
-            var cell = inp.closest('tr').children[4];
-            if(cell) cell.textContent = fmtUsd(lineTotal(l));
-            renderTiers();   // the running total below includes these
-          });
-        });
-        host.querySelectorAll('[data-ln-del]').forEach(function(btn){
-          btn.addEventListener('click', function(){
-            listFor(btn.getAttribute('data-ln-del-scope')).splice(parseInt(btn.getAttribute('data-ln-del'),10), 1);
-            renderCustomLines(); renderTiers();
-          });
+      host.querySelectorAll('[data-ln]').forEach(function(inp){
+        inp.addEventListener('input', function(){
+          var l = state.lines[parseInt(inp.getAttribute('data-ln'), 10)]; if(!l) return;
+          var f = inp.getAttribute('data-f');
+          l[f] = (f === 'qty' || f === 'unitPrice') ? (parseFloat(inp.value) || 0) : inp.value;
+          // Patch the two cells that changed rather than re-rendering: a full
+          // re-render on every keystroke drops focus in the middle of a word.
+          var amt = host.querySelector('[data-amt="' + inp.getAttribute('data-ln') + '"]');
+          if(amt) amt.textContent = fmtUsd(lineAmount(l));
+          var tot = host.querySelector('#gl-qb-total');
+          if(tot) tot.textContent = fmtUsd(quoteTotal());
         });
       });
+      host.querySelectorAll('[data-del]').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          state.lines.splice(parseInt(btn.getAttribute('data-del'), 10), 1);
+          renderLines();
+        });
+      });
+      var addBtn = host.querySelector('#gl-qb-add-line');
+      if(addBtn) addBtn.addEventListener('click', function(){
+        state.lines.push({ desc:'', qty:1, unit:'each', unitPrice:0 });
+        renderLines();
+        var all = host.querySelectorAll('[data-f="desc"]');
+        if(all.length) all[all.length - 1].focus();
+      });
+    }
 
-      var a1 = secEl.querySelector('#gl-qb-add-line');
-      if(a1) a1.addEventListener('click', function(){
-        cur().lines.push({ desc:'', qty:1, unit:'each', rate:0 });
-        renderCustomLines();
-        var inputs = secEl.querySelectorAll('[data-ln-field="desc"]');
-        if(inputs.length) inputs[inputs.length-1].focus();
-      });
-      var a2 = qEl.querySelector('#gl-qb-add-qline');
-      if(a2) a2.addEventListener('click', function(){
-        state.quoteLines.push({ desc:'', qty:1, unit:'each', rate:0 });
-        renderCustomLines();
-        var inputs = qEl.querySelectorAll('[data-ln-field="desc"]');
-        if(inputs.length) inputs[inputs.length-1].focus();
-      });
+    /* ── Rate card to lines ────────────────────────────────────────
+       Everything the old tier table priced, emitted as ordinary editable
+       lines. Run it once per SKU or per size; the lines append, so a quote
+       for two SKUs is two passes and the total covers both. */
+    function insertDeckLines(){
+      var st = ov.querySelector('#gl-qb-status');
+      var t = state.productType, fmt = state.format || '';
+      var vol = parseInt((ov.querySelector('#gl-qb-vol') || {}).value, 10) || 0;
+      if(vol <= 0){
+        if(st){ st.style.color = '#ff8579'; st.textContent = 'Enter how many ' + (t === 'keg' ? 'kegs' : 'cases') + ' first.'; }
+        return;
+      }
+      var added = 0;
+      function add(desc, qty, unit, price){
+        // A zero-priced or zero-quantity line is noise on a customer-facing
+        // document: it reads as free rather than as not applicable. Add one by
+        // hand if you do want it shown.
+        if(!(qty > 0) || !(price > 0)) return;
+        state.lines.push({ desc: desc, qty: qty, unit: unit, unitPrice: money(price) });
+        added++;
+      }
+      var label = fmt ? ' — ' + fmt : '';
+
+      if(t === 'canning'){
+        var P = state.pkg || {};
+        var cans = vol * CANS_PER_CASE;
+        add('Canning' + label, cans, 'can', autoRate(vol));
+        if(P.nitrogenOn)   add('Nitrogen dosing' + label, cans, 'can', P.nitrogenPerCan);
+        if(P.pasteurOn)    add('Batch flash pasteurization' + label, cans, 'can', P.pasteurPerCan);
+        if(P.paktech4On)   add('PakTech handle, 4-pack' + label, cans, 'can', P.paktech4PerCan);
+        if(P.paktech6On)   add('PakTech handle, 6-pack' + label, cans, 'can', P.paktech6PerCan);
+        if(P.proper4On)    add('Proper Pack, 4-pack' + label, cans, 'can', P.proper4PerCan);
+        if(P.proper6On)    add('Proper Pack, 6-pack' + label, cans, 'can', P.proper6PerCan);
+        if(P.canBlankOn)   add('Blank / brite can' + label, cans, 'can', P.canBlankPerCan);
+        if(P.canShrinkOn)  add('Shrink-sleeve label' + label, cans, 'can', P.canShrinkPerCan);
+        if(P.canPrintedOn) add('Pre-printed can' + label, cans, 'can', P.canPrintedPerCan);
+        if(P.tray24On)     add('24-count case tray' + label, vol, 'case', P.tray24PerCase);
+        if(P.tray12On)     add('12-count case tray' + label, vol, 'case', P.tray12PerCase);
+        if(P.trayWrapOn)   add('Shrink-wrap case tray' + label, vol, 'case', P.trayWrapPerCase);
+        var cpp = P.casesPerPallet || 80;
+        var pallets = (P.palletOn || P.palletWrapOn) && cpp > 0 ? Math.ceil(vol / cpp) : 0;
+        if(P.palletOn)     add('Pallet' + label, pallets, 'pallet', P.palletEach);
+        if(P.palletWrapOn) add('Pallet shrink wrap' + label, pallets, 'pallet', P.palletWrapEach);
+      } else if(t === 'bottling'){
+        var B = state.bpkg || {};
+        var btls = vol * BTLS_PER_CASE;
+        add('Bottling' + label, btls, 'bottle', autoRate(vol));
+        if(B.pasteurOn) add('Batch flash pasteurization' + label, btls, 'bottle', B.pasteurPerBtl);
+        if(B.otlOn)     add('Over-the-top labels' + label, btls, 'bottle', B.otlPerBtl);
+        if(B.labelsOn)  add('Labels applied front and back' + label, btls, 'bottle', B.labelsPerBtl);
+        if(B.caseOn)    add('6-pack bottle case' + label, vol, 'case', B.casePerCase);
+        var bcpp = B.casesPerPallet || 50;
+        var bpal = (B.palletOn || B.palletWrapOn) && bcpp > 0 ? Math.ceil(vol / bcpp) : 0;
+        if(B.palletOn)     add('Pallet' + label, bpal, 'pallet', B.palletEach);
+        if(B.palletWrapOn) add('Pallet shrink wrap' + label, bpal, 'pallet', B.palletWrapEach);
+      } else {
+        add('Keg filling labor', vol, 'keg', px('keg_fill_per_keg', 12));
+        var emptyOn = ov.querySelector('#gl-qb-empty-keg-on');
+        if(!emptyOn || emptyOn.checked){
+          var r = ov.querySelector('#gl-qb-empty-keg-rate');
+          add('Empty one-way keg', vol, 'keg', r ? (parseFloat(r.value) || 0) : px('empty_keg_per_keg', 17.50));
+        }
+      }
+
+      renderLines();
+      if(st){
+        st.style.color = added ? '#5fcf9e' : '#ff8579';
+        st.textContent = added
+          ? added + ' line' + (added === 1 ? '' : 's') + ' added.'
+          : 'Nothing to add. No rate applies at that volume, so check the format and the add-ons.';
+      }
     }
 
     function addonToggle(id, label, defaultRate, unit){
@@ -868,217 +740,14 @@
       return getDeckRate(state.productType, state.format, cases);
     }
 
-    function renderTiers(){
-      var tbody = ov.querySelector('#gl-qb-tiers');
-      var t = state.productType;
-      if(!state.tiers.length){
-        tbody.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0">No tiers yet — click "Add Tier" or "Load Standard Tiers".</div>';
-        return;
-      }
-      var isCanning  = t === 'canning';
-      var isBottling = t === 'bottling';
-      var isKeg      = t === 'keg';
-
-      var headerCols = isCanning
-        ? '<th style="'+TH+'">Cases</th><th style="'+TH+'">Cans</th><th style="'+TH+'">Fill /Can</th><th style="'+TH+'">Add-ons /Can</th><th style="'+TH+'">Pkg /Case</th><th style="'+TH+'">Pallets</th><th style="'+TH+'">Run Total</th><th style="'+TH+'"></th>'
-        : isBottling
-          ? '<th style="'+TH+'">Cases</th><th style="'+TH+'">Bottles</th><th style="'+TH+'">/Bottle</th><th style="'+TH+'">Add-ons /Btl</th><th style="'+TH+'">Pkg /Case</th><th style="'+TH+'">Pallets</th><th style="'+TH+'">Run Total</th><th style="'+TH+'"></th>'
-          : '<th style="'+TH+'">Kegs</th><th style="'+TH+'">Labor /Keg</th><th style="'+TH+'">Keg Cost /Keg</th><th style="'+TH+'">Run Total</th><th style="'+TH+'"></th>';
-
-      var rows = state.tiers.map(function(tier, i){
-        return buildTierRow(tier, i, isCanning, isBottling, isKeg);
-      }).join('');
-
-      tbody.innerHTML =
-        '<div style="overflow-x:auto">' +
-        '<table style="width:100%;border-collapse:collapse;font-size:12px;min-width:560px">' +
-          '<thead><tr>' + headerCols + '</tr></thead>' +
-          '<tbody id="gl-qb-tbody">' + rows + '</tbody>' +
-        '</table></div>';
-
-      // Wire up all inputs
-      tbody.querySelectorAll('[data-tier-field]').forEach(function(inp){
-        inp.addEventListener('input', function(){
-          var idx  = parseInt(inp.getAttribute('data-tier-idx'),10);
-          var field = inp.getAttribute('data-tier-field');
-          var raw  = String(inp.value).trim();
-          var tier = state.tiers[idx];
-
-          // The *Override fields are the manual-entry cells. Emptying one hands
-          // the cell back to the calculation, which is the only way out once a
-          // number has been typed — without it the first keystroke would be
-          // permanent.
-          var OVERRIDES = ['addonsOverride','caseExtraOverride','palletCostOverride','runTotalOverride'];
-          if(OVERRIDES.indexOf(field) >= 0){
-            if(raw === ''){ delete tier[field]; }
-            else { tier[field] = parseFloat(raw) || 0; }
-            renderTiers();
-            return;
-          }
-
-          var val = parseFloat(raw) || 0;
-          tier[field] = val;
-
-          // Typing a can/bottle count means you want THAT count, not cases×24.
-          if(field === 'cans' || field === 'bottles') tier._countOverride = true;
-
-          if(field === 'cases'){
-            if(isCanning){
-              if(!tier._countOverride) tier.cans = Math.round(val * CANS_PER_CASE);
-              var deck = autoRate(val);
-              if(!tier._fillOverride) tier.fillPerCan = deck;
-            } else if(isBottling){
-              if(!tier._countOverride) tier.bottles = Math.round(val * BTLS_PER_CASE);
-              var deck2 = autoRate(val);
-              if(!tier._rateOverride) tier.ratePerBtl = deck2;
-            }
-          }
-          if(field === 'fillPerCan' || field === 'ratePerBtl'){
-            tier._fillOverride = true;
-            tier._rateOverride = true;
-          }
-          renderTiers();
-        });
-      });
-
-      tbody.querySelectorAll('[data-del-tier]').forEach(function(btn){
-        btn.addEventListener('click', function(){
-          var idx = parseInt(btn.getAttribute('data-del-tier'),10);
-          state.tiers.splice(idx,1);
-          renderTiers();
-        });
-      });
-    }
 
     var TH = 'background:#0a1628;color:#9aa7bd;font-size:10px;letter-spacing:1.5px;padding:8px 10px;text-align:left;white-space:nowrap';
     var TD = 'padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.06);color:#fff';
     var TDM = 'padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.06);color:#1a6fff;font-weight:700';
 
-    function buildTierRow(tier, i, isCanning, isBottling, isKeg){
-      if(isCanning){
-        var x = canningExtras(tier, state.pkg);
-        var addonsPerCan = x.perCan - (tier.fillPerCan||0); // nitrogen + pasteurization
-        var palletCell = x.pallets
-          ? x.pallets + ' × ' + fmtUsd((x.palletCost/x.pallets)) + '<div style="color:var(--muted);font-size:10px">' + fmtUsd(x.palletCost) + '</div>'
-          : '—';
-        // Every number in this row is typed over-able. The ones that used to be
-        // plain text — cans, add-ons, packaging, pallets, the run total — are
-        // inputs now, and an edited cell holds its value instead of being
-        // recalculated out from under you.
-        return '<tr>' +
-          '<td style="'+TD+'">' + numInp(i,'cases',tier.cases,0,60) + '</td>' +
-          '<td style="'+TD+'">' + ovrInp(i,'cans',tier.cans||0,tier._countOverride,68,1) + '</td>' +
-          '<td style="'+TD+'">' + rateInp(i,'fillPerCan',tier.fillPerCan,tier._fillOverride) + '</td>' +
-          '<td style="'+TDM+'">' + ovrInp(i,'addonsOverride',addonsPerCan,isNum(tier.addonsOverride),64,0.01) + '</td>' +
-          '<td style="'+TDM+'">' + ovrInp(i,'caseExtraOverride',x.caseExtra,isNum(tier.caseExtraOverride),64,0.01) + '</td>' +
-          '<td style="'+TDM+';font-size:11px">' +
-            ovrInp(i,'palletCostOverride',x.palletCost,isNum(tier.palletCostOverride),68,0.01) +
-            '<div style="color:var(--muted);font-size:10px;margin-top:2px">' + (x.pallets ? x.pallets + ' pallet' + (x.pallets===1?'':'s') : '—') + '</div>' +
-          '</td>' +
-          '<td style="'+TDM+'">' + ovrInp(i,'runTotalOverride',x.runTotal,isNum(tier.runTotalOverride),82,0.01) + '</td>' +
-          '<td style="'+TD+'"><button data-del-tier="'+i+'" class="cbtn" style="padding:3px 8px;font-size:11px;color:#ff8579;border-color:rgba(255,133,121,.3)">✕</button></td>' +
-        '</tr>';
-      } else if(isBottling){
-        var bx = bottlingExtras(tier, state.bpkg);
-        var bAddPerBtl = bx.perBtl - (tier.ratePerBtl||0);
-        var bPalletCell = bx.pallets
-          ? bx.pallets + '<div style="color:var(--muted);font-size:10px">' + fmtUsd(bx.palletCost) + '</div>'
-          : '—';
-        return '<tr>' +
-          '<td style="'+TD+'">' + numInp(i,'cases',tier.cases,0,60) + '</td>' +
-          '<td style="'+TD+';color:var(--muted)">' + fmtNum(tier.bottles||0) + '</td>' +
-          '<td style="'+TD+'">' + rateInp(i,'ratePerBtl',tier.ratePerBtl,tier._rateOverride) + '</td>' +
-          '<td style="'+TDM+';color:var(--muted)">' + fmtUsd(bAddPerBtl) + '</td>' +
-          '<td style="'+TDM+';color:var(--muted)">' + fmtUsd(bx.caseExtra) + '</td>' +
-          '<td style="'+TDM+';color:var(--muted);font-size:11px">' + bPalletCell + '</td>' +
-          '<td style="'+TDM+'">' + fmtUsd(bx.runTotal) + '</td>' +
-          '<td style="'+TD+'"><button data-del-tier="'+i+'" class="cbtn" style="padding:3px 8px;font-size:11px;color:#ff8579;border-color:rgba(255,133,121,.3)">✕</button></td>' +
-        '</tr>';
-      } else {
-        var kegTotal = ((tier.laborPerKeg||0)+(tier.kegCostPerKeg||0)) * (tier.kegs||0);
-        return '<tr>' +
-          '<td style="'+TD+'">' + numInp(i,'kegs',tier.kegs,0,40) + '</td>' +
-          '<td style="'+TD+'">' + rateInp(i,'laborPerKeg',tier.laborPerKeg) + '</td>' +
-          '<td style="'+TD+'">' + rateInp(i,'kegCostPerKeg',tier.kegCostPerKeg) + '</td>' +
-          '<td style="'+TDM+'">' + fmtUsd(kegTotal) + '</td>' +
-          '<td style="'+TD+'"><button data-del-tier="'+i+'" class="cbtn" style="padding:3px 8px;font-size:11px;color:#ff8579;border-color:rgba(255,133,121,.3)">✕</button></td>' +
-        '</tr>';
-      }
-    }
 
-    function numInp(i, field, val, step, width){
-      return '<input data-tier-idx="'+i+'" data-tier-field="'+field+'" type="number" min="0" step="'+(step||1)+'" value="'+(val||0)+'" style="width:'+(width||60)+'px;padding:5px 6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:4px;color:#fff;font-size:12px">';
-    }
-    // A cell that shows a CALCULATED value but accepts a typed one. Yellow
-    // border once overridden, so at a glance you can see which numbers on a
-    // quote are the rate card's and which are yours. Clearing the box hands the
-    // cell back to the calculation.
-    function ovrInp(i, field, val, overridden, width, step){
-      var border = overridden ? 'rgba(245,200,66,.5)' : 'rgba(255,255,255,.12)';
-      var colour = overridden ? '#f5c842' : 'var(--muted)';
-      var title  = overridden
-        ? 'Custom value — clear the box to go back to the calculated one'
-        : 'Calculated. Type over it to set your own.';
-      return '<input data-tier-idx="' + i + '" data-tier-field="' + field + '"' +
-        ' type="number" step="' + (step || 0.01) + '" value="' + (Math.round((val || 0) * 100) / 100) + '"' +
-        ' style="width:' + (width || 68) + 'px;padding:5px 6px;background:rgba(255,255,255,.04);' +
-        'border:1px solid ' + border + ';border-radius:4px;color:' + colour + ';font-size:12px"' +
-        ' title="' + title + '">';
-    }
-
-    function rateInp(i, field, val, overridden){
-      var border = overridden ? 'rgba(245,200,66,.5)' : 'rgba(255,255,255,.12)';
-      return '<input data-tier-idx="'+i+'" data-tier-field="'+field+'" type="number" min="0" step="0.01" value="'+(val||0)+'" style="width:68px;padding:5px 6px;background:rgba(255,255,255,.04);border:1px solid '+border+';border-radius:4px;color:#fff;font-size:12px" title="'+(overridden?'Custom rate':'Deck rate — edit to override')+'">';
-    }
-
-    function rerenderTiers(){
-      // Refresh deck rates on existing tiers when format changes
-      var isCanning = state.productType === 'canning';
-      state.tiers.forEach(function(t){
-        if(isCanning && !t._fillOverride){
-          t.fillPerCan = autoRate(t.cases||0);
-        } else if(state.productType==='bottling' && !t._rateOverride){
-          t.ratePerBtl = autoRate(t.cases||0);
-        }
-      });
-      renderTiers();
-    }
-
-    /* ── Add tier ── */
-    ov.querySelector('#gl-qb-add-tier').addEventListener('click', function(){
-      var t = state.productType;
-      if(t==='canning'){
-        var cases = 500;
-        state.tiers.push({ cases:cases, cans:cases*CANS_PER_CASE, fillPerCan:autoRate(cases), nitrogenPerCan:0.03, trayPerCan:0.03 });
-      } else if(t==='bottling'){
-        var c = 660;
-        state.tiers.push({ cases:c, bottles:c*BTLS_PER_CASE, ratePerBtl:autoRate(c) });
-      } else {
-        state.tiers.push({ kegs:px('keg_minimum',40), laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) });
-      }
-      renderTiers();
-    });
-
-    /* ── Standard tiers ── */
-    ov.querySelector('#gl-qb-auto-tiers').addEventListener('click', function(){
-      var t = state.productType;
-      if(t==='canning'){
-        state.tiers = [
-          { cases:501,  cans:501*CANS_PER_CASE,  fillPerCan:autoRate(501),  nitrogenPerCan:0.03, trayPerCan:0.03 },
-          { cases:1000, cans:1000*CANS_PER_CASE, fillPerCan:autoRate(1000), nitrogenPerCan:0.03, trayPerCan:0.03 },
-          { cases:5000, cans:5000*CANS_PER_CASE, fillPerCan:autoRate(5000), nitrogenPerCan:0.03, trayPerCan:0.03 }
-        ];
-      } else if(t==='bottling'){
-        state.tiers = [
-          { cases:220,  bottles:220*BTLS_PER_CASE,  ratePerBtl:autoRate(220) },
-          { cases:660,  bottles:660*BTLS_PER_CASE,  ratePerBtl:autoRate(660) },
-          { cases:1320, bottles:1320*BTLS_PER_CASE, ratePerBtl:autoRate(1320) }
-        ];
-      } else {
-        state.tiers = [{ kegs:px('keg_minimum',40), laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) }];
-      }
-      renderTiers();
-    });
+    /* ── Insert lines from the rate card ── */
+    ov.querySelector('#gl-qb-insert').addEventListener('click', insertDeckLines);
 
     /* ── Build quote data from current form state ── */
     function buildQuoteData(){
@@ -1100,27 +769,25 @@
         addons.push({ id:base, label:label, rate:parseFloat(rateEl.value)||0 });
       });
 
-      // The add-on checkboxes above belong to the SELECTED section, so read
-      // them into that section before snapshotting. Every other section
-      // already holds its own pkg/bpkg from when it was on screen.
-      var sections = state.sections.map(function(s){
-        return {
-          productType: s.productType,
-          format:      s.format,
-          tiers:       s.tiers || [],
-          pkg:         JSON.parse(JSON.stringify(s.pkg  || {})),
-          bpkg:        JSON.parse(JSON.stringify(s.bpkg || {})),
-          // Drop the blank rows that come from clicking "+ Custom Line" and
-          // then thinking better of it.
-          lines:       (s.lines || []).filter(function(l){ return String(l.desc||'').trim(); }),
-          inclusions:  inclusionsForType(s.productType)
-        };
-      });
-      var quoteLines = (state.quoteLines || []).filter(function(l){ return String(l.desc||'').trim(); });
+      // The document: blank descriptions are dropped here rather than nagging
+      // while you type, and every amount is recomputed from qty x price so a
+      // saved quote can never disagree with what was on screen.
+      var lines = (state.lines || [])
+        .filter(function(l){ return String(l.desc || '').trim() || (Number(l.qty) && Number(l.unitPrice)); })
+        .map(function(l){
+          return {
+            desc:      String(l.desc || ''),
+            qty:       Number(l.qty) || 0,
+            unit:      String(l.unit || ''),
+            unitPrice: money(l.unitPrice),
+            amount:    lineAmount(l)
+          };
+        });
+      var total = money(lines.reduce(function(a, l){ return a + centsOf(l.amount); }, 0) / 100);
 
       return {
-        sections:      sections,
-        quoteLines:    quoteLines,
+        lines:         lines,
+        total:         total,
         clientId:      (function(){
           var typed = (ov.querySelector('#gl-qb-client-name')||{}).value||'';
           if(clientId) return clientId;
@@ -1132,28 +799,16 @@
         quoteNumber:   quoteNumber,
         quoteDate:     quoteDate,
         validDays:     validDays,
-        // Legacy single-format fields, taken from the FIRST section. The
-        // quotes table still has NOT NULL product_type and package_format
-        // columns, and the quote history list, the deal panel and every saved
-        // quote read them. Keeping them populated means nothing downstream
-        // has to learn about sections to keep working.
-        productType:   sections[0] ? sections[0].productType : productType,
-        packageFormat: sections[0] ? sections[0].format      : packageFormat,
-        tiers:         sections[0] ? sections[0].tiers       : state.tiers,
+        // product_type and package_format are NOT NULL on the table and are
+        // read by the quote history list and the deal panel, so they stay,
+        // describing the rate card the lines were generated from.
+        productType:   productType,
+        packageFormat: packageFormat,
+        tiers:         [],
         addons:        addons,
         pkg:           JSON.parse(JSON.stringify(state.pkg || {})),
         bpkg:          JSON.parse(JSON.stringify(state.bpkg || {})),
-        // Union across sections, in first-seen order. A quote with cans and
-        // bottles on it has to show what is included for both.
-        inclusions:    (function(){
-          var seen = {}, out = [];
-          sections.forEach(function(s){
-            inclusionsForType(s.productType).forEach(function(x){
-              if(!seen[x]){ seen[x] = 1; out.push(x); }
-            });
-          });
-          return out.length ? out : inclusionsForType(productType);
-        })(),
+        inclusions:    inclusionsForType(productType),
         notes:         notes,
         clientName:    (ov.querySelector('#gl-qb-client-name')||{}).value || client.name || '',
         clientEmail:   (ov.querySelector('#gl-qb-client-email')||{}).value || client.email || '',
@@ -1161,15 +816,9 @@
       };
     }
 
-    // Priceable = any section has a volume tier, or there is a custom line
-    // somewhere. The old check looked only at the single tier list, so a
-    // quote made entirely of custom lines could not be saved at all.
-    function quoteHasContent(d){
-      var secs = d.sections || [];
-      if(secs.some(function(x){ return (x.tiers||[]).length || (x.lines||[]).length; })) return true;
-      if((d.quoteLines||[]).length) return true;
-      return (d.tiers||[]).length > 0;
-    }
+    // A quote needs at least one line. Nothing else is required: a quote made
+    // entirely of hand-typed lines is an ordinary quote.
+    function quoteHasContent(d){ return (d.lines || []).length > 0; }
 
     /* ── Save ── */
     async function doSave(){
@@ -1178,7 +827,7 @@
       if(!sb){ st.style.color='#ff8579'; st.textContent='Not connected.'; return null; }
       st.style.color='var(--muted)'; st.textContent='Saving…';
       var data = buildQuoteData();
-      if(!quoteHasContent(data)){ st.style.color='#ff8579'; st.textContent='Add a volume tier or a custom line before saving.'; return null; }
+      if(!quoteHasContent(data)){ st.style.color='#ff8579'; st.textContent='Add at least one line before saving.'; return null; }
       /* Take a number from the database now. Never fall back to a locally
          guessed one — quote_number is UNIQUE and a duplicate loses the save. */
       if(!data.quoteNumber){
@@ -1205,11 +854,12 @@
         // reopened quote can restore it. Kept inside the existing addons jsonb
         // array (id '__pkg__') to avoid a schema change; readers key by id.
         addons:         (data.addons||[]).concat([{ id:'__pkg__', pkg: data.pkg }]),
-        // Every format on the quote, and the free-text lines. product_type and
-        // package_format above describe sections[0] only; these two columns are
-        // the whole picture.
-        sections:       data.sections || [],
-        custom_lines:   data.quoteLines || [],
+        // The document and its total. sections and custom_lines stay empty:
+        // they were the previous shape, and older rows still carry them.
+        line_items:     data.lines || [],
+        total:          data.total,
+        sections:       [],
+        custom_lines:   [],
         inclusions:     data.inclusions,
         notes:          data.notes,
         pdf_html:       generateQuoteHTML(data)
@@ -1232,7 +882,7 @@
 
     ov.querySelector('#gl-qb-pdf').addEventListener('click', function(){
       var data = buildQuoteData();
-      if(!quoteHasContent(data)){ ov.querySelector('#gl-qb-status').style.color='#ff8579'; ov.querySelector('#gl-qb-status').textContent='Add a volume tier or a custom line.'; return; }
+      if(!quoteHasContent(data)){ ov.querySelector('#gl-qb-status').style.color='#ff8579'; ov.querySelector('#gl-qb-status').textContent='Add at least one line.'; return; }
       openPrintWindow(data);
     });
 
@@ -1258,32 +908,15 @@
       // The in-email summary walks every format on the quote, not just the
       // first, and names each one when there is more than one. Custom lines
       // are listed too — they are real money and used to be invisible here.
-      var _secs = (data.sections && data.sections.length) ? data.sections : [{
-        productType: data.productType, format: data.packageFormat,
-        tiers: data.tiers, pkg: data.pkg, bpkg: data.bpkg, lines: []
-      }];
-      var _multi = _secs.length > 1;
-      function _lineRows(list){
-        return (list||[]).filter(function(l){ return String(l.desc||'').trim(); }).map(function(l){
-          var qty = Number(l.qty)||0, rate = Number(l.rate)||0;
-          return '<li>'+esc(l.desc)+' — '+fmtNum(qty)+(l.unit ? ' '+esc(l.unit) : '')+' @ '+fmtUsd(rate)+' = '+fmtUsd(qty*rate)+'</li>';
-        }).join('');
-      }
-      var tierLines = _secs.map(function(sec){
-        var label = sec.format || (sec.productType === 'bottling' ? 'Bottling' : sec.productType === 'keg' ? 'Keg Filling' : 'Canning');
-        var rows = (sec.tiers||[]).map(function(t){
-          if(sec.productType==='canning'){
-            var x = canningExtras(t, sec.pkg);
-            return '<li>'+fmtNum(t.cases)+' cases ('+fmtNum(t.cans||0)+' cans) — '+fmtUsd(x.runTotal)+' all-in ('+fmtUsd((t.cans||0)?x.runTotal/(t.cans||1):0)+'/can)</li>';
-          } else if(sec.productType==='bottling'){
-            var bx = bottlingExtras(t, sec.bpkg);
-            return '<li>'+fmtNum(t.cases)+' cases ('+fmtNum(t.bottles||0)+' bottles) — '+fmtUsd(bx.runTotal)+' all-in</li>';
-          }
-          return '<li>'+fmtNum(t.kegs||0)+' kegs — '+fmtUsd((t.laborPerKeg||0)+(t.kegCostPerKeg||0))+'/keg</li>';
-        }).join('') + _lineRows(sec.lines);
-        if(!rows) return '';
-        return _multi ? '<li style="list-style:none;margin-left:-20px;font-weight:700;padding-top:6px">'+esc(label)+'</li>' + rows : rows;
-      }).join('') + _lineRows(data.quoteLines);
+      // The in-email summary is the same list the PDF shows, so the two can
+      // never disagree. It used to walk volume tiers and omitted everything
+      // else on the quote.
+      var tierLines = (data.lines || []).map(function(l){
+        var q = Number(l.qty) || 0;
+        return '<li>' + esc(l.desc || '') + ' \u2014 ' + fmtNum(q) + (l.unit ? ' ' + esc(l.unit) : '') +
+               ' at ' + fmtUsd(l.unitPrice) + ' = <b>' + fmtUsd(l.amount) + '</b></li>';
+      }).join('') +
+      '<li style="list-style:none;margin-left:-20px;padding-top:8px;font-weight:800;font-size:15px">Total ' + fmtUsd(data.total) + '</li>';
 
       /* Build email HTML from the editable textarea, then append auto-generated quote summary */
       var rawBody   = ((ov.querySelector('#gl-qb-email-body')||{}).value || '').trim();
@@ -1329,7 +962,10 @@
     // Paint tabs, add-ons, tiers and custom lines for the opening section.
     // Runs last so the table styles declared further up this function are
     // assigned before any renderer reads them.
-    selectSection(state.activeIdx);
+    // Paint the rate-card panel and the (empty) document. Runs last so the
+    // table styles declared further up this function are assigned first.
+    updateVolLabel();
+    renderLines();
   };
 
   /* ── PDF HTML generation (Stiiizy-format) ───────────────────── */
@@ -1337,175 +973,52 @@
     // A quote carries one or more formats. Quotes saved before sections
     // existed have no array, so treat those as the single format their own
     // columns describe — every quote ever saved still renders.
-    var SECTIONS = (data.sections && data.sections.length) ? data.sections : [{
-      productType: data.productType, format: data.packageFormat,
-      tiers: data.tiers, pkg: data.pkg, bpkg: data.bpkg, lines: []
-    }];
-    var MULTI = SECTIONS.length > 1;
     var validUntil = fmtDate(addDays(data.quoteDate, data.validDays));
 
-    // Addons lookup
+    // Addons lookup (kept for quotes saved under the older shape).
     function hasAddon(id){ return (data.addons||[]).some(function(a){ return a.id===id; }); }
     function addonRate(id){ var a=(data.addons||[]).find(function(x){ return x.id===id; }); return a?a.rate:0; }
-    // Renders a selected add-on as its own priced line on the quote (same styling
-    // as palletizing). Without this, per-can/per-bottle add-ons like flash
-    // pasteurization and the bottling label options were collected but never
-    // shown or charged — silent revenue leakage on every affected quote.
-    function addonLine(id, label, unit){
-      if(!hasAddon(id)) return '';
-      return '<div style="border-left:4px solid #1a6fff;padding:12px 16px;background:#eef3ff;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
-        '<div><b>'+esc(label)+'</b></div>' +
-        '<div style="color:#1a6fff;font-weight:700;font-size:15px">'+fmtUsd(addonRate(id))+' / '+esc(unit)+'</div>' +
-      '</div>';
-    }
 
-    // One priced block per format. The parameter is named `data` on purpose:
-    // the body below was written against data.pkg / data.tiers / data.bpkg and
-    // moves here verbatim, now pointed at one section rather than the quote.
-    // hasAddon / addonRate stay bound to the outer quote-level data.
-    function sectionTiers(data){
-      var isCanning  = data.productType === 'canning';
-      var isBottling = data.productType === 'bottling';
-      var tiersTable = '';
-      if(isCanning){
-      var PK = data.pkg || {};
-      tiersTable = (data.tiers||[]).map(function(t){
-        var x   = canningExtras(t, PK);
-        var addonsPerCan = x.perCan - (t.fillPerCan||0);
-        var vol = fmtNum(t.cans||0)+' cans ('+fmtNum(t.cases||0)+' cases)';
-        return '<tr>' +
-          '<td style="'+PTDC+'">'+vol+'</td>' +
-          '<td style="'+PTDC+'">'+fmtUsd(t.fillPerCan||0)+'</td>' +
-          '<td style="'+PTDC+'">'+fmtUsd(addonsPerCan)+'</td>' +
-          '<td style="'+PTDC+'">'+fmtUsd(x.caseExtra)+'</td>' +
-          '<td style="'+PTDC+'">'+(x.pallets ? x.pallets+' ('+fmtUsd(x.palletCost)+')' : '—')+'</td>' +
-          '<td style="'+PTD_BLUE+'">'+fmtUsd(x.runTotal)+'</td>' +
-        '</tr>';
-      }).join('');
-      // Itemized add-on / packaging breakdown — each active line with its rate.
-      function pkgLine(on, label, rate, unit){
-        if(!on || !(rate>0)) return '';
-        return '<div style="border-left:4px solid #1a6fff;padding:10px 16px;background:#eef3ff;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
-          '<div><b>'+esc(label)+'</b></div>' +
-          '<div style="color:#1a6fff;font-weight:700;font-size:14px">'+fmtUsd(rate)+' / '+esc(unit)+'</div>' +
-        '</div>';
-      }
-      tiersTable = '<table style="width:100%;border-collapse:collapse;margin-bottom:16px">' +
-        '<thead><tr>' +
-          '<th style="'+PTH+'">Volume</th>' +
-          '<th style="'+PTH+'">Fill /Can</th>' +
-          '<th style="'+PTH+'">Add-ons /Can</th>' +
-          '<th style="'+PTH+'">Pkg /Case</th>' +
-          '<th style="'+PTH+'">Pallets</th>' +
-          '<th style="'+PTH+';color:#1a6fff">Run Total</th>' +
-        '</tr></thead><tbody>' + tiersTable + '</tbody></table>' +
-        pkgLine(PK.nitrogenOn, 'Nitrogen Dosing', PK.nitrogenPerCan, 'can') +
-        pkgLine(PK.pasteurOn,  'Batch Flash Pasteurization', PK.pasteurPerCan, 'can') +
-        pkgLine(PK.tray24On,   '24-count Case Tray', PK.tray24PerCase, 'case') +
-        pkgLine(PK.tray12On,   '12-count Case Tray', PK.tray12PerCase, 'case') +
-        pkgLine(PK.trayWrapOn, 'Shrink-wrap Case Tray', PK.trayWrapPerCase, 'case') +
-        pkgLine(PK.paktech4On, 'PakTech Handle — 4-pack', PK.paktech4PerCan, 'can') +
-        pkgLine(PK.paktech6On, 'PakTech Handle — 6-pack', PK.paktech6PerCan, 'can') +
-        pkgLine(PK.proper4On,  'Proper Pack — 4-pack', PK.proper4PerCan, 'can') +
-        pkgLine(PK.proper6On,  'Proper Pack — 6-pack', PK.proper6PerCan, 'can') +
-        pkgLine(PK.canBlankOn,   'Blank / Brite Can', PK.canBlankPerCan, 'can') +
-        pkgLine(PK.canShrinkOn,  'Shrink-Sleeve Label', PK.canShrinkPerCan, 'can') +
-        pkgLine(PK.canPrintedOn, 'Pre-Printed Can', PK.canPrintedPerCan, 'can') +
-        pkgLine(PK.palletOn,   'Pallet', PK.palletEach, 'pallet') +
-        pkgLine(PK.palletWrapOn, 'Pallet Shrink Wrap', PK.palletWrapEach, 'pallet');
-    } else if(isBottling){
-      var BB = data.bpkg || {};
-      function bpkgLine(on, label, rate, unit){
-        if(!on || !(rate>0)) return '';
-        return '<div style="border-left:4px solid #1a6fff;padding:10px 16px;background:#eef3ff;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
-          '<div><b>'+esc(label)+'</b></div>' +
-          '<div style="color:#1a6fff;font-weight:700;font-size:14px">'+fmtUsd(rate)+' / '+esc(unit)+'</div>' +
-        '</div>';
-      }
-      tiersTable = '<table style="width:100%;border-collapse:collapse;margin-bottom:16px">' +
-        '<thead><tr>' +
-          '<th style="'+PTH+'">Volume</th>' +
-          '<th style="'+PTH+'">Per Bottle</th>' +
-          '<th style="'+PTH+'">Add-ons /Btl</th>' +
-          '<th style="'+PTH+'">Pkg /Case</th>' +
-          '<th style="'+PTH+'">Pallets</th>' +
-          '<th style="'+PTH+';color:#1a6fff">Run Total</th>' +
-        '</tr></thead><tbody>' +
-        (data.tiers||[]).map(function(t){
-          var bx = bottlingExtras(t, BB);
-          var addPerBtl = bx.perBtl - (t.ratePerBtl||0);
-          return '<tr>' +
-            '<td style="'+PTDC+'">' + fmtNum(t.cases||0)+' cases ('+fmtNum(t.bottles||0)+' bottles)</td>' +
-            '<td style="'+PTDC+'">' + fmtUsd(t.ratePerBtl||0) + '</td>' +
-            '<td style="'+PTDC+'">' + fmtUsd(addPerBtl) + '</td>' +
-            '<td style="'+PTDC+'">' + fmtUsd(bx.caseExtra) + '</td>' +
-            '<td style="'+PTDC+'">' + (bx.pallets ? bx.pallets+' ('+fmtUsd(bx.palletCost)+')' : '—') + '</td>' +
-            '<td style="'+PTD_BLUE+'">' + fmtUsd(bx.runTotal) + '</td>' +
-          '</tr>';
-        }).join('') +
-        '</tbody></table>' +
-        bpkgLine(BB.pasteurOn, 'Batch Flash Pasteurization', BB.pasteurPerBtl, 'bottle') +
-        bpkgLine(BB.otlOn,     'Over the Top Labels', BB.otlPerBtl, 'bottle') +
-        bpkgLine(BB.labelsOn,  'Labels Front &amp; Back', BB.labelsPerBtl, 'bottle') +
-        bpkgLine(BB.caseOn,    '6-pack Bottle Case', BB.casePerCase, 'case') +
-        bpkgLine(BB.palletOn,  'Pallet', BB.palletEach, 'pallet') +
-        bpkgLine(BB.palletWrapOn, 'Pallet Shrink Wrap', BB.palletWrapEach, 'pallet');
-    } else {
-      tiersTable = '<table style="width:100%;border-collapse:collapse;margin-bottom:20px">' +
-        '<thead><tr><th style="'+PTH+'">Quantity</th><th style="'+PTH+'">Labor / Keg</th><th style="'+PTH+'">Keg Cost / Keg</th><th style="'+PTH+';color:#1a6fff">Run Total</th></tr></thead><tbody>' +
-        (data.tiers||[]).map(function(t){
-          var total = ((t.laborPerKeg||0)+(t.kegCostPerKeg||0))*(t.kegs||0);
-          return '<tr>' +
-            '<td style="'+PTDC+'">' + fmtNum(t.kegs||0) + ' kegs</td>' +
-            '<td style="'+PTDC+'">' + fmtUsd(t.laborPerKeg||0) + '</td>' +
-            '<td style="'+PTDC+'">' + fmtUsd(t.kegCostPerKeg||0) + '</td>' +
-            '<td style="'+PTD_BLUE+'">' + fmtUsd(total) + '</td>' +
-          '</tr>';
-        }).join('') +
-        '</tbody></table>';
-    }
-      return tiersTable;
-    }
+    /* THE DOCUMENT. Description, quantity, unit price, amount, total \u2014 the
+       same shape as an invoice, so the customer can follow where the number
+       comes from. It replaced a volume-tier table whose rows were mutually
+       exclusive options and never summed.
 
-    // Free-text lines, priced qty × rate. This is the escape hatch for
-    // anything the standard deck does not model.
-    function linesTable(lines, heading){
-      var rows = (lines || []).filter(function(l){ return String(l.desc||'').trim(); });
-      if(!rows.length) return '';
-      var total = rows.reduce(function(a,l){ return a + (Number(l.qty)||0)*(Number(l.rate)||0); }, 0);
-      return '<div style="font-weight:700;margin:14px 0 8px;color:#0a1628">'+esc(heading)+'</div>' +
-        '<table style="width:100%;border-collapse:collapse;margin-bottom:16px">' +
+       Rounding is per line and the total adds the rounded amounts, so what is
+       printed adds up exactly to what is shown. */
+    function quoteLinesTable(lines, total){
+      var rows = (lines || []).filter(function(l){ return String(l.desc || '').trim(); });
+      if(!rows.length){
+        return '<div style="padding:14px;color:#6b7280">No line items on this quote.</div>';
+      }
+      return '<table style="width:100%;border-collapse:collapse;margin-bottom:6px">' +
         '<thead><tr>' +
-          '<th style="'+PTH+'">Item</th>' +
+          '<th style="'+PTH+'">Description</th>' +
           '<th style="'+PTH+'">Qty</th>' +
           '<th style="'+PTH+'">Unit Price</th>' +
           '<th style="'+PTH+';color:#1a6fff">Amount</th>' +
         '</tr></thead><tbody>' +
         rows.map(function(l){
-          var qty = Number(l.qty)||0;
+          var q = Number(l.qty) || 0;
           return '<tr>' +
-            '<td style="'+PTDC+'">'+esc(l.desc||'')+'</td>' +
-            '<td style="'+PTDC+'">'+fmtNum(qty)+(l.unit ? ' '+esc(l.unit) : '')+'</td>' +
-            '<td style="'+PTDC+'">'+fmtUsd(l.rate||0)+'</td>' +
-            '<td style="'+PTD_BLUE+'">'+fmtUsd(qty*(Number(l.rate)||0))+'</td>' +
+            '<td style="'+PTDC+';text-align:left">' + esc(l.desc || '') + '</td>' +
+            '<td style="'+PTDC+'">' + fmtNum(q) + (l.unit ? ' <span style="color:#6b7280">' + esc(l.unit) + '</span>' : '') + '</td>' +
+            '<td style="'+PTDC+'">' + fmtUsd(l.unitPrice) + '</td>' +
+            '<td style="'+PTD_BLUE+'">' + fmtUsd(l.amount) + '</td>' +
           '</tr>';
         }).join('') +
-        '<tr><td colspan="3" style="'+PTDC+';text-align:right;font-weight:700">Subtotal</td>' +
-          '<td style="'+PTD_BLUE+'">'+fmtUsd(total)+'</td></tr>' +
-        '</tbody></table>';
+        '</tbody></table>' +
+        '<div style="display:flex;justify-content:flex-end;align-items:baseline;gap:18px;padding:14px 10px 4px;border-top:2px solid #0a1628">' +
+          '<div style="font-size:16px;font-weight:800;color:#0a1628">Quote Total</div>' +
+          '<div style="font-size:20px;font-weight:900;color:#1a6fff">' + fmtUsd(total) + '</div>' +
+        '</div>';
     }
 
-    // Assemble: a block per format, then the lines that span the whole job.
-    // The heading only appears on a multi-format quote, so a single-format
-    // one looks exactly as it always did.
-    var tiersTable = SECTIONS.map(function(sec){
-      var label = sec.format || (sec.productType === 'bottling' ? 'Bottling' : sec.productType === 'keg' ? 'Keg Filling' : 'Canning');
-      var heading = MULTI
-        ? '<div style="margin:22px 0 10px;padding:8px 14px;background:#0a1628;color:#fff;font-weight:700;letter-spacing:1px;border-radius:4px">'+esc(label)+'</div>'
-        : '';
-      return heading + sectionTiers(sec) + linesTable(sec.lines, 'Additional items — ' + label);
-    }).join('') +
-    linesTable(data.quoteLines || data.customLines, 'Additional items');
+    var lineRows = (data.line_items && data.line_items.length) ? data.line_items : (data.lines || []);
+    var lineTotalSum = (data.total != null)
+      ? data.total
+      : Math.round(lineRows.reduce(function(a, l){ return a + Math.round((Number(l.amount) || 0) * 100); }, 0)) / 100;
+    var tiersTable = quoteLinesTable(lineRows, lineTotalSum);
 
     // ── What's included ──
     var incl = (data.inclusions || inclusionsForType(data.productType));
@@ -1517,15 +1030,7 @@
     // Terms are per product type, so a quote with cans and bottles on it needs
     // both sets. Union in first-seen order, de-duplicated: the pricing caveat
     // is worded identically for canning and bottling and should appear once.
-    var terms = (function(){
-      var seen = {}, out = [];
-      SECTIONS.forEach(function(sec){
-        termsForType(sec.productType).forEach(function(t){
-          if(!seen[t]){ seen[t] = 1; out.push(t); }
-        });
-      });
-      return out.length ? out : termsForType(data.productType);
-    })();
+    var terms = termsForType(data.productType);
     if(data.notes) terms = terms.concat(['<b>Additional Notes:</b> '+data.notes]);
 
     // PTH/PTDC/PTD_BLUE are defined at module scope (below). Declaring them
@@ -1560,15 +1065,11 @@
         '<div style="text-align:right">' +
           // On a multi-format quote this header used to name only the first
           // format, which reads as though the other blocks were not quoted.
-          '<div class="client-label">'+(MULTI ? 'PACKAGE FORMATS' : 'PACKAGE FORMAT')+'</div>' +
-          '<div style="font-size:'+(MULTI ? '15' : '19')+'px;font-weight:900;color:#1a2240;line-height:1.4">' +
-            SECTIONS.map(function(sec){
-              return esc(sec.format || (sec.productType === 'bottling' ? 'Bottling' : sec.productType === 'keg' ? 'Keg Filling' : 'Canning'));
-            }).join('<br>') +
-          '</div>' +
+          '<div class="client-label">PACKAGE FORMAT</div>' +
+          '<div style="font-size:19px;font-weight:900;color:#1a2240">'+esc(data.packageFormat || '')+'</div>' +
         '</div>' +
       '</div>' +
-      '<div class="section-title">VOLUME PRICING OPTIONS <span style="float:right;font-size:10px;color:#9aa7bd;font-weight:400;letter-spacing:0">All amounts USD</span></div>' +
+      '<div class="section-title">QUOTE SUMMARY <span style="float:right;font-size:10px;color:#9aa7bd;font-weight:400;letter-spacing:0">All amounts USD</span></div>' +
       tiersTable +
       '<div class="section-title">WHAT\'S INCLUDED</div>' +
       '<div class="incl"><div>'+col1+'</div><div>'+col2+'</div></div>' +
