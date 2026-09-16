@@ -3548,7 +3548,7 @@ function openDealDetail(stage, idx){
       <button data-gl-action="glMarkLeadHandled" data-gl-arg1="${esc(d.id)}" title="Stop automations nagging about this lead" style="flex:1;padding:9px;background:rgba(95,207,158,.1);color:#5fcf9e;border:1px solid rgba(95,207,158,.3);border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer">✓ Handled${d.handledAt ? ' ✓' : ''}</button>
     </div>` : ''}
     <div id="ddp-docs" style="margin-top:18px;border-top:1px solid rgba(255,255,255,.07);padding-top:16px"></div>
-    <div id="ddp-notes" style="margin-top:18px;border-top:1px solid rgba(255,255,255,.07);padding-top:16px"></div>
+    <div id="ddp-meeting-notes" style="margin-top:18px;border-top:1px solid rgba(255,255,255,.07);padding-top:16px"></div>
     <div id="ddp-corr" style="margin-top:18px;border-top:1px solid rgba(255,255,255,.07);padding-top:16px"></div>`;
 
   document.getElementById('ddp-view-mode').innerHTML = viewHTML;
@@ -3572,7 +3572,19 @@ function openDealDetail(stage, idx){
       '<div style="font-size:11px;color:#9aa7bd">Save this deal first (✏️ Edit → Save) to attach NDAs, Process Authority letters, formulas and labels.</div>';
   }
   // Meeting notes (Pocket AI NoteTaker etc.) — same real-deal guard.
-  var mnBox = document.getElementById('ddp-notes');
+  //
+  // GL-085. This container was id="ddp-notes" — the SAME id as the deal's notes
+  // <textarea> in the edit form (index.html). The view panel comes first in the
+  // document, so every getElementById('ddp-notes') returned this <div>:
+  // editDealDetail() stashed the existing notes on the div as an expando and
+  // left the textarea BLANK, and saveDealDetail() read the notes back off the
+  // div — so anything typed into the textarea was silently discarded, and if
+  // the view re-rendered between Edit and Save the fresh div had no .value and
+  // .trim() threw (4 crashes in error_log, 21 Aug - 2 Sep). Proven live on a
+  // real deal before fixing: textarea blank, notes on the div, save would have
+  // written the old text back. Renamed the container, not the form field,
+  // because four other call sites read the textarea by its id.
+  var mnBox = document.getElementById('ddp-meeting-notes');
   if(mnBox && typeof window.glRenderMeetingNotes === 'function'){
     if(d.id && !String(d.id).startsWith('tmp_')) window.glRenderMeetingNotes(mnBox, { kind: 'deal', id: d.id });
     else mnBox.innerHTML = '<div style="font-size:10px;letter-spacing:2px;color:var(--teal);margin-bottom:6px">🗒️ MEETING NOTES</div>' +

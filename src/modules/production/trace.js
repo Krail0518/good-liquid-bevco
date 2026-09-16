@@ -50,7 +50,7 @@
         '<div style="background:#142238;border:1px solid rgba(0,229,192,.18);border-radius:12px;padding:16px 18px;margin-bottom:16px">' +
           '<div style="font-size:10.5px;letter-spacing:1.5px;color:var(--teal);margin-bottom:8px">TRACE A LOT / RUN</div>' +
           '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-            '<input id="gl-trace-q" placeholder="Run name, e.g. Cold Brew R-2041" style="flex:1;min-width:200px;'+INP+'" data-gl-action="glTraceKeydown" data-gl-on="keydown">' +
+            '<input id="gl-recall-q" placeholder="Run name, e.g. Cold Brew R-2041" style="flex:1;min-width:200px;'+INP+'" data-gl-action="glTraceKeydown" data-gl-on="keydown">' +
             '<button data-gl-action="glTraceSearch" style="padding:10px 18px;background:linear-gradient(135deg,#00e5c0,#00c4a7);color:#04231d;border:none;border-radius:9px;font-weight:800;font-size:13px;cursor:pointer;white-space:nowrap">🔎 Trace</button>' +
           '</div>' +
         '</div>' +
@@ -68,8 +68,17 @@
   // ── Trace a run by name → backward, forward, GMP trail ──
   // Both the Enter key and the Search button read the same box. That DOM
   // read was duplicated in two attributes; it now lives in one place.
+  //
+  // GL-086. This box was id="gl-trace-q" — the same id as the lot input on the
+  // Compliance page's "Trace Lot" tab. Both pages stay in the DOM and
+  // Compliance comes first, so once anyone had opened that tab this lookup
+  // returned Compliance's (usually empty) input: the recall search ran for ""
+  // whatever was typed here. Proven live before fixing — typed a run name on
+  // this page, the search received "". Renamed here rather than there because
+  // three Compliance callers (QR scan, inventory 🔍 Trace, lot sticker hook)
+  // read that tab's box by the old id.
   function traceQuery(){
-    var el = document.getElementById('gl-trace-q');
+    var el = document.getElementById('gl-recall-q');
     return el ? el.value : '';
   }
   window.glTraceSearch  = function(){ return window.glTraceLot(traceQuery()); };
@@ -388,7 +397,7 @@
 
   // Re-run the trace for whatever run name is currently in the search box.
   function reTrace(){
-    var q = document.getElementById('gl-trace-q');
+    var q = document.getElementById('gl-recall-q');
     if(q && (q.value||'').trim()) window.glTraceLot(q.value);
   }
 

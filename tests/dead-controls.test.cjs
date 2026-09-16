@@ -134,5 +134,48 @@ check('its toggle drives the same property it was initialised with',
   /gl-q-svc-panel[\s\S]{0,400}?panel\.style\.display\s*=/.test(qb),
   'toggling `hidden` while display is set inline changes nothing on screen');
 
+// ── 3. GL-085 / GL-086: a form field's id must be unique across the app ────
+// document.getElementById returns the FIRST element in document order, and
+// every CRM page and panel stays in the DOM. So a second element carrying a
+// form field's id silently takes over every read and write of that field.
+//
+//   GL-085  The deal panel's meeting-notes <div> reused the notes <textarea>'s
+//           id. Edit opened with the notes field blank and Save discarded
+//           whatever was typed into it.
+//   GL-086  The Trace/Recall page's search box reused the Compliance "Trace
+//           Lot" input's id. Once that tab had been opened, recall searches
+//           ran for "" whatever was typed.
+//
+// The rule: an id used by an <input>/<textarea>/<select> may be defined in
+// only one file. Ids that are only created when absent are allowlisted with
+// the reason, so an entry here is a decision rather than a blind spot.
+const FIELD_ID_ALLOW = {
+  'gl-remember-cb': 'crm-extras.js injects it only when the login form lacks one (`if(pw.querySelector(...)) return`); one per page verified live'
+};
+const stripJsComments = s => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:"'])\/\/[^\n]*/g, '$1');
+const idDefs = {};   // id -> [{file, field}]
+for (const { file, text } of shipped) {
+  const src = /\.html$/.test(file) ? text.replace(/<!--[\s\S]*?-->/g, '') : stripJsComments(text);
+  for (const m of src.matchAll(/<(input|textarea|select|div|span|section|p|button|label)\b[^>]*?\bid\s*=\s*\\?["']([A-Za-z][\w-]*)\\?["']/gi)) {
+    (idDefs[m[2]] = idDefs[m[2]] || []).push({ file, field: /^(input|textarea|select)$/i.test(m[1]) });
+  }
+}
+check('the id scan found form fields to check',
+  Object.values(idDefs).filter(v => v.some(d => d.field)).length > 50,
+  'too few form-field ids found — the scan stopped matching and the check below is vacuous');
+const fieldCollisions = Object.entries(idDefs)
+  .filter(([id, defs]) => defs.some(d => d.field) && new Set(defs.map(d => d.file)).size > 1 && !FIELD_ID_ALLOW[id])
+  .map(([id, defs]) => id + ' in ' + [...new Set(defs.map(d => d.file))].join(', '));
+check('no form field shares its id with an element in another file',
+  fieldCollisions.length === 0,
+  fieldCollisions.slice(0, 6).join('\n        '));
+check('the deal notes field is the only ddp-notes',
+  (idDefs['ddp-notes'] || []).length === 1 && idDefs['ddp-notes'][0].field,
+  'GL-085: a second ddp-notes element makes Edit show blank notes and Save discard typed ones');
+check('the recall search box has its own id',
+  (idDefs['gl-recall-q'] || []).length === 1 &&
+  !(idDefs['gl-trace-q'] || []).some(d => /trace\.js$/.test(d.file)),
+  'GL-086: sharing gl-trace-q with Compliance makes recall searches run for an empty string');
+
 console.log('\n' + (failures ? failures + ' FAILED' : 'All checks passed') + '\n');
 process.exit(failures ? 1 : 0);
