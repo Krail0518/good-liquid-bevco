@@ -1943,25 +1943,11 @@ function logoutCRM(){
   document.getElementById('pw-err').style.display='none';
 }
 
-// Add client to Supabase when saved
-const addClientBtn = document.querySelector && document.querySelector('#add-client-btn');
-// Patch saveClient if it exists  
-setTimeout(()=>{
-  const origSaveClient = window.saveClient;
-  if(typeof origSaveClient === 'function'){
-    window.saveClient = async function(){
-      // Call original first to get local state
-      origSaveClient();
-      // Then sync last added client to Supabase
-      const c = clients[clients.length-1];
-      if(c) await supa.from('clients').insert([{
-        name:c.name, contact_name:c.contact, email:c.email,
-        service:c.service, status:c.status, total_billed:c.billed||0,
-        initials:c.init, color:c.color, tc:c.tc, notes:c.notes||''
-      }]);
-    };
-  }
-},500);
+// (GL-095) A wrapper that re-inserted the last client into Supabase whenever a
+// window.saveClient existed was removed from here. No saveClient is defined, so it
+// never installed — but saveNewClient already inserts through glCheckedInsert, so
+// the day anyone added a saveClient it would have silently created every client
+// twice, with an unchecked insert.
 
 
 /* ═══════════════════════════════════════════════

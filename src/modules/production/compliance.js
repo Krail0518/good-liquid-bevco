@@ -2579,7 +2579,12 @@
       if(acked){
         var sess = await window.supa.auth.getSession();
         var uid = sess && sess.data && sess.data.session && sess.data.session.user && sess.data.session.user.id;
-        await window.supa.from('compliance_acks').upsert({ record_id: recordId, acked_at: new Date().toISOString(), acked_by: uid || null }, { onConflict: 'record_id' });
+        // GL-095. The sign-off was upserted unchecked and cached as done, so a
+        // rejected weekly-review acknowledgement showed as signed off. The
+        // un-acknowledge path below already checked its result; this one now does.
+        var aq = await window.supa.from('compliance_acks').upsert({ record_id: recordId, acked_at: new Date().toISOString(), acked_by: uid || null }, { onConflict: 'record_id' }).select('record_id');
+        if(aq.error){ alert('Could not record the review sign-off: ' + aq.error.message); return; }
+        if(!Array.isArray(aq.data) || aq.data.length === 0){ alert('The server rejected the review sign-off (0 rows). It was NOT recorded.'); return; }
         _weeklyAckCache[recordId] = new Date().toISOString();
       } else {
         // .select() makes PostgREST return the deleted rows, so a silent RLS
@@ -3106,7 +3111,7 @@
           var maxN = 0;
           (holds.data || []).forEach(function(h){ var m = /HT-\d{4}-(\d+)/.exec(h.tag_number||''); if(m){ var n=parseInt(m[1],10); if(n>maxN) maxN=n; } });
           var nextTag = 'HT-' + (new Date()).getFullYear() + '-' + String(maxN+1).padStart(3,'0');
-          await window.supa.from('hold_tags').insert([{
+          var holdIns = await window.supa.from('hold_tags').insert([{
             tag_number: nextTag,
             product_name: 'Glass-radius hold — ' + data.location,
             qty_held: data.product_held || ('Product within ' + data.radius + '-ft radius'),
@@ -3119,8 +3124,15 @@
             status: 'open',
             hold_date: new Date().toISOString().split('T')[0],
             notes: 'Auto-created from GMP-GHP-001 glass breakage event.'
-          }]);
-          if(typeof addNotification === 'function') addNotification('🚨 Glass breakage logged — Hold Tag ' + nextTag, data.location, 'warning');
+          }]).select('id');
+          // GL-095. This insert was unchecked and the notification below claimed the
+          // hold existed regardless. For a physical hazard, product believed to be on
+          // hold when it is not is the worst outcome — say so loudly instead.
+          if(!holdIns || holdIns.error || !Array.isArray(holdIns.data) || !holdIns.data.length){
+            var holdWhy = holdIns && holdIns.error ? holdIns.error.message : 'the database did not return the new hold tag';
+            alert('Glass breakage was recorded, but the HOLD TAG WAS NOT CREATED (' + holdWhy + ').\n\nProduct within the ' + data.radius + '-ft radius is NOT on hold in the system. Create the hold tag manually from Hold Tags now.');
+            if(typeof addNotification === 'function') addNotification('🚨 Glass breakage logged — HOLD TAG NOT CREATED', data.location + ' — create it manually: ' + holdWhy, 'warning');
+          } else if(typeof addNotification === 'function') addNotification('🚨 Glass breakage logged — Hold Tag ' + nextTag, data.location, 'warning');
           if(typeof window.glAudit === 'function') window.glAudit('glass_breakage', rec.data.id, { hold: nextTag, location: data.location });
         }
       } catch(e){ console.warn('[GL glass-break] save failed', e); alert('Save failed: ' + (e.message||'')); return; }
@@ -4457,11 +4469,11 @@
       if(!confirm('Import ' + res.rows.length + ' training records, signed as PCQI?')) return;
       var btn = this; btn.disabled = true; btn.textContent = 'Importing…';
       var user = window.currentUser || {};
-      var done = 0;
+      var done = 0, failed = [];
       for(var i = 0; i < res.rows.length; i++){
         var r = res.rows[i];
         try {
-          await window.supa.from('compliance_records').insert([{
+          var ins = await window.supa.from('compliance_records').insert([{
             form_code: 'GMP-TR-001',
             record_date: r.date || nowISO().slice(0,10),
             data: {
@@ -4473,11 +4485,18 @@
             signed_by: user.id || null, signed_at: nowISO(),
             signature_name: pcqiName(),
             signature_meaning: 'PCQI bulk-imported training record'
-          }]);
-          done++;
-        } catch(e){ console.warn('[GL training csv] failed for ' + r.employee, e); }
+          }]).select('id');
+          // GL-095. Supabase returns an error rather than throwing, so this used to
+          // count every row as imported — the success toast could report N records
+          // while the database had rejected all of them.
+          if(ins && !ins.error && Array.isArray(ins.data) && ins.data.length){ done++; }
+          else { failed.push((r.employee || 'row ' + (i+1)) + (ins && ins.error ? ': ' + ins.error.message : '')); }
+        } catch(e){ failed.push((r.employee || 'row ' + (i+1)) + ': ' + ((e && e.message) || e)); console.warn('[GL training csv] failed for ' + r.employee, e); }
       }
-      if(typeof addNotification === 'function') addNotification('📥 Imported ' + done + ' training records', '', 'success');
+      if(failed.length){
+        alert('Imported ' + done + ' of ' + res.rows.length + ' training records. NOT saved:\n\n' + failed.slice(0, 15).join('\n') + (failed.length > 15 ? '\n…and ' + (failed.length - 15) + ' more' : ''));
+      }
+      if(typeof addNotification === 'function') addNotification((failed.length ? '⚠ ' : '📥 ') + 'Imported ' + done + ' of ' + res.rows.length + ' training records', failed.length ? failed.length + ' NOT saved' : '', failed.length ? 'warning' : 'success');
       if(typeof window.glAudit === 'function') window.glAudit('training_csv_import','', { count: done });
       close();
       if(typeof window.refreshComplianceMaster === 'function') window.refreshComplianceMaster();

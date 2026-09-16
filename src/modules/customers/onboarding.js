@@ -101,14 +101,21 @@
             var labels = docs.filter(function(x){ return x.doc_type === 'Label / Artwork' && x.file_path; });
             if(labels.length){
               var uid = (window.currentUser && window.currentUser.id) || null;
-              await sb().from('client_artwork').insert(labels.map(function(l){
+              // GL-095. Unchecked until now, while the PA letter a few lines up
+              // already reported into carryOverProblems. A rejected insert lost
+              // every label silently.
+              var art = await sb().from('client_artwork').insert(labels.map(function(l){
                 // No status: client_artwork.status was dropped in
                 // 20260915000000. A carried-over label has no decision yet, and
                 // the absence of an artwork_reviews row IS "Submitted".
                 return { client_id: clientId, sku_name: l.name || 'Label', description: l.notes || null,
                          file_path: l.file_path, file_type: l.file_type || null,
                          created_by: uid };
-              }));
+              })).select('id');
+              if(art.error || !Array.isArray(art.data) || art.data.length !== labels.length){
+                carryOverProblems.push('label artwork was NOT copied to the client (' +
+                  (art.error ? art.error.message : ((art.data || []).length + ' of ' + labels.length + ' saved')) + ')');
+              }
             }
           }
         }

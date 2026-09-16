@@ -127,5 +127,27 @@ check('the Closed Won SMS wrapper respects a rejected move',
   /if\(r !== false && toStage === 'Closed Won'\)/.test(integ),
   'without it the SMS goes out even when moveDeal reports failure');
 
+// ── GL-095: inserts and upserts whose result was thrown away ───────────────
+// An RLS-rejected insert does return an error, so the failure mode for inserts
+// is ignoring the result entirely. These four reported success regardless.
+const comp = fs.readFileSync(path.join(ROOT, 'src/modules/production/compliance.js'), 'utf8');
+check('glass breakage does not announce a hold tag that was not created',
+  /var holdIns = await window\.supa\.from\('hold_tags'\)\.insert\([\s\S]{0,900}?\.select\('id'\);[\s\S]{0,300}?if\(!holdIns \|\| holdIns\.error/.test(comp) &&
+  comp.includes('HOLD TAG WAS NOT CREATED'),
+  'a physical-hazard hold announced as created while the insert had failed');
+check('the CSV training import counts only rows the database accepted',
+  /var ins = await window\.supa\.from\('compliance_records'\)\.insert\([\s\S]{0,700}?\.select\('id'\);[\s\S]{0,400}?if\(ins && !ins\.error[\s\S]{0,80}?\)\{ done\+\+; \}/.test(comp),
+  '"Imported N training records" could report rows the database rejected');
+check('a weekly-review sign-off is cached only after the database recorded it',
+  /var aq = await window\.supa\.from\('compliance_acks'\)\.upsert\([\s\S]{0,200}?\.select\('record_id'\);[\s\S]{0,300}?_weeklyAckCache\[recordId\] = new Date/.test(comp),
+  'a rejected sign-off showed as signed off');
+const onb = fs.readFileSync(path.join(ROOT, 'src/modules/customers/onboarding.js'), 'utf8');
+check('label artwork carried over at conversion reports a failed copy',
+  /var art = await sb\(\)\.from\('client_artwork'\)\.insert\([\s\S]{0,700}?\.select\('id'\);[\s\S]{0,200}?carryOverProblems\.push\('label artwork was NOT copied/.test(onb),
+  'every label was lost silently when the insert was rejected');
+check('the dormant saveClient re-insert wrapper stays removed',
+  !/window\.saveClient\s*=\s*async function/.test(core),
+  'it would have created every client twice the day a saveClient existed');
+
 console.log('\n' + (failures ? failures + ' FAILED' : 'All checks passed') + '\n');
 process.exit(failures ? 1 : 0);
