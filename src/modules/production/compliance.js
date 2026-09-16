@@ -464,15 +464,33 @@
       }
     }
 
+    // GL-090. dbInsert deliberately keeps a record LOCALLY when the database
+    // rejects it (flagged _localOnly, with a "DB save FAILED" warning, and a
+    // re-save path in cip-audit.js) so a signed FDA log is not lost. But this
+    // block then reported it exactly like a real save: the audit log recorded
+    // 'compliance_record_saved' and the operator saw "✓ Signed". Found by
+    // filling Log Cycle with database writes intercepted. The audit trail must
+    // not claim a record exists in the system of record when it does not, so a
+    // local-only record now says so in both places.
+    var localOnly = !!(saved && saved._localOnly);
     if(typeof window.glAudit === 'function'){
-      window.glAudit('compliance_record_saved', saved.id, { form_code: form_code, status: row.status });
+      window.glAudit(localOnly ? 'compliance_record_saved_local_only' : 'compliance_record_saved',
+        saved.id, { form_code: form_code, status: row.status, db_error: localOnly ? (saved._dbError || null) : undefined });
     }
     if(typeof addNotification === 'function'){
-      addNotification(
-        (opts.signed ? '✓ Signed: ' : '💾 Draft saved: ') + form_code,
-        opts.summary || '',
-        opts.has_deviation ? 'warning' : 'success'
-      );
+      if(localOnly){
+        addNotification(
+          '⚠ NOT saved to the database: ' + form_code,
+          (opts.signed ? 'Signed, but ' : '') + 'kept on this device only until it is re-saved. ' + (opts.summary || ''),
+          'warning'
+        );
+      } else {
+        addNotification(
+          (opts.signed ? '✓ Signed: ' : '💾 Draft saved: ') + form_code,
+          opts.summary || '',
+          opts.has_deviation ? 'warning' : 'success'
+        );
+      }
     }
     return saved;
   }

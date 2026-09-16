@@ -191,6 +191,15 @@ async function callHelper(src, mode) {
     .concat(require('child_process').execSync('git ls-files src', { cwd: ROOT2 }).toString().split('\n').filter(f => /\.js$/.test(f)));
   const fabricators = shipped.filter(f => fs2.existsSync(path2.join(ROOT2, f)) &&
     /['"]local_['"]\s*\+\s*Date\.now\(\)/.test(strip(fs2.readFileSync(path2.join(ROOT2, f), 'utf8'))));
+  // GL-090: compliance keeps a failed record locally ON PURPOSE (a signed FDA
+  // log must not vanish), but must not then report it as saved.
+  const compSrc = strip(fs2.readFileSync(path2.join(ROOT2, 'src/modules/production/compliance.js'), 'utf8'));
+  check('a local-only compliance record is not audited as saved',
+    /localOnly\s*\?\s*'compliance_record_saved_local_only'\s*:\s*'compliance_record_saved'/.test(compSrc),
+    'the audit trail recorded compliance_record_saved for a record the database rejected');
+  check('a local-only compliance record is not announced as signed',
+    /if\(localOnly\)\{[\s\S]{0,200}?NOT saved to the database/.test(compSrc),
+    'the operator saw "✓ Signed" for a record that exists on one device only');
   check("no shipped code fabricates a 'local_' id",
     fabricators.length === 0,
     'still in: ' + fabricators.join(', '));
