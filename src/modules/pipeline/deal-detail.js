@@ -85,6 +85,14 @@ async function saveDealDetail(){
   const newFormulation = (typeof window.glFormulationRead === 'function')
     ? window.glFormulationRead('ddp-form') : null;
 
+  // Snapshot BEFORE touching the local object (GL-092). On a rejected save the
+  // failure branch below used to roll back only the stage move: every edited
+  // field — name, company, contact, value, probability, notes, formulation —
+  // stayed changed on the pipeline board beneath an alert saying "Nothing was
+  // saved", until the next reload quietly reverted it. Found by saving a deal
+  // edit with the database write intercepted.
+  const prevDealSnapshot = Object.assign({}, d);
+
   // Update local deal object
   d.name         = newName;
   d.co           = newCo;
@@ -163,6 +171,10 @@ async function saveDealDetail(){
         if(!deals[prevStage]) deals[prevStage] = [];
         deals[prevStage].push(d);
       }
+      // Restore every field, in place: the board and deals[] hold references to
+      // this same object, so it is emptied and refilled rather than replaced.
+      Object.keys(d).forEach(function(k){ if(!(k in prevDealSnapshot)) delete d[k]; });
+      Object.assign(d, prevDealSnapshot);
       alert('Could not save this deal — the server rejected the change'
         + (uq.error ? ': ' + (uq.error.message || uq.error) : ' (0 rows changed).')
         + '\n\nNothing was saved and the deal has NOT been moved. Please try again.');

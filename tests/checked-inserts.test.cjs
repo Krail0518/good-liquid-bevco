@@ -203,6 +203,18 @@ async function callHelper(src, mode) {
   check('a hold tag the database rejected is not announced as created',
     compSrc.includes("if(holdLocalOnly) addNotification('⚠ Hold tag NOT saved to the database"),
     'the operator saw "Hold Tag created" for a hold that exists on one device only — product not held for anyone else');
+  // GL-092: a rejected deal EDIT must not leave the edits on the board.
+  const dealSrc = strip(fs2.readFileSync(path2.join(ROOT2, 'src/modules/pipeline/deal-detail.js'), 'utf8'));
+  const snapAt    = dealSrc.indexOf('const prevDealSnapshot = Object.assign({}, d);');
+  const mutateAt  = dealSrc.indexOf('d.name         = newName;');
+  const restoreAt = dealSrc.indexOf('Object.assign(d, prevDealSnapshot);');
+  const alertAt   = dealSrc.indexOf('Could not save this deal');
+  check('a rejected deal edit is snapshotted before the local deal is changed',
+    snapAt !== -1 && mutateAt !== -1 && snapAt < mutateAt,
+    'snapshot at ' + snapAt + ', first mutation at ' + mutateAt);
+  check('a rejected deal edit restores every field before reporting the failure',
+    restoreAt !== -1 && alertAt !== -1 && restoreAt < alertAt,
+    'restore at ' + restoreAt + ', alert at ' + alertAt + ' — the board kept unsaved edits under a "Nothing was saved" alert');
   check("no shipped code fabricates a 'local_' id",
     fabricators.length === 0,
     'still in: ' + fabricators.join(', '));
