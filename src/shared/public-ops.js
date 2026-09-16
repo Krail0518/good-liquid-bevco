@@ -358,6 +358,10 @@
         '</div>' +
         '<div class="frow"><div class="flbl">Status</div><select class="fsel" id="gl-fv-status">' + statusOptions + '</select></div>' +
         '<div class="frow"><div class="flbl">Notes</div><textarea class="finp" id="gl-fv-notes" rows="2">' + esc(f.notes) + '</textarea></div>' +
+        // Documents published against this formula. Only on an existing
+        // formula — there is no id to attach a file to until it is saved.
+        (isEdit ? '<div style="border-top:1px solid rgba(255,255,255,.08);margin:12px 0 8px"></div>' +
+                  '<div id="gl-fv-docs"></div>' : '') +
         '<div style="display:flex;gap:8px;margin-top:6px">' +
           '<button id="gl-fv-save" class="cbtn pri" style="flex:1">💾 Save</button>' +
           (isEdit ? '<button id="gl-fv-clone" class="cbtn" style="background:rgba(168,85,247,.12);border-color:rgba(168,85,247,.35);color:#c4a4f8">Clone as v' + ((f.version||1) + 1) + '</button>' : '') +
@@ -368,6 +372,18 @@
     ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
     ov.querySelector('#gl-fv-close').addEventListener('click', function(){ ov.remove(); });
     ov.querySelector('#gl-fv-cancel').addEventListener('click', function(){ ov.remove(); });
+
+    // Mounted after the modal exists, guarded so a script-order change degrades
+    // to "no documents section" rather than a broken formula editor.
+    if(isEdit && typeof window.glRenderFormulaDocs === 'function'){
+      try {
+        var fvClient = f.client_name
+          || ((window.clients||[]).find(function(c){ return c.id === f.client_id; })||{}).name
+          || 'this client';
+        window.glRenderFormulaDocs(ov.querySelector('#gl-fv-docs'),
+          { formulaId: f.id, version: f.version || 1, clientName: fvClient });
+      } catch(e){ console.warn('[GL] formula docs mount failed', e); }
+    }
 
     function readForm(){
       var allergens = ALLERGENS.map(function(a){ return a[0]; }).filter(function(k){

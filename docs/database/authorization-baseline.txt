@@ -23,6 +23,7 @@ FUNC     public.gl_audit_artwork_decision() | secdef=t | search_path=pg_catalog,
 FUNC     public.gl_audit_artwork_project() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_audit_document_visibility() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_audit_entitlement() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.gl_audit_formula_document() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_audit_milestone() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_can_read_formula(p_formula_id uuid) | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_check_cron_secret(candidate text) | secdef=t | search_path="" | acl=postgres=X/postgres,service_role=X/postgres
@@ -52,6 +53,7 @@ FUNC     public.gl_payment_method_label(p_method text, p_provider text) | secdef
 FUNC     public.gl_payment_tolerance() | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_portal_artwork(p_project_id uuid) | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_portal_entitlements() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
+FUNC     public.gl_portal_formula_documents() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_portal_formula_status() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_purge_expired_qbo_states() | secdef=t | search_path=public | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_rate_limit_hit(p_bucket text, p_limit integer, p_window_seconds integer) | secdef=t | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
@@ -91,7 +93,7 @@ GRANT    public.ai_brief_todos | authenticated | DELETE,INSERT,REFERENCES,SELECT
 GRANT    public.ai_briefs | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.announcements | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.app_settings | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
-GRANT    public.artwork_reviews | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
+GRANT    public.artwork_reviews | authenticated | INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE
 GRANT    public.attention_snoozes | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.audit_findings | anon | SELECT
 GRANT    public.audit_findings | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
@@ -141,6 +143,8 @@ GRANT    public.error_log | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIG
 GRANT    public.expenses | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.facilities | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.followup_log | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
+GRANT    public.formula_document_downloads | authenticated | REFERENCES,SELECT,TRIGGER,TRUNCATE
+GRANT    public.formula_documents | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.formulas | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.formulators | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.gl_internal_notes | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
@@ -183,7 +187,7 @@ GRANT    public.production_pipeline | authenticated | DELETE,INSERT,REFERENCES,S
 GRANT    public.production_runs | anon | SELECT
 GRANT    public.production_runs | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.profiles | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
-GRANT    public.project_entitlement_events | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
+GRANT    public.project_entitlement_events | authenticated | INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE
 GRANT    public.project_milestones | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.projects | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.qbo_tokens | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
@@ -507,6 +511,10 @@ POLICY   public.followup_log | gl viewer no delete | RESTRICTIVE | {authenticate
 POLICY   public.followup_log | gl viewer no insert | RESTRICTIVE | {authenticated} | INSERT | using=- | check=(NOT gl_is_viewer())
 POLICY   public.followup_log | gl viewer no update | RESTRICTIVE | {authenticated} | UPDATE | using=(NOT gl_is_viewer()) | check=(NOT gl_is_viewer())
 POLICY   public.followup_log | gl warehouse guard | RESTRICTIVE | {authenticated} | ALL | using=(NOT gl_is_warehouse()) | check=(NOT gl_is_warehouse())
+POLICY   public.formula_document_downloads | formula_document_downloads staff read | PERMISSIVE | {authenticated} | SELECT | using=is_gl_staff() | check=-
+POLICY   public.formula_document_downloads | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
+POLICY   public.formula_documents | formula_documents staff all | PERMISSIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
+POLICY   public.formula_documents | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
 POLICY   public.formulas | authed all | PERMISSIVE | {authenticated} | ALL | using=true | check=-
 POLICY   public.formulas | formulas authed all | PERMISSIVE | {authenticated} | ALL | using=true | check=true
 POLICY   public.formulas | formulas authed | PERMISSIVE | {authenticated} | ALL | using=true | check=-
@@ -878,6 +886,8 @@ RLS      public.error_log | enabled=t
 RLS      public.expenses | enabled=t
 RLS      public.facilities | enabled=t
 RLS      public.followup_log | enabled=t
+RLS      public.formula_document_downloads | enabled=t
+RLS      public.formula_documents | enabled=t
 RLS      public.formulas | enabled=t
 RLS      public.formulators | enabled=t
 RLS      public.gl_internal_notes | enabled=t

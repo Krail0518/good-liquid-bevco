@@ -184,7 +184,15 @@ for (const [label, re] of FORBIDDEN) {
 // name, milestone label, and the client-facing note, which is the one a
 // stranger-adjacent party can influence because staff type it on a customer's
 // behalf. Raised deliberately, in the same PR as the code.
-const SINK_BUDGET = 614;
+//
+// 2026-09-15: 614 -> 618. formula-docs.js, the staff surface for publishing a
+// document against a formula version: a loading state, an error state, the
+// document list, and the re-render after a publish or removal. Every
+// interpolated value goes through the module's own esc() — the document name
+// and the client name, which are both typed by a human, and the version and
+// kind, which are constrained by the database. Raised in the same PR that adds
+// them, which is what the ratchet asks for.
+const SINK_BUDGET = 618;
 let sinkCount = 0;
 const RAW = /\.(innerHTML|outerHTML)\s*(=|\+=)|insertAdjacentHTML\s*\(|document\.write(ln)?\s*\(/;
 for (const f of files) {

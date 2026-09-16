@@ -309,6 +309,45 @@ check('the download filename strips path separators',
   detailSrc.includes('[\\\\/:*?"<>|'),
   'a name containing a separator must not become a path');
 
+// ── 9d. Formula document publishing (phase 3) ──────────────────────────────
+// The access log is the whole point of routing these through a function. A log
+// the browser writes is a log the browser can decline to write, so: the portal
+// never learns file_path, and the function writes the row BEFORE it mints a URL.
+const fnSrc = blankComments(readIfExists('supabase/functions/portal-formula-doc/index.ts'));
+
+check('formula_documents has no customer policy',
+  !/on public\.formula_documents[\s\S]{0,300}?current_customer_client_id/i.test(migSql),
+  'a customer with SELECT here could read file_path and mint their own signed URL');
+check('the portal listing RPC does not return file_path',
+  (() => {
+    const at = migSql.indexOf('function public.gl_portal_formula_documents');
+    return at !== -1 && !/file_path/.test(migSql.slice(at, at + 900));
+  })(),
+  'returning it hands the browser everything it needs to bypass the download log');
+// Comments stripped: a ROLLBACK note legitimately quotes the grant it would
+// restore, and matching that would be matching the undo instructions.
+check('the download log grants no INSERT to any client role',
+  /grant select on public\.formula_document_downloads to authenticated;/i.test(ddl) &&
+  !/grant[^;]*insert[^;]*on public\.formula_document_downloads/i.test(ddl) &&
+  /revoke insert, update, delete on public\.formula_document_downloads from authenticated/i.test(ddl),
+  'only the service role may write it, from inside the edge function');
+check('the edge function authenticates a CUSTOMER, not staff',
+  /requireCustomer/.test(fnSrc) && !/requireStaff/.test(fnSrc),
+  'requireStaff deliberately rejects portal customers — it is the wrong check here');
+check('the edge function logs the download BEFORE returning a URL',
+  (() => {
+    const log = fnSrc.indexOf('formula_document_downloads');
+    const url = fnSrc.indexOf('createSignedUrl');
+    return log !== -1 && url !== -1 && log < url;
+  })(),
+  'serving first and logging after is a log with holes in it');
+check('a failed log write refuses the download',
+  /logErr[\s\S]{0,200}?return errorResponse/.test(fnSrc),
+  'an unlogged read of a formulation is what this function exists to prevent');
+check('the portal never queries formula_documents directly',
+  !/from\(\s*['"]formula_documents['"]/.test(portalSrc),
+  'the RPC and the edge function are the only customer-facing paths');
+
 // ── 10. Tenant consistency ─────────────────────────────────────────────────
 for (const t of ['deal_documents', 'client_artwork']) {
   check(t + ' has a composite tenant foreign key',

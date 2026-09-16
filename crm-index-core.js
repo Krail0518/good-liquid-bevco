@@ -57,6 +57,7 @@
  *   /src/modules/customers/document-storage.js
  *   /src/modules/customers/edit-client.js
  *   /src/modules/customers/email-templates.js
+ *   /src/modules/customers/formula-docs.js
  *   /src/modules/customers/health-score-ai.js
  *   /src/modules/customers/health-score.js
  *   /src/modules/customers/intake.js

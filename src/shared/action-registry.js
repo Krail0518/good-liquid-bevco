@@ -178,6 +178,7 @@
     'glOpenTimerForm',
     'glPauseRecurring',
     'glPortalDownloadAgreement',
+    'glPortalDownloadFormulaDoc',
     'glPortalDownloadInvoicePdf',
     'glPortalDownloadLotDoc',
     'glPortalPickProject',

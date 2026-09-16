@@ -285,6 +285,30 @@
     // reintroduce a direct read here; there is deliberately no column to ask for.
     var fmsR = await sb.rpc('gl_portal_formula_status');
     var fms = rowsOf('formulas', fmsR);
+
+    // Documents staff have deliberately published against a formula version.
+    // The RPC returns no file_path on purpose: the only way to obtain the bytes
+    // is the portal-formula-doc edge function, which records the download
+    // before it hands back a URL. A file_path here would let this page mint its
+    // own signed URL and skip that log entirely.
+    var fdocs = rowsOf('formula documents', await sb.rpc('gl_portal_formula_documents'));
+    var FD_KIND = { spec_sheet:'Spec sheet', coa:'COA', process:'Process', other:'Document' };
+    var fdRowsHtml = fdocs.length ? fdocs.map(function(d){
+      return '<div style="display:grid;grid-template-columns:1fr 130px 110px;gap:12px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.05);align-items:center">' +
+          '<div>' +
+            '<div style="font-size:13px;color:#fff;font-weight:700">' + escHtml(d.name) + '</div>' +
+            '<div style="font-size:11px;color:#6b87ad;margin-top:2px">' +
+              escHtml(FD_KIND[d.doc_kind] || d.doc_kind) + ' · ' + escHtml(d.formula_name || 'Formula') +
+              ' v' + escHtml(String(d.version)) + '</div>' +
+          '</div>' +
+          '<div style="text-align:right;font-size:11px;color:#9aa7bd">' +
+            (d.published_at ? new Date(d.published_at).toLocaleDateString() : '') + '</div>' +
+          '<div style="text-align:right">' +
+            '<button data-gl-action="glPortalDownloadFormulaDoc" data-gl-arg1="' + escHtml(d.id) + '" ' +
+              'style="padding:5px 11px;background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.35);border-radius:6px;color:#00e5c0;font-weight:700;font-size:11px;cursor:pointer">⬇ Download</button>' +
+          '</div>' +
+        '</div>';
+    }).join('') : '';
     var lds = rowsOf('documents', await sb.from('lot_documents').select('id, document_type, title, lot_number, file_name, file_size, file_path, mime_type, uploaded_at, production_run_id').eq('client_id', customer.client_id).order('uploaded_at', { ascending: false }));
     // Agreements (NDA, contracts, formulas) — deal_documents rows carried over
     // from the pipeline at convert time plus anything uploaded here or by staff.
@@ -550,6 +574,25 @@
       window.open(su.data.signedUrl, '_blank', 'noopener');
     };
 
+    // Formula documents are the one download that does NOT mint its own signed
+    // URL. The edge function checks the document is published and belongs to
+    // this client, writes the access log, and only then returns a URL — so a
+    // browser cannot fetch the file and quietly decline to be recorded.
+    window.glPortalDownloadFormulaDoc = async function(docId, ev){
+      if(ev && ev.preventDefault) ev.preventDefault();
+      if(!docId) return;
+      var res;
+      try { res = await sb.functions.invoke('portal-formula-doc', { body: { documentId: docId } }); }
+      catch(e){ alert('Download failed: ' + (e && e.message || e)); return; }
+      if(res.error){
+        alert('Download failed: ' + (res.error.message || 'the document is not available'));
+        return;
+      }
+      var url = res.data && res.data.url;
+      if(!url){ alert('Download failed — no link was returned.'); return; }
+      window.open(url, '_blank', 'noopener');
+    };
+
     window.glPortalUploadAgreement = async function(){
       var fEl = document.getElementById('gl-cp-agm-file');
       var tEl = document.getElementById('gl-cp-agm-type');
@@ -657,10 +700,14 @@
           // ── FORMULA ─────────────────────────────────────────────────────
           panel('formula',
             cardBlock('#5fcf9e', 'FORMULA STATUS', fmRowsHtml) +
+            (fdRowsHtml
+              ? cardBlock('#c4a4f8', '📎 RELEASED FORMULA DOCUMENTS', fdRowsHtml)
+              : '') +
             '<div style="font-size:11px;color:#6b87ad;padding:0 4px 20px;line-height:1.6">' +
               'This shows where each formula stands and which version we are on. ' +
               'Formulation detail stays with Good Liquid — if you need a specific ' +
-              'document released, ask Mike and he can publish it to you.' +
+              'document released, ask Mike and he can publish it to you' +
+              (fdRowsHtml ? ', and anything already released is listed above.' : '.') +
             '</div>'
           ) +
 

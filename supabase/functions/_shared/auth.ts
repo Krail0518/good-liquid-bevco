@@ -23,6 +23,60 @@ export interface CallerCheck {
   isSuper?: boolean;
 }
 
+export interface CustomerCheck {
+  ok: boolean;
+  status: number;
+  error?: string;
+  userId?: string;
+  /** customer_users.id — the row, not the auth user. */
+  customerUserId?: string;
+  clientId?: string;
+}
+
+/**
+ * The mirror of requireStaff: verify the caller is an ACTIVE portal customer.
+ *
+ * requireStaff exists because a valid JWT is not authorization — a logged-in
+ * portal customer holds one. This exists for the opposite reason: a function
+ * that serves a customer their own file must confirm WHICH customer, and must
+ * not accept the bare anon key or a service-role bearer as a stand-in for one.
+ * There is deliberately no service-role short-circuit here; nothing internal
+ * needs to impersonate a specific customer, and a bypass would be the whole
+ * ballgame for a function whose job is tenant-scoped file access.
+ *
+ * `active` is checked here as well as in current_customer_client_id(), so a
+ * deactivated login is refused on both the database and the function path.
+ */
+export async function requireCustomer(req: Request): Promise<CustomerCheck> {
+  const authHeader = req.headers.get('Authorization') || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '');
+  if (!token || token === ANON_KEY || (SERVICE_ROLE_KEY && token === SERVICE_ROLE_KEY)) {
+    return { ok: false, status: 401, error: 'Unauthorized — sign in required' };
+  }
+
+  const callerClient = createClient(SUPABASE_URL, ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { headers: { Authorization: `Bearer ${token}` } },
+  });
+  const { data: { user }, error } = await callerClient.auth.getUser();
+  if (error || !user) return { ok: false, status: 401, error: 'Unauthorized — invalid token' };
+
+  const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data: cust } = await admin
+    .from('customer_users').select('id, client_id')
+    .eq('auth_user_id', user.id).eq('active', true).maybeSingle();
+
+  if (!cust || !cust.client_id) {
+    return { ok: false, status: 403, error: 'Forbidden — no active portal account' };
+  }
+  return {
+    ok: true, status: 200, userId: user.id,
+    customerUserId: cust.id, clientId: cust.client_id,
+  };
+}
+
 /**
  * Verify the caller. opts.role: undefined/'staff' = any active staff user;
  * 'admin' = admin or super-user; 'super' = super-user only.
