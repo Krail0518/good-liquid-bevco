@@ -2170,23 +2170,36 @@ async function saveNewClient(){
   }
 
   // Upload compliance docs (after insert so the path can use the real cid)
+  // GL-094. Recording the uploaded file's path on the client was unchecked, so
+  // a rejected update left the file in storage while the client record said
+  // nothing was on file — silently. Say which document did not link.
+  async function glLinkClientDoc(clientId, column, filePath, label){
+    let r; const patch = {}; patch[column] = filePath;
+    try { r = await window.supa.from('clients').update(patch).eq('id', clientId).select('id'); }
+    catch(e){ r = { error: e }; }
+    if(!r || r.error || !Array.isArray(r.data) || r.data.length === 0){
+      const why = r && r.error ? (r.error.message || r.error) : '0 rows changed';
+      if(typeof addNotification === 'function') addNotification('Document not linked', 'The ' + label + ' uploaded, but was not recorded on the client (' + why + '). Re-attach it from Edit Client.', 'warning');
+      else alert('The ' + label + ' uploaded, but was not recorded on the client (' + why + '). Re-attach it from Edit Client.');
+    }
+  }
   let w9FilePath = '', taxExemptFilePath = '', paLetterFilePath = '';
   if(w9File){
     w9FilePath = await uploadComplianceDoc(w9File, cid, 'w9');
     if(w9FilePath){
-      try { await window.supa.from('clients').update({ w9_file_path: w9FilePath }).eq('id', cid); } catch(e){}
+      await glLinkClientDoc(cid, 'w9_file_path', w9FilePath, 'W-9');
     }
   }
   if(taxExemptFile){
     taxExemptFilePath = await uploadComplianceDoc(taxExemptFile, cid, 'tax_exempt');
     if(taxExemptFilePath){
-      try { await window.supa.from('clients').update({ tax_exempt_file_path: taxExemptFilePath }).eq('id', cid); } catch(e){}
+      await glLinkClientDoc(cid, 'tax_exempt_file_path', taxExemptFilePath, 'tax-exempt certificate');
     }
   }
   if(paLetterFile){
     paLetterFilePath = await uploadComplianceDoc(paLetterFile, cid, 'pa_letter');
     if(paLetterFilePath){
-      try { await window.supa.from('clients').update({ pa_letter_file_path: paLetterFilePath }).eq('id', cid); } catch(e){}
+      await glLinkClientDoc(cid, 'pa_letter_file_path', paLetterFilePath, 'process authority letter');
     }
   }
 
@@ -2392,11 +2405,35 @@ async function moveDeal(dealId, fromStage, toStage, fallbackIdx){
   const deal = stageDeals.splice(idx,1)[0];
   if(!deals[toStage]) deals[toStage]=[];
   const now = new Date().toISOString();
+  const prevStageEnteredAt = deal.stageEnteredAt;
   deal.stageEnteredAt = now;
   deals[toStage].push(deal);
-  // Save to Supabase (only for real ids, not temp ones)
+  // Save to Supabase (only for real ids, not temp ones).
+  //
+  // GL-094. This update's result was never checked — no .select(), no error
+  // test — so a rejected move left the card in its new column with no message
+  // (CLAUDE.md rule 4: RLS rejects silently). Worse, the Closed Won branch below
+  // and the SMS wrapper in integrations.js then fired regardless: a move the
+  // database refused still sent "Deal closed won" alerts for a deal that is not
+  // closed. Found by clicking a move button with the write intercepted. A
+  // rejected move now puts the card back, says so, and returns false so the
+  // wrappers can tell.
   if(dealId && !String(dealId).startsWith('tmp_')){
-    try { await supa.from('deals').update({stage:toStage, stage_entered_at:now}).eq('id',dealId); } catch(e){ console.warn('Move save failed',e); }
+    let uq;
+    try { uq = await supa.from('deals').update({stage:toStage, stage_entered_at:now}).eq('id',dealId).select('id'); }
+    catch(e){ uq = { error: e }; }
+    if(!uq || uq.error || !Array.isArray(uq.data) || uq.data.length === 0){
+      console.warn('Move save failed', uq && uq.error);
+      const j = deals[toStage].indexOf(deal);
+      if(j > -1) deals[toStage].splice(j, 1);
+      deal.stageEnteredAt = prevStageEnteredAt;
+      stageDeals.splice(Math.min(idx, stageDeals.length), 0, deal);
+      renderKanban(); renderDash();
+      alert('Could not move this deal to ' + toStage + ' — the database rejected the change'
+        + (uq && uq.error ? ': ' + (uq.error.message || uq.error) : ' (0 rows changed).')
+        + '\n\nIt is still in ' + fromStage + '. Nothing was sent.');
+      return false;
+    }
   }
   touchDeal(deal.name || deal.co || dealId);
   renderKanban(); renderDash();
@@ -2512,14 +2549,28 @@ async function setDealOutreach(dealId, stage, idx, status){
   const stageArr = Array.isArray(deals[stage]) ? deals[stage] : [];
   const d = stageArr[idx];
   if(!d) return;
+  const prevOutreach = d.outreachStatus;
   d.outreachStatus = status;
   touchDeal(d.name || d.co || dealId);
   renderKanban();
-  // Persist to Supabase only for real (UUID) deal IDs
+  // Persist to Supabase only for real (UUID) deal IDs.
+  //
+  // GL-094 (same class as moveDeal). The result was never checked, so a rejected
+  // update left the new status on the card with no message and still logged
+  // "Email logged" to the activity feed. The status now reverts and nothing is
+  // logged when the database refuses it.
   if(dealId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(dealId))){
-    try {
-      await supa.from('deals').update({outreach_status: status}).eq('id', dealId);
-    } catch(e){ console.warn('[GL] Outreach update failed:', e); }
+    let uq;
+    try { uq = await supa.from('deals').update({outreach_status: status}).eq('id', dealId).select('id'); }
+    catch(e){ uq = { error: e }; }
+    if(!uq || uq.error || !Array.isArray(uq.data) || uq.data.length === 0){
+      console.warn('[GL] Outreach update failed:', uq && uq.error);
+      d.outreachStatus = prevOutreach;
+      renderKanban();
+      alert('Could not update the outreach status — the database rejected the change'
+        + (uq && uq.error ? ': ' + (uq.error.message || uq.error) : ' (0 rows changed).'));
+      return;
+    }
   }
   if(status === 'sent'){
     activities.unshift({

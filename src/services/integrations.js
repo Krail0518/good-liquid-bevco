@@ -632,7 +632,9 @@
     if(typeof orig !== 'function') return;
     window.moveDeal = async function(dealId, fromStage, toStage, fallbackIdx){
       var r = await orig.apply(this, arguments);
-      if(toStage === 'Closed Won'){
+      // moveDeal returns false when the database rejected the move (GL-094);
+      // never text "closed won" for a deal that did not close.
+      if(r !== false && toStage === 'Closed Won'){
         var deals = window.deals && window.deals[toStage] || [];
         var d = deals.find(function(x){ return x && x.id === dealId; }) || deals[deals.length-1] || {};
         maybeSms('gl_sms_won', '🎉 Deal closed won: ' + (d.name||'') + ' (' + (d.co||'') + ') ' + (d.val||''));

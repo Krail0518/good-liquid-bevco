@@ -142,6 +142,12 @@ jobs:
       # hid them without stopping them. No browser needed.
       - name: Run realtime channel tests
         run: node tests/realtime-channels.test.cjs
+      # Every .update()/.delete() must reach .select() and check the result, or
+      # be allowlisted with a reason (CLAUDE.md rule 4). A rejected pipeline move
+      # once still sent Closed Won alerts; a rejected outreach change stayed on
+      # the card; uploaded client documents went unrecorded. No browser needed.
+      - name: Run unchecked-write tests
+        run: node tests/unchecked-writes.test.cjs
       # security-invariants.sh must tell a timeout apart from a leak. It once
       # reported a 504 as "ANONYMOUS DATA VISIBLE", and the fix for that is a
       # classifier, so the classifier is tested: the real script is run against
