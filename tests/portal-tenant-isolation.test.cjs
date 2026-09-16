@@ -55,8 +55,12 @@ function check(name, ok, detail) {
 }
 
 // ── Sources ────────────────────────────────────────────────────────────────
+// Every portal-v2 migration, phase 1 (2026-09-14) and phase 2 (2026-09-15).
+// Widen this deliberately when a later phase adds a date — a prefix that stops
+// matching turns every check below into a vacuous pass, which is what the
+// "migrations to check at all" guard underneath is for.
 const PORTAL_MIGRATIONS = fs.readdirSync(MIG_DIR)
-  .filter(f => /^202609140[0-9]{5}_/.test(f))
+  .filter(f => /^2026091[45]\d{6}_/.test(f))
   .sort();
 const migSql = PORTAL_MIGRATIONS
   .map(f => fs.readFileSync(path.join(MIG_DIR, f), 'utf8'))
@@ -148,7 +152,10 @@ for (const m of defFns) {
   if (!/security definer/i.test(body)) continue;
   check(name + '() pins a search_path', /set search_path\s*=\s*pg_catalog/i.test(body),
     'an unpinned search_path lets a caller shadow an object the function resolves');
-  const revoked = new RegExp('revoke all on function public\\.' + name + '\\s*\\([^)]*\\)\\s+from public', 'i');
+  // The role list varies — `from public, anon` on some, `from authenticated,
+  // public, anon` on the trigger functions — so match public anywhere in it
+  // rather than pinning it to first position.
+  const revoked = new RegExp('revoke all on function public\\.' + name + '\\s*\\([^)]*\\)\\s+from[^;]*\\bpublic\\b', 'i');
   check(name + '() revokes execute from public', revoked.test(migSql),
     'PUBLIC holds EXECUTE on new functions by default');
 }
@@ -239,6 +246,49 @@ check('the visibility toggle treats 0 updated rows as failure',
 check('publishing a Formula document asks for a second confirmation',
   /doc_type\s*===\s*'Formula'/.test(dealDocsSrc),
   'the portal shows formula status only; a formula sheet can carry the formulation itself');
+
+// ── 9b. The artwork decision ledger (phase 2) ──────────────────────────────
+// client_artwork.status was writable by the customer under an unrestricted
+// "customer update" policy. Harmless while nothing read it as authorization;
+// the moment it meant "approved for print" a portal user could PATCH their own
+// approval. The column is gone, and state is the ledger's latest row.
+const artworkSrc = blankComments(readIfExists('src/modules/customers/artwork.js'));
+const allRuntime = blankComments(runtimeSrc);
+
+check('no runtime source references client_artwork.status',
+  !/status\s*:\s*['"]submitted['"]/.test(allRuntime) && !/\.status\b/.test(artworkSrc),
+  'the column was dropped in 20260915000000; a stale read renders every SKU as Submitted forever');
+check('the portal reads artwork through gl_portal_artwork()',
+  /rpc\(\s*['"]gl_portal_artwork['"]/.test(artworkSrc),
+  'the RPC is the only customer-facing path; its return type has no decided_by');
+check('artwork_reviews is append-only in the migration',
+  /before update or delete on public\.artwork_reviews/i.test(migSql),
+  'a decision that can be edited is not a record');
+check('illegal artwork transitions are refused by the database',
+  /sent_to_printer['"]?\s*then\s*false/i.test(migSql),
+  'sent_to_printer is terminal; the UI map is a convenience, the trigger is the authority');
+check('artwork_reviews has no customer policy',
+  !/on public\.artwork_reviews[\s\S]{0,300}?current_customer_client_id/i.test(migSql),
+  'a customer holding SELECT here could ask for decided_by');
+check('the artwork decision write is checked for 0 rows',
+  /r\.data\.length\s*===\s*0/.test(artworkSrc),
+  'RLS rejects silently — CLAUDE.md rule 4');
+// The guard must be a SECURITY DEFINER helper, not an inline subquery: a policy
+// subquery runs as the CALLER, and customers hold no policy on artwork_reviews,
+// so an inline `not exists` always sees zero rows and always permits the delete.
+// 20260915000000 shipped it that way; 20260915000100 fixes it.
+check('a reviewed SKU cannot be deleted by its client',
+  /not public\.gl_artwork_has_decision\(id\)/i.test(migSql),
+  'an inline subquery over artwork_reviews is invisible to the customer and permits everything');
+// The superseded version is still in 20260915000000's text and in rollback
+// notes, as history should be. What matters is the LAST definition, since that
+// is the one in force.
+const ddl = stripSqlComments(migSql);
+const lastDeletePolicy = ddl.lastIndexOf('create policy "client_artwork customer delete"');
+check('the delete guard in force uses the security definer helper',
+  lastDeletePolicy !== -1 &&
+    /gl_artwork_has_decision/.test(ddl.slice(lastDeletePolicy, lastDeletePolicy + 400)),
+  'an inline subquery over artwork_reviews is invisible to the customer and permits everything');
 
 // ── 10. Tenant consistency ─────────────────────────────────────────────────
 for (const t of ['deal_documents', 'client_artwork']) {

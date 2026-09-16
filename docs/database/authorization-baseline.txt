@@ -17,7 +17,9 @@ FUNC     public.get_shared_allergen_declaration(p_token text) | secdef=t | searc
 FUNC     public.get_shared_invoice(p_token text) | secdef=t | search_path=public | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres,anon=X/postgres
 FUNC     public.gl_apply_payment_event(p_provider text, p_event_id text, p_invoice_number text, p_amount numeric, p_currency text, p_method text, p_reference text) | secdef=t | search_path=public, extensions | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_apply_refund_event(p_provider text, p_event_id text, p_invoice_number text, p_amount numeric, p_reference text) | secdef=t | search_path=public, extensions | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.gl_artwork_has_decision(p_artwork_id uuid) | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_audit_actor_email() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.gl_audit_artwork_decision() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_audit_artwork_project() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_audit_document_visibility() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_audit_entitlement() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
@@ -27,6 +29,8 @@ FUNC     public.gl_check_cron_secret(candidate text) | secdef=t | search_path=""
 FUNC     public.gl_cron_health() | secdef=t | search_path="" | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_derive_invoice_paid_state() | secdef=t | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_enforce_ledger_bounds() | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
+FUNC     public.gl_guard_artwork_review_append_only() | secdef=f | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.gl_guard_artwork_review_transition() | secdef=f | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_guard_compliance_signature() | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_guard_entitlement_append_only() | secdef=f | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_guard_hold_disposition() | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
@@ -46,6 +50,7 @@ FUNC     public.gl_onboarding_intake_submit(p_token text, p jsonb) | secdef=t | 
 FUNC     public.gl_onboarding_submit(p_token text, p_data jsonb) | secdef=t | search_path=public | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres,anon=X/postgres
 FUNC     public.gl_payment_method_label(p_method text, p_provider text) | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_payment_tolerance() | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
+FUNC     public.gl_portal_artwork(p_project_id uuid) | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_portal_entitlements() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_portal_formula_status() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_purge_expired_qbo_states() | secdef=t | search_path=public | acl=postgres=X/postgres,service_role=X/postgres
@@ -86,6 +91,7 @@ GRANT    public.ai_brief_todos | authenticated | DELETE,INSERT,REFERENCES,SELECT
 GRANT    public.ai_briefs | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.announcements | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.app_settings | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
+GRANT    public.artwork_reviews | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.attention_snoozes | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.audit_findings | anon | SELECT
 GRANT    public.audit_findings | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
@@ -228,6 +234,8 @@ POLICY   public.app_settings | app_settings admin write | PERMISSIVE | {authenti
    FROM profiles
   WHERE ((profiles.id = auth.uid()) AND (profiles.role = ANY (ARRAY['admin'::text, 'super'::text]))))))
 POLICY   public.app_settings | app_settings staff read | PERMISSIVE | {authenticated} | SELECT | using=is_staff_user() | check=-
+POLICY   public.artwork_reviews | artwork_reviews staff all | PERMISSIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
+POLICY   public.artwork_reviews | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
 POLICY   public.attention_snoozes | gl staff manage attention snoozes | PERMISSIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
 POLICY   public.audit_findings | audit_findings inspector read | PERMISSIVE | {anon} | SELECT | using=is_valid_inspector_token(current_inspector_token()) | check=-
 POLICY   public.audit_findings | audit_findings staff all | PERMISSIVE | {authenticated} | ALL | using=is_staff_user() | check=is_staff_user()
@@ -295,9 +303,9 @@ POLICY   public.client_allergen_declarations | gl viewer no delete | RESTRICTIVE
 POLICY   public.client_allergen_declarations | gl viewer no insert | RESTRICTIVE | {authenticated} | INSERT | using=- | check=(NOT gl_is_viewer())
 POLICY   public.client_allergen_declarations | gl viewer no update | RESTRICTIVE | {authenticated} | UPDATE | using=(NOT gl_is_viewer()) | check=(NOT gl_is_viewer())
 POLICY   public.client_allergen_declarations | gl warehouse guard | RESTRICTIVE | {authenticated} | ALL | using=(NOT gl_is_warehouse()) | check=(NOT gl_is_warehouse())
-POLICY   public.client_artwork | client_artwork customer delete | PERMISSIVE | {authenticated} | DELETE | using=(client_id = current_customer_client_id()) | check=-
+POLICY   public.client_artwork | client_artwork customer delete | PERMISSIVE | {authenticated} | DELETE | using=((client_id = current_customer_client_id()) AND (archived_at IS NULL) AND (NOT gl_artwork_has_decision(id))) | check=-
 POLICY   public.client_artwork | client_artwork customer insert | PERMISSIVE | {authenticated} | INSERT | using=- | check=(client_id = current_customer_client_id())
-POLICY   public.client_artwork | client_artwork customer read | PERMISSIVE | {authenticated} | SELECT | using=(client_id = current_customer_client_id()) | check=-
+POLICY   public.client_artwork | client_artwork customer read | PERMISSIVE | {authenticated} | SELECT | using=((client_id = current_customer_client_id()) AND (archived_at IS NULL)) | check=-
 POLICY   public.client_artwork | client_artwork customer update | PERMISSIVE | {authenticated} | UPDATE | using=(client_id = current_customer_client_id()) | check=(client_id = current_customer_client_id())
 POLICY   public.client_artwork | client_artwork staff all | PERMISSIVE | {authenticated} | ALL | using=is_staff_user() | check=is_staff_user()
 POLICY   public.client_artwork | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=(is_gl_staff() OR ((client_id)::text = (current_customer_client_id())::text)) | check=-
@@ -830,6 +838,7 @@ RLS      public.ai_brief_todos | enabled=t
 RLS      public.ai_briefs | enabled=t
 RLS      public.announcements | enabled=t
 RLS      public.app_settings | enabled=t
+RLS      public.artwork_reviews | enabled=t
 RLS      public.attention_snoozes | enabled=t
 RLS      public.audit_findings | enabled=t
 RLS      public.audit_log | enabled=t

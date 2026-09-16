@@ -33,10 +33,17 @@ await pg.waitForTimeout(1200);
 // Install the stub + a mount, and pre-load one existing SKU.
 await pg.evaluate(()=>{
   window.__art=[]; window.__deleted=[];
-  const EXISTING=[{id:'a1',client_id:'c1',sku_name:'Mango 12oz',description:'front panel',file_path:'c1/artwork/1.png',file_type:'png',status:'approved'}];
+  // No status column: client_artwork.status was dropped in 20260915000000 and
+  // state now comes from the artwork_reviews ledger. This SKU has no decision,
+  // which is what "Submitted" means.
+  const EXISTING=[{id:'a1',client_id:'c1',sku_name:'Mango 12oz',description:'front panel',file_path:'c1/artwork/1.png',file_type:'png',archived_at:null}];
   function chain(table){
     const c={_t:table};
-    c.select=()=>c; c.eq=()=>c; c.order=async()=>({data:table==='client_artwork'?EXISTING:[],error:null});
+    // .is() and .in() are part of the staff read now: client_artwork is
+    // filtered by archived_at, and the latest decision per SKU is fetched from
+    // artwork_reviews by id.
+    c.select=()=>c; c.eq=()=>c; c.is=()=>c; c.in=()=>c;
+    c.order=async()=>({data:table==='client_artwork'?EXISTING:[],error:null});
     c.insert=(rows)=>{ if(table==='client_artwork') window.__art.push(...rows); return { select:async()=>({data:rows,error:null}) , then:(r)=>Promise.resolve({data:rows,error:null}).then(r) }; };
     c.delete=()=>({ eq:async(k,v)=>{ window.__deleted.push(v); return {data:null,error:null}; } });
     c.then=(res)=>Promise.resolve({data:table==='client_artwork'?EXISTING:[],error:null}).then(res);

@@ -270,7 +270,7 @@ const PORTAL_DATA={
   ],
   production_runs:[{id:'r1',client_id:'c1',run_name:'Cold Brew R-2041',format:'12oz can',cases:520,stage:'Production',scheduled_start_date:'2026-07-15',lot_number:'CB-2041',updated_at:'2026-07-16'}],
   lot_documents:[{id:'ld1',client_id:'c1',document_type:'COA',title:'COA — Cold Brew R-2041',lot_number:'CB-2041',file_name:'coa-cb2041.pdf',file_size:120000,file_path:'x',mime_type:'application/pdf',uploaded_at:'2026-07-16',production_run_id:'r1'}],
-  client_artwork:[{id:'a1',client_id:'c1',sku_name:'Cold Brew 12oz',description:'Front panel design',file_path:'c1/artwork/1.png',file_type:'png',status:'approved'}],
+  client_artwork:[{id:'a1',client_id:'c1',sku_name:'Cold Brew 12oz',description:'Front panel design',file_path:'c1/artwork/1.png',file_type:'png'}],
   client_allergen_declarations:[],sample_shipments:[],formulas:[],customer_requests:[]
 };
 

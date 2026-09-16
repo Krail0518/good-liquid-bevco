@@ -1,14 +1,30 @@
 /* ============================================================
    artwork.js — per-client label artwork, multiple SKUs
    ============================================================
-   One row per SKU in client_artwork; each SKU carries a name, optional notes,
-   an approval status, and an uploaded artwork file (client-docs bucket, opened
-   via signed URLs). The same section renders in two places:
+   One row per SKU in client_artwork: a name, optional notes, and an uploaded
+   artwork file (client-docs bucket, opened via signed URLs). The same section
+   renders in two places:
      • the staff client card (window.glRenderArtwork(clientId, mount))
      • the customer portal (same call, with the customer's own client id)
 
+   ARTWORK STATE IS NOT A COLUMN. client_artwork.status was dropped in
+   20260915000000. State is the latest row of the append-only artwork_reviews
+   ledger, and "Submitted" is the ABSENCE of a decision rather than a stored
+   value. The old column was writable by the customer — a portal user could
+   PATCH status='approved' and authorise their own print run — and a cache that
+   does not exist cannot be desynchronised or tampered with.
+
+   The two surfaces read different things, and the branch is by SURFACE, not by
+   trusting a role claim in the browser:
+     • portal → rpc('gl_portal_artwork'), whose return type carries no
+       decided_by, no seq and no profiles id
+     • CRM    → the base tables, which only staff can read anyway
+
+   Only staff can record a decision; the database enforces the legal
+   transitions, so the buttons here are a convenience, never the authority.
+
    Exposes:
-     window.glRenderArtwork(clientId, mountElOrId)  — list + "add SKU" form
+     window.glRenderArtwork(clientId, mountElOrId, opts)  — list + "add SKU" form
    Reuses window.glOpenClientDoc / glDownloadClientDoc for view/download.
    ============================================================ */
 (function(){
@@ -20,11 +36,28 @@
   }
   function elOf(m){ return typeof m === 'string' ? document.getElementById(m) : m; }
 
-  var STATUS = {
-    submitted: ['Submitted', 'rgba(245,200,66,.15)', '#f5c842'],
-    in_review: ['In review', 'rgba(0,229,192,.14)', '#00e5c0'],
-    approved:  ['Approved',  'rgba(29,158,117,.16)', '#5fcf9e'],
-    rejected:  ['Rejected',  'rgba(231,76,60,.16)',  '#ff8579']
+  function isPortalSurface(){
+    try { return new URL(location.href).searchParams.has('portal'); } catch(e){ return false; }
+  }
+
+  // Label, background, foreground. 'submitted' is synthesised, not stored.
+  var STATE = {
+    submitted:         ['Submitted',        'rgba(245,200,66,.15)',  '#f5c842'],
+    in_review:         ['In review',        'rgba(0,229,192,.14)',   '#00e5c0'],
+    changes_requested: ['Changes requested','rgba(231,76,60,.16)',   '#ff8579'],
+    approved:          ['Approved',         'rgba(29,158,117,.16)',  '#5fcf9e'],
+    sent_to_printer:   ['Sent to printer',  'rgba(107,159,255,.16)', '#6b9fff']
+  };
+
+  // Mirrors the database trigger in 20260915000000. Kept here only so staff are
+  // not offered a button the server will refuse; the server remains the
+  // authority and an illegal insert raises 42501 regardless of this map.
+  var NEXT = {
+    submitted:         ['in_review', 'changes_requested', 'approved'],
+    in_review:         ['changes_requested', 'approved'],
+    changes_requested: ['in_review', 'approved'],
+    approved:          ['sent_to_printer', 'changes_requested'],
+    sent_to_printer:   []
   };
 
   async function uploadArtwork(clientId, file){
@@ -39,35 +72,100 @@
     } catch(e){ window.__lastUploadError = (e && e.message) || String(e); return ''; }
   }
 
-  function skuRow(r){
-    var st = STATUS[r.status] || STATUS.submitted;
+  // Normalises both surfaces to one shape: { id, sku_name, description,
+  // file_path, file_type, created_at, state, decided_at, client_note }.
+  async function loadRows(clientId, portal){
+    if(portal){
+      var rp = await sb().rpc('gl_portal_artwork');
+      if(rp.error) throw rp.error;
+      return (rp.data || []).map(function(r){
+        return { id: r.artwork_id, sku_name: r.sku_name, description: r.description,
+                 file_path: r.file_path, file_type: r.file_type, created_at: r.created_at,
+                 state: r.state || 'submitted', decided_at: r.decided_at, client_note: r.client_note };
+      });
+    }
+    var ar = await sb().from('client_artwork').select('*')
+      .eq('client_id', clientId).is('archived_at', null)
+      .order('created_at', { ascending:false });
+    if(ar.error) throw ar.error;
+    var rows = ar.data || [];
+    if(!rows.length) return [];
+
+    // Latest decision per SKU. Ordered ascending so the last write wins in the
+    // map — seq is the order, never decided_at, which is not unique.
+    var rv = await sb().from('artwork_reviews')
+      .select('artwork_id, decision, decided_at, client_note, seq')
+      .in('artwork_id', rows.map(function(r){ return r.id; }))
+      .order('seq', { ascending:true });
+    if(rv.error) throw rv.error;
+    var latest = {};
+    (rv.data || []).forEach(function(d){ latest[d.artwork_id] = d; });
+
+    return rows.map(function(r){
+      var d = latest[r.id];
+      r.state = d ? d.decision : 'submitted';
+      r.decided_at = d ? d.decided_at : null;
+      r.client_note = d ? d.client_note : null;
+      return r;
+    });
+  }
+
+  function decisionButtons(r, staff){
+    if(!staff) return '';
+    var next = NEXT[r.state] || [];
+    if(!next.length){
+      return '<div style="font-size:10.5px;color:#6b87ad;margin-top:6px">Sent to the printer — this SKU is closed.</div>';
+    }
+    return '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' +
+      next.map(function(d){
+        var st = STATE[d];
+        return '<button type="button" class="gl-art-decide" data-id="'+esc(r.id)+'" data-decision="'+esc(d)+'" ' +
+          'style="padding:3px 9px;border-radius:20px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;' +
+          'background:'+st[1]+';color:'+st[2]+';border:1px solid '+st[2]+'55">'+esc(st[0])+'</button>';
+      }).join('') + '</div>';
+  }
+
+  function skuRow(r, staff){
+    var st = STATE[r.state] || STATE.submitted;
     var links = r.file_path
       ? '<a href="#" data-gl-action="glOpenClientDoc" data-gl-prevent="" data-gl-arg1="'+esc(String(r.file_path).replace(/\x27/g,''))+'" style="color:#00e5c0;font-weight:700">📄 View</a>' +
         ' <a href="#" data-gl-action="glDownloadClientDoc" data-gl-prevent="" data-gl-arg1="'+esc(String(r.file_path).replace(/\x27/g,''))+'" style="color:#00e5c0;font-weight:700">⬇ Download</a>'
       : '<span style="color:#f5c842">⚠ no file stored</span>';
+    // A SKU with a decision on it is part of the record: the ledger's ON DELETE
+    // RESTRICT foreign key refuses to remove it, so offering the bin would only
+    // produce an error. Staff archive instead.
+    var reviewed = r.state !== 'submitted';
+    var removeBtn = reviewed
+      ? (staff ? '<button class="gl-art-archive" data-id="'+esc(r.id)+'" title="Archive this SKU" style="background:none;border:none;color:#9aa7bd;cursor:pointer;font-size:14px;flex-shrink:0">🗄</button>' : '')
+      : '<button class="gl-art-del" data-id="'+esc(r.id)+'" title="Remove SKU" style="background:none;border:none;color:#ff8579;cursor:pointer;font-size:15px;flex-shrink:0">🗑</button>';
     return '<div class="gl-art-row" data-id="'+esc(r.id)+'" style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:10px 0;border-top:1px solid rgba(255,255,255,.06)">' +
         '<div style="min-width:0">' +
           '<div style="font-weight:700;color:#eef4ff;font-size:13px">🎨 '+esc(r.sku_name)+' ' +
-            '<span style="padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;background:'+st[1]+';color:'+st[2]+'">'+st[0]+'</span></div>' +
+            '<span style="padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;background:'+st[1]+';color:'+st[2]+'">'+esc(st[0])+'</span></div>' +
           (r.description ? '<div style="font-size:11.5px;color:#9aa7bd;margin-top:2px">'+esc(r.description)+'</div>' : '') +
+          (r.client_note ? '<div style="font-size:11.5px;color:#c8d4e8;margin-top:3px;border-left:2px solid '+st[2]+';padding-left:7px">'+esc(r.client_note)+'</div>' : '') +
           '<div style="font-size:12px;margin-top:4px">'+links+'</div>' +
-        '</div>' +
-        '<button class="gl-art-del" data-id="'+esc(r.id)+'" title="Remove SKU" style="background:none;border:none;color:#ff8579;cursor:pointer;font-size:15px;flex-shrink:0">🗑</button>' +
+          decisionButtons(r, staff) +
+        '</div>' + removeBtn +
       '</div>';
   }
 
-  window.glRenderArtwork = async function glRenderArtwork(clientId, mount){
+  window.glRenderArtwork = async function glRenderArtwork(clientId, mount, opts){
     var host = elOf(mount);
     if(!host) return;
     if(!sb()){ host.innerHTML = '<div style="font-size:11px;color:#9aa7bd">Storage not ready.</div>'; return; }
+    var portal = opts && typeof opts.portal === 'boolean' ? opts.portal : isPortalSurface();
+    var staff = !portal;
+
     host.innerHTML = '<div style="font-size:11px;color:#9aa7bd">Loading artwork…</div>';
     var rows = [];
-    try { var r = await sb().from('client_artwork').select('*').eq('client_id', clientId).order('created_at', { ascending:false }); if(r.error) throw r.error; rows = r.data || []; }
+    try { rows = await loadRows(clientId, portal); }
     catch(e){ host.innerHTML = '<div style="font-size:11px;color:#ff8579">Could not load artwork: '+esc(e.message||e)+'</div>'; return; }
 
     var inp = 'width:100%;padding:9px 10px;background:#0a1628;border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#fff;font-size:13px';
     host.innerHTML =
-      (rows.length ? rows.map(skuRow).join('') : '<div style="font-size:12px;color:#9aa7bd;padding:6px 0">No SKUs yet. Add each can design below.</div>') +
+      (rows.length ? rows.map(function(r){ return skuRow(r, staff); }).join('')
+                   : '<div style="font-size:12px;color:#9aa7bd;padding:6px 0">No SKUs yet. Add each can design below.</div>') +
       '<div style="border-top:1px solid rgba(255,255,255,.06);margin-top:8px;padding-top:10px">' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
           '<input class="gl-art-name" placeholder="SKU / can name (e.g. Mango 12oz)" style="'+inp+'">' +
@@ -96,11 +194,56 @@
       if(!path){ btn.disabled=false; btn.textContent='＋ Add SKU'; show('#ff8579','Upload failed'+(window.__lastUploadError?(' ('+window.__lastUploadError+')'):'')+'. Try again.'); return; }
       var uid = (window.currentUser && window.currentUser.id) || null;
       try {
-        var ins = await sb().from('client_artwork').insert([{ client_id: clientId, sku_name: name, description: desc || null, file_path: path, file_type: (file.name.split('.').pop()||'').toLowerCase(), status:'submitted', created_by: uid }]);
+        // No status: the absence of a decision IS "Submitted".
+        var ins = await sb().from('client_artwork').insert([{ client_id: clientId, sku_name: name, description: desc || null, file_path: path, file_type: (file.name.split('.').pop()||'').toLowerCase(), created_by: uid }]);
         if(ins.error) throw ins.error;
       } catch(e){ btn.disabled=false; btn.textContent='＋ Add SKU'; show('#ff8579','Save failed: '+(e.message||e)); return; }
       if(typeof window.glAudit === 'function') window.glAudit('artwork_added', name, { client: clientId });
-      glRenderArtwork(clientId, host); // re-render fresh
+      glRenderArtwork(clientId, host, opts); // re-render fresh
+    });
+
+    // Staff record a decision. The note is written knowing the client reads it:
+    // gl_portal_artwork() returns client_note to the portal verbatim.
+    Array.prototype.forEach.call(host.querySelectorAll('.gl-art-decide'), function(b){
+      b.addEventListener('click', async function(){
+        var btn = this;
+        var id = btn.getAttribute('data-id');
+        var decision = btn.getAttribute('data-decision');
+        var row = rows.filter(function(x){ return String(x.id) === String(id); })[0] || {};
+        var label = (STATE[decision] || [decision])[0];
+        if(decision === 'sent_to_printer' &&
+           !confirm('Mark "' + (row.sku_name||'this SKU') + '" as sent to the printer? Nothing follows this — it is the end of the line for this artwork.')) return;
+        var note = prompt('Note for the CLIENT to read with "' + label + '" (optional):', '');
+        if(note === null) return;
+        var uid = (window.currentUser && window.currentUser.id) || null;
+        if(!uid){ show('#ff8579','Could not identify you — sign in again.'); return; }
+        btn.disabled = true;
+        var r;
+        // .select() so a silent RLS rejection (no error, 0 rows) cannot redraw
+        // as success — CLAUDE.md rule 4.
+        try { r = await sb().from('artwork_reviews').insert([{ artwork_id: id, decision: decision, client_note: note || null, decided_by: uid }]).select('seq'); }
+        catch(e){ btn.disabled=false; show('#ff8579','Could not record the decision: '+(e.message||e)); return; }
+        if(r.error){ btn.disabled=false; show('#ff8579','Could not record the decision: '+r.error.message); return; }
+        if(!Array.isArray(r.data) || r.data.length === 0){
+          btn.disabled = false;
+          show('#ff8579','The server rejected the decision (0 rows written). Nothing was recorded.');
+          return;
+        }
+        glRenderArtwork(clientId, host, opts);
+      });
+    });
+
+    Array.prototype.forEach.call(host.querySelectorAll('.gl-art-archive'), function(b){
+      b.addEventListener('click', async function(){
+        if(!confirm('Archive this SKU? It disappears from the client portal. Its decisions are kept.')) return;
+        var id = this.getAttribute('data-id');
+        var up;
+        try { up = await sb().from('client_artwork').update({ archived_at: new Date().toISOString() }).eq('id', id).select('id'); }
+        catch(e){ show('#ff8579','Archive failed: '+(e.message||e)); return; }
+        if(up.error){ show('#ff8579','Archive failed: '+up.error.message); return; }
+        if(!Array.isArray(up.data) || up.data.length === 0){ show('#ff8579','The server rejected the archive (0 rows). The SKU is unchanged.'); return; }
+        glRenderArtwork(clientId, host, opts);
+      });
     });
 
     Array.prototype.forEach.call(host.querySelectorAll('.gl-art-del'), function(b){
@@ -121,7 +264,7 @@
           if(del.error) throw del.error;
           if(!del.data || !del.data.length) throw new Error('no SKU was removed');
         } catch(e){ show('#ff8579','Delete failed: '+(e.message||e)); return; }
-        glRenderArtwork(clientId, host);
+        glRenderArtwork(clientId, host, opts);
       });
     });
   };
