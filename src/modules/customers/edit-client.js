@@ -857,7 +857,8 @@
           setTimeout(function(){ window.glOpenEditClient(clientId); }, 80);
         }
       } else {
-        setErr('Not saved — ' + ((window.glUpdateClient && window.glUpdateClient.lastError) || 'the database did not accept the change.') + ' Your edits are still in this form.');
+        var why = (window.glUpdateClient && window.glUpdateClient.lastError) || 'the database did not accept the change';
+        setErr('Not saved — ' + why + (/[.!?]$/.test(why) ? '' : '.') + ' Your edits are still in this form.');
       }
     });
 
