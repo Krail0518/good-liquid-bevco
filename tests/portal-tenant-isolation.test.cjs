@@ -348,6 +348,30 @@ check('the portal never queries formula_documents directly',
   !/from\(\s*['"]formula_documents['"]/.test(portalSrc),
   'the RPC and the edge function are the only customer-facing paths');
 
+// ── 9e. Portal notifications (phase 4a) ────────────────────────────────────
+// Email reaches people who are not logged in, which is the point — and also
+// why a mistake here is a mistake in someone's inbox rather than on a page they
+// chose to open.
+check('notifications reuse email_schedule rather than a new sender',
+  /insert into public\.email_schedule/i.test(ddl),
+  'email-scheduler already claims rows atomically, sends and logs — a second path would need all of that again');
+check('recipients are scoped to the client and to active portal users',
+  /from public\.customer_users cu[\s\S]{0,200}?cu\.client_id = p_client_id[\s\S]{0,120}?cu\.active = true/i.test(ddl),
+  'a notification going to the wrong client is a tenant leak with a delivery receipt');
+check('the preference is honoured, and an unknown one sends nothing',
+  /p_pref not in \('project','run_stage'\)[\s\S]{0,40}return 0/i.test(ddl) &&
+  /when 'project'\s+then cu\.notify_project_updates/i.test(ddl),
+  'defaulting an unrecognised preference to "send" would mail people who opted out');
+check('an archived project sends nothing',
+  /p\.archived_at is null/i.test(ddl.slice(ddl.indexOf('gl_notify_milestone'))),
+  'archived means gone from the portal; it should mean gone from the inbox too');
+check('the enqueue helper is not callable by any client role',
+  /revoke all on function public\.gl_enqueue_portal_email\(uuid, text, text, text\)\s*from[^;]*authenticated/i.test(ddl),
+  'it writes to a staff-only table as definer — nobody should be able to invoke it directly');
+check('the portal exposes the new preference',
+  /acct-notify-project/.test(portalSrc) && /portal_update_my_notify_project/.test(portalSrc),
+  'a preference with no switch is the dead toggle this phase exists to fix');
+
 // ── 10. Tenant consistency ─────────────────────────────────────────────────
 for (const t of ['deal_documents', 'client_artwork']) {
   check(t + ' has a composite tenant foreign key',

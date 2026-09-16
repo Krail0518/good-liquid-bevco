@@ -87,7 +87,7 @@
         // Verify the user is a customer (has a customer_users row)
         var u = await Promise.race([
           sb.from('customer_users')
-            .select('id, client_id, email, display_name, active, role, notify_run_stage_changes')
+            .select('id, client_id, email, display_name, active, role, notify_run_stage_changes, notify_project_updates')
             .eq('auth_user_id', sess.data.session.user.id)
             .eq('active', true)
             .maybeSingle(),
@@ -882,6 +882,10 @@
           '<input type="checkbox" id="acct-notify-stage"' + (customer.notify_run_stage_changes === false ? '' : ' checked') + ' style="margin-top:1px;width:15px;height:15px;cursor:pointer;flex-shrink:0;accent-color:#c4b5fd">' +
           '<span>🏭 <b>Production stage emails</b> — get an email each time my run advances between kanban stages (Discovery → Formulation → Sample → COA → Production → Ship). <span style="color:#6b87ad;font-size:11px">Uncheck to opt out.</span></span>' +
         '</label>' +
+        '<label style="display:flex;align-items:flex-start;gap:10px;font-size:13px;color:#eef4ff;cursor:pointer;padding:8px 10px;background:rgba(124,58,237,.05);border:1px solid rgba(124,58,237,.2);border-radius:6px;line-height:1.45;margin-top:8px">' +
+          '<input type="checkbox" id="acct-notify-project"' + (customer.notify_project_updates === false ? '' : ' checked') + ' style="margin-top:1px;width:15px;height:15px;cursor:pointer;flex-shrink:0;accent-color:#c4b5fd">' +
+          '<span>📋 <b>Project updates</b> — email me when you need something from me, when a document is released to my account, or when my artwork is approved or sent back for changes. <span style="color:#6b87ad;font-size:11px">Uncheck to opt out.</span></span>' +
+        '</label>' +
 
         sectionHdr('TEAMMATES', '#7fc6f5') +
         '<div style="font-size:11px;color:#6b87ad;margin-bottom:10px;line-height:1.5">' +
@@ -1071,6 +1075,13 @@
       var notifyOn = chkv('acct-notify-stage');
       var nr = await sb.rpc('portal_update_my_notify', { p_notify_run_stage_changes: notifyOn });
       if(nr.error){ console.warn('[GL portal] notify update failed', nr.error); }
+
+      // Project updates live in their own RPC rather than a second argument on
+      // the one above: adding a defaulted parameter would leave two overloads
+      // and make the existing one-argument call ambiguous.
+      var projectOn = chkv('acct-notify-project');
+      var pr2 = await sb.rpc('portal_update_my_notify_project', { p_notify_project_updates: projectOn });
+      if(pr2.error){ console.warn('[GL portal] project-notify update failed', pr2.error); }
 
       // 2) Update password if provided
       if(newPw){
