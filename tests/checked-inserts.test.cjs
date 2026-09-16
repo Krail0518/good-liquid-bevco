@@ -215,6 +215,18 @@ async function callHelper(src, mode) {
   check('a rejected deal edit restores every field before reporting the failure',
     restoreAt !== -1 && alertAt !== -1 && restoreAt < alertAt,
     'restore at ' + restoreAt + ', alert at ' + alertAt + ' — the board kept unsaved edits under a "Nothing was saved" alert');
+  // GL-093: a rejected client edit must be restored and reported, on EVERY path.
+  // Raw source, not strip(): this file contains accept="image/*" in a string,
+  // which the naive comment stripper reads as the start of a block comment and
+  // deletes code up to the next "*/". The patterns below do not occur in comments.
+  const ecSrc = fs2.readFileSync(path2.join(ROOT2, 'src/modules/customers/edit-client.js'), 'utf8');
+  const failPaths = (ecSrc.match(/return failAndRestore\(/g) || []).length;
+  check('every client-update failure path restores the client and returns false',
+    failPaths >= 3 && !/addNotification\('Saved locally'/.test(ecSrc),
+    failPaths + " failAndRestore returns — the error, 0-row and network paths each need one; 'Saved locally' kept edits that vanished on refresh");
+  check('the client form shows the real reason, not "check the browser console"',
+    !/check the browser console/.test(ecSrc) && /glUpdateClient\.lastError/.test(ecSrc),
+    'an error nobody can act on is not an error message');
   check("no shipped code fabricates a 'local_' id",
     fabricators.length === 0,
     'still in: ' + fabricators.join(', '));

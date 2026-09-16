@@ -857,7 +857,7 @@
           setTimeout(function(){ window.glOpenEditClient(clientId); }, 80);
         }
       } else {
-        setErr('Save failed — check the browser console.');
+        setErr('Not saved — ' + ((window.glUpdateClient && window.glUpdateClient.lastError) || 'the database did not accept the change.') + ' Your edits are still in this form.');
       }
     });
 
@@ -906,6 +906,20 @@
 
     // Apply locally first so the UI feels instant.
     var prevSnapshot = Object.assign({}, c);
+    // GL-093. Every failure path below used to leave the edits on the local
+    // client and call it 'Saved locally'. Nothing keeps them: clients reload from
+    // the database on every page load, so the edits vanished on refresh. And the
+    // network-error branch did not even return false — it fell through, audited
+    // client_edited, and the form closed as if the save had worked. A failure now
+    // restores the client in place and reports the real reason to the caller.
+    window.glUpdateClient.lastError = null;
+    function failAndRestore(reason){
+      Object.keys(c).forEach(function(k){ if(!(k in prevSnapshot)) delete c[k]; });
+      Object.assign(c, prevSnapshot);
+      window.glUpdateClient.lastError = reason;
+      if(typeof addNotification === 'function') addNotification('Client NOT saved', reason, 'warning');
+      return false;
+    }
     Object.assign(c, patch, { init: newInit });
 
     if(window.supa){
@@ -990,17 +1004,15 @@
         }
         if(r && r.error){
           console.warn('[GL] glUpdateClient: supabase error', r.error);
-          if(typeof addNotification === 'function') addNotification('Saved locally','Server error: '+r.error.message,'warning');
-          return false;
+          return failAndRestore('The database rejected the change: ' + r.error.message);
         }
         if(r && Array.isArray(r.data) && r.data.length === 0){
           console.warn('[GL] glUpdateClient: 0 rows updated (likely RLS)');
-          if(typeof addNotification === 'function') addNotification('Saved locally','The server rejected the update — the changes will be lost on refresh','warning');
-          return false;
+          return failAndRestore('The database rejected the change (0 rows updated).');
         }
       } catch(e){
         console.warn('[GL] glUpdateClient threw', e);
-        if(typeof addNotification === 'function') addNotification('Saved locally','Server unreachable','warning');
+        return failAndRestore('The server could not be reached: ' + ((e && e.message) || e));
       }
     }
 
