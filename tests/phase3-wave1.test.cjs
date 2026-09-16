@@ -115,7 +115,12 @@ const out=await pg.evaluate(async(TASK_DEFS)=>{
     try{ await window.glRunMockRecall('run1','B-42'); }catch(e){ o.recallThrew=e.message; }
     await new Promise(r=>setTimeout(r,250));
     // The recall flow should surface an overlay for the operator to reconcile units.
-    const ov=document.querySelector('#gl-mock-recall,#gl-trace-recall,[id*="mock-recall"],[id*="recall"]');
+    // Exact ids first, one at a time. A comma-separated selector returns the
+    // first matching element in DOCUMENT order, not the first selector listed —
+    // so the old trailing [id*="recall"] matched the Trace page's search box
+    // (#gl-recall-q, renamed in GL-086), which sits before the overlay, and this
+    // check drove a text input instead of the recall form.
+    const ov=document.querySelector('#gl-trace-recall')||document.querySelector('#gl-mock-recall')||document.querySelector('[id*="mock-recall"]');
     o.recallOpensOverlay=!!ov;
     // Best-effort: fill any produced/recovered unit inputs and click a save/run button.
     if(ov){
