@@ -1900,7 +1900,28 @@
     // Verified against a live admin session before relying on this global.
     if(!window.currentUser){ setTimeout(subscribe, 2000); return; }
     if(channel) return; // already subscribed
-    channel = sb.channel('gl-invoices-realtime')
+
+    // One flag PER CHANNEL, captured by this subscription's own callback.
+    //
+    // GL-084. The "Maximum call stack size exceeded" that filled error_log from
+    // 7 Aug to 3 Sep (275 rows, admin and portal alike) was not a supabase-js
+    // bug, and GL-046 did not fix it — GL-046 added a silent .catch(), which
+    // stopped the rejection being LOGGED while the recursion carried on.
+    //
+    // The recursion was here. This callback removed the channel when it saw
+    // CLOSED, and removing a channel emits CLOSED to that same channel's
+    // callback, which removed it again. Reproduced live against production
+    // with this exact pattern: one external close fired the callback 52 times
+    // and called removeChannel 50 times before a safety cap stopped it; without
+    // the cap the tab froze. With the guard below: 3 callbacks, 1 removal,
+    // channel cleaned up.
+    //
+    // Two parts, both needed: the flag ignores the CLOSED our own removal
+    // produces, and the setTimeout leaves the channel from outside its own
+    // callback so the library is not re-entered mid-dispatch.
+    var ch;
+    var closing = false;
+    ch = channel = sb.channel('gl-invoices-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'invoices' }, function(payload){
         try { applyChange(payload.eventType, payload.new, payload.old); }
         catch(e){ console.warn('[GL realtime] applyChange threw', e); }
@@ -1908,23 +1929,15 @@
       .subscribe(function(status){
         if(status === 'SUBSCRIBED') console.log('[GL] realtime: subscribed to invoices');
         else if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED'){
+          if(closing) return;
+          closing = true;
           console.warn('[GL] realtime channel status:', status, '— will retry in 5s');
-          // removeChannel returns a PROMISE, so this try/catch never saw its
-          // failure. supabase-js 2.106.2 rejects here with "Maximum call stack
-          // size exceeded" from its channel-leave path, and with nothing
-          // handling the promise each one became an unhandled rejection —
-          // ~18 during startup on a returning visit, measured against
-          // production. fix.js pipes unhandledrejection straight to
-          // Sentry.captureException, so once staff are logged in that is quota
-          // spent on noise that also buries real errors.
-          //
-          // The catch is deliberately silent: a failed leave is not actionable,
-          // because the channel is discarded and rebuilt on the next line
-          // either way. The outer try stays for a synchronous throw.
-          try {
-            Promise.resolve(sb.removeChannel(channel)).catch(function(){});
-          } catch(e){}
-          channel = null;
+          if(channel === ch) channel = null;
+          setTimeout(function(){
+            // removeChannel returns a promise; a failed leave is not actionable
+            // because the channel is discarded and rebuilt either way.
+            try { Promise.resolve(sb.removeChannel(ch)).catch(function(){}); } catch(e){}
+          }, 0);
           setTimeout(subscribe, 5000);
         }
       });

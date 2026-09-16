@@ -136,6 +136,12 @@ jobs:
       # check. No browser needed.
       - name: Run dead-control tests
         run: node tests/dead-controls.test.cjs
+      # A realtime channel that removes itself inside its own status callback
+      # recurses: removal emits CLOSED to that callback, which removes again.
+      # That filled error_log with 275 stack overflows until a silent .catch()
+      # hid them without stopping them. No browser needed.
+      - name: Run realtime channel tests
+        run: node tests/realtime-channels.test.cjs
       # security-invariants.sh must tell a timeout apart from a leak. It once
       # reported a 504 as "ANONYMOUS DATA VISIBLE", and the fix for that is a
       # classifier, so the classifier is tested: the real script is run against
