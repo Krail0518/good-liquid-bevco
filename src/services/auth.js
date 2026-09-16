@@ -594,4 +594,72 @@
   /* Expose Supabase factory so external modules can call window.glGetSupa() if needed */
   window.glGetSupa = getSupa;
 
+  /* ── Session expiry: say so, instead of looking broken (GL-088) ─────────────
+     On 2026-09-15 the owner reported "95% of the admin area is broken": empty
+     dashboard, empty pipeline, dead nav. Nothing was broken. The refresh token
+     had failed (400 on /auth/v1/token), every query came back 401, and the CRM
+     shell kept rendering as if signed in — with no data and no explanation. The
+     error logger was itself 401-blocked, so not even error_log recorded it.
+
+     This watches for exactly that state and names it: a staff shell is open
+     (window.currentUser is set) but there is no longer a valid session.
+
+     Telling an expiry from a deliberate sign-out: every intentional path
+     (glSignOut, logoutCRM, MFA cancel) clears window.currentUser right after it
+     calls signOut. An expiry does not. So on SIGNED_OUT this waits a moment and
+     only speaks if currentUser is still set. A periodic check covers the case
+     where refresh fails without emitting an event.
+
+     It shows a banner with a button rather than reloading on its own, because
+     an auto-reload would throw away whatever form the person was half-way
+     through; this way they can copy it out first. */
+  (function watchSessionExpiry(){
+    var sb = getSupa();
+    if(!sb || !sb.auth || typeof sb.auth.getSession !== 'function'){ setTimeout(watchSessionExpiry, 500); return; }
+    var shown = false;
+
+    function showExpired(){
+      if(shown || !window.currentUser) return;
+      shown = true;
+      var bar = document.createElement('div');
+      bar.id = 'gl-session-expired';
+      bar.setAttribute('role', 'alert');
+      bar.setAttribute('style', 'position:fixed;top:0;left:0;right:0;z-index:100000;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;padding:12px 16px;background:#7a1f16;color:#fff;font:600 14px/1.4 system-ui,sans-serif;box-shadow:0 2px 12px rgba(0,0,0,.4)');
+      var msg = document.createElement('span');
+      msg.textContent = 'Your session has expired, so nothing will load or save. Copy anything you were typing, then sign in again.';
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = 'Sign in again';
+      btn.setAttribute('style', 'padding:7px 16px;border:0;border-radius:6px;background:#fff;color:#7a1f16;font-weight:800;cursor:pointer');
+      btn.addEventListener('click', function(){ window.location.reload(); });
+      bar.appendChild(msg); bar.appendChild(btn);
+      document.body.appendChild(bar);
+      console.warn('[GL] session expired while the CRM was open');
+    }
+
+    async function check(){
+      if(shown || !window.currentUser) return;
+      try {
+        var r = await sb.auth.getSession();
+        var s = r && r.data && r.data.session;
+        // No session, or one that expired over a minute ago and was never
+        // refreshed (auto-refresh gave up).
+        if(!s || (s.expires_at && s.expires_at * 1000 < Date.now() - 60000)) showExpired();
+      } catch(e){ /* a failed check is not evidence of expiry */ }
+    }
+    window.glCheckSessionExpiry = check;   // for tests and manual verification
+
+    if(typeof sb.auth.onAuthStateChange === 'function'){
+      sb.auth.onAuthStateChange(function(event){
+        if(event === 'SIGNED_OUT') setTimeout(function(){ if(window.currentUser) check(); }, 1500);
+        if(event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED'){
+          var old = document.getElementById('gl-session-expired');
+          if(old){ old.remove(); shown = false; }
+        }
+      });
+    }
+    setInterval(check, 60000);
+    document.addEventListener('visibilitychange', function(){ if(!document.hidden) check(); });
+  })();
+
 }());
