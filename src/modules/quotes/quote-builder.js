@@ -1762,17 +1762,74 @@
   async function loadClientQuotes(clientId, container){
     var sb = window.supa;
     if(!sb){ container.innerHTML = '<div style="font-size:11px;color:var(--muted);text-align:center;padding:8px">Not connected.</div>'; return; }
-    var r = await sb.from('quotes').select('id,quote_number,quote_date,package_format,product_type,status,pdf_html')
+    var r = await sb.from('quotes').select('id,quote_number,quote_date,package_format,product_type,status,pdf_html,project_id,services')
       .eq('client_id', clientId)
       .order('quote_date',{ascending:false})
       .limit(20);
     if(r.error){ container.innerHTML = '<div style="font-size:11px;color:#ff8579">Could not load quotes.</div>'; return; }
     var rows = r.data || [];
+
+    // Projects this client's quotes may be attached to. Archived ones are left
+    // out: the database refuses to unlock anything on an archived project, so
+    // offering one here would be a control that silently does nothing.
+    var projRes = await sb.from('projects').select('id,name')
+      .eq('client_id', clientId).is('archived_at', null).order('created_at');
+    var projects = (projRes && projRes.data) || [];
     if(!rows.length){
       container.innerHTML = '<div style="font-size:11px;color:var(--muted);text-align:center;padding:12px">No quotes saved yet.</div>';
       return;
     }
     var STATUS_COLOR = { draft:'#9aa7bd', sent:'#1a6fff', accepted:'#5fcf9e', declined:'#ff8579' };
+
+    // ── Which services this quote sells, and which project they unlock ──────
+    // Accepting the quote is what grants them (trg_quote_grant_entitlements).
+    // The two facts are set explicitly rather than inferred from the line items:
+    // a quote's addons are production options — nitrogen, trays, palletizing —
+    // and nothing in the priced lines names a portal service. Guessing a
+    // billing-adjacent grant from wording would break the first time someone
+    // rephrased a line.
+    var PORTAL_SERVICES = [
+      { key:'renders',           label:'Product Renders' },
+      { key:'packaging_artwork', label:'Packaging & Artwork' },
+      { key:'market_analytics',  label:'Market Analytics' }
+    ];
+
+    function svcEditorHtml(q){
+      var have = q.services || [];
+      var projOpts = '<option value="">— no project —</option>' + projects.map(function(p){
+        return '<option value="' + esc(p.id) + '"' +
+          (q.project_id === p.id ? ' selected' : '') + '>' + esc(p.name || 'Untitled') + '</option>';
+      }).join('');
+      var statusOpts = ['draft','sent','accepted','declined'].map(function(s){
+        return '<option value="' + s + '"' + (q.status === s ? ' selected' : '') + '>' +
+          s.charAt(0).toUpperCase() + s.slice(1) + '</option>';
+      }).join('');
+      var boxes = PORTAL_SERVICES.map(function(s){
+        return '<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#c9d4e4;cursor:pointer">' +
+          '<input type="checkbox" class="gl-q-svc-box" value="' + s.key + '"' +
+          (have.indexOf(s.key) > -1 ? ' checked' : '') + '>' + esc(s.label) + '</label>';
+      }).join('');
+
+      return '<div class="gl-q-svc-panel" data-for="' + esc(q.id) + '" hidden ' +
+        'style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);' +
+        'border-radius:6px;padding:12px;margin-top:-3px;display:flex;flex-direction:column;gap:10px">' +
+        '<div style="font-size:10px;letter-spacing:1.5px;color:var(--muted)">UNLOCKS IN THE CLIENT PORTAL WHEN ACCEPTED</div>' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+          '<label style="font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:3px">Project' +
+            '<select class="gl-q-proj" style="font-size:11px;padding:4px 6px;min-width:170px">' + projOpts + '</select>' +
+          '</label>' +
+          '<label style="font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:3px">Status' +
+            '<select class="gl-q-status" style="font-size:11px;padding:4px 6px">' + statusOpts + '</select>' +
+          '</label>' +
+        '</div>' +
+        '<div style="display:flex;gap:14px;flex-wrap:wrap">' + boxes + '</div>' +
+        '<div style="display:flex;align-items:center;gap:10px">' +
+          '<button class="cbtn pri gl-q-svc-save" style="font-size:11px;padding:5px 14px">Save</button>' +
+          '<span class="gl-q-svc-msg" style="font-size:11px;color:var(--muted)"></span>' +
+        '</div>' +
+      '</div>';
+    }
+
     container.innerHTML = rows.map(function(q){
       var sColor = STATUS_COLOR[q.status] || '#9aa7bd';
       return '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:6px;padding:10px;display:flex;align-items:center;gap:10px">' +
@@ -1782,8 +1839,75 @@
         '</div>' +
         '<span style="font-size:10px;letter-spacing:1.5px;color:'+sColor+'">' + esc((q.status||'').toUpperCase()) + '</span>' +
         (q.pdf_html ? '<button class="cbtn gl-q-dl" data-qid="'+q.id+'" style="font-size:11px;padding:4px 10px;flex-shrink:0">📄 PDF</button>' : '') +
-      '</div>';
+        '<button class="cbtn gl-q-svc" data-qid="'+q.id+'" style="font-size:11px;padding:4px 10px;flex-shrink:0">⚙ Services</button>' +
+      '</div>' +
+      svcEditorHtml(q);
     }).join('');
+
+    container.querySelectorAll('.gl-q-svc').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var panel = container.querySelector('.gl-q-svc-panel[data-for="' + btn.getAttribute('data-qid') + '"]');
+        if(panel) panel.hidden = !panel.hidden;
+      });
+    });
+
+    container.querySelectorAll('.gl-q-svc-panel').forEach(function(panel){
+      var qid  = panel.getAttribute('data-for');
+      var save = panel.querySelector('.gl-q-svc-save');
+      var msg  = panel.querySelector('.gl-q-svc-msg');
+
+      save.addEventListener('click', async function(){
+        var projectId = panel.querySelector('.gl-q-proj').value || null;
+        var status    = panel.querySelector('.gl-q-status').value;
+        var services  = Array.prototype.slice
+          .call(panel.querySelectorAll('.gl-q-svc-box:checked'))
+          .map(function(b){ return b.value; });
+
+        if(services.length && !projectId){
+          msg.textContent = 'Pick a project — services unlock per project, not per client.';
+          msg.style.color = '#f5c842';
+          return;
+        }
+        if(status === 'accepted' && services.length){
+          var names = services.length + (services.length === 1 ? ' service' : ' services');
+          if(!confirm('Accepting this quote unlocks ' + names + ' in the client portal straight away.\n\nThis is recorded in the entitlement ledger and the client is emailed. Continue?')) return;
+        }
+
+        save.disabled = true;
+        msg.style.color = 'var(--muted)';
+        msg.textContent = 'Saving…';
+
+        // CLAUDE.md rule 4: check what the server actually did. RLS refuses
+        // silently — 0 rows and no error — so an unchecked write reports
+        // success while nothing saved.
+        var up = await sb.from('quotes')
+          .update({ project_id: projectId, services: services, status: status })
+          .eq('id', qid)
+          .select();
+
+        save.disabled = false;
+
+        if(up.error){
+          msg.style.color = '#ff8579';
+          msg.textContent = up.error.message || 'Could not save.';
+          return;
+        }
+        if(!up.data || !up.data.length){
+          msg.style.color = '#ff8579';
+          msg.textContent = 'Nothing saved — the database refused the change.';
+          return;
+        }
+
+        msg.style.color = '#5fcf9e';
+        msg.textContent = (status === 'accepted' && services.length)
+          ? 'Saved — services unlocked for the client.'
+          : 'Saved.';
+        if(typeof window.glAudit === 'function'){
+          window.glAudit('quote_services_set', qid, { status: status, services: services, project: projectId });
+        }
+        setTimeout(function(){ loadClientQuotes(clientId, container); }, 700);
+      });
+    });
 
     container.querySelectorAll('.gl-q-dl').forEach(function(btn){
       btn.addEventListener('click', async function(){

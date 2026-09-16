@@ -61,6 +61,7 @@ FUNC     public.gl_portal_entitlements() | secdef=t | search_path=pg_catalog, pg
 FUNC     public.gl_portal_formula_documents() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_portal_formula_status() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_purge_expired_qbo_states() | secdef=t | search_path=public | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.gl_quote_grant_entitlements() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_rate_limit_hit(p_bucket text, p_limit integer, p_window_seconds integer) | secdef=t | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_record_manual_payment(p_invoice_number text, p_amount numeric, p_method text, p_reference text) | secdef=t | search_path=public, extensions | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_reverse_invoice_payments(p_invoice_number text, p_reason text) | secdef=t | search_path=public, extensions | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres

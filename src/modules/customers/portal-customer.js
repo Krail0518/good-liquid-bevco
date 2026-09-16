@@ -539,7 +539,40 @@
     };
 
     // ── Agreements & contracts (NDA etc.) — rows + download + upload ──
-    var AGM_COLOR = { 'NDA':'#6b9fff', 'Process Authority Letter':'#f5c842', 'Formula':'#c4a4f8', 'Label / Artwork':'#00e5c0', 'Other':'#9aa7bd' };
+    var AGM_COLOR = { 'NDA':'#6b9fff', 'Process Authority Letter':'#f5c842', 'Formula':'#c4a4f8', 'Label / Artwork':'#00e5c0', 'Product Render':'#ff9542', 'Market Analysis':'#7fc6f5', 'Other':'#9aa7bd' };
+
+    // ── Deliverables behind the two entitlement-gated tabs (phase 4b) ───────
+    // Renders and market analysis are deal_documents with their own doc_type,
+    // so they inherit client_visible: a client sees exactly what staff chose to
+    // publish, and an internal draft stays internal without a second mechanism.
+    //
+    // `agms` is already filtered by RLS to this client's published documents, so
+    // this filters an array rather than issuing another query — and there is no
+    // second place where the visibility rule could be got wrong.
+    function deliverableRows(docType, emptyMsg){
+      var rows = agms.filter(function(d){ return d.doc_type === docType; });
+      if(!rows.length){
+        return '<div style="padding:20px;text-align:center;color:#6b87ad;font-size:12px">' +
+          escHtml(emptyMsg) + '</div>';
+      }
+      return rows.map(function(d){
+        var color = AGM_COLOR[docType] || '#9aa7bd';
+        var meta = [];
+        if(d.created_at) meta.push(new Date(d.created_at).toLocaleDateString());
+        if(d.notes) meta.push(escHtml(d.notes));
+        return '<div style="display:grid;grid-template-columns:1fr 100px;gap:12px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.05);align-items:center">' +
+          '<div>' +
+            '<div style="font-size:13px;color:#fff;font-weight:600">' + escHtml(d.name || 'Document') + '</div>' +
+            (meta.length ? '<div style="font-size:11px;color:#6b87ad;margin-top:2px">' + meta.join(' · ') + '</div>' : '') +
+          '</div>' +
+          '<div style="text-align:right">' +
+            (d.file_path
+              ? '<button data-gl-action="glPortalDownloadAgreement" data-gl-arg1="' + esc(d.id) + '" style="background:rgba(255,255,255,.04);border:1px solid ' + color + '55;color:' + color + ';padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">⬇ Download</button>'
+              : '<span style="font-size:10px;color:#6b87ad">no file</span>') +
+          '</div>' +
+        '</div>';
+      }).join('');
+    }
     var agmRowsHtml = agms.length ? agms.map(function(d){
       var color = AGM_COLOR[d.doc_type] || '#9aa7bd';
       var meta = [];
@@ -719,15 +752,15 @@
           // ── RENDERS / ANALYTICS (entitlement-gated) ─────────────────────
           panel('renders',
             lockedOr(tabById('renders'),
-              cardBlock('#00e5c0', 'PRODUCT RENDERS',
-                '<div style="padding:20px;text-align:center;color:#6b87ad;font-size:12px">' +
-                'Your renders will appear here as they are produced.</div>'))
+              cardBlock('#ff9542', '🥤 PRODUCT RENDERS',
+                deliverableRows('Product Render',
+                  'Your renders are being produced. They will appear here as they are finished, ready to download for decks and sell sheets.')))
           ) +
           panel('analytics',
             lockedOr(tabById('analytics'),
-              cardBlock('#00e5c0', 'MARKET ANALYTICS',
-                '<div style="padding:20px;text-align:center;color:#6b87ad;font-size:12px">' +
-                'Your market analysis will appear here once it is ready.</div>'))
+              cardBlock('#7fc6f5', '📊 MARKET ANALYTICS',
+                deliverableRows('Market Analysis',
+                  'Your category and shelf analysis is in progress. It will appear here when it is ready.')))
           ) +
 
           // ── PACKAGING & ARTWORK (entitlement-gated) ─────────────────────

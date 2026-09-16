@@ -30,7 +30,13 @@
   // The document types a deal can carry. Order = dropdown order. The first four
   // are the ones Mike asked for by name; "Other" is the catch-all. Convert-time
   // routing in crm-onboarding.js keys off these exact strings.
-  var DOC_TYPES = ['NDA', 'Process Authority Letter', 'Formula', 'Label / Artwork', 'Other'];
+  // 'Product Render' and 'Market Analysis' are the deliverables behind the two
+  // entitlement-gated portal tabs (phase 4b). They are ordinary documents on
+  // purpose: publishing one goes through the same client_visible toggle, the
+  // same storage rules and the same download path as everything else, so there
+  // is one visibility mechanism to reason about rather than three.
+  var DOC_TYPES = ['NDA', 'Process Authority Letter', 'Formula', 'Label / Artwork',
+                   'Product Render', 'Market Analysis', 'Other'];
   window.GL_DEAL_DOC_TYPES = DOC_TYPES;
 
   // A little colour per type so the list scans quickly.
@@ -39,6 +45,8 @@
     'Process Authority Letter':{ icon:'📜', bg:'rgba(245,200,66,.15)',  fg:'#f5c842', br:'rgba(245,200,66,.35)' },
     'Formula':                 { icon:'⚗️', bg:'rgba(196,164,248,.15)', fg:'#c4a4f8', br:'rgba(196,164,248,.35)' },
     'Label / Artwork':         { icon:'🎨', bg:'rgba(0,229,192,.14)',   fg:'#00e5c0', br:'rgba(0,229,192,.35)' },
+    'Product Render':          { icon:'🥤', bg:'rgba(255,149,66,.15)',  fg:'#ff9542', br:'rgba(255,149,66,.35)' },
+    'Market Analysis':         { icon:'📊', bg:'rgba(127,198,245,.15)', fg:'#7fc6f5', br:'rgba(127,198,245,.35)' },
     'Other':                   { icon:'📄', bg:'rgba(255,255,255,.06)', fg:'#9aa7bd', br:'rgba(255,255,255,.14)' }
   };
   function typeStyle(t){ return TYPE_STYLE[t] || TYPE_STYLE['Other']; }

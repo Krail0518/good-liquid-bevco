@@ -60,7 +60,7 @@ function check(name, ok, detail) {
 // matching turns every check below into a vacuous pass, which is what the
 // "migrations to check at all" guard underneath is for.
 const PORTAL_MIGRATIONS = fs.readdirSync(MIG_DIR)
-  .filter(f => /^2026091[45]\d{6}_/.test(f))
+  .filter(f => /^2026091[456]\d{6}_/.test(f))
   .sort();
 const migSql = PORTAL_MIGRATIONS
   .map(f => fs.readFileSync(path.join(MIG_DIR, f), 'utf8'))
@@ -439,6 +439,79 @@ check('admin_set_user_password checks status, not just role',
   ddl.includes('admin_set_user_password') &&
   ddl.includes("coalesce(status, 'active') = 'active'"),
   'deactivation sets status, not role — a check that reads only role never notices');
+
+// ── 13. Phase 4b: an accepted quote unlocks what it sold ───────────────────
+// The grant is billing-adjacent, so the interesting assertions are all about
+// what must NOT happen: no guessing which project the money was for, no
+// anonymous grant, no duplicate on a re-accept, and no unlocking a service
+// nobody sold.
+const quoteFn = (() => {
+  const i = ddl.indexOf('gl_quote_grant_entitlements');
+  if (i < 0) return '';
+  const j = ddl.indexOf('$fn$;', i);
+  return ddl.slice(i, j < 0 ? ddl.length : j);
+})();
+
+check('the quote trigger function is defined in a migration',
+  quoteFn.length > 0,
+  'phase 4b wires quote acceptance to the entitlement ledger');
+check('quotes carry a composite tenant foreign key',
+  ddl.includes('quotes_project_tenant') &&
+  ddl.includes('references public.projects (id, client_id)'),
+  "a plain FK on project_id cannot stop Client A's quote naming Client B's project");
+check('quotes require client_id when project_id is set',
+  ddl.includes('quotes_project_needs_client'),
+  'quotes.client_id is nullable and MATCH SIMPLE skips the FK when either side is null');
+check('only the three known services may be sold',
+  ddl.includes('quotes_services_known'),
+  'an unknown key would be a tab that never unlocks and never errors');
+check('only the transition INTO accepted grants anything',
+  quoteFn.includes("old.status is not distinct from 'accepted'"),
+  'without it, every later edit to an accepted quote re-runs the grant');
+check('a quote with no project grants nothing',
+  quoteFn.includes('new.project_id is null then return new'),
+  'guessing which project the money was for can unlock the wrong one');
+check('the grant is idempotent against the ledger',
+  quoteFn.includes('order by e.seq desc') &&
+  quoteFn.includes("is distinct from 'grant'"),
+  're-accepting a quote must not stack duplicate grants');
+check('an archived project unlocks nothing',
+  quoteFn.includes('p.archived_at is null'),
+  'archived means gone from the portal, so there is nothing to unlock');
+check('a grant must name a real person',
+  quoteFn.includes('v_actor is null') && quoteFn.includes('raise exception'),
+  'project_entitlement_events.actor is NOT NULL — granting anonymously is not an option, and failing silently is worse');
+check('the trigger function is not callable by any client role',
+  /revoke all on function public\.gl_quote_grant_entitlements\(\)\s*from[^;]*authenticated/i.test(ddl),
+  'it writes to the billing ledger as definer; nothing should invoke it directly');
+check('the quote trigger pins its search_path',
+  /gl_quote_grant_entitlements[\s\S]{0,200}?set search_path = pg_catalog, pg_temp/i.test(ddl),
+  'an object on a caller-controlled path could shadow ours');
+
+// The staff UI half: the two facts must be set explicitly, and the write
+// checked. A quote that unlocks a service while reporting success on a refused
+// write is the CLAUDE.md rule 4 failure in its most expensive form.
+const qbSrc = blankComments(readIfExists('src/modules/quotes/quote-builder.js'));
+check('the quote UI offers only unarchived projects',
+  qbSrc.includes("from('projects')") && qbSrc.includes("is('archived_at', null)"),
+  'offering an archived project is a control that silently does nothing');
+check('the quote services write is checked',
+  /from\('quotes'\)[\s\S]{0,300}?\.update\(\{[\s\S]{0,160}?services[\s\S]{0,200}?\.select\(\)/.test(qbSrc) &&
+  /!up\.data \|\| !up\.data\.length/.test(qbSrc),
+  'RLS refuses silently — both error AND an empty array must be treated as failure');
+check('accepting a quote that unlocks services asks first',
+  /status === 'accepted' && services\.length[\s\S]{0,200}?confirm\(/.test(qbSrc),
+  'acceptance grants immediately, emails the client, and is recorded in a ledger that cannot be edited');
+
+// The client-facing half: the two gated tabs show real deliverables, and they
+// come from the same client_visible mechanism as every other document.
+check('the gated tabs render published deliverables',
+  portalSrc.includes("deliverableRows('Product Render'") &&
+  portalSrc.includes("deliverableRows('Market Analysis'"),
+  'an unlocked tab that still shows a placeholder has not been delivered');
+check('deliverables reuse the published-document path',
+  /function deliverableRows[\s\S]{0,700}?agms\.filter/.test(portalSrc),
+  'a second visibility mechanism is a second thing to get wrong — GL-077 was exactly that');
 
 console.log('\n' + (failures ? failures + ' FAILED' : 'All checks passed') + '\n');
 process.exit(failures ? 1 : 0);
