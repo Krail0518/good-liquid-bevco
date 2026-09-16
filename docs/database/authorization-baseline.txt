@@ -37,6 +37,7 @@ FUNC     public.gl_guard_compliance_signature() | secdef=f | search_path=public,
 FUNC     public.gl_guard_entitlement_append_only() | secdef=f | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_guard_hold_disposition() | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_guard_invoice_paid_state() | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
+FUNC     public.gl_invoice_amount_to_cents() | secdef=f | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_invoice_derived_status(p_amount numeric, p_is_credit_memo boolean, p_current_status text, p_net numeric) | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_invoice_paid_total(p_invoice_number text) | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_invoice_payments_immutable() | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres

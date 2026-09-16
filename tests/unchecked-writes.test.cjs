@@ -190,5 +190,20 @@ check('the NPS insert does not ask for the row back (anon cannot read nps_respon
   !/from\('nps_responses'\)\.insert\([^;]*\.select\(/.test(tools),
   '.select() on an anonymous insert without a read policy fails every submission');
 
+// ── GL-099: invoice amounts in cents ───────────────────────────────────────
+// A float amount (6491.999999999999) made a full payment an "overpayment" to
+// the ledger and a cent-short one never settle. Rounded in the builder and, for
+// every other writer, by a BEFORE trigger that must sort before the paid guard.
+check('the invoice builder rounds the saved amount to cents',
+  /function cents\(n\)\{ return Math\.round\(\(Number\(n\) \|\| 0\) \* 100\) \/ 100; \}/.test(invp) &&
+  /var amount=cents\(subtotal-discountAmt\);/.test(invp),
+  'floating-point totals reached invoices.amount');
+const centsMig = (() => { try { return fs.readFileSync(path.join(ROOT, 'supabase/migrations/20260916120000_invoice_amount_cents.sql'), 'utf8'); } catch (e) { return ''; } })();
+check('the database rounds invoices.amount for every writer, before the paid-state guard',
+  /new\.amount := pg_catalog\.round\(new\.amount, 2\)/.test(centsMig) &&
+  /create trigger invoices_amount_to_cents\s+before insert or update of amount on public\.invoices/.test(centsMig) &&
+  'invoices_amount_to_cents' < 'invoices_guard_paid_state',
+  'triggers fire in name order; the guard must see the rounded amount');
+
 console.log('\n' + (failures ? failures + ' FAILED' : 'All checks passed') + '\n');
 process.exit(failures ? 1 : 0);

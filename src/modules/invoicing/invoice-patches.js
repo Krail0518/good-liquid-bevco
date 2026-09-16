@@ -892,9 +892,16 @@
     var notes = String((notesEl ? notesEl.value : (window.INV && window.INV.notes)) || '').trim();
     var addonsTotal = addons.reduce(function(s,a){ return s + (parseFloat(a.p)||0); }, 0);
 
-    var subtotal=lines.reduce(function(s,l){return s+(l.total||0);},0) + addonsTotal;
-    var discountAmt=subtotal*(pct/100);
-    var amount=subtotal-discountAmt;
+    // GL-099: money is rounded to cents. This was plain floating point, so
+    // GL-1030 was saved as 6491.999999999999 — and the payment ledger refuses a
+    // $6,492.00 payment against that as an overpayment, while $6,491.99 never
+    // settles it. The database now rounds too (20260916120000); this keeps the
+    // builder, the toast and the audit row agreeing with what is stored.
+    function cents(n){ return Math.round((Number(n) || 0) * 100) / 100; }
+    lines.forEach(function(l){ l.total = cents(l.total); });
+    var subtotal=cents(lines.reduce(function(s,l){return s+(l.total||0);},0) + addonsTotal);
+    var discountAmt=cents(subtotal*(pct/100));
+    var amount=cents(subtotal-discountAmt);
 
     // Append addon entries as "line items" so the invoice detail / PDF
     // renders them in the same table as regular lines.
