@@ -205,5 +205,11 @@ check('the database rounds invoices.amount for every writer, before the paid-sta
   'invoices_amount_to_cents' < 'invoices_guard_paid_state',
   'triggers fire in name order; the guard must see the rounded amount');
 
+// ── GL-100: a new invoice must never inherit a previous edit's target ───────
+const invb = fs.readFileSync(path.join(ROOT, 'src/modules/invoicing/invoice-builder.js'), 'utf8');
+check('opening the reused invoice builder clears the edit markers and title',
+  /window\.openNewInvoiceBuilder = function\(preClientId\)\{[\s\S]{0,1800}?\} else \{[\s\S]{0,900}?existing\.removeAttribute\('data-editing-id'\);\s*existing\.removeAttribute\('data-editing-supa-id'\);[\s\S]{0,300}?'NEW INVOICE'/.test(invb),
+  'Edit invoice → close → + New Invoice saved the new invoice OVER the edited one');
+
 console.log('\n' + (failures ? failures + ' FAILED' : 'All checks passed') + '\n');
 process.exit(failures ? 1 : 0);

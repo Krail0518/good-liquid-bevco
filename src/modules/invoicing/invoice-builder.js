@@ -336,6 +336,16 @@
       '</div>';
       document.body.appendChild(ov);
     } else {
+      // GL-100: the builder is reused, and closing it only hides it. An edit
+      // left data-editing-id / data-editing-supa-id and the "EDIT INVOICE"
+      // title on it, so Edit GL-1030 → ✕ → + New Invoice opened a blank form
+      // that SAVED AS AN UPDATE to GL-1030 — overwriting a real invoice with the
+      // new one's lines, amount and number. Every open starts as a new invoice;
+      // openEditInvoice sets the markers again after this returns.
+      existing.removeAttribute('data-editing-id');
+      existing.removeAttribute('data-editing-supa-id');
+      var titleEl = existing.querySelector('div[style*="letter-spacing:2px"][style*="font-family"]');
+      if(titleEl && /^EDIT INVOICE/i.test(titleEl.textContent)) titleEl.textContent = 'NEW INVOICE';
       existing.classList.add('show');
     }
     glRenderBuilder();
