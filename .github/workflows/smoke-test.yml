@@ -127,6 +127,15 @@ jobs:
       # browser needed.
       - name: Run published-surface tests
         run: node tests/published-surface.test.cjs
+      # Two dead controls found by clicking every button on 2026-09-16. In both
+      # the handler ran correctly and nothing appeared: the AI Tools toggle was
+      # closed again by the panel's own outside-click handler on the same
+      # event, and the quote Services panel set `hidden` while an inline
+      # display:flex outranked it. No console error, no failed request — the
+      # exact shape actions.js warns about, and invisible to a handler-exists
+      # check. No browser needed.
+      - name: Run dead-control tests
+        run: node tests/dead-controls.test.cjs
       # security-invariants.sh must tell a timeout apart from a leak. It once
       # reported a 504 as "ANONYMOUS DATA VISIBLE", and the fix for that is a
       # classifier, so the classifier is tested: the real script is run against

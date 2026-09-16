@@ -38,8 +38,15 @@
       // RPC not deployed yet — fall back to the direct token query so public
       // links keep working until the security migration is applied (after
       // which the RPC path succeeds and this fallback is simply not reached).
+      // No client_email here: invoices has no such column. PostgREST rejects
+      // the WHOLE request on an unknown column, so naming it meant this
+      // fallback could never have run — the safety net had a hole exactly
+      // where it was needed. renderPublicInvoice already treats the field as
+      // optional (`inv.client_email || ''`), so dropping it changes nothing
+      // that works today. Found by checking every column the front-end selects
+      // against the live catalog.
       r = await sb.from('invoices')
-        .select('id, invoice_number, line_items, amount, status, invoice_date, due_date, payment_terms, notes, client_name, client_id, client_email')
+        .select('id, invoice_number, line_items, amount, status, invoice_date, due_date, payment_terms, notes, client_name, client_id')
         .eq('share_token', token).maybeSingle();
     }
     if(r.error || !r.data){

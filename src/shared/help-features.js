@@ -1394,6 +1394,19 @@
         if(!p || p.style.display !== 'flex') return;
         if(p.contains(e.target)) return;
         if(tb && tb.contains(e.target)) return;
+        // A control whose whole job is opening this panel is not an "outside"
+        // click (GL-081). The sidebar "AI Tools" item lives in ai-hub.js and
+        // dispatches glAIHubTogglePanel from a listener on document; this
+        // handler is also on document, so the sequence was: the toggle opens
+        // the panel, this runs on the same event, sees a target outside #ai-
+        // toolbar, and closes it again. Net effect: a dead button, with no
+        // error and no failed request — the exact shape actions.js warns about.
+        //
+        // Matched by action name rather than element id so any future control
+        // wired to the same toggle is covered without editing this line. The
+        // floating FAB never hit this because it is inside #ai-toolbar AND
+        // calls stopPropagation; the sidebar item does neither.
+        if(e.target.closest && e.target.closest('[data-gl-action="glAIHubTogglePanel"]')) return;
         closePanel();
       });
       window.__glAiPanelKeyBound = true;

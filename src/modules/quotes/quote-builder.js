@@ -1810,9 +1810,13 @@
           (have.indexOf(s.key) > -1 ? ' checked' : '') + '>' + esc(s.label) + '</label>';
       }).join('');
 
-      return '<div class="gl-q-svc-panel" data-for="' + esc(q.id) + '" hidden ' +
-        'style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);' +
-        'border-radius:6px;padding:12px;margin-top:-3px;display:flex;flex-direction:column;gap:10px">' +
+      // display is controlled inline, NOT with the `hidden` attribute: an
+      // inline `display:flex` outranks the UA stylesheet's [hidden]{display:none},
+      // so the panel rendered expanded on every row while `hidden` flipped
+      // uselessly underneath. Found by clicking it (GL-082).
+      return '<div class="gl-q-svc-panel" data-for="' + esc(q.id) + '" ' +
+        'style="display:none;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);' +
+        'border-radius:6px;padding:12px;margin-top:-3px;flex-direction:column;gap:10px">' +
         '<div style="font-size:10px;letter-spacing:1.5px;color:var(--muted)">UNLOCKS IN THE CLIENT PORTAL WHEN ACCEPTED</div>' +
         '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
           '<label style="font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:3px">Project' +
@@ -1847,7 +1851,8 @@
     container.querySelectorAll('.gl-q-svc').forEach(function(btn){
       btn.addEventListener('click', function(){
         var panel = container.querySelector('.gl-q-svc-panel[data-for="' + btn.getAttribute('data-qid') + '"]');
-        if(panel) panel.hidden = !panel.hidden;
+        if(!panel) return;
+        panel.style.display = (panel.style.display === 'none') ? 'flex' : 'none';
       });
     });
 
