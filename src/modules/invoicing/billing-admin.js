@@ -214,8 +214,24 @@
     });
     return _zipLoading;
   }
-  // Warm up JSZip in the background so first click is instant
-  ensureJsZip();
+  // Warm up JSZip in the background so first click is instant — for STAFF only.
+  //
+  // GL-087. This used to run unconditionally at load, so every anonymous visitor
+  // to the public site, the portal and booking links downloaded a 97 KB zip
+  // library for a staff-only "Export everything" button, and when an ad or
+  // privacy blocker stopped the request, the warm-up's rejection was never
+  // handled: 100+ "jszip load failed [unhandled promise]" rows in error_log,
+  // mostly with no actor. The library itself was fine — the pinned SRI hash
+  // matches what cdnjs serves and CORS allows it.
+  //
+  // The warm-up's own failure is swallowed on purpose: the export button calls
+  // ensureJsZip() inside a try, and a failed load resets _zipLoading so that
+  // click retries. Polled rather than checked once, because sign-in happens
+  // without a page reload.
+  (function warmJsZipForStaff(){
+    if(!window.currentUser){ setTimeout(warmJsZipForStaff, 3000); return; }
+    ensureJsZip().catch(function(){});
+  })();
 
   // Every table we want to back up. Order doesn't matter for export.
   var EXPORT_TABLES = [
