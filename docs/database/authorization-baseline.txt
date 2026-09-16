@@ -837,9 +837,11 @@ POLICY   public.yield_logs | yield_logs staff insert | PERMISSIVE | {authenticat
 POLICY   public.yield_logs | yield_logs staff select | PERMISSIVE | {authenticated} | SELECT | using=is_staff_user() | check=-
 POLICY   public.yield_logs | yield_logs staff update | PERMISSIVE | {authenticated} | UPDATE | using=is_staff_user() | check=is_staff_user()
 POLICY   public.yield_logs | yield_logs super delete | PERMISSIVE | {authenticated} | DELETE | using=is_super_user() | check=-
-POLICY   storage.objects | client-docs customer read | PERMISSIVE | {authenticated} | SELECT | using=((bucket_id = 'client-docs'::text) AND (current_customer_client_id() IS NOT NULL) AND ((name ~~ ((current_customer_client_id())::text || '/%'::text)) OR (EXISTS ( SELECT 1
+POLICY   storage.objects | client-docs customer read | PERMISSIVE | {authenticated} | SELECT | using=((bucket_id = 'client-docs'::text) AND (current_customer_client_id() IS NOT NULL) AND ((name ~~ ((current_customer_client_id())::text || '/portal/%'::text)) OR (EXISTS ( SELECT 1
    FROM deal_documents d
-  WHERE ((d.file_path = objects.name) AND (d.client_id = current_customer_client_id())))) OR (EXISTS ( SELECT 1
+  WHERE ((d.file_path = objects.name) AND (d.client_id = current_customer_client_id()) AND (d.client_visible = true)))) OR (EXISTS ( SELECT 1
+   FROM client_artwork a
+  WHERE ((a.file_path = objects.name) AND (a.client_id = current_customer_client_id()) AND (a.archived_at IS NULL)))) OR (EXISTS ( SELECT 1
    FROM lot_documents l
   WHERE ((l.file_path = objects.name) AND (l.client_id = current_customer_client_id())))))) | check=-
 POLICY   storage.objects | client-docs customer upload | PERMISSIVE | {authenticated} | INSERT | using=- | check=((bucket_id = 'client-docs'::text) AND (current_customer_client_id() IS NOT NULL) AND (name ~~ ((current_customer_client_id())::text || '/%'::text)))

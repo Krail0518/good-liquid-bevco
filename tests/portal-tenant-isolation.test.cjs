@@ -382,5 +382,63 @@ for (const t of ['deal_documents', 'client_artwork']) {
     'both client_id columns are nullable and MATCH SIMPLE skips the FK when either side is null');
 }
 
+// ── 11. Storage: client_visible must govern the FILE, not just the row ─────
+// GL-077. Hiding a deal_documents row hid it from the portal's document list
+// and from nothing else. "client-docs customer read" admitted any object whose
+// name began with the caller's own client id, and staff upload client documents
+// to <client_id>/docs/... — so the two documents the owner had deliberately
+// held back were downloadable by that client. Listing is governed by this same
+// SELECT policy, so they did not even need to guess a path. Verified live as a
+// real portal owner before the fix: the portal showed 0 documents and storage
+// returned both files.
+//
+// This is the house mistake in its third costume. The rule was enforced where
+// the UI reads and not where the bytes live: omitting a column did not hide a
+// column, a security_invoker view did not hide a column, and hiding a row does
+// not hide a file.
+//
+// Reading `ddl` (comments stripped) is load-bearing here, not incidental: the
+// migration's ROLLBACK note quotes the vulnerable expression verbatim, so a
+// scan over raw text would match the cure and call it the disease. That has
+// already happened three times in this suite.
+//
+// These are substring checks rather than regexes on purpose — the thing being
+// asserted is the literal presence or absence of one SQL branch, and a regex
+// buys nothing but backslashes.
+const storagePolicy = (() => {
+  const i = ddl.indexOf('"client-docs customer read"');
+  if (i < 0) return '';
+  const j = ddl.indexOf('notify pgrst', i);
+  return ddl.slice(i, j < 0 ? ddl.length : j);
+})();
+
+check('the client-docs customer read policy is defined in a migration',
+  storagePolicy.length > 0,
+  'a policy that exists only in the dashboard is invisible to review — CLAUDE.md rule 2');
+check('no blanket client-prefix branch grants the whole prefix',
+  storagePolicy.length > 0 && !storagePolicy.includes("|| '/%'"),
+  "name like <client_id> || '/%' re-opens every internal document filed under the client's own folder");
+check('the deal_documents branch requires client_visible',
+  storagePolicy.includes('public.deal_documents d') &&
+  storagePolicy.includes('d.client_visible = true'),
+  'without it the file stays readable after staff mark the document internal');
+check('customer uploads are admitted by the narrow /portal/ prefix only',
+  storagePolicy.includes("'/portal/%'"),
+  'customers must still be able to read back what they themselves uploaded');
+check('artwork keeps an explicit branch',
+  storagePolicy.includes('public.client_artwork a') &&
+  storagePolicy.includes('a.archived_at is null'),
+  'five live objects have no deal_documents row — dropping the prefix without this breaks artwork downloads');
+
+// ── 12. A deactivated admin is not an admin ────────────────────────────────
+// GL-078. admin_set_user_password() can set any user's password, including
+// other admins' and every portal customer's. It read profiles.role and never
+// profiles.status, so revoking an administrator left them holding the key to
+// every account in the system.
+check('admin_set_user_password checks status, not just role',
+  ddl.includes('admin_set_user_password') &&
+  ddl.includes("coalesce(status, 'active') = 'active'"),
+  'deactivation sets status, not role — a check that reads only role never notices');
+
 console.log('\n' + (failures ? failures + ' FAILED' : 'All checks passed') + '\n');
 process.exit(failures ? 1 : 0);

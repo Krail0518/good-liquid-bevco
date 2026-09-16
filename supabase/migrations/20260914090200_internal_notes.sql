@@ -59,10 +59,21 @@ create policy "gl_internal_notes staff all" on public.gl_internal_notes
   using (public.is_gl_staff())
   with check (public.is_gl_staff());
 
--- Both layers say staff-only, independently. is_gl_staff() rather than
--- is_staff_user(), because is_staff_user() returns TRUE for an authenticated
--- user with neither a profile nor a customer link -- i.e. for a self-registered
--- stranger, and Supabase signup is open.
+-- Both layers say staff-only, independently, and both name is_gl_staff().
+--
+-- CORRECTED 2026-09-15. This comment used to justify that choice by saying
+-- is_staff_user() returns TRUE for a self-registered stranger. That is false,
+-- and it was false when written. Probed live as an authenticated user with no
+-- profile row: is_staff_user() returns false, exactly as is_gl_staff() does.
+-- The permissive fallback that once made them differ was removed by
+-- 20260807030000, which is LATER than the 20260730010000 this claim cited --
+-- the citation pointed at a version of the function that no longer exists.
+--
+-- The two functions now have identical bodies. is_gl_staff() is still the right
+-- name here, but for a plainer reason: it is the helper the RESTRICTIVE tenant
+-- guard and every phase-1 policy use, so there is ONE name to grep when the
+-- staff definition next changes -- and two identical functions is itself a
+-- hazard, because a future fix to one silently misses the other.
 create policy "gl tenant guard" on public.gl_internal_notes
   as restrictive to authenticated
   using (public.is_gl_staff())
