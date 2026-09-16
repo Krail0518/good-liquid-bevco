@@ -4497,12 +4497,24 @@
     var overall = score === total ? 'green' : (checks.some(function(c){ return c.severity === 'red'; }) ? 'red' : 'yellow');
     return { checks: checks, score: score, total: total, overall: overall };
   }
+  // Guarding on the rendered element alone is not enough: the check runs
+  // BEFORE six awaited queries and the insert happens after them, so two calls
+  // close together both pass the guard while neither has inserted yet and the
+  // dashboard ends up with two scorecards. Signing in after a session expired
+  // is one way to produce that pair of calls.
+  var _scorecardBuilding = false;
   async function renderAuditScorecard(){
     var dash = document.getElementById('cpg-dashboard');
     if(!dash) return;
     if(dash.querySelector('#gl-audit-scorecard')) return;
-    var data = await computeAuditScore();
+    if(_scorecardBuilding) return;          // a concurrent call is already building it
+    _scorecardBuilding = true;
+    var data;
+    try { data = await computeAuditScore(); }
+    finally { _scorecardBuilding = false; }
     if(!data) return;
+    // Re-check after the await: the DOM may have gained one while we waited.
+    if(dash.querySelector('#gl-audit-scorecard')) return;
     var widget = document.createElement('div');
     widget.id = 'gl-audit-scorecard';
     widget.setAttribute('style','padding:14px;background:#2e486b;border:1px solid rgba(255,255,255,.1);border-radius:10px;margin-bottom:14px');
