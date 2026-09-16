@@ -144,6 +144,15 @@
 
   // ── The combo "log today" screen ──
   window.glOpenDailyGMP = async function glOpenDailyGMP(onlyCode){
+    // GL-091. The action dispatcher always appends the click Event as the last
+    // argument, so a button with no data-gl-arg1 called this with
+    // onlyCode = MouseEvent. That is truthy, so the screen looked up a form whose
+    // code was the event object, found none, and rendered "Form [object
+    // MouseEvent] is not set up yet." — the green "Log today's GMP" button and
+    // every daily register's own Log button opened an empty form. Only the tile
+    // worked, because it happened to pass ''. A form code is a string; anything
+    // else means "all of today's forms".
+    if(typeof onlyCode !== 'string' || !onlyCode) onlyCode = null;
     if(!sb()){ alert('Supabase not ready.'); return; }
     var ov = overlay('gl-gmp-daily');
     ov.innerHTML = '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:22px;width:100%;max-width:720px;color:#fff"><div style="color:#9aa7bd">Loading forms…</div></div>';

@@ -177,5 +177,40 @@ check('the recall search box has its own id',
   !(idDefs['gl-trace-q'] || []).some(d => /trace\.js$/.test(d.file)),
   'GL-086: sharing gl-trace-q with Compliance makes recall searches run for an empty string');
 
+// ── 4. GL-091: a handler with no argument receives the click Event ─────────
+// actions.js calls fn.apply(el, args.concat([ev])). A button with no
+// data-gl-arg1 therefore passes the Event as the handler's FIRST parameter.
+// "Log today's GMP" took an optional form code there, treated the Event as a
+// code, and opened an empty form reading "Form [object MouseEvent] is not set
+// up yet". Any handler reachable without an argument must either name its first
+// parameter as an event or explicitly reject a non-value.
+const shippedBlob = shipped.map(x => x.text).join('\n');
+const noArgActions = new Map();
+for (const { file, text } of shipped) {
+  for (const m of text.matchAll(/<[a-z]+\b[^>]*data-gl-action=\\?["']([A-Za-z0-9_]+)\\?["'][^>]*>/gi)) {
+    if (/data-gl-arg1|data-gl-el/.test(m[0])) continue;
+    noArgActions.set(m[1], file);
+  }
+}
+check('the no-argument action scan found controls to check',
+  noArgActions.size > 50,
+  'found ' + noArgActions.size + ' — the markup pattern changed and the check below is vacuous');
+const EVENTISH = /^(e|ev|evt|event|_e|_ev|_)$/;
+const unguarded = [];
+for (const [name, file] of noArgActions) {
+  const re = new RegExp('(?:window\\.' + name + '\\s*=\\s*(?:async\\s+)?function\\s*[A-Za-z0-9_]*|(?:async\\s+)?function\\s+' + name + ')\\s*\\(([^)]*)\\)\\s*\\{');
+  const m = re.exec(shippedBlob);
+  if (!m) continue;
+  const first = (m[1].split(',')[0] || '').trim();
+  if (!first || EVENTISH.test(first)) continue;
+  const body = shippedBlob.slice(m.index + m[0].length, m.index + m[0].length + 900);
+  const guarded = new RegExp('typeof\\s+' + first + "\\s*!==\\s*'(string|object)'").test(body) ||
+                  new RegExp(first + '\\s+instanceof\\s+Event').test(body);
+  if (!guarded) unguarded.push(name + '(' + first + ') via ' + file);
+}
+check('handlers reachable without an argument reject the click Event',
+  unguarded.length === 0,
+  unguarded.join('\n        '));
+
 console.log('\n' + (failures ? failures + ' FAILED' : 'All checks passed') + '\n');
 process.exit(failures ? 1 : 0);

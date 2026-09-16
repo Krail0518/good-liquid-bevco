@@ -1501,7 +1501,11 @@
 
   // ── Hold Tag manual create + disposition ──
   window.glOpenAddHoldTag = function(prefill){
-    prefill = prefill || {};
+    // The "+ New Hold Tag" button has no data-gl-arg1, so the dispatcher passes
+    // the click Event here (GL-091). It is harmless today — an Event has no
+    // product_name or lot_number — but the next field read from prefill could
+    // collide with an Event property (type, target, detail), so reject it.
+    if(!prefill || typeof prefill !== 'object' || (typeof Event !== 'undefined' && prefill instanceof Event)) prefill = {};
     var body =
       field('Product name', 'product', 'text', { value: prefill.product_name || '', required: true }) +
       field('Lot number', 'lot', 'text', { value: prefill.lot_number || '' }) +
