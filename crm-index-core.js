@@ -685,6 +685,10 @@ function fmtMoneyShort(n){
 }
 
 function renderDash(){
+  // The subtitle was the literal "Good Liquid Bev Co · May 2026" in index.html and
+  // never changed, so the dashboard read four months stale by September.
+  var dashSub = document.getElementById('dash-subtitle');
+  if(dashSub) dashSub.textContent = 'Good Liquid Bev Co · ' + new Date().toLocaleDateString('en-US', { month:'long', year:'numeric' });
   // Morning brief, right on the home screen: the same ranked "who needs you"
   // list as the 🔥 Needs Attention board and the WhatsApp digest, loaded on open.
   if(typeof window.glRenderAttentionCard === 'function'){ try { window.glRenderAttentionCard('dash-attention'); } catch(e){} }
