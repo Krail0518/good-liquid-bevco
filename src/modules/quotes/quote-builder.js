@@ -1199,7 +1199,6 @@
         valid_days:     data.validDays,
         product_type:   data.productType,
         package_format: data.packageFormat,
-        status:         'draft',
         tiers:          data.tiers,
         // Persist the packaging/pallet config alongside the toggle list so a
         // reopened quote can restore it. Kept inside the existing addons jsonb
@@ -1215,9 +1214,16 @@
         pdf_html:       generateQuoteHTML(data)
       };
       var r;
+      // status is set on INSERT only (GL-083). The builder edits a quote's
+      // content; whether it is sent, accepted or declined is set from the
+      // quote's Services control. Sending 'draft' on every save meant reopening
+      // an accepted quote to fix a typo silently reverted it to Draft — while
+      // the services its acceptance had unlocked stayed unlocked, because grants
+      // are ledger events. The record would then contradict the ledger.
       if(state.savedId){
         r = await sb.from('quotes').update(row).eq('id', state.savedId).select().single();
       } else {
+        row.status = 'draft';
         r = await sb.from('quotes').insert(row).select().single();
       }
       if(r.error){ st.style.color='#ff8579'; st.textContent='Save failed: '+r.error.message; return null; }

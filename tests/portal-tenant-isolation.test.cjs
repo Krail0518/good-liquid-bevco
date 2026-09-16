@@ -499,6 +499,17 @@ check('the quote services write is checked',
   /from\('quotes'\)[\s\S]{0,300}?\.update\(\{[\s\S]{0,160}?services[\s\S]{0,200}?\.select\(\)/.test(qbSrc) &&
   /!up\.data \|\| !up\.data\.length/.test(qbSrc),
   'RLS refuses silently — both error AND an empty array must be treated as failure');
+// GL-083: the builder's save must not overwrite a status set elsewhere.
+const qbSave = (() => {
+  const i = qbSrc.indexOf("if(state.savedId){");
+  return i < 0 ? '' : qbSrc.slice(i, i + 400);
+})();
+check('re-saving a quote in the builder does not reset its status',
+  qbSave.length > 0 &&
+  /update\(row\)/.test(qbSave) &&
+  /else\s*\{[\s\S]{0,80}row\.status\s*=\s*'draft'/.test(qbSave) &&
+  !/package_format:\s*data\.packageFormat,\s*status:/.test(qbSrc),
+  "an accepted quote reopened for a typo went back to Draft while its unlocked services stayed unlocked");
 check('accepting a quote that unlocks services asks first',
   /status === 'accepted' && services\.length[\s\S]{0,200}?confirm\(/.test(qbSrc),
   'acceptance grants immediately, emails the client, and is recorded in a ledger that cannot be edited');
