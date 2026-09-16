@@ -728,6 +728,13 @@
 
   var _acctObs = new MutationObserver(function(){ setTimeout(runInjectors, 300); });
   _acctObs.observe(document.getElementById('crm-panel') || document.body, { childList: true, subtree: true });
+  // GL-097: viewClientEnhanced appends #client-detail-overlay to document.body,
+  // outside #crm-panel, so opening a client never woke the observer above and the
+  // "Statement" button only appeared if something else inside the panel changed.
+  // Watch body's direct children too (no subtree — that would fire on everything).
+  if (document.getElementById('crm-panel')) {
+    _acctObs.observe(document.body, { childList: true });
+  }
   setTimeout(runInjectors, 800);
 
   console.log('[GL] Accounting enhancements v1.0 — 14 features loaded');

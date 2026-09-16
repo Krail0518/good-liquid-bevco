@@ -232,5 +232,15 @@ check('no code selects elements by an inline event-handler attribute',
   staleSelectors.length === 0,
   staleSelectors.slice(0, 6).join('\n        '));
 
+// ── 6. GL-097: an injector must be woken by the element it injects into ────
+// The client detail overlay is appended to document.body, but the accounting
+// observer only watched #crm-panel, so the Statement button never appeared on
+// open. Found live after the selector fix above had shipped.
+const acct = read('src/modules/invoicing/accounting.js');
+check('the accounting injectors also observe document.body children',
+  /_acctObs\.observe\(document\.body, \{ childList: true \}\)/.test(acct) &&
+  /ov\.id = 'client-detail-overlay';[\s\S]{0,6000}?document\.body\.appendChild\(ov\)/.test(read('crm-index-core.js')),
+  'if the client overlay is appended to body, a #crm-panel-only observer never sees it open');
+
 console.log('\n' + (failures ? failures + ' FAILED' : 'All checks passed') + '\n');
 process.exit(failures ? 1 : 0);
