@@ -200,6 +200,9 @@ async function callHelper(src, mode) {
   check('a local-only compliance record is not announced as signed',
     /if\(localOnly\)\{[\s\S]{0,200}?NOT saved to the database/.test(compSrc),
     'the operator saw "✓ Signed" for a record that exists on one device only');
+  check('a hold tag the database rejected is not announced as created',
+    compSrc.includes("if(holdLocalOnly) addNotification('⚠ Hold tag NOT saved to the database"),
+    'the operator saw "Hold Tag created" for a hold that exists on one device only — product not held for anyone else');
   check("no shipped code fabricates a 'local_' id",
     fabricators.length === 0,
     'still in: ' + fabricators.join(', '));

@@ -311,7 +311,7 @@
           severity: 'high',
           status: 'open',
           owner: (window.currentUser && window.currentUser.email) || 'system',
-          description: 'Auto-generated from compliance record ' + (opts.record_id || '') + '. ' + (opts.reason || ''),
+          description: (opts.record_id ? 'Auto-generated from compliance record ' + opts.record_id + '. ' : 'Auto-generated from hold tag ' + nextTagNo + '. ') + (opts.reason || ''),
           root_cause: '',
           corrective_action: 'Hold tag ' + nextTagNo + ' created. PCQI to investigate and disposition.'
         };
@@ -320,8 +320,14 @@
       } catch(e){ console.warn('[GL compliance] NC auto-create failed', e); }
     }
 
+    // GL-090, second instance: dbInsert keeps a rejected hold tag locally and
+    // warns "DB save FAILED"; this used to follow that with "Hold Tag created".
+    // A hold that exists on one device only is not a hold anyone else will see,
+    // so say so.
+    var holdLocalOnly = !!(hold && hold._localOnly);
     if(typeof addNotification === 'function'){
-      addNotification('🚫 Hold Tag created: ' + nextTagNo, opts.reason || 'Critical limit deviation', 'warning');
+      if(holdLocalOnly) addNotification('⚠ Hold tag NOT saved to the database: ' + nextTagNo, 'Kept on this device only — product is NOT on hold for anyone else until it is re-saved. ' + (opts.reason || ''), 'warning');
+      else addNotification('🚫 Hold Tag created: ' + nextTagNo, opts.reason || 'Critical limit deviation', 'warning');
     }
     if(typeof window.glAudit === 'function'){
       window.glAudit('compliance_critical_failure', opts.record_id || '', { hold_tag: nextTagNo, form: opts.form_code });
