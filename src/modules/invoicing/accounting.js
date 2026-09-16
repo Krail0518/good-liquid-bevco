@@ -289,11 +289,14 @@
     var ov = document.getElementById('client-detail-overlay');
     if (!ov || ov.dataset.stmtBtn) return;
     ov.dataset.stmtBtn = '1';
-    var editBtn = ov.querySelector('button[onclick*="glOpenEditClient"]');
-    if (!editBtn) return;
-    var match = editBtn.getAttribute('onclick').match(/glOpenEditClient\('([^']+)'\)/);
-    if (!match) return;
-    var clientId = match[1];
+    // GL-097: this found the Edit button by button[onclick*="glOpenEditClient"]
+    // and parsed the client id out of the handler text. The inline handler became
+    // data-gl-action="glCdEditClient" with the id in data-gl-arg1, so the
+    // selector matched nothing and the "Statement" button never appeared.
+    var editBtn = ov.querySelector('[data-gl-action="glCdEditClient"]');
+    if (!editBtn) { delete ov.dataset.stmtBtn; return; }
+    var clientId = editBtn.getAttribute('data-gl-arg1');
+    if (!clientId) return;
     var btnRow = ov.querySelector('div[style*="flex-wrap:wrap"], div[style*="flex-wrap: wrap"]');
     if (!btnRow) return;
     var btn = document.createElement('button');

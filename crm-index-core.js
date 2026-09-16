@@ -1863,7 +1863,7 @@ async function saveInvoice(status){
   invoices.push({id:num,client:cid,clientName:c?.name||'',svc:desc,amount:total,date,status,notes,lineItems:lines.map(l=>({desc:l.d,qty:1,unitPrice:l.a,total:l.a}))});
   if(c) c.billed+=total;
   renderInvoices();renderDash();renderClients();
-  cNav('invoices',document.querySelector('.cni[onclick*="invoices"]'));
+  cNav('invoices',document.querySelector('.cni[data-gl-action="cNav"][data-gl-arg1="invoices"]'));
   setTimeout(()=>viewInvoice(num),150);
 }
 
@@ -3918,7 +3918,7 @@ async function downloadInvoicePDF(invId) {
     <tbody>
       ${lineRowsHtml}
       ${discountRowHtml}
-      ${inv.notes?`<tr><td colspan="4" style="font-size:12px;color:#666;font-style:italic">${inv.notes}</td></tr>`:''}
+      ${inv.notes?`<tr><td colspan="4" style="font-size:12px;color:#666;font-style:italic">${esc(inv.notes)}</td></tr>`:''}
       <tr class="total-row"><td colspan="3">Total Due</td><td style="text-align:right">${usd(inv.amount)}</td></tr>
     </tbody>
   </table>
@@ -5246,7 +5246,10 @@ viewClientEnhanced = function(clientId){
   setTimeout(() => {
     const overlay = document.getElementById('client-detail-overlay');
     if(!overlay) return;
-    const btnRow = overlay.querySelector('[onclick*="aiScoreClientHealth"]')?.parentElement;
+    // GL-097: this looked for [onclick*="aiScoreClientHealth"]. The inline handler
+    // became data-gl-action, the selector matched nothing, and the Notes and
+    // Templates buttons silently stopped appearing on the client detail panel.
+    const btnRow = overlay.querySelector('[data-gl-action="aiScoreClientHealth"]')?.parentElement;
     if(btnRow && !btnRow.querySelector('.notes-btn')){
       const notesBtn = document.createElement('button');
       notesBtn.className = 'cbtn notes-btn';

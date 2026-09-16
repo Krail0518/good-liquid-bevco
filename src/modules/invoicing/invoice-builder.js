@@ -287,14 +287,14 @@
       '<div style="margin-bottom:20px">'+
         INV.addons.map(function(a,i){
           return '<div style="display:grid;grid-template-columns:1fr 130px;gap:8px;margin-bottom:8px">'+
-            '<input class="finp" placeholder="Add-on description (e.g. Kratom filter, Shrink wrap)" value="'+(a.d||'')+'" data-gl-action="glSetAddonDesc" data-gl-on="input" data-gl-arg1="'+i+'" data-gl-el-prop="value">'+
-            '<input class="finp" type="number" placeholder="$0.00" value="'+(a.p||'')+'" data-gl-action="glSetAddonPrice" data-gl-on="input" data-gl-arg1="'+i+'" data-gl-el-prop="value">'+
+            '<input class="finp" placeholder="Add-on description (e.g. Kratom filter, Shrink wrap)" value="'+(window.glEsc?window.glEsc(a.d||''):'')+'" data-gl-action="glSetAddonDesc" data-gl-on="input" data-gl-arg1="'+i+'" data-gl-el-prop="value">'+
+            '<input class="finp" type="number" placeholder="$0.00" value="'+(window.glEsc?window.glEsc(a.p||''):'')+'" data-gl-action="glSetAddonPrice" data-gl-on="input" data-gl-arg1="'+i+'" data-gl-el-prop="value">'+
           '</div>';
         }).join('')+
       '</div>'+
 
       '<div style="margin-bottom:20px"><div class="flbl">Notes / payment instructions</div>'+
-        '<textarea class="finp" rows="2" placeholder="e.g. 50% deposit required before production begins." data-gl-action="glSetInvNotes" data-gl-on="input" data-gl-el-prop="value" style="resize:none;font-size:13px">'+(INV.notes||'')+'</textarea></div>'+
+        '<textarea class="finp" rows="2" placeholder="e.g. 50% deposit required before production begins." data-gl-action="glSetInvNotes" data-gl-on="input" data-gl-el-prop="value" style="resize:none;font-size:13px">'+(window.glEsc?window.glEsc(INV.notes||''):'')+'</textarea></div>'+
 
       '<div style="display:grid;grid-template-columns:1fr 260px;gap:20px;align-items:end;margin-bottom:20px">'+
         '<div><div class="flbl">Discount (%)</div>'+
@@ -380,7 +380,7 @@
       '<tr style="background:#f5f5f5"><td colspan="4" style="text-align:right;font-weight:600">Subtotal</td><td style="text-align:right;font-weight:700">'+glFmt(inv.subtotal)+'</td></tr>'+
       (inv.discountAmt>0?'<tr><td colspan="4" style="text-align:right;color:#c0392b">Discount ('+inv.discount+'%)</td><td style="text-align:right;color:#c0392b;font-weight:700">&minus;'+glFmt(inv.discountAmt)+'</td></tr>':'')+
       '<tr style="background:#e8fff9"><td colspan="4" style="text-align:right;font-size:15px;font-weight:700">TOTAL DUE</td><td style="text-align:right"><span class="grand">'+glFmt(inv.amount)+'</span></td></tr>'+
-      '</tbody></table>'+(inv.notes?'<div style="background:#f9f9f9;border:1px solid #eee;border-radius:8px;padding:14px;margin-bottom:20px"><div style="font-size:10px;letter-spacing:2px;color:#999;margin-bottom:4px">NOTES</div><div style="font-size:12px;color:#444;line-height:1.6">'+inv.notes+'</div></div>':'')+
+      '</tbody></table>'+(inv.notes?'<div style="background:#f9f9f9;border:1px solid #eee;border-radius:8px;padding:14px;margin-bottom:20px"><div style="font-size:10px;letter-spacing:2px;color:#999;margin-bottom:4px">NOTES</div><div style="font-size:12px;color:#444;line-height:1.6">'+(window.glEsc?window.glEsc(inv.notes):String(inv.notes).replace(/[&<>"']/g,''))+'</div></div>':'')+
       '<div class="footer"><div><b>Good Liquid Bev Co</b><br>Thank you for your business.</div><div style="text-align:right">Questions? Mike@GoodLiquid.com<br>(803) 493-5065</div></div></body></html>';
     var w=window.open('','_blank','width=900,height=700');w.document.write(html);w.document.close();w.onload=function(){w.focus();w.print();};
     if(typeof addNotification==='function')addNotification('PDF generated','Invoice '+inv.id+' ready to print/save','success');

@@ -747,7 +747,10 @@
     });
     // Include manually-entered addon prices in the subtotal so typing into
     // an add-on row doesn't appear to zero the total.
-    document.querySelectorAll('#gl-inv-body input[oninput*="addons"][placeholder="$0.00"]').forEach(function(el){
+    // GL-096: this matched input[oninput*="addons"], which stopped existing when
+    // the inline handlers became data-gl-action — so the builder's own total left
+    // every add-on out, agreeing with the save that also dropped them.
+    document.querySelectorAll('#gl-inv-body [data-gl-action="glSetAddonPrice"]').forEach(function(el){
       tot += parseFloat(el.value)||0;
     });
     var box=document.getElementById('ginv-totals-box');if(!box)return;
@@ -862,13 +865,31 @@
 
     // Read add-on rows from the DOM (description + price pairs).
     var addons=[];
-    var addonDescEls = document.querySelectorAll('#gl-inv-body input[oninput*="addons"][placeholder*="Add-on"]');
-    var addonPriceEls = document.querySelectorAll('#gl-inv-body input[oninput*="addons"][placeholder="$0.00"]');
+    //
+    // GL-096. These selectors used to match input[oninput*="addons"]. The inline
+    // oninput handlers were converted to data-gl-action (GL-DEF-01) and nothing
+    // updated this read, so it matched NOTHING: every add-on typed into the
+    // builder — nitrogen dosing, trays, palletizing — was left out of the saved
+    // amount and line items, and the invoice under-billed by exactly that much.
+    // Found by saving an invoice with the database write intercepted. Paired by
+    // the row index the builder puts on both inputs, not by DOM order.
+    var addonDescEls = document.querySelectorAll('#gl-inv-body [data-gl-action="glSetAddonDesc"]');
+    var addonPriceEls = document.querySelectorAll('#gl-inv-body [data-gl-action="glSetAddonPrice"]');
+    var addonPriceByIdx = {};
+    for(var api=0; api<addonPriceEls.length; api++){ addonPriceByIdx[addonPriceEls[api].getAttribute('data-gl-arg1')] = addonPriceEls[api]; }
     for(var ai=0; ai<addonDescEls.length; ai++){
       var d = (addonDescEls[ai].value||'').trim();
-      var p = parseFloat(addonPriceEls[ai] ? addonPriceEls[ai].value : 0)||0;
+      var pEl = addonPriceByIdx[addonDescEls[ai].getAttribute('data-gl-arg1')];
+      var p = parseFloat(pEl ? pEl.value : 0)||0;
       if(d || p) addons.push({ d: d, p: p });
     }
+
+    // GL-096. Notes / payment instructions ("50% deposit required before
+    // production begins") are shown on the PDF, the public invoice link and the
+    // invoice detail — and this save hard-coded them to '' on both the local
+    // copy and the database insert, so what staff typed never reached anyone.
+    var notesEl = document.querySelector('#gl-inv-body [data-gl-action="glSetInvNotes"]');
+    var notes = String((notesEl ? notesEl.value : (window.INV && window.INV.notes)) || '').trim();
     var addonsTotal = addons.reduce(function(s,a){ return s + (parseFloat(a.p)||0); }, 0);
 
     var subtotal=lines.reduce(function(s,l){return s+(l.total||0);},0) + addonsTotal;
@@ -901,7 +922,7 @@
       subtotal:subtotal,
       discountAmt:discountAmt,
       amount:amount,
-      notes:'',
+      notes:notes,
       date:date,
       status:'pending',
       // Default to the client's terms (set in the Edit Client modal); fall back
@@ -911,11 +932,33 @@
     window.invoices=window.invoices||[];
     // Mutate in place so index.html's `let invoices` (bridged to window.invoices)
     // keeps pointing at the same array. Replacing via .filter() would break that.
-    for(var _k=window.invoices.length-1;_k>=0;_k--){if(window.invoices[_k]&&window.invoices[_k].id===invId)window.invoices.splice(_k,1);}
+    var priorLocal = null, priorIndex = -1;
+    for(var _k=window.invoices.length-1;_k>=0;_k--){if(window.invoices[_k]&&window.invoices[_k].id===invId){ priorLocal = window.invoices[_k]; priorIndex = _k; window.invoices.splice(_k,1); }}
     window.invoices.unshift(inv);
     if(typeof renderInvoices==='function')renderInvoices();
-    if(typeof addNotification==='function')addNotification('Invoice saved: '+invId,(client.name||'')+' · '+window.glUsd(amount),'success');
+    // GL-096. This announced "Invoice saved" before the database had been asked,
+    // and the audit wrapper logged invoice_save at the same moment; a rejected
+    // write then only said "Cloud sync failed — saved locally only", about an
+    // invoice that existed in memory until the next reload. Say "Saving" now and
+    // "saved" only once the row exists (see syncInvoice below).
+    if(typeof addNotification==='function')addNotification('Saving invoice '+invId+'…',(client.name||'')+' · '+window.glUsd(amount),'info');
     var ov=document.getElementById('gl-inv-builder');if(ov)ov.classList.remove('show');
+
+    // A rejected save must not leave a phantom invoice, must not lose what was
+    // typed, and — for an edit — must not turn the retry into a duplicate insert.
+    function invoiceSyncFailed(reason){
+      for(var _j=window.invoices.length-1;_j>=0;_j--){ if(window.invoices[_j]===inv) window.invoices.splice(_j,1); }
+      if(priorLocal) window.invoices.splice(Math.min(priorIndex, window.invoices.length), 0, priorLocal);
+      if(typeof renderInvoices==='function') renderInvoices();
+      var b = document.getElementById('gl-inv-builder');
+      if(b){
+        if(editingSupaId) b.setAttribute('data-editing-supa-id', editingSupaId);
+        if(editingId) b.setAttribute('data-editing-id', editingId);
+        b.classList.add('show');
+      }
+      if(typeof addNotification==='function') addNotification('Invoice NOT saved: '+invId, reason, 'warning');
+      alert('Invoice '+invId+' was NOT saved — '+reason+'\n\nThe builder has been reopened with everything you entered. Try saving again.');
+    }
 
     // Compute the due date from the payment terms instead of hardcoding +30d.
     var dueIso='';
@@ -936,7 +979,7 @@
       var sb = window.supa;
       if(!sb){
         console.error('[GL] Supabase JS client not ready for invoice sync.');
-        if(typeof addNotification==='function')addNotification('Cloud sync skipped','Saved locally — Supabase client not loaded.','warning');
+        invoiceSyncFailed('the database connection is not ready.');
         return;
       }
       // Allocate at SAVE time, not when the form was rendered. #ginv-id was
@@ -968,7 +1011,8 @@
         // PGRST204 retry below strips it if the column is missing, so this is
         // safe on deployments that haven't run the accounting migration.
         po_number:(function(){ var el=document.getElementById('gl-po-number'); return el&&el.value.trim()?el.value.trim():null; })(),
-        line_items:combinedLines
+        line_items:combinedLines,
+        notes: notes || null
       };
       // Fallback: if we're editing but lost the supa row id, look it up by
       // invoice_number. Prevents the save from silently INSERT-failing on a
@@ -985,7 +1029,6 @@
       // un-mark it as paid.
       if(!editingSupaId){
         payload.status = 'pending';
-        payload.notes = '';
       }
       // Retry on PGRST204 "column not found" by peeling off the offending
       // column from the payload. Without this, a single schema gap aborts
@@ -1011,15 +1054,24 @@
       }
       if(r && r.error){
         console.error('[GL] Supabase sync failed for '+invId+':', r.error);
-        if(typeof addNotification==='function')addNotification('Cloud sync failed','Invoice '+invId+' saved locally only. '+(r.error.message||''),'warning');
+        invoiceSyncFailed('the database rejected it: '+(r.error.message||r.error));
         return;
       }
-      inv.supaId = r && r.data && r.data.id;
-      if(r && r.data && r.data.status) inv.status = r.data.status;
+      if(!r || !r.data){
+        invoiceSyncFailed('the database did not return the saved invoice.');
+        return;
+      }
+      inv.supaId = r.data.id;
+      if(r.data.status) inv.status = r.data.status;
+      // The number is re-allocated at save time; make the local list show what
+      // was actually written.
+      if(inv.id !== invId){ inv.id = invId; if(typeof renderInvoices==='function') renderInvoices(); }
+      if(typeof addNotification==='function')addNotification('Invoice saved: '+invId,(client.name||'')+' · '+window.glUsd(amount),'success');
+      if(typeof window.glAudit==='function'){ try { window.glAudit('invoice_save', invId, { amount: amount, client: client.name||'', updated: !!editingSupaId }); } catch(e){} }
       console.log('[GL] Invoice synced to Supabase:',invId,inv.supaId||'',editingSupaId?'(updated)':'(inserted)');
     })().catch(function(err){
       console.error('[GL] Supabase sync threw for '+invId+':', err);
-      if(typeof addNotification==='function')addNotification('Cloud sync failed','Invoice '+invId+' saved locally only. '+(err.message||''),'warning');
+      invoiceSyncFailed('the save failed: '+((err && err.message)||err));
     });
 
     // Clear edit-mode markers so the next save returns to insert mode.
@@ -1160,12 +1212,16 @@
 
       // Prefill addons (the builder always renders 4 addon input pairs)
       if(Array.isArray(inv.addons) && inv.addons.length){
-        var addonDescInputs = builder.querySelectorAll('input[oninput*="addons"][placeholder*="Add-on"]');
-        var addonPriceInputs = builder.querySelectorAll('input[oninput*="addons"][placeholder="$0.00"]');
+        // GL-096: the same dead selector meant editing an invoice never refilled
+        // its add-ons, so re-saving it dropped them. Matched by row index now.
         inv.addons.forEach(function(a, ix){
-          if(addonDescInputs[ix]){ addonDescInputs[ix].value = a.d || ''; }
-          if(addonPriceInputs[ix]){ addonPriceInputs[ix].value = a.p || ''; }
+          var dEl = builder.querySelector('[data-gl-action="glSetAddonDesc"][data-gl-arg1="' + ix + '"]');
+          var pEl = builder.querySelector('[data-gl-action="glSetAddonPrice"][data-gl-arg1="' + ix + '"]');
+          if(dEl){ dEl.value = a.d || ''; }
+          if(pEl){ pEl.value = a.p || ''; }
+          if(window.INV && window.INV.addons && window.INV.addons[ix]){ window.INV.addons[ix].d = a.d || ''; window.INV.addons[ix].p = a.p || ''; }
         });
+        if(typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
       }
     }, 80);
   };

@@ -212,5 +212,25 @@ check('handlers reachable without an argument reject the click Event',
   unguarded.length === 0,
   unguarded.join('\n        '));
 
+// ── 5. GL-096 / GL-097: selectors for inline handlers can never match ──────
+// The inline-handler budget is 0 (tests/inline-handler-budget.test.cjs): every
+// onclick / oninput became data-gl-action. Code that still LOOKS for those
+// attributes — querySelector('[onclick*="…"]') — silently matches nothing:
+//   invoice add-ons dropped from the saved amount, the displayed total and edits
+//   (input[oninput*="addons"]); the client panel's Notes, Templates and Statement
+//   buttons never injected ([onclick*="aiScoreClientHealth"],
+//   button[onclick*="glOpenEditClient"]).
+const staleSelectors = [];
+for (const { file, text } of shipped) {
+  const code = /\.html$/.test(file) ? text.replace(/<!--[\s\S]*?-->/g, '') : text.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  code.split('\n').forEach((line, i) => {
+    const stripped = line.replace(/\/\/.*$/, '');
+    if (/\[on(click|input|change|submit|keyup|keydown|blur|focus)\*?=/.test(stripped)) staleSelectors.push(file + ':' + (i + 1) + '  ' + stripped.trim().slice(0, 80));
+  });
+}
+check('no code selects elements by an inline event-handler attribute',
+  staleSelectors.length === 0,
+  staleSelectors.slice(0, 6).join('\n        '));
+
 console.log('\n' + (failures ? failures + ' FAILED' : 'All checks passed') + '\n');
 process.exit(failures ? 1 : 0);

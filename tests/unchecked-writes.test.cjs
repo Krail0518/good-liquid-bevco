@@ -149,5 +149,29 @@ check('the dormant saveClient re-insert wrapper stays removed',
   !/window\.saveClient\s*=\s*async function/.test(core),
   'it would have created every client twice the day a saveClient existed');
 
+// ── GL-096: the invoice builder save ───────────────────────────────────────
+const invp = fs.readFileSync(path.join(ROOT, 'src/modules/invoicing/invoice-patches.js'), 'utf8');
+check('invoice add-ons are read through their data-gl-action inputs',
+  invp.includes(`document.querySelectorAll('#gl-inv-body [data-gl-action="glSetAddonDesc"]')`) &&
+  invp.includes(`document.querySelectorAll('#gl-inv-body [data-gl-action="glSetAddonPrice"]')`),
+  'add-ons were left out of every saved invoice amount');
+check('invoice notes are saved, not hard-coded empty',
+  /notes:notes,/.test(invp) && /notes: notes \|\| null/.test(invp) && !/payload\.notes = '';/.test(invp),
+  'payment instructions typed in the builder never reached the invoice');
+check('"Invoice saved" is announced only after the database returns the row',
+  (() => { const saving = invp.indexOf("addNotification('Saving invoice '"); const insert = invp.indexOf("sb.from('invoices').insert(working)"); const saved = invp.indexOf("addNotification('Invoice saved: '"); return saving > -1 && insert > -1 && saved > insert && saving < insert; })(),
+  'the success toast fired before the insert was even attempted');
+check('a rejected invoice is removed from the list and the builder reopens',
+  /function invoiceSyncFailed\(reason\)\{[\s\S]{0,700}?b\.classList\.add\('show'\)/.test(invp) &&
+  (invp.match(/invoiceSyncFailed\('/g) || []).length >= 4,
+  'a rejected invoice stayed in the list as if saved, and what was typed was lost');
+const crmx = fs.readFileSync(path.join(ROOT, 'src/shared/crm-extras.js'), 'utf8');
+check('invoice_save is not audited before the save is confirmed',
+  !/window\.glSaveInvoice = function\(\)\{[\s\S]{0,200}?glAudit\('invoice_save'/.test(crmx),
+  'the wrapper logged invoice_save the moment the optimistic save returned');
+check('invoice notes are escaped in the printable invoice',
+  /\$\{esc\(inv\.notes\)\}<\/td><\/tr>`:''\}/.test(core),
+  'notes become real content with GL-096; the PDF template inserted them raw');
+
 console.log('\n' + (failures ? failures + ' FAILED' : 'All checks passed') + '\n');
 process.exit(failures ? 1 : 0);

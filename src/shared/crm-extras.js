@@ -245,18 +245,9 @@
     };
   })();
 
-  // glSaveInvoice() — wrap to log after a successful save (returns truthy inv).
-  (function(){
-    var orig = window.glSaveInvoice;
-    if(typeof orig !== 'function') return;
-    window.glSaveInvoice = function(){
-      var inv = orig.apply(this, arguments);
-      if(inv && inv.id){
-        try { window.glAudit('invoice_save', inv.id, { amount: inv.amount, client: inv.clientName }); } catch(e){}
-      }
-      return inv;
-    };
-  })();
+  // invoice_save is audited inside glSaveInvoice once the database confirms the
+  // row (GL-096). This wrapper used to log it the moment the optimistic save
+  // returned, so a rejected invoice still appeared in audit_log as saved.
 
   console.log('[GL] Audit log wired (login/signout/invoice/users)');
 }());
@@ -1334,7 +1325,7 @@
       ov.remove();
       try {
         if(item.kind === 'invoice'){
-          if(typeof window.cNav === 'function') window.cNav('invoices', document.querySelector('.cni[onclick*="invoices"]') || null);
+          if(typeof window.cNav === 'function') window.cNav('invoices', document.querySelector('.cni[data-gl-action="cNav"][data-gl-arg1="invoices"]') || null);
           setTimeout(function(){ if(typeof window.viewInvoice === 'function') window.viewInvoice(item.id); }, 80);
         } else if(item.kind === 'client'){
           if(typeof window.cNav === 'function') window.cNav('clients', null);
