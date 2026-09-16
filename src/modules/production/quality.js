@@ -224,22 +224,26 @@
         verified_by:       ov.querySelector('#gl-def-vby').value.trim(),
         verified_at:       vatVal ? new Date(vatVal).toISOString() : null
       };
-      if(window.supa && !(isEdit && String(d.id||'').indexOf('local_') === 0)){
+      // GL-089. Create through glCheckedInsert and STOP on failure. This used to
+      // invent a 'local_' id, add the record to the list, keep it in localStorage
+      // and announce success — a record that existed on one device and nowhere
+      // else, never uploaded later. Same rule as tests/checked-inserts.test.cjs.
+      if(isEdit && String(d.id||'').indexOf('local_') !== 0){
+        if(!window.supa){ alert('Not connected to the database — your changes were NOT saved.'); return; }
         try {
-          if(isEdit){
-            var uq = await window.supa.from('defects').update(data).eq('id', d.id).select();
-            if(uq.error){ alert('Save failed: ' + uq.error.message); return; }
-            if(Array.isArray(uq.data) && uq.data.length === 0){ alert('The server rejected the update (0 rows changed). Your changes were NOT saved.'); return; }
-            Object.assign(d, data);
-          }
-          else { var r = await window.supa.from('defects').insert([data]).select().single(); if(r && r.data){ window.glDefects.unshift(r.data); } else { data.id = 'local_' + Date.now(); window.glDefects.unshift(data); if(r && r.error) alert('\u26a0 Record did NOT save to the database \u2014 kept only on this device:\n' + r.error.message); } }
-        } catch(e){
-          if(isEdit) Object.assign(d, data);
-          else { data.id = 'local_' + Date.now(); window.glDefects.unshift(data); if(r && r.error) alert('\u26a0 Record did NOT save to the database \u2014 kept only on this device:\n' + r.error.message); }
-        }
+          var uq = await window.supa.from('defects').update(data).eq('id', d.id).select('id');
+          if(uq.error){ alert('Save failed: ' + uq.error.message + '\nYour changes were NOT saved.'); return; }
+          if(!Array.isArray(uq.data) || uq.data.length === 0){ alert('The server rejected the update (0 rows changed). Your changes were NOT saved.'); return; }
+        } catch(e){ alert('Save failed: ' + ((e && e.message) || e) + '\nYour changes were NOT saved.'); return; }
+        Object.assign(d, data);
+      } else if(isEdit){
+        // A record created on this device by the old fallback. It has no database
+        // row to update, so the edit stays local, as it always did.
+        Object.assign(d, data);
       } else {
-        if(isEdit) Object.assign(d, data);
-        else { data.id = 'local_' + Date.now(); window.glDefects.unshift(data); if(r && r.error) alert('\u26a0 Record did NOT save to the database \u2014 kept only on this device:\n' + r.error.message); }
+        var ins = await glCheckedInsert(function(sb){ return sb.from('defects').insert([data]).select().single(); });
+        if(!ins.ok){ alert('The defect / NCR was NOT saved — nothing was created.\n' + ins.reason); return; }
+        window.glDefects.unshift(ins.row);
       }
       saveLocal(); ov.remove(); render();
       if(typeof addNotification === 'function') addNotification('⚠️ NCR ' + (isEdit ? 'updated' : 'logged'), data.run_ref + ' — ' + data.severity.toUpperCase(), data.severity === 'critical' ? 'warning' : 'info');
@@ -437,22 +441,26 @@
         cert_expires:     ov.querySelector('#gl-ven-certexp').value || null,
         risk_level:       ov.querySelector('#gl-ven-risk').value
       };
-      if(window.supa && !(isEdit && String(v.id||'').indexOf('local_') === 0)){
+      // GL-089. Create through glCheckedInsert and STOP on failure. This used to
+      // invent a 'local_' id, add the record to the list, keep it in localStorage
+      // and announce success — a record that existed on one device and nowhere
+      // else, never uploaded later. Same rule as tests/checked-inserts.test.cjs.
+      if(isEdit && String(v.id||'').indexOf('local_') !== 0){
+        if(!window.supa){ alert('Not connected to the database — your changes were NOT saved.'); return; }
         try {
-          if(isEdit){
-            var uq = await window.supa.from('vendors').update(data).eq('id', v.id).select();
-            if(uq.error){ alert('Save failed: ' + uq.error.message); return; }
-            if(Array.isArray(uq.data) && uq.data.length === 0){ alert('The server rejected the update (0 rows changed). Your changes were NOT saved.'); return; }
-            Object.assign(v, data);
-          }
-          else { var r = await window.supa.from('vendors').insert([data]).select().single(); if(r && r.data){ window.glVendors.push(r.data); } else { data.id = 'local_' + Date.now(); window.glVendors.push(data); } }
-        } catch(e){
-          if(isEdit) Object.assign(v, data);
-          else { data.id = 'local_' + Date.now(); window.glVendors.push(data); }
-        }
+          var uq = await window.supa.from('vendors').update(data).eq('id', v.id).select('id');
+          if(uq.error){ alert('Save failed: ' + uq.error.message + '\nYour changes were NOT saved.'); return; }
+          if(!Array.isArray(uq.data) || uq.data.length === 0){ alert('The server rejected the update (0 rows changed). Your changes were NOT saved.'); return; }
+        } catch(e){ alert('Save failed: ' + ((e && e.message) || e) + '\nYour changes were NOT saved.'); return; }
+        Object.assign(v, data);
+      } else if(isEdit){
+        // A record created on this device by the old fallback. It has no database
+        // row to update, so the edit stays local, as it always did.
+        Object.assign(v, data);
       } else {
-        if(isEdit) Object.assign(v, data);
-        else { data.id = 'local_' + Date.now(); window.glVendors.push(data); }
+        var ins = await glCheckedInsert(function(sb){ return sb.from('vendors').insert([data]).select().single(); });
+        if(!ins.ok){ alert('The vendor was NOT saved — nothing was created.\n' + ins.reason); return; }
+        window.glVendors.push(ins.row);
       }
       saveLocal(); ov.remove(); render();
       if(typeof addNotification === 'function') addNotification('🏭 Vendor ' + (isEdit ? 'updated' : 'added'), data.name, 'success');

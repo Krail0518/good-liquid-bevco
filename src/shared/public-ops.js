@@ -432,17 +432,13 @@
       data.version = (f.version || 1) + 1;
       data.status = 'draft';
       delete data.id;
+      // GL-089. Save as a fresh row, and close the form only once the row exists.
+      // This used to close the form FIRST and then fall back to a 'local_' id, so a
+      // failed clone both lost what was entered and showed a formula that was never saved.
+      var ins = await glCheckedInsert(function(sb){ return sb.from('formulas').insert([data]).select().single(); });
+      if(!ins.ok){ alert('The cloned formula was NOT saved — nothing was created.\n' + ins.reason); return; }
       ov.remove();
-      // Save as a fresh row using the same flow as a new formula.
-      if(window.supa){
-        try {
-          var r = await window.supa.from('formulas').insert([data]).select().single();
-          if(r && r.data){ window.glFormulas.unshift(r.data); }
-          else            { data.id = 'local_' + Date.now(); window.glFormulas.unshift(data); if(r && r.error) alert('\u26a0 Formula did NOT save to the database \u2014 kept only on this device:\n' + r.error.message); }
-        } catch(e){ data.id = 'local_' + Date.now(); window.glFormulas.unshift(data); }
-      } else {
-        data.id = 'local_' + Date.now(); window.glFormulas.unshift(data);
-      }
+      window.glFormulas.unshift(ins.row);
       saveLocal(); render();
       if(typeof addNotification === 'function') addNotification('🧪 Cloned as v' + data.version, data.name, 'success');
     });
@@ -451,26 +447,26 @@
       var data = readForm();
       if(!data.name){ alert('Name is required.'); return; }
       var btn = this; btn.disabled = true; btn.textContent = 'Saving…';
-      if(window.supa && !(isEdit && String(f.id||'').indexOf('local_') === 0)){
+      // GL-089. Create through glCheckedInsert and STOP on failure. This used to
+      // invent a 'local_' id, add the record to the list, keep it in localStorage
+      // and announce success — a record that existed on one device and nowhere
+      // else, never uploaded later. Same rule as tests/checked-inserts.test.cjs.
+      if(isEdit && String(f.id||'').indexOf('local_') !== 0){
+        if(!window.supa){ alert('Not connected to the database — your changes were NOT saved.'); btn.disabled = false; btn.textContent = '💾 Save'; return; }
         try {
-          if(isEdit){
-            var uq = await window.supa.from('formulas').update(data).eq('id', f.id).select();
-            if(uq.error){ alert('Save failed: ' + uq.error.message); btn.disabled = false; btn.textContent = '💾 Save'; return; }
-            if(Array.isArray(uq.data) && uq.data.length === 0){ alert('The server rejected the update (0 rows changed). Your changes were NOT saved.'); btn.disabled = false; btn.textContent = '💾 Save'; return; }
-            Object.assign(f, data);
-          } else {
-            var r = await window.supa.from('formulas').insert([data]).select().single();
-            if(r && r.data){ window.glFormulas.unshift(r.data); }
-            else            { data.id = 'local_' + Date.now(); window.glFormulas.unshift(data); if(r && r.error) alert('\u26a0 Formula did NOT save to the database \u2014 kept only on this device:\n' + r.error.message); }
-          }
-        } catch(e){
-          console.warn('[GL] formula save failed; using local', e);
-          if(isEdit) Object.assign(f, data);
-          else { data.id = 'local_' + Date.now(); window.glFormulas.unshift(data); }
-        }
+          var uq = await window.supa.from('formulas').update(data).eq('id', f.id).select('id');
+          if(uq.error){ alert('Save failed: ' + uq.error.message + '\nYour changes were NOT saved.'); btn.disabled = false; btn.textContent = '💾 Save'; return; }
+          if(!Array.isArray(uq.data) || uq.data.length === 0){ alert('The server rejected the update (0 rows changed). Your changes were NOT saved.'); btn.disabled = false; btn.textContent = '💾 Save'; return; }
+        } catch(e){ alert('Save failed: ' + ((e && e.message) || e) + '\nYour changes were NOT saved.'); btn.disabled = false; btn.textContent = '💾 Save'; return; }
+        Object.assign(f, data);
+      } else if(isEdit){
+        // A record created on this device by the old fallback. It has no database
+        // row to update, so the edit stays local, as it always did.
+        Object.assign(f, data);
       } else {
-        if(isEdit) Object.assign(f, data);
-        else { data.id = 'local_' + Date.now(); window.glFormulas.unshift(data); }
+        var ins = await glCheckedInsert(function(sb){ return sb.from('formulas').insert([data]).select().single(); });
+        if(!ins.ok){ alert('The formula was NOT saved — nothing was created.\n' + ins.reason); btn.disabled = false; btn.textContent = '💾 Save'; return; }
+        window.glFormulas.unshift(ins.row);
       }
       saveLocal();
       btn.disabled = false; btn.textContent = '💾 Save';
@@ -648,25 +644,26 @@
         notes:          ov.querySelector('#gl-yld-notes').value
       };
       var btn = this; btn.disabled = true; btn.textContent = 'Saving…';
-      if(window.supa && !(isEdit && String(r.id||'').indexOf('local_') === 0)){
+      // GL-089. Create through glCheckedInsert and STOP on failure. This used to
+      // invent a 'local_' id, add the record to the list, keep it in localStorage
+      // and announce success — a record that existed on one device and nowhere
+      // else, never uploaded later. Same rule as tests/checked-inserts.test.cjs.
+      if(isEdit && String(r.id||'').indexOf('local_') !== 0){
+        if(!window.supa){ alert('Not connected to the database — your changes were NOT saved.'); btn.disabled = false; btn.textContent = '💾 Save'; return; }
         try {
-          if(isEdit){
-            var uq = await window.supa.from('yield_logs').update(data).eq('id', r.id).select();
-            if(uq.error){ alert('Save failed: ' + uq.error.message); btn.disabled = false; btn.textContent = '💾 Save'; return; }
-            if(Array.isArray(uq.data) && uq.data.length === 0){ alert('The server rejected the update (0 rows changed). Your changes were NOT saved.'); btn.disabled = false; btn.textContent = '💾 Save'; return; }
-            Object.assign(r, data);
-          } else {
-            var resp = await window.supa.from('yield_logs').insert([data]).select().single();
-            if(resp && resp.data){ window.glYieldLogs.unshift(resp.data); }
-            else                  { data.id = 'local_' + Date.now(); window.glYieldLogs.unshift(data); }
-          }
-        } catch(e){
-          if(isEdit) Object.assign(r, data);
-          else { data.id = 'local_' + Date.now(); window.glYieldLogs.unshift(data); }
-        }
+          var uq = await window.supa.from('yield_logs').update(data).eq('id', r.id).select('id');
+          if(uq.error){ alert('Save failed: ' + uq.error.message + '\nYour changes were NOT saved.'); btn.disabled = false; btn.textContent = '💾 Save'; return; }
+          if(!Array.isArray(uq.data) || uq.data.length === 0){ alert('The server rejected the update (0 rows changed). Your changes were NOT saved.'); btn.disabled = false; btn.textContent = '💾 Save'; return; }
+        } catch(e){ alert('Save failed: ' + ((e && e.message) || e) + '\nYour changes were NOT saved.'); btn.disabled = false; btn.textContent = '💾 Save'; return; }
+        Object.assign(r, data);
+      } else if(isEdit){
+        // A record created on this device by the old fallback. It has no database
+        // row to update, so the edit stays local, as it always did.
+        Object.assign(r, data);
       } else {
-        if(isEdit) Object.assign(r, data);
-        else { data.id = 'local_' + Date.now(); window.glYieldLogs.unshift(data); }
+        var ins = await glCheckedInsert(function(sb){ return sb.from('yield_logs').insert([data]).select().single(); });
+        if(!ins.ok){ alert('The yield log was NOT saved — nothing was created.\n' + ins.reason); btn.disabled = false; btn.textContent = '💾 Save'; return; }
+        window.glYieldLogs.unshift(ins.row);
       }
       saveLocal();
       btn.disabled = false; btn.textContent = '💾 Save';
@@ -1094,26 +1091,26 @@
         notes:          ov.querySelector('#gl-samp-notes').value
       };
       var btn = this; btn.disabled = true; btn.textContent = 'Saving…';
-      if(window.supa && !(isEdit && String(s.id||'').indexOf('local_') === 0)){
+      // GL-089. Create through glCheckedInsert and STOP on failure. This used to
+      // invent a 'local_' id, add the record to the list, keep it in localStorage
+      // and announce success — a record that existed on one device and nowhere
+      // else, never uploaded later. Same rule as tests/checked-inserts.test.cjs.
+      if(isEdit && String(s.id||'').indexOf('local_') !== 0){
+        if(!window.supa){ alert('Not connected to the database — your changes were NOT saved.'); btn.disabled = false; btn.textContent = '💾 Save'; return; }
         try {
-          if(isEdit){
-            var uq = await window.supa.from('sample_shipments').update(data).eq('id', s.id).select();
-            if(uq.error){ alert('Save failed: ' + uq.error.message); btn.disabled = false; btn.textContent = '💾 Save'; return; }
-            if(Array.isArray(uq.data) && uq.data.length === 0){ alert('The server rejected the update (0 rows changed). Your changes were NOT saved.'); btn.disabled = false; btn.textContent = '💾 Save'; return; }
-            Object.assign(s, data);
-          } else {
-            var r = await window.supa.from('sample_shipments').insert([data]).select().single();
-            if(r && r.data){ window.glSamples.unshift(r.data); }
-            else            { data.id = 'local_' + Date.now(); window.glSamples.unshift(data); }
-          }
-        } catch(e){
-          console.warn('[GL] sample save failed; using local', e);
-          if(isEdit) Object.assign(s, data);
-          else { data.id = 'local_' + Date.now(); window.glSamples.unshift(data); }
-        }
+          var uq = await window.supa.from('sample_shipments').update(data).eq('id', s.id).select('id');
+          if(uq.error){ alert('Save failed: ' + uq.error.message + '\nYour changes were NOT saved.'); btn.disabled = false; btn.textContent = '💾 Save'; return; }
+          if(!Array.isArray(uq.data) || uq.data.length === 0){ alert('The server rejected the update (0 rows changed). Your changes were NOT saved.'); btn.disabled = false; btn.textContent = '💾 Save'; return; }
+        } catch(e){ alert('Save failed: ' + ((e && e.message) || e) + '\nYour changes were NOT saved.'); btn.disabled = false; btn.textContent = '💾 Save'; return; }
+        Object.assign(s, data);
+      } else if(isEdit){
+        // A record created on this device by the old fallback. It has no database
+        // row to update, so the edit stays local, as it always did.
+        Object.assign(s, data);
       } else {
-        if(isEdit) Object.assign(s, data);
-        else { data.id = 'local_' + Date.now(); window.glSamples.unshift(data); }
+        var ins = await glCheckedInsert(function(sb){ return sb.from('sample_shipments').insert([data]).select().single(); });
+        if(!ins.ok){ alert('The sample shipment was NOT saved — nothing was created.\n' + ins.reason); btn.disabled = false; btn.textContent = '💾 Save'; return; }
+        window.glSamples.unshift(ins.row);
       }
       saveLocal();
       btn.disabled = false; btn.textContent = '💾 Save';

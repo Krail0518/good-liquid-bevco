@@ -157,6 +157,44 @@ async function callHelper(src, mode) {
   r = await callHelper(src, 'throw');
   check('thrown error -> ok:false rather than an unhandled rejection', r.ok === false, JSON.stringify(r));
 
+  // ── GL-089: the eight module create paths ────────────────────────────
+  // The four paths above were fixed; eight more had the same shape in the
+  // production and ops modules. A failed insert invented a 'local_' id, added
+  // the record to the list, kept it in localStorage and announced success —
+  // and nothing ever uploaded those rows later. Found by filling each form
+  // with the database writes intercepted: the vendor appeared in the list after
+  // a save that never happened.
+  console.log('');
+  const fs2 = require('fs'), path2 = require('path');
+  const ROOT2 = path2.resolve(__dirname, '..');
+  const MODULE_CREATES = [
+    ['src/modules/production/production-runs.js', 'production_runs'],
+    ['src/modules/production/quality.js',         'defects'],
+    ['src/modules/production/quality.js',         'vendors'],
+    ['src/shared/public-ops.js',                  'formulas'],
+    ['src/shared/public-ops.js',                  'yield_logs'],
+    ['src/shared/public-ops.js',                  'sample_shipments'],
+    ['src/shared/tools.js',                       'trade_shows'],
+    ['src/shared/tools.js',                       'content_calendar']
+  ];
+  const strip = s => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"])\/\/[^\n]*/g, '$1');
+  for (const [file, table] of MODULE_CREATES) {
+    const code = strip(fs2.readFileSync(path2.join(ROOT2, file), 'utf8'));
+    check(table + ' is created through glCheckedInsert',
+      new RegExp("glCheckedInsert\\(function\\(sb\\)\\{ return sb\\.from\\('" + table + "'\\)\\.insert\\(").test(code),
+      file + ' — a direct insert with a fallback lets a failed save look like a success');
+    check(table + ' stops when the insert fails',
+      new RegExp("sb\\.from\\('" + table + "'\\)\\.insert\\([\\s\\S]{0,200}?if\\(!ins\\.ok\\)\\{[^}]*return;").test(code),
+      file + ' — on failure it must report and return, not add the record');
+  }
+  const shipped = ['index.html', 'crm-index-core.js']
+    .concat(require('child_process').execSync('git ls-files src', { cwd: ROOT2 }).toString().split('\n').filter(f => /\.js$/.test(f)));
+  const fabricators = shipped.filter(f => fs2.existsSync(path2.join(ROOT2, f)) &&
+    /['"]local_['"]\s*\+\s*Date\.now\(\)/.test(strip(fs2.readFileSync(path2.join(ROOT2, f), 'utf8'))));
+  check("no shipped code fabricates a 'local_' id",
+    fabricators.length === 0,
+    'still in: ' + fabricators.join(', '));
+
   console.log('\n' + (failures === 0 ? 'ALL PASSED' : failures + ' CHECK(S) FAILED'));
   process.exit(failures === 0 ? 0 : 1);
 })().catch((e) => { console.error(e); process.exit(1); });
