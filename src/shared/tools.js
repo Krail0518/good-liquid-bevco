@@ -1812,8 +1812,24 @@
       if(pickedScore === null){ alert('Pick a score first.'); return; }
       submit.disabled = true; submit.textContent = 'Submitting…';
       var comment = document.getElementById('gl-nps-comment').value;
+      // GL-098: the result was discarded (and an RLS rejection returns an error
+      // rather than throwing), so a customer was thanked for feedback that was
+      // never recorded. Keep their score and comment on screen and say so.
+      var npsSaved = false, npsErr = 'the feedback service is not loaded';
       if(window.supa){
-        try { await window.supa.from('nps_responses').insert([{ client_id: cid, client_name: client.name, score: pickedScore, comment: comment, responded_at: new Date().toISOString() }]); } catch(e){}
+        try {
+          var npsIns = await window.supa.from('nps_responses').insert([{ client_id: cid, client_name: client.name, score: pickedScore, comment: comment, responded_at: new Date().toISOString() }]);
+          // No .select(): this runs as the anonymous role, which may insert but not
+          // read nps_responses, so asking for the row back would fail every time.
+          // An insert that RLS refuses returns an error, which is what we check.
+          npsSaved = !!(npsIns && !npsIns.error);
+          if(!npsSaved) npsErr = (npsIns && npsIns.error && npsIns.error.message) || 'it was not accepted';
+        } catch(e){ npsErr = (e && e.message) || String(e); }
+      }
+      if(!npsSaved){
+        submit.disabled = false; submit.textContent = 'Submit feedback →';
+        alert('Sorry — your feedback could not be sent (' + npsErr + '). Your score and comment are still here; please try again.');
+        return;
       }
       document.getElementById('gl-nps-followup').style.display = 'none';
       document.getElementById('gl-nps-scores').style.display = 'none';

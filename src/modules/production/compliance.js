@@ -856,11 +856,26 @@
               }
             }
           }
-          // Upsert each name with its position
+          // Upsert each name with its position.
+          // GL-098: these results were discarded, so a rejected upsert still
+          // cached the new list locally and closed the editor as saved — the
+          // CIP dropdown then offered equipment the server had never recorded.
+          var failedNames = [];
           for(var i=0;i<newList.length;i++){
-            await sb.from('cip_equipment').upsert({ name: newList[i], sort_order: (i+1)*10, active: true }, { onConflict: 'name' });
+            var uq = await sb.from('cip_equipment').upsert({ name: newList[i], sort_order: (i+1)*10, active: true }, { onConflict: 'name' }).select('id');
+            if(uq.error || !Array.isArray(uq.data) || uq.data.length === 0) failedNames.push(newList[i]);
           }
-        } catch(e){ console.warn('[GL] cip_equipment save threw', e); }
+          if(failedNames.length){
+            alert('The equipment list was NOT fully saved to the server. These could not be saved: ' + failedNames.join(', ') + '. Your edits are still in this list — try again.');
+            btn.disabled = false; btn.textContent = '💾 Save';
+            return;
+          }
+        } catch(e){
+          console.warn('[GL] cip_equipment save threw', e);
+          alert('The equipment list could not be saved: ' + ((e && e.message) || e) + '. Your edits are still in this list — try again.');
+          btn.disabled = false; btn.textContent = '💾 Save';
+          return;
+        }
       }
       saveCipEquipCache(newList);
       ov.remove();
@@ -3988,13 +4003,19 @@
         // Check if a task already exists for this anniversary
         var existing = await window.supa.from('compliance_tasks').select('id').eq('due_date', dueDate).eq('task_type','annual_fsp').limit(1);
         if(existing.data && existing.data.length) return;
-        await window.supa.from('compliance_tasks').insert([{
+        var taskIns = await window.supa.from('compliance_tasks').insert([{
           due_date: dueDate, task_type: 'annual_fsp',
           title: 'Annual FSP Review (FSP-VER-002)',
           description: 'Scheduled 12 months after the previous FSP review on ' + fmtDate(rec.recorded_at),
           source: 'auto',
           dedupe_key: 'annual_fsp_' + dueDate
-        }]);
+        }]).select('id');
+        // GL-098: announced as scheduled whether or not the task row was written.
+        if(!taskIns || taskIns.error || !Array.isArray(taskIns.data) || taskIns.data.length === 0){
+          console.warn('[GL] annual FSP reminder task was NOT created', taskIns && taskIns.error);
+          if(typeof addNotification === 'function') addNotification('⚠️ Annual FSP review NOT scheduled', 'The reminder for ' + dueDate + ' could not be saved — add it to compliance tasks by hand.','warning');
+          return;
+        }
         if(typeof addNotification === 'function') addNotification('📅 Annual FSP review scheduled', 'Due ' + dueDate,'info');
       } catch(e){}
     }, 5000);

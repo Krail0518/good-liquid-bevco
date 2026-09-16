@@ -173,5 +173,22 @@ check('invoice notes are escaped in the printable invoice',
   /\$\{esc\(inv\.notes\)\}<\/td><\/tr>`:''\}/.test(core),
   'notes become real content with GL-096; the PDF template inserted them raw');
 
+// ── GL-098: three more discarded results, each followed by a success signal ──
+check('the CIP equipment editor does not close as saved after a rejected upsert',
+  /var uq = await sb\.from\('cip_equipment'\)\.upsert\([\s\S]{0,200}?\.select\('id'\);[\s\S]{0,200}?failedNames\.push/.test(comp) &&
+  /if\(failedNames\.length\)\{[\s\S]{0,300}?return;/.test(comp),
+  'the list was cached locally and the editor closed even when the server refused it');
+check('the annual FSP reminder is announced only when its task row exists',
+  /var taskIns = await window\.supa\.from\('compliance_tasks'\)\.insert\([\s\S]{0,500}?\.select\('id'\);[\s\S]{0,400}?NOT scheduled[\s\S]{0,200}?return;/.test(comp),
+  '"Annual FSP review scheduled" fired whether or not the task was created');
+const tools = fs.readFileSync(path.join(ROOT, 'src/shared/tools.js'), 'utf8');
+check('an NPS response is acknowledged only after the insert succeeds',
+  /var npsIns = await window\.supa\.from\('nps_responses'\)\.insert\(\[[^\]]*\]\);/.test(tools) &&
+  /if\(!npsSaved\)\{[\s\S]{0,300}?return;\s*\}/.test(tools),
+  'a customer was thanked for feedback that was never recorded');
+check('the NPS insert does not ask for the row back (anon cannot read nps_responses)',
+  !/from\('nps_responses'\)\.insert\([^;]*\.select\(/.test(tools),
+  '.select() on an anonymous insert without a read policy fails every submission');
+
 console.log('\n' + (failures ? failures + ' FAILED' : 'All checks passed') + '\n');
 process.exit(failures ? 1 : 0);
