@@ -118,6 +118,15 @@ jobs:
       # A credential committed to the repo is public forever. No browser needed.
       - name: Run committed-secret tests
         run: node tests/committed-secrets.test.cjs
+      # Vercel serves this repo from its root, so every committed file is a URL.
+      # The authorization baseline, the defect register, the migration history
+      # and the edge function source were all live and returning 200 until
+      # .vercelignore existed. Guards both halves: those stay excluded, and
+      # nothing the six HTML entry points load is excluded with them — a rule
+      # widened to cover a missing asset would 404 in production only. No
+      # browser needed.
+      - name: Run published-surface tests
+        run: node tests/published-surface.test.cjs
       # security-invariants.sh must tell a timeout apart from a leak. It once
       # reported a 504 as "ANONYMOUS DATA VISIBLE", and the fix for that is a
       # classifier, so the classifier is tested: the real script is run against

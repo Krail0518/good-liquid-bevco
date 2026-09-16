@@ -1,0 +1,55 @@
+# What must NOT be published to the public web (GL-079)
+#
+# Vercel serves this repository from its ROOT, so until this file existed every
+# committed file was reachable at https://goodliquidbevco.com/<path>. Confirmed
+# live on 2026-09-16, all returning 200:
+#
+#   /docs/database/authorization-baseline.txt   113 KB — every RLS policy
+#                                               expression, table grant, and
+#                                               SECURITY DEFINER function with
+#                                               its exact signature and ACL
+#   /docs/plans/technical-debt.md                69 KB — the defect register,
+#                                               including issues still OPEN
+#   /CLAUDE.md, /SECURITY.md, /CRM_FEATURE_MAP.md
+#   /scripts/security-invariants.sh             the probe that guards the site
+#   /supabase/migrations/*.sql                  the entire schema history
+#   /supabase/functions/**/*.ts                 edge function source
+#   /tests/*.test.cjs
+#
+# NO CREDENTIALS WERE EXPOSED. .gitignore keeps supabase/secrets.env and every
+# .env out of the repository, so they were never uploaded; /supabase/secrets.env
+# returned 404 and a scan of all 95 shipped scripts found no key material. The
+# only key in the page is the publishable one, which is meant to be public.
+#
+# So this is reconnaissance, not a breach: RLS is the enforcement, and RLS holds
+# -- an anonymous visitor was refused on 29 of 30 tables and every portal RPC.
+# Obscurity is not what protects this database. But there is no reason to hand
+# an attacker the function inventory to probe, the migration history to diff,
+# and a register that names the weaknesses we already know about and have not
+# yet fixed. Defence in depth means not volunteering the map.
+#
+# WHAT THE SITE ACTUALLY NEEDS, verified before writing this by extracting every
+# src= and href= from all six HTML entry points: src/ (91 modules), the
+# root-level .js and .css files, the icons and manifest. Nothing shipped
+# references any path below. Keep it that way -- if a page ever needs a file
+# from one of these directories, move the file rather than deleting the rule.
+
+# Internal engineering documentation
+docs/
+prompts/
+*.md
+
+# Tooling that never runs in the browser
+scripts/
+tests/
+tools/
+.github/
+
+# Database and edge-function source. Migrations are applied through the
+# Supabase MCP and functions are deployed by CI, so neither is needed here.
+# NOTE: supabase.min.js lives at the ROOT and is deliberately not matched.
+supabase/
+
+# Agent and editor state
+.claude/
+AGENTS.md
