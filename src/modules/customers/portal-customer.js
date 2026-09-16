@@ -506,7 +506,10 @@
       if(ev && ev.preventDefault) ev.preventDefault();
       var doc = window._glPortalLotDocs && window._glPortalLotDocs[docId];
       if(!doc){ alert('Document not found'); return; }
-      var su = await sb.storage.from('client-docs').createSignedUrl(doc.file_path, 60);
+      // Save it under the document's own name, not the opaque storage id.
+      var lotName = typeof window.glDocFileName === 'function'
+        ? window.glDocFileName(doc.file_name || doc.title, doc.file_path) : true;
+      var su = await sb.storage.from('client-docs').createSignedUrl(doc.file_path, 60, { download: lotName });
       if(su.error || !su.data){ alert('Download link failed: ' + (su.error && su.error.message || 'unknown')); return; }
       window.open(su.data.signedUrl, '_blank', 'noopener');
     };
@@ -540,7 +543,9 @@
       if(ev && ev.preventDefault) ev.preventDefault();
       var doc = window._glPortalAgreements && window._glPortalAgreements[docId];
       if(!doc || !doc.file_path){ alert('Document not found'); return; }
-      var su = await sb.storage.from('client-docs').createSignedUrl(doc.file_path, 60);
+      var agmName = typeof window.glDocFileName === 'function'
+        ? window.glDocFileName(doc.name, doc.file_path) : true;
+      var su = await sb.storage.from('client-docs').createSignedUrl(doc.file_path, 60, { download: agmName });
       if(su.error || !su.data){ alert('Download link failed: ' + (su.error && su.error.message || 'unknown')); return; }
       window.open(su.data.signedUrl, '_blank', 'noopener');
     };

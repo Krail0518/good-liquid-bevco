@@ -60,11 +60,15 @@
       .catch(function(e){ window.__lastDealDocError = (e && e.message) || String(e); return ''; });
   }
 
-  function viewLinks(fp){
+  // The document's own name rides along as arg2 so the browser saves
+  // "Mutual NDA.pdf" rather than the opaque storage id. The path stays opaque —
+  // it must not collide and must not leak names to anyone holding a URL.
+  function viewLinks(fp, name){
     if(!fp) return '<span style="color:#f5c842">⚠ no file stored</span>';
     var p = esc(String(fp).replace(/'/g,''));
+    var n = esc(String(name == null ? '' : name));
     return '<a href="#" data-gl-action="glOpenClientDoc" data-gl-prevent="" data-gl-arg1="'+p+'" style="color:#00e5c0;font-weight:700">📄 View</a>' +
-      ' <a href="#" data-gl-action="glDownloadClientDoc" data-gl-prevent="" data-gl-arg1="'+p+'" style="color:#00e5c0;font-weight:700">⬇ Download</a>';
+      ' <a href="#" data-gl-action="glDownloadClientDoc" data-gl-prevent="" data-gl-arg1="'+p+'" data-gl-arg2="'+n+'" style="color:#00e5c0;font-weight:700">⬇ Download</a>';
   }
 
   // Whether the client sees this document in their portal. Staff uploads start
@@ -93,7 +97,7 @@
             visibilityControl(r) +
           '</div>' +
           (r.notes ? '<div style="font-size:11.5px;color:#9aa7bd;margin-top:3px">'+esc(r.notes)+'</div>' : '') +
-          '<div style="font-size:12px;margin-top:4px">'+viewLinks(r.file_path)+'</div>' +
+          '<div style="font-size:12px;margin-top:4px">'+viewLinks(r.file_path, r.name)+'</div>' +
         '</div>' +
         '<button class="gl-dd-del" data-id="'+esc(r.id)+'" title="Remove document" style="background:none;border:none;color:#ff8579;cursor:pointer;font-size:15px;flex-shrink:0">🗑</button>' +
       '</div>';

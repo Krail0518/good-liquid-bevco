@@ -36,13 +36,45 @@
     } catch(e){ alert('Could not open the file: ' + (e && e.message || e)); }
   };
 
+  // Turn a document's own name into the filename the browser will save.
+  //
+  // Storage paths are deliberately opaque — "1789514629319_hoa6c.pdf" — because
+  // they must not collide and must not leak a client's document names to anyone
+  // who sees a URL. That is right for the path and useless in a downloads
+  // folder, so the NAME travels separately: Supabase's { download: '<name>' }
+  // sets Content-Disposition, and the stored object is untouched.
+  //
+  // The extension comes from the stored path, never from the typed name: a
+  // document called "NDA" still has to arrive as NDA.pdf, and a name ending in
+  // ".exe" must not rename a PDF into something a browser treats differently.
+  window.glDocFileName = function(name, path){
+    var stored = String(path || '').split('/').pop() || 'document';
+    var ext = (stored.indexOf('.') > -1 ? stored.split('.').pop() : '').toLowerCase();
+    var base = String(name == null ? '' : name)
+      .replace(/\.[A-Za-z0-9]{1,8}$/, '')          // drop a typed extension
+      .replace(/[\\/:*?"<>|\x00-\x1f]/g, ' ')      // characters no filesystem wants
+      .replace(/\s+/g, ' ')
+      // Leading dots and separators: "../../etc/passwd" survives the line above
+      // as ".. .. etc passwd" — harmless, since no separator is left to traverse
+      // with, but a leading dot is a hidden file on unix and it reads like an
+      // attack in a downloads folder either way.
+      .replace(/^[.\s]+/, '')
+      .replace(/[.\s]+$/, '')
+      .slice(0, 120)
+      .trim();
+    if(!base) return stored;                        // no usable name — keep the stored one
+    return ext ? base + '.' + ext : base;
+  };
+
   // Download a stored compliance document (signed URL with the download flag,
-  // so the browser saves the file instead of opening it in a tab).
-  window.glDownloadClientDoc = async function(path){
+  // so the browser saves the file instead of opening it in a tab). Pass the
+  // document's name and it arrives called that instead of its storage id.
+  window.glDownloadClientDoc = async function(path, name){
     if(!path){ return; }
     if(!window.supa || !window.supa.storage){ alert('Storage not ready.'); return; }
     try {
-      var r = await window.supa.storage.from('client-docs').createSignedUrl(path, 300, { download: true });
+      var filename = name ? window.glDocFileName(name, path) : true;
+      var r = await window.supa.storage.from('client-docs').createSignedUrl(path, 300, { download: filename });
       if(r && r.data && r.data.signedUrl){
         var a = document.createElement('a'); a.href = r.data.signedUrl; a.download = '';
         document.body.appendChild(a); a.click(); a.remove();

@@ -128,8 +128,10 @@
   function skuRow(r, staff){
     var st = STATE[r.state] || STATE.submitted;
     var links = r.file_path
+      // arg2 is the SKU name, so the download arrives as "Mango 12oz.png"
+      // rather than the storage id. The extension comes from the stored path.
       ? '<a href="#" data-gl-action="glOpenClientDoc" data-gl-prevent="" data-gl-arg1="'+esc(String(r.file_path).replace(/\x27/g,''))+'" style="color:#00e5c0;font-weight:700">📄 View</a>' +
-        ' <a href="#" data-gl-action="glDownloadClientDoc" data-gl-prevent="" data-gl-arg1="'+esc(String(r.file_path).replace(/\x27/g,''))+'" style="color:#00e5c0;font-weight:700">⬇ Download</a>'
+        ' <a href="#" data-gl-action="glDownloadClientDoc" data-gl-prevent="" data-gl-arg1="'+esc(String(r.file_path).replace(/\x27/g,''))+'" data-gl-arg2="'+esc(String(r.sku_name||''))+'" style="color:#00e5c0;font-weight:700">⬇ Download</a>'
       : '<span style="color:#f5c842">⚠ no file stored</span>';
     // A SKU with a decision on it is part of the record: the ledger's ON DELETE
     // RESTRICT foreign key refuses to remove it, so offering the bin would only

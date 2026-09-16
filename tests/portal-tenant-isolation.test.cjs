@@ -290,6 +290,25 @@ check('the delete guard in force uses the security definer helper',
     /gl_artwork_has_decision/.test(ddl.slice(lastDeletePolicy, lastDeletePolicy + 400)),
   'an inline subquery over artwork_reviews is invisible to the customer and permits everything');
 
+// ── 9c. Downloads are named from the document, safely ──────────────────────
+// Storage paths are opaque on purpose. The document's name travels separately
+// as the Content-Disposition filename, and the EXTENSION always comes from the
+// stored path — a document a client named "payload.exe" must still arrive as a
+// .pdf, and a name cannot introduce a path separator.
+const detailSrc = blankComments(readIfExists('src/modules/customers/client-detail.js'));
+check('the download filename is derived from the document name',
+  /glDocFileName/.test(detailSrc) && /download:\s*filename/.test(detailSrc),
+  'without it every download lands as its storage id');
+// Plain substring matches: the patterns being looked for are themselves regex
+// literals, and escaping a regex that hunts for a regex is how you end up
+// asserting nothing.
+check('the download filename takes its extension from the stored path',
+  detailSrc.includes("stored.split('.').pop()") && detailSrc.includes('[A-Za-z0-9]{1,8}$'),
+  'a typed extension must not rename a PDF into something handled differently');
+check('the download filename strips path separators',
+  detailSrc.includes('[\\\\/:*?"<>|'),
+  'a name containing a separator must not become a path');
+
 // ── 10. Tenant consistency ─────────────────────────────────────────────────
 for (const t of ['deal_documents', 'client_artwork']) {
   check(t + ' has a composite tenant foreign key',
