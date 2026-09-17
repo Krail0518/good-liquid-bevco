@@ -308,10 +308,15 @@
     });
     return hit;
   }
+  // The action name is compared, never concatenated into a selector: building
+  // `data-gl-action="..."` from a variable hides the name from the source scan
+  // that guards the registry (tests/action-coverage.test.cjs), which is how 15
+  // dead GMP tiles once shipped.
   function restoreControl(action, milestoneId, value){
-    var els = document.querySelectorAll('[data-gl-action="' + action + '"]');
+    var els = document.querySelectorAll('[data-gl-action]');
     Array.prototype.forEach.call(els, function(el){
-      if(el.getAttribute('data-gl-arg1') === String(milestoneId)) el.value = value == null ? '' : value;
+      if(el.getAttribute('data-gl-action') === action &&
+         el.getAttribute('data-gl-arg1') === String(milestoneId)) el.value = value == null ? '' : value;
     });
   }
 
