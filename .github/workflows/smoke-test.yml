@@ -246,6 +246,16 @@ jobs:
           REPO_ROOT: ${{ github.workspace }}
         run: node tests/artwork.test.cjs
 
+      # Project admin — milestone date and owner edits reach "Preview as client"
+      # and "Add new round" without closing the panel, and a refused save puts
+      # the control back (independent review R6, GL-124). Real page, real
+      # dispatcher; PostgREST stubbed.
+      - name: Run project admin cache test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/projects-admin-cache.test.cjs
+
       # Client detail — shared info block shows every field + doc view links.
       - name: Run client detail test
         env:

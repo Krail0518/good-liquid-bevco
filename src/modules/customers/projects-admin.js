@@ -293,21 +293,53 @@
     remount(clientId);
   };
 
+  // GL-124 (independent review R6). The date and owner controls save in place
+  // without re-rendering, so the user keeps their place in the list. But
+  // "Preview as client" and "Add new round" read _cache, which these handlers
+  // never updated: saving Nov 1 then previewing still showed Oct 1, and a new
+  // sampling round copied the OLD owner. On success the cached milestone now
+  // takes the value the SERVER returned; on failure the control is put back to
+  // the last saved value, so the screen never shows something that did not save.
+  function cachedMilestone(clientId, milestoneId){
+    var c = _cache[clientId], hit = null;
+    if(!c || !c.milestones) return null;
+    Object.keys(c.milestones).forEach(function(pid){
+      c.milestones[pid].forEach(function(m){ if(m.id === milestoneId) hit = m; });
+    });
+    return hit;
+  }
+  function restoreControl(action, milestoneId, value){
+    var els = document.querySelectorAll('[data-gl-action="' + action + '"]');
+    Array.prototype.forEach.call(els, function(el){
+      if(el.getAttribute('data-gl-arg1') === String(milestoneId)) el.value = value == null ? '' : value;
+    });
+  }
+
   window.glMilestoneSetTarget = async function(milestoneId, clientId, value){
     var sb = getSB(); if(!sb) return;
-    var r = await sb.from('project_milestones').update({ target_date: value || null }).eq('id', milestoneId).select('id');
-    if(r.error){ say('Could not save the target date: ' + (r.error.message || 'unknown'), false); return; }
-    if(!r.data || !r.data.length){ say('Target date was rejected — nothing saved.', false); return; }
+    var m = cachedMilestone(clientId, milestoneId);
+    var fail = function(text){ say(text, false); restoreControl('glMilestoneSetTarget', milestoneId, m ? m.target_date : ''); };
+    var r;
+    try { r = await sb.from('project_milestones').update({ target_date: value || null }).eq('id', milestoneId).select('id, target_date'); }
+    catch(e){ fail('Could not save the target date: ' + (e.message || e)); return; }
+    if(r.error){ fail('Could not save the target date: ' + (r.error.message || 'unknown')); return; }
+    if(!r.data || !r.data.length){ fail('Target date was rejected — nothing saved.'); return; }
+    if(m) m.target_date = r.data[0].target_date;
     say('Target date saved.', true);
   };
 
   window.glMilestoneSetOwner = async function(milestoneId, clientId, value){
     var sb = getSB(); if(!sb) return;
-    if(value !== 'gl' && value !== 'client'){ say('Unknown owner.', false); return; }
-    var r = await sb.from('project_milestones').update({ owner: value }).eq('id', milestoneId).select('id');
-    if(r.error){ say('Could not change who acts: ' + (r.error.message || 'unknown'), false); return; }
-    if(!r.data || !r.data.length){ say('Change was rejected — nothing saved.', false); return; }
-    say('Saved — ' + OWNER_LABEL[value] + ' acts on this stage.', true);
+    var m = cachedMilestone(clientId, milestoneId);
+    var fail = function(text){ say(text, false); restoreControl('glMilestoneSetOwner', milestoneId, m ? m.owner : 'gl'); };
+    if(value !== 'gl' && value !== 'client'){ fail('Unknown owner.'); return; }
+    var r;
+    try { r = await sb.from('project_milestones').update({ owner: value }).eq('id', milestoneId).select('id, owner'); }
+    catch(e){ fail('Could not change who acts: ' + (e.message || e)); return; }
+    if(r.error){ fail('Could not change who acts: ' + (r.error.message || 'unknown')); return; }
+    if(!r.data || !r.data.length){ fail('Change was rejected — nothing saved.'); return; }
+    if(m) m.owner = r.data[0].owner;
+    say('Saved — ' + OWNER_LABEL[r.data[0].owner] + ' acts on this stage.', true);
   };
 
   window.glMilestoneNewRound = async function(projectId, clientId){

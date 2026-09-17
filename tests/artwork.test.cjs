@@ -43,13 +43,14 @@ await pg.evaluate(()=>{
     // filtered by archived_at, and the latest decision per SKU is fetched from
     // artwork_reviews by id.
     c.select=()=>c; c.eq=()=>c; c.is=()=>c; c.in=()=>c;
-    c.order=async()=>({data:table==='client_artwork'?EXISTING:[],error:null});
+    c.order=async()=>({data:table==='client_artwork'?(window.__rows||EXISTING):table==='artwork_reviews'?(window.__reviews||[]):[],error:null});
     c.insert=(rows)=>{ if(table==='client_artwork') window.__art.push(...rows); return { select:async()=>({data:rows,error:null}) , then:(r)=>Promise.resolve({data:rows,error:null}).then(r) }; };
     c.delete=()=>({ eq:async(k,v)=>{ window.__deleted.push(v); return {data:null,error:null}; } });
     c.then=(res)=>Promise.resolve({data:table==='client_artwork'?EXISTING:[],error:null}).then(res);
     return c;
   }
   window.supa={ from:(t)=>chain(t),
+    rpc:async(name)=>({data:name==='gl_portal_artwork'?(window.__portalRows||[]):null,error:null}),
     storage:{ from:()=>({ upload:async(p)=>({data:{path:p},error:null}), createSignedUrl:async(p)=>({data:{signedUrl:'blob:'+p},error:null}) }) },
     auth:{getUser:async()=>({data:{user:{id:'u1'}}}),getSession:async()=>({data:{session:null}})} };
   window.currentUser={id:'u1',role:'admin',name:'Admin'};
@@ -98,6 +99,77 @@ const added=await pg.evaluate(()=>window.__art);
 rec('adding a SKU inserts one client_artwork row', added.length===1, 'n='+added.length);
 rec('inserted row carries the SKU name', added[0] && added[0].sku_name==='Lime 12oz', JSON.stringify(added[0]||{}).slice(0,80));
 rec('inserted row carries a stored file_path', !!(added[0] && added[0].file_path && /artwork\//.test(added[0].file_path)), (added[0]||{}).file_path||'');
+
+// ── GL-123 (independent review R5): a revision keeps its original's project ──
+// The reviewer's reproduction: artwork on project-1, "Upload revised artwork"
+// from the STAFF view, and the new row had supersedes_id set but project_id
+// null. These drive the real renderer and click handlers.
+async function reviseAndUpload(label){
+  await pg.setInputFiles('#art-mount .gl-art-file', tmp);
+  await pg.evaluate(()=>{ document.querySelector('#art-mount .gl-art-add').click(); });
+  await pg.waitForTimeout(500);
+  return pg.evaluate(()=>window.__art[window.__art.length-1]||null);
+}
+
+// A. Staff view (mounted with no project, exactly as edit-client.js does).
+await pg.evaluate(async()=>{
+  window.__art=[];
+  window.__rows=[{id:'art-1',client_id:'c1',project_id:'project-1',sku_name:'Peach 12oz',file_path:'c1/portal/artwork/p.png',file_type:'png',archived_at:null}];
+  window.__reviews=[{artwork_id:'art-1',decision:'changes_requested',decided_at:'2026-09-17',client_note:'darker',seq:1}];
+  await window.glRenderArtwork('c1', document.getElementById('art-mount'));
+});
+await pg.waitForTimeout(200);
+await pg.evaluate(()=>document.querySelector('#art-mount .gl-art-revise[data-id="art-1"]').click());
+const staffRev = await reviseAndUpload();
+rec('R5 staff revision keeps the original\'s project (project-1, not null)',
+  staffRev && staffRev.project_id==='project-1' && staffRev.supersedes_id==='art-1', JSON.stringify(staffRev));
+
+// B. Portal, project-2 open, revising artwork that belongs to no project.
+await pg.evaluate(async()=>{
+  window.__art=[];
+  window.__portalRows=[{artwork_id:'art-legacy',project_id:null,sku_name:'Old Can',file_path:'c1/portal/artwork/o.png',file_type:'png',state:'changes_requested'}];
+  await window.glRenderArtwork('c1', document.getElementById('art-mount'), {portal:true, projectId:'project-2'});
+});
+await pg.waitForTimeout(200);
+await pg.evaluate(()=>document.querySelector('#art-mount .gl-art-revise[data-id="art-legacy"]').click());
+const legacyRev = await reviseAndUpload();
+rec('R5 portal revision of unassigned artwork stays unassigned (not filed under the open project)',
+  legacyRev && legacyRev.project_id===null && legacyRev.supersedes_id==='art-legacy', JSON.stringify(legacyRev));
+
+// C. Portal: choose a revision under project-1, then switch to project-2.
+await pg.evaluate(async()=>{
+  window.__art=[];
+  window.__portalRows=[{artwork_id:'art-p1',project_id:'project-1',sku_name:'P1 Can',file_path:'c1/portal/artwork/1.png',file_type:'png',state:'changes_requested'}];
+  await window.glRenderArtwork('c1', document.getElementById('art-mount'), {portal:true, projectId:'project-1'});
+});
+await pg.waitForTimeout(200);
+await pg.evaluate(async()=>{
+  document.querySelector('#art-mount .gl-art-revise[data-id="art-p1"]').click();
+  await window.glRenderArtwork('c1', document.getElementById('art-mount'), {portal:true, projectId:'project-2'});
+});
+await pg.waitForTimeout(200);
+await pg.evaluate(()=>{ document.querySelector('#art-mount .gl-art-name').value='New P2 Can'; });
+const switched = await reviseAndUpload();
+rec('R5 switching project clears revision mode: the next upload is a new SKU on the new project',
+  switched && switched.supersedes_id===null && switched.project_id==='project-2', JSON.stringify(switched));
+
+// D. Cancel revision.
+await pg.evaluate(async()=>{
+  window.__art=[];
+  await window.glRenderArtwork('c1', document.getElementById('art-mount'), {portal:true, projectId:'project-1'});
+});
+await pg.waitForTimeout(200);
+const cancelUi = await pg.evaluate(()=>{
+  document.querySelector('#art-mount .gl-art-revise[data-id="art-p1"]').click();
+  const shown = document.querySelector('#art-mount .gl-art-revising-wrap').style.display !== 'none';
+  document.querySelector('#art-mount .gl-art-revise-cancel').click();
+  const hidden = document.querySelector('#art-mount .gl-art-revising-wrap').style.display === 'none';
+  document.querySelector('#art-mount .gl-art-name').value='Fresh Can';
+  return shown && hidden;
+});
+const cancelled = await reviseAndUpload();
+rec('R5 Cancel revision shows then clears the revision banner, and the upload is a new SKU',
+  cancelUi && cancelled && cancelled.supersedes_id===null && cancelled.project_id==='project-1', JSON.stringify(cancelled));
 
 rec('no fatal app error', appErrors.length===0, appErrors.slice(0,3).join(' | '));
 

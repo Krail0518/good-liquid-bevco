@@ -177,6 +177,10 @@
     // before projects existed (project_id null) belongs to no project, so it is
     // listed separately and labelled, rather than repeated under every project.
     var projectId = (opts && opts.projectId) || null;
+    // GL-123: revision mode lives on the host element, which the portal reuses
+    // across project switches. Any re-render starts outside revision mode, so a
+    // revision chosen under one project can never be filed under another.
+    delete host.dataset.supersedes;
     var assigned = rows, legacy = [];
     if(portal && projectId){
       assigned = rows.filter(function(r){ return r.project_id === projectId; });
@@ -199,7 +203,10 @@
           '<input class="gl-art-file" type="file" accept="image/*,.pdf,.ai,.eps,.svg" style="'+inp+';flex:1;min-width:180px;padding:7px">' +
           '<button class="gl-art-add" style="padding:9px 16px;background:rgba(0,229,192,.14);border:1px solid rgba(0,229,192,.35);border-radius:8px;color:#00e5c0;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap">＋ Add SKU</button>' +
         '</div>' +
-        '<div class="gl-art-revising" style="display:none;font-size:11.5px;color:#f5c842;margin-top:8px"></div>' +
+        '<div class="gl-art-revising-wrap" style="display:none;margin-top:8px;align-items:center;gap:10px;flex-wrap:wrap">' +
+          '<span class="gl-art-revising" style="font-size:11.5px;color:#f5c842"></span>' +
+          '<button type="button" class="gl-art-revise-cancel" style="padding:2px 10px;border-radius:20px;font-size:10px;font-weight:700;cursor:pointer;background:none;color:#9aa7bd;border:1px solid rgba(255,255,255,.2)">Cancel revision</button>' +
+        '</div>' +
         '<div class="gl-art-msg" style="display:none;font-size:12px;margin-top:8px"></div>' +
       '</div>';
 
@@ -218,11 +225,24 @@
       var path = await uploadArtwork(clientId, file, portal);
       if(!path){ btn.disabled=false; btn.textContent='＋ Add SKU'; show('#ff8579','Upload failed'+(window.__lastUploadError?(' ('+window.__lastUploadError+')'):'')+'. Try again.'); return; }
       var uid = (window.currentUser && window.currentUser.id) || null;
+      // GL-123 (review R5): a revision belongs to the SAME project as the
+      // artwork it replaces. It used to take the project from the mount, and the
+      // staff mount passes none, so every staff revision fell into "unassigned";
+      // in the portal, revising unassigned artwork while a project was open filed
+      // it under that project. The database enforces the same rule.
+      var supersedes = host.dataset.supersedes || null;
+      var parent = supersedes ? rows.filter(function(x){ return String(x.id) === String(supersedes); })[0] : null;
+      if(supersedes && !parent){
+        btn.disabled=false; btn.textContent='＋ Add SKU';
+        show('#ff8579','The artwork being revised is no longer on this list. Cancel the revision and try again.');
+        return;
+      }
       try {
         // No status: the absence of a decision IS "Submitted".
         var row = { client_id: clientId, sku_name: name, description: desc || null, file_path: path,
                     file_type: (file.name.split('.').pop()||'').toLowerCase(), created_by: uid,
-                    project_id: projectId, supersedes_id: host.dataset.supersedes || null };
+                    project_id: parent ? (parent.project_id || null) : projectId,
+                    supersedes_id: supersedes };
         var ins = await sb().from('client_artwork').insert([row]).select('id');
         if(ins.error) throw ins.error;
         if(!ins.data || !ins.data.length) throw new Error('the upload was not recorded');
@@ -281,11 +301,18 @@
         host.dataset.supersedes = this.getAttribute('data-id');
         host.querySelector('.gl-art-name').value = this.getAttribute('data-name') || '';
         var note = host.querySelector('.gl-art-revising');
-        note.style.display = 'block';
+        host.querySelector('.gl-art-revising-wrap').style.display = 'flex';
         note.textContent = 'Uploading a revision of "' + (this.getAttribute('data-name') || 'this SKU') +
-          '". It starts a new review; the earlier version and its decisions are kept.';
+          '". It stays in the same project and starts a new review; the earlier version and its decisions are kept.';
         host.querySelector('.gl-art-file').focus();
       });
+    });
+
+    host.querySelector('.gl-art-revise-cancel').addEventListener('click', function(){
+      delete host.dataset.supersedes;
+      host.querySelector('.gl-art-revising-wrap').style.display = 'none';
+      host.querySelector('.gl-art-revising').textContent = '';
+      host.querySelector('.gl-art-name').value = '';
     });
 
     Array.prototype.forEach.call(host.querySelectorAll('.gl-art-del'), function(b){

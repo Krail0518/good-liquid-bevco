@@ -79,7 +79,8 @@ check('CP04 portal documents are scoped to the active project, unassigned ones l
 check('CP04 portal uploads and artwork carry the active project',
   /project_id: activeProject \? activeProject\.id : null,/.test(pc) &&
   /glRenderArtwork\(customer\.client_id, artMount, \{ portal: true, projectId:/.test(pc) &&
-  /project_id: projectId, supersedes_id:/.test(rd('src/modules/customers/artwork.js')));
+  // A new SKU takes the active project; a revision takes its parent's (GL-123).
+  /project_id: parent \? \(parent\.project_id \|\| null\) : projectId,/.test(rd('src/modules/customers/artwork.js')));
 check('CP04 deliverables are not duplicated in the general list; delivered files survive a lock',
   /!DELIVERABLE_TYPES\[d\.doc_type\]/.test(pc) && /function deliveredWhileLocked/.test(pc));
 
@@ -174,6 +175,27 @@ check('R4 a service row with no service list is skipped rather than sent unverif
   /service announcement does not list its services/.test(m4));
 check('R4 service is no longer checked like a milestone alone',
   /if v_kind = 'service' then/.test(m4));
+
+// R5 (GL-123): a revision uploaded from the staff view lost its project.
+// Behaviour: tests/artwork.test.cjs (real screen) and
+// scripts/artwork-revision-project-proof.sql (database, any caller).
+const m5 = sqlCode(rd('supabase/migrations/20260917190000_artwork_revision_same_project.sql'));
+const art = rd('src/modules/customers/artwork.js');
+check('R5 the database refuses a revision outside its original\'s project',
+  /select a\.client_id, a\.project_id into v_parent_client, v_parent_project/.test(m5) &&
+  /if new\.project_id is distinct from v_parent_project then/.test(m5));
+check('R5 the screen takes a revision\'s project from the artwork it replaces, not the mount',
+  /project_id: parent \? \(parent\.project_id \|\| null\) : projectId/.test(art));
+check('R5 revision mode is cleared on every render and can be cancelled',
+  /delete host\.dataset\.supersedes;\s*\n\s*var assigned = rows/.test(art) && /gl-art-revise-cancel/.test(art));
+
+// R6 (GL-124): Preview and new rounds read a cache the date/owner saves ignored.
+// Behaviour: tests/projects-admin-cache.test.cjs.
+check('R6 date and owner saves update the cache from the persisted row',
+  /\.select\('id, target_date'\)[\s\S]{0,600}m\.target_date = r\.data\[0\]\.target_date/.test(pa) &&
+  /\.select\('id, owner'\)[\s\S]{0,600}m\.owner = r\.data\[0\]\.owner/.test(pa));
+check('R6 a failed save restores the control',
+  (pa.match(/restoreControl\('glMilestoneSet(Target|Owner)'/g) || []).length === 2);
 
 console.log('\n' + (failures ? failures + ' FAILED' : 'All checks passed') + '\n');
 process.exit(failures ? 1 : 0);
