@@ -30,11 +30,14 @@ FUNC     public.gl_check_cron_secret(candidate text) | secdef=t | search_path=""
 FUNC     public.gl_cron_health() | secdef=t | search_path="" | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_derive_invoice_paid_state() | secdef=t | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_enforce_ledger_bounds() | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
-FUNC     public.gl_enqueue_portal_email(p_client_id uuid, p_pref text, p_subject text, p_body text) | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.gl_enqueue_portal_email(p_client_id uuid, p_pref text, p_subject text, p_body text, p_event jsonb) | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.gl_guard_accepted_quote() | secdef=f | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.gl_guard_artwork_identity() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_guard_artwork_review_append_only() | secdef=f | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_guard_artwork_review_transition() | secdef=f | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_guard_compliance_signature() | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_guard_entitlement_append_only() | secdef=f | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.gl_guard_formula_document_supersede() | secdef=f | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_guard_hold_disposition() | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_guard_invoice_paid_state() | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_invoice_amount_to_cents() | secdef=f | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
@@ -58,6 +61,7 @@ FUNC     public.gl_onboarding_submit(p_token text, p_data jsonb) | secdef=t | se
 FUNC     public.gl_payment_method_label(p_method text, p_provider text) | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_payment_tolerance() | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_portal_artwork(p_project_id uuid) | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
+FUNC     public.gl_portal_email_block_reason(p_schedule_id uuid) | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_portal_entitlements() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_portal_formula_documents() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_portal_formula_status() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
@@ -71,6 +75,8 @@ FUNC     public.gl_secret_set(p_name text, p_value text) | secdef=t | search_pat
 FUNC     public.gl_send_quote_decks(p_deal_id uuid) | secdef=t | search_path=public, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_stamp_entitlement_event() | secdef=f | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_stamp_project_milestones() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.gl_storage_object_is_record(p_name text) | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
+FUNC     public.gl_storage_object_referenced(p_name text) | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_tour_intake_submit(p jsonb) | secdef=t | search_path=public | acl=postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.handle_new_user() | secdef=t | search_path=public | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.is_admin_user() | secdef=t | search_path=public | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
@@ -316,9 +322,12 @@ POLICY   public.client_allergen_declarations | gl viewer no insert | RESTRICTIVE
 POLICY   public.client_allergen_declarations | gl viewer no update | RESTRICTIVE | {authenticated} | UPDATE | using=(NOT gl_is_viewer()) | check=(NOT gl_is_viewer())
 POLICY   public.client_allergen_declarations | gl warehouse guard | RESTRICTIVE | {authenticated} | ALL | using=(NOT gl_is_warehouse()) | check=(NOT gl_is_warehouse())
 POLICY   public.client_artwork | client_artwork customer delete | PERMISSIVE | {authenticated} | DELETE | using=((client_id = current_customer_client_id()) AND (archived_at IS NULL) AND (NOT gl_artwork_has_decision(id))) | check=-
-POLICY   public.client_artwork | client_artwork customer insert | PERMISSIVE | {authenticated} | INSERT | using=- | check=(client_id = current_customer_client_id())
-POLICY   public.client_artwork | client_artwork customer read | PERMISSIVE | {authenticated} | SELECT | using=((client_id = current_customer_client_id()) AND (archived_at IS NULL)) | check=-
-POLICY   public.client_artwork | client_artwork customer update | PERMISSIVE | {authenticated} | UPDATE | using=(client_id = current_customer_client_id()) | check=(client_id = current_customer_client_id())
+POLICY   public.client_artwork | client_artwork customer insert | PERMISSIVE | {authenticated} | INSERT | using=- | check=((client_id = current_customer_client_id()) AND (file_path IS NOT NULL) AND (file_path ~~ ((current_customer_client_id())::text || '/portal/%'::text)) AND (archived_at IS NULL) AND ((project_id IS NULL) OR (EXISTS ( SELECT 1
+   FROM projects p
+  WHERE ((p.id = client_artwork.project_id) AND (p.client_id = current_customer_client_id()) AND (p.archived_at IS NULL))))))
+POLICY   public.client_artwork | client_artwork customer read | PERMISSIVE | {authenticated} | SELECT | using=((client_id = current_customer_client_id()) AND (archived_at IS NULL) AND ((project_id IS NULL) OR (EXISTS ( SELECT 1
+   FROM projects p
+  WHERE ((p.id = client_artwork.project_id) AND (p.client_id = current_customer_client_id()) AND (p.archived_at IS NULL)))))) | check=-
 POLICY   public.client_artwork | client_artwork staff all | PERMISSIVE | {authenticated} | ALL | using=is_staff_user() | check=is_staff_user()
 POLICY   public.client_artwork | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=(is_gl_staff() OR ((client_id)::text = (current_customer_client_id())::text)) | check=-
 POLICY   public.client_artwork | gl viewer no delete | RESTRICTIVE | {authenticated} | DELETE | using=(NOT gl_is_viewer()) | check=-
@@ -431,7 +440,9 @@ POLICY   public.deal_activity | gl warehouse guard | RESTRICTIVE | {authenticate
 POLICY   public.deal_documents | deal_documents customer read | PERMISSIVE | {authenticated} | SELECT | using=(is_gl_staff() OR ((client_visible = true) AND (((project_id IS NULL) AND (client_id = current_customer_client_id())) OR ((project_id IS NOT NULL) AND (EXISTS ( SELECT 1
    FROM projects p
   WHERE ((p.id = deal_documents.project_id) AND (p.client_id = current_customer_client_id()) AND (p.archived_at IS NULL)))))))) | check=-
-POLICY   public.deal_documents | deal_documents customer upload | PERMISSIVE | {authenticated} | INSERT | using=- | check=((deal_id IS NULL) AND (client_id IS NOT NULL) AND (client_id = current_customer_client_id()))
+POLICY   public.deal_documents | deal_documents customer upload | PERMISSIVE | {authenticated} | INSERT | using=- | check=((deal_id IS NULL) AND (client_id IS NOT NULL) AND (client_id = current_customer_client_id()) AND (file_path IS NOT NULL) AND (file_path ~~ ((current_customer_client_id())::text || '/portal/%'::text)) AND ((project_id IS NULL) OR (EXISTS ( SELECT 1
+   FROM projects p
+  WHERE ((p.id = deal_documents.project_id) AND (p.client_id = current_customer_client_id()) AND (p.archived_at IS NULL))))))
 POLICY   public.deal_documents | deal_documents staff all | PERMISSIVE | {authenticated} | ALL | using=is_staff_user() | check=is_staff_user()
 POLICY   public.deal_documents | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=(is_gl_staff() OR ((client_id)::text = (current_customer_client_id())::text)) | check=-
 POLICY   public.deal_documents | gl viewer no delete | RESTRICTIVE | {authenticated} | DELETE | using=(NOT gl_is_viewer()) | check=-
@@ -839,14 +850,20 @@ POLICY   public.yield_logs | yield_logs staff insert | PERMISSIVE | {authenticat
 POLICY   public.yield_logs | yield_logs staff select | PERMISSIVE | {authenticated} | SELECT | using=is_staff_user() | check=-
 POLICY   public.yield_logs | yield_logs staff update | PERMISSIVE | {authenticated} | UPDATE | using=is_staff_user() | check=is_staff_user()
 POLICY   public.yield_logs | yield_logs super delete | PERMISSIVE | {authenticated} | DELETE | using=is_super_user() | check=-
-POLICY   storage.objects | client-docs customer read | PERMISSIVE | {authenticated} | SELECT | using=((bucket_id = 'client-docs'::text) AND (current_customer_client_id() IS NOT NULL) AND ((name ~~ ((current_customer_client_id())::text || '/portal/%'::text)) OR (EXISTS ( SELECT 1
+POLICY   storage.objects | client-docs customer read | PERMISSIVE | {authenticated} | SELECT | using=((bucket_id = 'client-docs'::text) AND (current_customer_client_id() IS NOT NULL) AND ((EXISTS ( SELECT 1
    FROM deal_documents d
-  WHERE ((d.file_path = objects.name) AND (d.client_id = current_customer_client_id()) AND (d.client_visible = true)))) OR (EXISTS ( SELECT 1
+  WHERE ((d.file_path = objects.name) AND (d.client_id = current_customer_client_id()) AND (d.client_visible = true) AND ((d.project_id IS NULL) OR (EXISTS ( SELECT 1
+           FROM projects p
+          WHERE ((p.id = d.project_id) AND (p.client_id = current_customer_client_id()) AND (p.archived_at IS NULL)))))))) OR (EXISTS ( SELECT 1
    FROM client_artwork a
-  WHERE ((a.file_path = objects.name) AND (a.client_id = current_customer_client_id()) AND (a.archived_at IS NULL)))) OR (EXISTS ( SELECT 1
+  WHERE ((a.file_path = objects.name) AND (a.client_id = current_customer_client_id()) AND (a.archived_at IS NULL) AND ((a.project_id IS NULL) OR (EXISTS ( SELECT 1
+           FROM projects p
+          WHERE ((p.id = a.project_id) AND (p.client_id = current_customer_client_id()) AND (p.archived_at IS NULL)))))))) OR (EXISTS ( SELECT 1
    FROM lot_documents l
-  WHERE ((l.file_path = objects.name) AND (l.client_id = current_customer_client_id())))))) | check=-
-POLICY   storage.objects | client-docs customer upload | PERMISSIVE | {authenticated} | INSERT | using=- | check=((bucket_id = 'client-docs'::text) AND (current_customer_client_id() IS NOT NULL) AND (name ~~ ((current_customer_client_id())::text || '/%'::text)))
+  WHERE ((l.file_path = objects.name) AND (l.client_id = current_customer_client_id())))) OR ((name ~~ ((current_customer_client_id())::text || '/portal/%'::text)) AND (owner_id = (auth.uid())::text) AND (NOT gl_storage_object_referenced(name))))) | check=-
+POLICY   storage.objects | client-docs customer upload | PERMISSIVE | {authenticated} | INSERT | using=- | check=((bucket_id = 'client-docs'::text) AND (current_customer_client_id() IS NOT NULL) AND (name ~~ ((current_customer_client_id())::text || '/portal/%'::text)))
+POLICY   storage.objects | client-docs referenced-object delete guard | RESTRICTIVE | {authenticated} | DELETE | using=((bucket_id <> 'client-docs'::text) OR (NOT gl_storage_object_is_record(name))) | check=-
+POLICY   storage.objects | client-docs referenced-object update guard | RESTRICTIVE | {authenticated} | UPDATE | using=((bucket_id <> 'client-docs'::text) OR (NOT gl_storage_object_is_record(name))) | check=-
 POLICY   storage.objects | client-docs staff all | PERMISSIVE | {authenticated} | ALL | using=((bucket_id = 'client-docs'::text) AND is_gl_staff()) | check=((bucket_id = 'client-docs'::text) AND is_gl_staff())
 POLICY   storage.objects | compliance-photos staff all | PERMISSIVE | {authenticated} | ALL | using=((bucket_id = 'compliance-photos'::text) AND is_gl_staff()) | check=((bucket_id = 'compliance-photos'::text) AND is_gl_staff())
 POLICY   storage.objects | sales-decks staff all | PERMISSIVE | {authenticated} | ALL | using=((bucket_id = 'sales-decks'::text) AND is_gl_staff()) | check=((bucket_id = 'sales-decks'::text) AND is_gl_staff())
