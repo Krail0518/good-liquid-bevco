@@ -63,8 +63,14 @@ Deno.serve(async (req: Request) => {
   if (!email || !name) return errorResponse('email and name are required', 400);
   if (!email.includes('@')) return errorResponse('Invalid email address', 400);
 
-  const allowedRoles = ['admin', 'sales', 'viewer'];
-  const safeRole = allowedRoles.includes(role) ? role : 'sales';
+  // GL-116: 'warehouse' was missing, so inviting a Warehouse user silently
+  // created a SALES user. An unknown role is now refused, not quietly swapped;
+  // the list matches profiles_role_check.
+  const allowedRoles = ['admin', 'sales', 'viewer', 'warehouse'];
+  if (!allowedRoles.includes(role)) {
+    return errorResponse(`Unknown role "${role}". Choose admin, sales, warehouse or viewer.`, 400);
+  }
+  const safeRole = role;
 
   // ── 4. Build metadata ───────────────────────────────────────────────────
   const initials = name
@@ -138,13 +144,28 @@ Deno.serve(async (req: Request) => {
 
   const userId = inviteData?.user?.id ?? null;
 
-  // ── 6. Upsert the profiles row so the CRM sees the user immediately ─────
-  if (userId) {
-    const { error: upsertErr } = await adminClient
-      .from('profiles')
-      .upsert({ id: userId, name, role: safeRole, initials, color, tc }, { onConflict: 'id' });
-    if (upsertErr) console.warn('[invite-staff-user] profile upsert failed', upsertErr);
+  // ── 6. Create the profiles row so the CRM sees the user immediately ─────
+  // GL-116: this upsert omitted `email`, which profiles requires (NOT NULL), so
+  // it failed on EVERY invite — and the failure was only logged, so the admin
+  // was told "Invite sent" while the user never appeared in Users & Permissions
+  // and could not reach the CRM. The result is now checked, and a failure rolls
+  // back the half-created login instead of leaving an orphan behind.
+  if (!userId) {
+    return jsonResponse({ ok: false, error: 'The invite did not return a user. Nothing was created.' }, 500);
+  }
+  const { data: prof, error: upsertErr } = await adminClient
+    .from('profiles')
+    .upsert({ id: userId, email, name, role: safeRole, status: 'active', initials, color, tc }, { onConflict: 'id' })
+    .select('id, role');
+  if (upsertErr || !prof || !prof.length || prof[0].role !== safeRole) {
+    console.error('[invite-staff-user] profile save failed; rolling back the auth user', upsertErr);
+    const { error: rbErr } = await adminClient.auth.admin.deleteUser(userId);
+    if (rbErr) console.error('[invite-staff-user] rollback deleteUser failed', rbErr);
+    return jsonResponse({
+      ok: false,
+      error: 'The account could not be set up (' + (upsertErr?.message || 'profile not saved') + '). Nothing was created — try again.',
+    }, 500);
   }
 
-  return jsonResponse({ ok: true, userId });
+  return jsonResponse({ ok: true, userId, role: safeRole });
 });

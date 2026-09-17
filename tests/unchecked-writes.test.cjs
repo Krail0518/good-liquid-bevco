@@ -211,5 +211,22 @@ check('opening the reused invoice builder clears the edit markers and title',
   /window\.openNewInvoiceBuilder = function\(preClientId\)\{[\s\S]{0,1800}?\} else \{[\s\S]{0,900}?existing\.removeAttribute\('data-editing-id'\);\s*existing\.removeAttribute\('data-editing-supa-id'\);[\s\S]{0,300}?'NEW INVOICE'/.test(invb),
   'Edit invoice → close → + New Invoice saved the new invoice OVER the edited one');
 
+// ── GL-116: staff invites ──────────────────────────────────────────────────
+const inviteFn = fs.readFileSync(path.join(ROOT, 'supabase/functions/invite-staff-user/index.ts'), 'utf8');
+check('staff invite accepts the warehouse role and refuses unknown roles instead of swapping to sales',
+  /const allowedRoles = \['admin', 'sales', 'viewer', 'warehouse'\];/.test(inviteFn) &&
+  !/allowedRoles\.includes\(role\) \? role : 'sales'/.test(inviteFn),
+  'inviting a Warehouse user silently created a Sales user');
+check('staff invite saves the profile WITH email, checks it, and rolls back on failure',
+  /\.upsert\(\{ id: userId, email, name, role: safeRole, status: 'active'/.test(inviteFn) &&
+  /\.select\('id, role'\);/.test(inviteFn) &&
+  /auth\.admin\.deleteUser\(userId\)/.test(inviteFn) &&
+  !/if \(upsertErr\) console\.warn/.test(inviteFn),
+  'the profile upsert omitted the required email, failed on every invite, and still returned ok');
+const permSvc = fs.readFileSync(path.join(ROOT, 'src/services/permissions-service.js'), 'utf8');
+check('the Send Invite button runs createInvitedUser once, not twice',
+  !/createBtn\.addEventListener\('click'[\s\S]{0,700}?window\.createInvitedUser\(\)/.test(permSvc),
+  'the preset hook re-invoked createInvitedUser on top of the data-gl-action dispatcher');
+
 console.log('\n' + (failures ? failures + ' FAILED' : 'All checks passed') + '\n');
 process.exit(failures ? 1 : 0);

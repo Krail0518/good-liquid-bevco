@@ -1114,11 +1114,12 @@
         var email = (emailEl && emailEl.value || '').trim().toLowerCase();
         var preset = presetEl && presetEl.value || '';
         if(email && preset) window.glPendingPresetByEmail[email] = preset;
-        try {
-          if(typeof window.createInvitedUser === 'function'){
-            window.createInvitedUser();
-          }
-        } catch(e){ console.warn('[GL preset hook] handler threw', e); }
+        // GL-116: this used to call window.createInvitedUser() as well — but the
+        // button's data-gl-action already runs it through the dispatcher, so
+        // every click sent TWO invites 0.4 s apart and the second failed with
+        // "Database error saving new user". This listener only records the
+        // preset; it runs first (element listener before the document-level
+        // dispatcher), so the invite still sees it.
       });
     }
   }
