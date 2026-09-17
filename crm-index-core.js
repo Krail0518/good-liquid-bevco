@@ -2910,7 +2910,7 @@ ${capsDoc ? '--- GOOD LIQUID CAPABILITIES & PRICING REFERENCE ---\n' + capsDoc :
     ) +
     '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">' +
       '<button id="gl-bo-cancel" class="cbtn" style="font-size:13px">Close</button>' +
-      (prospects.length > 0 ? '<button id="gl-bo-send" class="cbtn" style="font-size:13px;background:rgba(245,200,66,.12);border-color:rgba(245,200,66,.3);color:#d4a200">📤 Draft &amp; Send All</button>' : '') +
+      (prospects.length > 0 ? '<button id="gl-bo-send" class="cbtn" style="font-size:13px;background:rgba(245,200,66,.12);border-color:rgba(245,200,66,.3);color:#d4a200">📝 Draft for Review</button>' : '') +
     '</div>' +
   '</div>';
 
@@ -2930,14 +2930,15 @@ ${capsDoc ? '--- GOOD LIQUID CAPABILITIES & PRICING REFERENCE ---\n' + capsDoc :
   ov.querySelector('#gl-bo-send').onclick = async function(){
     var btn = this;
     btn.disabled = true;
-    btn.textContent = 'Sending...';
+    btn.textContent = 'Drafting...';
 
     var checked = Array.from(ov.querySelectorAll('.gl-bo-chk')).filter(function(c){ return c.checked; }).map(function(c){ return parseInt(c.dataset.ri); });
-    if(!checked.length){ alert('No leads selected.'); btn.disabled=false; btn.textContent='📤 Draft & Send All'; return; }
+    if(!checked.length){ alert('No leads selected.'); btn.disabled=false; btn.textContent='📝 Draft for Review'; return; }
     // GL-104: Bulk Nudge asks first; this sent to every selected lead on one click.
-    if(!confirm('Draft with AI and email ' + checked.length + ' lead' + (checked.length !== 1 ? 's' : '') + ' now? Drafts are sent without review; any that contain an outside link, email or phone number are held.')){ btn.disabled=false; btn.textContent='📤 Draft & Send All'; return; }
+    // GL-105: drafting only — every email is reviewed and approved before sending.
+    if(!confirm('Draft emails for ' + checked.length + ' lead' + (checked.length !== 1 ? 's' : '') + ' with AI? Nothing is sent until you review and approve each one.')){ btn.disabled=false; btn.textContent='📝 Draft for Review'; return; }
 
-    var sent = 0;
+    var drafts = [];
     var progBar   = ov.querySelector('#gl-bo-progress');
     var progLabel = ov.querySelector('#gl-bo-progress-label');
 
@@ -2971,43 +2972,12 @@ ${capsDoc ? '--- GOOD LIQUID CAPABILITIES & PRICING REFERENCE ---\n' + capsDoc :
         var bodyStart = raw.indexOf('\n\n');
         var body = bodyStart > -1 ? raw.slice(bodyStart).trim() : raw.replace(/^SUBJECT:.*\n?/im,'').trim();
 
-        var htmlBody = '<div style="font-family:Arial,sans-serif;color:#1a1a1a;line-height:1.6;max-width:640px;margin:0 auto">' +
-          '<div style="border-top:3px solid #00e5c0;padding:24px 28px">' +
-            '<div style="font-size:20px;font-weight:900;color:#00b89a;letter-spacing:2px;margin-bottom:4px">GOOD LIQUID BEV CO</div>' +
-            '<div style="font-size:11px;color:#6b87ad">2011 51st Ave E, Unit 100 · Palmetto, FL 34221 · Mike@GoodLiquid.com · (803) 493-5065</div>' +
-          '</div>' +
-          '<div style="padding:0 28px 28px;white-space:pre-wrap;font-size:14px;line-height:1.7">'+body.replace(/[&<>']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;'}[c]; })+'</div>' +
-          '<div style="padding:14px 28px;border-top:1px solid #e5e7eb;font-size:11px;color:#9ca3af;text-align:center">Good Liquid Bev Co · goodliquidbevco.com</div>' +
-        '</div>';
-
-        var heldFor = glBulkDraftProblem(subject, body);
-        if(heldFor){
-          statusEl.textContent = '';
-          var heldTag = document.createElement('span');
-          heldTag.style.cssText = 'color:#f5c842;font-size:10px';
-          heldTag.title = heldFor;
-          heldTag.textContent = '⚠ Held for review';
-          statusEl.appendChild(heldTag);
-          if(typeof window.glAudit === 'function') window.glAudit('bulk_outreach_held', d.id, { to: d.email, reason: heldFor });
-          throw { glHeld: true };   // skip the send; the progress bar below still advances
-        }
-        statusEl.innerHTML = '<span style="color:var(--muted);font-size:10px">📤 Sending...</span>';
-        var ok = await sendMailgunEmail(d.email, subject, body, { bcc: 'mike@goodliquid.com', html: htmlBody });
-
-        if(ok){
-          statusEl.innerHTML = '<span style="color:#5fcf9e;font-size:10px">✓ Sent</span>';
-          await setDealOutreach(d.id||'', 'Prospecting', d._idx, 'sent');
-          if(typeof addNotification === 'function') addNotification('📧 Lead emailed', (d.name||d.co)+' → '+d.email, 'email');
-          if(typeof window.glAudit === 'function') window.glAudit('bulk_outreach_sent', d.id, { to: d.email, subject: subject });
-          sent++;
-        } else {
-          statusEl.innerHTML = '<span style="color:#ff8579;font-size:10px">✗ Failed</span>';
-        }
+        var flag = glBulkDraftProblem(subject, body);
+        drafts.push({ lead: d, ri: ri, to: d.email, name: (d.name || d.co || ''), subject: subject, body: body, heldFor: flag });
+        glSetBulkStatus(statusEl, flag ? '⚠ Flagged — review' : '✎ Drafted', flag ? '#f5c842' : 'var(--teal)');
       } catch(err){
-        if(!(err && err.glHeld)){   // a held draft is already marked for review
-          console.error('[GL] Bulk outreach error for', d.email, err);
-          statusEl.innerHTML = '<span style="color:#ff8579;font-size:10px">✗ Error</span>';
-        }
+        console.error('[GL] Bulk outreach draft error for', d.email, err);
+        glSetBulkStatus(statusEl, '✗ Draft failed', '#ff8579');
       }
 
       var pct = Math.round(((ci+1) / checked.length) * 100);
@@ -3015,9 +2985,18 @@ ${capsDoc ? '--- GOOD LIQUID CAPABILITIES & PRICING REFERENCE ---\n' + capsDoc :
       progLabel.textContent = (ci+1) + ' / ' + checked.length + ' processed';
     }
 
-    progLabel.textContent = 'Done — '+sent+' sent successfully out of '+checked.length+' attempted.';
+    progLabel.textContent = 'Drafted ' + drafts.length + ' of ' + checked.length + '. Nothing has been sent — review them in the next window.';
     btn.disabled = false;
-    btn.textContent = '✓ Complete';
+    btn.textContent = '📝 Draft for Review';
+    if(!drafts.length) return;
+    glBulkReview({
+      title: 'REVIEW OUTREACH EMAILS', accent: '#d4a200', items: drafts, auditAction: 'bulk_outreach_sent',
+      statusFor: function(it, text, color){ glSetBulkStatus(ov.querySelector('#gl-bo-status-' + it.ri), text, color); },
+      onSent: async function(it){
+        await setDealOutreach(it.lead.id || '', 'Prospecting', it.lead._idx, 'sent');
+        if(typeof addNotification === 'function') addNotification('📧 Lead emailed', (it.lead.name || it.lead.co) + ' → ' + it.to, 'email');
+      }
+    });
   };
 }
 window.openBulkOutreach = openBulkOutreach;
@@ -3055,6 +3034,155 @@ function glBulkDraftProblem(subject, body){
   return '';
 }
 window.glBulkDraftProblem = glBulkDraftProblem;
+
+/* GL-105. The review step. Bulk Outreach and Bulk Nudge used to draft and send
+   in one pass, so an AI-written email went to a lead that no person had read.
+   They now only DRAFT; this screen shows every draft with its subject and body
+   editable and an Approve box. Nothing is sent until someone clicks Send, and
+   only approved emails go. Drafts glBulkDraftProblem flags (an outside link,
+   address or phone number — the signature of a lead steering the draft) start
+   unapproved, with the reason shown. Built with DOM calls, not innerHTML: the
+   drafts contain AI output shaped by what a stranger typed. */
+function glSetBulkStatus(el, text, color){
+  if(!el) return;
+  el.textContent = '';
+  var span = document.createElement('span');
+  span.style.cssText = 'font-size:10px;color:' + (color || 'var(--muted)');
+  span.textContent = text;
+  el.appendChild(span);
+}
+function glBulkEmailHtml(body){
+  var safe = String(body || '').replace(/[&<>'"]/g, function(ch){ return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]; });
+  return '<div style="font-family:Arial,sans-serif;color:#1a1a1a;line-height:1.6;max-width:640px;margin:0 auto">' +
+    '<div style="border-top:3px solid #00e5c0;padding:24px 28px">' +
+      '<div style="font-size:20px;font-weight:900;color:#00b89a;letter-spacing:2px;margin-bottom:4px">GOOD LIQUID BEV CO</div>' +
+      '<div style="font-size:11px;color:#6b87ad">2011 51st Ave E, Unit 100 · Palmetto, FL 34221 · Mike@GoodLiquid.com · (803) 493-5065</div>' +
+    '</div>' +
+    '<div style="padding:0 28px 28px;white-space:pre-wrap;font-size:14px;line-height:1.7">' + safe + '</div>' +
+    '<div style="padding:14px 28px;border-top:1px solid #e5e7eb;font-size:11px;color:#9ca3af;text-align:center">Good Liquid Bev Co · goodliquidbevco.com</div>' +
+  '</div>';
+}
+function glBulkReview(opts){
+  var prior = document.getElementById('gl-bulk-review');
+  if(prior) prior.remove();
+  var items = opts.items || [];
+  function mk(tag, css, text){ var e = document.createElement(tag); if(css) e.style.cssText = css; if(text != null) e.textContent = text; return e; }
+
+  var ov = mk('div', 'position:fixed;inset:0;z-index:900;background:rgba(6,13,26,.96);backdrop-filter:blur(10px);display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto');
+  ov.id = 'gl-bulk-review';
+  var box = mk('div', 'background:#142238;border:1px solid rgba(255,255,255,.12);border-radius:16px;width:100%;max-width:860px;padding:24px 26px;color:#fff');
+  ov.appendChild(box);
+
+  var head = mk('div', 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px');
+  head.appendChild(mk('div', 'font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:' + (opts.accent || '#00e5c0'), '📝 ' + (opts.title || 'REVIEW EMAILS')));
+  var x = mk('button', 'background:none;border:none;color:#9aa7bd;font-size:22px;cursor:pointer;line-height:1', '✕');
+  head.appendChild(x);
+  box.appendChild(head);
+  box.appendChild(mk('div', 'font-size:12px;color:#9aa7bd;margin-bottom:16px;line-height:1.5',
+    'Nothing has been sent yet. Read each email, edit anything, and untick any you do not want to send. Drafts flagged in yellow start unticked — the lead\'s own message may have steered them.'));
+
+  var countEl = mk('div', 'font-size:12px;color:#9aa7bd');
+  function approvedCount(){ return items.filter(function(it){ return !it._sent && it._ui.chk.checked; }).length; }
+  function refreshCount(){
+    var n = approvedCount();
+    countEl.textContent = n + ' of ' + items.filter(function(it){ return !it._sent; }).length + ' unsent emails approved';
+    sendBtn.textContent = '📤 Send ' + n + ' approved';
+    sendBtn.disabled = n === 0;
+    sendBtn.style.opacity = n === 0 ? '.5' : '1';
+  }
+
+  items.forEach(function(it){
+    var card = mk('div', 'border:1px solid ' + (it.heldFor ? 'rgba(245,200,66,.45)' : 'rgba(255,255,255,.08)') + ';background:' + (it.heldFor ? 'rgba(245,200,66,.05)' : 'rgba(255,255,255,.02)') + ';border-radius:10px;padding:12px 14px;margin-bottom:12px');
+    var top = mk('label', 'display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:8px');
+    var chk = document.createElement('input'); chk.type = 'checkbox'; chk.checked = !it.heldFor; chk.style.cursor = 'pointer';
+    top.appendChild(chk);
+    top.appendChild(mk('span', 'font-weight:700;font-size:13px', 'Approve'));
+    top.appendChild(mk('span', 'font-size:12px;color:#9aa7bd', (it.name || '') + ' → ' + it.to));
+    card.appendChild(top);
+    var warn = mk('div', 'display:none;font-size:11px;color:#f5c842;margin-bottom:8px;line-height:1.45');
+    card.appendChild(warn);
+    var subj = document.createElement('input'); subj.className = 'finp'; subj.value = it.subject || ''; subj.style.cssText = 'width:100%;font-size:13px;margin-bottom:6px';
+    card.appendChild(subj);
+    var body = document.createElement('textarea'); body.className = 'finp'; body.rows = 9; body.value = it.body || ''; body.style.cssText = 'width:100%;font-size:13px;resize:vertical;line-height:1.5';
+    card.appendChild(body);
+    var st = mk('div', 'font-size:11px;min-height:14px;margin-top:4px');
+    card.appendChild(st);
+    it._ui = { chk: chk, subj: subj, body: body, st: st, warn: warn };
+    function recheck(){
+      var problem = glBulkDraftProblem(subj.value, body.value);
+      warn.style.display = problem ? 'block' : 'none';
+      warn.textContent = problem ? '⚠ Flagged: ' + problem + '. Check it before approving.' : '';
+    }
+    recheck();
+    subj.addEventListener('input', recheck);
+    body.addEventListener('input', recheck);
+    chk.addEventListener('change', refreshCount);
+    box.appendChild(card);
+  });
+
+  var foot = mk('div', 'display:flex;gap:8px;justify-content:space-between;align-items:center;margin-top:8px;flex-wrap:wrap');
+  foot.appendChild(countEl);
+  var btns = mk('div', 'display:flex;gap:8px');
+  var discard = mk('button', 'font-size:13px', 'Close without sending');
+  discard.className = 'cbtn';
+  var sendBtn = mk('button', 'font-size:13px;background:rgba(0,229,192,.12);border-color:rgba(0,229,192,.35);color:#00e5c0', '📤 Send');
+  sendBtn.className = 'cbtn';
+  sendBtn.id = 'gl-bulk-review-send';
+  btns.appendChild(discard); btns.appendChild(sendBtn);
+  foot.appendChild(btns);
+  box.appendChild(foot);
+
+  function close(){
+    var unsent = items.filter(function(it){ return !it._sent; });
+    if(unsent.length && approvedCount() && !confirm('Close without sending the ' + approvedCount() + ' approved email(s)? The drafts will be discarded.')) return;
+    unsent.forEach(function(it){ if(opts.statusFor) opts.statusFor(it, 'Not sent', 'var(--muted)'); });
+    ov.remove();
+  }
+  x.onclick = close;
+  discard.onclick = close;
+
+  sendBtn.onclick = async function(){
+    var approved = items.filter(function(it){ return !it._sent && it._ui.chk.checked; });
+    if(!approved.length){ alert('No emails approved.'); return; }
+    if(!confirm('Send ' + approved.length + ' reviewed email' + (approved.length !== 1 ? 's' : '') + ' now?')) return;
+    sendBtn.disabled = true; discard.disabled = true;
+    var sent = 0;
+    for(var i = 0; i < approved.length; i++){
+      var it = approved[i];
+      var subject = it._ui.subj.value.trim();
+      var text = it._ui.body.value.trim();
+      if(!subject || !text){ it._ui.st.style.color = '#ff8579'; it._ui.st.textContent = 'Subject and message are required — skipped.'; continue; }
+      it._ui.st.style.color = 'var(--muted)'; it._ui.st.textContent = 'Sending…';
+      var ok = false;
+      try { ok = await sendMailgunEmail(it.to, subject, text, { bcc: 'mike@goodliquid.com', html: glBulkEmailHtml(text) }); }
+      catch(e){ console.error('[GL] bulk review send failed for', it.to, e); ok = false; }
+      if(!ok){
+        it._ui.st.style.color = '#ff8579'; it._ui.st.textContent = '✗ Send failed — still approved, you can retry.';
+        if(opts.statusFor) opts.statusFor(it, '✗ Failed', '#ff8579');
+        continue;
+      }
+      it._sent = true; sent++;
+      it._ui.chk.disabled = true; it._ui.subj.disabled = true; it._ui.body.disabled = true;
+      it._ui.st.style.color = '#5fcf9e'; it._ui.st.textContent = '✓ Sent';
+      if(opts.statusFor) opts.statusFor(it, '✓ Sent', '#5fcf9e');
+      if(typeof window.glAudit === 'function') window.glAudit(opts.auditAction || 'bulk_email_sent', it.lead && it.lead.id, {
+        to: it.to, subject: subject, reviewed: true,
+        edited: subject !== it.subject || text !== it.body,
+        flagged: !!glBulkDraftProblem(subject, text)
+      });
+      if(opts.onSent){ try { await opts.onSent(it, subject); } catch(e){ console.warn('[GL] bulk review onSent', e); } }
+    }
+    discard.disabled = false;
+    refreshCount();
+    countEl.textContent = sent + ' sent. ' + countEl.textContent;
+    if(opts.after) try { opts.after(sent); } catch(e){}
+  };
+
+  document.body.appendChild(ov);
+  refreshCount();
+  return ov;
+}
+window.glBulkReview = glBulkReview;
 
 async function glOpenBulkNudge(){
   const prior = document.getElementById('gl-bulk-nudge-modal');
@@ -3184,7 +3312,7 @@ ${capsDoc ? '--- GOOD LIQUID CAPABILITIES & PRICING REFERENCE ---\n' + capsDoc :
     '<div id="gl-bn-progress-label" style="font-size:11px;color:var(--muted);margin-top:6px;min-height:16px"></div>' +
     '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">' +
       '<button id="gl-bn-cancel" class="cbtn" style="font-size:13px">Close</button>' +
-      '<button id="gl-bn-send" class="cbtn" style="font-size:13px;background:rgba(196,164,248,.12);border-color:rgba(196,164,248,.32);color:#c4a4f8">✍️ Draft &amp; Send Nudges</button>' +
+      '<button id="gl-bn-send" class="cbtn" style="font-size:13px;background:rgba(196,164,248,.12);border-color:rgba(196,164,248,.32);color:#c4a4f8">📝 Draft Nudges for Review</button>' +
     '</div>' +
   '</div>';
 
@@ -3234,13 +3362,14 @@ ${capsDoc ? '--- GOOD LIQUID CAPABILITIES & PRICING REFERENCE ---\n' + capsDoc :
     var btn = this;
     var checked = Array.from(ov.querySelectorAll('.gl-bn-chk')).filter(function(c){ return c.checked; }).map(function(c){ return parseInt(c.dataset.ri, 10); });
     if(!checked.length){ alert('No leads selected.'); return; }
-    if(!confirm('Send a follow-up nudge to ' + checked.length + ' lead' + (checked.length !== 1 ? 's' : '') + '?')) return;
+    // GL-105: drafting only — every email is reviewed and approved before sending.
+    if(!confirm('Draft follow-ups for ' + checked.length + ' lead' + (checked.length !== 1 ? 's' : '') + ' with AI? Nothing is sent until you review and approve each one.')) return;
 
     btn.disabled = true;
-    btn.textContent = 'Sending…';
+    btn.textContent = 'Drafting…';
     daysInput.disabled = true;
 
-    var sent = 0;
+    var drafts = [];
     var progBar   = ov.querySelector('#gl-bn-progress');
     var progLabel = ov.querySelector('#gl-bn-progress-label');
 
@@ -3278,43 +3407,12 @@ ${capsDoc ? '--- GOOD LIQUID CAPABILITIES & PRICING REFERENCE ---\n' + capsDoc :
         var bodyStart = raw.indexOf('\n\n');
         var body = bodyStart > -1 ? raw.slice(bodyStart).trim() : raw.replace(/^SUBJECT:.*\n?/im,'').trim();
 
-        var htmlBody = '<div style="font-family:Arial,sans-serif;color:#1a1a1a;line-height:1.6;max-width:640px;margin:0 auto">' +
-          '<div style="border-top:3px solid #00e5c0;padding:24px 28px">' +
-            '<div style="font-size:20px;font-weight:900;color:#00b89a;letter-spacing:2px;margin-bottom:4px">GOOD LIQUID BEV CO</div>' +
-            '<div style="font-size:11px;color:#6b87ad">2011 51st Ave E, Unit 100 · Palmetto, FL 34221 · Mike@GoodLiquid.com · (803) 493-5065</div>' +
-          '</div>' +
-          '<div style="padding:0 28px 28px;white-space:pre-wrap;font-size:14px;line-height:1.7">'+body.replace(/[&<>]/g,function(ch){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[ch];})+'</div>' +
-          '<div style="padding:14px 28px;border-top:1px solid #e5e7eb;font-size:11px;color:#9ca3af;text-align:center">Good Liquid Bev Co · goodliquidbevco.com</div>' +
-        '</div>';
-
-        var heldFor = glBulkDraftProblem(subject, body);
-        if(heldFor){
-          statusEl.textContent = '';
-          var heldTag = document.createElement('span');
-          heldTag.style.cssText = 'color:#f5c842;font-size:10px';
-          heldTag.title = heldFor;
-          heldTag.textContent = '⚠ Held for review';
-          statusEl.appendChild(heldTag);
-          if(typeof window.glAudit === 'function') window.glAudit('bulk_nudge_held', d.id, { to: d.email, reason: heldFor });
-          throw { glHeld: true };   // skip the send; the progress bar below still advances
-        }
-        statusEl.innerHTML = '<span style="color:var(--muted);font-size:10px">📤 Sending…</span>';
-        var ok = await sendMailgunEmail(d.email, subject, body, { bcc: 'mike@goodliquid.com', html: htmlBody });
-
-        if(ok){
-          statusEl.innerHTML = '<span style="color:#5fcf9e;font-size:10px">'+(isFirst?'✓ Emailed':'✓ Nudged')+'</span>';
-          if(typeof setDealOutreach === 'function') await setDealOutreach(d.id||'', c.stage, c.idx, isFirst ? 'sent' : 'nudged');
-          if(typeof addNotification === 'function') addNotification('⏰ Nudge sent', (d.name||d.co)+' → '+d.email, 'email');
-          if(typeof window.glAudit === 'function') window.glAudit('bulk_nudge_sent', d.id, { to: d.email, subject: subject, daysSitting: c.days });
-          sent++;
-        } else {
-          statusEl.innerHTML = '<span style="color:#ff8579;font-size:10px">✗ Failed</span>';
-        }
+        var flag = glBulkDraftProblem(subject, body);
+        drafts.push({ lead: d, cand: c, ri: ri, isFirst: isFirst, to: d.email, name: (d.name || d.co || ''), subject: subject, body: body, heldFor: flag });
+        glSetBulkStatus(statusEl, flag ? '⚠ Flagged — review' : '✎ Drafted', flag ? '#f5c842' : 'var(--teal)');
       } catch(err){
-        if(!(err && err.glHeld)){   // a held draft is already marked for review
-          console.error('[GL] Bulk nudge error for', d.email, err);
-          statusEl.innerHTML = '<span style="color:#ff8579;font-size:10px">✗ Error</span>';
-        }
+        console.error('[GL] Bulk nudge draft error for', d.email, err);
+        glSetBulkStatus(statusEl, '✗ Draft failed', '#ff8579');
       }
 
       var pct = Math.round(((ci+1) / checked.length) * 100);
@@ -3322,10 +3420,21 @@ ${capsDoc ? '--- GOOD LIQUID CAPABILITIES & PRICING REFERENCE ---\n' + capsDoc :
       progLabel.textContent = (ci+1) + ' / ' + checked.length + ' processed';
     }
 
-    progLabel.textContent = 'Done — '+sent+' nudge'+(sent!==1?'s':'')+' sent out of '+checked.length+' attempted.';
-    btn.textContent = '✓ Complete';
-    // New outbound mail means the pipeline badges are stale; force a reload.
-    if(typeof renderKanban === 'function'){ renderKanban._outreachAt = 0; renderKanban(); }
+    progLabel.textContent = 'Drafted ' + drafts.length + ' of ' + checked.length + '. Nothing has been sent — review them in the next window.';
+    btn.disabled = false;
+    btn.textContent = '📝 Draft Nudges for Review';
+    daysInput.disabled = false;
+    if(!drafts.length) return;
+    glBulkReview({
+      title: 'REVIEW FOLLOW-UP NUDGES', accent: '#c4a4f8', items: drafts, auditAction: 'bulk_nudge_sent',
+      statusFor: function(it, text, color){ glSetBulkStatus(ov.querySelector('#gl-bn-status-' + it.ri), text, color); },
+      onSent: async function(it){
+        if(typeof setDealOutreach === 'function') await setDealOutreach(it.lead.id || '', it.cand.stage, it.cand.idx, it.isFirst ? 'sent' : 'nudged');
+        if(typeof addNotification === 'function') addNotification('⏰ Nudge sent', (it.lead.name || it.lead.co) + ' → ' + it.to, 'email');
+      },
+      // New outbound mail means the pipeline badges are stale; force a reload.
+      after: function(sent){ if(sent && typeof renderKanban === 'function'){ renderKanban._outreachAt = 0; renderKanban(); } }
+    });
   };
 }
 window.glOpenBulkNudge = glOpenBulkNudge;

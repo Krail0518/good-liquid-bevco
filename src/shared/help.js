@@ -1098,7 +1098,7 @@
     '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#c4b5fd">📤 BULK OUTREACH (NEW)</h4>' +
     bullets([
       '<b>Where to find it</b>: Pipeline page header → <b>📤 Bulk Outreach</b> button (admin and sales roles only).',
-      '<b>What it does</b>: lets you select multiple Prospecting leads, review an AI-drafted personalised cold-outreach email for each, and send them all in one click. See the <a href="#help-bulk-outreach" style="color:#00e5c0">Bulk Outreach</a> section for full details.',
+      '<b>What it does</b>: lets you select multiple Prospecting leads, have AI draft a personalised first-contact email for each, then read, edit and approve every one before anything is sent. See the <a href="#help-bulk-outreach" style="color:#00e5c0">Bulk Outreach</a> section for full details.',
       '<b>After sending</b>: each deal gets an "outreach sent" badge on its kanban card, and the sends are logged to Email Activity so you can track opens and clicks.'
     ]);
 
@@ -1716,8 +1716,8 @@
     bullets([
       '<b>How to find it</b>: Pipeline page → header → <b>📤 Bulk Outreach</b> button. Only appears for admin/sales roles.',
       '<b>(1) Lead checklist</b> — all deals in Prospecting are listed with checkboxes. Tick the ones you want to email. Unticked deals are skipped.',
-      '<b>(2) AI-drafted preview</b> — the right pane shows an AI-generated cold-outreach email personalised to the selected lead\'s company name. You can edit the subject and body before sending.',
-      '<b>(3) Send X emails</b> — fires one email per selected deal from your Gmail, marks each deal as "outreach sent" in the pipeline (a small badge appears on the card), and logs the sends to Email Activity.',
+      '<b>(2) Draft for Review</b> — AI drafts one email per ticked lead. Nothing is sent yet: a review window opens with every draft, its subject and body editable, and an <b>Approve</b> box. Drafts flagged in yellow (a link, email address or phone number that is not Good Liquid\'s) start unticked — the lead\'s own message may have steered them, so read those carefully.',
+      '<b>(3) Send N approved</b> — sends only the emails you approved, exactly as edited, marks each deal as "outreach sent" in the pipeline (a small badge appears on the card), and logs the sends to Email Activity.',
       '<b>Variables used</b>: company name, deal value (if set), and your email signature. The AI adjusts the tone based on the deal stage.'
     ]);
 
@@ -2323,7 +2323,7 @@
       '<b>🔥 Needs Attention board</b> — Pipeline header → <b>🔥 Needs Attention</b>. One ranked list across every open deal: <span style="color:#f5c842">🟡 Your move</span> → <span style="color:#ff8579">⏰ Overdue to-do</span> → <span style="color:#7fc6f5">🧊 Cold (no reply 7+ days)</span> → <span style="color:#c4a4f8">✨ New lead</span>. Deals where the ball is genuinely with the customer drop off. Click any row to jump into that deal.',
       '<b>📲 Send to my phone</b> — the button on that board fires your digest to WhatsApp + email right now (also the way to test it).',
       '<b>Morning digest</b> — automatically each <b>weekday morning (~7–8am ET)</b> you get the same ranked list by WhatsApp and email, so you know who needs you before you open the CRM. If nothing is urgent, nothing is sent — no daily spam.',
-      '<b>⏰ Bulk Nudge</b> — Pipeline header → <b>⏰ Bulk Nudge</b>. Set a “sitting for at least N days” threshold (7 / 10 / 21 or any number). It finds every lead that has gone quiet, drafts a friendly follow-up for each, and sends them all in one pass.',
+      '<b>⏰ Bulk Nudge</b> — Pipeline header → <b>⏰ Bulk Nudge</b>. Set a “sitting for at least N days” threshold (7 / 10 / 21 or any number). It finds every lead that has gone quiet, drafts a friendly follow-up for each, and opens a review window where you edit and approve each one — only approved emails are sent.',
       '<b>Plain-English terms</b> — <b>Ball-in-court</b>: whose turn it is to act. <b>Cold</b>: you emailed and got no reply for a week or more. <b>Incremental</b>: only the new part is summarized, then merged. <b>Digest</b>: the once-a-day roundup of who needs you.'
     ]);
 

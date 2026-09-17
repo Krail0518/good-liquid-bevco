@@ -9,9 +9,11 @@
    prompt verbatim. A stranger could make Good Liquid mail a third party content
    they steered, signed as Mike, from our domain.
 
-   This test proves three things: the lead's text is fenced as data, every bulk
-   send is preceded by the draft check, and the check itself holds the drafts it
-   should while letting our own details through.
+   GL-105 added the real fix, a review step: the bulk tools only draft, and every
+   send goes through glBulkReview, which mails only drafts a person approved,
+   exactly as edited. This test proves the lead's text is fenced as data, that
+   no bulk tool sends directly, that the reviewer sends only approved drafts,
+   and that the flagging check holds what it should while letting ours through.
 
    Run:  node tests/bulk-email-guard.test.cjs
    ========================================================================== */
@@ -35,15 +37,37 @@ check('bulk prompts fence the lead\'s message as data',
   !/'Their (original )?message: "'\+d\.notes\+'"'/.test(core),
   'raw d.notes in a bulk prompt lets a lead steer an unreviewed email');
 
-// 2. Every unreviewed bulk send is preceded by the draft check.
-const bulkSends = [...core.matchAll(/var ok = await sendMailgunEmail\(d\.email, subject, body, \{ bcc: 'mike@goodliquid\.com', html: htmlBody \}\);/g)];
-check('the scan still finds both bulk sends', bulkSends.length === 2, 'found ' + bulkSends.length);
-check('each bulk send is gated by glBulkDraftProblem',
-  bulkSends.every(m => /var heldFor = glBulkDraftProblem\(subject, body\);[\s\S]{0,900}$/.test(core.slice(Math.max(0, m.index - 900), m.index))),
-  'an AI draft could be mailed without the check');
-check('Bulk Outreach asks before sending',
-  /Draft with AI and email ' \+ checked\.length/.test(core),
-  'one click emailed every selected lead');
+// 2. GL-105: the bulk tools only DRAFT. Every send happens in glBulkReview,
+//    and only for drafts a person approved.
+const fnBody = (name, next) => {
+  const i = core.search(new RegExp('^(async )?function ' + name + '\\(', 'm'));
+  if (i < 0) return '';
+  const j = core.indexOf('\nwindow.' + name + ' = ' + name + ';', i);
+  return core.slice(i, j < 0 ? i + 20000 : j);
+};
+const outreach = fnBody('openBulkOutreach');
+const nudge = fnBody('glOpenBulkNudge');
+const review = fnBody('glBulkReview');
+check('both bulk tools and the reviewer were found', !!outreach && !!nudge && !!review,
+  'outreach=' + !!outreach + ' nudge=' + !!nudge + ' review=' + !!review);
+check('neither bulk tool sends email itself',
+  !/sendMailgunEmail\(/.test(outreach) && !/sendMailgunEmail\(/.test(nudge),
+  'a bulk tool mailed an AI draft that no person had read');
+check('both bulk tools hand their drafts to the reviewer',
+  /glBulkReview\(\{/.test(outreach) && /glBulkReview\(\{/.test(nudge));
+check('the reviewer sends only approved, unsent drafts, as edited',
+  /var approved = items\.filter\(function\(it\)\{ return !it\._sent && it\._ui\.chk\.checked; \}\);/.test(review) &&
+  /sendMailgunEmail\(it\.to, subject, text, /.test(review) &&
+  /var subject = it\._ui\.subj\.value\.trim\(\);/.test(review) &&
+  (review.match(/sendMailgunEmail\(/g) || []).length === 1,
+  'the reviewer must send what the person approved and edited, nothing else');
+check('flagged drafts start unapproved',
+  /chk\.checked = !it\.heldFor;/.test(review) &&
+  /heldFor: flag \}\);/.test(outreach) && /heldFor: flag \}\);/.test(nudge));
+check('the reviewer builds its UI without innerHTML (drafts are AI output shaped by leads)',
+  !/innerHTML/.test(review));
+check('the email HTML escapes the approved body',
+  /function glBulkEmailHtml\(body\)\{\s*var safe = String\(body \|\| ''\)\.replace\(\/\[&<>'"\]\/g/.test(core));
 
 // 3. The check behaves.
 const fnSrc = (core.match(/function glBulkDraftProblem\(subject, body\)\{[\s\S]*?\n\}/) || [''])[0];

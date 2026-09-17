@@ -148,10 +148,10 @@ jobs:
       # the card; uploaded client documents went unrecorded. No browser needed.
       - name: Run unchecked-write tests
         run: node tests/unchecked-writes.test.cjs
-      # Bulk Outreach / Bulk Nudge send AI drafts with no human review, built
-      # from what a stranger typed into the public quote form. The lead's text
-      # must be fenced as data, and a draft carrying an outside link, address or
-      # phone number is held rather than sent (GL-104). No browser needed.
+      # Bulk Outreach / Bulk Nudge draft AI emails from what a stranger typed into
+      # the public quote form. They must only draft; every send goes through the
+      # review window and only for approved drafts (GL-105), and drafts carrying an
+      # outside link, address or phone number start unapproved (GL-104).
       - name: Run bulk email guard tests
         run: node tests/bulk-email-guard.test.cjs
       # security-invariants.sh must tell a timeout apart from a leak. It once
