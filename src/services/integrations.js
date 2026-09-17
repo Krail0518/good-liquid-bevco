@@ -650,6 +650,7 @@
     window.glConvertQuoteToInvoice = async function(invId){
       var inv = (window.invoices||[]).find(function(i){ return i.id === invId; }) || {};
       var r = await orig.apply(this, arguments);
+      if(r !== true) return r;   // cancelled or rejected: nothing was converted
       maybeSms('gl_sms_quote', '✓ Quote ' + invId + ' converted to invoice — $' + Number(inv.amount||0).toLocaleString() + ' (' + (inv.clientName||'') + ')');
       return r;
     };

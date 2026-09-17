@@ -286,5 +286,35 @@ if (fs.existsSync(webhookPath)) {
     'amount_refunded is cumulative and includes the fee; recording it raw double-counts partial refunds');
 }
 
+// ── GL-102 / GL-103: statuses the database actually admits ─────────────────
+{
+  const root = path.join(__dirname, '..');
+  const rd = p => fs.readFileSync(path.join(root, p), 'utf8');
+  const voidMig = rd('supabase/migrations/20260916130000_invoice_void_status.sql');
+  check('voided is an admitted invoice status and survives the payment projection',
+    /'voided'::text\]\)\)/.test(voidMig) &&
+    /when p_current_status = 'voided'\s+and abs\(coalesce\(p_net, 0\)\) <= public\.gl_payment_tolerance\(\)\s+then 'voided'/.test(voidMig),
+    'the Void button failed on every invoice: the check constraint and the derived status both rejected it');
+  const core = rd('crm-index-core.js');
+  check('a voided invoice is never shown overdue and is not billed',
+    /inv\.status === 'voided'\) return inv\.status;/.test(core) &&
+    /if\(!i\.client \|\| i\.status === 'voided'\) return;/.test(core),
+    'a past-due void would count as overdue receivables');
+  const extras = rd('src/shared/crm-extras.js');
+  check('Save as Quote no longer creates a billable invoice',
+    /window\.glSaveAsQuote = function\(\)\{\s*alert\('Quotes are created in the Quote Builder/.test(extras) &&
+    /function injectSaveQuoteButton\(\)\{\s*return;/.test(extras),
+    "invoices_status_check has no 'quote'; the patch raced the insert and left a pending invoice");
+  check('the quote-list observer is attached once, not on every retry',
+    /if\(invList && !_quoteObsList\)\{/.test(extras),
+    'a new observer was added every 500 ms until the builder was first opened');
+  check('the quote SMS fires only on a real conversion',
+    /if\(r !== true\) return r;/.test(rd('src/services/integrations.js')) && /return true;\s*\/\/ callers/.test(extras),
+    'the SMS announced conversions that were cancelled or rejected');
+  check('portal quote acceptance does not claim "Sent" when the email failed',
+    /if\(sentOk === false\) throw new Error\('send failed'\);/.test(rd('src/modules/customers/portal.js')),
+    'sendMailgunEmail resolves false rather than throwing');
+}
+
 console.log('\n' + (failures ? failures + ' FAILED' : 'All checks passed') + '\n');
 process.exit(failures ? 1 : 0);

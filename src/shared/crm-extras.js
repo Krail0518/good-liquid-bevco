@@ -408,7 +408,16 @@
   // Save the current builder state as an invoice with status='quote'.
   // Reuses glSaveInvoice's machinery by temporarily flipping status
   // and undoing the flip after the call returns.
+  // GL-103. RETIRED. This saved an invoice and then patched its status to
+  // 'quote'. invoices_status_check has never admitted 'quote', and the patch
+  // raced the insert (glSaveInvoice returns before its row exists, under a
+  // number it re-allocates), so every "Save as Quote" left a BILLABLE pending
+  // invoice in receivables while announcing "💾 Quote saved". No invoice has
+  // ever been a quote. Quotes are built in the Quote Builder (quotes table).
   window.glSaveAsQuote = function(){
+    alert('Quotes are created in the Quote Builder (📋 Quote on a client or deal), not as invoices.\n\nNothing was saved.');
+  };
+  window.__glSaveAsQuoteRetired = function(){
     var orig = window.glSaveInvoice;
     if(typeof orig !== 'function'){ alert('glSaveInvoice not available.'); return; }
     var marker = '__GL_QUOTE_PATCH__';
@@ -462,6 +471,7 @@
       if(typeof renderDash === 'function') renderDash();
       if(typeof addNotification === 'function') addNotification('✓ Quote converted', invId + ' is now a billable invoice', 'success');
       if(typeof window.glAudit === 'function') window.glAudit('quote_convert', invId);
+      return true;   // callers (the SMS wrapper) act only on a real conversion
     } catch(e){
       console.error('[GL convert quote] threw', e);
       alert('Failed: ' + (e.message || 'unknown'));
@@ -470,6 +480,7 @@
 
   // Inject "💾 Save as Quote" button into the invoice builder action row.
   function injectSaveQuoteButton(){
+    return; // GL-103: retired — see glSaveAsQuote above.
     var body = document.getElementById('gl-inv-body');
     if(!body) return;
     var saveBtn = Array.from(body.querySelectorAll('button')).find(function(b){
@@ -519,12 +530,19 @@
 
   // Watch both the builder body (for Save-as-Quote button) and the invoice
   // list body (for Convert buttons on quote rows).
+  // GL-103: this retried every 500 ms until BOTH elements existed, attaching a
+  // fresh observer to whichever one already did on every retry. #gl-inv-body
+  // only exists once the builder has been opened, so a session that never
+  // opened it grew a new #inv-body observer twice a second, each re-running
+  // the injector on every change to the invoice list. Attach each once.
+  var _quoteObsList = false;
   function startObservers(){
-    var builder = document.getElementById('gl-inv-body');
     var invList = document.getElementById('inv-body');
-    if(builder) new MutationObserver(function(){ setTimeout(injectSaveQuoteButton, 40); }).observe(builder, {childList:true, subtree:true});
-    if(invList) new MutationObserver(function(){ setTimeout(injectConvertButtons, 40); }).observe(invList, {childList:true, subtree:true});
-    if(!builder || !invList) setTimeout(startObservers, 500);
+    if(invList && !_quoteObsList){
+      _quoteObsList = true;
+      new MutationObserver(function(){ setTimeout(injectConvertButtons, 40); }).observe(invList, {childList:true, subtree:true});
+    }
+    if(!_quoteObsList) setTimeout(startObservers, 500);
   }
   if(document.readyState !== 'loading') startObservers();
   else document.addEventListener('DOMContentLoaded', startObservers);

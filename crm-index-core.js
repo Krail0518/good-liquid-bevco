@@ -592,7 +592,8 @@ function cNav(page,el){
    red. */
 function effectiveInvoiceStatus(inv){
   if(!inv) return 'draft';
-  if(inv.status === 'paid' || inv.status === 'draft') return inv.status;
+  // GL-102: a voided invoice is final — never promoted to overdue by due date.
+  if(inv.status === 'paid' || inv.status === 'draft' || inv.status === 'voided') return inv.status;
 
   // Settings may not have loaded yet; the defaults are the documented rule.
   const get = (typeof window !== 'undefined' && typeof window.glGetSetting === 'function')
@@ -832,7 +833,7 @@ function renderClients(list){
   // overdue Lotus invoices showed as $0 total billed.
   const billedByClient = {};
   (window.invoices||[]).forEach(i => {
-    if(!i.client) return;
+    if(!i.client || i.status === 'voided') return;   // GL-102: a void is not billed
     billedByClient[i.client] = (billedByClient[i.client] || 0) + (Number(i.amount) || 0);
   });
   document.getElementById('client-body').innerHTML=rows.map(c=>{
@@ -1195,7 +1196,7 @@ function renderInvoices(){
     <td style="color:var(--muted)">${esc(i.date)}</td>
     <td><span class="cbdg ${esc(effectiveInvoiceStatus(i))}">${esc(effectiveInvoiceStatus(i))}</span></td>
     <td data-gl-action="glSwallowClick"><div style="display:flex;gap:3px">
-      ${i.status!=='paid'?`<button class="cbtn grn" style="font-size:10px;padding:3px 7px" data-gl-action="quickPaid" data-gl-arg1="${esc(i.id)}">Paid</button>`:''}
+      ${(i.status!=='paid'&&i.status!=='voided')?`<button class="cbtn grn" style="font-size:10px;padding:3px 7px" data-gl-action="quickPaid" data-gl-arg1="${esc(i.id)}">Paid</button>`:''}
       ${(i.status==='paid'||i.status==='overdue')?`<button class="cbtn" style="font-size:10px;padding:3px 7px" data-gl-action="quickUnpaid" data-gl-arg1="${esc(i.id)}" title="${i.status==='paid'?'Mark unpaid — returns the invoice to pending and clears the recorded payment':'Clear the overdue flag — returns the invoice to pending'}">↩ ${i.status==='paid'?'Unpaid':'Pending'}</button>`:''}
       ${effectiveInvoiceStatus(i)==='overdue'?`<button class="cbtn" style="font-size:10px;padding:3px 7px;background:rgba(245,200,66,.12);border-color:rgba(245,200,66,.35);color:#f5c842" data-gl-action="sendInvoiceSmsReminder" data-gl-arg1="${esc(i.id)}" title="Send SMS reminder">📱</button>`:''}
       <button class="cbtn" style="font-size:10px;padding:3px 7px" data-gl-action="viewInvoice" data-gl-arg1="${esc(i.id)}">👁</button>

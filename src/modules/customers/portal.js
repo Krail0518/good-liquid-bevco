@@ -39,9 +39,12 @@
             if(!confirm('Accept quote ' + invId + '?\n\nWe\'ll email Mike to convert this into a real invoice and schedule production.')) return;
             acceptBtn.disabled = true; acceptBtn.textContent = 'Sending…';
             try{
-              await window.sendMailgunEmail('mike@goodliquid.com',
+              // GL-103: sendMailgunEmail resolves false on failure rather than
+              // throwing, so this showed "✓ Sent" for an acceptance nobody got.
+              var sentOk = await window.sendMailgunEmail('mike@goodliquid.com',
                 '[Portal] Quote accepted by ' + (customer.name||'customer') + ': ' + invId,
                 customer.name + ' (' + customer.email + ') accepted quote ' + invId + ' via the customer portal.\n\nPlease convert it to a billable invoice and follow up with production scheduling.\n\n— Good Liquid CRM');
+              if(sentOk === false) throw new Error('send failed');
               acceptBtn.style.background = 'rgba(29,158,117,.18)';
               acceptBtn.style.borderColor = 'rgba(29,158,117,.4)';
               acceptBtn.style.color = '#1D9E75';
