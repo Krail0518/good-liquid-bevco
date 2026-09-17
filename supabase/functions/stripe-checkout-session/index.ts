@@ -222,6 +222,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
   form.set('metadata[base_amount_cents]',     String(baseCents));
   form.set('metadata[fee_amount_cents]',      String(feeCents));
   form.set('metadata[source]',                'goodliquid-crm');
+  // GL-101: Session metadata is NOT copied to the Charge (docs.stripe.com/metadata,
+  // "Copy metadata to another object"); PaymentIntent metadata is. charge.refunded
+  // carries a Charge, so without these the webhook never knew which invoice a
+  // refund belonged to and skipped every one.
+  form.set('payment_intent_data[metadata][invoice_id]',        String(invoice_id));
+  form.set('payment_intent_data[metadata][base_amount_cents]', String(baseCents));
+  form.set('payment_intent_data[metadata][fee_amount_cents]',  String(feeCents));
 
   const r = await fetch('https://api.stripe.com/v1/checkout/sessions', {
     method: 'POST',

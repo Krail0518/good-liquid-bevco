@@ -275,6 +275,15 @@ if (fs.existsSync(webhookPath)) {
     /select=amount,paid_amount,status,invoice_number/.test(coSrc) &&
     /const chargeAmount = Math\.round\(\(dbAmount - Math\.max\(0, dbPaid\)\) \* 100\) \/ 100;/.test(coSrc),
     'after a partial payment a full-amount charge is refused by the ledger after Stripe has taken it');
+  check('the invoice id reaches the Charge, so charge.refunded can find its invoice',
+    /payment_intent_data\[metadata\]\[invoice_id\]/.test(coSrc) &&
+    /payment_intent_data\[metadata\]\[base_amount_cents\]/.test(coSrc),
+    'Session metadata is not copied to the Charge; only PaymentIntent metadata is — every refund was skipped');
+  check('a Stripe refund reverses only the new, surcharge-free part of a cumulative amount_refunded',
+    /Math\.round\(refundedCents \* base \/ chargeCents\)/.test(whSrc) &&
+    /const deltaCents = targetCents - priorCents;/.test(whSrc) &&
+    /event_kind=eq\.reversal&reference=eq\./.test(whSrc),
+    'amount_refunded is cumulative and includes the fee; recording it raw double-counts partial refunds');
 }
 
 console.log('\n' + (failures ? failures + ' FAILED' : 'All checks passed') + '\n');

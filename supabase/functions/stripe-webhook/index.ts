@@ -250,7 +250,45 @@ Deno.serve(async (req: Request): Promise<Response> => {
       // redelivers this event, and the old PATCH re-applied on every delivery.
       // Its HTTP status was logged and never checked, so a refund the database
       // refused looked exactly like one it accepted.
-      const refundAmount = typeof obj.amount_refunded === 'number' ? obj.amount_refunded / 100 : null;
+      // GL-101. Two corrections to the amount.
+      //  * amount_refunded is CUMULATIVE for the charge: a second partial refund
+      //    reports both. Refund only the difference from what this charge has
+      //    already reversed in the ledger, or partial refunds double-count.
+      //  * The charge includes the card surcharge, which the invoice never
+      //    carried (the payment settled the base only). Scale by base/charge.
+      const chargeCents   = typeof obj.amount === 'number' ? obj.amount : null;
+      const refundedCents = typeof obj.amount_refunded === 'number' ? obj.amount_refunded : null;
+      const baseMeta = Number(obj.metadata?.base_amount_cents);
+      let refundAmount: number | null = null;
+      if (refundedCents !== null) {
+        const base = Number.isInteger(baseMeta) && baseMeta > 0 && chargeCents && baseMeta <= chargeCents ? baseMeta : chargeCents;
+        const targetCents = chargeCents && base ? Math.min(base, Math.round(refundedCents * base / chargeCents)) : refundedCents;
+        let priorCents = 0;
+        try {
+          const pr = await fetch(
+            `${SUPABASE_URL}/rest/v1/invoice_payments?select=amount&provider=eq.stripe&event_kind=eq.reversal&reference=eq.${encodeURIComponent(String(obj.id || ''))}`,
+            { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } },
+          );
+          const rows = await pr.json();
+          if (!pr.ok || !Array.isArray(rows)) throw new Error('prior refunds unreadable: ' + pr.status);
+          priorCents = rows.reduce((s: number, r: any) => s + Math.round(Math.abs(Number(r.amount) || 0) * 100), 0);
+        } catch (e) {
+          // Without the prior total a cumulative figure would double-count. Fail
+          // loudly so Stripe retries, rather than guessing.
+          console.error('[stripe-webhook] could not read prior refunds', e);
+          return new Response(JSON.stringify({ error: 'prior refunds unreadable' }), {
+            status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        const deltaCents = targetCents - priorCents;
+        if (deltaCents <= 0) {
+          console.log('[stripe-webhook] refund already reflected in the ledger:', invoiceNumber, targetCents, priorCents);
+          return new Response(JSON.stringify({ ok: true, type: 'refund', note: 'already applied' }), {
+            status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        refundAmount = deltaCents / 100;
+      }
       const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/gl_apply_refund_event`, {
         method: 'POST',
         headers: {
