@@ -1802,6 +1802,22 @@
 
     function svcEditorHtml(q){
       var have = q.services || [];
+      // CP07 — owner decision 2026-09-17: an accepted quote is locked. Its
+      // project, services and status cannot change (the database refuses it,
+      // gl_guard_accepted_quote); more services are sold on a new quote.
+      if(q.status === 'accepted'){
+        var projName = (projects.filter(function(p){ return p.id === q.project_id; })[0] || {}).name;
+        var labels = PORTAL_SERVICES.filter(function(s){ return have.indexOf(s.key) > -1; })
+          .map(function(s){ return s.label; });
+        return '<div class="gl-q-svc-panel" data-for="' + esc(q.id) + '" data-locked="1" ' +
+          'style="display:none;background:rgba(95,207,158,.05);border:1px solid rgba(95,207,158,.25);' +
+          'border-radius:6px;padding:12px;margin-top:-3px;flex-direction:column;gap:6px">' +
+          '<div style="font-size:10px;letter-spacing:1.5px;color:#5fcf9e">ACCEPTED — LOCKED</div>' +
+          '<div style="font-size:12px;color:#c9d4e4">Project: ' + esc(projName || (q.project_id ? '(archived or unavailable)' : 'none')) + '</div>' +
+          '<div style="font-size:12px;color:#c9d4e4">Services: ' + esc(labels.length ? labels.join(', ') : 'none') + '</div>' +
+          '<div style="font-size:11px;color:var(--muted)">An accepted quote cannot be changed. To sell more services, create a new quote for this client; it unlocks them when it is accepted. Services can also be granted or revoked directly in the client&rsquo;s project admin.</div>' +
+        '</div>';
+      }
       var projOpts = '<option value="">— no project —</option>' + projects.map(function(p){
         return '<option value="' + esc(p.id) + '"' +
           (q.project_id === p.id ? ' selected' : '') + '>' + esc(p.name || 'Untitled') + '</option>';
@@ -1863,6 +1879,7 @@
     });
 
     container.querySelectorAll('.gl-q-svc-panel').forEach(function(panel){
+      if(panel.getAttribute('data-locked') === '1') return;
       var qid  = panel.getAttribute('data-for');
       var save = panel.querySelector('.gl-q-svc-save');
       var msg  = panel.querySelector('.gl-q-svc-msg');
@@ -1881,7 +1898,7 @@
         }
         if(status === 'accepted' && services.length){
           var names = services.length + (services.length === 1 ? ' service' : ' services');
-          if(!confirm('Accepting this quote unlocks ' + names + ' in the client portal straight away.\n\nThis is recorded in the entitlement ledger and the client is emailed. Continue?')) return;
+          if(!confirm('Accepting this quote unlocks ' + names + ' in the client portal straight away.\n\nThis is recorded in the entitlement ledger and the client is emailed. An accepted quote is then locked — later additions go on a new quote. Continue?')) return;
         }
 
         save.disabled = true;
@@ -1909,10 +1926,29 @@
           return;
         }
 
-        msg.style.color = '#5fcf9e';
-        msg.textContent = (status === 'accepted' && services.length)
-          ? 'Saved — services unlocked for the client.'
-          : 'Saved.';
+        // Report what the ledger now says, not what was asked for.
+        if(status === 'accepted' && services.length){
+          var led = await sb.from('project_entitlement_events')
+            .select('service_key, action, seq').eq('project_id', projectId).in('service_key', services)
+            .order('seq', { ascending: true });
+          var current = {};
+          ((led && led.data) || []).forEach(function(e){ current[e.service_key] = e.action; });
+          var open = services.filter(function(k){ return current[k] === 'grant'; });
+          var missing = services.filter(function(k){ return current[k] !== 'grant'; });
+          if(led && led.error){
+            msg.style.color = '#f5c842';
+            msg.textContent = 'Saved as accepted, but the unlock could not be confirmed (' + led.error.message + '). Check the project’s services.';
+          } else if(missing.length){
+            msg.style.color = '#ff8579';
+            msg.textContent = 'Saved as accepted, but these are NOT unlocked: ' + missing.join(', ') + '. Grant them in project admin.';
+          } else {
+            msg.style.color = '#5fcf9e';
+            msg.textContent = 'Saved — unlocked for the client: ' + open.join(', ') + '. This quote is now locked.';
+          }
+        } else {
+          msg.style.color = '#5fcf9e';
+          msg.textContent = 'Saved.';
+        }
         if(typeof window.glAudit === 'function'){
           window.glAudit('quote_services_set', qid, { status: status, services: services, project: projectId });
         }

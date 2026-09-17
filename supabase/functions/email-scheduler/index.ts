@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ processed: 0 }), { status: 200, headers: JSON_HEADERS });
   }
 
-  let sent = 0, failed = 0, skippedClaimed = 0;
+  let sent = 0, failed = 0, skippedClaimed = 0, skippedNotPermitted = 0;
   for (const row of due) {
     // Atomically claim the row (compare-and-set on status + claimed_at).
     // This function now has concurrent callers — pg_cron every 15 min AND a
@@ -78,6 +78,32 @@ Deno.serve(async (req) => {
     claim = row.claimed_at == null ? claim.is("claimed_at", null) : claim.eq("claimed_at", row.claimed_at);
     const { data: got, error: claimErr } = await claim.select("id");
     if (claimErr || !got || !got.length) { skippedClaimed++; continue; } // another runner took it
+
+    // Portal notifications are re-checked at send time (CP08, owner decision
+    // 2026-09-17): between queueing and now the client may have lost access to
+    // what the email announces, archived the project, opted out or been
+    // deactivated. If so the email is not sent; the row records why.
+    if (row.portal_event) {
+      const { data: reason, error: checkErr } = await supa.rpc("gl_portal_email_block_reason", { p_schedule_id: row.id });
+      if (checkErr) {
+        // Cannot tell whether it is still allowed: do not send, retry later.
+        await supa.from("email_schedule").update({
+          status: row.attempts >= 2 ? "failed" : "pending",
+          attempts: row.attempts + 1,
+          last_error: `send-time check failed: ${checkErr.message}`.slice(0, 240),
+        }).eq("id", row.id);
+        failed++;
+        continue;
+      }
+      if (reason) {
+        await supa.from("email_schedule").update({
+          status: "skipped",
+          last_error: `not sent: ${reason}`.slice(0, 240),
+        }).eq("id", row.id);
+        skippedNotPermitted++;
+        continue;
+      }
+    }
     try {
       const fd = new FormData();
       fd.append("from", from);
@@ -130,5 +156,5 @@ Deno.serve(async (req) => {
     }
   }
 
-  return new Response(JSON.stringify({ processed: due.length, sent, failed, claimed_elsewhere: skippedClaimed }), { status: 200, headers: JSON_HEADERS });
+  return new Response(JSON.stringify({ processed: due.length, sent, failed, claimed_elsewhere: skippedClaimed, skipped_not_permitted: skippedNotPermitted }), { status: 200, headers: JSON_HEADERS });
 });

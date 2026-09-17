@@ -154,6 +154,14 @@ jobs:
       # outside link, address or phone number start unapproved (GL-104).
       - name: Run bulk email guard tests
         run: node tests/bulk-email-guard.test.cjs
+      # Codex's portal correction handoff (CP01-CP10, 2026-09-17): customer file
+      # references confined to their own upload folder, immutable approved
+      # artwork, logged formula files that cannot be deleted, project-scoped
+      # documents, verified decision makers, locked accepted quotes, email that
+      # follows portal visibility, staff project editing, and a live isolation
+      # proof that compiles. The live half is scripts/portal-isolation-proof.sql.
+      - name: Run portal correction tests
+        run: node tests/portal-corrections.test.cjs
       # security-invariants.sh must tell a timeout apart from a leak. It once
       # reported a 504 as "ANONYMOUS DATA VISIBLE", and the fix for that is a
       # classifier, so the classifier is tested: the real script is run against

@@ -312,7 +312,7 @@
     var lds = rowsOf('documents', await sb.from('lot_documents').select('id, document_type, title, lot_number, file_name, file_size, file_path, mime_type, uploaded_at, production_run_id').eq('client_id', customer.client_id).order('uploaded_at', { ascending: false }));
     // Agreements (NDA, contracts, formulas) — deal_documents rows carried over
     // from the pipeline at convert time plus anything uploaded here or by staff.
-    var agms = rowsOf('agreements', await sb.from('deal_documents').select('id, doc_type, name, notes, file_path, created_at').eq('client_id', customer.client_id).order('created_at', { ascending: false }));
+    var agms = rowsOf('agreements', await sb.from('deal_documents').select('id, doc_type, name, notes, file_path, created_at, project_id').eq('client_id', customer.client_id).order('created_at', { ascending: false }));
 
     // Projects, milestones and entitlements. Guarded the same way the artwork
     // mount is: portal-project.js loads after this file in index.html, so a
@@ -328,6 +328,18 @@
       ? window.glPortalActiveProject(projData.projects) : null;
     var activeMs  = (activeProject && projData.milestones[activeProject.id]) || [];
     var activeEnt = (activeProject && projData.ents[activeProject.id]) || {};
+
+    // CP04: documents belong to a project or, for records made before projects
+    // existed, to no project. A project shows its own documents; unassigned
+    // ones are shown once and labelled, never repeated under every project, and
+    // another project's documents do not appear when this one is selected.
+    function docScope(d){
+      if(!d.project_id) return 'unassigned';
+      if(!activeProject) return 'other';
+      return d.project_id === activeProject.id ? 'project' : 'other';
+    }
+    // Renders and market analysis live in their service tabs, not the general list.
+    var DELIVERABLE_TYPES = { 'Product Render': true, 'Market Analysis': true };
 
     if(loadErrors.length) console.error('[GL portal] dashboard load errors', loadErrors);
     // One plain banner for the whole dashboard — sections that loaded fine
@@ -372,10 +384,13 @@
         inner +
       '</div>';
     }
-    function lockedOr(tab, unlockedHtml){
+    // A locked tab is the sales panel. Owner decision 2026-09-17: when a service
+    // ends, files already delivered stay the client's, so they are listed under
+    // the panel — the lock describes the service, not access to what was paid for.
+    function lockedOr(tab, unlockedHtml, lockedExtraHtml){
       if(!tab.locked) return unlockedHtml;
-      return (typeof window.glPortalLockedPanel === 'function')
-        ? window.glPortalLockedPanel(tab.service) : '';
+      return ((typeof window.glPortalLockedPanel === 'function')
+        ? window.glPortalLockedPanel(tab.service) : '') + (lockedExtraHtml || '');
     }
     function tabById(id){
       for(var i = 0; i < TABS.length; i++){ if(TABS[i].id === id) return TABS[i]; }
@@ -550,11 +565,19 @@
     // this filters an array rather than issuing another query — and there is no
     // second place where the visibility rule could be got wrong.
     function deliverableRows(docType, emptyMsg){
-      var rows = agms.filter(function(d){ return d.doc_type === docType; });
-      if(!rows.length){
-        return '<div style="padding:20px;text-align:center;color:#6b87ad;font-size:12px">' +
+      var mine = agms.filter(function(d){ return d.doc_type === docType && docScope(d) === 'project'; });
+      var unassigned = agms.filter(function(d){ return d.doc_type === docType && docScope(d) === 'unassigned'; });
+      if(!mine.length && !unassigned.length){
+        return emptyMsg == null ? '' : '<div style="padding:20px;text-align:center;color:#6b87ad;font-size:12px">' +
           escHtml(emptyMsg) + '</div>';
       }
+      return deliverableList(mine, docType) +
+        (unassigned.length
+          ? '<div style="padding:10px 14px 4px;font-size:10px;letter-spacing:1px;color:#6b87ad;font-weight:700">EARLIER — NOT ASSIGNED TO A PROJECT</div>' +
+            deliverableList(unassigned, docType)
+          : '');
+    }
+    function deliverableList(rows, docType){
       return rows.map(function(d){
         var color = AGM_COLOR[docType] || '#9aa7bd';
         var meta = [];
@@ -573,7 +596,12 @@
         '</div>';
       }).join('');
     }
-    var agmRowsHtml = agms.length ? agms.map(function(d){
+    function deliveredWhileLocked(docType, color, title){
+      var html = deliverableRows(docType, null);
+      return html ? '<div style="margin-top:16px">' + cardBlock(color, title, html) + '</div>' : '';
+    }
+    var agmList = agms.filter(function(d){ return !DELIVERABLE_TYPES[d.doc_type] && docScope(d) !== 'other'; });
+    var agmRowsHtml = agmList.length ? agmList.map(function(d){
       var color = AGM_COLOR[d.doc_type] || '#9aa7bd';
       var meta = [];
       if(d.created_at) meta.push(new Date(d.created_at).toLocaleDateString());
@@ -651,6 +679,10 @@
         // without this line a customer's own upload would vanish the moment it
         // saved, which reads as data loss.
         client_visible: true,
+        // CP04: filed to the project the customer is looking at. With no
+        // project yet it is an account-level document, which the upload
+        // panel says before they choose a file.
+        project_id: activeProject ? activeProject.id : null,
         uploaded_by: 'portal:' + (customer.email || '')
       }).select('id');
       if(ins.error){ say('#ff8579', 'Could not save the document: ' + (ins.error.message || 'unknown')); return; }
@@ -754,13 +786,15 @@
             lockedOr(tabById('renders'),
               cardBlock('#ff9542', '🥤 PRODUCT RENDERS',
                 deliverableRows('Product Render',
-                  'Your renders are being produced. They will appear here as they are finished, ready to download for decks and sell sheets.')))
+                  'Your renders are being produced. They will appear here as they are finished, ready to download for decks and sell sheets.')),
+              deliveredWhileLocked('Product Render', '#ff9542', '🥤 RENDERS ALREADY DELIVERED'))
           ) +
           panel('analytics',
             lockedOr(tabById('analytics'),
               cardBlock('#7fc6f5', '📊 MARKET ANALYTICS',
                 deliverableRows('Market Analysis',
-                  'Your category and shelf analysis is in progress. It will appear here when it is ready.')))
+                  'Your category and shelf analysis is in progress. It will appear here when it is ready.')),
+              deliveredWhileLocked('Market Analysis', '#7fc6f5', '📊 ANALYSIS ALREADY DELIVERED'))
           ) +
 
           // ── PACKAGING & ARTWORK (entitlement-gated) ─────────────────────
@@ -781,7 +815,11 @@
             '<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;letter-spacing:2px;color:#6b9fff;font-weight:700">🔒 AGREEMENTS & CONTRACTS</div>' +
             agmRowsHtml +
             '<div style="padding:12px 18px;border-top:1px solid rgba(255,255,255,.06)">' +
-              '<div style="font-size:11px;color:#6b87ad;margin-bottom:8px">Upload your signed Non-Disclosure Agreement (NDA) or another document — it lands directly on your account and Mike can see it right away.</div>' +
+              '<div style="font-size:11px;color:#6b87ad;margin-bottom:8px">Upload your signed Non-Disclosure Agreement (NDA) or another document — ' +
+                (activeProject
+                  ? 'it is filed to <b style="color:#c8d4e8">' + escHtml(activeProject.name || 'this project') + '</b>'
+                  : 'it is filed to your account (you have no project yet)') +
+                ' and Mike can see it right away.</div>' +
               '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
                 '<select id="gl-cp-agm-type" style="padding:8px 10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#eef4ff;font-size:12px">' +
                   '<option value="NDA">Signed NDA</option>' +
@@ -814,7 +852,7 @@
     // nothing to mount into and glRenderArtwork must not be called.
     var artMount = document.getElementById('gl-cp-artwork');
     if(artMount && typeof window.glRenderArtwork === 'function'){
-      try { window.glRenderArtwork(customer.client_id, artMount); } catch(e){}
+      try { window.glRenderArtwork(customer.client_id, artMount, { portal: true, projectId: activeProject ? activeProject.id : null }); } catch(e){}
     }
 
     document.getElementById('cp-signout').onclick = async function(){

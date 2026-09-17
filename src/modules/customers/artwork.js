@@ -60,11 +60,15 @@
     sent_to_printer:   []
   };
 
-  async function uploadArtwork(clientId, file){
+  async function uploadArtwork(clientId, file, portal){
     window.__lastUploadError = '';
     if(!file || !sb()){ window.__lastUploadError = 'Not signed in / storage unavailable'; return ''; }
     var ext = (file.name.split('.').pop() || 'png').toLowerCase();
-    var path = clientId + '/artwork/' + Date.now() + '_' + Math.random().toString(36).slice(2,7) + '.' + ext;
+    // CP01: a customer may only upload into, and reference files in, their own
+    // <client>/portal/ namespace — the database refuses anything else. Staff
+    // keep the staff folder.
+    var path = clientId + (portal ? '/portal/artwork/' : '/artwork/') +
+      Date.now() + '_' + Math.random().toString(36).slice(2,7) + '.' + ext;
     try {
       var r = await sb().storage.from('client-docs').upload(path, file, { cacheControl:'3600', upsert:false });
       if(r.error){ window.__lastUploadError = (r.error && (r.error.message || r.error.error)) || 'upload rejected'; return ''; }
@@ -79,7 +83,7 @@
       var rp = await sb().rpc('gl_portal_artwork');
       if(rp.error) throw rp.error;
       return (rp.data || []).map(function(r){
-        return { id: r.artwork_id, sku_name: r.sku_name, description: r.description,
+        return { id: r.artwork_id, project_id: r.project_id, sku_name: r.sku_name, description: r.description,
                  file_path: r.file_path, file_type: r.file_type, created_at: r.created_at,
                  state: r.state || 'submitted', decided_at: r.decided_at, client_note: r.client_note };
       });
@@ -147,6 +151,11 @@
           (r.description ? '<div style="font-size:11.5px;color:#9aa7bd;margin-top:2px">'+esc(r.description)+'</div>' : '') +
           (r.client_note ? '<div style="font-size:11.5px;color:#c8d4e8;margin-top:3px;border-left:2px solid '+st[2]+';padding-left:7px">'+esc(r.client_note)+'</div>' : '') +
           '<div style="font-size:12px;margin-top:4px">'+links+'</div>' +
+          // CP02: approved artwork is fixed; changes arrive as a NEW upload that
+          // starts unreviewed, with the earlier one and its decisions kept.
+          (r.state === 'changes_requested'
+            ? '<button type="button" class="gl-art-revise" data-id="'+esc(r.id)+'" data-name="'+esc(r.sku_name||'')+'" style="margin-top:6px;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;cursor:pointer;background:rgba(245,200,66,.12);color:#f5c842;border:1px solid rgba(245,200,66,.4)">⤴ Upload revised artwork</button>'
+            : '') +
           decisionButtons(r, staff) +
         '</div>' + removeBtn +
       '</div>';
@@ -164,10 +173,23 @@
     try { rows = await loadRows(clientId, portal); }
     catch(e){ host.innerHTML = '<div style="font-size:11px;color:#ff8579">Could not load artwork: '+esc(e.message||e)+'</div>'; return; }
 
+    // CP04: in the portal, a project shows its own artwork. Artwork uploaded
+    // before projects existed (project_id null) belongs to no project, so it is
+    // listed separately and labelled, rather than repeated under every project.
+    var projectId = (opts && opts.projectId) || null;
+    var assigned = rows, legacy = [];
+    if(portal && projectId){
+      assigned = rows.filter(function(r){ return r.project_id === projectId; });
+      legacy   = rows.filter(function(r){ return !r.project_id; });
+    }
     var inp = 'width:100%;padding:9px 10px;background:#0a1628;border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#fff;font-size:13px';
     host.innerHTML =
-      (rows.length ? rows.map(function(r){ return skuRow(r, staff); }).join('')
-                   : '<div style="font-size:12px;color:#9aa7bd;padding:6px 0">No SKUs yet. Add each can design below.</div>') +
+      (assigned.length ? assigned.map(function(r){ return skuRow(r, staff); }).join('')
+                   : '<div style="font-size:12px;color:#9aa7bd;padding:6px 0">No SKUs on this project yet. Add each can design below.</div>') +
+      (legacy.length
+        ? '<div style="font-size:10px;letter-spacing:1px;color:#6b87ad;font-weight:700;margin-top:12px">EARLIER ARTWORK — NOT ASSIGNED TO A PROJECT</div>' +
+          legacy.map(function(r){ return skuRow(r, staff); }).join('')
+        : '') +
       '<div style="border-top:1px solid rgba(255,255,255,.06);margin-top:8px;padding-top:10px">' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
           '<input class="gl-art-name" placeholder="SKU / can name (e.g. Mango 12oz)" style="'+inp+'">' +
@@ -177,6 +199,7 @@
           '<input class="gl-art-file" type="file" accept="image/*,.pdf,.ai,.eps,.svg" style="'+inp+';flex:1;min-width:180px;padding:7px">' +
           '<button class="gl-art-add" style="padding:9px 16px;background:rgba(0,229,192,.14);border:1px solid rgba(0,229,192,.35);border-radius:8px;color:#00e5c0;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap">＋ Add SKU</button>' +
         '</div>' +
+        '<div class="gl-art-revising" style="display:none;font-size:11.5px;color:#f5c842;margin-top:8px"></div>' +
         '<div class="gl-art-msg" style="display:none;font-size:12px;margin-top:8px"></div>' +
       '</div>';
 
@@ -192,15 +215,20 @@
       if(!name){ show('#f5c842','Enter a SKU / can name.'); return; }
       if(!file){ show('#f5c842','Choose an artwork file to upload.'); return; }
       btn.disabled = true; btn.textContent = 'Uploading…';
-      var path = await uploadArtwork(clientId, file);
+      var path = await uploadArtwork(clientId, file, portal);
       if(!path){ btn.disabled=false; btn.textContent='＋ Add SKU'; show('#ff8579','Upload failed'+(window.__lastUploadError?(' ('+window.__lastUploadError+')'):'')+'. Try again.'); return; }
       var uid = (window.currentUser && window.currentUser.id) || null;
       try {
         // No status: the absence of a decision IS "Submitted".
-        var ins = await sb().from('client_artwork').insert([{ client_id: clientId, sku_name: name, description: desc || null, file_path: path, file_type: (file.name.split('.').pop()||'').toLowerCase(), created_by: uid }]);
+        var row = { client_id: clientId, sku_name: name, description: desc || null, file_path: path,
+                    file_type: (file.name.split('.').pop()||'').toLowerCase(), created_by: uid,
+                    project_id: projectId, supersedes_id: host.dataset.supersedes || null };
+        var ins = await sb().from('client_artwork').insert([row]).select('id');
         if(ins.error) throw ins.error;
+        if(!ins.data || !ins.data.length) throw new Error('the upload was not recorded');
       } catch(e){ btn.disabled=false; btn.textContent='＋ Add SKU'; show('#ff8579','Save failed: '+(e.message||e)); return; }
       if(typeof window.glAudit === 'function') window.glAudit('artwork_added', name, { client: clientId });
+      delete host.dataset.supersedes;   // the next upload is a new SKU unless asked again
       glRenderArtwork(clientId, host, opts); // re-render fresh
     });
 
@@ -248,24 +276,39 @@
       });
     });
 
+    Array.prototype.forEach.call(host.querySelectorAll('.gl-art-revise'), function(b){
+      b.addEventListener('click', function(){
+        host.dataset.supersedes = this.getAttribute('data-id');
+        host.querySelector('.gl-art-name').value = this.getAttribute('data-name') || '';
+        var note = host.querySelector('.gl-art-revising');
+        note.style.display = 'block';
+        note.textContent = 'Uploading a revision of "' + (this.getAttribute('data-name') || 'this SKU') +
+          '". It starts a new review; the earlier version and its decisions are kept.';
+        host.querySelector('.gl-art-file').focus();
+      });
+    });
+
     Array.prototype.forEach.call(host.querySelectorAll('.gl-art-del'), function(b){
       b.addEventListener('click', async function(){
         if(!confirm('Remove this SKU and its artwork?')) return;
         var id = this.getAttribute('data-id');
         var row = rows.filter(function(x){ return String(x.id) === String(id); })[0];
-        // Storage object first: once the row is gone the file_path is gone
-        // with it, and the upload is orphaned in the bucket forever.
-        if(row && row.file_path){
+        // CP03/CP02: the RECORD goes first. If the database refuses (a decision
+        // was recorded meanwhile, or permissions), the file must still exist.
+        // A file left behind after a successful row delete is only an orphan;
+        // a row whose file is gone is a broken record.
+        try {
+          var del = await sb().from('client_artwork').delete().eq('id', id).select('id');
+          if(del.error) throw del.error;
+          if(!del.data || !del.data.length) throw new Error('no SKU was removed');
+        } catch(e){ show('#ff8579','Delete failed: '+(e.message||e)+'. Nothing was removed.'); return; }
+        if(row && row.file_path && staff){
+          // Customers hold no storage delete permission; staff clean up the file.
           try {
             var rm = await sb().storage.from('client-docs').remove([row.file_path]);
             if(rm.error) throw rm.error;
-          } catch(e){ show('#ff8579','Could not remove the artwork file: '+(e.message||e)); return; }
+          } catch(e){ console.warn('[GL] artwork file left in storage after its SKU was removed', row.file_path, e); }
         }
-        try {
-          var del = await sb().from('client_artwork').delete().eq('id', id).select();
-          if(del.error) throw del.error;
-          if(!del.data || !del.data.length) throw new Error('no SKU was removed');
-        } catch(e){ show('#ff8579','Delete failed: '+(e.message||e)); return; }
         glRenderArtwork(clientId, host, opts);
       });
     });

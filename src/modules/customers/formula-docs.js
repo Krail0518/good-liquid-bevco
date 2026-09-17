@@ -58,7 +58,10 @@
 
   function docRow(d, clientName){
     var published = !!d.published_at;
-    var pill = published
+    var superseded = !!d.superseded_at;
+    var pill = superseded
+      ? '<span style="padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;background:rgba(255,255,255,.04);color:#6b87ad;border:1px solid rgba(255,255,255,.1)">⤳ Superseded — kept for the record</span>'
+      : published
       ? '<span style="padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;background:rgba(95,207,158,.14);color:#5fcf9e;border:1px solid rgba(95,207,158,.4)">👁 Published to client</span>'
       : '<span style="padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;background:rgba(255,255,255,.04);color:#9aa7bd;border:1px solid rgba(255,255,255,.14)">🔒 Internal</span>';
     return '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:9px 0;border-top:1px solid rgba(255,255,255,.06)">' +
@@ -72,10 +75,15 @@
           (published ? '<div style="font-size:10.5px;color:#6b87ad;margin-top:3px">Published ' + esc(new Date(d.published_at).toLocaleDateString()) + '</div>' : '') +
         '</div>' +
         '<div style="display:flex;gap:6px;flex-shrink:0">' +
+          (superseded ? '' :
           '<button class="gl-fd-pub" data-id="' + esc(d.id) + '" data-pub="' + (published ? '1' : '0') + '" ' +
             'style="padding:3px 9px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.14);color:' + (published ? '#f5c842' : '#5fcf9e') + '">' +
             (published ? 'Unpublish' : 'Publish') + '</button>' +
-          (published ? '' : '<button class="gl-fd-del" data-id="' + esc(d.id) + '" title="Remove" style="background:none;border:none;color:#ff8579;cursor:pointer;font-size:14px">🗑</button>') +
+          // A correction to a document the client may already have read: keep
+          // it, and its file and access history, and attach the fix beside it.
+          '<button class="gl-fd-supersede" data-id="' + esc(d.id) + '" title="Keep this version for the record and attach a corrected file" ' +
+            'style="padding:3px 9px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.14);color:#c4a4f8">Supersede</button>') +
+          (published || superseded ? '' : '<button class="gl-fd-del" data-id="' + esc(d.id) + '" title="Remove" style="background:none;border:none;color:#ff8579;cursor:pointer;font-size:14px">🗑</button>') +
         '</div>' +
       '</div>';
   }
@@ -92,7 +100,7 @@
     var rows = [];
     try {
       var r = await sb().from('formula_documents')
-        .select('id, version, doc_kind, name, file_path, published_at')
+        .select('id, version, doc_kind, name, file_path, published_at, superseded_at')
         .eq('formula_id', formulaId).order('version', { ascending:false });
       if(r.error) throw r.error;
       rows = r.data || [];
@@ -149,8 +157,8 @@
       } catch(e){ btn.disabled=false; btn.textContent='＋ Attach'; show('#ff8579','Save failed: ' + (e.message||e)); return; }
       if(ins.error){
         btn.disabled=false; btn.textContent='＋ Attach';
-        show('#ff8579', /formula_documents_kind_uniq/.test(ins.error.message || '')
-          ? 'There is already a ' + kindLabel(kind).replace(/^\S+\s/, '') + ' on v' + ver + '. Remove it first, or use a different kind.'
+        show('#ff8579', /formula_documents_(current_)?kind_uniq/.test(ins.error.message || '')
+          ? 'There is already a current ' + kindLabel(kind).replace(/^\S+\s/, '') + ' on v' + ver + '. Supersede it first (it is kept for the record), then attach the correction.'
           : 'Save failed: ' + ins.error.message);
         return;
       }
@@ -189,29 +197,54 @@
       });
     });
 
+    Array.prototype.forEach.call(host.querySelectorAll('.gl-fd-supersede'), function(b){
+      b.addEventListener('click', async function(){
+        var id = this.getAttribute('data-id');
+        var row = rows.filter(function(x){ return x.id === id; })[0] || {};
+        if(!confirm('Supersede "' + (row.name || 'this document') + '"?\n\n' +
+          'It is unpublished and kept, with its file and its download history, so the record of what the client received survives. ' +
+          'You can then attach the corrected file for v' + row.version + '. A superseded document cannot be published again.')) return;
+        var up;
+        try { up = await sb().from('formula_documents').update({ superseded_at: new Date().toISOString() }).eq('id', id).select('id, superseded_at, published_at'); }
+        catch(e){ show('#ff8579','Could not supersede: ' + (e.message||e)); return; }
+        if(up.error){ show('#ff8579','Could not supersede: ' + up.error.message); return; }
+        if(!up.data || !up.data.length || !up.data[0].superseded_at){ show('#ff8579','The server did not record the change. Nothing was superseded.'); return; }
+        glRenderFormulaDocs(host, opts);
+      });
+    });
+
     Array.prototype.forEach.call(host.querySelectorAll('.gl-fd-del'), function(b){
       b.addEventListener('click', async function(){
         if(!confirm('Remove this document? The file is deleted from storage too.')) return;
         var id = this.getAttribute('data-id');
         var row = rows.filter(function(x){ return x.id === id; })[0];
+        // CP03: the RECORD goes first. A document that has been downloaded is
+        // held by its access log (ON DELETE RESTRICT), and storage itself refuses
+        // to delete a file a formula document references — so trying the file
+        // first used to delete it and then fail on the row, leaving a document
+        // that pointed at nothing. Now a refused delete leaves both intact.
+        var del;
+        try { del = await sb().from('formula_documents').delete().eq('id', id).select('id'); }
+        catch(e){ show('#ff8579','Delete failed: ' + (e.message||e) + '. Nothing was removed.'); return; }
+        if(del.error){
+          show('#ff8579', /foreign key|violates/i.test(del.error.message || '')
+            ? 'This document has been downloaded, so it is part of the access record and cannot be removed. Nothing was changed. To correct it, use Supersede and attach the fixed file.'
+            : 'Delete failed: ' + del.error.message + '. Nothing was removed.');
+          return;
+        }
+        if(!del.data || !del.data.length){ show('#ff8579','The server rejected the delete (0 rows). Nothing was removed.'); return; }
         if(row && row.file_path){
           try {
             var rm = await sb().storage.from('client-docs').remove([row.file_path]);
             if(rm.error) throw rm.error;
-          } catch(e){ show('#ff8579','Could not remove the file: ' + (e.message||e)); return; }
+          } catch(e){
+            // The record is gone, so nothing points at the file any more; it is
+            // an orphan, not a broken document. Say so rather than pretend.
+            show('#f5c842','Removed. The stored file could not be deleted (' + (e.message||e) + ') and is left in storage unreferenced.');
+            glRenderFormulaDocs(host, opts);
+            return;
+          }
         }
-        var del;
-        try { del = await sb().from('formula_documents').delete().eq('id', id).select('id'); }
-        catch(e){ show('#ff8579','Delete failed: ' + (e.message||e)); return; }
-        if(del.error){
-          // A downloaded document is referenced by the access log, which is
-          // ON DELETE RESTRICT: the record of who read it outlives the file.
-          show('#ff8579', /foreign key/i.test(del.error.message || '')
-            ? 'This document has been downloaded, so its access log holds it. Unpublish it instead.'
-            : 'Delete failed: ' + del.error.message);
-          return;
-        }
-        if(!del.data || !del.data.length){ show('#ff8579','The server rejected the delete (0 rows).'); return; }
         glRenderFormulaDocs(host, opts);
       });
     });
