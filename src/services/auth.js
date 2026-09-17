@@ -514,15 +514,45 @@
   /* ── sendResetLink — public "Forgot password?" → email a reset link ── */
   window.sendResetLink=async function(){
     var email=(document.getElementById('reset-email-inp')||{}).value||'';
-    email=email.trim();
-    if(!email)return;
+    email=email.trim().toLowerCase();
+    // GL-118: this showed "reset link sent" BEFORE asking the server and never
+    // read its answer, so a rejected address ("mkrail@gmail", no .com) looked
+    // like success and no email ever came. Only a real server OK shows it now.
+    // Unknown-but-valid addresses still get the neutral message (Supabase does
+    // not error for them), so this does not reveal who has an account.
+    var step1=document.getElementById('reset-step1');
+    var errEl=document.getElementById('reset-err');
+    if(!errEl&&step1){
+      errEl=document.createElement('div');
+      errEl.id='reset-err';
+      errEl.setAttribute('style','display:none;color:#ff8579;font-size:12px;margin:-4px 0 11px');
+      step1.insertBefore(errEl,step1.querySelector('button'));
+    }
+    function showErr(m){if(errEl){errEl.textContent=m;errEl.style.display='block';}else alert(m);}
+    if(errEl)errEl.style.display='none';
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)){showErr('That email address is incomplete — check it ends in something like .com.');return;}
     var sb=getSupa();
-    if(!sb){alert('Auth service unavailable.');return;}
-    document.getElementById('reset-step1').style.display='none';
-    document.getElementById('reset-success').style.display='block';
+    if(!sb){showErr('Auth service unavailable. Try again in a moment.');return;}
+    var btn=step1&&step1.querySelector('button');
+    if(btn){btn.disabled=true;}
     try{
-      await sb.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin});
-    }catch(e){console.error('[GL] resetPasswordForEmail threw',e);}
+      var r=await sb.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin});
+      if(r&&r.error){
+        console.error('[GL] resetPasswordForEmail rejected',r.error);
+        var m=r.error.message||'';
+        showErr(/rate|seconds|too many/i.test(m)
+          ? 'Too many reset requests. Wait a minute, then try again.'
+          : 'The reset email could not be sent: '+m);
+        return;
+      }
+      step1.style.display='none';
+      document.getElementById('reset-success').style.display='block';
+    }catch(e){
+      console.error('[GL] resetPasswordForEmail threw',e);
+      showErr('The reset email could not be sent. Check your connection and try again.');
+    }finally{
+      if(btn)btn.disabled=false;
+    }
   };
 
   /* ── checkPw addition: reject inactive profiles (applied via wrapping) ── */
