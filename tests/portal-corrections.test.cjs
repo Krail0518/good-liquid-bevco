@@ -161,5 +161,19 @@ check('R3 live proof exists and covers both tables, null and active projects, fo
   (() => { const p = rd('scripts/portal-upload-alias-proof.sql');
     return /every alias/.test(p) && /someone else uploaded/.test(p) && /revision uploaded as a new file/.test(p) && /rollback;/.test(p); })());
 
+// R4 (GL-122): a queued "new service is open" email still sent after the
+// service was revoked, because the queue row did not say which services.
+const m4 = sqlCode(rd('supabase/migrations/20260917180000_service_email_send_time_entitlement.sql'));
+check('R4 the service announcement records the services it announces',
+  /jsonb_build_object\('kind', 'service', 'ref', new\.project_id,\s*'services', to_jsonb\(v_granted\)\)/.test(m4));
+check('R4 send time checks every announced service against its LATEST ledger event',
+  /jsonb_array_elements_text\(e\.portal_event->'services'\)/.test(m4) &&
+  /order by ev\.seq desc limit 1\), ''\) is distinct from 'grant'/.test(m4) &&
+  /return 'announced service no longer open: '/.test(m4));
+check('R4 a service row with no service list is skipped rather than sent unverified',
+  /service announcement does not list its services/.test(m4));
+check('R4 service is no longer checked like a milestone alone',
+  /if v_kind = 'service' then/.test(m4));
+
 console.log('\n' + (failures ? failures + ' FAILED' : 'All checks passed') + '\n');
 process.exit(failures ? 1 : 0);
