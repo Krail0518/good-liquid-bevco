@@ -95,8 +95,11 @@ check('the staff caller sends its session token',
 /* ── the amount still comes from the database ─────────────────────── */
 // Pre-existing behaviour that must survive this change: never trust the
 // browser-supplied amount.
+// GL-101 changed it from the invoice total to the remaining balance; both
+// operands still come only from the invoice row read with the service role.
 check('the charge amount is still read from the database, not the request',
-  /const chargeAmount = dbAmount;/.test(fn));
+  /const chargeAmount = Math\.round\(\(dbAmount - Math\.max\(0, dbPaid\)\) \* 100\) \/ 100;/.test(fn) &&
+  /dbPaid\s*=\s*Number\(rows\[0\]\.paid_amount\)/.test(fn));
 
 // ...and the request amount must not even be READ.
 //

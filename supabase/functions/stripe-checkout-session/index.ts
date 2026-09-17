@@ -128,16 +128,18 @@ Deno.serve(async (req: Request): Promise<Response> => {
   //    sent by the browser (a client could POST amount:0.01 to clear a $10k
   //    invoice).
   let dbAmount: number | null = null;
+  let dbPaid = 0;
   let dbStatus = '';
   let dbNumber = '';
   try {
     const invRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/invoices?select=amount,status,invoice_number&${lookupFilter}&limit=1`,
+      `${SUPABASE_URL}/rest/v1/invoices?select=amount,paid_amount,status,invoice_number&${lookupFilter}&limit=1`,
       { headers: { apikey: SERVICE_ROLE_KEY, Authorization: `Bearer ${SERVICE_ROLE_KEY}` } },
     );
     const rows = await invRes.json();
     if (Array.isArray(rows) && rows.length) {
       dbAmount = Number(rows[0].amount);
+      dbPaid   = Number(rows[0].paid_amount) || 0;
       dbStatus = String(rows[0].status || '');
       dbNumber = String(rows[0].invoice_number || '');
     }
@@ -155,7 +157,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   if (dbStatus === 'paid')   return errorResponse('This invoice is already paid', 409);
   if (dbStatus === 'voided') return errorResponse('This invoice has been voided', 409);
-  const chargeAmount = dbAmount;
+  // GL-101: charge what is still OWED, not the invoice total. The ledger refuses
+  // a payment that takes an invoice past its amount, so after a partial payment
+  // a full-amount checkout was charged by Stripe and then declined by the
+  // ledger. paid_amount is enforced to equal the ledger net
+  // (gl_guard_invoice_paid_state), so it is a trustworthy balance.
+  const chargeAmount = Math.round((dbAmount - Math.max(0, dbPaid)) * 100) / 100;
+  if (!(chargeAmount > 0)) return errorResponse('This invoice is already paid', 409);
 
   const pm = String(payment_method).toLowerCase();
   if (pm !== 'card' && pm !== 'ach' && pm !== 'both') {

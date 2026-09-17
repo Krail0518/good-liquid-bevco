@@ -259,5 +259,23 @@ if (fs.existsSync(webhookPath)) {
     'Stripe reuses a session across redeliveries; it is the event that repeats.');
 }
 
+// ── GL-101: a card surcharge or a partial payment must not strand a Stripe payment ──
+{
+  const whSrc = fs.readFileSync(path.join(__dirname, '..', 'supabase/functions/stripe-webhook/index.ts'), 'utf8');
+  const coSrc = fs.readFileSync(path.join(__dirname, '..', 'supabase/functions/stripe-checkout-session/index.ts'), 'utf8');
+  check('the webhook settles the base amount, not amount_total with the surcharge',
+    /obj\.metadata\?\.base_amount_cents/.test(whSrc) &&
+    /baseCentsMeta <= totalCents/.test(whSrc) &&
+    !/const amount = typeof obj\.amount_total === 'number' \? obj\.amount_total \/ 100/.test(whSrc),
+    'amount_total includes the 3% card fee; the ledger declined every surcharged payment as exceeds_balance');
+  check('checkout still records the base amount it charged, for the webhook to settle',
+    /metadata\[base_amount_cents\]/.test(coSrc),
+    'without it the webhook falls back to amount_total and the surcharge bug returns');
+  check('checkout charges the remaining balance, not the invoice total',
+    /select=amount,paid_amount,status,invoice_number/.test(coSrc) &&
+    /const chargeAmount = Math\.round\(\(dbAmount - Math\.max\(0, dbPaid\)\) \* 100\) \/ 100;/.test(coSrc),
+    'after a partial payment a full-amount charge is refused by the ledger after Stripe has taken it');
+}
+
 console.log('\n' + (failures ? failures + ' FAILED' : 'All checks passed') + '\n');
 process.exit(failures ? 1 : 0);

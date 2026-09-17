@@ -157,7 +157,25 @@ Deno.serve(async (req: Request): Promise<Response> => {
         status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-    const amount = typeof obj.amount_total === 'number' ? obj.amount_total / 100 : null;
+    // GL-101: amount_total INCLUDES the card processing surcharge that
+    // stripe-checkout-session adds as a second line item. The ledger refuses a
+    // payment larger than the invoice, so recording amount_total meant every
+    // surcharged card payment was declined as `exceeds_balance` — the customer
+    // charged, the invoice left unpaid, and a 200 so Stripe never retried.
+    // The invoice is settled by the BASE amount; the fee is revenue on top of it.
+    // base_amount_cents is written server-side by our own checkout function and
+    // arrives inside a signature-verified event, so it is not client input.
+    const totalCents = typeof obj.amount_total === 'number' ? obj.amount_total : null;
+    const baseCentsMeta = Number(obj.metadata?.base_amount_cents);
+    const feeCentsMeta  = Number(obj.metadata?.fee_amount_cents) || 0;
+    const settleCents = totalCents === null ? null
+      : (Number.isInteger(baseCentsMeta) && baseCentsMeta > 0 && baseCentsMeta <= totalCents
+          ? baseCentsMeta
+          : totalCents);
+    if (totalCents !== null && settleCents !== totalCents) {
+      console.log('[stripe-webhook] settling base amount without surcharge:', settleCents, 'of', totalCents, 'fee meta', feeCentsMeta);
+    }
+    const amount = settleCents === null ? null : settleCents / 100;
     const paidMethod = Array.isArray(obj.payment_method_types) && obj.payment_method_types.length
       ? String(obj.payment_method_types[0]) : null;
 
