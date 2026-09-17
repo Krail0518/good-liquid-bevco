@@ -180,11 +180,16 @@
     // Pull staff profiles (everyone except portal customers)
     var profR = await sb.from('profiles').select('id, name, email, role, status, notify_daily_digest').order('name', { ascending: true });
     var allProfiles = (profR && profR.data) || [];
-    // Exclude profiles whose auth user is in customer_users (portal customers, not staff)
+    // GL-117: this used to DROP any profile whose login is also a portal
+    // customer. But an active profile IS staff — is_gl_staff() and the edge
+    // functions' requireStaff() both let the profile win — so the filter hid
+    // real staff accounts (the owner's "Warehouse" user vanished once that
+    // login was added to a client's portal). Portal-only customers have no
+    // profile, so nothing else appears. Show them all; tag the overlap.
     var cuR = await sb.from('customer_users').select('auth_user_id, active');
     var customerIds = {};
     (cuR && cuR.data || []).forEach(function(r){ if(r.active !== false) customerIds[r.auth_user_id] = true; });
-    var staff = allProfiles.filter(function(p){ return !customerIds[p.id]; });
+    var staff = allProfiles;
     // Keep the page header count honest — the legacy renderUsers() in
     // index.html writes "N team members" from a stale in-memory list
     // that doesn't include profiles created via auth signup. The real
@@ -260,7 +265,8 @@
         var isSelf  = window.currentUser && u.id === window.currentUser.id;
         var iAmSuper = window.glIsSuperUser && window.glIsSuperUser();
         var inactive = u.status === 'inactive';
-        var nameCellExtra = inactive ? '<span style="font-size:10px;color:#ff8579;margin-left:8px">(inactive)</span>' : '';
+        var nameCellExtra = (inactive ? '<span style="font-size:10px;color:#ff8579;margin-left:8px">(inactive)</span>' : '') +
+          (customerIds[u.id] ? '<span style="font-size:10px;color:var(--muted);margin-left:8px">(also a portal user)</span>' : '');
         // Action cluster: Manage + Deactivate/Reactivate + Remove. The
         // workspace owner can't be removed from here. Self-removal is
         // blocked so an admin can't lock themselves out. Remove is
