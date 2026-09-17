@@ -223,7 +223,8 @@ check('staff invite saves the profile WITH email, checks it, and rolls back on f
   /auth\.admin\.deleteUser\(userId\)/.test(inviteFn) &&
   !/if \(upsertErr\) console\.warn/.test(inviteFn),
   'the profile upsert omitted the required email, failed on every invite, and still returned ok');
-const permSvc = fs.readFileSync(path.join(ROOT, 'src/services/permissions-service.js'), 'utf8');
+const permSvc = fs.readFileSync(path.join(ROOT, 'src/services/permissions-service.js'), 'utf8')
+  .replace(/^\s*\/\/.*$/gm, ''); // comment lines may name the old call
 check('the Send Invite button runs createInvitedUser once, not twice',
   !/createBtn\.addEventListener\('click'[\s\S]{0,700}?window\.createInvitedUser\(\)/.test(permSvc),
   'the preset hook re-invoked createInvitedUser on top of the data-gl-action dispatcher');
