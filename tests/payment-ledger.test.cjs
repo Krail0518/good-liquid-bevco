@@ -242,31 +242,41 @@ check('no client or edge code writes paid state directly', offenders.length === 
 const webhookPath = path.join(ROOT, 'supabase', 'functions', 'stripe-webhook', 'index.ts');
 if (fs.existsSync(webhookPath)) {
   const wh = read(webhookPath);
+  // GL-119/GL-120 moved the event decisions into settlement.mjs and refunds to
+  // the locked gl_apply_stripe_refund. The behaviour of both is asserted in
+  // tests/stripe-webhook-behavior.test.cjs; these only keep the routing honest.
   check('stripe-webhook applies payments through gl_apply_payment_event',
-    /rpc\/gl_apply_payment_event/.test(wh));
-  check('stripe-webhook applies refunds through gl_apply_refund_event',
-    /rpc\/gl_apply_refund_event/.test(wh));
+    /rpc\('gl_apply_payment_event'/.test(wh));
+  check('stripe-webhook applies refunds through the locked gl_apply_stripe_refund',
+    /rpc\('gl_apply_stripe_refund'/.test(wh) && !/gl_apply_refund_event/.test(wh),
+    'gl_apply_refund_event takes a caller-computed amount; two concurrent refunds over-reversed (review R2)');
   check('stripe-webhook no longer PATCHes the invoices table',
     !/rest\/v1\/invoices\?[^`]*`,\s*\{\s*method:\s*'PATCH'/.test(wh) &&
     !/method:\s*'PATCH'[\s\S]{0,400}status:\s*'paid'/.test(wh),
     'A PATCH here bypasses idempotency entirely.');
   check('a duplicate event is answered 200, not 500',
-    /duplicate_event[\s\S]{0,400}status:\s*200/.test(wh),
+    /outcome === 'no_op'\) \{[\s\S]{0,300}return json\(\{ ok: true/.test(wh),
     'Returning 500 for a duplicate makes Stripe retry an event that was ' +
     'already applied, forever.');
-  check('the event id, not the session id, is the idempotency key',
-    /eventId:\s*String\(event\?\.id/.test(wh),
-    'Stripe reuses a session across redeliveries; it is the event that repeats.');
+  // Superseded on 2026-09-17 (GL-119). This used to require the EVENT id as the
+  // key. An ACH payment is two events for one payment (completed, then
+  // async_payment_succeeded), so the event id cannot tell a redelivery from a
+  // second settlement. The session is the payment; it is now the key.
+  check('the checkout SESSION is the payment idempotency key',
+    /p_event_id:\s*d\.key/.test(wh) &&
+    /return 'checkout_session:' \+ String\(sessionId/.test(read(path.join(ROOT, 'supabase/functions/stripe-webhook/settlement.mjs'))),
+    'an ACH payment arrives as two events; keyed by event it could be recorded twice');
 }
 
 // ── GL-101: a card surcharge or a partial payment must not strand a Stripe payment ──
 {
-  const whSrc = fs.readFileSync(path.join(__dirname, '..', 'supabase/functions/stripe-webhook/index.ts'), 'utf8');
+  const whSrc = fs.readFileSync(path.join(__dirname, '..', 'supabase/functions/stripe-webhook/settlement.mjs'), 'utf8');
+  const refundSql = fs.readFileSync(path.join(__dirname, '..', 'supabase/migrations/20260917160000_stripe_settlement_integrity.sql'), 'utf8');
   const coSrc = fs.readFileSync(path.join(__dirname, '..', 'supabase/functions/stripe-checkout-session/index.ts'), 'utf8');
   check('the webhook settles the base amount, not amount_total with the surcharge',
-    /obj\.metadata\?\.base_amount_cents/.test(whSrc) &&
-    /baseCentsMeta <= totalCents/.test(whSrc) &&
-    !/const amount = typeof obj\.amount_total === 'number' \? obj\.amount_total \/ 100/.test(whSrc),
+    /s\.metadata && s\.metadata\.base_amount_cents/.test(whSrc) &&
+    /baseMeta <= totalCents \? baseMeta : totalCents/.test(whSrc) &&
+    /amount: settleCents \/ 100/.test(whSrc),
     'amount_total includes the 3% card fee; the ledger declined every surcharged payment as exceeds_balance');
   check('checkout still records the base amount it charged, for the webhook to settle',
     /metadata\[base_amount_cents\]/.test(coSrc),
@@ -280,9 +290,9 @@ if (fs.existsSync(webhookPath)) {
     /payment_intent_data\[metadata\]\[base_amount_cents\]/.test(coSrc),
     'Session metadata is not copied to the Charge; only PaymentIntent metadata is — every refund was skipped');
   check('a Stripe refund reverses only the new, surcharge-free part of a cumulative amount_refunded',
-    /Math\.round\(refundedCents \* base \/ chargeCents\)/.test(whSrc) &&
-    /const deltaCents = targetCents - priorCents;/.test(whSrc) &&
-    /event_kind=eq\.reversal&reference=eq\./.test(whSrc),
+    /round\(p_refunded_cents::numeric \* v_base \/ p_charge_cents\)/.test(refundSql) &&
+    /v_delta := v_target - v_prior;/.test(refundSql) &&
+    /where invoice_number = p_invoice_number for update;/.test(refundSql),
     'amount_refunded is cumulative and includes the fee; recording it raw double-counts partial refunds');
 }
 

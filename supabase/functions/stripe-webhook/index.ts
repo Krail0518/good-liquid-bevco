@@ -1,29 +1,35 @@
-// stripe-webhook — receives Stripe events and marks invoices paid.
+// stripe-webhook — receives Stripe events and records them in the payment ledger.
 //
 // Configure in Stripe Dashboard → Developers → Webhooks:
 //   Endpoint URL: https://<your-supabase-project>.supabase.co/functions/v1/stripe-webhook
-//   Events:       checkout.session.completed
-//                 charge.refunded                     (optional, marks invoice unpaid)
+//   Events (ALL FOUR are required — GL-119):
+//     checkout.session.completed
+//     checkout.session.async_payment_succeeded   bank (ACH) debits settle here, days later
+//     checkout.session.async_payment_failed      a bank debit that bounced
+//     charge.refunded
+//   Without the two async events an ACH invoice is never marked paid: its
+//   `completed` event arrives with payment_status 'unpaid' and is only logged.
 //
 // Secrets required:
 //   STRIPE_WEBHOOK_SECRET    — whsec_… (shown once when you create the endpoint)
 //   SUPABASE_URL             — auto-set by Supabase
 //   SUPABASE_SERVICE_ROLE_KEY — auto-set by Supabase
 //
-// Deploy:
-//   supabase functions deploy stripe-webhook --no-verify-jwt
-//   supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_xxx
+// Deploy through the "Deploy Supabase" workflow (CLAUDE.md), with JWT
+// verification off: Stripe sends no Supabase JWT; the Stripe signature header
+// (HMAC) is the authentication.
 //
 // Notes:
-//   * --no-verify-jwt is REQUIRED — Stripe doesn't send a Supabase JWT.
-//     Authentication happens via the Stripe signature header (HMAC).
 //   * Invoice lookup uses `client_reference_id` or `metadata.invoice_id`
 //     from the checkout session, which the stripe-checkout-session
-//     function already sets to the human-readable invoice_number (e.g. GL-1042).
-//   * Idempotent: re-receiving the same event for an already-paid
-//     invoice is a no-op and still returns 200.
+//     function sets to the human-readable invoice_number (e.g. GL-1042).
+//   * Every ledger write is idempotent in the database: a payment is keyed on
+//     its checkout SESSION; a refund on its event, under the invoice row lock.
+//   * What each event MEANS is decided in ./settlement.mjs, which Node imports
+//     in tests/stripe-webhook-behavior.test.cjs, so the tested code is this code.
 
 import { corsHeaders } from '../_shared/cors.ts';
+import { decideCheckout, refundArgs, verdictOutcome } from './settlement.mjs';
 
 const WEBHOOK_SECRET = Deno.env.get('STRIPE_WEBHOOK_SECRET') || '';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
@@ -79,44 +85,30 @@ function constantTimeEqual(a: string, b: string): boolean {
   return mismatch === 0;
 }
 
-/* Apply a Stripe payment through the ledger RPC rather than PATCHing the
-   invoice. The RPC locks the invoice, refuses a replay on (provider, event_id),
-   records an immutable ledger row and derives status -- all in one transaction.
-
-   This function used to PATCH `invoices` with status='paid' directly. Stripe
-   retries a webhook for up to three days, so every redelivery re-applied the
-   same payment; there was no ledger row, and nothing tied the write to the
-   event that caused it. The external audit graded that CRITICAL and it was the
-   one item this system could not answer for. */
-async function applyPaymentEvent(args: {
-  eventId: string;
-  invoiceNumber: string;
-  amount: number;
-  currency: string;
-  method: string | null;
-  sessionId: string | null;
-}): Promise<{ ok: boolean; status: number; text: string; verdict: any }> {
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/gl_apply_payment_event`, {
+/* Every ledger write goes through a SECURITY DEFINER RPC, never a PATCH of
+   `invoices`. The RPCs lock the invoice, refuse replays and derive status in
+   one transaction. This function used to PATCH status='paid' directly, and
+   every Stripe redelivery re-applied the payment (graded CRITICAL). */
+async function rpc(name: string, body: Record<string, unknown>): Promise<{ ok: boolean; status: number; text: string; verdict: any }> {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
     method: 'POST',
     headers: {
       'apikey': SERVICE_KEY,
       'Authorization': `Bearer ${SERVICE_KEY}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      p_provider: 'stripe',
-      p_event_id: args.eventId,
-      p_invoice_number: args.invoiceNumber,
-      p_amount: args.amount,
-      p_currency: args.currency,
-      p_method: args.method,
-      p_reference: args.sessionId,
-    }),
+    body: JSON.stringify(body),
   });
   const text = await r.text();
   let verdict: any = null;
   try { verdict = JSON.parse(text); } catch { /* keep the raw text for the log */ }
   return { ok: r.ok, status: r.status, text, verdict };
+}
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -132,10 +124,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const v = await verifyStripeSignature(raw, sig, WEBHOOK_SECRET);
   if (!v.ok) {
     console.warn('[stripe-webhook] signature verify failed:', v.reason);
-    return new Response(JSON.stringify({ error: v.reason }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return json({ error: v.reason }, 400);
   }
 
   let event: any;
@@ -147,85 +136,84 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   console.log('[stripe-webhook] verified event:', event?.id, type);
 
-  // checkout.session.completed → mark invoice paid
-  if (type === 'checkout.session.completed') {
-    const invoiceNumber: string =
-      String(obj.client_reference_id || obj.metadata?.invoice_id || '').trim();
-    if (!invoiceNumber) {
-      console.warn('[stripe-webhook] no invoice id on session', obj.id);
-      return new Response(JSON.stringify({ ok: true, note: 'no invoice id, ignored' }), {
-        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-    // GL-101: amount_total INCLUDES the card processing surcharge that
-    // stripe-checkout-session adds as a second line item. The ledger refuses a
-    // payment larger than the invoice, so recording amount_total meant every
-    // surcharged card payment was declined as `exceeds_balance` — the customer
-    // charged, the invoice left unpaid, and a 200 so Stripe never retried.
-    // The invoice is settled by the BASE amount; the fee is revenue on top of it.
-    // base_amount_cents is written server-side by our own checkout function and
-    // arrives inside a signature-verified event, so it is not client input.
-    const totalCents = typeof obj.amount_total === 'number' ? obj.amount_total : null;
-    const baseCentsMeta = Number(obj.metadata?.base_amount_cents);
-    const feeCentsMeta  = Number(obj.metadata?.fee_amount_cents) || 0;
-    const settleCents = totalCents === null ? null
-      : (Number.isInteger(baseCentsMeta) && baseCentsMeta > 0 && baseCentsMeta <= totalCents
-          ? baseCentsMeta
-          : totalCents);
-    if (totalCents !== null && settleCents !== totalCents) {
-      console.log('[stripe-webhook] settling base amount without surcharge:', settleCents, 'of', totalCents, 'fee meta', feeCentsMeta);
-    }
-    const amount = settleCents === null ? null : settleCents / 100;
-    const paidMethod = Array.isArray(obj.payment_method_types) && obj.payment_method_types.length
-      ? String(obj.payment_method_types[0]) : null;
+  // ── Checkout: completed / async_payment_succeeded / async_payment_failed ──
+  const d = decideCheckout(type, obj);
 
-    // The amount has to be a real figure before it can become a ledger entry.
-    // A session with no amount_total is not evidence of a payment.
-    if (amount === null || !(amount > 0)) {
-      console.warn('[stripe-webhook] session carries no amount_total, ignored:', obj.id);
-      return new Response(JSON.stringify({ ok: true, note: 'no amount on session, ignored' }), {
-        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+  if (d.action === 'ignore') {
+    console.warn('[stripe-webhook] checkout event ignored:', d.reason, obj.id);
+    return json({ ok: true, note: d.reason + ', ignored' });
+  }
 
-    const applied = await applyPaymentEvent({
-      // Keyed on the EVENT id, not the session id: Stripe reuses a session
-      // across redeliveries of the same event, and it is the event that is
-      // replayed. A null id would defeat idempotency, so fall back to the
-      // session rather than sending nothing.
-      eventId: String(event?.id || obj.id || ''),
-      invoiceNumber,
-      amount,
-      currency: String(obj.currency || 'usd'),
-      method: paidMethod,
-      sessionId: obj.id || null,
+  if (d.action === 'pending') {
+    // GL-119: a bank debit still processing. Recording it here is what marked
+    // unpaid ACH invoices paid. async_payment_succeeded will settle it.
+    console.log('[stripe-webhook] checkout completed but not yet paid; waiting for settlement:',
+      d.invoiceNumber, d.sessionId, 'payment_status=' + d.paymentStatus);
+    return json({ ok: true, note: 'payment not settled yet; nothing recorded', payment_status: d.paymentStatus });
+  }
+
+  if (d.action === 'failed') {
+    if (!d.invoiceNumber || !d.sessionId || !event?.id) {
+      console.warn('[stripe-webhook] async_payment_failed without invoice, session or event id:', obj.id);
+      return json({ ok: true, note: 'failed payment without ids, ignored' });
+    }
+    const r = await rpc('gl_reverse_stripe_session', {
+      p_event_id: String(event.id),
+      p_invoice_number: d.invoiceNumber,
+      p_session_id: d.sessionId,
+    });
+    if (!r.ok) {
+      console.error('[stripe-webhook] failed-payment reversal errored:', r.status, r.text);
+      return json({ error: 'failed-payment reversal errored', status: r.status }, 500);
+    }
+    const outcome = verdictOutcome(r.verdict);
+    if (outcome === 'unreadable') {
+      console.error('[stripe-webhook] failed-payment reversal returned no verdict:', r.text);
+      return json({ error: 'unreadable ledger verdict' }, 500);
+    }
+    if (outcome === 'declined') console.error('[stripe-webhook] failed-payment reversal declined:', r.text);
+    else console.log('[stripe-webhook] bank payment failed:', d.invoiceNumber, r.text);
+    return json({ ok: outcome !== 'declined', type: 'payment_failed', verdict: r.verdict });
+  }
+
+  if (d.action === 'settle') {
+    if (d.settleCents !== d.totalCents) {
+      console.log('[stripe-webhook] settling base amount without surcharge:', d.settleCents, 'of', d.totalCents);
+    }
+    const applied = await rpc('gl_apply_payment_event', {
+      p_provider: 'stripe',
+      // GL-119: keyed on the SESSION. An ACH payment reaches us as two events
+      // (completed, then async_payment_succeeded); a card payment as one. Either
+      // way it is one payment, and a redelivery of any of them is a duplicate.
+      p_event_id: d.key,
+      p_invoice_number: d.invoiceNumber,
+      p_amount: d.amount,
+      p_currency: d.currency,
+      p_method: d.method,
+      p_reference: d.sessionId,
     });
     if (!applied.ok) {
       console.error('[stripe-webhook] ledger apply failed:', applied.status, applied.text);
-      return new Response(JSON.stringify({ error: 'invoice update failed', status: applied.status, text: applied.text }), {
-        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return json({ error: 'invoice update failed', status: applied.status, text: applied.text }, 500);
     }
-
-    const verdict = applied.verdict || {};
-    // A duplicate is a success. Returning 500 here would make Stripe retry an
-    // event that has already been applied correctly, forever.
-    if (verdict.applied === false && verdict.reason === 'duplicate_event') {
-      console.log('[stripe-webhook] duplicate event ignored:', event?.id, invoiceNumber);
-      return new Response(JSON.stringify({ ok: true, note: 'duplicate event, already applied' }), {
-        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    const outcome = verdictOutcome(applied.verdict);
+    if (outcome === 'unreadable') {
+      console.error('[stripe-webhook] ledger returned no verdict:', applied.text);
+      return json({ error: 'unreadable ledger verdict' }, 500);
     }
-    // Anything else the RPC declined is a real mismatch -- an unknown invoice, a
-    // currency we do not settle, an amount larger than the invoice. Those are
-    // NOT retryable and must be seen by a human rather than swallowed.
-    if (verdict.applied === false) {
-      console.error('[stripe-webhook] payment declined by ledger:', JSON.stringify(verdict));
-      return new Response(JSON.stringify({ ok: false, declined: verdict }), {
-        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    // A duplicate is a success. Returning 500 would make Stripe retry an event
+    // that has already been applied correctly, forever.
+    if (outcome === 'no_op') {
+      console.log('[stripe-webhook] duplicate payment ignored:', event?.id, d.key, d.invoiceNumber);
+      return json({ ok: true, note: 'duplicate event, already applied' });
     }
-    console.log('[stripe-webhook] payment applied:', invoiceNumber, '$' + amount, 'status=' + verdict.status);
+    // Unknown invoice, unsupported currency, more than the balance: never
+    // retryable, so surface it for a human instead of retrying or swallowing.
+    if (outcome === 'declined') {
+      console.error('[stripe-webhook] payment declined by ledger:', applied.text);
+      return json({ ok: false, declined: applied.verdict });
+    }
+    console.log('[stripe-webhook] payment applied:', d.invoiceNumber, '$' + d.amount, 'status=' + applied.verdict.status);
     // Fire-and-forget WhatsApp alert
     fetch(`${SUPABASE_URL}/functions/v1/notify-deal`, {
       method: 'POST',
@@ -233,95 +221,51 @@ Deno.serve(async (req: Request): Promise<Response> => {
       body: JSON.stringify({
         event: 'invoice_paid_stripe',
         secret: Deno.env.get('GL_NOTIFY_SECRET') || '',
-        data: { invoice_number: invoiceNumber, amount: String(amount ?? ''), paid_method: paidMethod || 'card' },
+        data: { invoice_number: d.invoiceNumber, amount: String(d.amount ?? ''), paid_method: d.method || 'card' },
       }),
     }).catch(e => console.warn('[stripe-webhook] notify-deal error:', e));
-    return new Response(JSON.stringify({ ok: true, invoice: invoiceNumber, amount }), {
-      status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return json({ ok: true, invoice: d.invoiceNumber, amount: d.amount });
   }
 
-  // charge.refunded → reset invoice to overdue
+  // ── charge.refunded ────────────────────────────────────────────────────────
   if (type === 'charge.refunded') {
-    // Stripe Charge objects carry metadata directly (no payment_intent_data property)
-    const invoiceNumber = (obj.metadata?.invoice_id || obj.metadata?.invoice_number || '').trim();
-    if (invoiceNumber) {
-      // Refunds go through the ledger for the same reason payments do: Stripe
-      // redelivers this event, and the old PATCH re-applied on every delivery.
-      // Its HTTP status was logged and never checked, so a refund the database
-      // refused looked exactly like one it accepted.
-      // GL-101. Two corrections to the amount.
-      //  * amount_refunded is CUMULATIVE for the charge: a second partial refund
-      //    reports both. Refund only the difference from what this charge has
-      //    already reversed in the ledger, or partial refunds double-count.
-      //  * The charge includes the card surcharge, which the invoice never
-      //    carried (the payment settled the base only). Scale by base/charge.
-      const chargeCents   = typeof obj.amount === 'number' ? obj.amount : null;
-      const refundedCents = typeof obj.amount_refunded === 'number' ? obj.amount_refunded : null;
-      const baseMeta = Number(obj.metadata?.base_amount_cents);
-      let refundAmount: number | null = null;
-      if (refundedCents !== null) {
-        const base = Number.isInteger(baseMeta) && baseMeta > 0 && chargeCents && baseMeta <= chargeCents ? baseMeta : chargeCents;
-        const targetCents = chargeCents && base ? Math.min(base, Math.round(refundedCents * base / chargeCents)) : refundedCents;
-        let priorCents = 0;
-        try {
-          const pr = await fetch(
-            `${SUPABASE_URL}/rest/v1/invoice_payments?select=amount&provider=eq.stripe&event_kind=eq.reversal&reference=eq.${encodeURIComponent(String(obj.id || ''))}`,
-            { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } },
-          );
-          const rows = await pr.json();
-          if (!pr.ok || !Array.isArray(rows)) throw new Error('prior refunds unreadable: ' + pr.status);
-          priorCents = rows.reduce((s: number, r: any) => s + Math.round(Math.abs(Number(r.amount) || 0) * 100), 0);
-        } catch (e) {
-          // Without the prior total a cumulative figure would double-count. Fail
-          // loudly so Stripe retries, rather than guessing.
-          console.error('[stripe-webhook] could not read prior refunds', e);
-          return new Response(JSON.stringify({ error: 'prior refunds unreadable' }), {
-            status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
-        }
-        const deltaCents = targetCents - priorCents;
-        if (deltaCents <= 0) {
-          console.log('[stripe-webhook] refund already reflected in the ledger:', invoiceNumber, targetCents, priorCents);
-          return new Response(JSON.stringify({ ok: true, type: 'refund', note: 'already applied' }), {
-            status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
-        }
-        refundAmount = deltaCents / 100;
-      }
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/gl_apply_refund_event`, {
-        method: 'POST',
-        headers: {
-          'apikey': SERVICE_KEY,
-          'Authorization': `Bearer ${SERVICE_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          p_provider: 'stripe',
-          p_event_id: String(event?.id || obj.id || ''),
-          p_invoice_number: invoiceNumber,
-          p_amount: refundAmount,
-          p_reference: obj.id || null,
-        }),
-      });
-      const refundText = await r.text();
-      if (!r.ok) {
-        console.error('[stripe-webhook] refund apply failed:', r.status, refundText);
-        return new Response(JSON.stringify({ error: 'refund failed', status: r.status, text: refundText }), {
-          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-      console.log('[stripe-webhook] refund handled:', invoiceNumber, refundText);
-    } else {
-      console.warn('[stripe-webhook] charge.refunded: no invoice_number in charge metadata, skipping reset');
+    const a = refundArgs(event?.id, obj);
+    if (!a.invoiceNumber) {
+      console.warn('[stripe-webhook] charge.refunded: no invoice_number in charge metadata, skipping');
+      return json({ ok: true, type: 'refund', note: 'no invoice id, ignored' });
     }
-    return new Response(JSON.stringify({ ok: true, type: 'refund' }), {
-      status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    if (!a.p_event_id || !a.p_charge_id || a.p_charge_cents === null || a.p_refunded_cents === null) {
+      console.error('[stripe-webhook] charge.refunded missing id or amounts:', event?.id, obj.id);
+      return json({ ok: false, type: 'refund', note: 'refund event missing id or amounts; not recorded' });
+    }
+    // GL-120: the cumulative-to-delta subtraction happens inside the RPC, under
+    // the invoice row lock. It used to be a separate HTTP read here, and two
+    // refund events at once both read the same prior total.
+    const r = await rpc('gl_apply_stripe_refund', {
+      p_event_id: a.p_event_id,
+      p_invoice_number: a.p_invoice_number,
+      p_charge_id: a.p_charge_id,
+      p_charge_cents: a.p_charge_cents,
+      p_refunded_cents: a.p_refunded_cents,
+      p_base_cents: a.p_base_cents,
     });
+    if (!r.ok) {
+      console.error('[stripe-webhook] refund apply failed:', r.status, r.text);
+      return json({ error: 'refund failed', status: r.status, text: r.text }, 500);
+    }
+    const outcome = verdictOutcome(r.verdict);
+    if (outcome === 'unreadable') {
+      console.error('[stripe-webhook] refund returned no verdict:', r.text);
+      return json({ error: 'unreadable ledger verdict' }, 500);
+    }
+    if (outcome === 'declined') {
+      console.error('[stripe-webhook] refund declined by ledger:', r.text);
+      return json({ ok: false, type: 'refund', declined: r.verdict });
+    }
+    console.log('[stripe-webhook] refund handled:', a.invoiceNumber, r.text);
+    return json({ ok: true, type: 'refund', verdict: r.verdict });
   }
 
   // Anything else: acknowledge so Stripe doesn't retry, but log it.
-  return new Response(JSON.stringify({ ok: true, ignored: type }), {
-    status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
+  return json({ ok: true, ignored: type });
 });

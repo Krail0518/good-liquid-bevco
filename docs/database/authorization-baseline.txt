@@ -17,6 +17,7 @@ FUNC     public.get_shared_allergen_declaration(p_token text) | secdef=t | searc
 FUNC     public.get_shared_invoice(p_token text) | secdef=t | search_path=public | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres,anon=X/postgres
 FUNC     public.gl_apply_payment_event(p_provider text, p_event_id text, p_invoice_number text, p_amount numeric, p_currency text, p_method text, p_reference text) | secdef=t | search_path=public, extensions | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_apply_refund_event(p_provider text, p_event_id text, p_invoice_number text, p_amount numeric, p_reference text) | secdef=t | search_path=public, extensions | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.gl_apply_stripe_refund(p_event_id text, p_invoice_number text, p_charge_id text, p_charge_cents bigint, p_refunded_cents bigint, p_base_cents bigint) | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_artwork_has_decision(p_artwork_id uuid) | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_audit_actor_email() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_audit_artwork_decision() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
@@ -70,6 +71,7 @@ FUNC     public.gl_quote_grant_entitlements() | secdef=t | search_path=pg_catalo
 FUNC     public.gl_rate_limit_hit(p_bucket text, p_limit integer, p_window_seconds integer) | secdef=t | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_record_manual_payment(p_invoice_number text, p_amount numeric, p_method text, p_reference text) | secdef=t | search_path=public, extensions | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_reverse_invoice_payments(p_invoice_number text, p_reason text) | secdef=t | search_path=public, extensions | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
+FUNC     public.gl_reverse_stripe_session(p_event_id text, p_invoice_number text, p_session_id text) | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_secret_get(p_name text) | secdef=t | search_path="" | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_secret_set(p_name text, p_value text) | secdef=t | search_path="" | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_send_quote_decks(p_deal_id uuid) | secdef=t | search_path=public, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
