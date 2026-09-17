@@ -138,5 +138,28 @@ check('CP10 the proof covers CP01–CP08 and all six identities',
   ['CP01', 'CP02', 'CP03', 'CP05', 'CP06', 'CP07', 'CP08', 'deactivated customer', 'authenticated stranger', 'anonymous caller', 'another client']
     .every(t => proof.includes(t)));
 
+// ── Independent review, 17 Sep 2026 ─────────────────────────────────────────
+// These are the source half. Behaviour is proven live by
+// scripts/portal-upload-alias-proof.sql (R3) and the send-time proof for R4.
+// R3 (GL-121): a hidden or archived customer upload could be re-exposed by
+// registering a second row naming the same file.
+const m3 = sqlCode(rd('supabase/migrations/20260917170000_portal_upload_single_registration.sql'));
+check('R3 both customer-insertable tables carry the single-registration trigger',
+  /create trigger gl_claim_customer_upload\s+before insert on public\.deal_documents/.test(m3) &&
+  /create trigger gl_claim_customer_upload\s+before insert on public\.client_artwork/.test(m3));
+check('R3 a customer may only register an object they uploaded',
+  /o\.bucket_id = 'client-docs'\s+and o\.name = new\.file_path\s+and o\.owner_id = auth\.uid\(\)::text/.test(m3));
+check('R3 "already registered" checks every table the storage read policy trusts',
+  ['deal_documents d', 'client_artwork a', 'lot_documents l'].every(t => m3.includes('from public.' + t + ' where') ));
+check('R3 the check is serialised per file, so parallel aliases cannot both pass',
+  /pg_advisory_xact_lock\(pg_catalog\.hashtextextended\('gl-customer-upload:' \|\| new\.file_path/.test(m3) &&
+  m3.indexOf('pg_advisory_xact_lock') < m3.indexOf('from public.deal_documents d'));
+check('R3 only end-user roles are restricted, and the function is not client-callable',
+  /current_setting\('role', true\), 'none'\) not in \('authenticated', 'anon'\)/.test(m3) &&
+  /revoke all on function public\.gl_claim_customer_upload\(\) from public, anon, authenticated/.test(m3));
+check('R3 live proof exists and covers both tables, null and active projects, foreign owners and revisions',
+  (() => { const p = rd('scripts/portal-upload-alias-proof.sql');
+    return /every alias/.test(p) && /someone else uploaded/.test(p) && /revision uploaded as a new file/.test(p) && /rollback;/.test(p); })());
+
 console.log('\n' + (failures ? failures + ' FAILED' : 'All checks passed') + '\n');
 process.exit(failures ? 1 : 0);
