@@ -1338,7 +1338,128 @@
     selectSection(state.activeIdx);
   };
 
-  /* ── PDF HTML generation (Stiiizy-format) ───────────────────── */
+  /* ── Quote line items ─────────────────────────────────────────
+     A quote is laid out exactly like an invoice: one row per charge, each
+     with its own quantity, unit price and amount. These build those rows in
+     the invoice's line shape ({desc, qty, unit, unitPrice, total}) from the
+     same canningExtras / bottlingExtras the builder screen uses, so a tier's
+     rows always add up to the run total shown while building it.
+
+     The quote used to print one summary row per tier (fill, "add-ons",
+     "packaging", pallets) plus a list of bare rates. The customer could not
+     see what each item cost or check the arithmetic. ── */
+  function qItem(out, desc, qty, unit, rate){
+    qty = Number(qty) || 0; rate = Number(rate) || 0;
+    if(!(qty > 0) || !(rate > 0)) return;
+    out.push({ desc: desc, qty: qty, unit: unit, unitPrice: rate, total: qty * rate });
+  }
+  // Rows must reconcile with the tier's run total. They drift apart only when
+  // someone typed an override (a combined add-on rate, or a whole run total),
+  // and then the difference is shown as its own row rather than hidden.
+  function qReconcile(out, runTotal){
+    var sum = out.reduce(function(a, l){ return a + l.total; }, 0);
+    var diff = Math.round((runTotal - sum) * 100) / 100;
+    if(Math.abs(diff) >= 0.01) out.push({ desc: 'Pricing adjustment', qty: 1, unit: '', unitPrice: diff, total: diff });
+    return out;
+  }
+
+  function canningLineItems(t, pkg, format){
+    pkg = pkg || {};
+    var x = canningExtras(t, pkg), out = [];
+    var cans = t.cans || 0, cases = t.cases || 0, fill = t.fillPerCan || 0;
+    var label = 'Canning - ' + (format || 'Cans');
+    // Fill is priced per case, the way the invoice prices it.
+    if(cases > 0 && cans === cases * CANS_PER_CASE) qItem(out, label, cases, 'case', fill * CANS_PER_CASE);
+    else qItem(out, label, cans, 'can', fill);
+
+    if(isNum(t.addonsOverride)){
+      qItem(out, 'Add-ons (combined rate)', cans, 'can', t.addonsOverride);
+    } else {
+      if(pkg.nitrogenOn)   qItem(out, 'Nitrogen dosing',            cans, 'can', pkg.nitrogenPerCan);
+      if(pkg.pasteurOn)    qItem(out, 'Batch flash pasteurization', cans, 'can', pkg.pasteurPerCan);
+      if(pkg.paktech4On)   qItem(out, 'PakTech handle - 4-pack',    cans, 'can', pkg.paktech4PerCan);
+      if(pkg.paktech6On)   qItem(out, 'PakTech handle - 6-pack',    cans, 'can', pkg.paktech6PerCan);
+      if(pkg.proper4On)    qItem(out, 'Proper Pack - 4-pack',       cans, 'can', pkg.proper4PerCan);
+      if(pkg.proper6On)    qItem(out, 'Proper Pack - 6-pack',       cans, 'can', pkg.proper6PerCan);
+      if(pkg.canBlankOn)   qItem(out, 'Blank / brite cans and lids', cans, 'can', pkg.canBlankPerCan);
+      if(pkg.canShrinkOn)  qItem(out, 'Shrink sleeve label',        cans, 'can', pkg.canShrinkPerCan);
+      if(pkg.canPrintedOn) qItem(out, 'Pre-printed cans',           cans, 'can', pkg.canPrintedPerCan);
+    }
+
+    if(isNum(t.caseExtraOverride)){
+      qItem(out, 'Case packaging (combined rate)', cases, 'case', t.caseExtraOverride);
+    } else {
+      if(pkg.tray24On)   qItem(out, '24-count case tray',        cases, 'case', pkg.tray24PerCase);
+      if(pkg.tray12On)   qItem(out, '12-count case tray',        cases, 'case', pkg.tray12PerCase);
+      if(pkg.trayWrapOn) qItem(out, 'Case tray shrink wrap',     cases, 'case', pkg.trayWrapPerCase);
+    }
+
+    if(isNum(t.palletCostOverride)){
+      qItem(out, 'Pallets and shrink wrap', 1, '', t.palletCostOverride);
+    } else {
+      if(pkg.palletOn)     qItem(out, 'Pallet',             x.pallets, 'pallet', pkg.palletEach);
+      if(pkg.palletWrapOn) qItem(out, 'Pallet shrink wrap', x.pallets, 'pallet', pkg.palletWrapEach);
+    }
+    return qReconcile(out, x.runTotal);
+  }
+
+  function bottlingLineItems(t, bpkg, format){
+    bpkg = bpkg || {};
+    var x = bottlingExtras(t, bpkg), out = [];
+    var bottles = t.bottles || 0, cases = t.cases || 0;
+    qItem(out, 'Bottling - ' + (format || 'Bottles'), bottles, 'bottle', t.ratePerBtl);
+    if(bpkg.pasteurOn) qItem(out, 'Batch flash pasteurization', bottles, 'bottle', bpkg.pasteurPerBtl);
+    if(bpkg.otlOn)     qItem(out, 'Over-the-top labels',        bottles, 'bottle', bpkg.otlPerBtl);
+    if(bpkg.labelsOn)  qItem(out, 'Labels, front and back',     bottles, 'bottle', bpkg.labelsPerBtl);
+    if(bpkg.caseOn)    qItem(out, '6-pack bottle case',         cases,   'case',   bpkg.casePerCase);
+    if(bpkg.palletOn)     qItem(out, 'Pallet',             x.pallets, 'pallet', bpkg.palletEach);
+    if(bpkg.palletWrapOn) qItem(out, 'Pallet shrink wrap', x.pallets, 'pallet', bpkg.palletWrapEach);
+    return qReconcile(out, x.runTotal);
+  }
+
+  function kegLineItems(t, format){
+    var out = [], kegs = t.kegs || 0;
+    qItem(out, 'Keg filling - ' + (format || 'Kegs'), kegs, 'keg', t.laborPerKeg);
+    qItem(out, 'Keg',                                  kegs, 'keg', t.kegCostPerKeg);
+    return out;
+  }
+
+  // Free-text lines typed into the builder (qty × rate).
+  function customLineItems(lines){
+    return (lines || []).filter(function(l){ return String(l.desc||'').trim(); }).map(function(l){
+      var qty = Number(l.qty) || 0, rate = Number(l.rate) || 0;
+      return { desc: String(l.desc).trim(), qty: qty, unit: l.unit || '', unitPrice: rate, total: qty * rate };
+    });
+  }
+
+  function tierLineItems(sec, t){
+    if(sec.productType === 'bottling') return bottlingLineItems(t, sec.bpkg, sec.format);
+    if(sec.productType === 'keg')      return kegLineItems(t, sec.format);
+    return canningLineItems(t, sec.pkg, sec.format);
+  }
+  function tierVolumeLabel(sec, t){
+    if(sec.productType === 'bottling') return fmtNum(t.cases||0)+' cases ('+fmtNum(t.bottles||0)+' bottles)';
+    if(sec.productType === 'keg')      return fmtNum(t.kegs||0)+' kegs';
+    return fmtNum(t.cans||0)+' cans ('+fmtNum(t.cases||0)+' cases)';
+  }
+
+  // Unit prices are shown to as many decimals as they actually carry (up to
+  // four). Rounding $0.475/can to "$0.48" printed a row whose quantity times
+  // unit price did not equal its amount.
+  function fmtRate(n){
+    n = Number(n) || 0;
+    return (n < 0 ? '−$' : '$') + Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4});
+  }
+  function fmtAmt(n){
+    n = Number(n) || 0;
+    return (n < 0 ? '−' : '') + fmtUsd(Math.abs(n));
+  }
+
+  /* ── PDF HTML generation ──────────────────────────────────────
+     Same page as the invoice PDF (downloadInvoicePDF in crm-index-core.js):
+     same stylesheet, header, Bill To / details block and line-item table.
+     Only the title, the details and the What's Included / Terms blocks
+     differ, because those are what make it a quote. ── */
   function generateQuoteHTML(data){
     // A quote carries one or more formats. Quotes saved before sections
     // existed have no array, so treat those as the single format their own
@@ -1349,180 +1470,91 @@
     }];
     var MULTI = SECTIONS.length > 1;
     var validUntil = fmtDate(addDays(data.quoteDate, data.validDays));
-
-    // Addons lookup
-    function hasAddon(id){ return (data.addons||[]).some(function(a){ return a.id===id; }); }
-    function addonRate(id){ var a=(data.addons||[]).find(function(x){ return x.id===id; }); return a?a.rate:0; }
-    // Renders a selected add-on as its own priced line on the quote (same styling
-    // as palletizing). Without this, per-can/per-bottle add-ons like flash
-    // pasteurization and the bottling label options were collected but never
-    // shown or charged — silent revenue leakage on every affected quote.
-    function addonLine(id, label, unit){
-      if(!hasAddon(id)) return '';
-      return '<div style="border-left:4px solid #1a6fff;padding:12px 16px;background:#eef3ff;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
-        '<div><b>'+esc(label)+'</b></div>' +
-        '<div style="color:#1a6fff;font-weight:700;font-size:15px">'+fmtUsd(addonRate(id))+' / '+esc(unit)+'</div>' +
-      '</div>';
+    function secLabel(sec){
+      return sec.format || (sec.productType === 'bottling' ? 'Bottling' : sec.productType === 'keg' ? 'Keg Filling' : 'Canning');
     }
 
-    // One priced block per format. The parameter is named `data` on purpose:
-    // the body below was written against data.pkg / data.tiers / data.bpkg and
-    // moves here verbatim, now pointed at one section rather than the quote.
-    // hasAddon / addonRate stay bound to the outer quote-level data.
-    function sectionTiers(data){
-      var isCanning  = data.productType === 'canning';
-      var isBottling = data.productType === 'bottling';
-      var tiersTable = '';
-      if(isCanning){
-      var PK = data.pkg || {};
-      tiersTable = (data.tiers||[]).map(function(t){
-        var x   = canningExtras(t, PK);
-        var addonsPerCan = x.perCan - (t.fillPerCan||0);
-        var vol = fmtNum(t.cans||0)+' cans ('+fmtNum(t.cases||0)+' cases)';
+    var GROUP = 'font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#0F6E56;font-weight:700;background:#f4fbf9;padding:10px 16px';
+    function itemRows(items){
+      return items.map(function(l){
+        var unitLbl = l.unit ? '<span style="font-size:10px;color:#888;margin-left:4px">/'+esc(l.unit)+'</span>' : '';
         return '<tr>' +
-          '<td style="'+PTDC+'">'+vol+'</td>' +
-          '<td style="'+PTDC+'">'+fmtUsd(t.fillPerCan||0)+'</td>' +
-          '<td style="'+PTDC+'">'+fmtUsd(addonsPerCan)+'</td>' +
-          '<td style="'+PTDC+'">'+fmtUsd(x.caseExtra)+'</td>' +
-          '<td style="'+PTDC+'">'+(x.pallets ? x.pallets+' ('+fmtUsd(x.palletCost)+')' : '—')+'</td>' +
-          '<td style="'+PTD_BLUE+'">'+fmtUsd(x.runTotal)+'</td>' +
+          '<td>' + esc(l.desc) + '</td>' +
+          '<td style="text-align:center">' + fmtNum(l.qty) + '</td>' +
+          '<td style="text-align:right">' + fmtRate(l.unitPrice) + unitLbl + '</td>' +
+          '<td style="text-align:right;font-weight:700">' + fmtAmt(l.total) + '</td>' +
         '</tr>';
       }).join('');
-      // Itemized add-on / packaging breakdown — each active line with its rate.
-      function pkgLine(on, label, rate, unit){
-        if(!on || !(rate>0)) return '';
-        return '<div style="border-left:4px solid #1a6fff;padding:10px 16px;background:#eef3ff;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
-          '<div><b>'+esc(label)+'</b></div>' +
-          '<div style="color:#1a6fff;font-weight:700;font-size:14px">'+fmtUsd(rate)+' / '+esc(unit)+'</div>' +
-        '</div>';
+    }
+    function groupRow(label){ return '<tr><td colspan="4" style="'+GROUP+'">'+esc(label)+'</td></tr>'; }
+    function totalRow(label, amount){
+      return '<tr class="total-row"><td colspan="3">'+esc(label)+'</td><td style="text-align:right">'+fmtAmt(amount)+'</td></tr>';
+    }
+    function sumOf(items){ return items.reduce(function(a, l){ return a + l.total; }, 0); }
+    function table(body){
+      return '<table><thead><tr>' +
+        '<th>Description</th>' +
+        '<th style="text-align:center">Qty</th>' +
+        '<th style="text-align:right">Unit Price</th>' +
+        '<th style="text-align:right">Amount</th>' +
+      '</tr></thead><tbody>' + body + '</tbody></table>';
+    }
+
+    var quoteLines = customLineItems(data.quoteLines || data.customLines);
+    // One volume per format is a single job: one table, one total, exactly
+    // like an invoice. Several volumes for a format are alternatives the
+    // customer chooses between, so each gets its own table and total.
+    var singleJob = SECTIONS.every(function(sec){ return (sec.tiers||[]).length <= 1; });
+
+    var itemsHtml;
+    if(singleJob){
+      var all = [], body = '';
+      SECTIONS.forEach(function(sec){
+        var items = [];
+        (sec.tiers||[]).forEach(function(t){ items = items.concat(tierLineItems(sec, t)); });
+        items = items.concat(customLineItems(sec.lines));
+        if(!items.length) return;
+        if(MULTI) body += groupRow(secLabel(sec));
+        body += itemRows(items);
+        all = all.concat(items);
+      });
+      if(quoteLines.length){
+        if(MULTI) body += groupRow('Additional items');
+        body += itemRows(quoteLines);
+        all = all.concat(quoteLines);
       }
-      tiersTable = '<table style="width:100%;border-collapse:collapse;margin-bottom:16px">' +
-        '<thead><tr>' +
-          '<th style="'+PTH+'">Volume</th>' +
-          '<th style="'+PTH+'">Fill /Can</th>' +
-          '<th style="'+PTH+'">Add-ons /Can</th>' +
-          '<th style="'+PTH+'">Pkg /Case</th>' +
-          '<th style="'+PTH+'">Pallets</th>' +
-          '<th style="'+PTH+';color:#1a6fff">Run Total</th>' +
-        '</tr></thead><tbody>' + tiersTable + '</tbody></table>' +
-        pkgLine(PK.nitrogenOn, 'Nitrogen Dosing', PK.nitrogenPerCan, 'can') +
-        pkgLine(PK.pasteurOn,  'Batch Flash Pasteurization', PK.pasteurPerCan, 'can') +
-        pkgLine(PK.tray24On,   '24-count Case Tray', PK.tray24PerCase, 'case') +
-        pkgLine(PK.tray12On,   '12-count Case Tray', PK.tray12PerCase, 'case') +
-        pkgLine(PK.trayWrapOn, 'Shrink-wrap Case Tray', PK.trayWrapPerCase, 'case') +
-        pkgLine(PK.paktech4On, 'PakTech Handle — 4-pack', PK.paktech4PerCan, 'can') +
-        pkgLine(PK.paktech6On, 'PakTech Handle — 6-pack', PK.paktech6PerCan, 'can') +
-        pkgLine(PK.proper4On,  'Proper Pack — 4-pack', PK.proper4PerCan, 'can') +
-        pkgLine(PK.proper6On,  'Proper Pack — 6-pack', PK.proper6PerCan, 'can') +
-        pkgLine(PK.canBlankOn,   'Blank / Brite Can', PK.canBlankPerCan, 'can') +
-        pkgLine(PK.canShrinkOn,  'Shrink-Sleeve Label', PK.canShrinkPerCan, 'can') +
-        pkgLine(PK.canPrintedOn, 'Pre-Printed Can', PK.canPrintedPerCan, 'can') +
-        pkgLine(PK.palletOn,   'Pallet', PK.palletEach, 'pallet') +
-        pkgLine(PK.palletWrapOn, 'Pallet Shrink Wrap', PK.palletWrapEach, 'pallet');
-    } else if(isBottling){
-      var BB = data.bpkg || {};
-      function bpkgLine(on, label, rate, unit){
-        if(!on || !(rate>0)) return '';
-        return '<div style="border-left:4px solid #1a6fff;padding:10px 16px;background:#eef3ff;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
-          '<div><b>'+esc(label)+'</b></div>' +
-          '<div style="color:#1a6fff;font-weight:700;font-size:14px">'+fmtUsd(rate)+' / '+esc(unit)+'</div>' +
-        '</div>';
-      }
-      tiersTable = '<table style="width:100%;border-collapse:collapse;margin-bottom:16px">' +
-        '<thead><tr>' +
-          '<th style="'+PTH+'">Volume</th>' +
-          '<th style="'+PTH+'">Per Bottle</th>' +
-          '<th style="'+PTH+'">Add-ons /Btl</th>' +
-          '<th style="'+PTH+'">Pkg /Case</th>' +
-          '<th style="'+PTH+'">Pallets</th>' +
-          '<th style="'+PTH+';color:#1a6fff">Run Total</th>' +
-        '</tr></thead><tbody>' +
-        (data.tiers||[]).map(function(t){
-          var bx = bottlingExtras(t, BB);
-          var addPerBtl = bx.perBtl - (t.ratePerBtl||0);
-          return '<tr>' +
-            '<td style="'+PTDC+'">' + fmtNum(t.cases||0)+' cases ('+fmtNum(t.bottles||0)+' bottles)</td>' +
-            '<td style="'+PTDC+'">' + fmtUsd(t.ratePerBtl||0) + '</td>' +
-            '<td style="'+PTDC+'">' + fmtUsd(addPerBtl) + '</td>' +
-            '<td style="'+PTDC+'">' + fmtUsd(bx.caseExtra) + '</td>' +
-            '<td style="'+PTDC+'">' + (bx.pallets ? bx.pallets+' ('+fmtUsd(bx.palletCost)+')' : '—') + '</td>' +
-            '<td style="'+PTD_BLUE+'">' + fmtUsd(bx.runTotal) + '</td>' +
-          '</tr>';
-        }).join('') +
-        '</tbody></table>' +
-        bpkgLine(BB.pasteurOn, 'Batch Flash Pasteurization', BB.pasteurPerBtl, 'bottle') +
-        bpkgLine(BB.otlOn,     'Over the Top Labels', BB.otlPerBtl, 'bottle') +
-        bpkgLine(BB.labelsOn,  'Labels Front &amp; Back', BB.labelsPerBtl, 'bottle') +
-        bpkgLine(BB.caseOn,    '6-pack Bottle Case', BB.casePerCase, 'case') +
-        bpkgLine(BB.palletOn,  'Pallet', BB.palletEach, 'pallet') +
-        bpkgLine(BB.palletWrapOn, 'Pallet Shrink Wrap', BB.palletWrapEach, 'pallet');
+      itemsHtml = table(body + totalRow('Quote Total', sumOf(all)));
     } else {
-      tiersTable = '<table style="width:100%;border-collapse:collapse;margin-bottom:20px">' +
-        '<thead><tr><th style="'+PTH+'">Quantity</th><th style="'+PTH+'">Labor / Keg</th><th style="'+PTH+'">Keg Cost / Keg</th><th style="'+PTH+';color:#1a6fff">Run Total</th></tr></thead><tbody>' +
-        (data.tiers||[]).map(function(t){
-          var total = ((t.laborPerKeg||0)+(t.kegCostPerKeg||0))*(t.kegs||0);
-          return '<tr>' +
-            '<td style="'+PTDC+'">' + fmtNum(t.kegs||0) + ' kegs</td>' +
-            '<td style="'+PTDC+'">' + fmtUsd(t.laborPerKeg||0) + '</td>' +
-            '<td style="'+PTDC+'">' + fmtUsd(t.kegCostPerKeg||0) + '</td>' +
-            '<td style="'+PTD_BLUE+'">' + fmtUsd(total) + '</td>' +
-          '</tr>';
-        }).join('') +
-        '</tbody></table>';
+      var n = 0;
+      itemsHtml = SECTIONS.map(function(sec){
+        var tiers = sec.tiers || [];
+        var extra = customLineItems(sec.lines);
+        var blocks = tiers.map(function(t){
+          n++;
+          var items = tierLineItems(sec, t).concat(extra);
+          var title = (tiers.length > 1 ? 'Option ' + n + ' — ' : '') + (MULTI ? secLabel(sec) + ' — ' : '') + tierVolumeLabel(sec, t);
+          return table(groupRow(title) + itemRows(items) + totalRow(tiers.length > 1 ? 'Option ' + n + ' Total' : 'Total', sumOf(items)));
+        }).join('');
+        if(!tiers.length && extra.length){
+          blocks = table((MULTI ? groupRow(secLabel(sec)) : '') + itemRows(extra) + totalRow('Total', sumOf(extra)));
+        }
+        return blocks;
+      }).join('') +
+      (quoteLines.length ? table(groupRow('Additional items — added to any option') + itemRows(quoteLines) + totalRow('Additional Items Total', sumOf(quoteLines))) : '');
     }
-      return tiersTable;
-    }
-
-    // Free-text lines, priced qty × rate. This is the escape hatch for
-    // anything the standard deck does not model.
-    function linesTable(lines, heading){
-      var rows = (lines || []).filter(function(l){ return String(l.desc||'').trim(); });
-      if(!rows.length) return '';
-      var total = rows.reduce(function(a,l){ return a + (Number(l.qty)||0)*(Number(l.rate)||0); }, 0);
-      return '<div style="font-weight:700;margin:14px 0 8px;color:#0a1628">'+esc(heading)+'</div>' +
-        '<table style="width:100%;border-collapse:collapse;margin-bottom:16px">' +
-        '<thead><tr>' +
-          '<th style="'+PTH+'">Item</th>' +
-          '<th style="'+PTH+'">Qty</th>' +
-          '<th style="'+PTH+'">Unit Price</th>' +
-          '<th style="'+PTH+';color:#1a6fff">Amount</th>' +
-        '</tr></thead><tbody>' +
-        rows.map(function(l){
-          var qty = Number(l.qty)||0;
-          return '<tr>' +
-            '<td style="'+PTDC+'">'+esc(l.desc||'')+'</td>' +
-            '<td style="'+PTDC+'">'+fmtNum(qty)+(l.unit ? ' '+esc(l.unit) : '')+'</td>' +
-            '<td style="'+PTDC+'">'+fmtUsd(l.rate||0)+'</td>' +
-            '<td style="'+PTD_BLUE+'">'+fmtUsd(qty*(Number(l.rate)||0))+'</td>' +
-          '</tr>';
-        }).join('') +
-        '<tr><td colspan="3" style="'+PTDC+';text-align:right;font-weight:700">Subtotal</td>' +
-          '<td style="'+PTD_BLUE+'">'+fmtUsd(total)+'</td></tr>' +
-        '</tbody></table>';
-    }
-
-    // Assemble: a block per format, then the lines that span the whole job.
-    // The heading only appears on a multi-format quote, so a single-format
-    // one looks exactly as it always did.
-    var tiersTable = SECTIONS.map(function(sec){
-      var label = sec.format || (sec.productType === 'bottling' ? 'Bottling' : sec.productType === 'keg' ? 'Keg Filling' : 'Canning');
-      var heading = MULTI
-        ? '<div style="margin:22px 0 10px;padding:8px 14px;background:#0a1628;color:#fff;font-weight:700;letter-spacing:1px;border-radius:4px">'+esc(label)+'</div>'
-        : '';
-      return heading + sectionTiers(sec) + linesTable(sec.lines, 'Additional items — ' + label);
-    }).join('') +
-    linesTable(data.quoteLines || data.customLines, 'Additional items');
 
     // ── What's included ──
     var incl = (data.inclusions || inclusionsForType(data.productType));
-    var half = Math.ceil(incl.length/2);
-    var col1 = incl.slice(0,half).map(function(s){ return '<div style="display:flex;gap:8px;margin-bottom:6px"><span style="color:#1a6fff;flex-shrink:0">&#10003;</span> '+s+'</div>'; }).join('');
-    var col2 = incl.slice(half).map(function(s){ return '<div style="display:flex;gap:8px;margin-bottom:6px"><span style="color:#1a6fff;flex-shrink:0">&#10003;</span> '+s+'</div>'; }).join('');
+    var inclHtml = incl.map(function(s){
+      return '<div style="padding:3px 0"><span style="color:#0F6E56;font-weight:700;margin-right:8px">&#10003;</span>'+esc(s)+'</div>';
+    }).join('');
 
     // ── Terms ──
     // Terms are per product type, so a quote with cans and bottles on it needs
     // both sets. Union in first-seen order, de-duplicated: the pricing caveat
     // is worded identically for canning and bottling and should appear once.
+    // The built-in terms carry their own <b> markup; the typed notes are
+    // escaped because they are free text.
     var terms = (function(){
       var seen = {}, out = [];
       SECTIONS.forEach(function(sec){
@@ -1532,66 +1564,45 @@
       });
       return out.length ? out : termsForType(data.productType);
     })();
-    if(data.notes) terms = terms.concat(['<b>Additional Notes:</b> '+data.notes]);
+    if(data.notes) terms = terms.concat(['<b>Additional Notes:</b> '+esc(data.notes)]);
 
-    // PTH/PTDC/PTD_BLUE are defined at module scope (below). Declaring them
-    // again here with `var` hoisted local `undefined` copies that shadowed the
-    // module ones for the pricing table built earlier in this function, so its
-    // cells rendered style="undefined". Use the module-scope constants instead.
+    var BOX   = 'margin-top:24px;padding:14px 18px;background:#f4fbf9;border:1px solid #0F6E56;border-radius:8px;font-size:13px;line-height:1.6';
+    var BOXH  = 'font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#0F6E56;margin-bottom:8px;font-weight:700';
+
+    var formats = SECTIONS.map(function(sec){ return esc(secLabel(sec)); }).join(', ');
+    var preparedFor = '<strong>'+esc(data.clientName||'')+'</strong>' +
+      (data.contactName ? '<br><span style="color:#666;font-size:12px">Attn: '+esc(data.contactName)+'</span>' : '') +
+      (data.clientEmail ? '<br><span style="color:#666;font-size:12px">'+esc(data.clientEmail)+'</span>' : '');
 
     // Preview before the first save has no number yet — the database assigns it on save.
     var qref = data.quoteNumber || 'DRAFT';
-    return '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Production Quote '+esc(qref)+'</title>' +
-    '<link rel="stylesheet" href="' + location.origin + '/gl-print-quote.css"></head><body>' +
+    return '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+esc(qref)+' — Good Liquid Bev Co</title>' +
+    '<link rel="stylesheet" href="' + location.origin + '/gl-print-invoice-pdf.css"></head><body>' +
     '<div class="header">' +
       '<div>' +
         '<div class="brand">GOOD LIQUID BEV CO</div>' +
-        '<div class="brand-sub">2011 51st Ave E, Unit 100, Palmetto, FL 34221<br>Mike@GoodLiquid.com &nbsp;&middot;&nbsp; (803) 493-5065<br>goodliquidbevco.com</div>' +
+        '<div class="brand-sub">2011 51st Ave E, Unit 100 · Palmetto, FL 34221</div>' +
+        '<div class="brand-sub">Mike@GoodLiquid.com · (803) 493-5065</div>' +
       '</div>' +
-      '<div class="quote-label">' +
-        '<h2>PRODUCTION QUOTE</h2>' +
-        '<div>Quote Date: '+fmtDate(data.quoteDate)+'</div>' +
-        '<div>Valid for '+data.validDays+' Days</div>' +
-        '<div style="margin-top:6px;font-size:10px;background:rgba(26,111,255,.2);color:#a8c4ff;padding:3px 10px;border-radius:20px;display:inline-block">'+esc(qref)+'</div>' +
+      '<div>' +
+        '<div class="inv-title">QUOTE</div>' +
+        '<div class="inv-num">'+esc(qref)+'</div>' +
       '</div>' +
     '</div>' +
-    '<div class="divider"></div>' +
-    '<div class="body">' +
-      '<div class="client-row">' +
-        '<div>' +
-          '<div class="client-label">PREPARED FOR</div>' +
-          '<div class="client-name">'+esc(data.clientName||'')+'</div>' +
-          (data.clientEmail ? '<div style="font-size:12px;color:#4a5568;margin-top:3px">'+esc(data.clientEmail)+'</div>' : '') +
-        '</div>' +
-        '<div style="text-align:right">' +
-          // On a multi-format quote this header used to name only the first
-          // format, which reads as though the other blocks were not quoted.
-          '<div class="client-label">'+(MULTI ? 'PACKAGE FORMATS' : 'PACKAGE FORMAT')+'</div>' +
-          '<div style="font-size:'+(MULTI ? '15' : '19')+'px;font-weight:900;color:#1a2240;line-height:1.4">' +
-            SECTIONS.map(function(sec){
-              return esc(sec.format || (sec.productType === 'bottling' ? 'Bottling' : sec.productType === 'keg' ? 'Keg Filling' : 'Canning'));
-            }).join('<br>') +
-          '</div>' +
-        '</div>' +
-      '</div>' +
-      '<div class="section-title">VOLUME PRICING OPTIONS <span style="float:right;font-size:10px;color:#9aa7bd;font-weight:400;letter-spacing:0">All amounts USD</span></div>' +
-      tiersTable +
-      '<div class="section-title">WHAT\'S INCLUDED</div>' +
-      '<div class="incl"><div>'+col1+'</div><div>'+col2+'</div></div>' +
-      '<div class="section-title">TERMS &amp; NOTES</div>' +
-      '<div class="terms-box">' + terms.map(function(t){ return '<p>'+t+'</p>'; }).join('') + '</div>' +
+    '<div class="meta">' +
+      '<div class="meta-box"><h4>Prepared For</h4><p>'+preparedFor+'</p></div>' +
+      '<div class="meta-box" style="text-align:right"><h4>Quote Details</h4>' +
+        '<p>Date: '+esc(data.quoteDate||'')+'<br>Valid until: '+esc(validUntil)+'<br>'+(MULTI ? 'Formats' : 'Format')+': '+formats+'</p></div>' +
     '</div>' +
-    '<div class="footer">' +
-      '<div><b>Ready to move forward?</b><br>Contact Mike Krail, Sales &amp; Strategy &nbsp;|&nbsp; Mike@GoodLiquid.com</div>' +
-      '<div style="text-align:right">Good Liquid Bev Co &nbsp;|&nbsp; Palmetto, FL</div>' +
+    itemsHtml +
+    '<div style="font-size:11px;color:#999;margin-top:-12px">All amounts USD.</div>' +
+    (inclHtml ? '<div style="'+BOX+'"><div style="'+BOXH+'">What\'s Included</div>'+inclHtml+'</div>' : '') +
+    '<div style="'+BOX+'"><div style="'+BOXH+'">Terms &amp; Notes</div>' +
+      terms.map(function(t){ return '<p style="margin:0 0 6px">'+t+'</p>'; }).join('') +
     '</div>' +
+    '<div class="footer">Questions? Mike Krail, Sales &amp; Strategy · Mike@GoodLiquid.com · (803) 493-5065 · goodliquidbevco.com</div>' +
     '</body></html>';
   }
-
-  // Fix: define PTH/PTDC/PTD_BLUE at module scope for generateQuoteHTML
-  var PTH      = 'background:#0a1628;color:#9aa7bd;padding:10px 12px;text-align:left;font-size:11px;letter-spacing:1px';
-  var PTDC     = 'padding:12px;border-bottom:1px solid #eee;font-size:13px;color:#1a2240';
-  var PTD_BLUE = 'padding:12px;border-bottom:1px solid #eee;font-size:13px;color:#1a6fff;font-weight:700';
 
   function loadScriptOnce(src){
     return new Promise(function(res, rej){
