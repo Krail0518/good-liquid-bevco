@@ -399,6 +399,7 @@
           '<button id="gl-qb-pdf" class="cbtn" style="flex:1;min-width:120px;background:rgba(26,111,255,.1);border-color:rgba(26,111,255,.4);color:#6b9fff">📄 PDF</button>' +
           '<button id="gl-qb-save-pdf" class="cbtn" style="flex:1;min-width:140px;background:rgba(29,158,117,.1);border-color:rgba(29,158,117,.4);color:#5fcf9e">💾 Save + PDF</button>' +
           '<button id="gl-qb-send-email" class="cbtn" style="flex:2;min-width:180px;background:rgba(245,200,66,.1);border-color:rgba(245,200,66,.4);color:#f5c842">📧 Save + Email Quote</button>' +
+          '<button id="gl-qb-invoice" class="cbtn" style="flex:1;min-width:160px;background:rgba(0,229,192,.08);border-color:rgba(0,229,192,.3);color:var(--teal)">🧾 Save + Create Invoice</button>' +
         '</div>' +
         '<div id="gl-qb-status" style="font-size:11px;color:var(--muted);margin-top:10px;min-height:16px"></div>' +
       '</div>';
@@ -1236,6 +1237,20 @@
 
     ov.querySelector('#gl-qb-save').addEventListener('click', doSave);
 
+    // Save the quote, then open the invoice builder already filled in from it.
+    ov.querySelector('#gl-qb-invoice').addEventListener('click', async function(){
+      var saved = await doSave();
+      if(!saved) return;
+      var data = buildQuoteData();
+      var st = ov.querySelector('#gl-qb-status');
+      if(!data.clientId){
+        st.style.color = '#ff8579';
+        st.textContent = 'Quote saved, but it is not linked to a client record — pick an existing client to invoice it.';
+        return;
+      }
+      if(window.glQuoteToInvoice(data, data.clientId)) ov.remove();
+    });
+
     ov.querySelector('#gl-qb-pdf').addEventListener('click', function(){
       var data = buildQuoteData();
       if(!quoteHasContent(data)){ ov.querySelector('#gl-qb-status').style.color='#ff8579'; ov.querySelector('#gl-qb-status').textContent='Add a volume tier or a custom line.'; return; }
@@ -1350,8 +1365,10 @@
      see what each item cost or check the arithmetic. ── */
   function qItem(out, desc, qty, unit, rate){
     qty = Number(qty) || 0; rate = Number(rate) || 0;
-    if(!(qty > 0) || !(rate > 0)) return;
-    out.push({ desc: desc, qty: qty, unit: unit, unitPrice: rate, total: qty * rate });
+    if(!(qty > 0) || !(rate > 0)) return null;
+    var item = { desc: desc, qty: qty, unit: unit, unitPrice: rate, total: qty * rate };
+    out.push(item);
+    return item;
   }
   // Rows must reconcile with the tier's run total. They drift apart only when
   // someone typed an override (a combined add-on rate, or a whole run total),
@@ -1363,43 +1380,58 @@
     return out;
   }
 
+  // Every canning add-on, once. The quote builder's checkboxes, the quote's
+  // line items, the invoice builder's add-on panel and "Create Invoice" from a
+  // quote all read this list, so an item is named and priced the same way on a
+  // quote and on the invoice that follows it.
+  //   on / rate  → the keys in a canning pkg (see defaultCanningPkg)
+  //   unit       → what the quantity counts: can, case (24 cans) or pallet
+  var CANNING_ADDONS = [
+    { key:'nitrogen',   on:'nitrogenOn',   rate:'nitrogenPerCan',   unit:'can',    label:'Nitrogen dosing' },
+    { key:'pasteur',    on:'pasteurOn',    rate:'pasteurPerCan',    unit:'can',    label:'Batch flash pasteurization' },
+    { key:'tray24',     on:'tray24On',     rate:'tray24PerCase',    unit:'case',   label:'24-count case tray' },
+    { key:'tray12',     on:'tray12On',     rate:'tray12PerCase',    unit:'case',   label:'12-count case tray' },
+    { key:'trayWrap',   on:'trayWrapOn',   rate:'trayWrapPerCase',  unit:'case',   label:'Case tray shrink wrap' },
+    { key:'paktech4',   on:'paktech4On',   rate:'paktech4PerCan',   unit:'can',    label:'PakTech handle - 4-pack' },
+    { key:'paktech6',   on:'paktech6On',   rate:'paktech6PerCan',   unit:'can',    label:'PakTech handle - 6-pack' },
+    { key:'proper4',    on:'proper4On',    rate:'proper4PerCan',    unit:'can',    label:'Proper Pack - 4-pack' },
+    { key:'proper6',    on:'proper6On',    rate:'proper6PerCan',    unit:'can',    label:'Proper Pack - 6-pack' },
+    { key:'canBlank',   on:'canBlankOn',   rate:'canBlankPerCan',   unit:'can',    label:'Blank / brite cans and lids' },
+    { key:'canShrink',  on:'canShrinkOn',  rate:'canShrinkPerCan',  unit:'can',    label:'Shrink sleeve label' },
+    { key:'canPrinted', on:'canPrintedOn', rate:'canPrintedPerCan', unit:'can',    label:'Pre-printed cans' },
+    { key:'pallet',     on:'palletOn',     rate:'palletEach',       unit:'pallet', label:'Pallet' },
+    { key:'palletWrap', on:'palletWrapOn', rate:'palletWrapEach',   unit:'pallet', label:'Pallet shrink wrap' }
+  ];
+
   function canningLineItems(t, pkg, format){
     pkg = pkg || {};
     var x = canningExtras(t, pkg), out = [];
     var cans = t.cans || 0, cases = t.cases || 0, fill = t.fillPerCan || 0;
     var label = 'Canning - ' + (format || 'Cans');
     // Fill is priced per case, the way the invoice prices it.
-    if(cases > 0 && cans === cases * CANS_PER_CASE) qItem(out, label, cases, 'case', fill * CANS_PER_CASE);
-    else qItem(out, label, cans, 'can', fill);
+    var fillItem = (cases > 0 && cans === cases * CANS_PER_CASE)
+      ? qItem(out, label, cases, 'case', fill * CANS_PER_CASE)
+      : qItem(out, label, cans, 'can', fill);
+    // What "Create Invoice" needs to rebuild this as a real canning row.
+    if(fillItem){ fillItem.kind = 'canning'; fillItem.format = format || ''; fillItem.cases = cases; fillItem.perCan = fill; }
 
-    if(isNum(t.addonsOverride)){
-      qItem(out, 'Add-ons (combined rate)', cans, 'can', t.addonsOverride);
-    } else {
-      if(pkg.nitrogenOn)   qItem(out, 'Nitrogen dosing',            cans, 'can', pkg.nitrogenPerCan);
-      if(pkg.pasteurOn)    qItem(out, 'Batch flash pasteurization', cans, 'can', pkg.pasteurPerCan);
-      if(pkg.paktech4On)   qItem(out, 'PakTech handle - 4-pack',    cans, 'can', pkg.paktech4PerCan);
-      if(pkg.paktech6On)   qItem(out, 'PakTech handle - 6-pack',    cans, 'can', pkg.paktech6PerCan);
-      if(pkg.proper4On)    qItem(out, 'Proper Pack - 4-pack',       cans, 'can', pkg.proper4PerCan);
-      if(pkg.proper6On)    qItem(out, 'Proper Pack - 6-pack',       cans, 'can', pkg.proper6PerCan);
-      if(pkg.canBlankOn)   qItem(out, 'Blank / brite cans and lids', cans, 'can', pkg.canBlankPerCan);
-      if(pkg.canShrinkOn)  qItem(out, 'Shrink sleeve label',        cans, 'can', pkg.canShrinkPerCan);
-      if(pkg.canPrintedOn) qItem(out, 'Pre-printed cans',           cans, 'can', pkg.canPrintedPerCan);
-    }
-
-    if(isNum(t.caseExtraOverride)){
-      qItem(out, 'Case packaging (combined rate)', cases, 'case', t.caseExtraOverride);
-    } else {
-      if(pkg.tray24On)   qItem(out, '24-count case tray',        cases, 'case', pkg.tray24PerCase);
-      if(pkg.tray12On)   qItem(out, '12-count case tray',        cases, 'case', pkg.tray12PerCase);
-      if(pkg.trayWrapOn) qItem(out, 'Case tray shrink wrap',     cases, 'case', pkg.trayWrapPerCase);
-    }
-
-    if(isNum(t.palletCostOverride)){
-      qItem(out, 'Pallets and shrink wrap', 1, '', t.palletCostOverride);
-    } else {
-      if(pkg.palletOn)     qItem(out, 'Pallet',             x.pallets, 'pallet', pkg.palletEach);
-      if(pkg.palletWrapOn) qItem(out, 'Pallet shrink wrap', x.pallets, 'pallet', pkg.palletWrapEach);
-    }
+    var qtyFor = { can: cans, 'case': cases, pallet: x.pallets };
+    var overrideFor = { can: t.addonsOverride, 'case': t.caseExtraOverride, pallet: t.palletCostOverride };
+    var overrideLabel = { can: 'Add-ons (combined rate)', 'case': 'Case packaging (combined rate)', pallet: 'Pallets and shrink wrap' };
+    ['can', 'case', 'pallet'].forEach(function(unit){
+      if(isNum(overrideFor[unit])){
+        // A typed-over combined rate replaces every item of that unit.
+        if(unit === 'pallet') qItem(out, overrideLabel[unit], 1, '', overrideFor[unit]);
+        else qItem(out, overrideLabel[unit], qtyFor[unit], unit, overrideFor[unit]);
+        return;
+      }
+      CANNING_ADDONS.forEach(function(a){
+        if(a.unit === unit && pkg[a.on]){
+          var it = qItem(out, a.label, qtyFor[unit], unit, pkg[a.rate]);
+          if(it) it.addon = a.key;
+        }
+      });
+    });
     return qReconcile(out, x.runTotal);
   }
 
@@ -1407,7 +1439,8 @@
     bpkg = bpkg || {};
     var x = bottlingExtras(t, bpkg), out = [];
     var bottles = t.bottles || 0, cases = t.cases || 0;
-    qItem(out, 'Bottling - ' + (format || 'Bottles'), bottles, 'bottle', t.ratePerBtl);
+    var btl = qItem(out, 'Bottling - ' + (format || 'Bottles'), bottles, 'bottle', t.ratePerBtl);
+    if(btl){ btl.kind = 'bottling'; btl.format = format || ''; }
     if(bpkg.pasteurOn) qItem(out, 'Batch flash pasteurization', bottles, 'bottle', bpkg.pasteurPerBtl);
     if(bpkg.otlOn)     qItem(out, 'Over-the-top labels',        bottles, 'bottle', bpkg.otlPerBtl);
     if(bpkg.labelsOn)  qItem(out, 'Labels, front and back',     bottles, 'bottle', bpkg.labelsPerBtl);
@@ -1876,6 +1909,7 @@
         '</div>' +
         '<span style="font-size:10px;letter-spacing:1.5px;color:'+sColor+'">' + esc((q.status||'').toUpperCase()) + '</span>' +
         (q.pdf_html ? '<button class="cbtn gl-q-dl" data-qid="'+q.id+'" style="font-size:11px;padding:4px 10px;flex-shrink:0">📄 PDF</button>' : '') +
+        '<button class="cbtn gl-q-inv" data-qid="'+q.id+'" style="font-size:11px;padding:4px 10px;flex-shrink:0" title="Open a new invoice filled in from this quote">🧾 Invoice</button>' +
         '<button class="cbtn gl-q-svc" data-qid="'+q.id+'" style="font-size:11px;padding:4px 10px;flex-shrink:0">⚙ Services</button>' +
       '</div>' +
       svcEditorHtml(q);
@@ -1967,6 +2001,14 @@
       });
     });
 
+    container.querySelectorAll('.gl-q-inv').forEach(function(btn){
+      btn.addEventListener('click', async function(){
+        var rr = await sb.from('quotes').select('*').eq('id', btn.getAttribute('data-qid')).single();
+        if(rr.error || !rr.data){ alert('Could not load that quote' + (rr.error ? ': ' + rr.error.message : '.')); return; }
+        window.glQuoteToInvoice(quoteDataFromRow(rr.data), clientId);
+      });
+    });
+
     container.querySelectorAll('.gl-q-dl').forEach(function(btn){
       btn.addEventListener('click', async function(){
         var qid = btn.getAttribute('data-qid');
@@ -2023,6 +2065,118 @@
       return r;
     };
   })();
+
+  /* ── Quote → invoice ──────────────────────────────────────────
+     A saved quote's own columns rebuilt into the shape generateQuoteHTML
+     reads. Rows saved before sections existed describe one format in
+     product_type / package_format / tiers, with the packaging config parked
+     in the addons array under id '__pkg__'. ── */
+  function quoteDataFromRow(q){
+    var legacyPkg = ((q.addons || []).find(function(a){ return a && a.id === '__pkg__'; }) || {}).pkg;
+    return {
+      quoteNumber: q.quote_number,
+      sections: (q.sections && q.sections.length) ? q.sections : [{
+        productType: q.product_type, format: q.package_format,
+        tiers: q.tiers || [], pkg: legacyPkg || {}, bpkg: {}, lines: []
+      }],
+      quoteLines: q.custom_lines || []
+    };
+  }
+
+  function secLabelOf(sec){
+    return sec.format || (sec.productType === 'bottling' ? 'Bottling' : sec.productType === 'keg' ? 'Keg Filling' : 'Canning');
+  }
+
+  // The choices a quote offers, each as a complete list of invoice lines.
+  // Mirrors the PDF: one volume per format is a single job (everything on it
+  // is one option); several volumes are alternatives, one option each, with
+  // that format's custom lines and the quote-wide lines on every option.
+  function quoteOptions(data){
+    var SECTIONS = data.sections || [];
+    var quoteLines = customLineItems(data.quoteLines || data.customLines);
+    function cpp(sec){ return (sec.pkg && sec.pkg.casesPerPallet) || null; }
+    var singleJob = SECTIONS.every(function(sec){ return (sec.tiers || []).length <= 1; });
+    if(singleJob){
+      var items = [], casesPerPallet = null;
+      SECTIONS.forEach(function(sec){
+        (sec.tiers || []).forEach(function(t){ items = items.concat(tierLineItems(sec, t)); });
+        items = items.concat(customLineItems(sec.lines));
+        if(casesPerPallet == null && sec.productType === 'canning') casesPerPallet = cpp(sec);
+      });
+      items = items.concat(quoteLines);
+      return items.length ? [{ label: 'Whole quote', items: items, casesPerPallet: casesPerPallet }] : [];
+    }
+    var out = [], n = 0;
+    SECTIONS.forEach(function(sec){
+      var extra = customLineItems(sec.lines);
+      (sec.tiers || []).forEach(function(t){
+        n++;
+        var items = tierLineItems(sec, t).concat(extra, quoteLines);
+        var total = items.reduce(function(a, l){ return a + l.total; }, 0);
+        out.push({
+          label: 'Option ' + n + ' — ' + secLabelOf(sec) + ', ' + tierVolumeLabel(sec, t) + ' — ' + fmtUsd(total),
+          items: items, casesPerPallet: sec.productType === 'canning' ? cpp(sec) : null
+        });
+      });
+    });
+    return out;
+  }
+
+  // Ask which option was accepted (only when there is more than one), then
+  // hand its lines to the invoice builder. Returns false if nothing opened.
+  window.glQuoteToInvoice = function(data, clientId){
+    if(typeof window.glInvoiceFromQuote !== 'function'){ alert('Invoice builder not ready — reload and try again.'); return false; }
+    var opts = quoteOptions(data);
+    if(!opts.length){ alert('This quote has no priced lines to invoice.'); return false; }
+    function go(o){
+      window.glInvoiceFromQuote({ clientId: clientId, quoteNumber: data.quoteNumber || '', items: o.items, casesPerPallet: o.casesPerPallet });
+    }
+    if(opts.length === 1){ go(opts[0]); return true; }
+
+    var old = document.getElementById('gl-q2i-pick'); if(old) old.remove();
+    var m = document.createElement('div');
+    m.id = 'gl-q2i-pick';
+    m.setAttribute('style', 'position:fixed;inset:0;z-index:10000;background:rgba(6,13,26,.9);display:flex;align-items:center;justify-content:center;padding:16px');
+    var card = document.createElement('div');
+    card.setAttribute('style', 'background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:22px;width:100%;max-width:460px');
+    var h = document.createElement('div');
+    h.setAttribute('style', 'font-size:14px;font-weight:700;color:#fff;margin-bottom:4px');
+    h.textContent = 'Which option did the client choose?';
+    var sub = document.createElement('div');
+    sub.setAttribute('style', 'font-size:12px;color:var(--muted);margin-bottom:14px');
+    sub.textContent = 'The invoice is filled in with that option\'s line items.';
+    card.appendChild(h); card.appendChild(sub);
+    opts.forEach(function(o){
+      var b = document.createElement('button');
+      b.className = 'cbtn';
+      b.setAttribute('style', 'display:block;width:100%;text-align:left;margin-bottom:8px;font-size:12px;padding:10px 12px');
+      b.textContent = o.label;
+      b.addEventListener('click', function(){ m.remove(); go(o); });
+      card.appendChild(b);
+    });
+    var cancel = document.createElement('button');
+    cancel.className = 'cbtn';
+    cancel.setAttribute('style', 'width:100%;font-size:12px;color:var(--muted)');
+    cancel.textContent = 'Cancel';
+    cancel.addEventListener('click', function(){ m.remove(); });
+    card.appendChild(cancel);
+    m.appendChild(card);
+    document.body.appendChild(m);
+    return true;
+  };
+
+  // The shared add-on list with today's rates, for the invoice builder's panel.
+  window.glCanningAddons = function(format){
+    var pkg = defaultCanningPkg(format);
+    return {
+      casesPerPallet: pkg.casesPerPallet,
+      items: CANNING_ADDONS.map(function(a){
+        return { key: a.key, label: a.label, unit: a.unit, rate: pkg[a.rate] || 0 };
+      })
+    };
+  };
+  // Exposed for tests: the option list a quote offers the invoice builder.
+  window.glQuoteOptions = function(data){ return quoteOptions(data); };
 
   console.log('[GL] production quote builder loaded');
 }());

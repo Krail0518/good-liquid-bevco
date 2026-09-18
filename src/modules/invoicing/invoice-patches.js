@@ -303,7 +303,7 @@
     return v;
   };
   window.glUsd=function(n,d){return'$'+parseFloat(n).toLocaleString('en-US',{minimumFractionDigits:d==null?2:d,maximumFractionDigits:d==null?2:d});};
-  window.glGetTbl=function(){var b=document.getElementById('gl-inv-body');return b?b.children[2]:null;};
+  window.glGetTbl=function(){var b=document.getElementById('gl-inv-body');if(!b)return null;for(var i=0;i<b.children.length;i++){var h=b.children[i].firstElementChild;if(h&&h.firstElementChild&&(h.firstElementChild.textContent||'').trim()==='DESCRIPTION')return b.children[i];}return b.children[2]||null;};
   window.glCalcInvTotal=function(){
     var tot=0;
     document.querySelectorAll('[data-gl-total]').forEach(function(el){tot+=parseFloat(el.getAttribute('data-gl-total'))||0;});
@@ -449,7 +449,11 @@
     return v;
   };
   window.glUsd=function(n,d){return'$'+parseFloat(n||0).toLocaleString('en-US',{minimumFractionDigits:d==null?2:d,maximumFractionDigits:d==null?2:d});};
-  window.glGetTbl=function(){var b=document.getElementById('gl-inv-body');return b?b.children[2]:null;};
+  // Found by its DESCRIPTION header, not by position: accounting.js inserts a
+  // PO Number field at the top of the builder ~300ms after it first opens,
+  // which made children[2] the LINE ITEMS heading, so every line added after
+  // that was appended under the heading instead of inside the table.
+  window.glGetTbl=function(){var b=document.getElementById('gl-inv-body');if(!b)return null;for(var i=0;i<b.children.length;i++){var h=b.children[i].firstElementChild;if(h&&h.firstElementChild&&(h.firstElementChild.textContent||'').trim()==='DESCRIPTION')return b.children[i];}return b.children[2]||null;};
 
   /* ── Invoice total recalc ── */
   window.glCalcInvTotal=function(){
@@ -827,7 +831,9 @@
           // Legacy fallback
           manDesc = userDesc?(label?label+' - '+userDesc:userDesc):(label||'Line item');
         }
-        lines.push({desc:manDesc,qty:qtyM,unitPrice:priceM,total:total,unit:''});
+        // Add-on rows (invoice-addons.js) carry their unit — can, case,
+        // pallet — so the PDF can print "$0.03 /can" like the quote does.
+        lines.push({desc:manDesc,qty:qtyM,unitPrice:priceM,total:total,unit:row.getAttribute('data-gl-unit')||''});
       }
     });
     return lines;
@@ -1210,7 +1216,11 @@
             var manualLabel = parsed.type || 'Line';
             var manualSubtype = parsed.fmtLabel || '';
             var manualOpt = parsed.userDesc || '';
-            row = window.glBuildManualRow(uid, manualLabel, manualSubtype, l.qty || 0, l.unitPrice || 0, manualOpt);
+            // glBuildManualRow puts the label into markup and the subtype into
+            // a value="" attribute unescaped; saved descriptions are free text.
+            row = window.glBuildManualRow(uid, esc(manualLabel), esc(manualSubtype), l.qty || 0, l.unitPrice || 0, manualOpt);
+            // Keep the saved unit (can / case / pallet) through an edit.
+            if(l.unit) row.setAttribute('data-gl-unit', l.unit);
           }
           if(row) tbl.appendChild(row);
         });
