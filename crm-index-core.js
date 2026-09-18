@@ -74,6 +74,7 @@
  *   /src/modules/invoicing/ar-aging.js
  *   /src/modules/invoicing/billing-admin.js
  *   /src/modules/invoicing/follow-up.js
+ *   /src/modules/invoicing/invoice-addons.js
  *   /src/modules/invoicing/invoice-builder.js
  *   /src/modules/invoicing/invoice-delete.js
  *   /src/modules/invoicing/invoice-patches.js

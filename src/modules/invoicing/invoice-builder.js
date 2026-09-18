@@ -366,6 +366,17 @@
   /* ── EXPORT PDF ── */
   window.glExportPDF = function(){
     var inv=window.glSaveInvoice();if(!inv)return;
+    // Print the same invoice page as the Invoices list's PDF button
+    // (downloadInvoicePDF in crm-index-core.js), which the quote PDF also
+    // matches. This button used to print its own older design, so one invoice
+    // could come out two different ways. Called synchronously, inside the
+    // click, so the popup is not blocked. The older page below stays only as
+    // a fallback if that function is missing.
+    if(typeof window.downloadInvoicePDF === 'function'){
+      window.downloadInvoicePDF(inv.id);
+      if(typeof addNotification==='function')addNotification('PDF generated','Invoice '+inv.id+' ready to print/save','success');
+      return;
+    }
     var client=(window.clients||[]).find(function(c){return c.id===inv.client;}) || {};
     // Build a proper Bill To block from the client's billing address.
     var useBilling = client.billingSame === false && (client.billingStreet || client.billingCity);
