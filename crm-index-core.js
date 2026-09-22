@@ -74,6 +74,7 @@
  *   /src/modules/invoicing/ar-aging.js
  *   /src/modules/invoicing/billing-admin.js
  *   /src/modules/invoicing/follow-up.js
+ *   /src/modules/invoicing/invoice-addons.js
  *   /src/modules/invoicing/invoice-builder.js
  *   /src/modules/invoicing/invoice-delete.js
  *   /src/modules/invoicing/invoice-patches.js
@@ -4043,12 +4044,15 @@ async function downloadInvoicePDF(invId) {
   const lines = Array.isArray(inv.lines) && inv.lines.length
     ? inv.lines
     : [{ desc: inv.svc, qty: 1, unitPrice: inv.amount, total: inv.amount }];
+  // Unit prices keep the decimals they carry (up to four). A $0.164 sleeve
+  // printed as "$0.16" made 4,800 × $0.16 read as $787.20 instead of $768.00.
+  const rate = n => '$' + (Number(n)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4});
   const lineRowsHtml = lines.map(function(l){
     const qty = (l.qty != null) ? Number(l.qty).toLocaleString() : '';
-    const unitLbl = l.unit ? '<span style="font-size:10px;color:#888;margin-left:4px">/'+l.unit+'</span>' : '';
-    const up = (l.unitPrice != null) ? usd(l.unitPrice) + unitLbl : '';
+    const unitLbl = l.unit ? '<span style="font-size:10px;color:#888;margin-left:4px">/'+esc(l.unit)+'</span>' : '';
+    const up = (l.unitPrice != null) ? rate(l.unitPrice) + unitLbl : '';
     return '<tr>' +
-      '<td>' + (l.desc || '') + '</td>' +
+      '<td>' + esc(l.desc || '') + '</td>' +
       '<td style="text-align:center">' + qty + '</td>' +
       '<td style="text-align:right">' + up + '</td>' +
       '<td style="text-align:right;font-weight:700">' + usd(l.total||0) + '</td>' +

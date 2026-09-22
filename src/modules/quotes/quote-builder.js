@@ -399,6 +399,7 @@
           '<button id="gl-qb-pdf" class="cbtn" style="flex:1;min-width:120px;background:rgba(26,111,255,.1);border-color:rgba(26,111,255,.4);color:#6b9fff">📄 PDF</button>' +
           '<button id="gl-qb-save-pdf" class="cbtn" style="flex:1;min-width:140px;background:rgba(29,158,117,.1);border-color:rgba(29,158,117,.4);color:#5fcf9e">💾 Save + PDF</button>' +
           '<button id="gl-qb-send-email" class="cbtn" style="flex:2;min-width:180px;background:rgba(245,200,66,.1);border-color:rgba(245,200,66,.4);color:#f5c842">📧 Save + Email Quote</button>' +
+          '<button id="gl-qb-invoice" class="cbtn" style="flex:1;min-width:160px;background:rgba(0,229,192,.08);border-color:rgba(0,229,192,.3);color:var(--teal)">🧾 Save + Create Invoice</button>' +
         '</div>' +
         '<div id="gl-qb-status" style="font-size:11px;color:var(--muted);margin-top:10px;min-height:16px"></div>' +
       '</div>';
@@ -1236,6 +1237,20 @@
 
     ov.querySelector('#gl-qb-save').addEventListener('click', doSave);
 
+    // Save the quote, then open the invoice builder already filled in from it.
+    ov.querySelector('#gl-qb-invoice').addEventListener('click', async function(){
+      var saved = await doSave();
+      if(!saved) return;
+      var data = buildQuoteData();
+      var st = ov.querySelector('#gl-qb-status');
+      if(!data.clientId){
+        st.style.color = '#ff8579';
+        st.textContent = 'Quote saved, but it is not linked to a client record — pick an existing client to invoice it.';
+        return;
+      }
+      if(window.glQuoteToInvoice(data, data.clientId)) ov.remove();
+    });
+
     ov.querySelector('#gl-qb-pdf').addEventListener('click', function(){
       var data = buildQuoteData();
       if(!quoteHasContent(data)){ ov.querySelector('#gl-qb-status').style.color='#ff8579'; ov.querySelector('#gl-qb-status').textContent='Add a volume tier or a custom line.'; return; }
@@ -1338,7 +1353,146 @@
     selectSection(state.activeIdx);
   };
 
-  /* ── PDF HTML generation (Stiiizy-format) ───────────────────── */
+  /* ── Quote line items ─────────────────────────────────────────
+     A quote is laid out exactly like an invoice: one row per charge, each
+     with its own quantity, unit price and amount. These build those rows in
+     the invoice's line shape ({desc, qty, unit, unitPrice, total}) from the
+     same canningExtras / bottlingExtras the builder screen uses, so a tier's
+     rows always add up to the run total shown while building it.
+
+     The quote used to print one summary row per tier (fill, "add-ons",
+     "packaging", pallets) plus a list of bare rates. The customer could not
+     see what each item cost or check the arithmetic. ── */
+  function qItem(out, desc, qty, unit, rate){
+    qty = Number(qty) || 0; rate = Number(rate) || 0;
+    if(!(qty > 0) || !(rate > 0)) return null;
+    var item = { desc: desc, qty: qty, unit: unit, unitPrice: rate, total: qty * rate };
+    out.push(item);
+    return item;
+  }
+  // Rows must reconcile with the tier's run total. They drift apart only when
+  // someone typed an override (a combined add-on rate, or a whole run total),
+  // and then the difference is shown as its own row rather than hidden.
+  function qReconcile(out, runTotal){
+    var sum = out.reduce(function(a, l){ return a + l.total; }, 0);
+    var diff = Math.round((runTotal - sum) * 100) / 100;
+    if(Math.abs(diff) >= 0.01) out.push({ desc: 'Pricing adjustment', qty: 1, unit: '', unitPrice: diff, total: diff });
+    return out;
+  }
+
+  // Every canning add-on, once. The quote builder's checkboxes, the quote's
+  // line items, the invoice builder's add-on panel and "Create Invoice" from a
+  // quote all read this list, so an item is named and priced the same way on a
+  // quote and on the invoice that follows it.
+  //   on / rate  → the keys in a canning pkg (see defaultCanningPkg)
+  //   unit       → what the quantity counts: can, case (24 cans) or pallet
+  var CANNING_ADDONS = [
+    { key:'nitrogen',   on:'nitrogenOn',   rate:'nitrogenPerCan',   unit:'can',    label:'Nitrogen dosing' },
+    { key:'pasteur',    on:'pasteurOn',    rate:'pasteurPerCan',    unit:'can',    label:'Batch flash pasteurization' },
+    { key:'tray24',     on:'tray24On',     rate:'tray24PerCase',    unit:'case',   label:'24-count case tray' },
+    { key:'tray12',     on:'tray12On',     rate:'tray12PerCase',    unit:'case',   label:'12-count case tray' },
+    { key:'trayWrap',   on:'trayWrapOn',   rate:'trayWrapPerCase',  unit:'case',   label:'Case tray shrink wrap' },
+    { key:'paktech4',   on:'paktech4On',   rate:'paktech4PerCan',   unit:'can',    label:'PakTech handle - 4-pack' },
+    { key:'paktech6',   on:'paktech6On',   rate:'paktech6PerCan',   unit:'can',    label:'PakTech handle - 6-pack' },
+    { key:'proper4',    on:'proper4On',    rate:'proper4PerCan',    unit:'can',    label:'Proper Pack - 4-pack' },
+    { key:'proper6',    on:'proper6On',    rate:'proper6PerCan',    unit:'can',    label:'Proper Pack - 6-pack' },
+    { key:'canBlank',   on:'canBlankOn',   rate:'canBlankPerCan',   unit:'can',    label:'Blank / brite cans and lids' },
+    { key:'canShrink',  on:'canShrinkOn',  rate:'canShrinkPerCan',  unit:'can',    label:'Shrink sleeve label' },
+    { key:'canPrinted', on:'canPrintedOn', rate:'canPrintedPerCan', unit:'can',    label:'Pre-printed cans' },
+    { key:'pallet',     on:'palletOn',     rate:'palletEach',       unit:'pallet', label:'Pallet' },
+    { key:'palletWrap', on:'palletWrapOn', rate:'palletWrapEach',   unit:'pallet', label:'Pallet shrink wrap' }
+  ];
+
+  function canningLineItems(t, pkg, format){
+    pkg = pkg || {};
+    var x = canningExtras(t, pkg), out = [];
+    var cans = t.cans || 0, cases = t.cases || 0, fill = t.fillPerCan || 0;
+    var label = 'Canning - ' + (format || 'Cans');
+    // Fill is priced per case, the way the invoice prices it.
+    var fillItem = (cases > 0 && cans === cases * CANS_PER_CASE)
+      ? qItem(out, label, cases, 'case', fill * CANS_PER_CASE)
+      : qItem(out, label, cans, 'can', fill);
+    // What "Create Invoice" needs to rebuild this as a real canning row.
+    if(fillItem){ fillItem.kind = 'canning'; fillItem.format = format || ''; fillItem.cases = cases; fillItem.perCan = fill; }
+
+    var qtyFor = { can: cans, 'case': cases, pallet: x.pallets };
+    var overrideFor = { can: t.addonsOverride, 'case': t.caseExtraOverride, pallet: t.palletCostOverride };
+    var overrideLabel = { can: 'Add-ons (combined rate)', 'case': 'Case packaging (combined rate)', pallet: 'Pallets and shrink wrap' };
+    ['can', 'case', 'pallet'].forEach(function(unit){
+      if(isNum(overrideFor[unit])){
+        // A typed-over combined rate replaces every item of that unit.
+        if(unit === 'pallet') qItem(out, overrideLabel[unit], 1, '', overrideFor[unit]);
+        else qItem(out, overrideLabel[unit], qtyFor[unit], unit, overrideFor[unit]);
+        return;
+      }
+      CANNING_ADDONS.forEach(function(a){
+        if(a.unit === unit && pkg[a.on]){
+          var it = qItem(out, a.label, qtyFor[unit], unit, pkg[a.rate]);
+          if(it) it.addon = a.key;
+        }
+      });
+    });
+    return qReconcile(out, x.runTotal);
+  }
+
+  function bottlingLineItems(t, bpkg, format){
+    bpkg = bpkg || {};
+    var x = bottlingExtras(t, bpkg), out = [];
+    var bottles = t.bottles || 0, cases = t.cases || 0;
+    var btl = qItem(out, 'Bottling - ' + (format || 'Bottles'), bottles, 'bottle', t.ratePerBtl);
+    if(btl){ btl.kind = 'bottling'; btl.format = format || ''; }
+    if(bpkg.pasteurOn) qItem(out, 'Batch flash pasteurization', bottles, 'bottle', bpkg.pasteurPerBtl);
+    if(bpkg.otlOn)     qItem(out, 'Over-the-top labels',        bottles, 'bottle', bpkg.otlPerBtl);
+    if(bpkg.labelsOn)  qItem(out, 'Labels, front and back',     bottles, 'bottle', bpkg.labelsPerBtl);
+    if(bpkg.caseOn)    qItem(out, '6-pack bottle case',         cases,   'case',   bpkg.casePerCase);
+    if(bpkg.palletOn)     qItem(out, 'Pallet',             x.pallets, 'pallet', bpkg.palletEach);
+    if(bpkg.palletWrapOn) qItem(out, 'Pallet shrink wrap', x.pallets, 'pallet', bpkg.palletWrapEach);
+    return qReconcile(out, x.runTotal);
+  }
+
+  function kegLineItems(t, format){
+    var out = [], kegs = t.kegs || 0;
+    qItem(out, 'Keg filling - ' + (format || 'Kegs'), kegs, 'keg', t.laborPerKeg);
+    qItem(out, 'Keg',                                  kegs, 'keg', t.kegCostPerKeg);
+    return out;
+  }
+
+  // Free-text lines typed into the builder (qty × rate).
+  function customLineItems(lines){
+    return (lines || []).filter(function(l){ return String(l.desc||'').trim(); }).map(function(l){
+      var qty = Number(l.qty) || 0, rate = Number(l.rate) || 0;
+      return { desc: String(l.desc).trim(), qty: qty, unit: l.unit || '', unitPrice: rate, total: qty * rate };
+    });
+  }
+
+  function tierLineItems(sec, t){
+    if(sec.productType === 'bottling') return bottlingLineItems(t, sec.bpkg, sec.format);
+    if(sec.productType === 'keg')      return kegLineItems(t, sec.format);
+    return canningLineItems(t, sec.pkg, sec.format);
+  }
+  function tierVolumeLabel(sec, t){
+    if(sec.productType === 'bottling') return fmtNum(t.cases||0)+' cases ('+fmtNum(t.bottles||0)+' bottles)';
+    if(sec.productType === 'keg')      return fmtNum(t.kegs||0)+' kegs';
+    return fmtNum(t.cans||0)+' cans ('+fmtNum(t.cases||0)+' cases)';
+  }
+
+  // Unit prices are shown to as many decimals as they actually carry (up to
+  // four). Rounding $0.475/can to "$0.48" printed a row whose quantity times
+  // unit price did not equal its amount.
+  function fmtRate(n){
+    n = Number(n) || 0;
+    return (n < 0 ? '−$' : '$') + Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4});
+  }
+  function fmtAmt(n){
+    n = Number(n) || 0;
+    return (n < 0 ? '−' : '') + fmtUsd(Math.abs(n));
+  }
+
+  /* ── PDF HTML generation ──────────────────────────────────────
+     Same page as the invoice PDF (downloadInvoicePDF in crm-index-core.js):
+     same stylesheet, header, Bill To / details block and line-item table.
+     Only the title, the details and the What's Included / Terms blocks
+     differ, because those are what make it a quote. ── */
   function generateQuoteHTML(data){
     // A quote carries one or more formats. Quotes saved before sections
     // existed have no array, so treat those as the single format their own
@@ -1349,180 +1503,91 @@
     }];
     var MULTI = SECTIONS.length > 1;
     var validUntil = fmtDate(addDays(data.quoteDate, data.validDays));
-
-    // Addons lookup
-    function hasAddon(id){ return (data.addons||[]).some(function(a){ return a.id===id; }); }
-    function addonRate(id){ var a=(data.addons||[]).find(function(x){ return x.id===id; }); return a?a.rate:0; }
-    // Renders a selected add-on as its own priced line on the quote (same styling
-    // as palletizing). Without this, per-can/per-bottle add-ons like flash
-    // pasteurization and the bottling label options were collected but never
-    // shown or charged — silent revenue leakage on every affected quote.
-    function addonLine(id, label, unit){
-      if(!hasAddon(id)) return '';
-      return '<div style="border-left:4px solid #1a6fff;padding:12px 16px;background:#eef3ff;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
-        '<div><b>'+esc(label)+'</b></div>' +
-        '<div style="color:#1a6fff;font-weight:700;font-size:15px">'+fmtUsd(addonRate(id))+' / '+esc(unit)+'</div>' +
-      '</div>';
+    function secLabel(sec){
+      return sec.format || (sec.productType === 'bottling' ? 'Bottling' : sec.productType === 'keg' ? 'Keg Filling' : 'Canning');
     }
 
-    // One priced block per format. The parameter is named `data` on purpose:
-    // the body below was written against data.pkg / data.tiers / data.bpkg and
-    // moves here verbatim, now pointed at one section rather than the quote.
-    // hasAddon / addonRate stay bound to the outer quote-level data.
-    function sectionTiers(data){
-      var isCanning  = data.productType === 'canning';
-      var isBottling = data.productType === 'bottling';
-      var tiersTable = '';
-      if(isCanning){
-      var PK = data.pkg || {};
-      tiersTable = (data.tiers||[]).map(function(t){
-        var x   = canningExtras(t, PK);
-        var addonsPerCan = x.perCan - (t.fillPerCan||0);
-        var vol = fmtNum(t.cans||0)+' cans ('+fmtNum(t.cases||0)+' cases)';
+    var GROUP = 'font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#0F6E56;font-weight:700;background:#f4fbf9;padding:10px 16px';
+    function itemRows(items){
+      return items.map(function(l){
+        var unitLbl = l.unit ? '<span style="font-size:10px;color:#888;margin-left:4px">/'+esc(l.unit)+'</span>' : '';
         return '<tr>' +
-          '<td style="'+PTDC+'">'+vol+'</td>' +
-          '<td style="'+PTDC+'">'+fmtUsd(t.fillPerCan||0)+'</td>' +
-          '<td style="'+PTDC+'">'+fmtUsd(addonsPerCan)+'</td>' +
-          '<td style="'+PTDC+'">'+fmtUsd(x.caseExtra)+'</td>' +
-          '<td style="'+PTDC+'">'+(x.pallets ? x.pallets+' ('+fmtUsd(x.palletCost)+')' : '—')+'</td>' +
-          '<td style="'+PTD_BLUE+'">'+fmtUsd(x.runTotal)+'</td>' +
+          '<td>' + esc(l.desc) + '</td>' +
+          '<td style="text-align:center">' + fmtNum(l.qty) + '</td>' +
+          '<td style="text-align:right">' + fmtRate(l.unitPrice) + unitLbl + '</td>' +
+          '<td style="text-align:right;font-weight:700">' + fmtAmt(l.total) + '</td>' +
         '</tr>';
       }).join('');
-      // Itemized add-on / packaging breakdown — each active line with its rate.
-      function pkgLine(on, label, rate, unit){
-        if(!on || !(rate>0)) return '';
-        return '<div style="border-left:4px solid #1a6fff;padding:10px 16px;background:#eef3ff;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
-          '<div><b>'+esc(label)+'</b></div>' +
-          '<div style="color:#1a6fff;font-weight:700;font-size:14px">'+fmtUsd(rate)+' / '+esc(unit)+'</div>' +
-        '</div>';
+    }
+    function groupRow(label){ return '<tr><td colspan="4" style="'+GROUP+'">'+esc(label)+'</td></tr>'; }
+    function totalRow(label, amount){
+      return '<tr class="total-row"><td colspan="3">'+esc(label)+'</td><td style="text-align:right">'+fmtAmt(amount)+'</td></tr>';
+    }
+    function sumOf(items){ return items.reduce(function(a, l){ return a + l.total; }, 0); }
+    function table(body){
+      return '<table><thead><tr>' +
+        '<th>Description</th>' +
+        '<th style="text-align:center">Qty</th>' +
+        '<th style="text-align:right">Unit Price</th>' +
+        '<th style="text-align:right">Amount</th>' +
+      '</tr></thead><tbody>' + body + '</tbody></table>';
+    }
+
+    var quoteLines = customLineItems(data.quoteLines || data.customLines);
+    // One volume per format is a single job: one table, one total, exactly
+    // like an invoice. Several volumes for a format are alternatives the
+    // customer chooses between, so each gets its own table and total.
+    var singleJob = SECTIONS.every(function(sec){ return (sec.tiers||[]).length <= 1; });
+
+    var itemsHtml;
+    if(singleJob){
+      var all = [], body = '';
+      SECTIONS.forEach(function(sec){
+        var items = [];
+        (sec.tiers||[]).forEach(function(t){ items = items.concat(tierLineItems(sec, t)); });
+        items = items.concat(customLineItems(sec.lines));
+        if(!items.length) return;
+        if(MULTI) body += groupRow(secLabel(sec));
+        body += itemRows(items);
+        all = all.concat(items);
+      });
+      if(quoteLines.length){
+        if(MULTI) body += groupRow('Additional items');
+        body += itemRows(quoteLines);
+        all = all.concat(quoteLines);
       }
-      tiersTable = '<table style="width:100%;border-collapse:collapse;margin-bottom:16px">' +
-        '<thead><tr>' +
-          '<th style="'+PTH+'">Volume</th>' +
-          '<th style="'+PTH+'">Fill /Can</th>' +
-          '<th style="'+PTH+'">Add-ons /Can</th>' +
-          '<th style="'+PTH+'">Pkg /Case</th>' +
-          '<th style="'+PTH+'">Pallets</th>' +
-          '<th style="'+PTH+';color:#1a6fff">Run Total</th>' +
-        '</tr></thead><tbody>' + tiersTable + '</tbody></table>' +
-        pkgLine(PK.nitrogenOn, 'Nitrogen Dosing', PK.nitrogenPerCan, 'can') +
-        pkgLine(PK.pasteurOn,  'Batch Flash Pasteurization', PK.pasteurPerCan, 'can') +
-        pkgLine(PK.tray24On,   '24-count Case Tray', PK.tray24PerCase, 'case') +
-        pkgLine(PK.tray12On,   '12-count Case Tray', PK.tray12PerCase, 'case') +
-        pkgLine(PK.trayWrapOn, 'Shrink-wrap Case Tray', PK.trayWrapPerCase, 'case') +
-        pkgLine(PK.paktech4On, 'PakTech Handle — 4-pack', PK.paktech4PerCan, 'can') +
-        pkgLine(PK.paktech6On, 'PakTech Handle — 6-pack', PK.paktech6PerCan, 'can') +
-        pkgLine(PK.proper4On,  'Proper Pack — 4-pack', PK.proper4PerCan, 'can') +
-        pkgLine(PK.proper6On,  'Proper Pack — 6-pack', PK.proper6PerCan, 'can') +
-        pkgLine(PK.canBlankOn,   'Blank / Brite Can', PK.canBlankPerCan, 'can') +
-        pkgLine(PK.canShrinkOn,  'Shrink-Sleeve Label', PK.canShrinkPerCan, 'can') +
-        pkgLine(PK.canPrintedOn, 'Pre-Printed Can', PK.canPrintedPerCan, 'can') +
-        pkgLine(PK.palletOn,   'Pallet', PK.palletEach, 'pallet') +
-        pkgLine(PK.palletWrapOn, 'Pallet Shrink Wrap', PK.palletWrapEach, 'pallet');
-    } else if(isBottling){
-      var BB = data.bpkg || {};
-      function bpkgLine(on, label, rate, unit){
-        if(!on || !(rate>0)) return '';
-        return '<div style="border-left:4px solid #1a6fff;padding:10px 16px;background:#eef3ff;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
-          '<div><b>'+esc(label)+'</b></div>' +
-          '<div style="color:#1a6fff;font-weight:700;font-size:14px">'+fmtUsd(rate)+' / '+esc(unit)+'</div>' +
-        '</div>';
-      }
-      tiersTable = '<table style="width:100%;border-collapse:collapse;margin-bottom:16px">' +
-        '<thead><tr>' +
-          '<th style="'+PTH+'">Volume</th>' +
-          '<th style="'+PTH+'">Per Bottle</th>' +
-          '<th style="'+PTH+'">Add-ons /Btl</th>' +
-          '<th style="'+PTH+'">Pkg /Case</th>' +
-          '<th style="'+PTH+'">Pallets</th>' +
-          '<th style="'+PTH+';color:#1a6fff">Run Total</th>' +
-        '</tr></thead><tbody>' +
-        (data.tiers||[]).map(function(t){
-          var bx = bottlingExtras(t, BB);
-          var addPerBtl = bx.perBtl - (t.ratePerBtl||0);
-          return '<tr>' +
-            '<td style="'+PTDC+'">' + fmtNum(t.cases||0)+' cases ('+fmtNum(t.bottles||0)+' bottles)</td>' +
-            '<td style="'+PTDC+'">' + fmtUsd(t.ratePerBtl||0) + '</td>' +
-            '<td style="'+PTDC+'">' + fmtUsd(addPerBtl) + '</td>' +
-            '<td style="'+PTDC+'">' + fmtUsd(bx.caseExtra) + '</td>' +
-            '<td style="'+PTDC+'">' + (bx.pallets ? bx.pallets+' ('+fmtUsd(bx.palletCost)+')' : '—') + '</td>' +
-            '<td style="'+PTD_BLUE+'">' + fmtUsd(bx.runTotal) + '</td>' +
-          '</tr>';
-        }).join('') +
-        '</tbody></table>' +
-        bpkgLine(BB.pasteurOn, 'Batch Flash Pasteurization', BB.pasteurPerBtl, 'bottle') +
-        bpkgLine(BB.otlOn,     'Over the Top Labels', BB.otlPerBtl, 'bottle') +
-        bpkgLine(BB.labelsOn,  'Labels Front &amp; Back', BB.labelsPerBtl, 'bottle') +
-        bpkgLine(BB.caseOn,    '6-pack Bottle Case', BB.casePerCase, 'case') +
-        bpkgLine(BB.palletOn,  'Pallet', BB.palletEach, 'pallet') +
-        bpkgLine(BB.palletWrapOn, 'Pallet Shrink Wrap', BB.palletWrapEach, 'pallet');
+      itemsHtml = table(body + totalRow('Quote Total', sumOf(all)));
     } else {
-      tiersTable = '<table style="width:100%;border-collapse:collapse;margin-bottom:20px">' +
-        '<thead><tr><th style="'+PTH+'">Quantity</th><th style="'+PTH+'">Labor / Keg</th><th style="'+PTH+'">Keg Cost / Keg</th><th style="'+PTH+';color:#1a6fff">Run Total</th></tr></thead><tbody>' +
-        (data.tiers||[]).map(function(t){
-          var total = ((t.laborPerKeg||0)+(t.kegCostPerKeg||0))*(t.kegs||0);
-          return '<tr>' +
-            '<td style="'+PTDC+'">' + fmtNum(t.kegs||0) + ' kegs</td>' +
-            '<td style="'+PTDC+'">' + fmtUsd(t.laborPerKeg||0) + '</td>' +
-            '<td style="'+PTDC+'">' + fmtUsd(t.kegCostPerKeg||0) + '</td>' +
-            '<td style="'+PTD_BLUE+'">' + fmtUsd(total) + '</td>' +
-          '</tr>';
-        }).join('') +
-        '</tbody></table>';
+      var n = 0;
+      itemsHtml = SECTIONS.map(function(sec){
+        var tiers = sec.tiers || [];
+        var extra = customLineItems(sec.lines);
+        var blocks = tiers.map(function(t){
+          n++;
+          var items = tierLineItems(sec, t).concat(extra);
+          var title = (tiers.length > 1 ? 'Option ' + n + ' — ' : '') + (MULTI ? secLabel(sec) + ' — ' : '') + tierVolumeLabel(sec, t);
+          return table(groupRow(title) + itemRows(items) + totalRow(tiers.length > 1 ? 'Option ' + n + ' Total' : 'Total', sumOf(items)));
+        }).join('');
+        if(!tiers.length && extra.length){
+          blocks = table((MULTI ? groupRow(secLabel(sec)) : '') + itemRows(extra) + totalRow('Total', sumOf(extra)));
+        }
+        return blocks;
+      }).join('') +
+      (quoteLines.length ? table(groupRow('Additional items — added to any option') + itemRows(quoteLines) + totalRow('Additional Items Total', sumOf(quoteLines))) : '');
     }
-      return tiersTable;
-    }
-
-    // Free-text lines, priced qty × rate. This is the escape hatch for
-    // anything the standard deck does not model.
-    function linesTable(lines, heading){
-      var rows = (lines || []).filter(function(l){ return String(l.desc||'').trim(); });
-      if(!rows.length) return '';
-      var total = rows.reduce(function(a,l){ return a + (Number(l.qty)||0)*(Number(l.rate)||0); }, 0);
-      return '<div style="font-weight:700;margin:14px 0 8px;color:#0a1628">'+esc(heading)+'</div>' +
-        '<table style="width:100%;border-collapse:collapse;margin-bottom:16px">' +
-        '<thead><tr>' +
-          '<th style="'+PTH+'">Item</th>' +
-          '<th style="'+PTH+'">Qty</th>' +
-          '<th style="'+PTH+'">Unit Price</th>' +
-          '<th style="'+PTH+';color:#1a6fff">Amount</th>' +
-        '</tr></thead><tbody>' +
-        rows.map(function(l){
-          var qty = Number(l.qty)||0;
-          return '<tr>' +
-            '<td style="'+PTDC+'">'+esc(l.desc||'')+'</td>' +
-            '<td style="'+PTDC+'">'+fmtNum(qty)+(l.unit ? ' '+esc(l.unit) : '')+'</td>' +
-            '<td style="'+PTDC+'">'+fmtUsd(l.rate||0)+'</td>' +
-            '<td style="'+PTD_BLUE+'">'+fmtUsd(qty*(Number(l.rate)||0))+'</td>' +
-          '</tr>';
-        }).join('') +
-        '<tr><td colspan="3" style="'+PTDC+';text-align:right;font-weight:700">Subtotal</td>' +
-          '<td style="'+PTD_BLUE+'">'+fmtUsd(total)+'</td></tr>' +
-        '</tbody></table>';
-    }
-
-    // Assemble: a block per format, then the lines that span the whole job.
-    // The heading only appears on a multi-format quote, so a single-format
-    // one looks exactly as it always did.
-    var tiersTable = SECTIONS.map(function(sec){
-      var label = sec.format || (sec.productType === 'bottling' ? 'Bottling' : sec.productType === 'keg' ? 'Keg Filling' : 'Canning');
-      var heading = MULTI
-        ? '<div style="margin:22px 0 10px;padding:8px 14px;background:#0a1628;color:#fff;font-weight:700;letter-spacing:1px;border-radius:4px">'+esc(label)+'</div>'
-        : '';
-      return heading + sectionTiers(sec) + linesTable(sec.lines, 'Additional items — ' + label);
-    }).join('') +
-    linesTable(data.quoteLines || data.customLines, 'Additional items');
 
     // ── What's included ──
     var incl = (data.inclusions || inclusionsForType(data.productType));
-    var half = Math.ceil(incl.length/2);
-    var col1 = incl.slice(0,half).map(function(s){ return '<div style="display:flex;gap:8px;margin-bottom:6px"><span style="color:#1a6fff;flex-shrink:0">&#10003;</span> '+s+'</div>'; }).join('');
-    var col2 = incl.slice(half).map(function(s){ return '<div style="display:flex;gap:8px;margin-bottom:6px"><span style="color:#1a6fff;flex-shrink:0">&#10003;</span> '+s+'</div>'; }).join('');
+    var inclHtml = incl.map(function(s){
+      return '<div style="padding:3px 0"><span style="color:#0F6E56;font-weight:700;margin-right:8px">&#10003;</span>'+esc(s)+'</div>';
+    }).join('');
 
     // ── Terms ──
     // Terms are per product type, so a quote with cans and bottles on it needs
     // both sets. Union in first-seen order, de-duplicated: the pricing caveat
     // is worded identically for canning and bottling and should appear once.
+    // The built-in terms carry their own <b> markup; the typed notes are
+    // escaped because they are free text.
     var terms = (function(){
       var seen = {}, out = [];
       SECTIONS.forEach(function(sec){
@@ -1532,66 +1597,45 @@
       });
       return out.length ? out : termsForType(data.productType);
     })();
-    if(data.notes) terms = terms.concat(['<b>Additional Notes:</b> '+data.notes]);
+    if(data.notes) terms = terms.concat(['<b>Additional Notes:</b> '+esc(data.notes)]);
 
-    // PTH/PTDC/PTD_BLUE are defined at module scope (below). Declaring them
-    // again here with `var` hoisted local `undefined` copies that shadowed the
-    // module ones for the pricing table built earlier in this function, so its
-    // cells rendered style="undefined". Use the module-scope constants instead.
+    var BOX   = 'margin-top:24px;padding:14px 18px;background:#f4fbf9;border:1px solid #0F6E56;border-radius:8px;font-size:13px;line-height:1.6';
+    var BOXH  = 'font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#0F6E56;margin-bottom:8px;font-weight:700';
+
+    var formats = SECTIONS.map(function(sec){ return esc(secLabel(sec)); }).join(', ');
+    var preparedFor = '<strong>'+esc(data.clientName||'')+'</strong>' +
+      (data.contactName ? '<br><span style="color:#666;font-size:12px">Attn: '+esc(data.contactName)+'</span>' : '') +
+      (data.clientEmail ? '<br><span style="color:#666;font-size:12px">'+esc(data.clientEmail)+'</span>' : '');
 
     // Preview before the first save has no number yet — the database assigns it on save.
     var qref = data.quoteNumber || 'DRAFT';
-    return '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Production Quote '+esc(qref)+'</title>' +
-    '<link rel="stylesheet" href="' + location.origin + '/gl-print-quote.css"></head><body>' +
+    return '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+esc(qref)+' — Good Liquid Bev Co</title>' +
+    '<link rel="stylesheet" href="' + location.origin + '/gl-print-invoice-pdf.css"></head><body>' +
     '<div class="header">' +
       '<div>' +
         '<div class="brand">GOOD LIQUID BEV CO</div>' +
-        '<div class="brand-sub">2011 51st Ave E, Unit 100, Palmetto, FL 34221<br>Mike@GoodLiquid.com &nbsp;&middot;&nbsp; (803) 493-5065<br>goodliquidbevco.com</div>' +
+        '<div class="brand-sub">2011 51st Ave E, Unit 100 · Palmetto, FL 34221</div>' +
+        '<div class="brand-sub">Mike@GoodLiquid.com · (803) 493-5065</div>' +
       '</div>' +
-      '<div class="quote-label">' +
-        '<h2>PRODUCTION QUOTE</h2>' +
-        '<div>Quote Date: '+fmtDate(data.quoteDate)+'</div>' +
-        '<div>Valid for '+data.validDays+' Days</div>' +
-        '<div style="margin-top:6px;font-size:10px;background:rgba(26,111,255,.2);color:#a8c4ff;padding:3px 10px;border-radius:20px;display:inline-block">'+esc(qref)+'</div>' +
+      '<div>' +
+        '<div class="inv-title">QUOTE</div>' +
+        '<div class="inv-num">'+esc(qref)+'</div>' +
       '</div>' +
     '</div>' +
-    '<div class="divider"></div>' +
-    '<div class="body">' +
-      '<div class="client-row">' +
-        '<div>' +
-          '<div class="client-label">PREPARED FOR</div>' +
-          '<div class="client-name">'+esc(data.clientName||'')+'</div>' +
-          (data.clientEmail ? '<div style="font-size:12px;color:#4a5568;margin-top:3px">'+esc(data.clientEmail)+'</div>' : '') +
-        '</div>' +
-        '<div style="text-align:right">' +
-          // On a multi-format quote this header used to name only the first
-          // format, which reads as though the other blocks were not quoted.
-          '<div class="client-label">'+(MULTI ? 'PACKAGE FORMATS' : 'PACKAGE FORMAT')+'</div>' +
-          '<div style="font-size:'+(MULTI ? '15' : '19')+'px;font-weight:900;color:#1a2240;line-height:1.4">' +
-            SECTIONS.map(function(sec){
-              return esc(sec.format || (sec.productType === 'bottling' ? 'Bottling' : sec.productType === 'keg' ? 'Keg Filling' : 'Canning'));
-            }).join('<br>') +
-          '</div>' +
-        '</div>' +
-      '</div>' +
-      '<div class="section-title">VOLUME PRICING OPTIONS <span style="float:right;font-size:10px;color:#9aa7bd;font-weight:400;letter-spacing:0">All amounts USD</span></div>' +
-      tiersTable +
-      '<div class="section-title">WHAT\'S INCLUDED</div>' +
-      '<div class="incl"><div>'+col1+'</div><div>'+col2+'</div></div>' +
-      '<div class="section-title">TERMS &amp; NOTES</div>' +
-      '<div class="terms-box">' + terms.map(function(t){ return '<p>'+t+'</p>'; }).join('') + '</div>' +
+    '<div class="meta">' +
+      '<div class="meta-box"><h4>Prepared For</h4><p>'+preparedFor+'</p></div>' +
+      '<div class="meta-box" style="text-align:right"><h4>Quote Details</h4>' +
+        '<p>Date: '+esc(data.quoteDate||'')+'<br>Valid until: '+esc(validUntil)+'<br>'+(MULTI ? 'Formats' : 'Format')+': '+formats+'</p></div>' +
     '</div>' +
-    '<div class="footer">' +
-      '<div><b>Ready to move forward?</b><br>Contact Mike Krail, Sales &amp; Strategy &nbsp;|&nbsp; Mike@GoodLiquid.com</div>' +
-      '<div style="text-align:right">Good Liquid Bev Co &nbsp;|&nbsp; Palmetto, FL</div>' +
+    itemsHtml +
+    '<div style="font-size:11px;color:#999;margin-top:-12px">All amounts USD.</div>' +
+    (inclHtml ? '<div style="'+BOX+'"><div style="'+BOXH+'">What\'s Included</div>'+inclHtml+'</div>' : '') +
+    '<div style="'+BOX+'"><div style="'+BOXH+'">Terms &amp; Notes</div>' +
+      terms.map(function(t){ return '<p style="margin:0 0 6px">'+t+'</p>'; }).join('') +
     '</div>' +
+    '<div class="footer">Questions? Mike Krail, Sales &amp; Strategy · Mike@GoodLiquid.com · (803) 493-5065 · goodliquidbevco.com</div>' +
     '</body></html>';
   }
-
-  // Fix: define PTH/PTDC/PTD_BLUE at module scope for generateQuoteHTML
-  var PTH      = 'background:#0a1628;color:#9aa7bd;padding:10px 12px;text-align:left;font-size:11px;letter-spacing:1px';
-  var PTDC     = 'padding:12px;border-bottom:1px solid #eee;font-size:13px;color:#1a2240';
-  var PTD_BLUE = 'padding:12px;border-bottom:1px solid #eee;font-size:13px;color:#1a6fff;font-weight:700';
 
   function loadScriptOnce(src){
     return new Promise(function(res, rej){
@@ -1865,6 +1909,7 @@
         '</div>' +
         '<span style="font-size:10px;letter-spacing:1.5px;color:'+sColor+'">' + esc((q.status||'').toUpperCase()) + '</span>' +
         (q.pdf_html ? '<button class="cbtn gl-q-dl" data-qid="'+q.id+'" style="font-size:11px;padding:4px 10px;flex-shrink:0">📄 PDF</button>' : '') +
+        '<button class="cbtn gl-q-inv" data-qid="'+q.id+'" style="font-size:11px;padding:4px 10px;flex-shrink:0" title="Open a new invoice filled in from this quote">🧾 Invoice</button>' +
         '<button class="cbtn gl-q-svc" data-qid="'+q.id+'" style="font-size:11px;padding:4px 10px;flex-shrink:0">⚙ Services</button>' +
       '</div>' +
       svcEditorHtml(q);
@@ -1956,6 +2001,14 @@
       });
     });
 
+    container.querySelectorAll('.gl-q-inv').forEach(function(btn){
+      btn.addEventListener('click', async function(){
+        var rr = await sb.from('quotes').select('*').eq('id', btn.getAttribute('data-qid')).single();
+        if(rr.error || !rr.data){ alert('Could not load that quote' + (rr.error ? ': ' + rr.error.message : '.')); return; }
+        window.glQuoteToInvoice(quoteDataFromRow(rr.data), clientId);
+      });
+    });
+
     container.querySelectorAll('.gl-q-dl').forEach(function(btn){
       btn.addEventListener('click', async function(){
         var qid = btn.getAttribute('data-qid');
@@ -2012,6 +2065,118 @@
       return r;
     };
   })();
+
+  /* ── Quote → invoice ──────────────────────────────────────────
+     A saved quote's own columns rebuilt into the shape generateQuoteHTML
+     reads. Rows saved before sections existed describe one format in
+     product_type / package_format / tiers, with the packaging config parked
+     in the addons array under id '__pkg__'. ── */
+  function quoteDataFromRow(q){
+    var legacyPkg = ((q.addons || []).find(function(a){ return a && a.id === '__pkg__'; }) || {}).pkg;
+    return {
+      quoteNumber: q.quote_number,
+      sections: (q.sections && q.sections.length) ? q.sections : [{
+        productType: q.product_type, format: q.package_format,
+        tiers: q.tiers || [], pkg: legacyPkg || {}, bpkg: {}, lines: []
+      }],
+      quoteLines: q.custom_lines || []
+    };
+  }
+
+  function secLabelOf(sec){
+    return sec.format || (sec.productType === 'bottling' ? 'Bottling' : sec.productType === 'keg' ? 'Keg Filling' : 'Canning');
+  }
+
+  // The choices a quote offers, each as a complete list of invoice lines.
+  // Mirrors the PDF: one volume per format is a single job (everything on it
+  // is one option); several volumes are alternatives, one option each, with
+  // that format's custom lines and the quote-wide lines on every option.
+  function quoteOptions(data){
+    var SECTIONS = data.sections || [];
+    var quoteLines = customLineItems(data.quoteLines || data.customLines);
+    function cpp(sec){ return (sec.pkg && sec.pkg.casesPerPallet) || null; }
+    var singleJob = SECTIONS.every(function(sec){ return (sec.tiers || []).length <= 1; });
+    if(singleJob){
+      var items = [], casesPerPallet = null;
+      SECTIONS.forEach(function(sec){
+        (sec.tiers || []).forEach(function(t){ items = items.concat(tierLineItems(sec, t)); });
+        items = items.concat(customLineItems(sec.lines));
+        if(casesPerPallet == null && sec.productType === 'canning') casesPerPallet = cpp(sec);
+      });
+      items = items.concat(quoteLines);
+      return items.length ? [{ label: 'Whole quote', items: items, casesPerPallet: casesPerPallet }] : [];
+    }
+    var out = [], n = 0;
+    SECTIONS.forEach(function(sec){
+      var extra = customLineItems(sec.lines);
+      (sec.tiers || []).forEach(function(t){
+        n++;
+        var items = tierLineItems(sec, t).concat(extra, quoteLines);
+        var total = items.reduce(function(a, l){ return a + l.total; }, 0);
+        out.push({
+          label: 'Option ' + n + ' — ' + secLabelOf(sec) + ', ' + tierVolumeLabel(sec, t) + ' — ' + fmtUsd(total),
+          items: items, casesPerPallet: sec.productType === 'canning' ? cpp(sec) : null
+        });
+      });
+    });
+    return out;
+  }
+
+  // Ask which option was accepted (only when there is more than one), then
+  // hand its lines to the invoice builder. Returns false if nothing opened.
+  window.glQuoteToInvoice = function(data, clientId){
+    if(typeof window.glInvoiceFromQuote !== 'function'){ alert('Invoice builder not ready — reload and try again.'); return false; }
+    var opts = quoteOptions(data);
+    if(!opts.length){ alert('This quote has no priced lines to invoice.'); return false; }
+    function go(o){
+      window.glInvoiceFromQuote({ clientId: clientId, quoteNumber: data.quoteNumber || '', items: o.items, casesPerPallet: o.casesPerPallet });
+    }
+    if(opts.length === 1){ go(opts[0]); return true; }
+
+    var old = document.getElementById('gl-q2i-pick'); if(old) old.remove();
+    var m = document.createElement('div');
+    m.id = 'gl-q2i-pick';
+    m.setAttribute('style', 'position:fixed;inset:0;z-index:10000;background:rgba(6,13,26,.9);display:flex;align-items:center;justify-content:center;padding:16px');
+    var card = document.createElement('div');
+    card.setAttribute('style', 'background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:22px;width:100%;max-width:460px');
+    var h = document.createElement('div');
+    h.setAttribute('style', 'font-size:14px;font-weight:700;color:#fff;margin-bottom:4px');
+    h.textContent = 'Which option did the client choose?';
+    var sub = document.createElement('div');
+    sub.setAttribute('style', 'font-size:12px;color:var(--muted);margin-bottom:14px');
+    sub.textContent = 'The invoice is filled in with that option\'s line items.';
+    card.appendChild(h); card.appendChild(sub);
+    opts.forEach(function(o){
+      var b = document.createElement('button');
+      b.className = 'cbtn';
+      b.setAttribute('style', 'display:block;width:100%;text-align:left;margin-bottom:8px;font-size:12px;padding:10px 12px');
+      b.textContent = o.label;
+      b.addEventListener('click', function(){ m.remove(); go(o); });
+      card.appendChild(b);
+    });
+    var cancel = document.createElement('button');
+    cancel.className = 'cbtn';
+    cancel.setAttribute('style', 'width:100%;font-size:12px;color:var(--muted)');
+    cancel.textContent = 'Cancel';
+    cancel.addEventListener('click', function(){ m.remove(); });
+    card.appendChild(cancel);
+    m.appendChild(card);
+    document.body.appendChild(m);
+    return true;
+  };
+
+  // The shared add-on list with today's rates, for the invoice builder's panel.
+  window.glCanningAddons = function(format){
+    var pkg = defaultCanningPkg(format);
+    return {
+      casesPerPallet: pkg.casesPerPallet,
+      items: CANNING_ADDONS.map(function(a){
+        return { key: a.key, label: a.label, unit: a.unit, rate: pkg[a.rate] || 0 };
+      })
+    };
+  };
+  // Exposed for tests: the option list a quote offers the invoice builder.
+  window.glQuoteOptions = function(data){ return quoteOptions(data); };
 
   console.log('[GL] production quote builder loaded');
 }());
