@@ -335,7 +335,14 @@
     }
     if(!name){setErr('Name is required');return;}
     if(!email||email.indexOf('@')<0){setErr('Valid email is required');return;}
-    if((window.users||[]).find(function(u){return u.email.toLowerCase()===email;})){setErr('A user with that email already exists');return;}
+    // GL-125: this used to dead-end here. The common reason to re-invite is
+    // that the first invite link expired before they opened it, and the fix
+    // for that is "Email reset" on their row — which sends a fresh link and
+    // confirms the address on the way through. Say so instead of just "no".
+    if((window.users||[]).find(function(u){return u.email.toLowerCase()===email;})){
+      setErr(email + ' is already on the team list. If they never finished setting a password, use "Email reset" on their row to send them a fresh link.');
+      return;
+    }
 
     // ── Give immediate feedback BEFORE any async work ──
     var btn=document.querySelector('#invite-user-modal button.cbtn.pri');

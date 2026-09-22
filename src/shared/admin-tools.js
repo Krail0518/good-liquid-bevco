@@ -1155,8 +1155,131 @@
    AuthChange event 'PASSWORD_RECOVERY'. We listen for it and
    open a "set new password" modal. On save, auth.updateUser
    persists the new bcrypt hash and the user is signed in.
+
+   GL-125: a link that FAILS comes back the same way — Supabase
+   redirects to the site with #error=access_denied&error_code=
+   otp_expired instead of tokens. Nothing read those, so an
+   expired invite dropped the recipient on the marketing page
+   with no explanation and no way forward. Staff invites expire
+   after the project's Email OTP window (currently <= 1 hour),
+   so this is the ordinary outcome of opening the mail later in
+   the day, not an edge case. The error is now shown, with a
+   self-service "email me a new link" so the recipient is not
+   blocked waiting on an admin.
    ============================================================ */
 (function(){
+  /* Captured at script-load time. supabase-js clears the URL fragment as soon
+     as it parses a link, so by the time DOMContentLoaded fires the evidence
+     may already be gone. The customer portal has always snapshotted it
+     (portal-customer.js `_initialHash`); the staff page never did. */
+  var _bootHash   = window.location.hash   || '';
+  var _bootSearch = window.location.search || '';
+
+  /* Supabase reports link failures in the fragment (implicit flow) or the
+     query string (PKCE). Returns {code, description} or null. */
+  function readLinkError(hash, search){
+    var src = null;
+    if(/(?:^|&)error(?:_code|_description)?=/.test(hash))          src = hash;
+    else if(/(?:^|[?&])error(?:_code|_description)?=/.test(search)) src = search.replace(/^\?/, '');
+    if(!src) return null;
+    var p;
+    try { p = new URLSearchParams(src); } catch(e){ return null; }
+    var code = p.get('error_code') || p.get('error') || '';
+    if(!code) return null;
+    return { code: code, description: p.get('error_description') || '' };
+  }
+
+  /* Where a freshly-requested link should land. Portal customers must come
+     back to ?portal=1 or they hit the staff login instead of their dashboard. */
+  function linkRedirectTarget(){
+    return /[?&]portal=1\b/.test(_bootSearch || window.location.search || '')
+      ? window.location.origin + window.location.pathname + '?portal=1'
+      : window.location.origin;
+  }
+
+  /* An expired or already-used link. Explains what happened and offers a new
+     one. Every piece of URL-derived text goes in through textContent — the
+     error_description is attacker-controllable (anyone can craft the URL) and
+     this modal renders on the public marketing page. */
+  function openLinkErrorModal(err){
+    if(document.getElementById('gl-link-error-modal')) return;
+    var expired = /otp_expired|token.*expired|expired/i.test(err.code + ' ' + err.description);
+    var ov = document.createElement('div');
+    ov.id = 'gl-link-error-modal';
+    ov.setAttribute('style','position:fixed;inset:0;z-index:1200;background:rgba(6,13,26,.95);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;padding:20px');
+    ov.innerHTML =
+      '<div style="background:#142238;border:1px solid rgba(245,200,66,.25);border-radius:14px;padding:32px;width:100%;max-width:460px">' +
+        '<div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:#f5c842;margin-bottom:6px" id="gl-le-title"></div>' +
+        '<div style="font-size:13px;color:#9ca3af;margin-bottom:8px;line-height:1.55" id="gl-le-body"></div>' +
+        '<div style="font-size:11px;color:#6b7280;margin-bottom:20px;font-family:var(--ff-mono)" id="gl-le-detail"></div>' +
+        '<div class="frow"><div class="flbl">Your email address</div><input class="finp" type="email" id="gl-le-email" placeholder="you@company.com" autocomplete="email"></div>' +
+        '<div id="gl-le-msg" style="display:none;font-size:12px;margin:2px 0 10px"></div>' +
+        '<button id="gl-le-send" class="cbtn pri" style="width:100%;margin-top:6px">Email me a new link</button>' +
+        '<button id="gl-le-close" class="cbtn" style="width:100%;margin-top:8px">Close</button>' +
+      '</div>';
+    document.body.appendChild(ov);
+
+    ov.querySelector('#gl-le-title').textContent = expired ? 'THIS LINK HAS EXPIRED' : 'THIS LINK DID NOT WORK';
+    ov.querySelector('#gl-le-body').textContent = expired
+      ? 'Sign-in links stay valid for a short window and this one is past it. Enter your email and we will send a fresh one — open it right away and you will be able to set your password.'
+      : 'This sign-in link is no longer valid. It may have already been used. Enter your email and we will send a new one.';
+    ov.querySelector('#gl-le-detail').textContent = err.description || err.code;
+
+    var emailEl = ov.querySelector('#gl-le-email');
+    var msgEl   = ov.querySelector('#gl-le-msg');
+    var sendBtn = ov.querySelector('#gl-le-send');
+    function say(text, ok){
+      msgEl.style.display = 'block';
+      msgEl.style.color = ok ? '#5fcf9e' : '#e74c3c';
+      msgEl.textContent = text;
+    }
+    function dismiss(){
+      ov.remove();
+      // Drop the error artifacts — from the fragment AND the query string —
+      // so a refresh doesn't re-open this over the page they wanted.
+      try {
+        // Built by keeping the other params rather than removing these ones:
+        // a bare `.delete(` here reads as an unchecked database delete to
+        // tests/checked-mutations.test.cjs, and that guard is worth more sharp
+        // than exempted.
+        var kept = [];
+        new URLSearchParams(window.location.search).forEach(function(v, k){
+          if(k !== 'error' && k !== 'error_code' && k !== 'error_description') kept.push([k, v]);
+        });
+        var qs = new URLSearchParams(kept).toString();
+        history.replaceState(null, '', window.location.pathname + (qs ? '?' + qs : ''));
+      } catch(e){}
+    }
+    ov.querySelector('#gl-le-close').addEventListener('click', dismiss);
+    setTimeout(function(){ emailEl.focus(); }, 50);
+
+    sendBtn.addEventListener('click', async function(){
+      var email = (emailEl.value || '').trim().toLowerCase();
+      if(email.indexOf('@') < 0){ say('Enter the email address the link was sent to.', false); return; }
+      var sb = window.supa;
+      if(!sb){ say('Auth service unavailable — please try again in a moment.', false); return; }
+      var orig = sendBtn.textContent;
+      sendBtn.disabled = true; sendBtn.textContent = 'Sending…';
+      try{
+        var r = await sb.auth.resetPasswordForEmail(email, { redirectTo: linkRedirectTarget() });
+        if(r.error){
+          // Rate limits are the common one; show what the server actually said
+          // rather than a false "sent".  (Same lesson as GL-118.)
+          say(r.error.message || 'The link could not be sent.', false);
+          sendBtn.disabled = false; sendBtn.textContent = orig;
+          return;
+        }
+        say('Sent. Check your inbox and open the link right away — it expires quickly.', true);
+        sendBtn.textContent = 'Link sent';
+      }catch(e){
+        console.error('[GL] new-link request threw', e);
+        say('Failed: ' + (e.message || 'unknown error'), false);
+        sendBtn.disabled = false; sendBtn.textContent = orig;
+      }
+    });
+    emailEl.addEventListener('keydown', function(e){ if(e.key === 'Enter') sendBtn.click(); });
+  }
+
   function openRecoveryModal(mode){
     var isInvite = mode === 'invite';
     var existing = document.getElementById('gl-recovery-modal');
@@ -1272,8 +1395,19 @@
     //    event fired before we subscribed (or never fires), open the modal
     //    by URL inspection. Cover both implicit (#type=recovery) and PKCE
     //    (?code=… on a ?portal=1 page) styles.
-    var hash = (window.location.hash || '').replace(/^#/, '');
-    var search = window.location.search || '';
+    //    Read the snapshot taken at script load when supabase-js has already
+    //    wiped the live fragment, so a slow page can't lose the link.
+    var hash = ((window.location.hash || _bootHash) || '').replace(/^#/, '');
+    var search = window.location.search || _bootSearch || '';
+
+    // 2a) The link came back as a failure (expired, already used). Say so —
+    //     a silent marketing page is what made GL-125 invisible.
+    var linkErr = readLinkError(hash, search);
+    if(linkErr){
+      console.log('[GL] sign-in link failed:', linkErr.code, '→ showing the expired-link notice');
+      openLinkErrorModal(linkErr);
+      return;
+    }
     var hashRecovery = hash.indexOf('type=recovery') >= 0;
     var hashInvite   = hash.indexOf('type=invite')   >= 0;
     var pkceRecovery = /[?&]code=/.test(search) && /[?&]portal=1\b/.test(search);

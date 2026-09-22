@@ -3,6 +3,20 @@
 // The invite email contains a magic link. When the recipient clicks it they
 // land on the CRM (redirectTo), are automatically signed in, and are shown a
 // "Create Your Password" prompt so they can set their own credentials.
+//
+// GL-125: that link dies after the project's Email OTP expiry window, which is
+// an Auth setting (Dashboard → Authentication → Email → Email OTP Expiration),
+// NOT anything this function controls. It has been at most 1 hour, so an invite
+// sent in the evening is already dead by morning — on 2026-09-21 a new salesper-
+// son opened theirs 3h25m after it was sent, got "email link has expired", and
+// the site showed a blank marketing page. The landing page now surfaces
+// that failure and offers a fresh link (src/shared/admin-tools.js). If invites
+// are still going stale, check the expiry setting before reading this code.
+//
+// Re-inviting someone who never accepted works: Supabase re-sends the invite
+// for an existing UNCONFIRMED user and only refuses once they are confirmed.
+// The "Email reset" button on their row in Users & Permissions also works, and
+// verifying a recovery link confirms the address on the way through.
 // The role + display name are stored in the user's metadata and synced to the
 // profiles table so the CRM sees them immediately on first login.
 //
