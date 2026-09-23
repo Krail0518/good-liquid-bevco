@@ -56,7 +56,12 @@ jobs:
     # the whole install.
     timeout-minutes: 180
     env:
-      GL_VIDEO_OUT: ${{ github.workspace }}/.video-out
+      # GL-129: NOT a dot-directory. upload-artifact skips hidden files by
+      # default, so `.video-out` uploaded nothing while the build itself
+      # succeeded. (runner.temp would be tidier but the runner context is not
+      # available in a job-level env block.) Only tutorials/ is ever git-added,
+      # so this sitting in the workspace is inert.
+      GL_VIDEO_OUT: ${{ github.workspace }}/video-out
       GL_PIPER_MODEL: /opt/piper-voices/en-us-lessac-medium.onnx
     steps:
       - uses: actions/checkout@v7
