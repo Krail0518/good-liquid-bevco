@@ -67,11 +67,14 @@
   function injectPOField() {
     var builder = document.getElementById('gl-inv-builder');
     if (!builder || builder.dataset.poInjected) return;
-    builder.dataset.poInjected = '1';
     var body = document.getElementById('gl-inv-body') || builder.querySelector('.inv-body, form');
     if (!body) return;
     var firstInput = body.querySelector('input, select, textarea');
     if (!firstInput) return;
+    // GL-127: the builder's fields render after its container, so setting this
+    // at the top dropped the PO field whenever the observer looked first and
+    // the form filled in second.
+    builder.dataset.poInjected = '1';
     var row = document.createElement('div');
     row.style.cssText = 'margin-bottom:12px';
     row.innerHTML = '<label style="display:block;font-size:12px;font-weight:600;color:#718096;margin-bottom:4px">PO Number (optional)</label>' +
@@ -105,12 +108,14 @@
   function injectVoidButton() {
     var detail = document.getElementById('inv-detail');
     if (!detail || !detail.classList.contains('show') || detail.dataset.voidInjected) return;
-    detail.dataset.voidInjected = '1';
     var invId = window.currentInvId;
     var inv = invId ? getInv(invId) : null;
     if (!inv || inv.status === 'voided' || inv.is_credit_memo) return;
     var btnRow = detail.querySelector('div[style*="display:flex"]');
     if (!btnRow || btnRow.querySelector('.gl-void-btn')) return;
+    // GL-127: claim the slot only once the button is going in — see
+    // injectPartialPayBtn for what setting this early cost.
+    detail.dataset.voidInjected = '1';
     var btn = document.createElement('button');
     btn.innerHTML = '🚫 Void';
     btn.className = 'cbtn gl-void-btn';
@@ -510,11 +515,16 @@
   function injectPartialPayBtn() {
     var detail = document.getElementById('inv-detail');
     if (!detail || !detail.classList.contains('show') || detail.dataset.payBtnInjected) return;
-    detail.dataset.payBtnInjected = '1';
     var inv = window.currentInvId ? getInv(window.currentInvId) : null;
     if (!inv || inv.status === 'voided' || inv.is_credit_memo) return;
     var btnRow = detail.querySelector('div[style*="display:flex"]');
     if (!btnRow || btnRow.querySelector('.gl-pay-btn')) return;
+    // GL-127: claim the slot only once the button is actually going in. This
+    // used to be set at the top, so a run that arrived before currentInvId or
+    // the action row existed — the observer fires 300ms after any mutation —
+    // marked the panel done and never tried again, and Record Payment simply
+    // never appeared until you closed and reopened the invoice.
+    detail.dataset.payBtnInjected = '1';
     var btn = document.createElement('button');
     btn.innerHTML = '💵 Record Payment';
     btn.className = 'cbtn gl-pay-btn';
@@ -582,13 +592,14 @@
   function injectCollectBtn() {
     var detail = document.getElementById('inv-detail');
     if (!detail || !detail.classList.contains('show') || detail.dataset.collectBtnInjected) return;
-    detail.dataset.collectBtnInjected = '1';
     var inv = window.currentInvId ? getInv(window.currentInvId) : null;
     if (!inv || inv.status === 'paid' || inv.status === 'voided' || inv.is_credit_memo) return;
     var due = inv.due_date || inv.dueDate;
     if (!due || new Date(due) > new Date()) return;
     var btnRow = detail.querySelector('div[style*="display:flex"]');
     if (!btnRow || btnRow.querySelector('.gl-collect-btn')) return;
+    // GL-127: as above — the flag records success, not an attempt.
+    detail.dataset.collectBtnInjected = '1';
     var btn = document.createElement('button');
     btn.innerHTML = '📋 Collect';
     btn.className = 'cbtn gl-collect-btn';

@@ -3,6 +3,9 @@
 > **Purpose:** Source of truth for every page, button, system, and admin gate in the CRM.
 > Before making ANY UI change, read the relevant section(s) here first.
 > Last audited: 2026-06-28.
+> Sections 1, 4, 8 and 12 updated 2026-09-23 for partial payments (GL-126) and
+> the injector guard (GL-127). The rest has not been re-audited since the date
+> above, so treat it as that old.
 
 ---
 
@@ -13,6 +16,9 @@
 - **Adding a new IIFE or JS system?** Read Section 5 and Section 9 to understand what global state already exists.
 - **Touching an edge function?** Read Section 7 first.
 - **Not sure if something is admin-only?** Section 6 has the complete list.
+- **Touching anything that counts money owed?** Read Section 12 first. The rule
+  that "unpaid" is not the same as `status === 'pending'` has already cost this
+  codebase one round of silently wrong totals.
 
 ---
 
@@ -25,7 +31,7 @@
 | `cpg-dashboard` | (no id; always visible) | DASHBOARD | All | `+ New Invoice` (primary) |
 | `cpg-clients` | `nav-clients` | CLIENTS | Admin/Sales | (none in header). The **ONBOARDING** section (module `crm-onboarding.js` → `glClientOnboardingSection`) renders in BOTH client surfaces — the admin/sales edit form (`glOpenEditClient` in `crm-edit-client.js`, top of form; this is what a card click opens for non-viewers) and the read-only detail popup (via `glClientInfoSections` in `crm-client-detail.js`). The edit form also mounts the **📎 DOCUMENTS card** (`glRenderDealDocs` from `crm-deal-docs.js`, container `#gl-ec-docs`) — NDA / Process Authority letter / formulas / labels carried over from the pipeline at convert, plus staff and portal-customer uploads. Each client-scoped row carries a **👁 Visible to client / 🔒 Internal** toggle (`.gl-dd-vis`) that flips `deal_documents.client_visible`; staff uploads default internal (migration 20260914090400), customer uploads are set visible, publishing a `Formula`-type document asks for a second confirmation, and every flip is recorded by the `gl_audit_document_visibility` trigger. Two doc types feed the entitlement-gated portal tabs: **`Product Render`** and **`Market Analysis`** publish into the portal's Renders and Market Analytics tabs through the same `client_visible` toggle as everything else — there is deliberately no second visibility mechanism (GL-077 was exactly that mistake). The same modal's **📋 PRODUCTION QUOTES** panel (`quote-builder.js` → `injectClientQuotesPanel`, container `#gl-cq-list`) gives each quote a **⚙ Services** control (`.gl-q-svc`) opening an inline editor: a project picker (unarchived only), the three portal services, and the quote status. Moving a quote to **`accepted`** with services ticked fires `trg_quote_grant_entitlements`, which writes `grant` rows into `project_entitlement_events` and emails the client — it is idempotent, refuses to grant without a signed-in actor, and grants nothing when no project is set. Portal side: the customer dashboard has an **🔒 AGREEMENTS & CONTRACTS** section (crm-portal-customer.js) listing the client's `deal_documents` with download (signed URL, client-docs bucket) and a customer upload control (RLS: "deal_documents customer read" + "deal_documents customer upload", migration 20260807000000): live status (Invited / Opened / Submitted) + `📨 Send / resend onboarding email` (`glSendOnboardingLink`) + `🔗 Copy link` (`glCopyOnboardingLink`). Reuses the pipeline-convert email + `gl_onboarding_create` RPC. The `🔑 Invite Customer Login` picker auto-fills the email from the picked client and explains that logins attach to a client; brand-new people go Clients/pipeline-convert → onboarding email. |
 | `cpg-pipeline` | `nav-pipeline` | PIPELINE | Admin/Sales | (none in header). The deal panel's edit mode mounts the **🧪 FORMULATION block** (`glFormulationBlock` from `crm-formulation.js`, container `#ddp-formulation`, field prefix `ddp-form`) — a done checkbox, a formulator dropdown fed by the `formulators` table, and what the brand spent. Saved by `saveDealDetail()` into `deals.formulation_done` / `_vendor` / `_spend`; the read-only view mode shows it back via `glFormulationSummary`. The same block appears in the client editor (prefix `gl-ec-form`) and in the read-only client popup. The dashboard's **🧪 FORMULATION REVENUE** card (`glRenderFormulationDash`, container `#dash-formulation`, registered via `GL_HOOKS.registerDashPatch`) totals the cut across clients and open leads, broken out per house. It de-duplicates by company name/email: converting a lead creates a client but never sets `deals.client_id`, so the same brand can carry formulation on both rows — the lead is skipped and the skip count shown. |
-| `cpg-invoices` | `nav-invoices` | INVOICES | Admin/Sales | `+ New Invoice` (primary) |
+| `cpg-invoices` | `nav-invoices` | INVOICES | Admin/Sales | `+ New Invoice` (primary). Filter pills: All / Draft / Pending / Paid / Overdue / **Partial**, each matching `invoices.status` exactly. Row actions: `Paid` (`quickPaid`), **`💵 Part`** (`glRecordPayment` — opens the payment form for a part payment; hidden on paid, voided and draft), `↩ Unpaid/Pending` (`quickUnpaid`), 📱 SMS on overdue, 👁 view, 🗑 delete. A part-paid row shows a `partial payment` badge and the balance under the amount — see §12. |
 | `cpg-newinv` | (no sidebar item; nav via button) | CREATE INVOICE | Admin/Sales | (form only) |
 | `cpg-referrals` | `nav-referrals` | REFERRALS | Admin/Sales | `+ Log referral` (primary) |
 | `cpg-referrers` | `nav-referrers` | REFERRERS | Admin/Sales | `+ Add referrer` (primary) |
@@ -176,6 +182,17 @@ Items hidden by default (admin-only) use `style="display:none"` and are shown by
 
 **Important:** Injected buttons use DOM-presence class guards. Before injecting, each function checks `btnRow.querySelector('.gl-xxx-btn')`. If the class is already in the DOM, injection is skipped — this prevents duplicates regardless of MutationObserver timing.
 
+**And the other half of that rule (GL-127).** Each injector also sets a
+`detail.dataset.xxxInjected` flag so it runs once per opening. That flag must be
+set **only after the button has actually been appended**, never at the top of
+the function. Four of them set it first, which meant a run that arrived before
+`window.currentInvId` or the action row existed — the observer fires 300ms after
+*any* mutation, so this happens often on a slow render — marked the panel done
+and never tried again. Record Payment, Void, Collect and the builder's PO field
+simply never appeared, until you closed and reopened the invoice. The class
+guard above stops duplicates; the flag is an optimisation, and an optimisation
+that skips work must only fire once the work is done.
+
 ---
 
 ## 5. GLOBAL SYSTEMS (fix.js IIFEs) — KEY INVENTORY
@@ -321,7 +338,8 @@ Three mechanisms, used in combination:
 | `profiles` | id, email, role, name, initials, color, tc, status, is_super_user, notify_daily_digest | Role: admin/sales/viewer |
 | `clients` | id, name, email, phone, contact_name, notes, rate_overrides (JSONB), formulation_done, formulation_vendor, formulation_spend, formulation_pct | Formulation fields written by `crm-formulation.js`; revenue = spend x pct / 100, derived on read |
 | `formulators` | id, name (unique), active, sort_order | The formulation houses the 🧪 dropdown offers. Staff-only RLS; add new ones from the dropdown, no migration needed |
-| `invoices` | id, invoice_number (GL-XXXX), client_id, amount, status, line_items (JSONB), stripe_payment_link, qbo_id | status: draft/pending/paid/overdue/void |
+| `invoices` | id, invoice_number (GL-XXXX), client_id, amount, paid_amount, status, line_items (JSONB), stripe_payment_link, qbo_id | status: draft/pending/paid/overdue/voided/**partial**. `paid_amount` is maintained by the `gl_derive_invoice_paid_state` trigger — never written by hand |
+| `invoice_payments` | invoice_number, amount, method, paid_at, reference, provider, provider_event_id, event_kind | The money ledger, append-only: `invoice_payments_immutable` blocks UPDATE and DELETE. `event_kind`: payment/reversal/legacy_backfill; a reversal carries a negative amount |
 | `referrals` | id, referrer_id, client_name, deal_value, commission_rate, commission_amount, status | status: lead/presented/won/paid/lost |
 | `referrers` | id, name, email, phone, default_rate | |
 | `activity_feed` | id, user_id, action_type, target, details (JSONB), timestamp | action_type: call/email/deal/invoice/note/ref |
@@ -400,3 +418,57 @@ Before making any change, confirm:
 6. **Chrome suppresses `confirm()`.** Never use `confirm()` for gating a user action. Use a custom two-step UI pattern instead (see the delete IIFE for reference).
 7. **Re-inviting a removed user.** `invite-staff-user` edge function automatically purges the stale `auth.users` record if the profile shows `status = 'inactive'`. No manual SQL cleanup needed.
 8. **Drag-drop kanban.** The HTML structure for the production runs kanban exists but JS drag logic is not yet implemented. Don't break the column structure.
+
+---
+
+## 12. PARTIAL PAYMENTS & THE MONEY LEDGER (GL-126)
+
+**`invoice_payments` is the source of truth for money received.** `invoices.status`
+and `invoices.paid_amount` are *derived* from it by the
+`gl_derive_invoice_paid_state` trigger. Never set a paid state by hand — an
+UPDATE that disagrees with the ledger is a bug, not a shortcut.
+
+### Statuses
+
+`draft` · `pending` · `overdue` · `paid` · `voided` · `partial`
+
+`partial` means some money has arrived and some is still owed. It is derived,
+never chosen: `paid` wins when the balance is settled, `draft` and `voided` are
+preserved (a payment must not resurrect a voided invoice), and `partial`
+otherwise takes precedence — including over a stored `overdue`. Overdue-ness is
+not lost, because `effectiveInvoiceStatus()` recomputes it from the due date and
+A/R aging buckets by due date rather than by status.
+
+### Recording and undoing
+
+| Action | Where | Calls |
+|--------|-------|-------|
+| Record a part payment | `💵 Part` on the invoice row, or `Record Payment` in the detail toolbar | `gl_record_manual_payment` — refuses more than the balance |
+| Undo one payment | `Undo` beside a payment in the history | `gl_reverse_one_payment` |
+| Undo everything | `↩ Unpaid` on the row | `gl_reverse_invoice_payments` |
+
+The ledger is **append-only and enforced** — `invoice_payments_immutable` blocks
+UPDATE and DELETE. An undo appends a compensating negative row, so the mistake
+and its correction both stay on the record with who and why. Reversing a
+reversal, reversing twice, and reversing a Stripe payment are all refused; Stripe
+money must be refunded in Stripe or the two ledgers disagree.
+
+### The trap to avoid when adding a status
+
+Do **not** write `status === 'pending' || status === 'overdue'` to mean "still
+owed", and do not sum `invoice.amount` to mean "still owing". Thirteen call
+sites did both, which meant that adding `partial` would have dropped part-paid
+invoices out of A/R aging, cash-flow, credit limits, the dashboard and the
+customer portal — where the client would also have lost the button to pay the
+rest — while the ones that remained overstated the debt by whatever had already
+been paid. Use:
+
+```js
+window.glIsInvoiceOutstanding(inv)  // any status that still owes money
+window.glInvoiceBalance(inv)        // what is left; never the total, never negative
+```
+
+Both live in `crm-index-core.js`. The portal has its own copies (`invIsOpen`,
+`invBalance`) because it reads rows straight from the table rather than from
+`window.invoices` — and its queries must select `paid_amount`, or the balance
+silently renders as the full amount.
