@@ -72,6 +72,7 @@ FUNC     public.gl_quote_grant_entitlements() | secdef=t | search_path=pg_catalo
 FUNC     public.gl_rate_limit_hit(p_bucket text, p_limit integer, p_window_seconds integer) | secdef=t | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_record_manual_payment(p_invoice_number text, p_amount numeric, p_method text, p_reference text) | secdef=t | search_path=public, extensions | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_reverse_invoice_payments(p_invoice_number text, p_reason text) | secdef=t | search_path=public, extensions | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
+FUNC     public.gl_reverse_one_payment(p_payment_id uuid, p_reason text) | secdef=t | search_path=public, extensions | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_reverse_stripe_session(p_event_id text, p_invoice_number text, p_session_id text) | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_secret_get(p_name text) | secdef=t | search_path="" | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_secret_set(p_name text, p_value text) | secdef=t | search_path="" | acl=postgres=X/postgres,service_role=X/postgres

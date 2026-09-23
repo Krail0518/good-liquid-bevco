@@ -283,6 +283,7 @@
     'payComm',
     'postAnnouncement',
     'print',
+    'glRecordPayment',
     'quickPaid',
     'quickUnpaid',
     'refineAIComm',
