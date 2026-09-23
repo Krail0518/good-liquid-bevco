@@ -182,40 +182,68 @@ jobs:
       # previous build is the one signal available cheaply: a video that came
       # out empty, or that changed a lot without its storyboard being touched,
       # is worth a look before merging. This is a prompt to watch it, not proof.
+      # GL-131: duration, not file size. Size was the first attempt and it does
+      # not work: rebuilding tutorial-invoices from byte-identical inputs
+      # produced a file 13.8% larger, because the browser recording and the x264
+      # encode are both nondeterministic. A check whose noise is wider than its
+      # signal teaches you to ignore it — and worse, it sent me hunting for app
+      # changes to explain a difference that had no cause.
+      #
+      # Duration is stable by construction: the generator forces each step's
+      # wall-time to the length of its synthesized narration, so the same
+      # storyboard yields the same running time, while an edited one moves by
+      # however much narration was added.
+      #
+      # Every video is listed, not only the movers. Hiding the quiet rows is
+      # what made the size version misleading — you could not tell "unchanged"
+      # from "not measured".
       - name: Summarise what changed
         run: |
+          dur() { ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "$1" 2>/dev/null || echo 0; }
           {
             echo "### Rebuilt videos"
             echo ""
-            echo "| Video | Was | Now | Change |"
-            echo "|---|---:|---:|---:|"
+            echo "| Video | Was | Now | Duration change | Size |"
+            echo "|---|---:|---:|---:|---:|"
           } >> "$GITHUB_STEP_SUMMARY"
+          flagged=0
           for f in tutorials/*.mp4; do
-            new=$(stat -c%s "$f")
-            # HEAD, not origin/<ref>: checkout is shallow by default so the
-            # remote-tracking ref may not exist, and HEAD is the committed state
-            # before the copy step touched the working tree — exactly the
-            # comparison wanted.
-            old=$(git cat-file -s "HEAD:$f" 2>/dev/null || echo 0)
-            if [ "$old" -eq 0 ]; then
-              pct="new"
-            else
-              pct=$(awk -v o="$old" -v n="$new" 'BEGIN{printf "%+.0f%%", (n-o)*100/o}')
+            newd=$(dur "$f")
+            newsz=$(stat -c%s "$f")
+            oldd=0; oldsz=0
+            # HEAD is the committed state, before the copy step touched the tree.
+            if git cat-file -e "HEAD:$f" 2>/dev/null; then
+              git cat-file blob "HEAD:$f" > /tmp/old-video.mp4 2>/dev/null || true
+              oldd=$(dur /tmp/old-video.mp4)
+              oldsz=$(git cat-file -s "HEAD:$f")
             fi
-            # Only rows that actually moved; ±3% is re-encode noise.
-            case "$pct" in
-              new|*%)
-                d=$(awk -v o="$old" -v n="$new" 'BEGIN{ if(o==0){print 100} else {d=(n-o)*100/o; print (d<0?-d:d)} }')
-                if [ "${d%.*}" -ge 3 ] 2>/dev/null; then
-                  echo "| \`$(basename "$f")\` | $old | $new | **$pct** |" >> "$GITHUB_STEP_SUMMARY"
-                fi;;
-            esac
+            moved=$(awk -v od="$oldd" -v nd="$newd" 'BEGIN{ if(od+0==0){print 1; exit} d=nd-od; if(d<0)d=-d; print (d>=1.0)?1:0 }')
+            awk -v od="$oldd" -v nd="$newd" -v os="$oldsz" -v ns="$newsz" -v name="$(basename "$f")" -v mv="$moved" '
+              BEGIN{
+                if (od+0 == 0) { printf "| `%s` | — | %.1fs | **new** | %d B |\n", name, nd, ns; exit }
+                d = nd - od;
+                spct = (os>0 ? (ns-os)*100/os : 0);
+                mark = (mv==1 ? "**" : "");
+                printf "| `%s` | %.1fs | %.1fs | %s%+.1fs%s | %+.0f%% |\n", name, od, nd, mark, d, mark, spct;
+              }' >> "$GITHUB_STEP_SUMMARY"
+            [ "$moved" = "1" ] && flagged=$((flagged+1))
           done
           {
             echo ""
-            echo "Rows within ±3% are omitted — that is re-encode noise. A video that"
-            echo "moved without its storyboard changing is the one to watch before merging;"
-            echo "download the **tutorial-videos** artifact from this run."
+            if [ "$flagged" -gt 0 ]; then
+              echo "**$flagged video(s) moved by a second or more.** Expected only where the"
+              echo "storyboard changed — anywhere else, watch it before merging. Download"
+              echo "the **tutorial-videos** artifact from this run."
+            else
+              echo "No video moved by as much as a second, so nothing here suggests a content"
+              echo "change. Note this measures running time, not what is on screen: a"
+              echo "storyboard edit that swaps a click without changing the narration would"
+              echo "not show up."
+            fi
+            echo ""
+            echo "_Size is context only. It swings several percent between identical_"
+            echo "_rebuilds — the recording and the encode are both nondeterministic — so_"
+            echo "_on its own it is not evidence of anything._"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload as an artifact
