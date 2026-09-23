@@ -5,13 +5,19 @@
 // "Create Your Password" prompt so they can set their own credentials.
 //
 // GL-125: that link dies after the project's Email OTP expiry window, which is
-// an Auth setting (Dashboard → Authentication → Email → Email OTP Expiration),
-// NOT anything this function controls. It has been at most 1 hour, so an invite
-// sent in the evening is already dead by morning — on 2026-09-21 a new salesper-
-// son opened theirs 3h25m after it was sent, got "email link has expired", and
-// the site showed a blank marketing page. The landing page now surfaces
-// that failure and offers a fresh link (src/shared/admin-tools.js). If invites
-// are still going stale, check the expiry setting before reading this code.
+// an Auth setting, NOT anything this function controls. It was the 1-hour
+// default, so an invite sent in the evening was already dead by morning — on
+// 2026-09-21 a new salesperson opened theirs 3h25m after it was sent, got
+// "email link has expired", and the site showed a blank marketing page. The
+// landing page now surfaces that failure and offers a fresh link
+// (src/shared/admin-tools.js).
+//
+// The window is now 48 hours, declared in .github/workflows/set-auth-config.yml
+// and applied from CI rather than typed into the dashboard, so the number lives
+// in a file someone can read. If invites are going stale again, check that the
+// server still agrees with the declared value before reading this code — a
+// setting that exists only as server state is how this project lost fourteen
+// RLS policies (see CLAUDE.md).
 //
 // Re-inviting someone who never accepted works: Supabase re-sends the invite
 // for an existing UNCONFIRMED user and only refuses once they are confirmed.

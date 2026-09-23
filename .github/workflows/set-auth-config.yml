@@ -1,0 +1,115 @@
+# Set the Auth settings that live outside the database (GL-125).
+#
+# Some settings cannot be a migration and cannot go through the Supabase CLI:
+# `supabase config push` is all-or-nothing and this repo's config.toml declares
+# no [auth] block, so pushing would overwrite site_url, the redirect allow-list,
+# JWT expiry and the email templates with CLI defaults — every magic link and
+# portal redirect in production would break. The Management API takes one field
+# at a time, so that is what this uses.
+#
+# Running it from CI rather than a laptop is the point. The value below is the
+# declared one: reviewable in a diff, re-appliable after a restore, and visible
+# to the next person who wonders why invites expire when they do. A number typed
+# into the dashboard is none of those things, which is the shape of the worst
+# finding in CLAUDE.md — fourteen anon policies that existed in no file.
+#
+# Run: gh workflow run "Set Auth config"
+#      gh workflow run "Set Auth config" -f mailer_otp_exp=86400   # to override
+#
+# ROLLBACK: re-run with -f mailer_otp_exp=3600 (the Supabase default, 1 hour).
+
+name: Set Auth config
+
+on:
+  workflow_dispatch:
+    inputs:
+      mailer_otp_exp:
+        description: 'Email link / OTP lifetime in seconds (default: the declared value below)'
+        required: false
+        type: string
+
+concurrency:
+  group: set-auth-config
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PROJECT_REF: ufjkeqmxwuyhbqyugcgg
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      # ── The declared value ────────────────────────────────────────────────
+      # 172800 = 48 hours. Owner's call on 2026-09-22, after a new salesperson's
+      # invite died in the ~1 hour default before he opened it. Supabase caps the
+      # dashboard field at 24h and discourages more; the tradeoff accepted here
+      # is that a sign-in link sitting in an inbox stays usable for two days.
+      DECLARED_MAILER_OTP_EXP: '172800'
+    steps:
+      - name: Refuse to run without a token
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "SUPABASE_ACCESS_TOKEN is not set for this run."
+            echo "It is a repository secret and is not exposed to forks."
+            exit 1
+          fi
+
+      - name: Apply the Auth config
+        # The dispatch input arrives through the environment, never interpolated
+        # into the script body: `${{ inputs.… }}` inside a run block is pasted in
+        # as text before the shell sees it, so a crafted value would execute.
+        env:
+          INPUT_MAILER_OTP_EXP: ${{ inputs.mailer_otp_exp }}
+        run: |
+          set -euo pipefail
+          WANT="${INPUT_MAILER_OTP_EXP:-}"
+          [ -n "$WANT" ] || WANT="$DECLARED_MAILER_OTP_EXP"
+
+          case "$WANT" in
+            ''|*[!0-9]*) echo "mailer_otp_exp must be a whole number of seconds, got: $WANT"; exit 1 ;;
+          esac
+          if [ "$WANT" -lt 60 ] || [ "$WANT" -gt 604800 ]; then
+            echo "Refusing $WANT — outside the sane range of 60s to 7 days."
+            exit 1
+          fi
+
+          echo "Setting mailer_otp_exp to $WANT seconds ($((WANT / 3600))h) on $PROJECT_REF"
+
+          # PATCH one field. The response body carries the WHOLE auth config,
+          # including SMTP credentials, and this repository is public — so it is
+          # written to a file and never echoed. Only the field we set is printed.
+          code=$(curl -sS -o resp.json -w "%{http_code}" -X PATCH \
+            "https://api.supabase.com/v1/projects/$PROJECT_REF/config/auth" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"mailer_otp_exp\": $WANT}")
+
+          if [ "$code" -ge 400 ]; then
+            echo "HTTP $code — the change was NOT applied."
+            # message/error only: the rest of the body is not ours to print.
+            jq -r '.message // .error // "no message"' < resp.json || true
+            exit 1
+          fi
+          echo "HTTP $code"
+
+          # Read it back from the server rather than trusting the write.
+          code=$(curl -sS -o verify.json -w "%{http_code}" \
+            "https://api.supabase.com/v1/projects/$PROJECT_REF/config/auth" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN")
+          if [ "$code" -ge 400 ]; then
+            echo "Applied, but the read-back failed with HTTP $code — verify by hand."
+            exit 1
+          fi
+
+          GOT=$(jq -r '.mailer_otp_exp' < verify.json)
+          echo "Server now reports mailer_otp_exp = $GOT"
+          if [ "$GOT" != "$WANT" ]; then
+            echo "MISMATCH: asked for $WANT, server kept $GOT."
+            echo "Supabase may be clamping the value. Nothing else was changed."
+            exit 1
+          fi
+          echo "Confirmed: sign-in links are valid for $((GOT / 3600)) hours."
+
+      - name: Leave nothing behind
+        if: always()
+        run: rm -f resp.json verify.json
