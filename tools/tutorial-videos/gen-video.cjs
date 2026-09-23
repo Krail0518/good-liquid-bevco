@@ -13,7 +13,12 @@
 const http=require('http'),fs=require('fs'),path=require('path');
 const {execSync}=require('child_process');
 const {chromium}=require('playwright');
-const ROOT='/home/user/good-liquid-bevco';
+// GL-129: hardcoded to one machine's checkout, like SCRATCH below. The static
+// server silently 404s every file when this is wrong, so index.html loads empty
+// and the first storyboard step dies on `window.invoices` being undefined — a
+// confusing way to be told the path is wrong. Default to the repo this file
+// lives in, which is right by construction; GL_SITE_ROOT still overrides.
+const ROOT=process.env.GL_SITE_ROOT || path.resolve(__dirname,'..','..');
 // GL-129: this was hardcoded to one machine's sandbox path, so the generator
 // only ever ran where it was written. GL_VIDEO_OUT lets CI (and anyone else)
 // point it somewhere real; the old path stays as the default so nothing that
