@@ -213,7 +213,12 @@ const CORE_INVOICES=[
   {id:'GL-1042',clientName:'Perico Nutrition',client:'c1',svc:'Small Batch Canning',amount:3850,date:'2026-07-20',status:'pending'},
   {id:'GL-1041',clientName:'Lotus Beverages',client:'c2',svc:'Bottle Filling (750ml)',amount:5420,date:'2026-07-05',status:'overdue'},
   {id:'GL-1039',clientName:'Perico Nutrition',client:'c1',svc:'R&D / Formulation',amount:1500,date:'2026-06-28',status:'paid'},
-  {id:'GL-1038',clientName:'Cold Brew Collective',client:'c3',svc:'Straight Co-Packing',amount:2760,date:'2026-06-15',status:'draft'}
+  {id:'GL-1038',clientName:'Cold Brew Collective',client:'c3',svc:'Straight Co-Packing',amount:2760,date:'2026-06-15',status:'draft'},
+  // GL-126: one part-paid invoice so the tutorials actually show the `partial`
+  // badge and the "$X left" balance line. paidAmount is what the real app loads
+  // from invoices.paid_amount, so the badge and every total render exactly as
+  // they do in production.
+  {id:'GL-1040',clientName:'Lotus Beverages',client:'c2',svc:'Small Batch Canning',amount:4200,date:'2026-07-12',status:'partial',paidAmount:1800}
 ];
 const CORE_DEALS={
   'Prospecting':[{id:'d1',name:'Quote Request',co:'Perico Nutrition',contactName:'Ana Perez',email:'ana@perico.co',val:'$8,000',service:'Canning',createdAt:'2026-07-25'}],
@@ -379,7 +384,8 @@ const STORYBOARDS={
     async setup(pg){ await coreSetup(pg,'invoices'); },
     steps:[
       {say:"Invoices is where you bill your brands and see exactly what has been paid and what is still outstanding."},
-      {say:"Every invoice is listed with its client, service, amount, date, and a color-coded status — Draft, Pending, Paid, or Overdue.", act:{type:'move',sel:'#inv-body'}},
+      {say:"Every invoice is listed with its client, service, amount, date, and a color-coded status — Draft, Pending, Paid, Overdue, or Partial payment.", act:{type:'move',sel:'#inv-body'}},
+      {say:"When a client pays part of what they owe, record it with the Part button. The invoice keeps a partial payment badge and shows the balance still owing, so it never looks either fully paid or untouched.", act:{type:'move',sel:'#inv-body tr:has-text("GL-1040")'}},
       {say:"Use the pills at the top to filter. Let's show just the overdue invoices.", act:{type:'click',sel:'#inv-pills .cpill:has-text("Overdue")'}},
       {say:"To create a new one, click New invoice.", act:{type:'click',sel:'button:has-text("New invoice"):visible'}},
       {say:"First, pick the client the invoice is for.", act:{type:'select',sel:'#inv-client',label:'Perico Nutrition'}},

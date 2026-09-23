@@ -475,7 +475,7 @@
       '<b>(2) 📊 Export CSV</b> — downloads every non-quote invoice as CSV (drop into QuickBooks or hand to your accountant).',
       '<b>(3) 📊 Activity</b> — opens the Email Activity view across <i>every</i> invoice (sent / delivered / opened / clicked / bounced). See the <a href="#help-email-activity" style="color:#00e5c0">Email Activity</a> section for details.',
       '<b>(4) 📧 Send overdue reminders</b> — confirms, then emails every overdue client at once from your Gmail + your email signature.',
-      '<b>(5) Status filter pills</b> — All / Draft / Pending / Paid / Overdue / Quote.',
+      '<b>(5) Status filter pills</b> — All / Draft / Pending / Paid / Overdue / <b>Partial</b> / Quote. <b>Partial</b> shows invoices where some money has arrived but not all of it — the row carries a teal <b>partial payment</b> badge and the balance still owing under the amount, so you can see what is left without opening anything.',
       '<b>(6) Row actions</b> — 💳 opens the Stripe pay link for that invoice; 👁 opens the invoice detail.',
       '<b>(7) → Invoice button</b> — appears on quote-status rows. One-click conversion from "quote" to billable "pending".',
       '<b>Invoice detail action buttons</b>: open any invoice to see the full action row. <b>✓ Mark Paid</b> — immediately marks status=paid and records paid_at (use for offline receipts; Stripe payments auto-mark via webhook). <b>✗ Mark Overdue</b> — manually flips to overdue before the nightly cron catches it. <b>✉ AI Follow-Up</b> — Claude generates a tone-matched follow-up email (friendly for pending, firm for overdue), lets you edit it, and sends from your Gmail (gmail-send function, Mailgun fallback). Also: ✏️ <b>Edit</b> (reopens the builder), 📧 <b>Send Invoice</b> (full composer), 📊 <b>Activity</b> (this invoice\'s send history), 📅 <b>Schedule</b> (queue a reminder). See the relevant sections in this guide.'
@@ -491,7 +491,7 @@
     ]) +
     '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#f5c842">🧾 INVOICE DETAIL — ACCOUNTING ACTIONS (NEW)</h4>' +
     bullets([
-      '<b>💵 Record Payment</b> — open any invoice → click Record Payment in the action row. Log partial or full payments with method (Check / Wire / ACH / Cash / Stripe / Other) and an optional reference / check number. Payment history is shown above the form. When the balance hits $0 the invoice auto-marks paid and you\'re offered a receipt email.',
+      '<b>💵 Record Payment</b> — open any invoice → click Record Payment in the action row, or use <b>💵 Part</b> straight from the invoice row. Log partial or full payments with method (Check / Wire / ACH / Cash / Stripe / Other) and an optional reference / check number. Payment history is shown above the form, each line with an <b>Undo</b> button. A part-paid invoice shows the <b>partial</b> status and its remaining balance everywhere money is counted. When the balance hits $0 the invoice auto-marks paid and you\'re offered a receipt email.',
       '<b>🚫 Void</b> — permanently voids an invoice. You\'ll be prompted for a reason. Sets status to "voided" with a timestamp. Cannot be undone.',
       '<b>📋 Collect</b> — only appears on past-due invoices. Schedules a 4-step automated email sequence: gentle reminder (day 3), firm reminder (day 14), urgent notice (day 30), final notice (day 45). Shows the client\'s email on file before confirming.',
       '<b>⚠️ Late fee banner</b> — a red banner automatically appears at the top of any overdue invoice showing the number of days overdue and the suggested late fee (1.5%/month). Click <b>Add to Invoice</b> to append it as a line item.',
@@ -1008,7 +1008,8 @@
       '<b>(2) 📋 Activity log</b> — last 100 audit_log entries. Requires the audit_log table SQL.',
       '<b>(3) Role legend</b> — Admin (full access), Sales (CRM only), Viewer (read-only).',
       '<b>(4) Role dropdown per row</b> — change role inline. Persists to profiles immediately.',
-      '<b>(5) Row actions</b> — Set password (masked-input modal → admin_set_user_password RPC, no email), Email reset (Supabase recovery email), Remove (soft-delete via profile.status = inactive). Owner row is locked.'
+      '<b>(5) Row actions</b> — Set password (masked-input modal → admin_set_user_password RPC, no email), Email reset (Supabase recovery email), Remove (soft-delete via profile.status = inactive). Owner row is locked.',
+      '<b>If someone never finished setting up</b> — they were invited but the link stopped working, or they never clicked it — use <b>Email reset</b> on their row rather than inviting them again. The Invite form refuses an address that is already on the team list, and the reset link both lets them set a password and confirms their email address on the way through. Sign-in links stay valid for <b>48 hours</b>; if one does lapse, the person now lands on a page that says so and offers to send itself a fresh one, rather than the silent marketing page it used to show.'
     ]) +
     /* ── Permission system (component-level gates) ── */
     '<h4 style="margin:22px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">🔑 PER-USER, PER-COMPONENT PERMISSIONS</h4>' +
@@ -1838,8 +1839,10 @@
       box(400,158,100,40,'#5fcf9e','none') + txt(450,178,'Save Payment',10,'#0a1628','middle')
     ) +
     bullets([
-      '<b>Where to find it</b>: open any invoice → click <b>💵 Record Payment</b> in the button row.',
-      '<b>Partial payments</b>: record any amount up to the remaining balance. Each payment is saved to <code>invoice_payments</code> with date, method, and optional reference/check number.',
+      '<b>Where to find it</b>: on the Invoices list click <b>💵 Part</b> on the invoice\'s row, or open the invoice and click <b>💵 Record Payment</b> in the button row. Both open the same form.',
+      '<b>Partial payments</b>: record any amount up to the remaining balance. Each payment is saved to <code>invoice_payments</code> with date, method, and optional reference/check number. Enter <b>the amount just received</b>, not the running total — three payments over time add up on their own, each keeping its own date and check number.',
+      '<b>What you see afterwards</b>: the invoice takes the <b>partial</b> status — a teal <b>partial payment</b> badge, the balance still owing printed under the amount, and a place in the <b>Partial</b> filter. Every figure that means "money owed" counts the balance rather than the invoice total: A/R aging, the cash-flow forecast, credit-limit warnings, the dashboard, and the customer\'s own portal, where they can still pay the rest.',
+      '<b>Undo a mistake</b>: each payment in the history has an <b>Undo</b> button. It asks why, then reverses that <i>one</i> payment — not the whole invoice, which is what <b>↩ Unpaid</b> does. The ledger is append-only, so the original line stays and a matching reversal appears beside it in red; nothing is erased and the balance goes back up. Reversing a reversal, undoing the same payment twice, and undoing a <b>Stripe</b> payment are all refused — Stripe money has to be refunded in Stripe or the two records stop agreeing.',
       '<b>Payment methods</b>: Check, Wire transfer, ACH, Cash, Stripe, Other.',
       '<b>Full payment</b>: when the payment brings the balance to $0 the invoice status automatically flips to <b>paid</b> and you\'re offered the option to send a receipt email to the client.',
       '<b>Payment history</b>: every prior payment appears in the table above the "Record New Payment" form — date, method, reference, and amount.',
