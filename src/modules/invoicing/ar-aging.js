@@ -34,7 +34,14 @@
    Buckets: Current (not yet due), 1-30, 31-60, 61-90, 90+. */
 function arAgingBuckets(){
   const today = new Date(); today.setHours(0,0,0,0);
-  const unpaid = (window.invoices||[]).filter(i => i.status === 'pending' || i.status === 'overdue');
+  // GL-126: this used to test `status === 'pending' || 'overdue'` by hand, so
+  // the day 'partial' was added a part-paid invoice would have dropped out of
+  // A/R entirely — the balance still owed would have stopped being chased.
+  // glIsInvoiceOutstanding covers every status that still owes money.
+  const outstanding = (typeof window.glIsInvoiceOutstanding === 'function')
+    ? window.glIsInvoiceOutstanding
+    : (i => i.status === 'pending' || i.status === 'overdue' || i.status === 'partial');
+  const unpaid = (window.invoices||[]).filter(outstanding);
   const buckets = { current: [], b1_30: [], b31_60: [], b61_90: [], b90plus: [] };
   unpaid.forEach(i => {
     if(!i.dueDate){ buckets.current.push({ inv:i, days:0 }); return; }
@@ -49,7 +56,14 @@ function arAgingBuckets(){
   });
   return buckets;
 }
-function sumBucket(b){ return b.reduce((s,x) => s + (Number(x.inv.amount)||0), 0); }
+// GL-126: the BALANCE, not the invoice total. A $10,000 invoice with $8,000
+// paid is $2,000 of receivable, and reporting it as $10,000 overstates what
+// the client actually owes.
+function sumBucket(b){
+  return b.reduce((s,x) => s + (typeof window.glInvoiceBalance === 'function'
+    ? window.glInvoiceBalance(x.inv)
+    : (Number(x.inv.amount)||0)), 0);
+}
 function renderArAgingSection(){
   const b = arAgingBuckets();
   const total = sumBucket(b.current) + sumBucket(b.b1_30) + sumBucket(b.b31_60) + sumBucket(b.b61_90) + sumBucket(b.b90plus);

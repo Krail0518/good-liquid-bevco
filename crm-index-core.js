@@ -591,10 +591,49 @@ function cNav(page,el){
    The one thing that does suppress a stored overdue is the flag being switched
    off — "turn overdue off" would mean little if the ones already marked stayed
    red. */
+/* GL-126: how much is still owed on an invoice. The ledger is the authority —
+   paid_amount is maintained by the gl_derive_invoice_paid_state trigger — so
+   this never has to add up payments in the browser. Returns the full amount
+   when nothing is paid, and never goes below zero (an overpayment is a credit
+   question, not a negative receivable). */
+function glInvoiceBalance(inv){
+  if(!inv) return 0;
+  const total = Number(inv.amount) || 0;
+  const paid  = Number(inv.paidAmount != null ? inv.paidAmount : inv.paid_amount) || 0;
+  const bal   = total - paid;
+  return bal > 0 ? bal : 0;
+}
+window.glInvoiceBalance = glInvoiceBalance;
+
+/* Money for display, matching the invoice table's existing formatting. */
+function glFmtUsd(n){
+  return window.fmtUsd
+    ? window.fmtUsd(n)
+    : Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+window.glFmtUsd = glFmtUsd;
+
+/* True when money is still owed. Use this instead of
+   `status === 'pending' || status === 'overdue'` — that test predates the
+   'partial' status and silently excluded part-paid invoices, which is exactly
+   the money you most want to chase. */
+function glIsInvoiceOutstanding(inv){
+  if(!inv) return false;
+  if(inv.is_credit_memo || inv.isCreditMemo) return false;
+  const eff = effectiveInvoiceStatus(inv);
+  return eff === 'pending' || eff === 'overdue' || eff === 'partial';
+}
+window.glIsInvoiceOutstanding = glIsInvoiceOutstanding;
+
 function effectiveInvoiceStatus(inv){
   if(!inv) return 'draft';
   // GL-102: a voided invoice is final — never promoted to overdue by due date.
   if(inv.status === 'paid' || inv.status === 'draft' || inv.status === 'voided') return inv.status;
+
+  // GL-126: a part-paid invoice reads as part-paid rather than being promoted
+  // to overdue by its due date. The money still ages — AR aging buckets by due
+  // date, not by this status — but the badge shows that something came in.
+  if(inv.status === 'partial') return 'partial';
 
   // Settings may not have loaded yet; the defaults are the documented rule.
   const get = (typeof window !== 'undefined' && typeof window.glGetSetting === 'function')
@@ -695,10 +734,16 @@ function renderDash(){
   // list as the 🔥 Needs Attention board and the WhatsApp digest, loaded on open.
   if(typeof window.glRenderAttentionCard === 'function'){ try { window.glRenderAttentionCard('dash-attention'); } catch(e){} }
   const effective = invoices.map(i => ({ inv: i, eff: effectiveInvoiceStatus(i) }));
-  const paid    = effective.filter(x => x.eff === 'paid'   ).reduce((a,x) => a + (Number(x.inv.amount)||0), 0);
-  const pend    = effective.filter(x => x.eff === 'pending').reduce((a,x) => a + (Number(x.inv.amount)||0), 0);
-  const over    = effective.filter(x => x.eff === 'overdue').reduce((a,x) => a + (Number(x.inv.amount)||0), 0);
-  const pendCt  = effective.filter(x => x.eff === 'pending').length;
+  // GL-126: 'partial' is money in AND money still owed, so it belongs on both
+  // sides — the part received counts as collected, the rest as outstanding.
+  // Counting its full amount as pending (the old behaviour for any unpaid
+  // status) would have overstated the receivable by whatever the client paid.
+  const paid    = effective.filter(x => x.eff === 'paid'   ).reduce((a,x) => a + (Number(x.inv.amount)||0), 0)
+                + effective.filter(x => x.eff === 'partial').reduce((a,x) => a + (Number(x.inv.paidAmount)||0), 0);
+  const pend    = effective.filter(x => x.eff === 'pending').reduce((a,x) => a + (Number(x.inv.amount)||0), 0)
+                + effective.filter(x => x.eff === 'partial').reduce((a,x) => a + glInvoiceBalance(x.inv), 0);
+  const over    = effective.filter(x => x.eff === 'overdue').reduce((a,x) => a + glInvoiceBalance(x.inv), 0);
+  const pendCt  = effective.filter(x => x.eff === 'pending' || x.eff === 'partial').length;
   const overCt  = effective.filter(x => x.eff === 'overdue').length;
   const act     = clients.filter(c=>c.status==='active').length;
   document.getElementById('dash-metrics').innerHTML=`
@@ -791,7 +836,7 @@ function buildCharts(){
   }
   (invoices||[]).forEach(inv=>{
     const isPaid=inv.status==='paid';
-    const isOwed=inv.status==='pending'||inv.status==='overdue';
+    const isOwed=glIsInvoiceOutstanding(inv);
     if(!isPaid && !isOwed) return;
     if(Array.isArray(inv.lines) && inv.lines.length){
       inv.lines.forEach(l=>{
@@ -1193,11 +1238,23 @@ function renderInvoices(){
     <td style="font-weight:600;color:var(--teal)">${esc(i.id)}</td>
     <td>${esc(i.clientName)}</td>
     <td style="color:var(--muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.svc)}</td>
-    <td style="font-weight:600">$${(window.fmtUsd?window.fmtUsd(i.amount):Number(i.amount||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))}</td>
+    <td style="font-weight:600">$${(window.fmtUsd?window.fmtUsd(i.amount):Number(i.amount||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))}${
+      // GL-126: on a part-paid invoice the amount alone is misleading — it is
+      // not what the client still owes. Show the balance right under it.
+      effectiveInvoiceStatus(i)==='partial'
+        ? `<div style="font-size:10px;font-weight:600;color:#00b89c;margin-top:2px">$${esc(glFmtUsd(glInvoiceBalance(i)))} left</div>`
+        : ''}</td>
     <td style="color:var(--muted)">${esc(i.date)}</td>
-    <td><span class="cbdg ${esc(effectiveInvoiceStatus(i))}">${esc(effectiveInvoiceStatus(i))}</span></td>
+    <td><span class="cbdg ${esc(effectiveInvoiceStatus(i))}"${
+      effectiveInvoiceStatus(i)==='partial'
+        ? ` title="Partly paid: $${esc(glFmtUsd(Number(i.paidAmount)||0))} received, $${esc(glFmtUsd(glInvoiceBalance(i)))} still owing"`
+        : ''}>${effectiveInvoiceStatus(i)==='partial'?'partial payment':esc(effectiveInvoiceStatus(i))}</span></td>
     <td data-gl-action="glSwallowClick"><div style="display:flex;gap:3px">
       ${(i.status!=='paid'&&i.status!=='voided')?`<button class="cbtn grn" style="font-size:10px;padding:3px 7px" data-gl-action="quickPaid" data-gl-arg1="${esc(i.id)}">Paid</button>`:''}
+      ${/* GL-126: record a part payment without leaving the list. Opens the
+            existing payment form, which shows what has been paid so far and
+            refuses more than the balance. */''}
+      ${(i.status!=='paid'&&i.status!=='voided'&&i.status!=='draft')?`<button class="cbtn" style="font-size:10px;padding:3px 7px;background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:#00b89c" data-gl-action="glRecordPayment" data-gl-arg1="${esc(i.id)}" title="Record a partial payment">💵 Part</button>`:''}
       ${(i.status==='paid'||i.status==='overdue')?`<button class="cbtn" style="font-size:10px;padding:3px 7px" data-gl-action="quickUnpaid" data-gl-arg1="${esc(i.id)}" title="${i.status==='paid'?'Mark unpaid — returns the invoice to pending and clears the recorded payment':'Clear the overdue flag — returns the invoice to pending'}">↩ ${i.status==='paid'?'Unpaid':'Pending'}</button>`:''}
       ${effectiveInvoiceStatus(i)==='overdue'?`<button class="cbtn" style="font-size:10px;padding:3px 7px;background:rgba(245,200,66,.12);border-color:rgba(245,200,66,.35);color:#f5c842" data-gl-action="sendInvoiceSmsReminder" data-gl-arg1="${esc(i.id)}" title="Send SMS reminder">📱</button>`:''}
       <button class="cbtn" style="font-size:10px;padding:3px 7px" data-gl-action="viewInvoice" data-gl-arg1="${esc(i.id)}">👁</button>
@@ -1764,6 +1821,11 @@ async function loadSupabaseData(){
       svc:i.service||'', amount:i.amount||0, date:i.invoice_date||'', status:i.status||'draft', notes:i.notes||'',
       paymentTerms: i.payment_terms || '',
       dueDate: i.due_date || '',
+      // GL-126: without this the browser cannot tell a part-paid invoice from
+      // an untouched one — every "outstanding" figure in the CRM and the
+      // portal counted the FULL amount. Kept current by the
+      // gl_derive_invoice_paid_state trigger, so it always matches the ledger.
+      paidAmount: Number(i.paid_amount) || 0,
       // Also hydrate line items so the dashboard chart can categorize per-line.
       lines: Array.isArray(i.line_items) ? i.line_items : [],
       // Per-invoice card-surcharge waiver (was gl_waive_surcharge_* localStorage).
@@ -4392,7 +4454,8 @@ function openClientDetail(cid) {
   const ref = referrers.find(r=>r.id===c.referredBy);
   const totalBilledAmt = cInvoices.reduce((s,i)=>s+(Number(i.amount)||0),0);
   const paid = cInvoices.filter(i=>i.status==='paid').reduce((s,i)=>s+(Number(i.amount)||0),0);
-  const pending = cInvoices.filter(i=>i.status==='pending'||i.status==='overdue').reduce((s,i)=>s+(Number(i.amount)||0),0);
+  // GL-126: part-paid invoices are still owed; count what is left on them.
+  const pending = cInvoices.filter(i=>glIsInvoiceOutstanding(i)).reduce((s,i)=>s+glInvoiceBalance(i),0);
 
   const existing = document.getElementById('client-detail-overlay');
   if(existing) existing.remove();
@@ -4540,8 +4603,9 @@ function openReports() {
   /* Use effective status so a pending invoice past its due_date counts as
      overdue here too (matches the dashboard tallies). */
   const totalPaid    = invoices.filter(i=>effectiveInvoiceStatus(i)==='paid'   ).reduce((s,i)=>s+(Number(i.amount)||0),0);
-  const totalPending = invoices.filter(i=>effectiveInvoiceStatus(i)==='pending').reduce((s,i)=>s+(Number(i.amount)||0),0);
-  const totalOverdue = invoices.filter(i=>effectiveInvoiceStatus(i)==='overdue').reduce((s,i)=>s+(Number(i.amount)||0),0);
+  // GL-126: 'partial' joins pending as money still owed, counted as balance.
+  const totalPending = invoices.filter(i=>{const e=effectiveInvoiceStatus(i);return e==='pending'||e==='partial';}).reduce((s,i)=>s+glInvoiceBalance(i),0);
+  const totalOverdue = invoices.filter(i=>effectiveInvoiceStatus(i)==='overdue').reduce((s,i)=>s+glInvoiceBalance(i),0);
   const topClients = [...clients].sort((a,b)=>(b.billed||0)-(a.billed||0)).slice(0,5);
   /* Always render currency with two decimals so $2,312.50 doesn't lose its trailing
      zero (toLocaleString() alone drops it). Used throughout this modal. */

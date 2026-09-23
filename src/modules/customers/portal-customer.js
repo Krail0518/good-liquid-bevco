@@ -269,7 +269,10 @@
 
     var clientRow = noteErr('account', await sb.from('clients').select('name, contact_name, contact_type, email, phone, street, city, state, zip, additional_emails, shipping_same, shipping_street, shipping_city, shipping_state, shipping_zip, lift_gate, dock_hours').eq('id', customer.client_id).maybeSingle());
     var client = (clientRow && clientRow.data) || {};
-    var invs = rowsOf('invoices', await sb.from('invoices').select('id, invoice_number, amount, status, invoice_date, due_date, line_items, share_token').eq('client_id', customer.client_id).order('invoice_date', { ascending: false }));
+    // GL-126: paid_amount is what makes a partial payment legible here — without
+    // it the portal shows the full invoice as still owing after the client has
+    // already paid part of it.
+    var invs = rowsOf('invoices', await sb.from('invoices').select('id, invoice_number, amount, paid_amount, status, invoice_date, due_date, line_items, share_token').eq('client_id', customer.client_id).order('invoice_date', { ascending: false }));
     var algs = rowsOf('allergen declarations', await sb.from('client_allergen_declarations').select('id, product_name, allergens, declared_at, share_token').eq('client_id', customer.client_id).order('declared_at', { ascending: false }));
     var prs = rowsOf('production runs', await sb.from('production_runs').select('id, run_name, format, cases, stage, scheduled_date, scheduled_start_date, scheduled_end_date, lot_number, updated_at').eq('client_id', customer.client_id).order('scheduled_start_date', { ascending: false, nullsFirst: false }));
     // Note: updated_at omitted because some prod schemas have drifted and
@@ -397,15 +400,27 @@
       return { locked:false };
     }
 
-    var STATUS_COLOR = { paid:'#5fcf9e', pending:'#f5c842', overdue:'#e74c3c', quote:'#9aa7bd', expired:'#9aa7bd', draft:'#9aa7bd' };
-    var paidTotal = invs.filter(function(i){ return i.status === 'paid'; }).reduce(function(s,i){ return s + (Number(i.amount)||0); }, 0);
-    var pendingTotal = invs.filter(function(i){ return i.status === 'pending' || i.status === 'overdue'; }).reduce(function(s,i){ return s + (Number(i.amount)||0); }, 0);
-    var openInvoiceCount = invs.filter(function(i){ return i.status === 'pending' || i.status === 'overdue'; }).length;
+    var STATUS_COLOR = { paid:'#5fcf9e', pending:'#f5c842', overdue:'#e74c3c', partial:'#00b89c', quote:'#9aa7bd', expired:'#9aa7bd', draft:'#9aa7bd' };
+    // GL-126: 'partial' is an open invoice — the customer still owes the rest
+    // and must still be able to pay it. Left out of these three tests, a part-
+    // paid invoice would vanish from their balance and lose its Pay button,
+    // which is the one thing a customer portal must never get wrong.
+    // The portal reads rows straight from the table, so the balance comes from
+    // paid_amount (kept current by the gl_derive_invoice_paid_state trigger).
+    function invBalance(i){
+      var bal = (Number(i.amount)||0) - (Number(i.paid_amount)||0);
+      return bal > 0 ? bal : 0;
+    }
+    function invIsOpen(i){ return i.status === 'pending' || i.status === 'overdue' || i.status === 'partial'; }
+    var paidTotal = invs.filter(function(i){ return i.status === 'paid'; }).reduce(function(s,i){ return s + (Number(i.amount)||0); }, 0)
+                  + invs.filter(function(i){ return i.status === 'partial'; }).reduce(function(s,i){ return s + (Number(i.paid_amount)||0); }, 0);
+    var pendingTotal = invs.filter(invIsOpen).reduce(function(s,i){ return s + invBalance(i); }, 0);
+    var openInvoiceCount = invs.filter(invIsOpen).length;
 
     var invRowsHtml = invs.length ? invs.map(function(i){
       var color = STATUS_COLOR[i.status] || '#9aa7bd';
       var viewUrl = i.share_token ? (location.origin + location.pathname + '?invoice_view=' + i.share_token) : '';
-      var canPay = (i.status === 'pending' || i.status === 'overdue') && viewUrl;
+      var canPay = invIsOpen(i) && viewUrl;
       return '<div style="display:grid;grid-template-columns:1fr 120px 200px;gap:12px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.05);align-items:center">' +
         '<div>' +
           '<div style="font-size:13px;color:#fff;font-weight:700">' + escHtml(i.invoice_number) + '</div>' +
@@ -413,7 +428,13 @@
         '</div>' +
         '<div style="text-align:right">' +
           '<div style="font-size:14px;color:#00e5c0;font-weight:700">' + usd(i.amount) + '</div>' +
-          '<div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:' + color + ';font-weight:700;margin-top:2px">' + (i.status||'') + '</div>' +
+          '<div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:' + color + ';font-weight:700;margin-top:2px">' +
+            (i.status === 'partial' ? 'PARTIAL PAYMENT' : escHtml(i.status||'')) + '</div>' +
+          // GL-126: tell the customer what is left, so "partial" is not a word
+          // they have to do arithmetic behind.
+          (i.status === 'partial'
+            ? '<div style="font-size:10px;color:#9aa7bd;margin-top:2px">' + usd(invBalance(i)) + ' still due</div>'
+            : '') +
         '</div>' +
         '<div style="text-align:right;white-space:nowrap">' +
           '<button data-gl-action="glPortalDownloadInvoicePdf" data-gl-arg1="' + esc(i.id) + '" style="display:inline-block;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.35);color:#c4b5fd;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;margin-right:4px">📥 PDF</button>' +
@@ -1507,7 +1528,7 @@
     if(btn){ btn.disabled = true; btn.textContent = '…'; }
     try {
       var iR = await sb.from('invoices')
-        .select('id, invoice_number, amount, status, invoice_date, due_date, payment_terms, line_items, client_id, notes, service')
+        .select('id, invoice_number, amount, paid_amount, status, invoice_date, due_date, payment_terms, line_items, client_id, notes, service')
         .eq('id', invoiceSupaId).maybeSingle();
       if(iR.error || !iR.data){ throw new Error((iR.error && iR.error.message) || 'Invoice not found'); }
       var inv = iR.data;

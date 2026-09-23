@@ -1474,12 +1474,16 @@
     var eff = function(i){ return (typeof window.effectiveInvoiceStatus === 'function') ? window.effectiveInvoiceStatus(i) : (i && i.status); };
     var billable = inv.filter(function(i){ return i.status !== 'quote'; });
     var paid = inv.filter(function(i){ return eff(i) === 'paid'; });
-    var pending = inv.filter(function(i){ return eff(i) === 'pending'; });
+    // GL-126: part-paid invoices sit with the pending ones — they are still
+    // owed — and 'outstanding' below counts their balance, not their total.
+    var pending = inv.filter(function(i){ return eff(i) === 'pending' || eff(i) === 'partial'; });
     var overdue = inv.filter(function(i){ return eff(i) === 'overdue'; });
     var quotes = inv.filter(function(i){ return i.status === 'quote'; });
 
     var avgVal = avg(billable.map(function(i){ return Number(i.amount||0); }));
-    var outstanding = pending.concat(overdue).reduce(function(s,i){ return s + Number(i.amount||0); }, 0);
+    var outstanding = pending.concat(overdue).reduce(function(s,i){
+      return s + (typeof window.glInvoiceBalance === 'function' ? window.glInvoiceBalance(i) : Number(i.amount||0));
+    }, 0);
     var quotesTotal = quotes.reduce(function(s,i){ return s + Number(i.amount||0); }, 0);
 
     // Days-to-paid: approximate using created_at -> updated_at when available

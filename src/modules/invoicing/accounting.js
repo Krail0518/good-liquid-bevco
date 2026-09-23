@@ -236,9 +236,12 @@
     if (!clientId) return;
     var client = getClient(clientId);
     if (!client || !client.credit_limit) return;
+    // GL-126: a part-paid invoice still consumes credit, but only for what is
+    // left on it — counting the full amount would block a client whose money
+    // is already in the bank.
     var outstanding = (window.invoices || []).filter(function(x){
-      return (x.client_id === clientId || x.clientId === clientId) && (x.status === 'pending' || x.status === 'overdue');
-    }).reduce(function(sum, x){ return sum + (Number(x.amount) || 0); }, 0);
+      return (x.client_id === clientId || x.clientId === clientId) && window.glIsInvoiceOutstanding(x);
+    }).reduce(function(sum, x){ return sum + window.glInvoiceBalance(x); }, 0);
     var limit = Number(client.credit_limit);
     if (outstanding >= limit * 0.8) {
       var existing = document.getElementById('gl-credit-limit-warn');
@@ -333,7 +336,8 @@
 
   // ── FEATURE 9: Cash Flow Forecast ─────────────────────────
   window.glOpenCashFlow = function() {
-    var pending = (window.invoices || []).filter(function(x){ return (x.status === 'pending' || x.status === 'overdue') && !x.is_credit_memo; });
+    // GL-126: include part-paid invoices; the cash still to come is their balance.
+    var pending = (window.invoices || []).filter(function(x){ return window.glIsInvoiceOutstanding(x) && !x.is_credit_memo; });
     var map = {};
     pending.forEach(function(x){
       var due = x.due_date || x.dueDate;
@@ -365,10 +369,33 @@
     payments = payments || [];
     var totalPaid = payments.reduce(function(s,p){ return s + Number(p.amount); }, 0);
     var remaining = (Number(inv.amount) || 0) - totalPaid;
+    // GL-126: which payments have already been undone. A reversal row points at
+    // the payment it cancels through provider_event_id, so this needs no extra
+    // query and cannot disagree with the server.
+    var reversedIds = {};
+    payments.forEach(function(p){
+      if (p.event_kind === 'reversal' && typeof p.provider_event_id === 'string' && p.provider_event_id.indexOf('reversal:') === 0) {
+        reversedIds[p.provider_event_id.slice('reversal:'.length)] = true;
+      }
+    });
     var pmtRows = payments.map(function(p){
-      return '<tr><td style="padding:6px 8px">' + esc(p.paid_at) + '</td><td style="padding:6px 8px">' + esc(p.method) + '</td>' +
-        '<td style="padding:6px 8px">' + esc(p.reference||'') + '</td><td style="padding:6px 8px;text-align:right;font-weight:600">' + fmt$(p.amount) + '</td></tr>';
-    }).join('') || '<tr><td colspan="4" style="padding:10px;text-align:center;color:#a0aec0">No payments recorded</td></tr>';
+      var isReversal = p.event_kind === 'reversal';
+      var isStripe   = (p.provider || '') === 'stripe';
+      var undone     = !!reversedIds[p.id];
+      // An undo is offered only where it is both safe and meaningful: a live
+      // manual payment. Stripe money must be refunded through Stripe or the two
+      // ledgers drift apart, and a reversal is not itself undoable.
+      var action = (!isReversal && !undone && !isStripe)
+        ? '<button type="button" data-gl-undo-payment="' + esc(p.id) + '" style="padding:3px 9px;background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.35);color:#c53030;border-radius:5px;font-size:11px;cursor:pointer">Undo</button>'
+        : (isReversal ? '<span style="font-size:11px;color:#a0aec0">reversal</span>'
+          : undone    ? '<span style="font-size:11px;color:#a0aec0">undone</span>'
+          : isStripe  ? '<span style="font-size:11px;color:#a0aec0" title="Refund this in Stripe so both records agree">via Stripe</span>'
+                      : '');
+      var dim = (isReversal || undone) ? 'opacity:.6;' : '';
+      return '<tr style="' + dim + '"><td style="padding:6px 8px">' + esc(p.paid_at) + '</td><td style="padding:6px 8px">' + esc(p.method) + '</td>' +
+        '<td style="padding:6px 8px">' + esc(p.reference||'') + '</td><td style="padding:6px 8px;text-align:right;font-weight:600' + (isReversal ? ';color:#c53030' : '') + '">' + fmt$(p.amount) + '</td>' +
+        '<td style="padding:6px 8px;text-align:right">' + action + '</td></tr>';
+    }).join('') || '<tr><td colspan="5" style="padding:10px;text-align:center;color:#a0aec0">No payments recorded</td></tr>';
     var newPmtForm = remaining > 0.01 ? (
       '<div style="background:#f7fafc;border-radius:8px;padding:16px">' +
       '<h4 style="margin:0 0 12px;font-size:15px">Record New Payment</h4>' +
@@ -389,9 +416,54 @@
       '<div style="flex:1;background:' + (remaining > 0.01 ? '#fff5f5' : '#f0fff4') + ';border-radius:6px;padding:10px;text-align:center"><div style="font-size:11px;color:#718096">Remaining</div><div style="font-size:18px;font-weight:700;color:' + (remaining > 0.01 ? '#e53e3e' : '#38a169') + '">' + fmt$(remaining) + '</div></div>' +
       '</div>' +
       '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px">' +
-      '<thead><tr style="background:#edf2f7"><th style="padding:6px 8px;text-align:left">Date</th><th style="padding:6px 8px;text-align:left">Method</th><th style="padding:6px 8px;text-align:left">Reference</th><th style="padding:6px 8px;text-align:right">Amount</th></tr></thead>' +
+      '<thead><tr style="background:#edf2f7"><th style="padding:6px 8px;text-align:left">Date</th><th style="padding:6px 8px;text-align:left">Method</th><th style="padding:6px 8px;text-align:left">Reference</th><th style="padding:6px 8px;text-align:right">Amount</th><th style="padding:6px 8px;text-align:right"></th></tr></thead>' +
       '<tbody>' + pmtRows + '</tbody></table>' + newPmtForm;
     var modal = openModal('gl-payment-modal', 'Record Payment — ' + invId, html);
+
+    // GL-126: undo a mis-keyed payment. The ledger is append-only — the row is
+    // never deleted — so this appends a compensating reversal through an RPC
+    // that holds the invoice lock, and both lines stay on the record.
+    Array.prototype.forEach.call(modal.querySelectorAll('[data-gl-undo-payment]'), function(btn){
+      btn.onclick = async function(){
+        var payId = btn.getAttribute('data-gl-undo-payment');
+        var row   = payments.filter(function(p){ return String(p.id) === String(payId); })[0] || {};
+        if (!confirm('Undo the ' + fmt$(row.amount) + ' payment from ' + (row.paid_at || 'this date') + '?\n\n' +
+                     'The payment stays on the record with a matching reversal beside it, and the balance goes back up.')) return;
+        var reason = prompt('Why is it being undone? (optional — appears on the reversal)', 'Payment entered in error');
+        if (reason === null) return;  // cancelled at the second step
+        btn.disabled = true; btn.textContent = 'Undoing…';
+        var rpc = await SB().rpc('gl_reverse_one_payment', { p_payment_id: payId, p_reason: reason });
+        if (rpc.error) {
+          notify('Undo failed: ' + rpc.error.message, 'error');
+          btn.disabled = false; btn.textContent = 'Undo';
+          return;
+        }
+        var v = rpc.data || {};
+        if (v.applied === false) {
+          // Say which refusal it was, in the words of someone who has to fix it.
+          var why = v.reason === 'already_reversed'  ? 'that payment has already been undone.'
+                  : v.reason === 'already_a_reversal'? 'that line is itself a reversal.'
+                  : v.reason === 'stripe_payment'    ? 'it was paid through Stripe — refund it in Stripe so both records agree.'
+                  : v.reason === 'would_overdraw'    ? 'it would take this invoice below zero paid; the payment was probably already reversed another way.'
+                  : v.reason === 'unknown_payment'   ? 'that payment no longer exists.'
+                  : (v.reason || 'the server declined it');
+          notify('Nothing was undone — ' + why, 'error');
+          btn.disabled = false; btn.textContent = 'Undo';
+          return;
+        }
+        notify('Undid ' + fmt$(v.reversed_amount) + '. ' + fmt$(v.paid_total) + ' now recorded as paid.', 'success');
+        // Keep the in-memory invoice honest so the list and dashboard agree
+        // with the database without a reload.
+        if (inv) {
+          inv.status = v.status || inv.status;
+          inv.paidAmount = Number(v.paid_total) || 0;
+        }
+        if (typeof window.renderInvoices === 'function') window.renderInvoices();
+        if (typeof window.renderDash === 'function') window.renderDash();
+        modal.remove();
+        window.glRecordPayment(invId);
+      };
+    });
     var saveBtn = document.getElementById('gl-pmt-save');
     if (saveBtn) {
       saveBtn.onclick = async function() {
