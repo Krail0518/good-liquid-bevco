@@ -7,8 +7,11 @@
 const http=require('http'),fs=require('fs'),path=require('path');
 const {execSync}=require('child_process');
 const {chromium}=require('playwright');
-const SCRATCH='/tmp/claude-0/-home-user-good-liquid-bevco/a8dbf2c3-6093-5bf2-adf9-cca45eb015ed/scratchpad';
-const MODEL='/opt/piper-voices/en-us-lessac-medium.onnx';
+// GL-129: see gen-video.cjs — both were pinned to one machine's sandbox path.
+const SCRATCH=process.env.GL_VIDEO_OUT
+  || '/tmp/claude-0/-home-user-good-liquid-bevco/a8dbf2c3-6093-5bf2-adf9-cca45eb015ed/scratchpad';
+try { require('fs').mkdirSync(SCRATCH,{recursive:true}); } catch(e){}
+const MODEL=process.env.GL_PIPER_MODEL || '/opt/piper-voices/en-us-lessac-medium.onnx';
 const W=1280,H=720, LEAD=0.2, TAILPAD=0.7;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const dur=f=>parseFloat(execSync(`ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "${f}"`).toString().trim());

@@ -49,3 +49,27 @@ The MP4 lands in the scratchpad; copy it to `/tutorials/tutorial-<key>.mp4`.
 
 Piper `en-us-lessac-medium`. To change the voice, download a different Piper
 model and point `MODEL` at it, then regenerate — every video re-synthesizes.
+
+## Rebuilding from CI (GL-129)
+
+The toolchain above is Linux-only and was never installed anywhere but one
+laptop, which is how every video came to be six weeks stale while the
+storyboards moved on. There is now a workflow that installs it from scratch:
+
+```
+gh workflow run "Build tutorial videos"                       # all of them
+gh workflow run "Build tutorial videos" -f targets=invoices   # just one
+gh workflow run "Build tutorial videos" -f open_pr=false      # artifact only
+```
+
+It reads the valid keys out of `gen-video.cjs` and `gen-explainer.cjs` rather
+than keeping its own list, so a storyboard added today is buildable today. The
+MP4s come back as a run artifact and, by default, as a PR against `main` —
+`/tutorials` is committed and `main` is protected, so CI cannot push there
+directly. Binary diffs are not reviewable on GitHub: download the artifact and
+watch what changed before merging.
+
+Both generators write to `$GL_VIDEO_OUT` when it is set (the workflow points it
+at the workspace) and fall back to the original hardcoded scratch path when it
+is not, so existing local habits keep working. `$GL_PIPER_MODEL` overrides the
+voice the same way.
