@@ -176,6 +176,48 @@ jobs:
           [ "$n" -gt 0 ] || { echo "The generator reported success but produced no MP4s."; exit 1; }
           git -c core.fileMode=false status --short tutorials/
 
+      # GL-130: nobody watches 24 videos, and a green run only proves the
+      # generator ran — a regression would produce perfectly valid MP4s of the
+      # wrong thing and every check here would still pass. Size against the
+      # previous build is the one signal available cheaply: a video that came
+      # out empty, or that changed a lot without its storyboard being touched,
+      # is worth a look before merging. This is a prompt to watch it, not proof.
+      - name: Summarise what changed
+        run: |
+          {
+            echo "### Rebuilt videos"
+            echo ""
+            echo "| Video | Was | Now | Change |"
+            echo "|---|---:|---:|---:|"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for f in tutorials/*.mp4; do
+            new=$(stat -c%s "$f")
+            # HEAD, not origin/<ref>: checkout is shallow by default so the
+            # remote-tracking ref may not exist, and HEAD is the committed state
+            # before the copy step touched the working tree — exactly the
+            # comparison wanted.
+            old=$(git cat-file -s "HEAD:$f" 2>/dev/null || echo 0)
+            if [ "$old" -eq 0 ]; then
+              pct="new"
+            else
+              pct=$(awk -v o="$old" -v n="$new" 'BEGIN{printf "%+.0f%%", (n-o)*100/o}')
+            fi
+            # Only rows that actually moved; ±3% is re-encode noise.
+            case "$pct" in
+              new|*%)
+                d=$(awk -v o="$old" -v n="$new" 'BEGIN{ if(o==0){print 100} else {d=(n-o)*100/o; print (d<0?-d:d)} }')
+                if [ "${d%.*}" -ge 3 ] 2>/dev/null; then
+                  echo "| \`$(basename "$f")\` | $old | $new | **$pct** |" >> "$GITHUB_STEP_SUMMARY"
+                fi;;
+            esac
+          done
+          {
+            echo ""
+            echo "Rows within ±3% are omitted — that is re-encode noise. A video that"
+            echo "moved without its storyboard changing is the one to watch before merging;"
+            echo "download the **tutorial-videos** artifact from this run."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload as an artifact
         uses: actions/upload-artifact@v7
         with:
@@ -184,13 +226,21 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
-      - name: Open a PR with the rebuilt videos
+      # GL-130: the branch push is the part that matters; the PR is a
+      # convenience. A repo can forbid Actions from opening PRs (Settings →
+      # Actions → General), which `permissions:` cannot override — and when it
+      # does, `gh pr create` fails AFTER the branch is safely pushed. Failing
+      # the run there reports an hour of successful work as a failure and
+      # buries the branch in the log. So the refusal is caught and turned into
+      # a compare link instead.
+      - name: Push a branch and offer a PR
         if: ${{ inputs.open_pr }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ -z "$(git status --porcelain tutorials/)" ]; then
-            echo "Byte-identical to what is already committed — nothing to open a PR for."
+            echo "Byte-identical to what is already committed — nothing to push."
+            echo "No video changed, so there is nothing to review." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           BRANCH="chore/tutorial-videos-$(date -u +%Y%m%d-%H%M%S)"
@@ -209,6 +259,20 @@ jobs:
             "Regenerated from the storyboards in \`tools/tutorial-videos/\` by the [Build tutorial videos]($RUN_URL) workflow." \
             "Built from \`${GITHUB_SHA}\`. Binary diffs are not reviewable in GitHub — download the artifact from that run and watch the ones that changed before merging." \
             > /tmp/pr-body.md
-          gh pr create --base main --head "$BRANCH" \
-            --title "Rebuild tutorial videos" \
-            --body-file /tmp/pr-body.md
+          COMPARE="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/main...${BRANCH}?expand=1"
+          if gh pr create --base main --head "$BRANCH" \
+               --title "Rebuild tutorial videos" \
+               --body-file /tmp/pr-body.md; then
+            echo "PR opened." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::Could not open the PR — the branch is pushed, open it by hand: $COMPARE"
+            {
+              echo ""
+              echo "**The videos are on \`$BRANCH\`, but this run could not open the PR.**"
+              echo ""
+              echo "Most likely: *GitHub Actions is not permitted to create or approve pull"
+              echo "requests* — Settings → Actions → General. Nothing was lost; open it here:"
+              echo ""
+              echo "$COMPARE"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
