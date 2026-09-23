@@ -14,8 +14,14 @@ const http=require('http'),fs=require('fs'),path=require('path');
 const {execSync}=require('child_process');
 const {chromium}=require('playwright');
 const ROOT='/home/user/good-liquid-bevco';
-const SCRATCH='/tmp/claude-0/-home-user-good-liquid-bevco/a8dbf2c3-6093-5bf2-adf9-cca45eb015ed/scratchpad';
-const MODEL='/opt/piper-voices/en-us-lessac-medium.onnx';
+// GL-129: this was hardcoded to one machine's sandbox path, so the generator
+// only ever ran where it was written. GL_VIDEO_OUT lets CI (and anyone else)
+// point it somewhere real; the old path stays as the default so nothing that
+// worked before changes. The directory is created if it does not exist.
+const SCRATCH=process.env.GL_VIDEO_OUT
+  || '/tmp/claude-0/-home-user-good-liquid-bevco/a8dbf2c3-6093-5bf2-adf9-cca45eb015ed/scratchpad';
+try { require('fs').mkdirSync(SCRATCH,{recursive:true}); } catch(e){}
+const MODEL=process.env.GL_PIPER_MODEL || '/opt/piper-voices/en-us-lessac-medium.onnx';
 const W=1120,H=740, LEAD=0.15, TAILPAD=0.55;   // per-step: LEAD + narration + TAILPAD
 const MIME={'.html':'text/html','.js':'text/javascript','.css':'text/css'};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));

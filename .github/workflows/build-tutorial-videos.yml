@@ -1,0 +1,209 @@
+# Rebuild the narrated tutorial / explainer videos (GL-129).
+#
+# WHY THIS EXISTS
+# ---------------
+# The MP4s under /tutorials are generated from storyboards in
+# tools/tutorial-videos/, but the toolchain to build them — ffmpeg, espeak-ng,
+# piper-tts, a Piper voice model and a Playwright Chromium — lived on one
+# person's machine. So they were regenerated when that machine was handy and
+# not otherwise: by 2026-09-23 every video was the 2026-07-31 build, missing
+# partial payments, quote line items and invoice add-ons. A storyboard edit
+# that nobody can render is not a fix.
+#
+# This installs the toolchain from scratch on a runner, so rebuilding is a
+# button rather than an afternoon.
+#
+# USAGE
+#   gh workflow run "Build tutorial videos"                       # everything
+#   gh workflow run "Build tutorial videos" -f targets=invoices   # just one
+#   gh workflow run "Build tutorial videos" -f targets="invoices dashboard"
+#   gh workflow run "Build tutorial videos" -f open_pr=false      # artifact only
+#
+# Output always lands as a downloadable artifact. With open_pr (the default) it
+# also pushes a branch and opens a PR, because /tutorials is committed to the
+# repo and main is protected — CI cannot and should not push there directly.
+#
+# ROLLBACK: close the PR it opens; nothing else is touched.
+
+name: Build tutorial videos
+
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: 'Space-separated keys, or "all" (e.g. "invoices dashboard"). A key is a storyboard in gen-video.cjs or a deck in gen-explainer.cjs — run it with a wrong key and the log prints every valid one.'
+        required: false
+        default: 'all'
+      open_pr:
+        description: 'Open a PR with the rebuilt videos (false = artifact only)'
+        required: false
+        type: boolean
+        default: true
+
+concurrency:
+  group: build-tutorial-videos
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # Each video re-synthesizes its narration and re-records the browser, so a
+    # full rebuild is tens of minutes. Generous, because a timeout here wastes
+    # the whole install.
+    timeout-minutes: 180
+    env:
+      GL_VIDEO_OUT: ${{ github.workspace }}/.video-out
+      GL_PIPER_MODEL: /opt/piper-voices/en-us-lessac-medium.onnx
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+
+      - name: Install ffmpeg + espeak-ng
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg espeak-ng
+          ffmpeg -version | head -1
+          ffprobe -version | head -1
+
+      - name: Install piper-tts and the voice model
+        run: |
+          python3 -m pip install --quiet --upgrade pip
+          python3 -m pip install --quiet piper-tts
+          sudo mkdir -p /opt/piper-voices
+          # GitHub mirror: HuggingFace is blocked from some runners.
+          curl -fsSL --retry 3 \
+            https://github.com/rhasspy/piper/releases/download/v0.0.2/voice-en-us-lessac-medium.tar.gz \
+            | sudo tar xz -C /opt/piper-voices
+          test -f "$GL_PIPER_MODEL" || { echo "voice model missing at $GL_PIPER_MODEL"; ls -R /opt/piper-voices; exit 1; }
+          command -v piper >/dev/null || { echo "piper not on PATH after install"; exit 1; }
+
+      - name: Install Playwright Chromium
+        run: |
+          # Into a temp dir, NOT the repo — a package.json at the root would
+          # change what Vercel does with this static site.
+          mkdir -p /tmp/pw && cd /tmp/pw
+          npm init -y >/dev/null 2>&1
+          npm install --silent playwright@1.48.0
+          npx playwright install --with-deps chromium
+          echo "NODE_PATH=/tmp/pw/node_modules" >> "$GITHUB_ENV"
+
+      - name: Work out what to build
+        id: plan
+        env:
+          REQUESTED: ${{ inputs.targets }}
+        run: |
+          # Read the keys out of the generators rather than trusting a list in
+          # this file. A new storyboard is then buildable the day it is added,
+          # and this workflow cannot quietly fall behind the thing it builds.
+          TUTORIALS=$(node -e '
+            const s=require("fs").readFileSync("tools/tutorial-videos/gen-video.cjs","utf8");
+            const b=s.slice(s.indexOf("const STORYBOARDS="));
+            console.log([...b.matchAll(/\n  '"'"'?([a-z0-9-]+)'"'"'?\s*:\s*\{/g)].map(m=>m[1]).join(" "));
+          ')
+          EXPLAINERS=$(node -e '
+            const s=require("fs").readFileSync("tools/tutorial-videos/gen-explainer.cjs","utf8");
+            const b=s.slice(s.indexOf("const DECKS="));
+            console.log([...b.matchAll(/\n?'"'"'([a-z0-9-]+)'"'"':\s*\{/g)].map(m=>m[1]).join(" "));
+          ')
+          echo "Storyboards found: $TUTORIALS"
+          echo "Explainers found:  $EXPLAINERS"
+          [ -n "$TUTORIALS" ] || { echo "Could not read any storyboard keys — has gen-video.cjs changed shape?"; exit 1; }
+          [ -n "$EXPLAINERS" ] || { echo "Could not read any explainer keys — has gen-explainer.cjs changed shape?"; exit 1; }
+
+          REQ="$REQUESTED"
+          [ -z "$REQ" ] && REQ=all
+          if [ "$REQ" = "all" ]; then
+            TUT="$TUTORIALS"; EXP="$EXPLAINERS"
+          else
+            TUT=""; EXP=""
+            for k in $REQ; do
+              if echo " $TUTORIALS " | grep -q " $k "; then TUT="$TUT $k"
+              elif echo " $EXPLAINERS " | grep -q " $k "; then EXP="$EXP $k"
+              else echo "Unknown key: $k"; echo "Tutorials:  $TUTORIALS"; echo "Explainers: $EXPLAINERS"; exit 1
+              fi
+            done
+          fi
+          echo "tutorials=$(echo $TUT)" >> "$GITHUB_OUTPUT"
+          echo "explainers=$(echo $EXP)" >> "$GITHUB_OUTPUT"
+          echo "Will build tutorials: ${TUT:-none}"
+          echo "Will build explainers: ${EXP:-none}"
+
+      - name: Generate
+        run: |
+          set -u
+          mkdir -p "$GL_VIDEO_OUT"
+          cd tools/tutorial-videos
+          FAILED=""
+          for k in ${{ steps.plan.outputs.tutorials }}; do
+            echo "::group::tutorial $k"
+            node gen-video.cjs "$k" || FAILED="$FAILED tutorial:$k"
+            echo "::endgroup::"
+          done
+          for k in ${{ steps.plan.outputs.explainers }}; do
+            echo "::group::explainer $k"
+            node gen-explainer.cjs "$k" || FAILED="$FAILED explainer:$k"
+            echo "::endgroup::"
+          done
+          echo "--- produced ---"
+          ls -la "$GL_VIDEO_OUT" || true
+          if [ -n "$FAILED" ]; then
+            echo "These did not build:$FAILED"
+            echo "Nothing is copied into /tutorials when any target fails — a"
+            echo "half-updated set is harder to reason about than none."
+            exit 1
+          fi
+
+      - name: Copy into /tutorials
+        run: |
+          shopt -s nullglob
+          n=0
+          for f in "$GL_VIDEO_OUT"/tutorial-*.mp4 "$GL_VIDEO_OUT"/explainer-*.mp4; do
+            cp "$f" "tutorials/$(basename "$f")"; n=$((n+1))
+          done
+          echo "copied $n file(s)"
+          [ "$n" -gt 0 ] || { echo "The generator reported success but produced no MP4s."; exit 1; }
+          git -c core.fileMode=false status --short tutorials/
+
+      - name: Upload as an artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: tutorial-videos
+          path: ${{ env.GL_VIDEO_OUT }}/*.mp4
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Open a PR with the rebuilt videos
+        if: ${{ inputs.open_pr }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -z "$(git status --porcelain tutorials/)" ]; then
+            echo "Byte-identical to what is already committed — nothing to open a PR for."
+            exit 0
+          fi
+          BRANCH="chore/tutorial-videos-$(date -u +%Y%m%d-%H%M%S)"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add tutorials/
+          git commit -m "Rebuild tutorial videos ($(git diff --cached --name-only | wc -l) file(s))" \
+                     -m "Generated by the Build tutorial videos workflow from the storyboards in tools/tutorial-videos/ at ${GITHUB_SHA}." \
+                     -m "Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          git push origin "$BRANCH"
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          # printf rather than a multi-line string: a raw newline here would sit
+          # outside this block scalar's indentation and break the YAML.
+          printf '%s\n\n%s\n' \
+            "Regenerated from the storyboards in \`tools/tutorial-videos/\` by the [Build tutorial videos]($RUN_URL) workflow." \
+            "Built from \`${GITHUB_SHA}\`. Binary diffs are not reviewable in GitHub — download the artifact from that run and watch the ones that changed before merging." \
+            > /tmp/pr-body.md
+          gh pr create --base main --head "$BRANCH" \
+            --title "Rebuild tutorial videos" \
+            --body-file /tmp/pr-body.md
