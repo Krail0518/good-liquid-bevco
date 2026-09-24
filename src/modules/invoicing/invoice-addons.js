@@ -49,6 +49,11 @@
     if(unit === 'can')    return cases * CPC;
     if(unit === 'case')   return cases;
     if(unit === 'pallet') return cases > 0 ? Math.ceil(cases / cpp()) : 0;
+    // GL-132: a flat charge does not follow the run. One per invoice, and
+    // because these are ordinary manual rows the quantity stays editable —
+    // type 2 when a run had two changeovers. Returning 1 rather than 0 also
+    // matters: a 0 here would let the row be ticked and still bill nothing.
+    if(unit === 'flat')   return 1;
     return 0;
   }
 
@@ -102,7 +107,9 @@
     var hint = document.getElementById('gl-inv-addons-hint');
     if(hint) hint.textContent = cases > 0
       ? 'Quantities follow the canning lines: ' + cases.toLocaleString() + ' cases · ' + (cases * CPC).toLocaleString() + ' cans · ' + qtyFor('pallet', cases) + ' pallets.'
-      : 'Add a Canning line first — add-on quantities are worked out from its case count.';
+      // GL-132: flat charges do not need a canning line, so "add one first" is
+      // not true of all of them any more.
+      : 'Add a Canning line first — add-on quantities are worked out from its case count. Flat charges like the change over fee work without one.';
     if(typeof window.glCalcInvTotal === 'function') window.glCalcInvTotal();
   }
 
@@ -138,7 +145,9 @@
       rate.setAttribute('data-addon-rate', a.key);
       rate.setAttribute('style', 'width:72px;background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:6px;padding:3px 6px;font-size:12px');
       rateLine.appendChild(rate);
-      rateLine.appendChild(el('span', '', '/ per ' + a.unit));
+      // GL-132: 'flat' is the internal unit name, not something to show a
+      // human — "/ per flat" reads like a bug.
+      rateLine.appendChild(el('span', '', a.unit === 'flat' ? '/ each' : '/ per ' + a.unit));
       card.appendChild(top);
       card.appendChild(rateLine);
       grid.appendChild(card);
