@@ -100,7 +100,11 @@
       canShrinkOn:false,  canShrinkPerCan:canRate('shrink', format),
       canPrintedOn:false, canPrintedPerCan:canRate('printed', format),
       palletOn:true,     palletEach:px('pallet_each',12),
-      palletWrapOn:true, palletWrapEach:px('pallet_wrap_each',8),  casesPerPallet:px('cases_per_pallet',80)
+      palletWrapOn:true, palletWrapEach:px('pallet_wrap_each',8),  casesPerPallet:px('cases_per_pallet',80),
+      // GL-132: the one add-on that does not scale with the run. Charged per
+      // changeover, so it is added once rather than per can, case or pallet.
+      // Off by default — most runs do not need one.
+      changeOverOn:false, changeOverFee:px('change_over_fee',100)
     };
   }
 
@@ -141,12 +145,17 @@
     if(isNum(tier.caseExtraOverride)) caseExtra = tier.caseExtraOverride;
     if(isNum(tier.palletCostOverride)) palletCost = tier.palletCostOverride;
 
-    var runTotal = perCan * cans + caseExtra * cases + palletCost;
+    // GL-132: flat charges — added once, not multiplied by anything. Kept as
+    // its own term so the run total stays the sum of its visible parts, which
+    // is what qReconcile checks the line items against.
+    var flatCost = pkg.changeOverOn ? (pkg.changeOverFee || 0) : 0;
+
+    var runTotal = perCan * cans + caseExtra * cases + palletCost + flatCost;
     if(isNum(tier.runTotalOverride)) runTotal = tier.runTotalOverride;
 
     return {
       perCan: perCan, caseExtra: caseExtra, pallets: pallets, palletCost: palletCost,
-      runTotal: runTotal
+      flatCost: flatCost, runTotal: runTotal
     };
   }
 
@@ -690,6 +699,7 @@
             addonToggle('gl-qb-canprinted','Pre-Printed Can', P.canPrintedPerCan.toFixed(2),'per can') +
             addonToggle('gl-qb-pallet','Pallet', P.palletEach.toFixed(2),'per pallet') +
             addonToggle('gl-qb-palletwrap','Pallet Shrink Wrap', P.palletWrapEach.toFixed(2),'per pallet') +
+            addonToggle('gl-qb-changeover','Change Over Fee', (P.changeOverFee||0).toFixed(2),'per changeover') +
           '</div>' +
           '<div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:10px;align-items:center;font-size:12px;color:#9aa7bd">' +
             '<label style="display:flex;align-items:center;gap:6px">Cases per pallet' +
@@ -710,7 +720,8 @@
           ['gl-qb-canshrink','canShrinkOn','canShrinkPerCan'],
           ['gl-qb-canprinted','canPrintedOn','canPrintedPerCan'],
           ['gl-qb-pallet',   'palletOn',   'palletEach'],
-          ['gl-qb-palletwrap','palletWrapOn','palletWrapEach']
+          ['gl-qb-palletwrap','palletWrapOn','palletWrapEach'],
+          ['gl-qb-changeover','changeOverOn','changeOverFee']
         ];
         canningMap.forEach(function(m){
           var cb = el.querySelector('#'+m[0]+'-on'), rt = el.querySelector('#'+m[0]+'-rate');
@@ -1400,7 +1411,11 @@
     { key:'canShrink',  on:'canShrinkOn',  rate:'canShrinkPerCan',  unit:'can',    label:'Shrink sleeve label' },
     { key:'canPrinted', on:'canPrintedOn', rate:'canPrintedPerCan', unit:'can',    label:'Pre-printed cans' },
     { key:'pallet',     on:'palletOn',     rate:'palletEach',       unit:'pallet', label:'Pallet' },
-    { key:'palletWrap', on:'palletWrapOn', rate:'palletWrapEach',   unit:'pallet', label:'Pallet shrink wrap' }
+    { key:'palletWrap', on:'palletWrapOn', rate:'palletWrapEach',   unit:'pallet', label:'Pallet shrink wrap' },
+    // GL-132: unit 'flat' — quantity 1, not derived from the run size. See
+    // canningLineItems and invoice-addons.js qtyFor, both of which special-case
+    // it rather than looking up a per-can/case/pallet count.
+    { key:'changeOver', on:'changeOverOn', rate:'changeOverFee',    unit:'flat',   label:'Change over fee' }
   ];
 
   function canningLineItems(t, pkg, format){
@@ -1431,6 +1446,16 @@
           if(it) it.addon = a.key;
         }
       });
+    });
+    // GL-132: flat add-ons sit outside the per-unit loop above — there is no
+    // quantity to look up and no combined-rate override to apply, so they are
+    // emitted once at quantity 1. They are already in x.runTotal as flatCost,
+    // so qReconcile below still balances.
+    CANNING_ADDONS.forEach(function(a){
+      if(a.unit === 'flat' && pkg[a.on]){
+        var it = qItem(out, a.label, 1, '', pkg[a.rate]);
+        if(it) it.addon = a.key;
+      }
     });
     return qReconcile(out, x.runTotal);
   }
