@@ -217,7 +217,12 @@ jobs:
               oldd=$(dur /tmp/old-video.mp4)
               oldsz=$(git cat-file -s "HEAD:$f")
             fi
-            moved=$(awk -v od="$oldd" -v nd="$newd" 'BEGIN{ if(od+0==0){print 1; exit} d=nd-od; if(d<0)d=-d; print (d>=1.0)?1:0 }')
+            # Threshold from measurement, not instinct: three rebuilds of the
+            # same storyboard came in at 59.34s, 60.38s and 59.20s, so ~1s of
+            # drift is normal and a 1.0s flag would have fired on an identical
+            # rebuild. A real storyboard edit moves this far more — the invoices
+            # narration beat added about 13s. 2s floor, 3% for longer explainers.
+            moved=$(awk -v od="$oldd" -v nd="$newd" 'BEGIN{ if(od+0==0){print 1; exit} d=nd-od; if(d<0)d=-d; t=od*0.03; if(t<2.0)t=2.0; print (d>=t)?1:0 }')
             awk -v od="$oldd" -v nd="$newd" -v os="$oldsz" -v ns="$newsz" -v name="$(basename "$f")" -v mv="$moved" '
               BEGIN{
                 if (od+0 == 0) { printf "| `%s` | — | %.1fs | **new** | %d B |\n", name, nd, ns; exit }
@@ -231,11 +236,11 @@ jobs:
           {
             echo ""
             if [ "$flagged" -gt 0 ]; then
-              echo "**$flagged video(s) moved by a second or more.** Expected only where the"
+              echo "**$flagged video(s) moved beyond the drift threshold.** Expected only where the"
               echo "storyboard changed — anywhere else, watch it before merging. Download"
               echo "the **tutorial-videos** artifact from this run."
             else
-              echo "No video moved by as much as a second, so nothing here suggests a content"
+              echo "No video moved beyond normal drift, so nothing here suggests a content"
               echo "change. Note this measures running time, not what is on screen: a"
               echo "storyboard edit that swaps a click without changing the narration would"
               echo "not show up."
