@@ -145,15 +145,20 @@ const server = http.createServer((req, res) => {
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const nav = (html.match(/<div class="cni" id="nav-warehouse"[^>]*>/) || [])[0] || '';
   check('sidebar has a Warehouse Storage link', /Warehouse Storage<\/div>/.test(html) && !!nav);
-  check('the link is hidden until an admin logs in', /display:none/.test(nav), nav);
+  check('the link is hidden until an admin or sales user logs in', /display:none/.test(nav), nav);
   check('the link routes through cNav to the warehouse page', /data-gl-action="cNav"/.test(nav) && /data-gl-arg1="warehouse"/.test(nav));
   check('the page has a mount point', /<div id="cpg-warehouse" class="cpg"><\/div>/.test(html));
   check('the module is loaded as a classic root-absolute script',
     /<script src="\/src\/modules\/warehouse\/warehouse\.js"><\/script>/.test(html));
   const auth = fs.readFileSync(path.join(ROOT, 'src/services/auth.js'), 'utf8');
-  check('admin login reveals the link', /\$\('nav-warehouse'\)/.test(auth));
+  check('admin and sales login reveal the link',
+    /if\(u\.role==='admin'\|\|u\.role==='sales'\)\{var nw=\$\('nav-warehouse'\)/.test(auth));
   const perms = fs.readFileSync(path.join(ROOT, 'src/services/permissions-service.js'), 'utf8');
-  check('permission gating keeps it admin-only', /adminOnly = \[[^\]]*'nav-warehouse'/.test(perms));
+  const salesLists = perms.match(/sales:\s*\[[^\]]*\]|PERMISSIONS\.sales=\[[^\]]*\]/g) || [];
+  check('sales may open the warehouse page (both sales page lists)',
+    salesLists.length === 2 && salesLists.every((l) => /'warehouse'/.test(l)), JSON.stringify(salesLists));
+  check('warehouse role and viewer still may not',
+    !/var WAREHOUSE=\[[^\]]*'warehouse'/.test(perms) && !/viewer:\[[^\]]*'warehouse'/.test(perms));
 
   if (!JSPDF) { check('jspdf is resolvable from NODE_PATH', false, 'npm install jspdf@2.5.1 next to playwright'); }
 
