@@ -2,7 +2,7 @@
 
 Tracks every pallet Good Liquid stores at CONRI Services, the 3PL behind the
 Palmetto facility, and produces the paperwork for each move. Sidebar:
-**Operations → 🏬 Warehouse Storage** (admin only). Code: `warehouse.js`.
+**Operations → 🏬 Warehouse Storage** (admin and sales). Code: `warehouse.js`.
 Schema: `supabase/migrations/20260930120000_warehouse_storage.sql`.
 
 ## Workflow
@@ -74,11 +74,13 @@ open through short-lived signed URLs.
 
 Staff only at the database (`is_gl_staff()` plus the restrictive tenant guard).
 Portal customers and self-registered users see zero rows; anon has no grant.
-The page itself is admin-only in the sidebar and nav guard. To open it to
-sales, add `'warehouse'` to the sales list in `permissions-service.js`. The
-`warehouse` role is blocked from `clients` at the database
-(`20260817000000_warehouse_rls_guard.sql`), so giving floor staff this page
-needs a decision about client names first.
+The page is open to the **admin** and **sales** roles: `loginUser` in
+`src/services/auth.js` reveals the link for both, and `'warehouse'` is in the
+sales page list in `src/services/permissions-service.js`. The **warehouse**
+and **viewer** roles do not see the link and the nav guard refuses the page.
+Giving the `warehouse` role this page needs a decision first: that role is
+blocked from `clients` at the database (`20260817000000_warehouse_rls_guard.sql`),
+so it could not read client names here.
 
 ## Assumptions
 
