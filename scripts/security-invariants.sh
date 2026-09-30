@@ -114,7 +114,8 @@ echo "── 1. No anonymous access to business data ─────────
 for t in clients invoices deals quotes profiles customer_users onboarding \
          expenses audit_log invoice_payments client_notes client_rate_overrides \
          formulas vendors production_runs sample_shipments referrals referrers \
-         trade_shows content_calendar yield_logs defects company_docs qbo_tokens; do
+         trade_shows content_calendar yield_logs defects company_docs qbo_tokens \
+         wh_skus wh_pallets wh_transfers; do
   if ! http_probe "$SUPA/rest/v1/$t?select=*&limit=1" -H "apikey: $ANON"; then
     unver "$t — the probe never reached the database ($(why)). This is NOT evidence of exposure."
     continue

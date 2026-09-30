@@ -120,6 +120,7 @@ const CORE_FILES = [
   'src/modules/production/training.js',
   'src/modules/pipeline/formulation.js',
   'src/modules/production/audit-review.js',
+  'src/modules/warehouse/warehouse.js',
   'src/shared/selftest.js',
   'src/shared/action-registry.js',
 ];

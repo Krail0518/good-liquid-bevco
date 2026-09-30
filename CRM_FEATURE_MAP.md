@@ -43,6 +43,7 @@
 |---------|-----------|-------|------|----------------|
 | `cpg-production-runs` | `nav-production-runs` | PRODUCTION RUNS | Admin/Sales | `+ Add Run` (primary) |
 | `cpg-samples` | `nav-samples` | SAMPLE SHIPMENTS | Admin/Sales | `+ Log Shipment` (primary) |
+| `cpg-warehouse` | `nav-warehouse` | WAREHOUSE STORAGE | **Admin only** (hidden until admin login; revealed in `auth.js` and `permissions-service.js` `adminOnly`) | `+ New transfer` (primary). Tabs: Dashboard / Transfers / SKU master / Outbound orders / Reconciliation. Module `src/modules/warehouse/warehouse.js`; controls use a module-private `data-wh` allowlist, not `data-gl-action`. See `src/modules/warehouse/README.md`. |
 | `cpg-formulas` | `nav-formulas` | FORMULA VAULT | Admin/Sales | `+ New Formula` (primary) |
 | `cpg-yield` | `nav-yield` | YIELD TRACKER | Admin/Sales | `+ Log Completion` (primary) |
 | `cpg-content` | `nav-content` | CONTENT CALENDAR | Admin/Sales | `+ New Post` (primary) |
@@ -128,6 +129,7 @@ Items hidden by default (admin-only) use `style="display:none"` and are shown by
 | **OTHER** | 📡 Activity | `nav-activity` | `cNav('activity',this)` | No |
 | **OPERATIONS** | 🏭 Production Runs | `nav-production-runs` | `cNav('production-runs',this)` | No |
 | | 📦 Sample Shipments | `nav-samples` | `cNav('samples',this)` | No |
+| | 🏬 Warehouse Storage | `nav-warehouse` | `cNav('warehouse',this)` | **YES** (hidden) |
 | **CALENDARS** | 📅 General Calendar | `nav-calendar` | `cNav('calendar',this)` | No |
 | | 🏭 Production Schedule | `nav-production-cal` | `cNav('production-cal',this)` | No |
 | **OPERATIONS PRO** | 🧪 Formula Vault | `nav-formulas` | `cNav('formulas',this)` | No |
