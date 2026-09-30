@@ -697,6 +697,7 @@
         <div class="cni-sec">Operations</div>
         <div class="cni" id="nav-production-runs" data-gl-action="cNav" data-gl-arg1="production-runs" data-gl-el><span class="cni-ico">🏭</span>Production Runs</div>
         <div class="cni" id="nav-samples" data-gl-action="cNav" data-gl-arg1="samples" data-gl-el><span class="cni-ico">📦</span>Sample Shipments</div>
+        <div class="cni" id="nav-warehouse" data-gl-action="cNav" data-gl-arg1="warehouse" data-gl-el style="display:none"><span class="cni-ico">🏬</span>Warehouse Storage</div>
         <div class="cni-sec">Calendars</div>
         <div class="cni" id="nav-calendar" data-gl-action="cNav" data-gl-arg1="calendar" data-gl-el><span class="cni-ico">📅</span>General Calendar</div>
         <div class="cni" id="nav-production-cal" data-gl-action="cNav" data-gl-arg1="production-cal" data-gl-el><span class="cni-ico">🏭</span>Production Schedule</div>
@@ -776,6 +777,9 @@
 
       <!-- ═══ TRACEABILITY / MOCK RECALL — mount point; all rendering in src/modules/production/trace.js ═══ -->
       <div id="cpg-trace" class="cpg"></div>
+
+      <!-- ═══ WAREHOUSE STORAGE (CONRI) — mount point; all rendering in src/modules/warehouse/warehouse.js ═══ -->
+      <div id="cpg-warehouse" class="cpg"></div>
 
       <!-- ═══ TRAINING & COMPETENCY — mount point; all rendering in src/modules/production/training.js ═══ -->
       <div id="cpg-training" class="cpg"></div>
@@ -2193,6 +2197,7 @@
 <script src="/src/modules/production/training.js"></script>
 <script src="/src/modules/pipeline/formulation.js"></script>
 <script src="/src/modules/production/audit-review.js"></script>
+<script src="/src/modules/warehouse/warehouse.js"></script>
 <script src="/src/shared/selftest.js"></script>
 <script src="/src/shared/action-registry.js"></script>
 </body></html>

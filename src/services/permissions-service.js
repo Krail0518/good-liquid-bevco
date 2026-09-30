@@ -11,7 +11,7 @@
    ============================================================ */
 (function(){
   /* ── ROLE-BASED PERMISSIONS (core table + nav guards) ── */
-  var ALL=['dashboard','clients','pipeline','invoices','invoice-detail','newinv','referrals','referrers','activity','users','customers','calendar','production-cal','production-runs','samples','formulas','yield','content','compliance','holds','cip','audit','defects','vendors','tasks','documents','inventory','announcements','time-tracker','reports','ai-settings'];
+  var ALL=['dashboard','clients','pipeline','invoices','invoice-detail','newinv','referrals','referrers','activity','users','customers','calendar','production-cal','production-runs','samples','formulas','yield','content','compliance','holds','cip','audit','defects','vendors','tasks','documents','inventory','announcements','time-tracker','reports','ai-settings','warehouse'];
   var WAREHOUSE=['dashboard','production-runs','production-cal','inventory','cip','defects','yield','samples','tasks','announcements'];
   if(window.PERMISSIONS){window.PERMISSIONS.admin=ALL;window.PERMISSIONS.sales=['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','content','cip','defects','vendors','tasks','announcements','reports'];window.PERMISSIONS.warehouse=WAREHOUSE;}
   else{window.PERMISSIONS={admin:ALL,sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','content','cip','defects','vendors','tasks','announcements','reports'],warehouse:WAREHOUSE,viewer:['dashboard','clients','invoices','activity']};}
@@ -116,7 +116,7 @@
     });
     // Admin-only nav items: surface them when user is admin.
     if(perms.isAdmin){
-      var adminOnly = ['nav-users', 'nav-customers', 'nav-audit', 'nav-ai-settings'];
+      var adminOnly = ['nav-users', 'nav-customers', 'nav-audit', 'nav-ai-settings', 'nav-warehouse'];
       adminOnly.forEach(function(id){
         var el = document.getElementById(id);
         if(el) el.style.display = '';

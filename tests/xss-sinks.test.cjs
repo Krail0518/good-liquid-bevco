@@ -192,7 +192,17 @@ for (const [label, re] of FORBIDDEN) {
 // and the client name, which are both typed by a human, and the version and
 // kind, which are constrained by the database. Raised in the same PR that adds
 // them, which is what the ratchet asks for.
-const SINK_BUDGET = 618;
+//
+// 2026-09-30: 618 -> 629. warehouse.js, the Warehouse Storage module (pallets
+// at CONRI). It first landed with 26 sinks; fourteen overlay bodies were
+// folded into one ovBody() helper before raising this, leaving eleven: the
+// page shell, setBody(), the overlay shell, ovBody(), ovMsg(), the movement
+// log, the quick-build lot list and hint, the outbound stock table, and the
+// reconciliation result. Every interpolated value goes through the module's
+// esc() (exercised above with the rest). The one party outside Good Liquid
+// that can reach these is CONRI's inventory CSV on the reconciliation tab,
+// and every cell of it is escaped before render.
+const SINK_BUDGET = 629;
 let sinkCount = 0;
 const RAW = /\.(innerHTML|outerHTML)\s*(=|\+=)|insertAdjacentHTML\s*\(|document\.write(ln)?\s*\(/;
 for (const f of files) {

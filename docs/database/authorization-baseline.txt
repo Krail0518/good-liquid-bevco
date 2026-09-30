@@ -7,6 +7,7 @@
 BUCKET   client-docs | public=f
 BUCKET   compliance-photos | public=f
 BUCKET   sales-decks | public=f
+BUCKET   warehouse-docs | public=f
 FUNC     public.admin_set_user_password(target_email text, new_password text) | secdef=t | search_path=public, auth | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.app_settings_updated_at() | secdef=t | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.current_customer_client_id() | secdef=t | search_path=public, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
@@ -105,6 +106,18 @@ FUNC     public.trigger_notify_onboarding() | secdef=t | search_path=public | ac
 FUNC     public.trigger_notify_tour_booked() | secdef=t | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.update_customer_account(p_contact_name text, p_contact_type text, p_email text, p_phone text, p_additional_emails jsonb, p_street text, p_city text, p_state text, p_zip text, p_shipping_same boolean, p_shipping_street text, p_shipping_city text, p_shipping_state text, p_shipping_zip text, p_lift_gate boolean, p_dock_hours text) | secdef=t | search_path=public | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.user_has_permission(p_component_id text) | secdef=t | search_path=public | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
+FUNC     public.wh_after_line_delete() | secdef=f | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.wh_after_line_insert() | secdef=f | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.wh_after_transfer() | secdef=f | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.wh_assign_transfer_number() | secdef=f | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.wh_check_lines_ready(p_transfer uuid, p_type text) | secdef=f | search_path=public, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
+FUNC     public.wh_guard_line_delete() | secdef=f | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.wh_guard_line_insert() | secdef=f | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.wh_guard_outbound_order() | secdef=f | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.wh_guard_pallet() | secdef=f | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.wh_guard_transfer() | secdef=f | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.wh_log_pallet_movement() | secdef=t | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.wh_movements_append_only() | secdef=f | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 GRANT    public.activity | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.activity_feed | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.ai_brief_todos | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
@@ -225,6 +238,13 @@ GRANT    public.training_records | authenticated | DELETE,INSERT,REFERENCES,SELE
 GRANT    public.user_permissions | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.vendors | anon | SELECT
 GRANT    public.vendors | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
+GRANT    public.wh_lots | authenticated | INSERT,SELECT,UPDATE
+GRANT    public.wh_movements | authenticated | SELECT
+GRANT    public.wh_outbound_orders | authenticated | INSERT,SELECT,UPDATE
+GRANT    public.wh_pallets | authenticated | INSERT,SELECT,UPDATE
+GRANT    public.wh_skus | authenticated | INSERT,SELECT,UPDATE
+GRANT    public.wh_transfer_lines | authenticated | DELETE,INSERT,SELECT
+GRANT    public.wh_transfers | authenticated | INSERT,SELECT,UPDATE
 GRANT    public.yield_logs | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 POLICY   public.activity | Authenticated can insert activity | PERMISSIVE | {public} | INSERT | using=- | check=(auth.role() = 'authenticated'::text)
 POLICY   public.activity | Authenticated can read activity | PERMISSIVE | {public} | SELECT | using=(auth.role() = 'authenticated'::text) | check=-
@@ -843,6 +863,20 @@ POLICY   public.vendors | vendors staff insert | PERMISSIVE | {authenticated} | 
 POLICY   public.vendors | vendors staff select | PERMISSIVE | {authenticated} | SELECT | using=is_staff_user() | check=-
 POLICY   public.vendors | vendors staff update | PERMISSIVE | {authenticated} | UPDATE | using=is_staff_user() | check=is_staff_user()
 POLICY   public.vendors | vendors super delete | PERMISSIVE | {authenticated} | DELETE | using=is_super_user() | check=-
+POLICY   public.wh_lots | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
+POLICY   public.wh_lots | wh_lots staff all | PERMISSIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
+POLICY   public.wh_movements | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
+POLICY   public.wh_movements | wh_movements staff all | PERMISSIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
+POLICY   public.wh_outbound_orders | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
+POLICY   public.wh_outbound_orders | wh_outbound_orders staff all | PERMISSIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
+POLICY   public.wh_pallets | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
+POLICY   public.wh_pallets | wh_pallets staff all | PERMISSIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
+POLICY   public.wh_skus | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
+POLICY   public.wh_skus | wh_skus staff all | PERMISSIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
+POLICY   public.wh_transfer_lines | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
+POLICY   public.wh_transfer_lines | wh_transfer_lines staff all | PERMISSIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
+POLICY   public.wh_transfers | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
+POLICY   public.wh_transfers | wh_transfers staff all | PERMISSIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
 POLICY   public.yield_logs | authed all | PERMISSIVE | {authenticated} | ALL | using=true | check=-
 POLICY   public.yield_logs | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=is_gl_staff() | check=-
 POLICY   public.yield_logs | gl viewer no delete | RESTRICTIVE | {authenticated} | DELETE | using=(NOT gl_is_viewer()) | check=-
@@ -871,6 +905,7 @@ POLICY   storage.objects | client-docs referenced-object update guard | RESTRICT
 POLICY   storage.objects | client-docs staff all | PERMISSIVE | {authenticated} | ALL | using=((bucket_id = 'client-docs'::text) AND is_gl_staff()) | check=((bucket_id = 'client-docs'::text) AND is_gl_staff())
 POLICY   storage.objects | compliance-photos staff all | PERMISSIVE | {authenticated} | ALL | using=((bucket_id = 'compliance-photos'::text) AND is_gl_staff()) | check=((bucket_id = 'compliance-photos'::text) AND is_gl_staff())
 POLICY   storage.objects | sales-decks staff all | PERMISSIVE | {authenticated} | ALL | using=((bucket_id = 'sales-decks'::text) AND is_gl_staff()) | check=((bucket_id = 'sales-decks'::text) AND is_gl_staff())
+POLICY   storage.objects | warehouse-docs staff all | PERMISSIVE | {authenticated} | ALL | using=((bucket_id = 'warehouse-docs'::text) AND is_gl_staff()) | check=((bucket_id = 'warehouse-docs'::text) AND is_gl_staff())
 RLS      public.activity | enabled=t
 RLS      public.activity_feed | enabled=t
 RLS      public.ai_brief_todos | enabled=t
@@ -968,6 +1003,13 @@ RLS      public.trade_shows | enabled=t
 RLS      public.training_records | enabled=t
 RLS      public.user_permissions | enabled=t
 RLS      public.vendors | enabled=t
+RLS      public.wh_lots | enabled=t
+RLS      public.wh_movements | enabled=t
+RLS      public.wh_outbound_orders | enabled=t
+RLS      public.wh_pallets | enabled=t
+RLS      public.wh_skus | enabled=t
+RLS      public.wh_transfer_lines | enabled=t
+RLS      public.wh_transfers | enabled=t
 RLS      public.yield_logs | enabled=t
 SECRET   gl_cron_secret | len=64 | known_published=f
 SECRET   gl_gmail_client_id | len=72 | known_published=f
