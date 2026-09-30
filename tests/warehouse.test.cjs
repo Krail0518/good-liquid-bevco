@@ -151,8 +151,8 @@ const server = http.createServer((req, res) => {
   check('the module is loaded as a classic root-absolute script',
     /<script src="\/src\/modules\/warehouse\/warehouse\.js"><\/script>/.test(html));
   const auth = fs.readFileSync(path.join(ROOT, 'src/services/auth.js'), 'utf8');
-  check('admin and sales login reveal the link',
-    /if\(u\.role==='admin'\|\|u\.role==='sales'\)\{var nw=\$\('nav-warehouse'\)/.test(auth));
+  check('admin and sales login reveal the link, unless unticked for that user',
+    /if\(\(u\.role==='admin'\|\|u\.role==='sales'\)&&\(typeof window\.glCan!=='function'\|\|window\.glCan\('page\.warehouse'\)\)\)\{var nw=\$\('nav-warehouse'\)/.test(auth));
   const perms = fs.readFileSync(path.join(ROOT, 'src/services/permissions-service.js'), 'utf8');
   const salesLists = perms.match(/sales:\s*\[[^\]]*\]|PERMISSIONS\.sales=\[[^\]]*\]/g) || [];
   check('sales may open the warehouse page (both sales page lists)',
