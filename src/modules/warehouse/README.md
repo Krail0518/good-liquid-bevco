@@ -76,7 +76,10 @@ Staff only at the database (`is_gl_staff()` plus the restrictive tenant guard).
 Portal customers and self-registered users see zero rows; anon has no grant.
 The page is open to the **admin** and **sales** roles: `loginUser` in
 `src/services/auth.js` reveals the link for both, and `'warehouse'` is in the
-sales page list in `src/services/permissions-service.js`. The **warehouse**
+sales page list in `src/services/permissions-service.js`.
+It is also a checkbox on **Users & Permissions** (`page.warehouse`, on by
+default): untick it to take the page and its sidebar link away from one sales
+user. Admins are never limited by the checkboxes. The **warehouse**
 and **viewer** roles do not see the link and the nav guard refuses the page.
 Giving the `warehouse` role this page needs a decision first: that role is
 blocked from `clients` at the database (`20260817000000_warehouse_rls_guard.sql`),

@@ -43,7 +43,7 @@
 |---------|-----------|-------|------|----------------|
 | `cpg-production-runs` | `nav-production-runs` | PRODUCTION RUNS | Admin/Sales | `+ Add Run` (primary) |
 | `cpg-samples` | `nav-samples` | SAMPLE SHIPMENTS | Admin/Sales | `+ Log Shipment` (primary) |
-| `cpg-warehouse` | `nav-warehouse` | WAREHOUSE STORAGE | Admin/Sales (hidden until an admin or sales login reveals it in `auth.js` `loginUser`; `'warehouse'` is in the sales page list in `permissions-service.js`; the `warehouse` and `viewer` roles are refused) | `+ New transfer` (primary). Tabs: Dashboard / Transfers / SKU master / Outbound orders / Reconciliation. Module `src/modules/warehouse/warehouse.js`; controls use a module-private `data-wh` allowlist, not `data-gl-action`. See `src/modules/warehouse/README.md`. |
+| `cpg-warehouse` | `nav-warehouse` | WAREHOUSE STORAGE | Admin/Sales (hidden until an admin or sales login reveals it in `auth.js` `loginUser`; `'warehouse'` is in the sales page list in `permissions-service.js`; the `warehouse` and `viewer` roles are refused; per-user checkbox `page.warehouse` on Users & Permissions) | `+ New transfer` (primary). Tabs: Dashboard / Transfers / SKU master / Outbound orders / Reconciliation. Module `src/modules/warehouse/warehouse.js`; controls use a module-private `data-wh` allowlist, not `data-gl-action`. See `src/modules/warehouse/README.md`. |
 | `cpg-formulas` | `nav-formulas` | FORMULA VAULT | Admin/Sales | `+ New Formula` (primary) |
 | `cpg-yield` | `nav-yield` | YIELD TRACKER | Admin/Sales | `+ Log Completion` (primary) |
 | `cpg-content` | `nav-content` | CONTENT CALENDAR | Admin/Sales | `+ New Post` (primary) |

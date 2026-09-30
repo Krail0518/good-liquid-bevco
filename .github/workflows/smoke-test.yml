@@ -345,6 +345,15 @@ jobs:
           REPO_ROOT: ${{ github.workspace }}
         run: node tests/warehouse.test.cjs
 
+      # Users & Permissions: an unticked page must lose its sidebar link. The
+      # gating read only onclick= links and went dark when every link moved to
+      # data-gl-action; this drives the real login and permission load.
+      - name: Run permission gating test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/permission-gating.test.cjs
+
       # Every migration must say how to undo it. Authorization changes reach
       # production through the Supabase MCP, so the file is what someone reads
       # when they need to reverse one — there is no deploy tool to ask. The 93
