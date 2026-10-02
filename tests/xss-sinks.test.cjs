@@ -202,7 +202,15 @@ for (const [label, re] of FORBIDDEN) {
 // esc() (exercised above with the rest). The one party outside Good Liquid
 // that can reach these is CONRI's inventory CSV on the reconciliation tab,
 // and every cell of it is escaped before render.
-const SINK_BUDGET = 629;
+//
+// 2026-10-01: 629 -> 632. The all-quotes list (Pipeline -> 🗂 Quotes) in
+// quote-builder.js: the modal shell (static text only), the status filter
+// strip (fixed labels and integer counts), and the quote rows. Every value in
+// the rows goes through the module's esc() — company name, email and quote
+// number are typed by staff but may be copied from a lead's own form entry.
+// Its loading/error/empty states use textContent, and the client panel's PDF
+// opener was folded into the same openSavedQuotePdf() rather than duplicated.
+const SINK_BUDGET = 632;
 let sinkCount = 0;
 const RAW = /\.(innerHTML|outerHTML)\s*(=|\+=)|insertAdjacentHTML\s*\(|document\.write(ln)?\s*\(/;
 for (const f of files) {

@@ -9,6 +9,7 @@
        – "📋 New Quote" in the deal detail panel (alongside Create Invoice)
        – "✅ Close Job"  in the deal detail panel (sets stage → Closed Won)
        – "📋 QUOTES" history section in the Edit Client modal
+     glOpenQuotesList()  – "🗂 Quotes" on the Pipeline header: every quote
    ============================================================ */
 (function(){
   'use strict';
@@ -1223,6 +1224,10 @@
         custom_lines:   data.quoteLines || [],
         inclusions:     data.inclusions,
         notes:          data.notes,
+        // Stored as columns so the all-quotes list can show who a quote is
+        // for even when the typed company matches no client record.
+        client_name:    String(data.clientName||'').trim() || null,
+        client_email:   String(data.clientEmail||'').trim() || null,
         pdf_html:       generateQuoteHTML(data)
       };
       var r;
@@ -1355,6 +1360,17 @@
       } else {
         st.style.color='#5fcf9e';
         st.textContent='Quote emailed to '+data.clientEmail+' ✓';
+        // Record the send so the quote shows as Sent in Pipeline → Quotes.
+        // Only a draft is promoted: an accepted quote is locked by
+        // gl_guard_accepted_quote, and a declined one stays declined.
+        var mark = { sent_at: new Date().toISOString(), sent_to: data.clientEmail };
+        if(saved.status === 'draft') mark.status = 'sent';
+        // CLAUDE.md rule 4: RLS refuses silently, so check rows came back.
+        var mk = await sb.from('quotes').update(mark).eq('id', saved.id).select('id');
+        if(mk.error || !mk.data || !mk.data.length){
+          st.style.color='#f5c842';
+          st.textContent='Quote emailed to '+data.clientEmail+', but it could not be marked as sent'+(mk.error ? ' ('+mk.error.message+')' : '')+'.';
+        }
       }
     });
 
@@ -2035,17 +2051,7 @@
     });
 
     container.querySelectorAll('.gl-q-dl').forEach(function(btn){
-      btn.addEventListener('click', async function(){
-        var qid = btn.getAttribute('data-qid');
-        var rr = await sb.from('quotes').select('pdf_html,quote_number').eq('id',qid).single();
-        if(rr.data && rr.data.pdf_html){
-          var w = window.open('','_blank','width=980,height=780');
-          if(!w){ alert('Pop-up blocked.'); return; }
-          w.document.write(rr.data.pdf_html);
-          w.document.close();
-          w.onload = function(){ w.focus(); w.print(); };
-        }
-      });
+      btn.addEventListener('click', function(){ openSavedQuotePdf(btn.getAttribute('data-qid')); });
     });
   }
 
@@ -2090,6 +2096,186 @@
       return r;
     };
   })();
+
+  /* ── All quotes (Pipeline → 🗂 Quotes) ─────────────────────────
+     Every saved quote, whoever it is for. The Edit Client panel above lists
+     only quotes linked to that client, and a quote built from the Pipeline's
+     Quote Builder button usually is not linked to anything — before this
+     list existed such quotes were saved but could not be found again. ── */
+  var QL_STATUS_COLOR = { draft:'#9aa7bd', sent:'#5a9fff', accepted:'#5fcf9e', declined:'#ff8579' };
+  var QL_FILTERS = [['all','All'],['sent','Sent'],['draft','Draft'],['accepted','Accepted'],['declined','Declined']];
+
+  function qlFindDeal(dealId){
+    var all = window.deals || {}, hit = null;
+    Object.keys(all).forEach(function(stage){
+      (all[stage]||[]).forEach(function(d, idx){ if(d && d.id === dealId) hit = { stage: stage, idx: idx, deal: d }; });
+    });
+    return hit;
+  }
+
+  function qlRecipient(q){
+    var client = q.client_id ? (window.clients||[]).find(function(c){ return c.id === q.client_id; }) : null;
+    var deal   = q.deal_id ? qlFindDeal(q.deal_id) : null;
+    return {
+      name:  q.client_name || (client && client.name) || (deal && deal.deal.co) || '',
+      email: q.sent_to || q.client_email || (client && client.email) || (deal && deal.deal.email) || '',
+      client: client, deal: deal
+    };
+  }
+
+  function qlFmtDateTime(ts){
+    if(!ts) return '';
+    var d = new Date(ts);
+    return isNaN(d) ? '' : d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  }
+
+  window.glOpenQuotesList = async function(){
+    if(!window.currentUser || window.currentUser.role !== 'admin'){ alert('Admin only.'); return; }
+    var sb = window.supa;
+    if(!sb){ alert('Not connected.'); return; }
+    var prior = document.getElementById('gl-ql-modal'); if(prior) prior.remove();
+
+    var ov = document.createElement('div');
+    ov.id = 'gl-ql-modal';
+    ov.setAttribute('style', OVER);
+    ov.innerHTML =
+      '<div style="background:#0d1a2e;border:1px solid rgba(26,111,255,.25);border-radius:14px;padding:22px;width:100%;max-width:1040px;margin:24px 0">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px">' +
+          '<div>' +
+            '<div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2.5px;color:#5a9fff">🗂 QUOTES</div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:2px">Every saved production quote, newest first</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:8px">' +
+            '<button id="gl-ql-new" class="cbtn" style="background:rgba(26,111,255,.1);border-color:rgba(26,111,255,.35);color:#5a9fff">📋 New Quote</button>' +
+            '<button id="gl-ql-close" class="cbtn">✕ Close</button>' +
+          '</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">' +
+          '<div id="gl-ql-filters" style="display:flex;gap:6px;flex-wrap:wrap"></div>' +
+          '<input id="gl-ql-search" type="text" placeholder="Search company, email or quote #…" style="'+INP+';flex:1;min-width:200px;max-width:320px;margin-left:auto">' +
+        '</div>' +
+        '<div id="gl-ql-list" style="display:flex;flex-direction:column;gap:7px">' +
+          '<div style="font-size:12px;color:var(--muted);text-align:center;padding:20px">Loading…</div>' +
+        '</div>' +
+      '</div>';
+    (document.getElementById('crm-panel') || document.body).appendChild(ov);
+
+    ov.querySelector('#gl-ql-close').addEventListener('click', function(){ ov.remove(); });
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+    ov.querySelector('#gl-ql-new').addEventListener('click', function(){ ov.remove(); window.glOpenQuoteBuilder(null, null); });
+
+    var listEl = ov.querySelector('#gl-ql-list');
+    var r = await sb.from('quotes')
+      .select('id,quote_number,quote_date,valid_days,status,package_format,client_id,deal_id,client_name,client_email,sent_at,sent_to')
+      .order('created_at', { ascending: false })
+      .limit(500);
+    // Plain-text states go through textContent; only the rows need markup.
+    function listMsg(text, color){
+      var m = document.createElement('div');
+      m.setAttribute('style', 'font-size:12px;text-align:center;padding:20px;color:' + (color || 'var(--muted)'));
+      m.textContent = text;
+      listEl.replaceChildren(m);
+    }
+    if(r.error){ listMsg('Could not load quotes: ' + r.error.message, '#ff8579'); return; }
+    var rows = r.data || [];
+    var filter = rows.some(function(q){ return q.status === 'sent'; }) ? 'sent' : 'all';
+    var todayIso = today();
+
+    function counts(){
+      var c = { all: rows.length };
+      rows.forEach(function(q){ c[q.status] = (c[q.status]||0) + 1; });
+      return c;
+    }
+
+    function renderFilters(){
+      var c = counts();
+      ov.querySelector('#gl-ql-filters').innerHTML = QL_FILTERS.map(function(f){
+        var on = f[0] === filter;
+        return '<button class="cbtn gl-ql-f" data-f="' + f[0] + '" style="font-size:11px;padding:5px 12px;' +
+          (on ? 'background:rgba(26,111,255,.18);border-color:rgba(26,111,255,.5);color:#fff' : '') + '">' +
+          f[1] + ' <span style="opacity:.6">' + (c[f[0]]||0) + '</span></button>';
+      }).join('');
+      ov.querySelectorAll('.gl-ql-f').forEach(function(b){
+        b.addEventListener('click', function(){ filter = b.getAttribute('data-f'); renderFilters(); renderList(); });
+      });
+    }
+
+    function renderList(){
+      var term = (ov.querySelector('#gl-ql-search').value || '').trim().toLowerCase();
+      var shown = rows.filter(function(q){
+        if(filter !== 'all' && q.status !== filter) return false;
+        if(!term) return true;
+        var who = qlRecipient(q);
+        return [q.quote_number, who.name, who.email, q.package_format].some(function(v){
+          return String(v||'').toLowerCase().indexOf(term) > -1;
+        });
+      });
+      if(!shown.length){
+        listMsg(rows.length ? 'No quotes match.' : 'No quotes saved yet. Use 📋 Quote Builder to make one.');
+        return;
+      }
+      listEl.innerHTML = shown.map(function(q){
+        var who = qlRecipient(q);
+        var sColor = QL_STATUS_COLOR[q.status] || '#9aa7bd';
+        var validUntil = q.quote_date ? addDays(q.quote_date, q.valid_days || 30) : '';
+        var expired = q.status === 'sent' && validUntil && validUntil < todayIso;
+        var sentLine = q.sent_at
+          ? 'Sent ' + esc(qlFmtDateTime(q.sent_at)) + (q.sent_to ? ' to ' + esc(q.sent_to) : '')
+          : 'Not emailed';
+        return '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">' +
+          '<div style="flex:1;min-width:220px">' +
+            '<div style="font-size:13px;font-weight:600;color:#fff">' + esc(who.name || '(no company name)') +
+              ' <span style="font-weight:400;color:var(--muted);font-size:11px">' + esc(q.quote_number) + '</span></div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:2px">' +
+              esc(q.package_format || '') + ' &middot; quoted ' + esc(fmtDate(q.quote_date)) +
+              (validUntil ? ' &middot; valid until ' + esc(fmtDate(validUntil)) : '') + '</div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + sentLine + '</div>' +
+          '</div>' +
+          '<span style="font-size:10px;letter-spacing:1.5px;color:' + sColor + '">' + esc((q.status||'').toUpperCase()) + '</span>' +
+          (expired ? '<span style="font-size:10px;letter-spacing:1.5px;color:#f5c842">EXPIRED</span>' : '') +
+          '<button class="cbtn gl-ql-pdf" data-qid="' + esc(q.id) + '" style="font-size:11px;padding:4px 10px">📄 PDF</button>' +
+          (who.client ? '<button class="cbtn gl-ql-client" data-cid="' + esc(who.client.id) + '" style="font-size:11px;padding:4px 10px">👤 Client</button>' : '') +
+          (who.deal ? '<button class="cbtn gl-ql-deal" data-did="' + esc(q.deal_id) + '" style="font-size:11px;padding:4px 10px">💼 Deal</button>' : '') +
+        '</div>';
+      }).join('');
+
+      listEl.querySelectorAll('.gl-ql-pdf').forEach(function(b){
+        b.addEventListener('click', function(){ openSavedQuotePdf(b.getAttribute('data-qid')); });
+      });
+      listEl.querySelectorAll('.gl-ql-client').forEach(function(b){
+        b.addEventListener('click', function(){
+          if(typeof window.glOpenEditClient !== 'function') return;
+          ov.remove(); window.glOpenEditClient(b.getAttribute('data-cid'));
+        });
+      });
+      listEl.querySelectorAll('.gl-ql-deal').forEach(function(b){
+        b.addEventListener('click', function(){
+          var hit = qlFindDeal(b.getAttribute('data-did'));
+          if(!hit || typeof window.openDealDetail !== 'function') return;
+          ov.remove(); window.openDealDetail(hit.stage, hit.idx);
+        });
+      });
+    }
+
+    ov.querySelector('#gl-ql-search').addEventListener('input', renderList);
+    renderFilters();
+    renderList();
+  };
+
+  async function openSavedQuotePdf(qid){
+    var sb = window.supa;
+    var w = window.open('', '_blank', 'width=980,height=780');
+    if(!w){ alert('Pop-up blocked.'); return; }
+    var rr = await sb.from('quotes').select('pdf_html').eq('id', qid).single();
+    if(rr.error || !rr.data || !rr.data.pdf_html){
+      w.close();
+      alert('Could not load that quote' + (rr.error ? ': ' + rr.error.message : '.'));
+      return;
+    }
+    w.document.write(rr.data.pdf_html);
+    w.document.close();
+    w.onload = function(){ w.focus(); w.print(); };
+  }
 
   /* ── Quote → invoice ──────────────────────────────────────────
      A saved quote's own columns rebuilt into the shape generateQuoteHTML
