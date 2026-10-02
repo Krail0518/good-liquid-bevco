@@ -2104,6 +2104,146 @@
      list existed such quotes were saved but could not be found again. ── */
   var QL_STATUS_COLOR = { draft:'#9aa7bd', sent:'#5a9fff', accepted:'#5fcf9e', declined:'#ff8579' };
   var QL_FILTERS = [['all','All'],['sent','Sent'],['draft','Draft'],['accepted','Accepted'],['declined','Declined']];
+  // Statuses the list may set. Accepted is deliberately absent: accepting
+  // picks a project and services and unlocks them in the portal, so it stays
+  // in the client's quote panel where those choices are made.
+  var QL_SETTABLE = ['draft','sent','declined'];
+
+  /* ── Quote → invoice from the list ──
+     An invoice belongs to a client, and most quotes built from the Pipeline
+     are linked to none. For those, ask which client (or add a new one), link
+     the quote to it, then open the invoice. */
+  async function qlInvoiceFromQuote(q, listOv, setMsg){
+    var sb = window.supa;
+    setMsg('Loading ' + q.quote_number + '…');
+    var rr = await sb.from('quotes').select('*').eq('id', q.id).single();
+    if(rr.error || !rr.data){
+      setMsg('Could not load ' + q.quote_number + (rr.error ? ': ' + rr.error.message : '.'), '#ff8579');
+      return;
+    }
+    var row = rr.data;
+    setMsg('');
+    if(row.client_id){
+      listOv.remove();
+      window.glQuoteToInvoice(quoteDataFromRow(row), row.client_id);
+      return;
+    }
+    qlPickClient(row, async function(clientId){
+      // Link only a quote that is still unlinked, so two people picking at
+      // once cannot silently re-point it. Rule 4: check rows came back.
+      var up = await sb.from('quotes').update({ client_id: clientId })
+        .eq('id', row.id).is('client_id', null).select('id,client_id');
+      if(up.error || !up.data || !up.data.length){
+        alert('Could not link ' + row.quote_number + ' to that client' +
+          (up.error ? ': ' + up.error.message : ' — it may already be linked. Reopen 🗂 Quotes and try again.'));
+        return;
+      }
+      q.client_id = clientId;
+      if(typeof window.glAudit === 'function') window.glAudit('quote_linked_client', row.quote_number, { client: clientId });
+      listOv.remove();
+      window.glQuoteToInvoice(quoteDataFromRow(row), clientId);
+    }, listOv);
+  }
+
+  // Client picker. Built with DOM calls and textContent throughout, because
+  // every label in it is a client or company name someone typed.
+  function qlPickClient(row, onPick, listOv){
+    var old = document.getElementById('gl-ql-pick'); if(old) old.remove();
+    var wanted = String(row.client_name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    var wantedEmail = String(row.client_email || '').toLowerCase();
+    var all = (window.clients || []).filter(function(c){ return c && c.id && c.name; });
+    function score(c){
+      var n = String(c.name).toLowerCase().replace(/[^a-z0-9]/g, '');
+      if(wantedEmail && String(c.email || '').toLowerCase() === wantedEmail) return 3;
+      if(wanted && n === wanted) return 2;
+      if(wanted && n && (n.indexOf(wanted) > -1 || wanted.indexOf(n) > -1)) return 1;
+      return 0;
+    }
+
+    var m = document.createElement('div');
+    m.id = 'gl-ql-pick';
+    m.setAttribute('style', 'position:fixed;inset:0;z-index:10000;background:rgba(6,13,26,.9);display:flex;align-items:center;justify-content:center;padding:16px');
+    var card = document.createElement('div');
+    card.setAttribute('style', 'background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:14px;padding:22px;width:100%;max-width:480px;max-height:85vh;display:flex;flex-direction:column');
+    var h = document.createElement('div');
+    h.setAttribute('style', 'font-size:14px;font-weight:700;color:#fff;margin-bottom:4px');
+    h.textContent = 'Which client is this quote for?';
+    var sub = document.createElement('div');
+    sub.setAttribute('style', 'font-size:12px;color:var(--muted);margin-bottom:12px');
+    sub.textContent = row.quote_number + (row.client_name ? ' — prepared for ' + row.client_name : '') +
+      '. An invoice has to belong to a client, so the quote will be linked to the one you pick.';
+    var search = document.createElement('input');
+    search.type = 'text';
+    search.placeholder = 'Search clients…';
+    search.setAttribute('style', INP + ';margin-bottom:10px');
+    var list = document.createElement('div');
+    list.setAttribute('style', 'overflow-y:auto;flex:1;min-height:60px');
+
+    function renderPick(){
+      var term = search.value.trim().toLowerCase();
+      var shown = all.filter(function(c){
+        return !term || String(c.name).toLowerCase().indexOf(term) > -1 || String(c.email || '').toLowerCase().indexOf(term) > -1;
+      }).sort(function(a, b){ return score(b) - score(a) || String(a.name).localeCompare(String(b.name)); }).slice(0, 50);
+      list.replaceChildren();
+      if(!shown.length){
+        var none = document.createElement('div');
+        none.setAttribute('style', 'font-size:12px;color:var(--muted);padding:10px 0');
+        none.textContent = term ? 'No client matches. Add them as a new client below.' : 'No clients yet. Add them as a new client below.';
+        list.appendChild(none);
+      }
+      shown.forEach(function(c){
+        var b = document.createElement('button');
+        b.className = 'cbtn';
+        b.setAttribute('style', 'display:block;width:100%;text-align:left;margin-bottom:6px;font-size:12px;padding:9px 12px' +
+          (score(c) >= 2 ? ';border-color:rgba(0,229,192,.5)' : ''));
+        b.textContent = c.name + (c.email ? '  ·  ' + c.email : '') + (score(c) >= 2 ? '  ✓ likely match' : '');
+        b.addEventListener('click', function(){ m.remove(); onPick(c.id); });
+        list.appendChild(b);
+      });
+    }
+    search.addEventListener('input', renderPick);
+
+    var add = document.createElement('button');
+    add.className = 'cbtn';
+    add.setAttribute('style', 'width:100%;font-size:12px;margin-top:8px;background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)');
+    add.textContent = '+ Add ' + (row.client_name ? '“' + row.client_name + '”' : 'a new client') + ' as a new client';
+    add.addEventListener('click', function(){
+      if(typeof window.openAddClientModal !== 'function'){ alert('Add Client is not available — reload and try again.'); return; }
+      var before = {};
+      (window.clients || []).forEach(function(c){ before[c.id] = 1; });
+      m.remove();
+      if(listOv) listOv.remove();
+      window.openAddClientModal();
+      function prefill(id, val){ var el = document.getElementById(id); if(el && !el.value && val) el.value = val; }
+      prefill('nc-name', row.client_name);
+      prefill('nc-email', row.client_email);
+      // When the Add Client form closes, link the quote to the client it
+      // created. Closed without saving: nothing new exists, nothing happens.
+      var modal = document.getElementById('add-client-modal');
+      if(!modal) return;
+      var watch = new MutationObserver(function(){
+        if(modal.classList.contains('show')) return;
+        watch.disconnect();
+        var made = (window.clients || []).filter(function(c){ return c && c.id && !before[c.id]; });
+        if(made.length === 1) onPick(made[0].id);
+      });
+      watch.observe(modal, { attributes: true, attributeFilter: ['class'] });
+    });
+
+    var cancel = document.createElement('button');
+    cancel.className = 'cbtn';
+    cancel.setAttribute('style', 'width:100%;font-size:12px;margin-top:6px;color:var(--muted)');
+    cancel.textContent = 'Cancel';
+    cancel.addEventListener('click', function(){ m.remove(); });
+
+    card.appendChild(h); card.appendChild(sub); card.appendChild(search);
+    card.appendChild(list); card.appendChild(add); card.appendChild(cancel);
+    m.appendChild(card);
+    m.addEventListener('click', function(e){ if(e.target === m) m.remove(); });
+    document.body.appendChild(m);
+    renderPick();
+    search.focus();
+  }
 
   function qlFindDeal(dealId){
     var all = window.deals || {}, hit = null;
@@ -2154,6 +2294,7 @@
           '<div id="gl-ql-filters" style="display:flex;gap:6px;flex-wrap:wrap"></div>' +
           '<input id="gl-ql-search" type="text" placeholder="Search company, email or quote #…" style="'+INP+';flex:1;min-width:200px;max-width:320px;margin-left:auto">' +
         '</div>' +
+        '<div id="gl-ql-msg" style="font-size:12px;min-height:0;margin-bottom:8px"></div>' +
         '<div id="gl-ql-list" style="display:flex;flex-direction:column;gap:7px">' +
           '<div style="font-size:12px;color:var(--muted);text-align:center;padding:20px">Loading…</div>' +
         '</div>' +
@@ -2165,6 +2306,11 @@
     ov.querySelector('#gl-ql-new').addEventListener('click', function(){ ov.remove(); window.glOpenQuoteBuilder(null, null); });
 
     var listEl = ov.querySelector('#gl-ql-list');
+    var msgEl  = ov.querySelector('#gl-ql-msg');
+    function setMsg(text, color){
+      msgEl.style.color = color || 'var(--muted)';
+      msgEl.textContent = text || '';
+    }
     var r = await sb.from('quotes')
       .select('id,quote_number,quote_date,valid_days,status,package_format,client_id,deal_id,client_name,client_email,sent_at,sent_to')
       .order('created_at', { ascending: false })
@@ -2221,7 +2367,17 @@
         var expired = q.status === 'sent' && validUntil && validUntil < todayIso;
         var sentLine = q.sent_at
           ? 'Sent ' + esc(qlFmtDateTime(q.sent_at)) + (q.sent_to ? ' to ' + esc(q.sent_to) : '')
-          : 'Not emailed';
+          : (q.status === 'sent' ? 'Marked sent (not emailed from the CRM)' : 'Not emailed');
+        // Accepted is set from the client's quote panel, where the project
+        // and services are chosen, and is final (gl_guard_accepted_quote).
+        var statusCtl = q.status === 'accepted'
+          ? '<span style="font-size:10px;letter-spacing:1.5px;color:' + sColor + '" title="Accepted quotes are locked">ACCEPTED 🔒</span>'
+          : '<select class="gl-ql-status" data-qid="' + esc(q.id) + '" title="Change status" ' +
+              'style="font-size:11px;padding:4px 6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.15);border-radius:6px;color:' + sColor + '">' +
+              QL_SETTABLE.map(function(s){
+                return '<option value="' + s + '"' + (q.status === s ? ' selected' : '') + '>' + s.charAt(0).toUpperCase() + s.slice(1) + '</option>';
+              }).join('') +
+            '</select>';
         return '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">' +
           '<div style="flex:1;min-width:220px">' +
             '<div style="font-size:13px;font-weight:600;color:#fff">' + esc(who.name || '(no company name)') +
@@ -2231,9 +2387,10 @@
               (validUntil ? ' &middot; valid until ' + esc(fmtDate(validUntil)) : '') + '</div>' +
             '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + sentLine + '</div>' +
           '</div>' +
-          '<span style="font-size:10px;letter-spacing:1.5px;color:' + sColor + '">' + esc((q.status||'').toUpperCase()) + '</span>' +
+          statusCtl +
           (expired ? '<span style="font-size:10px;letter-spacing:1.5px;color:#f5c842">EXPIRED</span>' : '') +
           '<button class="cbtn gl-ql-pdf" data-qid="' + esc(q.id) + '" style="font-size:11px;padding:4px 10px">📄 PDF</button>' +
+          '<button class="cbtn gl-ql-inv" data-qid="' + esc(q.id) + '" style="font-size:11px;padding:4px 10px" title="Open a new invoice filled in from this quote">🧾 Invoice</button>' +
           (who.client ? '<button class="cbtn gl-ql-client" data-cid="' + esc(who.client.id) + '" style="font-size:11px;padding:4px 10px">👤 Client</button>' : '') +
           (who.deal ? '<button class="cbtn gl-ql-deal" data-did="' + esc(q.deal_id) + '" style="font-size:11px;padding:4px 10px">💼 Deal</button>' : '') +
         '</div>';
@@ -2241,6 +2398,33 @@
 
       listEl.querySelectorAll('.gl-ql-pdf').forEach(function(b){
         b.addEventListener('click', function(){ openSavedQuotePdf(b.getAttribute('data-qid')); });
+      });
+      listEl.querySelectorAll('.gl-ql-status').forEach(function(sel){
+        sel.addEventListener('change', async function(){
+          var q = rows.find(function(x){ return x.id === sel.getAttribute('data-qid'); });
+          if(!q) return;
+          var next = sel.value, prev = q.status;
+          sel.disabled = true;
+          setMsg('Saving ' + q.quote_number + '…');
+          // CLAUDE.md rule 4: RLS refuses silently — check rows came back.
+          var up = await sb.from('quotes').update({ status: next }).eq('id', q.id).select('id,status');
+          sel.disabled = false;
+          if(up.error || !up.data || !up.data.length){
+            sel.value = prev;
+            setMsg('Could not change ' + q.quote_number + ': ' + (up.error ? up.error.message : 'the database refused the change.'), '#ff8579');
+            return;
+          }
+          q.status = up.data[0].status;
+          if(typeof window.glAudit === 'function') window.glAudit('quote_status_set', q.quote_number, { from: prev, to: q.status });
+          setMsg(q.quote_number + ' is now ' + q.status + '.', '#5fcf9e');
+          renderFilters(); renderList();
+        });
+      });
+      listEl.querySelectorAll('.gl-ql-inv').forEach(function(b){
+        b.addEventListener('click', function(){
+          var q = rows.find(function(x){ return x.id === b.getAttribute('data-qid'); });
+          if(q) qlInvoiceFromQuote(q, ov, setMsg);
+        });
       });
       listEl.querySelectorAll('.gl-ql-client').forEach(function(b){
         b.addEventListener('click', function(){
