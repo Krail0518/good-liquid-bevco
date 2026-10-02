@@ -76,6 +76,10 @@ function installCommon(){
     if(!document.getElementById('gm-mascot')){
       const st=document.createElement('style'); st.id='gm-style';
       st.textContent=
+        // GL-088's session watchdog reads the real Supabase client, which has
+        // no session here, so after 60s it would cover the top of every video
+        // with "Your session has expired". Recordings are not sessions.
+        '#gl-session-expired{display:none!important}'+
         '@keyframes gm-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}'+
         '@keyframes gm-blink{0%,90%,100%{transform:scaleY(1)}95%{transform:scaleY(.08)}}'+
         '@keyframes gm-talk{0%,100%{transform:scaleY(.32)}50%{transform:scaleY(1)}}'+
@@ -104,6 +108,14 @@ function installCommon(){
       document.body.appendChild(m);
     }
     window.__vcap=t=>{const c=document.getElementById('vcap'); if(c) c.textContent=t;};
+    // Step marker: a small grey square in the bottom-right corner whose shade
+    // encodes the step number. The driver reads it back out of the recording
+    // to find where each step really starts (see markLevel / stepStarts).
+    window.__mark=lv=>{let m=document.getElementById('vmark');
+      if(!m){ m=document.createElement('div'); m.id='vmark';
+        m.style.cssText='position:fixed;right:0;bottom:0;width:12px;height:12px;z-index:2147483647;pointer-events:none';
+        document.body.appendChild(m); }
+      m.style.background='rgb('+lv+','+lv+','+lv+')'; };
     window.__pulse=(x,y)=>{const p=document.createElement('div');p.style.cssText='position:fixed;left:'+x+'px;top:'+y+'px;width:14px;height:14px;border-radius:50%;border:2px solid #00e5c0;z-index:2147483645;pointer-events:none;transform:translate(-50%,-50%);transition:all .5s ease-out';document.body.appendChild(p);requestAnimationFrame(()=>{p.style.width='64px';p.style.height='64px';p.style.opacity='0';});setTimeout(()=>p.remove(),520);};
   };
   window.__overlays=function(containerId){
@@ -277,18 +289,105 @@ async function coreSetup(pg, page, opts){
   }, {page,opts:opts||{}});
 }
 
+// Client portal v2 (GL-071..GL-080): two projects, a milestone waiting on the
+// client, one service unlocked, artwork with decisions, a released formula doc.
+// rpc() answers from __rpc by function name (see the portal storyboard).
+const futDays=n=>new Date(Date.now()+n*864e5).toISOString().slice(0,10);
+const PORTAL_MS=[
+ ['formulation','intake','Project intake','completed'],['formulation','formulation','Formulation','completed'],
+ ['formulation','testing','Internal testing','completed'],['formulation','sample_prep','Sample preparation','completed'],
+ ['formulation','sample_sent','Sample sent','completed'],['formulation','feedback','Your feedback','awaiting_client','client','Samples of round 2 shipped Monday. Please taste and send us your notes on sweetness and carbonation.',futDays(5),2],
+ ['formulation','revisions','Formula revisions','not_started'],['formulation','approved','Formula approved','not_started'],
+ ['formulation','pa_wait','Awaiting PA letter','not_started'],['formulation','pa_ok','PA letter obtained','not_started'],
+ ['formulation','prod_ready','Production ready','not_started'],['formulation','complete','Complete','not_started'],
+ ['artwork','artwork','Packaging and artwork','in_progress']
+].map((m,i)=>({id:'m'+i,project_id:'p1',track:m[0],key:m[1],label:m[2],sort_order:i,round:m[7]||1,status:m[3],owner:m[4]||'gl',client_note:m[5]||null,target_date:m[6]||null}));
 const PORTAL_DATA={
-  customer_users:[{id:'cu1',auth_user_id:'cust1',client_id:'c1',email:'ana@perico.co',display_name:'Ana — Perico Nutrition',active:true,role:'customer',notify_run_stage_changes:true}],
+  customer_users:[{id:'cu1',auth_user_id:'cust1',client_id:'c1',email:'ana@perico.co',display_name:'Ana — Perico Nutrition',active:true,role:'customer',notify_run_stage_changes:true,notify_project_updates:true}],
   clients:[{id:'c1',name:'Perico Nutrition',contact_name:'Ana Perez',contact_type:'Owner',email:'ana@perico.co',phone:'',street:'',city:'',state:'',zip:''}],
   invoices:[
-    {id:'i1',client_id:'c1',invoice_number:'GL-1042',amount:3850,status:'pending',invoice_date:'2026-07-20',due_date:'2026-08-19',line_items:[],share_token:'t1'},
-    {id:'i2',client_id:'c1',invoice_number:'GL-1039',amount:1500,status:'paid',invoice_date:'2026-06-28',due_date:'2026-07-28',line_items:[],share_token:'t2'}
+    {id:'i1',client_id:'c1',invoice_number:'GL-1042',amount:3850,paid_amount:0,status:'pending',invoice_date:isoDaysAgo(12),due_date:futDays(18),line_items:[],share_token:'t1'},
+    {id:'i2',client_id:'c1',invoice_number:'GL-1039',amount:1500,paid_amount:1500,status:'paid',invoice_date:isoDaysAgo(40),due_date:isoDaysAgo(10),line_items:[],share_token:'t2'}
   ],
-  production_runs:[{id:'r1',client_id:'c1',run_name:'Cold Brew R-2041',format:'12oz can',cases:520,stage:'Production',scheduled_start_date:'2026-07-15',lot_number:'CB-2041',updated_at:'2026-07-16'}],
-  lot_documents:[{id:'ld1',client_id:'c1',document_type:'COA',title:'COA — Cold Brew R-2041',lot_number:'CB-2041',file_name:'coa-cb2041.pdf',file_size:120000,file_path:'x',mime_type:'application/pdf',uploaded_at:'2026-07-16',production_run_id:'r1'}],
-  client_artwork:[{id:'a1',client_id:'c1',sku_name:'Cold Brew 12oz',description:'Front panel design',file_path:'c1/artwork/1.png',file_type:'png'}],
-  client_allergen_declarations:[],sample_shipments:[],formulas:[],customer_requests:[]
+  production_runs:[{id:'r1',client_id:'c1',run_name:'Mango Seltzer pilot',format:'12oz can',cases:200,stage:'Sample',scheduled_start_date:futDays(20),lot_number:'MS-0101',updated_at:isoDaysAgo(2)}],
+  lot_documents:[{id:'ld1',client_id:'c1',document_type:'COA',title:'COA — Mango Seltzer sample',lot_number:'MS-0101',file_name:'coa.pdf',file_size:120000,file_path:'x',mime_type:'application/pdf',uploaded_at:isoDaysAgo(3),production_run_id:'r1'}],
+  deal_documents:[
+    {id:'dd1',client_id:'c1',doc_type:'NDA',name:'Mutual NDA (signed)',notes:'',file_path:'c1/portal/nda.pdf',created_at:isoDaysAgo(30),project_id:null},
+    {id:'dd2',client_id:'c1',doc_type:'Process Authority Letter',name:'Process Authority letter',notes:'',file_path:'c1/pa.pdf',created_at:isoDaysAgo(8),project_id:'p1'}
+  ],
+  projects:[
+    {id:'p1',client_id:'c1',name:'Mango Seltzer',product_name:'Sparkling mango seltzer, 12oz',status:'active',started_on:isoDaysAgo(40),target_date:futDays(60),created_at:isoDaysAgo(40)},
+    {id:'p2',client_id:'c1',name:'Cold Brew Line Extension',product_name:'Oat milk cold brew',status:'active',started_on:isoDaysAgo(5),target_date:futDays(120),created_at:isoDaysAgo(5)}
+  ],
+  project_milestones:PORTAL_MS,
+  client_allergen_declarations:[],sample_shipments:[{id:'s1',client_id:'c1',kind:'Sample',qty:12,shipped_date:isoDaysAgo(4),carrier:'UPS',tracking:'1Z999AA10123456784',status:'delivered'}],
+  customer_requests:[],
+  __rpc:{
+    gl_portal_entitlements:[{project_id:'p1',service_key:'packaging_artwork',action:'grant'}],
+    gl_portal_formula_status:[{name:'Mango Seltzer',version:2,status:'benchtop',updated_at:isoDaysAgo(6)}],
+    gl_portal_formula_documents:[{id:'fd1',name:'Mango Seltzer v2 spec sheet',doc_kind:'spec_sheet',formula_name:'Mango Seltzer',version:2,published_at:isoDaysAgo(6)}],
+    gl_portal_artwork:[
+      {artwork_id:'a1',project_id:'p1',sku_name:'Mango Seltzer 12oz',description:'Front panel',file_path:'c1/artwork/1.png',file_type:'png',created_at:isoDaysAgo(9),state:'changes_requested',decided_at:isoDaysAgo(2),client_note:'Nutrition panel needs to move to the back panel; the barcode needs 2mm more quiet zone.'},
+      {artwork_id:'a2',project_id:'p1',sku_name:'Mango Seltzer 4-pack carrier',description:'',file_path:'c1/artwork/2.png',file_type:'png',created_at:isoDaysAgo(9),state:'approved',decided_at:isoDaysAgo(3),client_note:'Approved. Looks great.'}
+    ]
+  }
 };
+
+
+// Staff side of the portal: what Edit Client loads for projects, services,
+// shared documents, artwork decisions and the quote's ⚙ Services panel.
+const PORTAL_ADMIN_DATA={
+  projects:PORTAL_DATA.projects, project_milestones:PORTAL_MS,
+  project_entitlement_events:[{project_id:'p1',service_key:'packaging_artwork',action:'grant',seq:1,created_at:isoDaysAgo(12)}],
+  client_artwork:[
+    {id:'a1',client_id:'c1',project_id:'p1',sku_name:'Mango Seltzer 12oz',description:'Front panel',file_path:'c1/artwork/1.png',file_type:'png',created_at:isoDaysAgo(9)},
+    {id:'a2',client_id:'c1',project_id:'p1',sku_name:'Mango Seltzer 4-pack carrier',description:'',file_path:'c1/artwork/2.png',file_type:'png',created_at:isoDaysAgo(9)}],
+  artwork_reviews:[{artwork_id:'a1',decision:'in_review',decided_at:isoDaysAgo(8),client_note:'',seq:1},{artwork_id:'a2',decision:'approved',decided_at:isoDaysAgo(3),client_note:'Approved. Looks great.',seq:2}],
+  deal_documents:[
+    {id:'dd1',client_id:'c1',doc_type:'NDA',name:'Mutual NDA (signed)',file_path:'c1/nda.pdf',created_at:isoDaysAgo(30)},
+    {id:'dd3',client_id:'c1',doc_type:'Product Render',name:'Mango Seltzer can render v1',file_path:'c1/render.png',created_at:isoDaysAgo(1)}],
+  quotes:[{id:'q1',client_id:'c1',quote_number:'GLQ-202609-004',quote_date:isoDaysAgo(3),package_format:'12oz Standard',product_type:'canning',status:'sent',pdf_html:'<p></p>',project_id:null,services:[]}]
+};
+
+// ── Warehouse Storage (#435-#437), modelled on tests/warehouse.test.cjs ──
+const whDay=n=>{const d=new Date(Date.now()+n*864e5);return d.toISOString().slice(0,10);};
+const WH_PER={id:'c1',name:'Perico Nutrition'}, WH_CAMO={id:'c4',name:'Camo Energy'};
+const WH_SKU={id:'s-glow',client_id:WH_CAMO.id,upc_sku:'600139057612',description:'Camo Energy Glow 12oz',brand:'Camo Energy',pack:'12 count tray',units_per_case:12,default_cases_per_pallet:200,default_pallet_weight_lbs:2000,default_pallet_height_in:60,inventory_type:'finished_good',active:true,notes:null,last_exported_at:whDay(-10)+'T12:00:00Z',client:WH_CAMO};
+const WH_SKU2={id:'s-mango',client_id:WH_PER.id,upc_sku:'850012345678',description:'Mango Seltzer 12oz',brand:'Perico',pack:'24 count tray',units_per_case:24,default_cases_per_pallet:80,default_pallet_weight_lbs:1500,default_pallet_height_in:58,inventory_type:'finished_good',active:true,notes:null,last_exported_at:whDay(-20)+'T12:00:00Z',client:WH_PER};
+const WH_SKU3={id:'s-cans',client_id:WH_PER.id,upc_sku:'CAN-12OZ',description:'Empty 12oz cans',brand:'Perico',pack:'bulk',units_per_case:null,default_cases_per_pallet:1,inventory_type:'empty_can',active:true,last_exported_at:whDay(-20)+'T12:00:00Z',client:WH_PER};
+const WH_LOT={id:'l-628',sku_id:WH_SKU.id,lot_number:'628290B',production_date:whDay(-2),best_by_date:whDay(540),qa_status:'released'};
+const WH_LOT2={id:'l-ms1',sku_id:WH_SKU2.id,lot_number:'MS-0101',production_date:whDay(-200),best_by_date:whDay(45),qa_status:'released'};
+const WH_LOT3={id:'l-ms2',sku_id:WH_SKU2.id,lot_number:'MS-0102',production_date:whDay(-30),best_by_date:whDay(330),qa_status:'released'};
+const WH_T1={id:'t-1',transfer_number:'GL-TR-'+whDay(0).replace(/-/g,'')+'-01',type:'to_conri_finished',transfer_date:whDay(1),status:'draft',scheduled_at:null,client_id:WH_CAMO.id,client:WH_CAMO,carrier:'Good Liquid truck',ship_to:'CONRI Services, Palmetto',conri_confirmation:null,released_by:'Mike Krail',notes:null};
+const WH_T2={id:'t-2',transfer_number:'GL-TR-'+whDay(-6).replace(/-/g,'')+'-01',type:'to_conri_finished',transfer_date:whDay(-6),status:'completed',scheduled_at:whDay(-6)+'T14:00:00Z',client_id:WH_PER.id,client:WH_PER,carrier:'Good Liquid truck',ship_to:'CONRI Services, Palmetto',conri_confirmation:'C-55120',released_by:'Mike Krail',notes:null};
+const WH_SEED=[1,2,3,4,5,6,7].map(i=>({id:'p-'+i,pallet_tag:'GL-P-00012'+i,cases:200,weight_lbs:2000,height_in:60,location:'good_liquid',status:'staged',current_transfer_id:WH_T1.id,received_at_conri:null,expected_pull_date:null,notes:null,sku:WH_SKU,lot:WH_LOT,line_no:i}));
+const WH_AT=[
+ {id:'q-1',pallet_tag:'GL-P-000101',cases:80,weight_lbs:1500,location:'conri',status:'stored',current_transfer_id:null,received_at_conri:whDay(-6)+'T15:00:00Z',sku:WH_SKU2,lot:WH_LOT2},
+ {id:'q-2',pallet_tag:'GL-P-000102',cases:80,weight_lbs:1500,location:'conri',status:'stored',current_transfer_id:null,received_at_conri:whDay(-6)+'T15:00:00Z',sku:WH_SKU2,lot:WH_LOT2},
+ {id:'q-3',pallet_tag:'GL-P-000103',cases:80,weight_lbs:1500,location:'conri',status:'stored',current_transfer_id:null,received_at_conri:whDay(-6)+'T15:00:00Z',sku:WH_SKU2,lot:WH_LOT3},
+ {id:'q-4',pallet_tag:'GL-P-000104',cases:1,location:'conri',status:'stored',current_transfer_id:null,received_at_conri:new Date(Date.now()-3*864e5).toISOString(),expected_pull_date:whDay(-1),sku:WH_SKU3,lot:null}
+];
+const WH_DATA={
+  clients:[WH_CAMO,WH_PER], wh_transfers:[WH_T1,WH_T2],
+  wh_transfer_lines:WH_SEED.map(p=>({transfer_id:WH_T1.id,line_no:p.line_no,pallet:p})),
+  wh_pallets:WH_SEED.concat(WH_AT), wh_movements:[], wh_outbound_orders:[],
+  wh_skus:[WH_SKU,WH_SKU2,WH_SKU3], wh_lots:[WH_LOT,WH_LOT2,WH_LOT3]
+};
+
+// ── Quotes → invoices (#417, #420, #421, #434, #438, #439) ──
+// Saved quotes as the 🗂 Quotes list reads them. The first one carries real
+// sections so 🧾 Invoice can build its option list; the others only need the
+// list columns. pkg keys are the canning pkg keys CANNING_ADDONS reads.
+const Q_SECTION={productType:'canning',format:'12oz Standard',
+  tiers:[{cases:501,cans:12024,fillPerCan:0.38},{cases:1000,cans:24000,fillPerCan:0.35}],
+  pkg:{nitrogenOn:true,nitrogenPerCan:0.03,tray24On:true,tray24PerCase:0.5,palletOn:true,palletEach:12,palletWrapOn:true,palletWrapEach:8,casesPerPallet:80,changeOverOn:true,changeOverFee:100},
+  bpkg:{},lines:[]};
+const QUOTES_DATA=[
+  {id:'q1',quote_number:'GLQ-202609-004',quote_date:isoDaysAgo(3),valid_days:30,status:'sent',package_format:'12oz Standard',client_id:'c1',deal_id:'d1',client_name:'Perico Nutrition',client_email:'ana@perico.co',sent_at:isoDaysAgo(3),sent_to:'ana@perico.co',sections:[Q_SECTION],custom_lines:[],created_at:isoDaysAgo(3)},
+  {id:'q2',quote_number:'GLQ-202609-003',quote_date:isoDaysAgo(9),valid_days:30,status:'sent',package_format:'750ml Bottle',client_id:null,deal_id:'d2',client_name:'Lotus Beverages',client_email:'sam@lotus.co',sent_at:isoDaysAgo(9),sent_to:'sam@lotus.co',sections:[],custom_lines:[],created_at:isoDaysAgo(9)},
+  {id:'q3',quote_number:'GLQ-202608-002',quote_date:isoDaysAgo(45),valid_days:30,status:'draft',package_format:'16oz Standard',client_id:null,deal_id:null,client_name:'Cold Brew Collective',client_email:'dana@coldbrew.co',sections:[],custom_lines:[],created_at:isoDaysAgo(45)},
+  {id:'q4',quote_number:'GLQ-202608-001',quote_date:isoDaysAgo(50),valid_days:30,status:'accepted',package_format:'12oz Sleek',client_id:'c1',deal_id:null,client_name:'Perico Nutrition',client_email:'ana@perico.co',sections:[],custom_lines:[],created_at:isoDaysAgo(50)}
+];
 
 const STORYBOARDS={
   dashboard:{
@@ -372,21 +471,104 @@ const STORYBOARDS={
     async setup(pg){
       await pg.evaluate(async(D)=>{
         window.__chain(D);
+        window.supa.rpc=async(n)=>({data:(D.__rpc[n]!==undefined?D.__rpc[n]:null),error:null});
         window.supa.auth.getSession=async()=>({data:{session:{user:{id:'cust1'}}}});
         window.currentUser=null;
+        try{ sessionStorage.removeItem('gl-portal-tab'); sessionStorage.removeItem('gl-portal-project'); }catch(e){}
         await window.glCheckPortal();
       }, PORTAL_DATA);
       await sleep(1400);
       await pg.evaluate(()=>window.__hud());
     },
     steps:[
-      {say:"This is the Customer Portal — a private page each of your brands logs into to manage their own account. They see only their own data, and nothing else in your business."},
-      {say:"It opens on their dashboard, headed with your company name and their account.", act:{type:'move',sel:'text=GOOD LIQUID BEV CO'}},
-      {say:"Your Invoices lists everything they have been billed, with the status of each and a button to download the PDF or pay online.", act:{type:'move',sel:'text=YOUR INVOICES'}},
-      {say:"Production Runs show where each of their batches is in your process — from formulation all the way through to shipping.", act:{type:'move',sel:'text=PRODUCTION RUNS'}},
-      {say:"Their COAs and lot documents are right here to download — the exact paperwork their retailers ask for.", act:{type:'move',sel:'text=COAs & DOCUMENTS'}},
-      {say:"And My Label Artwork, where they upload each SKU's design for your approval — one can, or twenty.", act:{type:'move',sel:'#gl-cp-artwork'}},
-      {say:"So the portal is self-service for your customers, and it keeps every invoice, document, and design in one organized place."}
+      {say:"This is the Customer Portal: the private page each of your brands signs into. They only ever see their own company's projects, documents and invoices."},
+      {say:"Their balance and quick actions sit at the top. They can request samples, place an order, ask for a quote, or ask you a question.", act:{type:'move',sel:'text=Request a quote'}},
+      {say:"Each project has its own tracker. A client with more than one project switches between them here.", act:{type:'move',sel:'[data-gl-action="glPortalPickProject"]'}},
+      {say:"The status card tells them what is happening. When a milestone is waiting on them, it says so in plain words, with the note you wrote and the target date.", act:{type:'move',sel:'text=WE NEED SOMETHING FROM YOU',center:true}},
+      {say:"Project Progress shows every development stage, and packaging and artwork as a separate track, so they always know what is done and what is next.", act:{type:'move',sel:'text=PROJECT PROGRESS',after:'text=WE NEED SOMETHING FROM YOU'}},
+      {say:"Everything else is organized into tabs. Documents holds their C O As, agreements, and any file you have chosen to share with them.", act:{type:'click',sel:'[data-gl-action="glPortalTab"][data-gl-arg1="documents"]',after:'[data-gl-action="glPortalPickProject"]'}},
+      {say:"The Formula tab shows the status of their formula, and any spec sheet or C O A you have released. The recipe itself is never shown, and every download is logged.", act:{type:'click',sel:'[data-gl-action="glPortalTab"][data-gl-arg1="formula"]',after:'[data-gl-action="glPortalPickProject"]'}},
+      {say:"Tabs with a lock are services they have not bought yet. Opening one explains the service, with a button to ask you about it.", act:{type:'click',sel:'[data-gl-action="glPortalTab"][data-gl-arg1="analytics"]',after:'[data-gl-action="glPortalPickProject"]'}},
+      {say:"Packaging and Artwork is unlocked for this project, because the quote they accepted included it.", act:{type:'click',sel:'[data-gl-action="glPortalTab"][data-gl-arg1="artwork"]',after:'[data-gl-action="glPortalPickProject"]'}},
+      {say:"They upload each label here and see every decision you make, with your notes. When you request changes, they upload the revised artwork right from this card.", act:{type:'move',sel:'text=Changes requested'}},
+      {say:"Billing lists every invoice, with a P D F and a button to pay online.", act:{type:'click',sel:'[data-gl-action="glPortalTab"][data-gl-arg1="billing"]',after:'[data-gl-action="glPortalPickProject"]'}},
+      {say:"In Account settings they keep their contact details and addresses up to date.", act:{type:'click',sel:'#cp-account'}},
+      {say:"At the bottom of Account settings, two switches let them choose the emails: production stage updates, and project updates.", act:{type:'move',sel:'#acct-notify-project',center:true}},
+      {say:"On your side, all of this is set up from the client's card in the C R M: projects and milestones, portal services, shared documents, and artwork decisions. The Help section called Client Portal, Projects and Sharing walks through each one."}
+    ]
+  },
+  'portal-setup':{
+    title:'Setting Up a Client’s Portal',
+    seedCore:true,
+    async setup(pg){
+      await coreSetup(pg,'clients');
+      await pg.evaluate((D)=>{
+        window.__chain(JSON.parse(JSON.stringify(D)));
+        window.currentUser={id:'u1',email:'mike@krail.us',role:'admin',name:'Mike',initials:'MK'};
+        window.glOpenEditClient('c1');
+        window.__hud();
+      }, PORTAL_ADMIN_DATA);
+      await sleep(1800);
+      // Room under the last panel so the caption bar does not cover it.
+      await pg.evaluate(()=>{ const q=document.getElementById('gl-cq-panel'); if(q){ const sp=document.createElement('div'); sp.style.height='190px'; q.after(sp); } window.__hud(); });
+    },
+    steps:[
+      {say:"Everything your client sees in their portal is set up from their client card, which opens when you click the client."},
+      {say:"Documents comes first. Every file you upload starts as Internal, so only your team can see it.", act:{type:'move',sel:'#gl-ec-docs',center:true}},
+      {say:"To share one, click its Internal badge and confirm. It switches to Visible to client, and the client gets an email that a new document is ready. Product renders and market analysis files land on those tabs in their portal.", act:{type:'move',sel:'#gl-ec-docs .gl-dd-vis >> nth=1'}},
+      {say:"Further down is Projects and Milestones. New project creates the whole development track for you, from intake to production ready.", act:{type:'move',sel:'[data-gl-action="glProjectCreate"]',center:true}},
+      {say:"Portal Services shows what this project has unlocked. A green check means the client has it. Services are normally unlocked by accepting a quote.", act:{type:'move',sel:'[data-gl-action="glProjectToggleService"] >> nth=1'}},
+      {say:"Set each milestone's status, target date, and who acts. Set one to Waiting on client, and the client sees a We need something from you card, and gets an email.", act:{type:'move',sel:'[data-gl-action="glMilestoneSetStatus"] >> nth=5',center:true}},
+      {say:"The Note button adds a message the client will read on that milestone. Write it for them, not for the team.", act:{type:'move',sel:'[data-gl-action="glMilestoneNote"] >> nth=5'}},
+      {say:"Sending another round of samples? Sampling round adds a fresh sample, feedback and revision round, and keeps the earlier ones.", act:{type:'move',sel:'[data-gl-action="glMilestoneNewRound"]'}},
+      {say:"Preview as client shows you exactly what they will see for this project, before they do.", act:{type:'click',sel:'[data-gl-action="glProjectPreviewAsClient"]'}},
+      {say:"Close the preview to keep working.", act:{type:'click',sel:'#gl-proj-preview button:has-text("Close")'}},
+      {say:"Label Artwork lists each SKU with its status. Record a decision with these buttons. Approved and Changes requested email the client, along with your note. Sent to printer is final.", act:{type:'move',sel:'#gl-ec-artwork .gl-art-decide',center:true}},
+      {say:"At the bottom, Production Quotes. When the client accepts a quote, click Services on it.", act:{type:'click',sel:'.gl-q-svc',center:true}},
+      {say:"Pick the project, tick what they bought, set the status to Accepted, and save. Those services unlock in their portal straight away and the client is emailed. An accepted quote is locked from then on.", act:{type:'move',sel:'.gl-q-svc-panel',center:true}},
+      {say:"That is the whole setup: share documents, run the project, decide on artwork, and accept the quote. The client sees every step in their portal."}
+    ]
+  },
+  warehouse:{
+    title:'Warehouse Storage — Pallets at CONRI',
+    seedCore:true,
+    async setup(pg){
+      await coreSetup(pg,'dashboard');
+      await pg.evaluate((FIX)=>{
+        // warehouse.js chains .eq on columns some joined rows do not carry, so
+        // this stub (like tests/warehouse.test.cjs) lets a missing column pass.
+        function Q(t,op,p){ this.t=t; this.op=op; this.payload=p; this.f=[]; }
+        ['select','neq','in','is','not','order','limit','gte','lte','or'].forEach(m=>{ Q.prototype[m]=function(){ return this; }; });
+        Q.prototype.eq=function(k,v){ this.f.push([k,v]); return this; };
+        Q.prototype.maybeSingle=Q.prototype.single=function(){ this._one=true; return this; };
+        Q.prototype.then=function(res,rej){ var s=this, rows;
+          if(s.op==='select') rows=(FIX[s.t]||[]).filter(r=>s.f.every(f=>r[f[0]]===undefined||r[f[0]]===f[1]));
+          else rows=[Object.assign({id:s.t+'-new'},s.payload||{})];
+          return Promise.resolve({data:s._one?(rows[0]||null):rows,error:null}).then(res,rej); };
+        window.supa=Object.assign({},window.supa,{from:t=>({select:()=>new Q(t,'select'),insert:p=>new Q(t,'insert',p),update:p=>new Q(t,'update',p),delete:()=>new Q(t,'delete')})});
+        var nav=document.getElementById('nav-warehouse'); if(nav) nav.style.display='';
+        window.cNav('warehouse', nav);
+        window.__hud();
+      }, WH_DATA);
+      await sleep(1200); await pg.evaluate(()=>window.__hud());
+    },
+    steps:[
+      {say:"Warehouse Storage tracks every pallet you keep at CONRI Services in Palmetto, and makes the paperwork for every move."},
+      {say:"You will find it in the sidebar, under Operations.", act:{type:'move',sel:'#nav-warehouse'}},
+      {say:"The dashboard opens with the totals: pallets, cases and units at CONRI, plus warning counts.", act:{type:'move',sel:'text=PALLETS AT CONRI'}},
+      {say:"Below that is everything on hand, by client, S K U and lot. Lots within ninety days of their best-by date are highlighted in yellow.", act:{type:'move',sel:'text=On hand at CONRI',center:true}},
+      {say:"Empty cans are listed separately, and turn red once they have been in storage more than two days.", act:{type:'move',sel:'text=Empty cans at CONRI',center:true}},
+      {say:"Start in the S K U master. Add each client S K U once, then add its lots and release them from Q A hold.", act:{type:'click',sel:'[data-wh="tab"][data-arg="skus"]'}},
+      {say:"Export C S V for CONRI makes the file to send them. CONRI has to receive a S K U before you can schedule it in, and if you change a S K U, you export it again.", act:{type:'move',sel:'text=Export CSV for CONRI'}},
+      {say:"Every move is a transfer. New transfer starts one as a draft: to CONRI, a pull back, or an outbound pickup.", act:{type:'move',sel:'text=+ New transfer'}},
+      {say:"The Transfers tab lists them all with their status. Let's open today's draft.", act:{type:'click',sel:'[data-wh="tab"][data-arg="transfers"]'}},
+      {say:"Open it.", act:{type:'click',sel:'[data-wh="openTransfer"]'}},
+      {say:"Here are its pallets. Quick build pallets creates them from a S K U and lot, each with its own pallet tag, or pick existing pallets earliest best-by first.", act:{type:'move',sel:'text=Pallets ·',center:true}},
+      {say:"To schedule it, click Edit and enter the time agreed with CONRI. The scheduling email button writes the email for you to copy or open in your mail app. Then Mark scheduled.", act:{type:'move',sel:'text=Scheduling email to CONRI'}},
+      {say:"Print paperwork downloads the packing list and a barcode label for every pallet.", act:{type:'move',sel:'text=Print paperwork'}},
+      {say:"When the load arrives, click Complete, enter what was received, and upload the signed packing list. Completed transfers are locked."},
+      {say:"Outbound orders handle a client's release to their carrier, and Reconciliation checks CONRI's inventory file against what the C R M expects, line by line.", act:{type:'move',sel:'[data-wh="tab"][data-arg="recon"]'}},
+      {say:"So every pallet at CONRI is accounted for, from the day it leaves until the day it ships."}
     ]
   },
   invoices:{
@@ -403,6 +585,37 @@ const STORYBOARDS={
       {say:"Then choose the service. The app auto-prices it from your rate card and builds a live preview on the right — no manual math.", act:{type:'select',sel:'#inv-svc',value:'canning'}},
       {say:"When it looks right, Save and Send emails it straight to the client, or you can save it as a draft for later.", act:{type:'move',sel:'button:has-text("Save & Send"):visible'}},
       {say:"That is invoicing in a nutshell: pick a client, pick a service, and the price and the preview build themselves."}
+    ]
+  },
+  quotes:{
+    title:'Quotes → Invoices',
+    seedCore:true,
+    async setup(pg){
+      await coreSetup(pg,'pipeline');
+      await pg.evaluate((Q)=>{ window.__chain({quotes:JSON.parse(JSON.stringify(Q))});
+        window.currentUser={id:'u1',email:'mike@krail.us',role:'admin',name:'Mike',initials:'MK'}; window.__hud(); }, QUOTES_DATA);
+    },
+    steps:[
+      {say:"Here is how to quote a job, find the quote again, and turn it into an invoice. It all starts on the Pipeline page."},
+      {say:"The Quote Builder button starts a new quote. Next to it, the Quotes button lists every quote you have saved.", act:{type:'move',sel:'#gl-pipeline-quote-btn'}},
+      {say:"Let's build one. Click Quote Builder.", act:{type:'click',sel:'#gl-pipeline-quote-btn'}},
+      {say:"Type who it is for. It suggests your existing clients as you type.", act:{type:'type',sel:'#gl-qb-client-name',text:'Perico Nutrition'}},
+      {say:"Pick the product type and package format, then click Load Standard Tiers to fill in the standard volumes at your deck rates.", act:{type:'click',sel:'#gl-qb-auto-tiers'}},
+      {say:"Each row is one volume the client can choose. Every number here can be typed over, and anything you change gets an amber border, so custom pricing is easy to spot.", act:{type:'move',sel:'#gl-qb-tiers'}},
+      {say:"Below the tiers, tick the add-on services and packaging for this run. Each one is priced from your Price Settings and becomes its own line on the quote.", act:{type:'move',sel:'#gl-qb-addons'}},
+      {say:"The new Change Over Fee is a flat charge. It is billed once, so it does not grow with the size of the run.", act:{type:'click',sel:'#gl-qb-changeover-on'}},
+      {say:"Quoting more than one size? Duplicate copies this format's tiers and add-ons into a new tab, and you just change the format name.", act:{type:'move',sel:'#gl-qb-dup-section'}},
+      {say:"For anything the price deck does not cover, like freight or R and D hours, add a custom line.", act:{type:'move',sel:'#gl-qb-add-line'}},
+      {say:"Save and Email Quote sends it and marks it as Sent. The P D F is fully itemized, in the same layout as your invoices. And Save and Create Invoice goes straight to billing.", act:{type:'move',sel:'#gl-qb-send-email'}},
+      {say:"Let's close the builder and open the Quotes list.", act:{type:'click',sel:'#gl-qb-close'}},
+      {say:"Click Quotes.", act:{type:'click',sel:'#gl-pipeline-quotes-list-btn'}},
+      {say:"Every saved quote is here, newest first. It opens on the ones you have sent. Click All to see every quote, or search by company, email or quote number.", act:{type:'click',sel:'#gl-ql-filters >> text=All'}},
+      {say:"Each row shows when the quote was sent and to whom. Change its status here, and quotes past their validity are flagged as expired.", act:{type:'move',sel:'#gl-ql-list select'}},
+      {say:"When the client says yes, click Invoice on their quote.", act:{type:'click',sel:'.gl-ql-inv'}},
+      {say:"This quote offered two volumes, so it asks which option the client chose. Let's pick the thousand case run.", act:{type:'click',sel:'#gl-q2i-pick button:has-text("Option 2")'}},
+      {say:"A new invoice opens, already filled in with that option's line items at the quoted prices, including the change over fee.", act:{type:'move',sel:'#gl-inv-body'}},
+      {say:"The invoice builder now has the same add-on panel. Tick a box and it adds a line, with the quantity worked out from the case count.", act:{type:'move',sel:'#gl-inv-addons'}},
+      {say:"Check it, and click Save Invoice. The invoice lands under Invoices, and the quote stays in your Quotes list as the record of what you offered."}
     ]
   },
   pipeline:{
@@ -479,11 +692,11 @@ const STORYBOARDS={
     },
     steps:[
       {say:"Trace and Recall proves you can find any lot fast — backward to what went into it, and forward to where it shipped. It is the drill auditors always test."},
-      {say:"Start by typing the run or lot you want to trace. Here, Cold Brew R-2041.", act:{type:'type',sel:'#gl-trace-q',text:'Cold Brew R-2041'}},
+      {say:"Start by typing the run or lot you want to trace. Here, Cold Brew R-2041.", act:{type:'type',sel:'#gl-recall-q',text:'Cold Brew R-2041'}},
       {say:"Then click Trace.", act:{type:'click',sel:'button:has-text("Trace")'}},
-      {say:"Backward shows every material and supplier lot that went into the run — concentrate, water, and cans, each with its supplier lot number.", act:{type:'move',sel:'text=BACKWARD'}},
-      {say:"Forward shows every customer the run shipped to, and the total units — so you know exactly who to contact.", act:{type:'move',sel:'text=FORWARD'}},
-      {say:"The GMP trail links the food-safety checks from that run. A red flag marks any deviation, like the label check here.", act:{type:'move',sel:'text=GMP TRAIL'}},
+      {say:"Backward shows every material and supplier lot that went into the run — concentrate, water, and cans, each with its supplier lot number.", act:{type:'move',sel:'text=/BACKWARD — INPUTS/'}},
+      {say:"Forward shows every customer the run shipped to, and the total units — so you know exactly who to contact.", act:{type:'move',sel:'text=/FORWARD — SHIPMENTS/',center:true}},
+      {say:"The GMP trail links the food-safety checks from that run. A red flag marks any deviation, like the label check here.", act:{type:'move',sel:'text=/GMP TRAIL \(/',center:true}},
       {say:"Now the real test. Click Run mock recall.", act:{type:'click',sel:'button:has-text("Run mock recall")'}},
       {say:"Enter how many units you produced, and how many you can account for.", act:{type:'type',sel:'#mr-produced',text:'13000'}},
       {say:"And the units accounted for.", act:{type:'type',sel:'#mr-accounted',text:'12950'}},
@@ -577,6 +790,35 @@ const STORYBOARDS={
   }
 };
 
+// ─────────────────────────── step sync ───────────────────────────
+// The recording does not keep wall-clock time: Playwright's recorder drops a
+// few seconds over a long run, unevenly (a 132s storyboard came back 128s, with
+// most of the loss in its second half). Trimming the front to make the lengths
+// match, which is all this used to do, leaves narration drifting seconds away
+// from what is on screen. Instead each step paints a marker whose grey level is
+// its index; we find where each step starts in the recording and stretch or
+// squeeze every step's slice to exactly its narration length.
+// Base 40 keeps step 0 clear of the near-black page background (12-20).
+const MARK_BASE=40, MARK_STEP=10, MARK_MAX=Math.floor((250-MARK_BASE)/MARK_STEP);   // 21 steps
+function markLevel(i){ return MARK_BASE+MARK_STEP*i; }
+function stepStarts(vpath, n){
+  const FPS=50;
+  const raw=execSync(`ffmpeg -loglevel error -i "${vpath}" -vf "crop=6:6:${W-9}:${H-9},fps=${FPS},format=gray" -f rawvideo -`,{maxBuffer:1<<28});
+  const N=36, starts=new Array(n).fill(null);
+  let next=0;
+  // A step counts as started when its exact level holds for HOLD frames: the
+  // page fading in at the start sweeps through every grey on the way, and a
+  // single matching frame there once put step 12 at 0.5s.
+  const HOLD=5, F=Math.floor(raw.length/N);
+  const lv=f=>{ let sum=0; for(let k=0;k<N;k++) sum+=raw[f*N+k]; return sum/N; };
+  for(let f=0; f+HOLD<=F && next<n; f++){
+    let ok=true;
+    for(let h=0; h<HOLD && ok; h++) ok=Math.abs(lv(f+h)-markLevel(next))<3.5;
+    if(ok){ starts[next]=f/FPS; next++; f+=HOLD-1; }
+  }
+  return starts;
+}
+
 // ─────────────────────────── driver ───────────────────────────
 const ATO=4000;   // per-action timeout so a bad step can't overrun and wreck sync
 async function moveCursor(pg,sel){
@@ -587,8 +829,20 @@ async function moveCursor(pg,sel){
   await pg.evaluate(({x,y})=>{const c=document.getElementById('vcursor');c.style.left=x+'px';c.style.top=y+'px';},{x,y});
   await sleep(600); return {x,y};
 }
+// Optional on any act: center:true scrolls the target to mid-screen first
+// (scrollIntoViewIfNeeded leaves it wherever it already is, which can be under
+// the caption bar); after:'<sel>' smooth-scrolls that element to the top once
+// the act is done, e.g. a tab bar so the panel it opened is in view.
+async function scrollTo(pg,sel,block){
+  try { await pg.locator(sel).first().evaluate((e,block)=>e.scrollIntoView({block,behavior:'smooth'}), block, {timeout:ATO}); await sleep(650); } catch(e){}
+}
 async function doAct(pg,act){
   if(!act) return;
+  if(act.center) await scrollTo(pg,act.sel,'center');
+  await doAct1(pg,act);
+  if(act.after) await scrollTo(pg,act.after,'start');
+}
+async function doAct1(pg,act){
   if(act.type==='move'){ await moveCursor(pg,act.sel); return; }
   const pt=await moveCursor(pg,act.sel);
   if(act.type==='click'){ if(pt) await pg.evaluate(({x,y})=>window.__pulse(x,y),pt); await sleep(150); await pg.locator(act.sel).first().click({timeout:ATO}); }
@@ -600,6 +854,7 @@ async function doAct(pg,act){
 (async()=>{
 const key=process.argv[2]||'prp';
 const sb=STORYBOARDS[key]; if(!sb){ console.error('unknown storyboard',key); process.exit(1); }
+if(sb.steps.length>MARK_MAX){ console.error(`storyboard ${key} has ${sb.steps.length} steps; step sync supports ${MARK_MAX}`); process.exit(1); }
 const work=path.join(SCRATCH,'video',key); fs.mkdirSync(work,{recursive:true});
 
 // 1) synth narration per step, compute per-step target length T_i
@@ -644,13 +899,15 @@ if(sb.url){ await pg.evaluate(()=>window.__hud()); }
 if(sb.setup) await sb.setup(pg);
 await sleep(300);
 
+const loopStart=Date.now();
 for(let i=0;i<sb.steps.length;i++){
   const t=Date.now();
-  await pg.evaluate(t=>window.__vcap(t), sb.steps[i].say);
+  await pg.evaluate(({t,lv})=>{ window.__vcap(t); window.__mark(lv); }, {t:sb.steps[i].say, lv:markLevel(i)});
   try { await doAct(pg, sb.steps[i].act); } catch(e){ console.error('step',i,'act failed:',e.message); }
   const el=(Date.now()-t)/1000, rem=T[i]-el;
   if(rem>0) await sleep(rem*1000);
 }
+console.log(`steps took ${((Date.now()-loopStart)/1000).toFixed(1)}s wall`);
 const video=pg.video();
 await ctx.close();
 const vpath=await video.path();
@@ -658,10 +915,29 @@ const V=dur(vpath);
 console.log(`video ${V.toFixed(1)}s (audio ${A.toFixed(1)}s) → front-trim ${(V-A).toFixed(2)}s`);
 await br.close(); srv.close();
 
-// 3) trim pre-roll, mux narration, encode mp4 (+ keep a webm)
-const P=Math.max(0, V-A);
+// 3) cut the recording at each step's marker, fit every slice to its
+//    narration length, mux narration, encode mp4
 const outMp4=path.join(SCRATCH,`tutorial-${key}.mp4`);
-execSync(`ffmpeg -y -loglevel error -ss ${P.toFixed(3)} -i "${vpath}" -i "${narration}" -map 0:v:0 -map 1:a:0 -c:v libx264 -preset veryfast -pix_fmt yuv420p -r 25 -c:a aac -b:a 128k -shortest -movflags +faststart "${outMp4}"`);
+const S=stepStarts(vpath, sb.steps.length);
+if(S.every(x=>x!=null)){
+  const parts=[], labels=[];
+  S.forEach((st,i)=>{
+    const en = i+1<S.length ? S[i+1] : Math.min(V, st+T[i]);
+    const L=Math.max(0.04, en-st), k=(T[i]/L);
+    parts.push(`[0:v]trim=start=${st.toFixed(3)}:end=${en.toFixed(3)},setpts=(PTS-STARTPTS)*${k.toFixed(5)},fps=25[v${i}]`);
+    labels.push(`[v${i}]`);
+  });
+  const worst=Math.max(...S.map((st,i)=>Math.abs((i+1<S.length?S[i+1]:st+T[i])-st-T[i])));
+  console.log(`step sync: ${S.length} markers found, largest per-step correction ${worst.toFixed(2)}s`);
+  const fg=path.join(work,'sync.filter');
+  fs.writeFileSync(fg, parts.join(';')+';'+labels.join('')+`concat=n=${S.length}:v=1:a=0[vout]`);
+  execSync(`ffmpeg -y -loglevel error -i "${vpath}" -i "${narration}" -filter_complex_script "${fg}" -map "[vout]" -map 1:a:0 -c:v libx264 -preset veryfast -pix_fmt yuv420p -r 25 -c:a aac -b:a 128k -shortest -movflags +faststart "${outMp4}"`);
+} else {
+  // Markers not readable (should not happen): fall back to the old front trim.
+  console.warn(`step sync: only ${S.filter(x=>x!=null).length}/${S.length} markers found — falling back to front-trim`);
+  const P=Math.max(0, V-A);
+  execSync(`ffmpeg -y -loglevel error -ss ${P.toFixed(3)} -i "${vpath}" -i "${narration}" -map 0:v:0 -map 1:a:0 -c:v libx264 -preset veryfast -pix_fmt yuv420p -r 25 -c:a aac -b:a 128k -shortest -movflags +faststart "${outMp4}"`);
+}
 console.log('WROTE', outMp4, fs.statSync(outMp4).size,'bytes', dur(outMp4).toFixed(1)+'s');
 process.exit(0);
 })().catch(e=>{console.error('ERR',e);process.exit(1);});

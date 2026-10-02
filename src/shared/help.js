@@ -475,10 +475,11 @@
       '<b>(2) 📊 Export CSV</b> — downloads every non-quote invoice as CSV (drop into QuickBooks or hand to your accountant).',
       '<b>(3) 📊 Activity</b> — opens the Email Activity view across <i>every</i> invoice (sent / delivered / opened / clicked / bounced). See the <a href="#help-email-activity" style="color:#00e5c0">Email Activity</a> section for details.',
       '<b>(4) 📧 Send overdue reminders</b> — confirms, then emails every overdue client at once from your Gmail + your email signature.',
-      '<b>(5) Status filter pills</b> — All / Draft / Pending / Paid / Overdue / <b>Partial</b> / Quote. <b>Partial</b> shows invoices where some money has arrived but not all of it — the row carries a teal <b>partial payment</b> badge and the balance still owing under the amount, so you can see what is left without opening anything.',
+      '<b>(5) Status filter pills</b> — All / Draft / Pending / Paid / Overdue / <b>Partial</b>. <b>Partial</b> shows invoices where some money has arrived but not all of it — the row carries a teal <b>partial payment</b> badge and the balance still owing under the amount, so you can see what is left without opening anything.',
       '<b>(6) Row actions</b> — 💳 opens the Stripe pay link for that invoice; 👁 opens the invoice detail.',
-      '<b>(7) → Invoice button</b> — appears on quote-status rows. One-click conversion from "quote" to billable "pending".',
-      '<b>Invoice detail action buttons</b>: open any invoice to see the full action row. <b>✓ Mark Paid</b> — immediately marks status=paid and records paid_at (use for offline receipts; Stripe payments auto-mark via webhook). <b>✗ Mark Overdue</b> — manually flips to overdue before the nightly cron catches it. <b>✉ AI Follow-Up</b> — Claude generates a tone-matched follow-up email (friendly for pending, firm for overdue), lets you edit it, and sends from your Gmail (gmail-send function, Mailgun fallback). Also: ✏️ <b>Edit</b> (reopens the builder), 📧 <b>Send Invoice</b> (full composer), 📊 <b>Activity</b> (this invoice\'s send history), 📅 <b>Schedule</b> (queue a reminder). See the relevant sections in this guide.'
+      '<b>Row buttons</b> — <b>Paid</b>, <b>💵 Part</b> (record a partial payment), <b>↩ Unpaid</b> on paid rows and <b>↩ Pending</b> on overdue rows (undo, see below), <b>📱</b> SMS reminder on overdue rows, <b>👁</b> open, <b>🗑</b> delete.',
+      '<b>Quotes are not invoices.</b> Quotes live in Pipeline → <b>🗂 Quotes</b>. To bill one, click <b>🧾 Invoice</b> on the quote; it opens a new invoice filled in from the quote. See <a href="#help-quotes" style="color:#00e5c0">Production Quotes</a>.',
+      '<b>Invoice detail action buttons</b>: open any invoice to see the full action row. <b>✓ Mark paid</b> — immediately marks status=paid and records paid_at (use for offline receipts; Stripe payments auto-mark via webhook). <b>⚠ Mark overdue</b> — manually flips to overdue before the nightly cron catches it. <b>✉ AI Follow-Up</b> — Claude generates a tone-matched follow-up email (friendly for pending, firm for overdue), lets you edit it, and sends from your Gmail (gmail-send function, Mailgun fallback). Also: ✏️ <b>Edit</b> (reopens the builder), 📧 <b>Send Invoice</b> (full composer), 📊 <b>Activity</b> (this invoice\'s send history), 📅 <b>Schedule</b> (queue a reminder). See the relevant sections in this guide.'
     ]) +
     '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">💳 ACCOUNTING TOOLBAR (NEW)</h4>' +
     bullets([
@@ -492,10 +493,10 @@
     '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#f5c842">🧾 INVOICE DETAIL — ACCOUNTING ACTIONS (NEW)</h4>' +
     bullets([
       '<b>💵 Record Payment</b> — open any invoice → click Record Payment in the action row, or use <b>💵 Part</b> straight from the invoice row. Log partial or full payments with method (Check / Wire / ACH / Cash / Stripe / Other) and an optional reference / check number. Payment history is shown above the form, each line with an <b>Undo</b> button. A part-paid invoice shows the <b>partial</b> status and its remaining balance everywhere money is counted. When the balance hits $0 the invoice auto-marks paid and you\'re offered a receipt email.',
-      '<b>🚫 Void</b> — permanently voids an invoice. You\'ll be prompted for a reason. Sets status to "voided" with a timestamp. Cannot be undone.',
+      '<b>🚫 Void</b> — permanently voids an invoice. You\'ll be prompted for a reason. Sets status to "voided" with the reason and a timestamp. Cannot be undone. Only possible while nothing has been paid against the invoice (refund first). A voided invoice no longer counts toward the client\'s billed total. Credit memos cannot be voided.',
       '<b>📋 Collect</b> — only appears on past-due invoices. Schedules a 4-step automated email sequence: gentle reminder (day 3), firm reminder (day 14), urgent notice (day 30), final notice (day 45). Shows the client\'s email on file before confirming.',
       '<b>⚠️ Late fee banner</b> — a red banner automatically appears at the top of any overdue invoice showing the number of days overdue and the suggested late fee (1.5%/month). Click <b>Add to Invoice</b> to append it as a line item.',
-      '<b>⏰ Quote expired banner</b> — a yellow banner appears on any quote that is 30+ days old, prompting you to send an updated quote or convert to an invoice.'
+      '<b>↩ Unpaid / ↩ Pending</b> (NEW) — undo a mistake. On a paid invoice, <b>↩ Unpaid</b> returns it to pending and clears the paid date, amount and method. On an overdue invoice, <b>↩ Pending</b> returns it to pending (the nightly check will flag it again if it is still past the grace period). Not shown on part-paid invoices; use <b>Undo</b> on the individual payment instead.'
     ]) +
     /* ── A/R aging + bulk + auto-overdue (PR 1 of 2026-05-20 enhancement series) ── */
     '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#f5c842">📋 A/R AGING REPORT (NEW)</h4>' +
@@ -514,7 +515,7 @@
       '<b>Where to find it</b>: open <b>Reports</b> (sidebar or top toolbar). The aging strip is at the bottom of the modal, above the Insights/Close buttons.',
       '<b>The 5 buckets</b>: Current (not yet due), 1–30, 31–60, 61–90, 90+ days past due. Each tile shows total $ outstanding + invoice count.',
       '<b>Drill-down</b>: click <b>📋 A/R Aging — Full Drill-Down</b> to open a per-client roll-up. Every client with at least one unpaid invoice shows on its own row with bucket breakdown + worst-aged days. Sorted worst-first. Click a row to open that client\'s detail.',
-      '<b>How "overdue" is decided</b>: a nightly pg_cron job (2 AM UTC) flips any <code>status=pending</code> invoice with <code>due_date &lt; today</code> to <code>status=overdue</code> in the database. No manual marking needed. The dashboard, aging report, and overdue-reminder blast all read the same column.'
+      '<b>How "overdue" is decided</b> (you control it): at the top of the Invoices page, <b>Flag overdue after [N] days</b> sets the grace period (default 21 days past the due date), and its checkbox turns overdue flagging on or off for everyone. Changes save straight away. A nightly job (2 AM UTC) uses the same setting to flip pending invoices to overdue. An invoice already marked overdue stays overdue; turning flagging off hides overdue everywhere. The dashboard, aging report and overdue-reminder blast all follow this setting.'
     ]) +
     '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">✓ BULK MARK PAID (NEW)</h4>' +
     wf(620, 180,
@@ -552,7 +553,9 @@
       '<b>(2) Add-line buttons</b> — Canning, Bottling, R&D / IP, Production Hours, Custom. Canning & Bottling auto-tier their per-unit rate from Supabase canning_rates / bottling_rates. <b>Per-client overrides win</b> — if a client has a negotiated rate in <code>client_rate_overrides</code>, the builder uses that flat rate instead of the public tier ladder (a yellow "💵 N custom rates applied" badge appears next to "NEW INVOICE" so staff can see they\'re in effect).',
       '<b>(3) Line rows</b> — change qty inline; per-case / per-unit price + totals update live. Every line type has a <b>Description (optional)</b> input — type free-form notes like "Mango flavor" or "pilot batch" and they\'re appended to the saved line with an em-dash. The ↺ arrow under a Canning/Bottling price resets it to the catalog rate. The X on the right removes a line.',
       '<b>(4) Discount + total</b> — enter a discount percent; subtotal and grand total recompute live.',
-      '<b>(5) Save buttons</b> — 💾 Save Invoice (status=pending), 📤 <b>Save & Send</b> (saves then opens the Send Invoice composer pre-filled), 💾 Save as Quote (status=quote), 📄 Save & Export PDF (real invoice PDF), 📋 Export as Quote (PDF only with 30-day validity, no DB save).',
+      '<b>(5) Save buttons</b> — 💾 Save Invoice (status=pending), 📤 <b>Save & Send</b> (saves then opens the Send Invoice composer pre-filled), 📄 Save & Export PDF (the same invoice PDF as the Invoices list), 📋 Export as Quote (PDF only with 30-day validity, no DB save). Real quotes are built in the <a href="#help-quotes" style="color:#00e5c0">Quote Builder</a>.',
+      '<b>Add-on services &amp; packaging panel</b> (NEW) — under the line items, the same add-on checkboxes as the quote builder: nitrogen, pasteurization, case trays, tray wrap, PakTech and Proper Pack carriers, cans and labels, pallet, pallet shrink wrap and the <b>Change over fee</b>. Tick one and it becomes its own line, priced from 💲 Price Settings, with the quantity worked out from the Canning lines (cans, cases, or pallets from <b>Cases per pallet</b>). Quantities follow the case count until you type your own. The change over fee is a flat charge with quantity 1 (type 2 if the run had two changeovers). The X on a line unticks its box.',
+      '<b>Filled in from a quote</b> (NEW) — clicking <b>🧾 Invoice</b> on a saved quote opens this builder with the quote\'s lines at the quoted prices and a "Per quote GLQ-…" note. Check it, then save.',
       '<b>Edit existing invoices</b>: open any saved invoice → click ✏️ <b>Edit</b> on the header. The builder reopens with the client / date / lines / discount / addons / notes all pre-filled. Hitting Save updates the same Supabase row (no duplicate). Status is preserved — editing a paid invoice doesn\'t flip it back to pending.',
       '<b>PO Number (optional)</b> — a "PO Number" field appears at the top of the builder. Enter the customer\'s purchase order number if they require it on the invoice. Saved to the invoice record and visible on the invoice detail.'
     ]) +
@@ -614,20 +617,24 @@
       box(20,190,590,40,'#142238','rgba(0,229,192,.18)') + txt(30,210,'YOUR INVOICES',10,'#00e5c0') + txt(30,224,'GL-1004 · $3,125 · paid',10,'#fff') + box(470,200,55,20,'#2a1a3c','rgba(124,58,237,.5)') + txt(497,213,'📥 PDF',9,'#c4b5fd','middle') + box(530,200,75,20,'#1a3c30','rgba(0,229,192,.5)') + txt(567,213,'View',9,'#00e5c0','middle') +
       box(20,240,590,40,'#142238','rgba(107,159,255,.18)') + txt(30,260,'PRODUCTION RUNS',10,'#6b9fff') + txt(30,274,'Mango pilot · 100 cases · Sample stage',9,'#fff') +
       box(20,290,590,30,'#142238','rgba(245,200,66,.18)') + txt(30,309,'SAMPLE SHIPMENTS · 2 shipped · 1 delivered (trackable)',10,'#f5c842') +
-      box(20,330,590,22,'#142238','rgba(95,207,158,.18)') + txt(30,346,'FORMULAS · 3 approved · view IDs, batch sizes, allergens',10,'#5fcf9e')
+      box(20,330,590,22,'#142238','rgba(95,207,158,.18)') + txt(30,346,'TABS · Overview · Documents · Formula · Samples & Orders · Renders · Packaging & Artwork · Billing',9,'#5fcf9e')
     ) +
     bullets([
       '<b>What it is</b>: a logged-in self-service portal for customers. URL: <code>https://goodliquidbevco.com/?portal=1</code>. Each customer gets their own login (Supabase Auth).',
       '<b>How a customer gets access</b>: open Clients → click <b>🔑 Invite Customer Login</b> on the client row (or via the global "🔑 Invite Customer Login" button on the Clients page). Pick the client, type their email, send. The customer gets an email with a link to set their own password and land on the portal.',
-      '<b>What the customer sees</b>:',
-      '&nbsp;&nbsp;<b>KPI tiles</b> — Open balance, Paid to date, Total invoices.',
-      '&nbsp;&nbsp;<b>Quick-action tiles</b> (NEW) — 🧪 Request samples / 📦 Place an order / 💬 Request a quote / ❓ Ask a question. See the Customer Requests section for the inbox side.',
-      '&nbsp;&nbsp;<b>Your Invoices</b> — every invoice on their account, with a 📥 PDF download button and a View/Pay button (opens the same Stripe Checkout flow as the public link).',
-      '&nbsp;&nbsp;<b>Production Runs</b> — every batch tied to their <code>client_id</code> with stage badge (Discovery → Formulation → Sample → COA → Production → Ship) + format + case count + scheduled date.',
-      '&nbsp;&nbsp;<b>Sample Shipments</b> — kind / qty / carrier / status + clickable tracking links to UPS/FedEx/USPS/DHL.',
-      '&nbsp;&nbsp;<b>Formulas</b> — every formula on their account (drafts hidden) with name, version, batch size, target yield, allergens, status.',
-      '&nbsp;&nbsp;<b>Allergen Declarations</b> — every signed declaration with View link.',
-      '&nbsp;&nbsp;<b>Account Settings</b> — top-right link. Customer can update their own contact info, billing/shipping address, lift-gate flag, receiving hours, and change their password.',
+      '<b>What the customer sees</b> (NEW tabbed layout): a header with their project, a status card, and a row of tabs. If they have two or more projects, project pills at the top switch between them.',
+      '&nbsp;&nbsp;<b>Status card</b> — reads <b>WE NEED SOMETHING FROM YOU</b> when a milestone is waiting on the client, otherwise <b>WHAT WE ARE WORKING ON</b>, with your note for that milestone and the target date.',
+      '&nbsp;&nbsp;<b>Overview</b> — the status card, <b>PROJECT PROGRESS</b> (two tracks: Development, and Packaging &amp; Artwork; sampling rounds are labelled "round N") and Production Runs. No percentages are shown. A client with no project yet sees "Your project tracker is being set up…".',
+      '&nbsp;&nbsp;<b>Documents</b> — COAs &amp; lot documents, documents you have published to them, Agreements &amp; Contracts (they can upload a signed NDA, a formula or another document, up to 25 MB), and Allergen Declarations.',
+      '&nbsp;&nbsp;<b>Formula</b> — formula status only (name, version, status, updated date) for every non-draft formula, plus <b>📎 RELEASED FORMULA DOCUMENTS</b> you have published. Every download is logged.',
+      '&nbsp;&nbsp;<b>Samples &amp; Orders</b> — sample shipments with tracking links, and production runs with their stage.',
+      '&nbsp;&nbsp;<b>Renders</b>, <b>Packaging &amp; Artwork</b>, <b>Market Analytics</b> — paid services. A tab the client has not bought shows 🔒 and a <b>NOT PART OF YOUR CURRENT PACKAGE</b> panel with an <b>Ask about …</b> button that opens a pre-filled quote request. Unlocked, Renders and Market Analytics list the files you published; Packaging &amp; Artwork is where they upload label artwork and see your decisions.',
+      '&nbsp;&nbsp;<b>Billing</b> — every invoice with 📥 PDF and View/Pay (Stripe Checkout).',
+      '&nbsp;&nbsp;<b>Quick-action tiles</b> — 🧪 Request samples / 📦 Place an order / 💬 Request a quote / ❓ Ask a question. See the Customer Requests section for the inbox side.',
+      '&nbsp;&nbsp;<b>Account settings</b> — top-right. Contact info, billing/shipping address, lift-gate flag, receiving hours, password, and <b>NOTIFICATIONS</b>: two checkboxes, 🏭 Production stage emails and 📋 Project updates (both on by default).',
+      '<b>How services get unlocked</b>: accept a quote with services ticked (Clients → Edit Client → 📋 PRODUCTION QUOTES → ⚙ Services), or grant them on the project card. See <a href="#help-portal-projects" style="color:#00e5c0">Client Portal: Projects &amp; Sharing</a>.',
+      '<b>Expired invite link</b>: if a client opens an old sign-in link they see <b>THIS LINK HAS EXPIRED</b> with an <b>Email me a new link</b> button, so they can get a fresh one without calling you. Links last 48 hours.',
+      '<b>Forgot password</b>: the portal sign-in has its own <b>Forgot password?</b> link that emails a reset link.',
       '<b>Security</b>: RLS scopes every read to <code>client_id = current_customer_client_id()</code>. A portal customer can never see another client\'s invoices, runs, formulas, samples, allergens, or requests — enforced by Postgres, not just the JS.',
       '<b>Multi-device</b>: portal customers can log in from phone, laptop, anywhere. Account-settings changes sync across devices instantly.'
     ]) +
@@ -1006,7 +1013,7 @@
     bullets([
       '<b>(1) + Invite</b> — creates a Supabase Auth account. Invitee clicks the email confirmation link before they can log in.',
       '<b>(2) 📋 Activity log</b> — last 100 audit_log entries. Requires the audit_log table SQL.',
-      '<b>(3) Role legend</b> — Admin (full access), Sales (CRM only), Viewer (read-only).',
+      '<b>(3) Role legend</b> — Admin (full access), Sales (CRM only), Warehouse (warehouse and production work), Viewer (read-only).',
       '<b>(4) Role dropdown per row</b> — change role inline. Persists to profiles immediately.',
       '<b>(5) Row actions</b> — Set password (masked-input modal → admin_set_user_password RPC, no email), Email reset (Supabase recovery email), Remove (soft-delete via profile.status = inactive). Owner row is locked.',
       '<b>If someone never finished setting up</b> — they were invited but the link stopped working, or they never clicked it — use <b>Email reset</b> on their row rather than inviting them again. The Invite form refuses an address that is already on the team list, and the reset link both lets them set a password and confirms their email address on the way through. Sign-in links stay valid for <b>48 hours</b>; if one does lapse, the person now lands on a page that says so and offers to send itself a fresh one, rather than the silent marketing page it used to show.'
@@ -1035,14 +1042,15 @@
     bullets([
       '<b>Where to find it</b>: top toolbar (admin-only) — <b>🔑 Users & permissions</b> button between the user badge and Password.',
       '<b>Two layers of access control</b>:',
-      '&nbsp;&nbsp;<b>Role</b> (admin / sales / viewer) — sets the wide-open default. <b>Admins bypass every gate</b>.',
+      '&nbsp;&nbsp;<b>Role</b> (admin / sales / warehouse / viewer) — sets the wide-open default. <b>Admins bypass every gate</b>.',
       '&nbsp;&nbsp;<b>Component overrides</b> — per-user, per-feature toggles that flip a single page or action on or off for that user only.',
       '<b>The team members table</b> (default view): one row per staff user. Shows name, email, role pill, override count, Manage button. Click any row to drill into their matrix.',
       '<b>The matrix view</b>: three sections — <b style="color:#00e5c0">Pages</b> (which CRM pages they can navigate to), <b style="color:#f5c842">Actions</b> (Delete invoices / Mark paid / Send emails / Export backup / Invite customers / etc.), <b style="color:#c4b5fd">Data</b> (placeholder for future row-level scoping). Each component shows a checkbox and a state label: "default (on)" or "overridden — revert".',
       '<b>Apply preset (bulk toggle)</b>: pick <b>Admin</b> / <b>Sales</b> / <b>Viewer</b> from the dropdown → Apply. Only writes overrides where the preset differs from the default, so the matrix stays clean instead of showing 42 redundant "overridden" rows.',
       '<b>Visual hiding (proactive)</b>: components a user can\'t access are <b>hidden</b> from their UI — not greyed out, not error-on-click. Sidebar nav items disappear. Destructive buttons (delete invoice, export backup, etc.) disappear. Admins see everything.',
+      '<b>Unticking a page hides its sidebar link</b> (NEW): turning off a page in the Pages section now removes that link from the person\'s sidebar, not just blocks it. The newest page here is <b>Warehouse Storage</b> (on by default; the link shows for admin and sales).',
       '<b>Audit log</b>: every permission change is recorded in <code>permissions_audit</code> with actor + target + component + old/new value + timestamp. Shown at the bottom of the Users & Permissions page as "Recent permission changes."',
-      '<b>Role change UI</b>: drill into a user → ROLE row at the top has a dropdown (Admin / Sales / Viewer). Confirm dialog before promoting to Admin. Your own dropdown is disabled — preventing accidental self-lockout.'
+      '<b>Role change UI</b>: drill into a user → ROLE row at the top has a dropdown (Admin / Sales / Warehouse / Viewer). Confirm dialog before promoting to Admin. Your own dropdown is disabled — preventing accidental self-lockout.'
     ]);
 
   var SEC_CLIENTS = watch('tutorial-clients.mp4') + MOCK_CLIENTS +
@@ -1467,7 +1475,7 @@
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
       '<b>What it stores</b>: every formula tied to a client — name, version, batch size, target yield, allergens, status, and file attachments (spec sheets, COAs).',
-      '<b>Status workflow (1–3)</b>: Draft (grey) → Benchtop (yellow, pilot batch underway) → Approved (green, cleared for production) → Archived (red, no longer active). Only approved formulas appear in the customer portal.',
+      '<b>Status workflow (1–3)</b>: Draft (grey) → Benchtop (yellow, pilot batch underway) → Approved (green, cleared for production) → Archived (red, no longer active). Every formula except drafts appears on the client\'s portal Formula tab, as status only (name, version, status, date). The recipe itself is never shown; to share a spec sheet or COA, attach it under 📎 DOCUMENTS FOR THIS FORMULA and Publish it (see Client Portal: Projects &amp; Sharing).',
       '<b>Allergen tracking</b>: the 9 major US allergens (milk, eggs, fish, shellfish, tree nuts, peanuts, wheat, soybeans, sesame) plus free-text custom allergens. Used to auto-generate allergen declarations.',
       '<b>Version numbering</b>: each save bumps the minor version (v1.0 → v1.1). Major reformulations get a new major version (v2.0). Previous versions are preserved in the history tab.'
     ]);
@@ -1703,14 +1711,14 @@
       txt(34,170,'☑',11,'#00e5c0') + txt(58,170,'Floral Seltzers',10,'#fff') +
       // Preview pane
       box(270,46,340,160,'#142238','rgba(255,255,255,.05)') +
-      txt(280,62,'AI-DRAFTED PREVIEW  ·  Apex Beverages',9,'#9aa7bd') +
+      txt(280,62,'DRAFT FOR REVIEW  ·  Apex Beverages  ·  ☑ Approve',9,'#9aa7bd') +
       txt(280,80,'Subject: Good Liquid Bev Co — Private Label Production',10,'#00e5c0') +
       txt(280,98,'Hi [First Name],',10,'#cfd9e6') +
       txt(280,114,'I wanted to reach out about co-packing and private',10,'#9aa7bd') +
       txt(280,130,'label production for Apex Beverages. We specialise',10,'#9aa7bd') +
       txt(280,146,'in beverage runs from 50–5,000 cases with full R&D',10,'#9aa7bd') +
       txt(280,162,'support. Would love to connect. — Mike Krail',10,'#9aa7bd') +
-      box(400,190,210,22,'#1a6fff','none') + txt(505,204,'📤 Send 4 emails',10,'#fff','middle') +
+      box(400,190,210,22,'#1a6fff','none') + txt(505,204,'📤 Send 4 approved',10,'#fff','middle') +
       tag(20,46,1) + tag(270,46,2) + tag(400,190,3)
     ) +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
@@ -1961,6 +1969,11 @@
     ]);
 
   // ── Food Safety & GMP cluster (built Jul 2026) ──
+  // Numbered how-to steps (same look as steps() in help-features.js).
+  function steps(items){
+    return '<ol style="margin:6px 0 10px;padding-left:22px;color:#cfd9e6;font-size:12.5px;line-height:1.7">' +
+      items.map(function(t){ return '<li style="margin-bottom:4px">' + t + '</li>'; }).join('') + '</ol>';
+  }
   function lead(txt){ return '<div style="color:#cfd9e6;font-size:13px;line-height:1.75;margin-bottom:8px">' + txt + '</div>'; }
 
   // ── Video tutorials (narrated screencasts served from /tutorials) ──
@@ -1994,7 +2007,10 @@
     videoCard('tutorial-invoices.mp4', '🧾 Invoices — Bill Your Brands', 'The invoice list and status filters, then building a new invoice — pick a client and service and the price and preview build themselves from the rate card.') +
     videoCard('tutorial-pipeline.mp4', '📊 Pipeline — Your Sales Board', 'How deals move through Prospecting, Proposal, Negotiation and Closed — logging outreach on a card and opening the full deal.') +
     videoCard('tutorial-clients.mp4', '👥 Clients — Every Brand in One Place', 'The client list and what each row shows, then opening a brand’s complete, editable record in one click.') +
-    videoCard('tutorial-portal.mp4', '🌐 Customer Portal — Your Clients’ Private Login', 'What a brand sees when they log into their own portal — invoices, production runs, COAs &amp; documents, and their label artwork.') +
+    videoCard('tutorial-quotes.mp4', '📋 Quotes → Invoices', 'Building a quote with several formats, add-ons and the change over fee, finding it in 🗂 Quotes, and turning the option the client chose into an invoice.') +
+    videoCard('tutorial-portal.mp4', '🌐 Customer Portal — Your Clients’ Private Login', 'What a brand sees in their portal — the project tracker and status card, the tabs, locked and unlocked services, artwork decisions, and their email settings.') +
+    videoCard('tutorial-portal-setup.mp4', '🗂 Setting Up a Client’s Portal', 'Sharing documents, projects and milestones, client notes, Preview as client, artwork decisions, and accepting a quote to unlock portal services — all from the client card.') +
+    videoCard('tutorial-warehouse.mp4', '🏬 Warehouse Storage — Pallets at CONRI', 'The stock dashboard, the SKU master and CSV export, and a transfer from draft to scheduled with its printed paperwork.') +
     videoGroup('🚀 STAYING ON TOP OF LEADS') +
     videoCard('explainer-deal-brief.mp4', '🧠 Never Drop a Lead — Brief, Board &amp; Digest', 'How the AI Deal Brief, the 🔥 Needs Attention board, the morning WhatsApp/email digest, and ⏰ Bulk Nudge work together so no lead slips through the cracks.') +
     videoCard('explainer-deal-docs.mp4', '📎 Deal Documents &amp; Meeting Notes', 'Storing NDAs, Process Authority letters, formulas &amp; labels on a deal, how they carry over automatically when you convert to a client, and the meeting-notes card that feeds the brief.') +
@@ -2063,13 +2079,13 @@
       glo('Pipeline', 'The visual board of open opportunities, moving left-to-right through stages toward a signed deal.'),
       glo('Deal', 'One opportunity with a client (e.g. “Quote Request — 5,000 cans”). It lives in the pipeline and shows on the client’s card.'),
       glo('Stage', 'Where a deal is in the process — e.g. New → Quoted → Won.'),
-      glo('Quote', 'A price estimate you send a client; it can be turned into an invoice with one click when accepted.'),
+      glo('Quote', 'A price estimate you send a client, built in the Quote Builder and listed under Pipeline → 🗂 Quotes. The 🧾 Invoice button turns it into a new invoice.'),
       glo('Correspondence', 'The email history with a client — visible both in the pipeline and on the client’s card.'),
       glo('Referral / Referrer', 'A new client sent to you by someone (the referrer), tracked so you can credit or thank them.'),
       glo('SKU', 'One specific product variant — e.g. a single can design/flavor. A client may have 1 or 20+ SKUs, each with its own label artwork.')
     ]) +
     gloGroup('🧾 INVOICING &amp; PAYMENTS', [
-      glo('Invoice', 'A bill you send a client. Statuses: <b>Draft</b> (not sent), <b>Pending</b> (sent, unpaid), <b>Paid</b>, <b>Overdue</b> (past due).'),
+      glo('Invoice', 'A bill you send a client. Statuses: <b>Draft</b> (not sent), <b>Pending</b> (sent, unpaid), <b>Paid</b>, <b>Overdue</b> (past due by more than the grace period), <b>Partial</b> (part paid), <b>Voided</b> (cancelled, kept for the record).'),
       glo('Partial payment', 'A payment covering only part of an invoice; the balance stays owing and is tracked.'),
       glo('Credit memo', 'A negative invoice — money credited back to a client (a refund or correction).'),
       glo('Recurring invoice', 'An invoice set to send itself automatically on a schedule (e.g. monthly).'),
@@ -2141,11 +2157,128 @@
     ]);
 
   var SEC_ARTWORK =
-    lead('Customers run anywhere from one can to 20+ SKUs, each with its own label art. The <b>🎨 Label Artwork / SKUs</b> section holds one entry per can design.') +
+    lead('Customers run anywhere from one can to 20+ SKUs, each with its own label art. The <b>🎨 LABEL ARTWORK / SKUs</b> section holds one entry per can design, and every decision you make on it is recorded and shown to the client.') +
     bullets([
-      'Add a SKU: name + optional notes + the artwork file (image / PDF / AI / EPS / SVG). Each SKU shows <b>📄 View · ⬇ Download</b> and a status badge, with a remove button.',
-      'It appears in <b>two places</b>: on the staff client card, and in the <b>customer portal</b> so the customer can upload their own designs.',
-      'Files are stored in the client-docs bucket; portal customers see only their own client’s SKUs.'
+      '<b>Where</b>: staff — Clients → open the client (Edit Client) → <b>🎨 LABEL ARTWORK / SKUs</b>. Client — portal → <b>Packaging &amp; Artwork</b> tab, card <b>🎨 MY LABEL ARTWORK / SKUs</b>. The client only has this tab when Packaging &amp; Artwork is unlocked for their project.',
+      '<b>Add a SKU</b>: SKU / can name, optional notes, the artwork file (image / PDF / AI / EPS / SVG), then <b>＋ Add SKU</b>. Each SKU shows <b>📄 View · ⬇ Download</b> and a status badge.',
+      '<b>Statuses</b>: Submitted → In review → Changes requested or Approved → Sent to printer. Only the next allowed steps are offered as buttons.',
+      '<b>Record a decision</b> (staff only): click the decision button. You are asked for an optional <b>note for the CLIENT</b>; they see it word for word. <b>Approved</b> and <b>Changes requested</b> email the client.',
+      '<b>Sent to printer is final</b>: it asks for confirmation and closes the SKU ("Sent to the printer — this SKU is closed.").',
+      '<b>Revisions</b>: after Changes requested, staff or client click <b>⤴ Upload revised artwork</b>. The new file stays in the same project and starts a new review; earlier versions and decisions are kept. <b>Cancel revision</b> backs out.',
+      '<b>Removing</b>: a SKU with no decision yet has <b>🗑</b> (clients can remove their own). Once any decision exists it cannot be deleted; staff use <b>🗄</b> to archive it, which hides it from the portal and keeps its history.',
+      'An approved file can never be swapped, and clients can never approve their own artwork.'
+    ]);
+
+  var SEC_WAREHOUSE =
+    watch('tutorial-warehouse.mp4') +
+    lead('Tracks every pallet stored at <b>CONRI Services</b> (the Palmetto 3PL) and produces the paperwork for each move. Every move is scheduled with CONRI in advance.') +
+    bullets([
+      '<b>Where</b>: sidebar → Operations → <b>🏬 Warehouse Storage</b>. Visible to admin and sales (and anyone with the Warehouse Storage page ticked in Users &amp; Permissions).',
+      '<b>Tabs</b>: <b>📊 Dashboard</b> (stock at CONRI by client → SKU → lot; empty cans held over 2 days in red; finished lots under 90 days to best-by in yellow; upcoming transfers and pickups), <b>🚚 Transfers</b>, <b>🏷️ SKU master</b>, <b>📤 Outbound orders</b>, <b>🧮 Reconciliation</b>.'
+    ]) +
+    '<h4 style="margin:16px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">STEP BY STEP</h4>' +
+    steps([
+      '<b>SKU master first.</b> 🏷️ SKU master → <b>+ New SKU</b> (UPC/SKU, description, pack, units per case, default cases, weight and height per pallet). Click <b>+ Lot</b> to add each lot and <b>QA release</b> it. Then <b>⬇ Export CSV for CONRI</b> and send the file to CONRI. A SKU CONRI has never received cannot be scheduled in; editing a SKU\'s UPC, description or units per case means it has to be exported again.',
+      '<b>+ New transfer</b>: pick the type (To CONRI: finished goods, To CONRI: empty can overflow, Pull back from CONRI, Outbound carrier pickup), the client, transfer date, carrier and ship-to. Click <b>Create draft</b>. It gets a number like GL-TR-20261002-01.',
+      '<b>Add pallets</b>: <b>⚡ Quick build pallets</b> (SKU, lot, number of pallets, cases per pallet; creates pallet tags like GL-P-000123) or <b>☑ Pick existing pallets</b> (listed earliest best-by first).',
+      '<b>Schedule it</b>: <b>✏️ Edit</b> to enter the time agreed with CONRI, then <b>✉ Scheduling email to CONRI</b> (shows the email with <b>Copy text</b> and <b>Open in mail app</b>), then <b>📅 Mark scheduled</b>.',
+      '<b>🖨️ Print paperwork</b> downloads a PDF: the Transfer Packing List, then one barcode pallet label per pallet.',
+      '<b>When it arrives</b>: <b>✓ Complete (received)</b>. Enter pallets and cases received, condition and any exceptions, and upload the signed packing list now or later (<b>📎 Upload signed…</b>).',
+      '<b>Outbound orders</b>: <b>+ New order from client release</b>, enter pallets per SKU and pickup details, <b>Allocate FEFO + create pickup</b>, send the <b>✉ Order email</b>, then <b>Mark shipped</b> with the BOL number.',
+      '<b>Reconciliation</b>: upload CONRI\'s inventory CSV. It is matched by SKU and lot against what the CRM shows at CONRI and the differences are highlighted. Nothing is saved.'
+    ]) +
+    bullets([
+      '<b>Rules that cannot be bypassed</b>: transfers go draft → scheduled → completed (or cancelled); completed and cancelled transfers are locked except notes, the signed document and CONRI\'s confirmation number. Lots on QA hold cannot go to CONRI. A pallet can be on only one open transfer, and one transfer holds one client\'s pallets.',
+      '<b>Nothing is deleted</b> except pallet lines on a draft. A pallet made by mistake can be voided while it is still at Good Liquid and on no transfer. Every pallet move is logged.',
+      'Racks take pallets under 72". Signed documents are stored privately and open through short-lived links.'
+    ]);
+
+  var SEC_PRICE_SETTINGS =
+    lead('One place to change the prices that quotes and invoices use. No developer needed.') +
+    steps([
+      'Click the <b>💲</b> button in the top bar, right of the 🔔 bell (admin only).',
+      '<b>💲 PRICE SETTINGS</b> lists every price by group: fill rates, add-ons, packaging, pallets and the change over fee. Edit a value and click <b>Save</b> on that row; it shows <b>✓ Saved</b>.',
+      'At the bottom, edit the <b>Canning tier ladder</b> and <b>Bottling tier ladder</b> (the per-volume rates).',
+      'The next quote or invoice you build uses the new prices. Quotes already saved keep their prices.'
+    ]) +
+    bullets([
+      'Values must be zero or more. If the server refuses a save you see "Not saved" and nothing changes.',
+      'Per-client negotiated rates are separate: see <b>💵 Pricing overrides</b> in the Clients section.'
+    ]);
+
+  var SEC_FORMULATION =
+    lead('Track formulation work you referred to an outside formulation house, and the cut you earn on it.') +
+    steps([
+      'Open a deal (Pipeline) or a client (Edit Client).',
+      'Tick <b>🧪 Formulation done</b>.',
+      'Pick the <b>FORMULATOR</b>. If the house is not listed, choose <b>＋ Add formulator…</b> and type its name.',
+      'Enter <b>THEY SPENT ($)</b> and <b>MY CUT (%)</b>. The line below shows "Your cut: $X". Save the deal or client.'
+    ]) +
+    bullets([
+      '<b>Dashboard → 🧪 Formulation revenue</b> shows your total cut, referred spend and number of referrals, split by formulation house, and from clients vs. open leads.',
+      'A record with a spend but no % is not counted and is listed in a yellow note so you can fill it in. A lead that matches a client is counted once.'
+    ]);
+
+  var SEC_PRODUCT_INTAKE =
+    lead('Prospects answer a product questionnaire before they can book a tour, so you walk in knowing what they make.') +
+    bullets([
+      '<b>Public side</b>: "Schedule a tour" opens the questionnaire first (product &amp; format, formula &amp; ingredients, packaging &amp; labels, compliance &amp; certifications). The calendar unlocks once it is complete (<b>Continue to pick a time →</b>). The standalone booking page and the onboarding form ask the same questions.',
+      '<b>What happens</b>: submitting creates or updates a pipeline lead and puts the answers in the booking note.',
+      '<b>Staff side</b>: the answers show in a <b>📋 PRODUCT INTAKE</b> panel on Deal Details and on the client card. <b>✏️ Edit intake</b> → change → <b>Save intake</b>. Answers carry over when the lead becomes a client and pre-fill onboarding.'
+    ]);
+
+  var SEC_SESSION =
+    bullets([
+      '<b>Session expired</b>: if your sign-in runs out while the CRM is open, a banner says "Your session has expired, so nothing will load or save." Copy anything you were typing, then click <b>Sign in again</b>. The page never reloads on its own, so you do not lose a half-typed form.',
+      '<b>Expired sign-in or invite link</b>: links last 48 hours. An old one shows <b>THIS LINK HAS EXPIRED</b> with <b>Email me a new link</b>. This works for staff and for portal clients.',
+      '<b>Forgot password</b>: on the sign-in box click <b>Forgot password?</b>, enter your email, <b>Send Reset Link →</b>. It tells you if the address looks incomplete; the "reset link has been sent" message only shows when the server accepted the request.'
+    ]);
+
+  var SEC_PORTAL_PROJECTS =
+    watch('tutorial-portal-setup.mp4') +
+    lead('How you control what each client sees in their portal: projects with milestones, the services they paid for, the documents you share, and the emails they get.') +
+    '<h4 style="margin:16px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">🗂 PROJECTS &amp; MILESTONES</h4>' +
+    bullets([
+      '<b>Where</b>: Clients → open the client (Edit Client) → <b>🗂 PROJECTS &amp; MILESTONES</b>.',
+      '<b>+ New project</b> asks for the project name and (optionally) the product. It is created with 12 development milestones (Project intake → Formulation → … → Production ready → Complete) and a Packaging and artwork milestone.',
+      '<b>Milestones</b>: set each one\'s <b>STATUS</b> (Not started, In progress, Waiting on client, Done, Skipped, Blocked), <b>TARGET DATE</b> and <b>WHO ACTS</b> (Good Liquid or Client). Changes save as you make them. The client sees "Waiting on client" as <b>Waiting on you</b>.',
+      '<b>+ Note / ✎ Note</b>: a note <b>for the client to read</b> on that milestone. It shows on their status card.',
+      '<b>+ Sampling round N</b> adds another Sample sent → Client feedback → Formula revisions round. Earlier rounds are kept; the portal shows the latest.',
+      '<b>✎ Details</b> edits name, product, start and target date. The status dropdown sets active / on hold / completed / cancelled.',
+      '<b>👁 Preview as client</b> shows exactly what the client sees for this project (status card, progress tracker, locked and unlocked tabs).',
+      '<b>Archive</b> hides the project, its milestones and its documents from the portal straight away. <b>Restore</b> brings it back.'
+    ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#f5c842">🔓 PORTAL SERVICES</h4>' +
+    bullets([
+      'Each project card has <b>PORTAL SERVICES</b> toggles: Product renders, Packaging &amp; artwork, Market analytics. A granted service shows <b>✓</b> in green; click again to revoke.',
+      'The normal way to unlock them is to <b>accept a quote</b>: Clients → Edit Client → 📋 PRODUCTION QUOTES → <b>⚙ Services</b> → pick the project, tick the services, set Accepted, Save. That also emails the client. Toggling on the project card does not email.',
+      'Every grant and revoke is kept in a permanent log with who made it. Files already delivered stay available to the client even if a service is later revoked.'
+    ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#6b9fff">📎 SHARING DOCUMENTS WITH THE CLIENT</h4>' +
+    bullets([
+      '<b>Where</b>: the <b>📎 DOCUMENTS</b> card at the top of Edit Client (also on the deal panel).',
+      'Pick a type: 🔒 NDA, 📜 Process Authority Letter, ⚗️ Formula, 🎨 Label / Artwork, 🥤 <b>Product Render</b>, 📊 <b>Market Analysis</b>, 📄 Other. Add a name, choose the file, click <b>＋ Add Document</b>.',
+      'Every upload starts <b>🔒 Internal</b>. Click it and confirm to switch to <b>👁 Visible to client</b>; click again to hide. Hiding also blocks the file itself. A Formula document gets an extra warning before publishing.',
+      'Publishing emails the client ("A new document is available"). Product Renders and Market Analysis files appear on those portal tabs.',
+      'Documents on a lead with no client yet have no toggle. Files the client uploads appear here and are visible to them immediately.'
+    ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#5fcf9e">🧪 FORMULA DOCUMENTS</h4>' +
+    bullets([
+      '<b>Where</b>: Formula Vault → open a saved formula → <b>📎 DOCUMENTS FOR THIS FORMULA</b>.',
+      'Pick a kind (📄 Spec sheet, 🧪 COA, ⚙️ Process, 📎 Other), the version, a name and the file, then <b>＋ Attach</b>. It starts internal.',
+      '<b>Publish</b> releases it to the client\'s Formula tab. Every download is recorded. <b>Unpublish</b> takes it back.',
+      'To correct one, use <b>Supersede</b>: it is unpublished but kept with its download history, and can never be published again. Then attach the fixed file. Only unpublished, never-downloaded documents can be deleted (🗑).',
+      'One current document of each kind per formula version. Publishing a formula document does not email the client.'
+    ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#c4b5fd">✉️ EMAILS THE CLIENT GETS</h4>' +
+    bullets([
+      '<b>Action needed: [project]</b> — a milestone is set to Waiting on client.',
+      '<b>Update on [project]</b> — you write or change a milestone note.',
+      '<b>A new document is available</b> — you publish a client document.',
+      '<b>Artwork approved / Changes requested: [SKU]</b> — with your note.',
+      '<b>A new service is available on [project]</b> — a quote with services is accepted.',
+      '<b>Production update: [run]</b> — a production run changes stage.',
+      'Emails go to the client\'s active portal users who have the matching setting on (portal → Account settings → NOTIFICATIONS). They are sent every 15 minutes, the same email is not repeated to the same address within an hour, and each is re-checked before sending, so nothing goes out about something you have since hidden, archived or revoked.'
     ]);
 
   var SEC_CLIENT_CARD_2026 =
@@ -2323,7 +2456,7 @@
       '<b>(4) Next actions</b> — checkable to-dos the AI pulls from the conversation, tagged <span style="color:#f5c842">you</span> or <span style="color:#5fcf9e">them</span>. Tick one and it <b>stays</b> ticked; the AI never un-checks or re-adds a task you already completed. Add your own with the “Add a task…” box. <b>The brief also checks tasks off for you</b>: when it reads a new email that resolves an action — including an email <i>you</i> sent (e.g. a “send the quote” task and an outbound email where you sent it) — it marks that action done automatically, so your Next Actions stay honest without any clicking.',
       '<b>🔄 Refresh</b> — forces an immediate re-summarize if you want the very latest. Otherwise it self-refreshes on open.',
       '<b>How “incremental” works</b> — when a new email lands, the brief folds in <b>only that email</b> and merges it into what it already knew. It does not re-read hundreds of old emails, and it does not repeat information — exactly what keeps it fast and accurate.',
-      '<b>🔥 Needs Attention board</b> — Pipeline header → <b>🔥 Needs Attention</b>. One ranked list across every open deal: <span style="color:#f5c842">🟡 Your move</span> → <span style="color:#ff8579">⏰ Overdue to-do</span> → <span style="color:#7fc6f5">🧊 Cold (no reply 7+ days)</span> → <span style="color:#c4a4f8">✨ New lead</span>. Deals where the ball is genuinely with the customer drop off. Click any row to jump into that deal.',
+      '<b>🔥 Needs Attention board</b> — Pipeline header → <b>🔥 Needs Attention</b>. One ranked list across every open deal <b>and active client</b>. Each row leads with <b>THEY NEED FROM YOU</b>, the open to-dos for that account; tick one to mark it done. Lanes: <span style="color:#f5c842">🟡 Your move</span> → <span style="color:#ff8579">⏰ Overdue to-do</span> → <span style="color:#7fc6f5">🧊 Cold (no reply 7+ days)</span> → <span style="color:#c4a4f8">✨ New lead</span>, plus <b>📌 You owe them</b>. Per row: <b>💤 Snooze 7d</b> hides it for a week and <b>✓ Handled</b> hides it until something new happens; both are saved to your account, so they hold on every device. <b>🔄 Re-scan emails</b> re-reads the threads (the AI only runs when new mail arrived) and <b>📲 Send to my phone</b> sends you the list. Deals where the ball is genuinely with the customer drop off. Click any row to jump into that deal.',
       '<b>📲 Send to my phone</b> — the button on that board fires your digest to WhatsApp + email right now (also the way to test it).',
       '<b>Morning digest</b> — automatically each <b>weekday morning (~7–8am ET)</b> you get the same ranked list by WhatsApp and email, so you know who needs you before you open the CRM. If nothing is urgent, nothing is sent — no daily spam.',
       '<b>⏰ Bulk Nudge</b> — Pipeline header → <b>⏰ Bulk Nudge</b>. Set a “sitting for at least N days” threshold (7 / 10 / 21 or any number). It finds every lead that has gone quiet, drafts a friendly follow-up for each, and opens a review window where you edit and approve each one — only approved emails are sent.',
@@ -2356,8 +2489,8 @@
     bullets([
       '<b>Where to find it</b>: open any <b>saved</b> deal — the <b>📎 Documents</b> and <b>🗒️ Meeting Notes</b> cards sit just below the brief. Both also appear on client panels. (A brand-new, unsaved deal shows a prompt to save it first — it needs an id to attach files to.)',
       '<b>(1) Documents card</b> — the home for anything a lead sends during the deal: a signed NDA, a Process Authority letter, their formula, their label artwork.',
-      '<b>(2) Type chips</b> — tap a type (<span style="color:#6b9fff">🔒 NDA</span>, <span style="color:#f5c842">📜 Process Authority Letter</span>, <span style="color:#c4a4f8">⚗️ Formula</span>, <span style="color:#00e5c0">🎨 Label / Artwork</span>, or Other), give it a name, choose the file, and press <b>＋ Add Document</b>. It is filed by type so it is easy to scan.',
-      '<b>(3) View / download / delete</b> — each row opens the file through a short-lived secure link; ⬇ downloads it; 🗑 removes it. Files live in the same secure <code>client-docs</code> storage as your other compliance documents, staff-only.',
+      '<b>(2) Type chips</b> — tap a type (<span style="color:#6b9fff">🔒 NDA</span>, <span style="color:#f5c842">📜 Process Authority Letter</span>, <span style="color:#c4a4f8">⚗️ Formula</span>, <span style="color:#00e5c0">🎨 Label / Artwork</span>, 🥤 Product Render, 📊 Market Analysis, or Other), give it a name, choose the file, and press <b>＋ Add Document</b>. It is filed by type so it is easy to scan.',
+      '<b>(3) View / download / delete</b> — each row opens the file through a short-lived secure link; ⬇ downloads it; 🗑 removes it. Files live in the same secure <code>client-docs</code> storage as your other compliance documents. Every upload starts <b>🔒 Internal</b> (staff-only); on a client, click it to switch to <b>👁 Visible to client</b> and the client can download it from their portal (see Client Portal: Projects &amp; Sharing).',
       '<b>🚀 The convert hand-off</b> — when you click <b>Convert to Client &amp; Onboard</b>, every document moves with the customer <b>automatically</b>: the <b>Process Authority letter</b> drops into the client\'s PA-letter compliance slot, <b>label artwork</b> becomes SKU entries in their artwork section, and everything else lands on the client\'s own Documents card. Nothing is copied or re-uploaded — the files simply follow the customer, so nothing is lost between the pipeline and the client record.',
       '<b>(4) Meeting Notes card</b> — after a call, paste your notes or your <b>Pocket AI NoteTaker</b> transcript here, and attach the recording or file if you have one. Give it a title and date.',
       '<b>Notes feed the brief</b> — the Deal Brief reads your meeting notes too, so what you discussed on a call shows up in the summary right alongside the emails. Adding or removing a note flags the brief to re-summarize next time it refreshes.',
@@ -2401,8 +2534,49 @@
       '<b>Plain-English terms</b> — <b>SLA</b>: the response-time promise you are holding yourself to (one business day). <b>Business hours</b>: elapsed time with weekends skipped. <b>Ball on them</b>: you replied last and are waiting. <b>Snooze</b>: mute automations for a week. <b>Handled</b>: mute them for good.'
     ]);
 
+  // What shipped since mid-August 2026, in one place, with the walkthrough
+  // videos for it. Each line links to the section that explains it fully.
+  var SEC_WHATS_NEW =
+    lead('Everything added to the CRM and the client portal since mid-August 2026. Watch the videos for a walkthrough, then use the links for step-by-step instructions.') +
+    videoCard('tutorial-quotes.mp4', '📋 Quotes → Invoices', 'Building a quote with several formats, add-ons and the change over fee, finding it again in 🗂 Quotes, and turning the accepted option into an invoice with the add-on panel.') +
+    videoCard('tutorial-warehouse.mp4', '🏬 Warehouse Storage (CONRI)', 'The stock dashboard, the SKU master, and a transfer from draft to scheduled with its paperwork.') +
+    videoCard('tutorial-portal.mp4', '🌐 The New Client Portal', 'What your client sees: the project tracker and status card, the tabs, locked and unlocked services, artwork decisions and their email settings.') +
+    videoCard('tutorial-portal-setup.mp4', '🗂 Setting Up a Client\'s Portal', 'Your side, on the client card: sharing documents, projects and milestones, client notes, Preview as client, artwork decisions, and accepting a quote to unlock services.') +
+    videoGroup('💼 QUOTES &amp; INVOICES') +
+    bullets([
+      '<b>🗂 Quotes list</b> on the Pipeline header: every saved quote, filters, search, status, EXPIRED flag. ' + '<a href="#help-quotes" style="color:#00e5c0">How →</a>',
+      '<b>Several formats and custom lines</b> on one quote; every tier number can be typed over; the PDF is now itemized like an invoice. ' + '<a href="#help-quotes" style="color:#00e5c0">How →</a>',
+      '<b>🧾 Invoice from a quote</b>: one click, pick the option the client chose, invoice opens filled in. ' + '<a href="#help-quotes" style="color:#00e5c0">How →</a>',
+      '<b>Change over fee</b>: a flat add-on on quotes and invoices. <b>Add-on panel</b> in the invoice builder. ' + '<a href="#help-newinv" style="color:#00e5c0">How →</a>',
+      '<b>Partial payments</b> with 💵 Part and per-payment Undo. ' + '<a href="#help-partial-payments" style="color:#00e5c0">How →</a>',
+      '<b>Overdue grace period</b> you set ("Flag overdue after N days"), <b>↩ Unpaid / ↩ Pending</b> undo, and <b>🚫 Void</b> rules. ' + '<a href="#help-invoices" style="color:#00e5c0">How →</a>',
+      '<b>💲 Price Settings</b> in the top bar: edit every quote and invoice price yourself. ' + '<a href="#help-price-settings" style="color:#00e5c0">How →</a>',
+      '<b>Accepting a quote unlocks portal services</b> for the client\'s project. ' + '<a href="#help-quotes" style="color:#00e5c0">How →</a>'
+    ]) +
+    videoGroup('🌐 CLIENT PORTAL') +
+    bullets([
+      '<b>Tabbed portal</b> with a project tracker, status card and locked / unlocked services. ' + '<a href="#help-customer-portal" style="color:#00e5c0">How →</a>',
+      '<b>Projects &amp; milestones</b>, <b>👁 Preview as client</b>, portal services. ' + '<a href="#help-portal-projects" style="color:#00e5c0">How →</a>',
+      '<b>Share documents</b> with 🔒 Internal / 👁 Visible to client, new Product Render and Market Analysis types. ' + '<a href="#help-portal-projects" style="color:#00e5c0">How →</a>',
+      '<b>Formula documents</b>: publish a spec sheet or COA against a formula version; every download logged. ' + '<a href="#help-portal-projects" style="color:#00e5c0">How →</a>',
+      '<b>Artwork decisions</b>: In review, Changes requested, Approved, Sent to printer, with notes and revisions. ' + '<a href="#help-artwork" style="color:#00e5c0">How →</a>',
+      '<b>Client emails</b> when something needs them, and their notification settings. ' + '<a href="#help-portal-projects" style="color:#00e5c0">How →</a>'
+    ]) +
+    videoGroup('🏭 OPERATIONS &amp; SALES') +
+    bullets([
+      '<b>🏬 Warehouse Storage</b>: pallets at CONRI, transfers, paperwork, outbound orders, reconciliation. ' + '<a href="#help-warehouse" style="color:#00e5c0">How →</a>',
+      '<b>🧪 Formulation revenue</b>: track formulation referrals and your cut; dashboard card. ' + '<a href="#help-formulation" style="color:#00e5c0">How →</a>',
+      '<b>📋 Product intake questionnaire</b> before a tour can be booked. ' + '<a href="#help-product-intake" style="color:#00e5c0">How →</a>',
+      '<b>📨 Send Onboarding</b> on the Clients page. ' + '<a href="#help-cr" style="color:#00e5c0">How →</a>',
+      '<b>🔥 Needs Attention</b> now covers clients, shows what they need from you, and has a 7-day snooze. ' + '<a href="#help-deal-brief" style="color:#00e5c0">How →</a>',
+      '<b>✅ Won / 🚫 Lost</b> on the deal panel. <b>Bulk outreach</b> is now draft, review, approve, then send. ' + '<a href="#help-bulk-outreach" style="color:#00e5c0">How →</a>',
+      '<b>Warehouse role</b> and page checkboxes that hide sidebar links. ' + '<a href="#help-users" style="color:#00e5c0">How →</a>',
+      '<b>Session expired banner</b>, expired-link recovery and a clearer forgot-password flow. ' + '<a href="#help-session" style="color:#00e5c0">How →</a>'
+    ]);
+
   var HELP_HTML =
     section('help-overview',        '👋 OVERVIEW',                   SEC_OVERVIEW) +
+    section('help-whats-new',       '🆕 WHAT\'S NEW',                SEC_WHATS_NEW) +
     section('help-glossary',        '📖 GLOSSARY (PLAIN-ENGLISH TERMS)', SEC_GLOSSARY) +
     section('help-videos',          '🎬 VIDEO TUTORIALS',            SEC_VIDEO_TUTORIALS) +
     section('help-deal-brief',      '🧠 DEAL BRIEF & NEEDS ATTENTION', SEC_DEAL_BRIEF) +
@@ -2425,7 +2599,8 @@
     section('help-invoices',        '🧾 INVOICES',                   SEC_INVOICES) +
     section('help-newinv',          '➕ NEW INVOICE BUILDER',         SEC_NEWINV) +
     section('help-send-invoice',    '📧 SEND INVOICE (COMPOSER)',    SEC_SEND_INVOICE) +
-    section('help-customer-portal', '🌐 CUSTOMER PORTAL (PUBLIC LINK)', SEC_CUSTOMER_PORTAL) +
+    section('help-customer-portal', '🌐 CUSTOMER PORTAL & PUBLIC INVOICE LINK', SEC_CUSTOMER_PORTAL) +
+    section('help-portal-projects', '🗂 CLIENT PORTAL: PROJECTS & SHARING', SEC_PORTAL_PROJECTS) +
     section('help-email-templates', '📝 EMAIL TEMPLATES',            SEC_EMAIL_TEMPLATES) +
     section('help-email-schedule',  '📅 SCHEDULED FOLLOW-UPS',       SEC_EMAIL_SCHEDULE) +
     section('help-email-activity',  '📊 EMAIL ACTIVITY (TRACKING)',  SEC_EMAIL_ACTIVITY) +
@@ -2446,6 +2621,11 @@
     section('help-settings',        '⚙️ SETTINGS & INTEGRATIONS',    SEC_SETTINGS) +
     section('help-ai-hub',          '🤖 AI CHAT & AI TOOLS',         SEC_AI_HUB) +
     section('help-production-runs', '🏭 PRODUCTION RUNS',            SEC_PRODUCTION_RUNS) +
+    section('help-warehouse',       '🏬 WAREHOUSE STORAGE (CONRI)',  SEC_WAREHOUSE) +
+    section('help-price-settings',  '💲 PRICE SETTINGS',             SEC_PRICE_SETTINGS) +
+    section('help-formulation',     '🧪 FORMULATION REVENUE',        SEC_FORMULATION) +
+    section('help-product-intake',  '📋 PRODUCT INTAKE QUESTIONNAIRE', SEC_PRODUCT_INTAKE) +
+    section('help-session',         '🔐 SIGN-IN, LINKS & SESSIONS',  SEC_SESSION) +
     section('help-formula-vault',   '🧪 FORMULA VAULT',              SEC_FORMULA_VAULT) +
     section('help-yield-tracker',   '📈 YIELD TRACKER',              SEC_YIELD_TRACKER) +
     section('help-sample-shipments','📦 SAMPLE SHIPMENTS',           SEC_SAMPLE_SHIPMENTS) +
@@ -2467,6 +2647,7 @@
 
   var TOC_ENTRIES = [
     ['help-overview','👋 Overview'],
+    ['help-whats-new','🆕 What\'s New'],
     ['help-glossary','📖 Glossary'],
     ['help-videos','🎬 Video Tutorials'],
     ['help-deal-brief','🧠 Deal Brief & Attention'],['help-lead-automation','🤖 Lead Automations'],['help-deal-docs','📎 Deal Docs & Notes'],
@@ -2480,7 +2661,7 @@
     ['help-clients','👥 Clients'],['help-client-emails','📧 Additional Emails'],
     ['help-pipeline','📊 Pipeline'],
     ['help-invoices','🧾 Invoices'],['help-newinv','➕ New Invoice'],
-    ['help-send-invoice','📧 Send Invoice'],['help-customer-portal','🌐 Customer Portal'],
+    ['help-send-invoice','📧 Send Invoice'],['help-customer-portal','🌐 Customer Portal'],['help-portal-projects','🗂 Portal Projects & Sharing'],
     ['help-email-templates','📝 Email Templates'],['help-email-schedule','📅 Scheduled Follow-ups'],
     ['help-email-activity','📊 Email Activity'],['help-stripe-pay','💳 Stripe Payments'],
     ['help-compliance','📋 Compliance'],
@@ -2493,6 +2674,9 @@
     ['help-users','🔑 Users'],['help-settings','⚙️ Settings'],
     ['help-ai-hub','🤖 AI Chat & Tools'],
     ['help-production-runs','🏭 Production Runs'],
+    ['help-warehouse','🏬 Warehouse Storage'],['help-price-settings','💲 Price Settings'],
+    ['help-formulation','🧪 Formulation Revenue'],['help-product-intake','📋 Product Intake'],
+    ['help-session','🔐 Sign-in & Sessions'],
     ['help-formula-vault','🧪 Formula Vault'],
     ['help-yield-tracker','📈 Yield Tracker'],
     ['help-sample-shipments','📦 Sample Shipments'],

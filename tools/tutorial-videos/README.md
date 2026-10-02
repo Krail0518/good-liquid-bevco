@@ -28,7 +28,7 @@ Playwright + a Chromium build are also required (already present in CI here).
 ```
 NODE_PATH=/opt/node22/lib/node_modules \
 PW_CHROMIUM=/opt/pw-browsers/chromium-*/chrome-linux/chrome \
-node gen-video.cjs <storyboard>      # daily | prp | schedule | trace | training | audit | auditor
+node gen-video.cjs <storyboard>      # e.g. quotes | warehouse | portal | portal-setup | daily | trace …
 ```
 
 The MP4 lands in the scratchpad; copy it to `/tutorials/tutorial-<key>.mp4`.
@@ -41,6 +41,11 @@ The MP4 lands in the scratchpad; copy it to `/tutorials/tutorial-<key>.mp4`.
      `steps[]` array of `{ say, act:{type,sel,text|value} }`.
    - `act.type` is one of `move | click | type | select | fill` (or omit for a
      narration-only step).
+   - Optional on any act: `center:true` scrolls the target to mid-screen first
+     (otherwise it can sit under the caption bar), and `after:'<selector>'`
+     smooth-scrolls that element to the top once the act is done (e.g. a tab
+     bar, so the panel the click opened is in view).
+   - At most 21 steps (the step-sync marker has 21 grey levels).
 2. Run the generator, copy the MP4 to `/tutorials/`.
 3. Add a `videoCard(...)` to `SEC_VIDEO_TUTORIALS` and a `watch('tutorial-<key>.mp4')`
    at the top of the matching help section in `crm-help.js`.
@@ -73,3 +78,22 @@ Both generators write to `$GL_VIDEO_OUT` when it is set (the workflow points it
 at the workspace) and fall back to the original hardcoded scratch path when it
 is not, so existing local habits keep working. `$GL_PIPER_MODEL` overrides the
 voice the same way.
+
+## Step sync
+
+Playwright's recorder does not keep wall-clock time: over a two-minute run it
+drops several seconds, unevenly. The generator used to trim the front of the
+recording until its length matched the narration, which left the voice
+drifting seconds away from the screen by the end (and when the recording came
+out *shorter* than the narration, the tail of the narration was cut).
+
+Each step now paints a 12px grey square in the bottom-right corner whose shade
+encodes the step number. After recording, the generator finds where each step
+really starts, then stretches or squeezes every step's slice to exactly its
+narration length. The log line `step sync: N markers found, largest per-step
+correction Xs` reports it; if markers cannot be read it falls back to the old
+front trim and says so.
+
+The CRM's "session expired" banner (GL-088) is hidden in recordings: it reads
+the real Supabase client, which has no session here, and covered the top of
+every video longer than a minute.

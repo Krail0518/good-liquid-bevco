@@ -505,8 +505,8 @@
   var MOCK_CR = wf(620, 220,
     box(0,0,620,40,'#142238') + txt(15,26,'CUSTOMER RELATIONS',12,'#fff') +
     box(15,55,190,150,'#1c2e48') + txt(25,78,'CUSTOMER PORTAL',10,'#00e5c0') +
-    txt(25,102,'Per-client URL',9,'#cfd9e6') + txt(25,118,'• See invoices',9,'#9aa7bd') +
-    txt(25,134,'• Pay Now',9,'#9aa7bd') + txt(25,150,'• Accept quote',9,'#9aa7bd') +
+    txt(25,102,'Private login',9,'#cfd9e6') + txt(25,118,'• See invoices',9,'#9aa7bd') +
+    txt(25,134,'• Pay Now',9,'#9aa7bd') + txt(25,150,'• Project tracker',9,'#9aa7bd') +
     txt(25,166,'• Contact you',9,'#9aa7bd') +
     box(215,55,190,150,'#1c2e48') + txt(225,78,'NPS SURVEYS',10,'#00e5c0') +
     txt(225,102,'Sent: 24',9,'#cfd9e6') + txt(225,120,'Score: 67',11,'#5fcf9e') +
@@ -519,7 +519,8 @@
   var SEC_CR = MOCK_CR +
     locator(
       '<b>Customer Logins</b> (admin page to send portal invites + reset / remove portal accounts) &rarr; sidebar &rarr; <b>Tools</b> section (near the bottom).<br>' +
-      '<b>Customer Portal itself</b> &rarr; this is what your <i>customer</i> sees, not you. They get a magic-link email when you click Send Onboarding Email. Their URL is <code>goodliquidbevco.com#portal/&lt;client-uuid&gt;</code>.<br>' +
+      '<b>Customer Portal itself</b> &rarr; this is what your <i>customer</i> sees, not you. They sign in with email and password at <code>goodliquidbevco.com/?portal=1</code>. Invite them with <b>🔑 Invite Customer Login</b> on the Clients page.<br>' +
+      '<b>Onboarding form email</b> (company details + product questionnaire) &rarr; Clients page header &rarr; <b>📨 Send Onboarding</b>.<br>' +
       '<b>Onboarding Wizard, NPS responses</b> &rarr; floating <b>🤖 AI toolbar</b> (admin).<br>' +
       '<b>NPS survey link to send to a customer</b> &rarr; client record &rarr; "Send NPS survey" button.<br>' +
       '<b>Anniversary widget</b> &rarr; auto-renders on the <b>Dashboard</b> when any client hits a milestone this week.<br>' +
@@ -527,18 +528,24 @@
     ) +
     intro('Tools that touch the customer directly &mdash; portal, surveys, onboarding flow, anniversaries. <b>There is no single "Customer Relations" sidebar section</b> &mdash; these are scattered across the sidebar Tools area, the AI toolbar, the Dashboard, and inline on client / production-run records.') +
     subhead('🌐', 'CUSTOMER PORTAL') +
-    intro('Each client gets a private URL where they can see their invoices, pay (Stripe), accept quotes, and message you. No login = a magic-link in their email.') +
+    intro('Each client user has their own email-and-password login to a private portal at <code>?portal=1</code>, scoped to their own company. The full tour is in the <b>Customer Portal</b> and <b>Client Portal: Projects &amp; Sharing</b> help sections.') +
     bullets([
-      '<b>What they see:</b> only invoices addressed to them, with Pay Now buttons (Stripe links you saved per-invoice), Accept Quote buttons (emails you on click), and a contact form.',
-      '<b>How they get in:</b> the Send Onboarding Email button on the Customer Logins page emails them a magic link to set their own password.',
-      '<b>Route:</b> <code>#portal/&lt;client-uuid&gt;</code> — bookmarkable.'
+      '<b>What they see:</b> their project tracker and status card, documents and COAs, formula status and released formula documents, samples and production runs, any paid services (renders, packaging &amp; artwork, market analytics), and their invoices with Pay buttons.',
+      '<b>Quotes:</b> there is no accept button in the portal. A client asks for a quote with the 💬 Request a quote tile; you accept a quote for them in the CRM (Edit Client → 📋 PRODUCTION QUOTES → ⚙ Services).',
+      '<b>How they get in:</b> Clients page → <b>🔑 Invite Customer Login</b>. They get an email link (valid 48 hours) to set their password. If it expires, the page offers <b>Email me a new link</b>.'
     ]) +
     steps([
-      'Sidebar → <b>Customer Logins (admin)</b>.',
-      'Find the client. Click <b>Send Onboarding Email</b>. They get a magic link to set their own password.',
-      'They log in, see their stuff, and can pay or message — no setup on their side.'
+      'Clients page → <b>🔑 Invite Customer Login</b>.',
+      'Pick the client, type their email, send.',
+      'They set a password and land on the portal. Manage or remove portal accounts later under <b>Customer Logins (admin)</b>.'
     ]) +
-    whereToFind('Sidebar → Customer Logins → Onboarding column') +
+    subhead('📨', 'SEND ONBOARDING (NEW)') +
+    steps([
+      'Clients page header → <b>📨 Send Onboarding</b>.',
+      'Under <b>WHICH CLIENT?</b> pick the client (clients without an email are marked "⚠ no email").',
+      'Click <b>📨 Send onboarding email</b>. The client gets the onboarding form link: company details plus the product questionnaire.'
+    ]) +
+    whereToFind('Clients page header → 🔑 Invite Customer Login / 📨 Send Onboarding') +
     subhead('🚀', 'ONBOARDING WIZARD (admin)') +
     intro('A 6-step intake flow you walk a brand-new client through on their first call. Captures everything: legal name, EIN, COI, billing address, product types, payment terms, primary POC.') +
     bullets([
@@ -690,13 +697,9 @@
       'Snoozes are stored in localStorage per browser (not in the database). They reset if you clear browser data.'
     ]) +
     whereToFind('AI toolbar → AR Collection → "⏰ Snooze 5d" button on any invoice row') +
-    subhead('📋', 'QUOTE AUTO-EXPIRY') +
-    intro('Quotes more than 30 days old automatically flip to status=expired. No action needed — it runs on every CRM load and once per hour while you\'re logged in.') +
-    bullets([
-      'Affects invoices with status="quote" whose invoice_date is >30 days ago.',
-      'Expired quotes drop out of the active Invoices view.'
-    ]) +
-    whereToFind('Automatic — no UI required') +
+    subhead('📋', 'QUOTE EXPIRY') +
+    intro('Each quote has a validity window (VALID (DAYS), default 30). Once it passes, the quote shows an <b>EXPIRED</b> flag in Pipeline &rarr; 🗂 Quotes. Nothing changes automatically: send an updated quote, or set it to Declined.') +
+    whereToFind('Pipeline &rarr; 🗂 Quotes') +
     subhead('📧', 'TEST EMAIL SEND') +
     intro('Send a test email to yourself (mike@goodliquid.com) to verify outbound email. The result is honest about the channel: it says whether Gmail itself sent it, or only the Mailgun fallback did (mail still going out, but from noreply@ instead of your Gmail).') +
     steps([
@@ -803,8 +806,8 @@
     box(25,133,165,26,'#243a56') + txt(35,150,'12oz Sleek',11,'#fff') +
     txt(25,177,'Add-ons',9,'#9aa7bd') +
     txt(35,195,'✓ Nitrogen dosing',10,'#cfd9e6') +
-    txt(35,211,'✓ Case tray',10,'#cfd9e6') +
-    txt(35,227,'✓ Palletizing',10,'#cfd9e6') +
+    txt(35,211,'✓ 24-count case tray',10,'#cfd9e6') +
+    txt(35,227,'✓ Change over fee',10,'#cfd9e6') +
     box(210,55,395,200,'#1c2e48') +
     txt(220,78,'TIERS',9,'#9aa7bd') + txt(360,78,'Cases',9,'#9aa7bd') + txt(430,78,'$/can',9,'#9aa7bd') + txt(500,78,'Total',9,'#9aa7bd') + txt(570,78,'',9,'#9aa7bd') +
     box(210,88,395,30,'#0f1d2e') +
@@ -818,70 +821,119 @@
     txt(220,230,'GLQ-202507-001',10,'#9aa7bd') + txt(350,233,'SAVE',11,'#00e5c0') + txt(425,233,'PDF',11,'#9aa7bd') + txt(480,233,'SAVE + PDF',11,'#f5c842') + tag(595,231,3)
   );
 
-  var SEC_QUOTES = MOCK_QUOTES +
+  // Inline player for a narrated tutorial in /tutorials. Same markup as
+  // watch() in help.js, which this file cannot reach (separate IIFE).
+  function watchVid(file){
+    return '<div style="margin:2px 0 16px;padding:12px 14px;background:#0d1a2e;border:1px solid rgba(0,229,192,.18);border-radius:11px">' +
+      '<div style="font-size:11px;letter-spacing:1.5px;color:#00e5c0;margin-bottom:8px">🎬 VIDEO TUTORIAL — WATCH &amp; LISTEN</div>' +
+      '<video controls preload="none" playsinline style="width:100%;max-width:760px;border-radius:9px;border:1px solid rgba(0,229,192,.2);background:#000;display:block" src="/tutorials/' + file + '"></video>' +
+    '</div>';
+  }
+
+  var SEC_QUOTES = watchVid('tutorial-quotes.mp4') + MOCK_QUOTES +
     locator(
-      '<b>New Quote button</b> &rarr; Pipeline page &rarr; click any deal &rarr; deal detail panel &rarr; <b>📋 New Quote</b> button.<br>' +
-      '<b>Quote history</b> &rarr; Clients page &rarr; click a client &rarr; Edit &rarr; <b>📋 PRODUCTION QUOTES</b> section &rarr; <b>+ New Quote</b>.<br>' +
-      '<b>Close Job button</b> &rarr; same deal detail panel &rarr; <b>✅ Close Job</b> button (right of "📋 New Quote").'
+      '<b>Every saved quote</b> &rarr; Pipeline page header &rarr; <b>🗂 Quotes</b>.<br>' +
+      '<b>Start a quote</b> &rarr; Pipeline header &rarr; <b>📋 Quote Builder</b>; or a deal&rsquo;s detail panel &rarr; <b>📋 New Quote</b>; or a client &rarr; <b>📋 Quote Builder</b>; or 🗂 Quotes &rarr; <b>📋 New Quote</b>.<br>' +
+      '<b>A client&rsquo;s quotes, and accepting one</b> &rarr; Clients &rarr; open the client (Edit Client) &rarr; <b>📋 PRODUCTION QUOTES</b> panel.<br>' +
+      '<b>Prices the builder uses</b> &rarr; the <b>💲</b> button in the top bar, right of the bell.<br>' +
+      '<b>Close a deal</b> &rarr; deal detail panel &rarr; <b>✅ Won</b> or <b>🚫 Lost</b>.'
     ) +
-    intro('Admin-only tool for generating professional production quotes and saving them under the client record. The quote uses the current price deck with editable tier overrides, generates a PDF in the Good Liquid format, and saves to Supabase so the history is always visible.') +
+    intro('Admin-only tool for building production quotes from the current price deck, emailing them, and turning an accepted quote into an invoice. Every quote is saved with a number (e.g. GLQ-202609-004) and can always be found again under <b>🗂 Quotes</b>.') +
+
     subhead('📋', 'OPENING THE QUOTE BUILDER') +
     bullets([
-      '<b>From a deal:</b> Pipeline → click the deal card → deal detail panel slides open → click <b>📋 New Quote</b>. The deal and client are pre-loaded.',
-      '<b>From a client record:</b> Clients → find the client → Edit → scroll to <b>📋 PRODUCTION QUOTES</b> → click <b>+ New Quote</b>.',
-      '<b>Admin gate:</b> both entry points are hidden for non-admin users.'
+      '<b>From a deal:</b> Pipeline &rarr; click the deal card &rarr; <b>📋 New Quote</b>. The deal, client and any website request are pre-loaded.',
+      '<b>From a client:</b> open the client &rarr; <b>📋 Quote Builder</b>. Company name and email are filled in.',
+      '<b>From scratch:</b> Pipeline header &rarr; <b>📋 Quote Builder</b>. Type the company name into <b>PREPARED FOR</b> (it suggests existing clients) and the <b>EMAIL</b>.',
+      '<b>Admin gate:</b> the builder and the Quotes list are hidden for non-admin users.'
     ]) +
-    subhead('⚙️', 'CONFIGURING THE QUOTE') +
+
+    subhead('⚙️', 'PRICING ONE FORMAT') +
     steps([
-      'Choose <b>Product Type:</b> Canning, Bottling, or Keg. This sets the available formats and tier structure.',
-      '<b>Canning formats:</b> 12oz Standard, 12oz Sleek, 16oz Standard. <b>Bottling:</b> 750ml. <b>Keg:</b> Half-barrel (15.5 gal).',
-      'Set a <b>Quote Date</b> and <b>Valid for (days)</b> — defaults to today + 30 days.',
-      'Add <b>Notes</b> (optional) — these appear on the PDF footer.'
+      'Pick a <b>PRODUCT TYPE</b>: Canning, Bottling (750ml) or Keg Filling.',
+      'Pick a <b>PACKAGE FORMAT</b> from the list, or type your own. A typed format simply stops using the preset can rates, and every price stays editable.',
+      'Click <b>⚡ Load Standard Tiers</b> for the standard volumes at deck rates, or <b>+ Add Tier</b> to enter your own case count. Each tier is one volume the client can choose.',
+      '<b>Every number in a tier can be typed over</b>: cans, fill per can, add-ons per can, packaging per case and run total. A typed value gets an amber border so custom pricing is obvious at a glance.',
+      'Set <b>QUOTE DATE</b> and <b>VALID (DAYS)</b> (default 30).'
     ]) +
-    subhead('📊', 'BUILDING TIERS') +
-    intro('Each quote has one or more quantity tiers so the client can see how price drops with volume.') +
+
+    subhead('➕', 'ADD-ON SERVICES & PACKAGING') +
+    intro('Tick what applies to this run. Each add-on is priced from the <b>💲 Price Settings</b> and shows as its own line on the quote PDF and on the invoice.') +
     bullets([
-      '<b>⚡ Load Standard Tiers</b> (callout 2) — one click to pre-fill the three standard canning tiers: 501, 1,000, 5,000 cases at deck rates. Start here for most quotes.',
-      '<b>+ Add Tier</b> — add a custom tier manually. Set the case quantity and $/can rate.',
-      '<b>Rate override (amber border):</b> if you type directly into a tier\'s rate cell, the border turns amber to flag that pricing is custom, not from the standard deck. Useful for giving a client a special deal — overrides are visible at a glance.',
-      '<b>Delete a tier</b> by clicking the × on the right of any tier row.',
-      '<b>Canning rates include:</b> filling, seaming, CO₂, quality checks. Add-ons are billed on top.'
+      '<b>Per can:</b> nitrogen dosing, batch flash pasteurization, PakTech handles (4 and 6 pack), Proper Pack (4 and 6 pack), blank / brite cans and lids, shrink sleeve label, pre-printed cans.',
+      '<b>Per case:</b> 24-count case tray, 12-count case tray, case tray shrink wrap.',
+      '<b>Per pallet:</b> pallet and pallet shrink wrap. Pallet count comes from <b>Cases per pallet</b> (default 80), rounded up.',
+      '<b>Change over fee</b> (NEW): a flat $100 charged once per quote, not per can, so it does not grow with the run size. Change the standing price in 💲 Price Settings.',
+      'The rate box under each add-on can be edited for this quote only.'
     ]) +
-    whereToFind('Quote builder → Tiers table (callout 1 = first tier, callout 2 = Load Standard Tiers button)') +
-    subhead('➕', 'ADD-ONS') +
-    intro('Checked add-ons are automatically included in the per-can price. Each add-on appears as a separate line item on the PDF.') +
+
+    subhead('🧩', 'SEVERAL FORMATS ON ONE QUOTE (NEW)') +
+    intro('One quote can price 12oz and 16oz cans, or cans and bottles, under one quote number.') +
     bullets([
-      '<b>Nitrogen dosing:</b> $0.03/can — checked by default.',
-      '<b>Case tray (PakTech):</b> $0.03/can — checked by default.',
-      '<b>Palletizing:</b> $20/pallet — checked by default.',
-      '<b>Pasteurization:</b> $0.05/can — unchecked by default (add only if client requests it).',
-      'Uncheck any add-on to remove it from the quote. The tier totals update live.'
+      'The <b>FORMATS ON THIS QUOTE</b> strip shows one tab per format. Everything below it edits the selected tab.',
+      '<b>+ Add Format</b> starts a blank format. <b>⧉ Duplicate</b> copies the current tab&rsquo;s tiers and add-ons, so quoting 16oz right after 12oz only means changing the format name.',
+      'Remove a format with the <b>&times;</b> on its tab (it asks first if the format has pricing).'
     ]) +
-    subhead('💾', 'SAVING AND GENERATING THE PDF') +
+
+    subhead('✏️', 'CUSTOM LINES (NEW)') +
+    bullets([
+      '<b>+ Custom Line</b> adds a free-text line (description, quantity, unit price) to the selected format. Use it for anything the deck does not model: R&amp;D hours, freight, a setup charge.',
+      '<b>+ Quote-wide Line</b> adds a line that applies to the whole job rather than one format.'
+    ]) +
+
+    subhead('💾', 'SAVING, PDF AND EMAIL') +
+    bullets([
+      '<b>💾 Save</b> saves the quote and assigns its number.',
+      '<b>📄 PDF</b> opens the quote PDF without saving. <b>💾 Save + PDF</b> does both.',
+      '<b>📧 Save + Email Quote</b> saves, then emails the quote using the editable <b>EMAIL TO CLIENT</b> text. A successful send marks the quote <b>Sent</b> and records when and to whom.',
+      '<b>🧾 Save + Create Invoice</b> saves, then opens a new invoice filled in from the quote (see below).',
+      '<b>The PDF is itemized</b> (NEW): it uses the invoice layout, with one Description / Qty / Unit Price / Amount row per charge, so the client can check the math. One volume per format prints as a single job; several volumes print as Option 1, Option 2&hellip; each with its own total.'
+    ]) +
+
+    subhead('🗂', 'THE QUOTES LIST (NEW)') +
+    intro('Pipeline header &rarr; <b>🗂 Quotes</b> lists every saved quote, newest first, whether or not it is linked to a client.') +
+    bullets([
+      '<b>Filters:</b> All / Sent / Draft / Accepted / Declined, with counts. It opens on Sent when there are sent quotes.',
+      '<b>Search</b> by company, email or quote number.',
+      'Each row shows the company, quote number, format, quote date, valid-until date and who it was emailed to. Quotes past their validity show <b>EXPIRED</b>.',
+      '<b>Status dropdown</b> on each row: Draft / Sent / Declined. <b>Accepted</b> cannot be set here; it is set in the client&rsquo;s quote panel (see Accepting a quote). Accepted quotes show <b>ACCEPTED 🔒</b>.',
+      '<b>📄 PDF</b> re-opens the saved PDF. <b>👤 Client</b> and <b>💼 Deal</b> jump to the linked record.',
+      '<b>🧾 Invoice</b> turns the quote into an invoice (next section).'
+    ]) +
+
+    subhead('🧾', 'TURNING A QUOTE INTO AN INVOICE (NEW)') +
     steps([
-      '<b>Save</b> (callout 3) — saves the quote to Supabase under the client record. Assigns a quote number (e.g., GLQ-202507-001).',
-      '<b>Download PDF</b> — generates the PDF in a new window and opens the browser print dialog. Does not save to Supabase.',
-      '<b>Save + Download PDF</b> — saves first, then immediately opens the PDF. Use this for your normal workflow.',
-      'The generated PDF matches the Good Liquid quote format: company header, client info, tier pricing table, add-on line items, inclusions, and a signature block.'
+      'Click <b>🧾 Invoice</b> on the quote in 🗂 Quotes or in the client&rsquo;s PRODUCTION QUOTES panel (or <b>🧾 Save + Create Invoice</b> in the builder).',
+      'If the quote has several volumes or formats, pick <b>which option the client chose</b>. A single-job quote skips this step.',
+      'If the quote is not linked to a client yet, pick the client (likely matches by email or name are listed first) or <b>+ Add as a new client</b>. The quote is then linked to that client.',
+      'The <b>New Invoice</b> builder opens with the quote&rsquo;s line items at the quoted prices and the note &ldquo;Per quote GLQ-&hellip;&rdquo;. Check it and click <b>💾 Save Invoice</b>.'
     ]) +
-    whereToFind('Quote builder modal → bottom action bar (Save / Download PDF / Save + Download PDF)') +
-    subhead('📁', 'VIEWING SAVED QUOTES') +
     bullets([
-      'All saved quotes for a client appear in the <b>📋 PRODUCTION QUOTES</b> panel inside the Edit Client modal.',
-      'Each row shows: quote number, format, date, status badge (Draft / Sent / Accepted / Declined).',
-      '<b>Re-download PDF:</b> click the PDF button on any saved quote row to regenerate and open it. The stored HTML is used — no internet required.',
-      '<b>Status:</b> you can update the quote status (e.g., to Accepted) directly from the list row.'
+      'The invoice is a new record under <b>Invoices</b>. The quote stays in 🗂 Quotes; set it to Accepted from the client&rsquo;s quote panel when the job is confirmed.',
+      'The invoice keeps the quoted fill price even if the client&rsquo;s catalog rate is different, so it totals exactly what was quoted.'
     ]) +
-    whereToFind('Clients → Edit Client → 📋 PRODUCTION QUOTES section') +
-    subhead('✅', 'CLOSING A JOB') +
-    intro('When a deal converts, mark it Closed Won in one click from the deal detail panel.') +
+
+    subhead('✅', 'ACCEPTING A QUOTE (UNLOCKS PORTAL SERVICES)') +
     steps([
-      'Pipeline → click the deal card → deal detail panel opens.',
-      'Click <b>✅ Close Job</b> (next to the 📋 New Quote button).',
-      'Confirm the prompt: "Mark this deal as Closed Won?"',
-      'The deal stage moves to Closed Won and saves automatically. The win-loss tracker fires and records the outcome.'
+      'Clients &rarr; open the client &rarr; <b>📋 PRODUCTION QUOTES</b> &rarr; <b>⚙ Services</b> on the quote.',
+      'Choose the <b>Project</b> the quote is for. Services unlock per project, not per client.',
+      'Tick what was sold: <b>Product Renders</b>, <b>Packaging &amp; Artwork</b>, <b>Market Analytics</b>.',
+      'Set <b>Status</b> to Accepted and click <b>Save</b>. Confirm the prompt.'
     ]) +
-    whereToFind('Pipeline → deal detail panel → ✅ Close Job button (admin only)');
+    bullets([
+      'The ticked services unlock in the client portal straight away and the client gets a &ldquo;new service is available&rdquo; email.',
+      '<b>Acceptance is final.</b> The quote shows ACCEPTED — LOCKED. Anything added later needs a new quote.',
+      'The message under Save reports what the server actually unlocked. If it lists anything as NOT unlocked, grant it from the project card (see Client Portal Projects).'
+    ]) +
+    whereToFind('Clients &rarr; Edit Client &rarr; 📋 PRODUCTION QUOTES &rarr; ⚙ Services') +
+
+    subhead('🏁', 'CLOSING A DEAL') +
+    steps([
+      'Pipeline &rarr; click the deal card &rarr; deal detail panel.',
+      'Click <b>✅ Won</b> or <b>🚫 Lost</b> (next to 📋 New Quote) and confirm.',
+      'The deal moves to Closed Won or Closed Lost and saves.'
+    ]) +
+    whereToFind('Pipeline &rarr; deal detail panel &rarr; ✅ Won / 🚫 Lost (admin only)');
 
   /* SECTION 11 — EMAIL & CORRESPONDENCE */
   var MOCK_CORR = wf(620, 250,
@@ -991,7 +1043,7 @@
       '<b>🔍 Internal Audit &amp; Management Review</b> — schedule audits, log findings → NCRs, KPI-snapshot reviews.',
       '<b>📄 Documents</b> — DB-listed SOPs, registers, and the LACF guide, with downloads.',
       '<b>🔒 Auditor portal</b> — mint a token from the GMP hub; the auditor sees everything read-only, no CRM account.',
-      '<b>🎨 Label Artwork / SKUs</b> — customers upload each can design (1 to 20+ SKUs) from their portal; staff see them on the client card.'
+      '<b>🎨 Label Artwork / SKUs</b> — one entry per can design (1 to 20+ SKUs). Staff manage them on the client card and record each decision (In review, Changes requested, Approved, Sent to printer); customers upload and revise from the portal\'s Packaging &amp; Artwork tab when that service is unlocked.'
     ]);
 
   var NEW_SECTIONS = [
