@@ -33,6 +33,7 @@
      window.glRenderWarehouse()         — fills #cpg-warehouse
      window.glWhBuildPaperworkPdf(t, l) — jsPDF doc for a transfer
      window.glWhCode128(text)           — Code 128-B module widths
+     window.glWhBuildBolSheetsPdf(j, i) — jsPDF pallet sheets from a BOL
    ============================================================ */
 (function(){
   'use strict';
@@ -193,7 +194,7 @@
     'sku:wh_skus!wh_pallets_sku_id_fkey(' + SKU_COLS + ',client:clients!wh_skus_client_id_fkey(id,name)),' +
     'lot:wh_lots!wh_pallets_lot_matches_sku(' + LOT_COLS + ')';
 
-  var state = { tab: 'dashboard', clients: [], clientsLoaded: false, skuClient: '' };
+  var state = { tab: 'dashboard', clients: [], clientsLoaded: false, skuClient: '', bol: null };
 
   async function loadClients(force){
     if(state.clientsLoaded && !force) return state.clients;
@@ -220,7 +221,8 @@
     ['transfers','🚚 Transfers'],
     ['skus','🏷️ SKU master'],
     ['outbound','📤 Outbound orders'],
-    ['recon','🧮 Reconciliation']
+    ['recon','🧮 Reconciliation'],
+    ['bol','📄 BOL pallet sheets']
   ];
 
   window.glRenderWarehouse = function glRenderWarehouse(){
@@ -254,6 +256,7 @@
       else if(state.tab === 'skus') await renderSkus();
       else if(state.tab === 'outbound') await renderOutbound();
       else if(state.tab === 'recon') renderRecon();
+      else if(state.tab === 'bol') renderBol();
     } catch(e){
       setBody(note('err', 'Could not load: ' + errMsg(e)));
     }
@@ -1342,6 +1345,98 @@
   }
 
   // ════════════════════════════════════════════════════════════
+  // 5b. BOL PALLET SHEETS
+  // A client sends a BOL that says "14 pallets". Type what is on the BOL,
+  // press print, and get one big sheet per pallet: PALLET 3 OF 14, the BOL
+  // and PO numbers, ship to, carrier. Print only; nothing is saved, so it
+  // works for any shipment, whether or not its pallets are in this system.
+  // ════════════════════════════════════════════════════════════
+  var BOL_MAX_PALLETS = 200;
+  var BOL_FIELDS = ['client','bol','po','date','carrier','shipto','product','lot','pallets','cases'];
+
+  // Pure: form values in, { errors, info } out. Exposed for tests.
+  function bolInput(v){
+    v = v || {};
+    var t = function(k){ return String(v[k] == null ? '' : v[k]).trim(); };
+    var errors = [];
+    var palletsRaw = t('pallets');
+    var pallets = Number(palletsRaw);
+    if(!t('bol')) errors.push('Enter the BOL number.');
+    if(!palletsRaw) errors.push('Enter how many pallets the BOL lists.');
+    else if(!(pallets >= 1 && pallets <= BOL_MAX_PALLETS && Math.floor(pallets) === pallets)) errors.push('Pallet count must be a whole number from 1 to ' + BOL_MAX_PALLETS + '.');
+    var casesRaw = t('cases');
+    var cases = casesRaw ? Number(casesRaw) : null;
+    if(casesRaw && !(cases >= 0 && isFinite(cases))) errors.push('Cases per pallet must be a number.');
+    return {
+      errors: errors,
+      info: {
+        client: t('client'), bol: t('bol'), po: t('po'), date: t('date'), carrier: t('carrier'),
+        shipto: t('shipto'), product: t('product'), lot: t('lot'),
+        pallets: errors.length ? 0 : pallets, cases: cases
+      }
+    };
+  }
+
+  function renderBol(){
+    var b = state.bol || { date: todayISO() };
+    var v = function(k){ return esc(b[k] == null ? '' : b[k]); };
+    var names = state.clients.map(function(c){ return '<option value="' + esc(c.name) + '"></option>'; }).join('');
+    setBody('<div class="ccard" id="wh-bol-form" style="max-width:760px"><div class="ccard-t">Pallet sheets from a BOL</div>' +
+      '<div style="font-size:12px;color:#9aa7bd;line-height:1.6;margin-bottom:12px">Copy the numbers off the client\'s BOL and print. One sheet per pallet, marked <b>PALLET 1 OF N</b> through <b>N OF N</b>. Nothing is saved.</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+        field('BOL # *', '<input id="wh-bol-bol" value="' + v('bol') + '" style="' + INP + '">') +
+        field('Number of pallets *', '<input id="wh-bol-pallets" type="number" min="1" max="' + BOL_MAX_PALLETS + '" step="1" value="' + v('pallets') + '" style="' + INP + '">') +
+        field('Client / shipper', '<input id="wh-bol-client" list="wh-bol-clients" autocomplete="off" value="' + v('client') + '" style="' + INP + '"><datalist id="wh-bol-clients">' + names + '</datalist>') +
+        field('PO / order #', '<input id="wh-bol-po" value="' + v('po') + '" style="' + INP + '">') +
+        field('Ship date', '<input id="wh-bol-date" type="date" value="' + v('date') + '" style="' + INP + '">') +
+        field('Carrier', '<input id="wh-bol-carrier" value="' + v('carrier') + '" style="' + INP + '">') +
+        field('Ship to', '<textarea id="wh-bol-shipto" rows="3" style="' + INP + '">' + v('shipto') + '</textarea>', true) +
+        field('Product', '<input id="wh-bol-product" value="' + v('product') + '" style="' + INP + '">') +
+        field('Lot #', '<input id="wh-bol-lot" value="' + v('lot') + '" style="' + INP + '">') +
+        field('Cases per pallet', '<input id="wh-bol-cases" type="number" min="0" step="1" value="' + v('cases') + '" style="' + INP + '">') +
+      '</div>' +
+      '<div id="wh-bol-msg"></div>' +
+      '<div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">' +
+        '<button type="button" class="cbtn pri" data-wh="printBolSheets" id="wh-bol-print">🖨️ Print pallet sheets</button>' +
+        '<button type="button" class="cbtn" data-wh="clearBol">Clear</button>' +
+      '</div></div>');
+    // Listen on the form itself: it is replaced on every render, so the
+    // listener goes with it and never fires on another tab.
+    var host = document.getElementById('wh-bol-form');
+    if(!host) return;
+    // Keep what was typed when staff switch tabs and come back.
+    var sync = function(){
+      var cur = {};
+      BOL_FIELDS.forEach(function(k){ cur[k] = val(host, '#wh-bol-' + k); });
+      state.bol = cur;
+      var n = bolInput(cur).info.pallets;
+      var btn = host.querySelector('#wh-bol-print');
+      if(btn) btn.textContent = '🖨️ Print ' + (n ? n + ' pallet sheet' + (n === 1 ? '' : 's') : 'pallet sheets');
+    };
+    host.addEventListener('input', sync);
+    sync();
+  }
+
+  async function printBolSheets(){
+    var host = body(); if(!host) return;
+    var cur = {};
+    BOL_FIELDS.forEach(function(k){ cur[k] = val(host, '#wh-bol-' + k); });
+    state.bol = cur;
+    var r = bolInput(cur);
+    var msg = host.querySelector('#wh-bol-msg');
+    if(r.errors.length){ if(msg) msg.innerHTML = note('err', r.errors.join(' ')); return; }
+    if(msg) msg.innerHTML = '';
+    try {
+      if(typeof window.ensureJsPdf !== 'function') throw new Error('PDF engine not available on this page.');
+      var jsPDF = await window.ensureJsPdf();
+      var doc = buildBolSheets(jsPDF, r.info);
+      doc.save('BOL_' + r.info.bol.replace(/[^A-Za-z0-9._-]+/g, '_') + '_pallet_sheets.pdf');
+      audit('wh_bol_sheets_printed', r.info.bol, { pallets: r.info.pallets, client: r.info.client });
+      if(msg) msg.innerHTML = note('ok', r.info.pallets + ' pallet sheet' + (r.info.pallets === 1 ? '' : 's') + ' saved as a PDF. Open it and print.');
+    } catch(e){ if(msg) msg.innerHTML = note('err', 'Could not build the PDF: ' + errMsg(e)); }
+  }
+
+  // ════════════════════════════════════════════════════════════
   // 6. RECONCILIATION (CONRI inventory CSV vs our records)
   // ════════════════════════════════════════════════════════════
   function renderRecon(){
@@ -1709,6 +1804,80 @@
 
   window.glWhBuildPaperworkPdf = function(jsPDF, t, lines){ return buildPaperwork(jsPDF, t, lines); };
 
+  // One landscape letter page per pallet, readable from across the dock:
+  // the pallet number is the biggest thing on the page.
+  function buildBolSheets(jsPDF, info){
+    var doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+    var W = 792, H = 612, n = info.pallets;
+    var dateStr = fmtDate(info.date);
+    var shipTo = String(info.shipto || '').split(/\r?\n/).map(function(x){ return x.trim(); }).filter(Boolean).slice(0, 4);
+    var canBarcode = /^[\x20-\x7e]{1,30}$/.test(info.bol);
+    for(var i = 1; i <= n; i++){
+      if(i > 1) doc.addPage('letter', 'landscape');
+      doc.setTextColor(0); doc.setDrawColor(0);
+      doc.setLineWidth(7); doc.rect(20, 20, W - 40, H - 40);
+
+      // Pallet X of N, top right
+      doc.setFont('helvetica','bold'); doc.setFontSize(26);
+      doc.text('PALLET', 590, 78, { align: 'center' });
+      var big = i + ' OF ' + n;
+      var bigTxt = fitText(doc, big, 300, 120, 60);
+      doc.text(bigTxt, 590, 190, { align: 'center' });
+
+      // Client / product, top left
+      doc.setFontSize(30);
+      doc.text(fitText(doc, String(info.client || 'SHIPMENT').toUpperCase(), 380, 30, 16), 48, 78);
+      doc.setFont('helvetica','normal');
+      if(info.product){ doc.setFontSize(18); doc.text(cellText(doc, info.product, 380), 48, 106); }
+
+      // BOL / PO
+      doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(70);
+      doc.text('BOL #', 48, 150);
+      doc.setTextColor(0); doc.setFontSize(34);
+      doc.text(fitText(doc, info.bol, 330, 34, 16), 48, 186);
+      if(info.po){
+        doc.setFontSize(14); doc.setTextColor(70); doc.text('PO #', 48, 220);
+        doc.setTextColor(0); doc.setFontSize(24); doc.text(fitText(doc, info.po, 330, 24, 12), 48, 248);
+      }
+
+      doc.setLineWidth(2); doc.line(40, 270, W - 40, 270);
+
+      // Ship to (left) / details (right)
+      doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(70);
+      doc.text('SHIP TO', 48, 298);
+      doc.setTextColor(0);
+      (shipTo.length ? shipTo : ['-']).forEach(function(line, j){
+        doc.setFont('helvetica', j === 0 ? 'bold' : 'normal');
+        doc.text(fitText(doc, line, 380, j === 0 ? 24 : 18, 11), 48, 328 + j * 26);
+      });
+      var rows = [['SHIP DATE', dateStr || '-'], ['CARRIER', info.carrier || '-'], ['LOT', info.lot || '-'],
+                  ['CASES', info.cases != null ? fmtInt(info.cases) : '-']];
+      var y = 298;
+      rows.forEach(function(r){
+        doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(70);
+        doc.text(r[0], 460, y);
+        doc.setTextColor(0); doc.setFontSize(22);
+        doc.text(cellText(doc, r[1], 200), 560, y + 1);
+        y += 38;
+      });
+
+      // Barcode of the BOL number
+      if(canBarcode){
+        var bw = drawBarcode(doc, info.bol, 48, 460, 400, 56);
+        doc.setFont('helvetica','bold'); doc.setFontSize(12);
+        doc.text(info.bol, 48 + bw / 2, 532, { align: 'center' });
+      }
+
+      // Footer
+      doc.setLineWidth(1); doc.line(40, 552, W - 40, 552);
+      doc.setFont('helvetica','normal'); doc.setFontSize(12);
+      doc.text('FROM: ' + GL.name + ', ' + GL.street + ', ' + GL.city + '   |   BOL ' + cellText(doc, info.bol, 120) + '   |   Pallet ' + i + ' of ' + n,
+        W / 2, 574, { align: 'center' });
+    }
+    return doc;
+  }
+  window.glWhBuildBolSheetsPdf = function(jsPDF, info){ return buildBolSheets(jsPDF, info); };
+
   async function printPaperwork(id){
     try {
       if(typeof window.ensureJsPdf !== 'function') throw new Error('PDF engine not available on this page.');
@@ -1748,7 +1917,9 @@
     exportSkus: function(){ return exportSkus(); },
     newOrder: function(){ return newOrder(); },
     orderEmail: function(a){ return orderEmail(a); },
-    shipOrder: function(a){ return shipOrder(a); }
+    shipOrder: function(a){ return shipOrder(a); },
+    printBolSheets: function(){ return printBolSheets(); },
+    clearBol: function(){ state.bol = null; renderBol(); }
   };
 
   document.addEventListener('click', function(e){
@@ -1766,7 +1937,7 @@
 
   // Exposed for tests: pure functions only.
   window.glWhInternals = { parseCsv: parseCsv, reconcile: reconcile, skuCsv: skuCsv, allocateFefo: allocateFefo,
-    sortFefo: sortFefo, scheduleEmailText: scheduleEmailText, lineIssues: lineIssues, upcWarning: upcWarning, fmtDate: fmtDate };
+    sortFefo: sortFefo, scheduleEmailText: scheduleEmailText, lineIssues: lineIssues, upcWarning: upcWarning, fmtDate: fmtDate, bolInput: bolInput };
 
   // Render when the page is opened. cNav hooks run after the page is shown.
   function boot(){

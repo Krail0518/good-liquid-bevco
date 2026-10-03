@@ -17,6 +17,7 @@
  *   - the CONRI CSV export neutralises spreadsheet formulas
  *   - reconciliation reports the right differences
  *   - outbound allocation is FEFO: earliest best-by first
+ *   - BOL pallet sheets: a 14-pallet BOL prints 14 sheets, 1 OF 14 .. 14 OF 14
  *
  * WHAT IT DOES NOT PROVE
  * ----------------------
@@ -280,6 +281,58 @@ const server = http.createServer((req, res) => {
   await page.waitForFunction(() => window.__writes.length > 0, null, { timeout: 5000 });
   const w = await page.evaluate(() => window.__writes);
   check('export stamps last_exported_at on the exported SKUs', w.length === 1 && w[0].table === 'wh_skus' && w[0].op === 'update' && !!w[0].payload.last_exported_at, JSON.stringify(w));
+
+  // ── BOL pallet sheets ─────────────────────────────────────────────
+  const bolPure = await page.evaluate(() => {
+    const B = window.glWhInternals.bolInput;
+    return {
+      ok: B({ bol: 'BOL-77', pallets: '14', cases: '120' }),
+      noBol: B({ pallets: '3' }).errors.length,
+      zero: B({ bol: 'X', pallets: '0' }).errors.length,
+      frac: B({ bol: 'X', pallets: '2.5' }).errors.length,
+      huge: B({ bol: 'X', pallets: '5000' }).errors.length,
+    };
+  });
+  check('BOL input: 14 pallets parses, no errors', bolPure.ok.errors.length === 0 && bolPure.ok.info.pallets === 14 && bolPure.ok.info.cases === 120, JSON.stringify(bolPure.ok));
+  check('BOL input: missing BOL #, 0, fractional and absurd counts are refused',
+    bolPure.noBol === 1 && bolPure.zero === 1 && bolPure.frac === 1 && bolPure.huge === 1, JSON.stringify(bolPure));
+
+  await page.click('[data-wh="tab"][data-arg="bol"]');
+  await page.waitForSelector('#wh-bol-bol', { timeout: 5000 });
+  await page.click('[data-wh="printBolSheets"]');
+  const bolErr = await page.evaluate(() => document.getElementById('wh-bol-msg').innerText);
+  check('printing with an empty form says what is missing', /BOL number/.test(bolErr) && /how many pallets/.test(bolErr), bolErr);
+  await page.fill('#wh-bol-bol', 'BOL-55821');
+  await page.fill('#wh-bol-pallets', '14');
+  await page.fill('#wh-bol-client', XSS);
+  await page.fill('#wh-bol-po', 'PO-9001');
+  await page.fill('#wh-bol-carrier', 'XPO Logistics');
+  await page.fill('#wh-bol-shipto', 'Publix DC\n1936 George Jenkins Blvd\nLakeland, FL 33815');
+  await page.fill('#wh-bol-cases', '120');
+  const btnText = await page.evaluate(() => document.getElementById('wh-bol-print').textContent);
+  check('the print button counts the sheets as you type', /Print 14 pallet sheets/.test(btnText), btnText);
+  // Switching tabs and back keeps what was typed.
+  await page.click('[data-wh="tab"][data-arg="recon"]');
+  await page.click('[data-wh="tab"][data-arg="bol"]');
+  await page.waitForSelector('#wh-bol-bol', { timeout: 5000 });
+  const kept = await page.evaluate(() => ({ bol: document.getElementById('wh-bol-bol').value, client: document.getElementById('wh-bol-client').value,
+    xss: window.__xss === 1 || !!document.querySelector('#wh-body img') }));
+  check('the BOL form survives a tab switch', kept.bol === 'BOL-55821' && kept.client === XSS, JSON.stringify(kept));
+  check('script typed into the BOL form does not run', !kept.xss);
+  if (JSPDF) {
+    await page.evaluate(() => { window.__savedName = null; window.__savedPdf = null; });
+    await page.click('[data-wh="printBolSheets"]');
+    await page.waitForFunction(() => !!window.__savedName, null, { timeout: 8000 });
+    const bol = await page.evaluate(() => ({ name: window.__savedName, raw: window.__savedPdf }));
+    const bpages = (bol.raw.match(/\/Type \/Page\b/g) || []).length;
+    const bhas = (s) => bol.raw.indexOf('(' + s) >= 0;
+    check('BOL PDF is named for the BOL', bol.name === 'BOL_BOL-55821_pallet_sheets.pdf', bol.name);
+    check('BOL PDF has one sheet per pallet: 14 pages', bpages === 14, 'pages=' + bpages);
+    check('sheets run 1 OF 14 through 14 OF 14', bhas('1 OF 14') && bhas('7 OF 14') && bhas('14 OF 14') && !bhas('15 OF 14'));
+    check('sheets carry BOL, PO, carrier, ship to, cases',
+      bhas('BOL-55821') && bhas('PO-9001') && bhas('XPO Logistics') && bhas('Publix DC') && bhas('Lakeland, FL 33815') && bhas('120'));
+    if (process.env.WH_BOL_OUT) fs.writeFileSync(process.env.WH_BOL_OUT, Buffer.from(bol.raw, 'binary'));
+  }
 
   check('no page errors', errors.length === 0, JSON.stringify(errors));
   await browser.close(); server.close();

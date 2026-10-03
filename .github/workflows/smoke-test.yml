@@ -338,12 +338,21 @@ jobs:
 
       # Warehouse Storage: dashboard flags, transfer detail, the packing list
       # and 7 pallet labels for the seeded Camo Energy transfer, CSV export,
-      # reconciliation and FEFO allocation.
+      # reconciliation, FEFO allocation, and BOL pallet sheets (1 OF N .. N OF N).
       - name: Run warehouse test
         env:
           NODE_PATH: /tmp/pw/node_modules
           REPO_ROOT: ${{ github.workspace }}
         run: node tests/warehouse.test.cjs
+
+      # CIP tank history: searching a tank queries every cycle in the
+      # database (not just the newest 200 on screen) and answers "when was
+      # it last cleaned", including the last PASSING clean.
+      - name: Run CIP history search test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/cip-history-search.test.cjs
 
       # Users & Permissions: an unticked page must lose its sidebar link. The
       # gating read only onclick= links and went dark when every link moved to
