@@ -337,8 +337,8 @@
       // Searching: the table shows the full history for the matched
       // equipment, newest first, with the "last cleaned" answer on top.
       if(search.busy){
-        host.innerHTML = banner + toolbar + '<div style="padding:24px;text-align:center;color:var(--muted);font-size:13px">Searching every CIP cycle for “' + esc(search.term) + '”…</div>';
-        wireToolbar(host); return;
+        paint(host, banner + toolbar + '<div style="padding:24px;text-align:center;color:var(--muted);font-size:13px">Searching every CIP cycle for “' + esc(search.term) + '”…</div>');
+        return;
       }
       rows = search.rows || [];
       var errBanner = search.error
@@ -346,8 +346,8 @@
             'Could not search the database (' + esc(search.error) + '). Showing only the cycles already loaded on this page, so older dates may be missing.</div>'
         : '';
       if(!rows.length){
-        host.innerHTML = banner + toolbar + errBanner + '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No CIP cycles on record for equipment matching “' + esc(search.term) + '”.</div>';
-        wireToolbar(host); return;
+        paint(host, banner + toolbar + errBanner + '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No CIP cycles on record for equipment matching “' + esc(search.term) + '”.</div>');
+        return;
       }
       var capped = !search.error && rows.length >= HISTORY_LIMIT
         ? ' Showing the newest ' + HISTORY_LIMIT + '.' : '';
@@ -356,13 +356,13 @@
         summaryHtml(rows);
     } else {
       if(!rows.length){
-        host.innerHTML = banner + toolbar + '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No cycles logged yet. Click "+ Log Cycle" above to open the canonical 9-step FDA form. FDA-required between every run.</div>';
-        wireToolbar(host); return;
+        paint(host, banner + toolbar + '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No cycles logged yet. Click "+ Log Cycle" above to open the canonical 9-step FDA form. FDA-required between every run.</div>');
+        return;
       }
       hint = banner + toolbar + '<div style="font-size:11px;color:var(--muted);padding:8px 14px 12px;line-height:1.5">Showing canonical 9-step CIP records (form <code>GMP-SAN-002</code>). Search a tank above to see every date it was cleaned. Click any row to see the full step-by-step detail.</div>';
     }
     var RES_COLOR = { pass:'#5fcf9e', fail:'#ff8579', draft:'#f5c842', pending:'#9aa7bd' };
-    host.innerHTML = hint + '<table class="ctbl"><thead><tr><th>When</th><th>Equipment</th><th>Steps done</th><th>Chemicals</th><th>Operator</th><th>PAA ppm</th><th>Result</th></tr></thead><tbody>' +
+    paint(host, hint + '<table class="ctbl"><thead><tr><th>When</th><th>Equipment</th><th>Steps done</th><th>Chemicals</th><th>Operator</th><th>PAA ppm</th><th>Result</th></tr></thead><tbody>' +
       rows.map(function(r){
         // A history spans years, so searched rows carry the year.
         var when = r.cycle_at ? new Date(r.cycle_at).toLocaleString('en-US', search.term
@@ -382,7 +382,13 @@
           '<td style="padding:11px;color:var(--muted);font-family:var(--ff-mono);font-size:11px">' + esc(r.atp_reading || '—') + '</td>' +
           '<td style="padding:11px;color:' + resColor + ';font-weight:700">' + resLabel + '</td>' +
         '</tr>';
-      }).join('') + '</tbody></table>';
+      }).join('') + '</tbody></table>');
+  }
+
+  // The page's one raw-HTML sink. Callers build html with esc() on every
+  // interpolated value; the toolbar is re-wired after each paint.
+  function paint(host, html){
+    host.innerHTML = html;
     wireToolbar(host);
   }
 

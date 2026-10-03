@@ -1423,17 +1423,18 @@
     BOL_FIELDS.forEach(function(k){ cur[k] = val(host, '#wh-bol-' + k); });
     state.bol = cur;
     var r = bolInput(cur);
-    var msg = host.querySelector('#wh-bol-msg');
-    if(r.errors.length){ if(msg) msg.innerHTML = note('err', r.errors.join(' ')); return; }
-    if(msg) msg.innerHTML = '';
+    var msgEl = host.querySelector('#wh-bol-msg');
+    var msg = function(kind, text){ if(msgEl) msgEl.innerHTML = text ? note(kind, text) : ''; };
+    if(r.errors.length){ msg('err', r.errors.join(' ')); return; }
+    msg('', '');
     try {
       if(typeof window.ensureJsPdf !== 'function') throw new Error('PDF engine not available on this page.');
       var jsPDF = await window.ensureJsPdf();
       var doc = buildBolSheets(jsPDF, r.info);
       doc.save('BOL_' + r.info.bol.replace(/[^A-Za-z0-9._-]+/g, '_') + '_pallet_sheets.pdf');
       audit('wh_bol_sheets_printed', r.info.bol, { pallets: r.info.pallets, client: r.info.client });
-      if(msg) msg.innerHTML = note('ok', r.info.pallets + ' pallet sheet' + (r.info.pallets === 1 ? '' : 's') + ' saved as a PDF. Open it and print.');
-    } catch(e){ if(msg) msg.innerHTML = note('err', 'Could not build the PDF: ' + errMsg(e)); }
+      msg('ok', r.info.pallets + ' pallet sheet' + (r.info.pallets === 1 ? '' : 's') + ' saved as a PDF. Open it and print.');
+    } catch(e){ msg('err', 'Could not build the PDF: ' + errMsg(e)); }
   }
 
   // ════════════════════════════════════════════════════════════
