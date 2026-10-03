@@ -9,7 +9,8 @@
  *   - searching a tank asks the DATABASE for every matching cycle, not just
  *     the newest 200 already on screen (a rarely cleaned tank falls off that
  *     list, which is the whole complaint)
- *   - % and _ in the search are escaped, so "FB_6" cannot match "FBX6"
+ *   - spaces, dashes and other punctuation are ignored: "FV6", "fv 6" and
+ *     "FV-6" all find a tank saved as "FV 6" (or "FV-6"), but not "FV16"
  *   - the summary answers the question: last cleaned date, and the last
  *     PASSING clean when the newest cycle failed
  *   - the history is newest first, with the year shown
@@ -49,7 +50,11 @@ const FB6 = [
   cyc('f3', 'FB6', '2025-11-02T08:00:00Z', 'signed'),
 ];
 const FBX6 = [cyc('x1', 'FBX6', '2026-06-01T08:00:00Z', 'signed')];
-const ALL = RECENT.concat(FB6, FBX6);
+// The same fermenter saved three ways, plus a different tank whose name
+// shares the letters.
+const FV6 = [cyc('v1', 'FV 6', '2026-09-01T08:00:00Z', 'signed'), cyc('v2', 'FV-6', '2026-08-01T08:00:00Z', 'signed'),
+  cyc('v3', 'fv6', '2026-07-01T08:00:00Z', 'signed'), cyc('v4', 'FV16', '2026-09-02T08:00:00Z', 'signed')];
+const ALL = RECENT.concat(FB6, FBX6, FV6);
 
 const PAGE = `<!doctype html><meta charset="utf-8"><body>
 <div id="cpg-cip" class="cpg"><div id="cip-sub"></div><div id="cip-body"></div></div>
@@ -58,24 +63,20 @@ window.glEsc = function(s){ return String(s == null ? '' : s).replace(/[<>&"']/g
   return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]; }); };
 var ALL = ${JSON.stringify(ALL)};
 window.__queries = [];
-function Q(){ this.f = []; this.like = null; this.lim = null; }
+function Q(){ this.f = []; this.rx = null; this.lim = null; }
 Q.prototype.select = function(){ return this; };
 Q.prototype.order = function(){ return this; };
 Q.prototype.eq = function(k, v){ this.f.push([k, v]); return this; };
-Q.prototype.ilike = function(k, v){ this.like = [k, v]; return this; };
+Q.prototype.regexIMatch = function(k, v){ this.rx = [k, v]; return this; };
 Q.prototype.limit = function(n){ this.lim = n; return this; };
 Q.prototype.then = function(res, rej){
   var self = this;
-  window.__queries.push({ like: self.like, limit: self.lim });
+  window.__queries.push({ rx: self.rx, limit: self.lim });
   var rows = ALL.filter(function(r){ return self.f.every(function(f){ return r[f[0]] === f[1]; }); });
-  if(self.like){
-    // Real ILIKE semantics: % any, _ one char, backslash escapes.
-    var re = '^' + self.like[1].replace(/\\\\(.)|([%_])|([^\\\\%_])/g, function(m, esc, wild, lit){
-      if(esc) return esc.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\\\$&');
-      if(wild) return wild === '%' ? '.*' : '.';
-      return lit.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\\\$&');
-    }) + '$';
-    var rx = new RegExp(re, 'i');
+  if(self.rx){
+    // Postgres ~* semantics: unanchored, case-insensitive. The one POSIX
+    // class the page uses is translated to its JS equivalent.
+    var rx = new RegExp(self.rx[1].split('[^[:alnum:]]').join('[^\\\\p{L}\\\\p{N}]'), 'iu');
     rows = rows.filter(function(r){ return rx.test(r.data.equipment); });
   } else {
     // The main list: newest 2 only, standing in for the 200-row cap.
@@ -127,8 +128,8 @@ const server = http.createServer((req, res) => {
     rows: [...document.querySelectorAll('#cip-body tbody tr')].map((r) => r.getAttribute('data-gl-arg1')),
     q: window.__queries[window.__queries.length - 1],
   }));
-  check('the search went to the database with a contains-match on equipment',
-    res.q.like && res.q.like[0] === 'data->>equipment' && res.q.like[1] === '%fb6%' && res.q.limit >= 1000, JSON.stringify(res.q));
+  check('the search went to the database with a separator-tolerant match on equipment',
+    res.q.rx && res.q.rx[0] === 'data->>equipment' && res.q.rx[1] === 'f[^[:alnum:]]*b[^[:alnum:]]*6' && res.q.limit >= 1000, JSON.stringify(res.q));
   check('every FB6 cycle is listed, case-insensitively, newest first',
     JSON.stringify(res.rows.filter((id) => /^f/.test(id))) === '["f2","f1","f3"]', JSON.stringify(res.rows));
   check('FBX6 is a different tank and is not listed', res.rows.indexOf('x1') < 0, JSON.stringify(res.rows));
@@ -137,12 +138,26 @@ const server = http.createServer((req, res) => {
   check('summary: last passing clean Mar 14, 2026', /Last passing clean: Mar 14, 2026/.test(res.text), res.text.slice(0, 500));
   check('history rows show the year', /Nov 2, 2025/.test(res.text));
 
-  // Wildcards are literal
-  await page.fill('#gl-cip-search', 'FB_6');
-  await page.press('#gl-cip-search', 'Enter');
-  await page.waitForFunction(() => /FB_6/.test(document.getElementById('cip-body').innerText) && !/Searching/.test(document.getElementById('cip-body').innerText), null, { timeout: 5000 });
-  const wild = await page.evaluate(() => ({ text: document.getElementById('cip-body').innerText, q: window.__queries[window.__queries.length - 1] }));
-  check('an underscore is escaped, not a wildcard', wild.q.like[1] === '%FB\\_6%' && /No CIP cycles on record/.test(wild.text), JSON.stringify(wild.q) + ' ' + wild.text.slice(0, 200));
+  // Spaces, dashes and other punctuation are ignored
+  async function searchFor(term) {
+    await page.fill('#gl-cip-search', term);
+    await page.press('#gl-cip-search', 'Enter');
+    await page.waitForFunction((t) => document.getElementById('cip-body').innerText.indexOf(t) >= 0 && !/Searching/.test(document.getElementById('cip-body').innerText), term, { timeout: 5000 });
+    return page.evaluate(() => ({
+      text: document.getElementById('cip-body').innerText,
+      rows: [...document.querySelectorAll('#cip-body tbody tr')].map((r) => r.getAttribute('data-gl-arg1')).sort(),
+      q: window.__queries[window.__queries.length - 1],
+    }));
+  }
+  for (const term of ['FV6', 'fv 6', 'FV-6', 'F.V 6']) {
+    const r = await searchFor(term);
+    check('"' + term + '" finds FV 6, FV-6 and fv6 but not FV16', JSON.stringify(r.rows) === '["v1","v2","v3"]', JSON.stringify(r.rows));
+  }
+  const us = await searchFor('FB_6');
+  check('an underscore is a separator, not a wildcard: "FB_6" finds FB6 and not FBX6',
+    JSON.stringify(us.rows) === '["f1","f2","f3"]' && us.q.rx[1] === 'F[^[:alnum:]]*B[^[:alnum:]]*6', JSON.stringify(us));
+  const pct = await searchFor('%');
+  check('a search with no letters or digits does not query, and finds nothing', /No CIP cycles on record/.test(pct.text) && pct.q.rx[1] === us.q.rx[1], pct.text.slice(0, 200));
 
   // Detail of an old cycle opens
   await page.fill('#gl-cip-search', 'FB6');

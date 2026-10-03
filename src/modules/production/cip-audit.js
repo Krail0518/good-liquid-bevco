@@ -126,13 +126,19 @@
   var HISTORY_LIMIT = 2000;
   var search = { term: '', rows: null, busy: false, error: null };
 
-  // ilike treats % and _ as wildcards (and PostgREST treats * as %), so a
-  // tank named "FB_6" must not match "FBX6". Escape them; drop the *.
-  function likeTerm(term){
-    return '%' + String(term).replace(/\*/g, '').replace(/[\\%_]/g, function(c){ return '\\' + c; }) + '%';
+  // Spaces, dashes and other punctuation are ignored, so "FV6", "fv 6" and
+  // "FV-6" all find a tank saved as "FV 6". The term keeps only letters and
+  // digits, and the database is asked for those characters in order with
+  // any non-alphanumerics between them (a case-insensitive regex). Only
+  // letters and digits reach the pattern, so nothing in it needs escaping.
+  function searchKey(term){
+    return String(term || '').replace(/[^\p{L}\p{N}]+/gu, '');
   }
-  function matchesTerm(r, term){
-    return String(r.line_area || '').toLowerCase().indexOf(term.toLowerCase()) >= 0;
+  function equipPattern(key){
+    return key.split('').join('[^[:alnum:]]*');
+  }
+  function matchesTerm(r, key){
+    return searchKey(r.line_area).toLowerCase().indexOf(key.toLowerCase()) >= 0;
   }
   function byCycleDesc(a, b){
     var ta = a.cycle_at ? new Date(a.cycle_at).getTime() : 0;
@@ -144,13 +150,15 @@
     term = String(term || '').trim();
     search.term = term; search.error = null;
     if(!term){ search.rows = null; render(); return; }
+    var key = searchKey(term);
+    if(!key){ search.rows = []; search.error = null; render(); return; }
     search.busy = true; render();
     var dbRows = null;
     if(window.supa){
       try {
         var r = await window.supa.from('compliance_records')
           .select('*').eq('form_code', CIP_FORM)
-          .ilike('data->>equipment', likeTerm(term))
+          .regexIMatch('data->>equipment', equipPattern(key))
           .order('recorded_at', { ascending: false })
           .limit(HISTORY_LIMIT);
         if(r && r.error) search.error = r.error.message;
@@ -165,11 +173,11 @@
     var out = [];
     (dbRows || []).forEach(function(r){ if(r && r.id){ seen[r.id] = 1; out.push(r); } });
     // Unsaved local cycles for this equipment still count, and say so.
-    (window.glCipPending || []).forEach(function(r){ if(!seen[r.id] && matchesTerm(r, term)) out.push(r); });
+    (window.glCipPending || []).forEach(function(r){ if(!seen[r.id] && matchesTerm(r, key)) out.push(r); });
     // If the database could not be reached, fall back to what is loaded,
     // and the banner below says the answer may be incomplete.
     if(dbRows === null){
-      (window.glCipLogs || []).forEach(function(r){ if(!seen[r.id] && matchesTerm(r, term)){ seen[r.id] = 1; out.push(r); } });
+      (window.glCipLogs || []).forEach(function(r){ if(!seen[r.id] && matchesTerm(r, key)){ seen[r.id] = 1; out.push(r); } });
     }
     out.sort(byCycleDesc);
     search.rows = out;
