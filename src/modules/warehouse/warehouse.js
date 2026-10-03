@@ -194,7 +194,7 @@
     'sku:wh_skus!wh_pallets_sku_id_fkey(' + SKU_COLS + ',client:clients!wh_skus_client_id_fkey(id,name)),' +
     'lot:wh_lots!wh_pallets_lot_matches_sku(' + LOT_COLS + ')';
 
-  var state = { tab: 'dashboard', clients: [], clientsLoaded: false, skuClient: '', bol: null };
+  var state = { tab: 'dashboard', clients: [], clientsLoaded: false, skuClient: '', bol: null, bolNote: null, bolFilled: [], bolBusy: false };
 
   async function loadClients(force){
     if(state.clientsLoaded && !force) return state.clients;
@@ -1380,22 +1380,33 @@
   function renderBol(){
     var b = state.bol || { date: todayISO() };
     var v = function(k){ return esc(b[k] == null ? '' : b[k]); };
+    // Fields the AI filled get a teal outline until someone edits the form,
+    // so staff can see what to check against the paper.
+    var hi = function(k){ return state.bolFilled.indexOf(k) >= 0 ? ';border-color:var(--teal);box-shadow:0 0 0 1px var(--teal)' : ''; };
+    var INPK = function(k){ return INP + hi(k); };
     var names = state.clients.map(function(c){ return '<option value="' + esc(c.name) + '"></option>'; }).join('');
     setBody('<div class="ccard" id="wh-bol-form" style="max-width:760px"><div class="ccard-t">Pallet sheets from a BOL</div>' +
-      '<div style="font-size:12px;color:#9aa7bd;line-height:1.6;margin-bottom:12px">Copy the numbers off the client\'s BOL and print. One sheet per pallet, marked <b>PALLET 1 OF N</b> through <b>N OF N</b>. Nothing is saved.</div>' +
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
-        field('BOL # *', '<input id="wh-bol-bol" value="' + v('bol') + '" style="' + INP + '">') +
-        field('Number of pallets *', '<input id="wh-bol-pallets" type="number" min="1" max="' + BOL_MAX_PALLETS + '" step="1" value="' + v('pallets') + '" style="' + INP + '">') +
-        field('Client / shipper', '<input id="wh-bol-client" list="wh-bol-clients" autocomplete="off" value="' + v('client') + '" style="' + INP + '"><datalist id="wh-bol-clients">' + names + '</datalist>') +
-        field('PO / order #', '<input id="wh-bol-po" value="' + v('po') + '" style="' + INP + '">') +
-        field('Ship date', '<input id="wh-bol-date" type="date" value="' + v('date') + '" style="' + INP + '">') +
-        field('Carrier', '<input id="wh-bol-carrier" value="' + v('carrier') + '" style="' + INP + '">') +
-        field('Ship to', '<textarea id="wh-bol-shipto" rows="3" style="' + INP + '">' + v('shipto') + '</textarea>', true) +
-        field('Product', '<input id="wh-bol-product" value="' + v('product') + '" style="' + INP + '">') +
-        field('Lot #', '<input id="wh-bol-lot" value="' + v('lot') + '" style="' + INP + '">') +
-        field('Cases per pallet', '<input id="wh-bol-cases" type="number" min="0" step="1" value="' + v('cases') + '" style="' + INP + '">') +
+      '<div style="font-size:12px;color:#9aa7bd;line-height:1.6;margin-bottom:12px">Upload the client\'s BOL to fill this in, or type it. Then print: one sheet per pallet, marked <b>PALLET 1 OF N</b> through <b>N OF N</b>. Nothing is saved.</div>' +
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">' +
+        '<label class="cbtn pri" style="cursor:pointer' + (state.bolBusy ? ';opacity:.6;pointer-events:none' : '') + '">' +
+          (state.bolBusy ? '⏳ Reading the BOL…' : '📎 Upload BOL (PDF or photo)') +
+          '<input type="file" id="wh-bol-file" accept="application/pdf,image/jpeg,image/png,image/webp,image/gif" style="display:none"' + (state.bolBusy ? ' disabled' : '') + '>' +
+        '</label>' +
+        '<span style="font-size:11px;color:#9aa7bd">PDF, JPG or PNG, up to ' + BOL_MAX_MB + ' MB</span>' +
       '</div>' +
-      '<div id="wh-bol-msg"></div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+        field('BOL # *', '<input id="wh-bol-bol" value="' + v('bol') + '" style="' + INPK('bol') + '">') +
+        field('Number of pallets *', '<input id="wh-bol-pallets" type="number" min="1" max="' + BOL_MAX_PALLETS + '" step="1" value="' + v('pallets') + '" style="' + INPK('pallets') + '">') +
+        field('Client / shipper', '<input id="wh-bol-client" list="wh-bol-clients" autocomplete="off" value="' + v('client') + '" style="' + INPK('client') + '"><datalist id="wh-bol-clients">' + names + '</datalist>') +
+        field('PO / order #', '<input id="wh-bol-po" value="' + v('po') + '" style="' + INPK('po') + '">') +
+        field('Ship date', '<input id="wh-bol-date" type="date" value="' + v('date') + '" style="' + INPK('date') + '">') +
+        field('Carrier', '<input id="wh-bol-carrier" value="' + v('carrier') + '" style="' + INPK('carrier') + '">') +
+        field('Ship to', '<textarea id="wh-bol-shipto" rows="3" style="' + INPK('shipto') + '">' + v('shipto') + '</textarea>', true) +
+        field('Product', '<input id="wh-bol-product" value="' + v('product') + '" style="' + INPK('product') + '">') +
+        field('Lot #', '<input id="wh-bol-lot" value="' + v('lot') + '" style="' + INPK('lot') + '">') +
+        field('Cases per pallet', '<input id="wh-bol-cases" type="number" min="0" step="1" value="' + v('cases') + '" style="' + INPK('cases') + '">') +
+      '</div>' +
+      '<div id="wh-bol-msg">' + (state.bolNote ? note(state.bolNote.kind, state.bolNote.text) : '') + '</div>' +
       '<div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">' +
         '<button type="button" class="cbtn pri" data-wh="printBolSheets" id="wh-bol-print">🖨️ Print pallet sheets</button>' +
         '<button type="button" class="cbtn" data-wh="clearBol">Clear</button>' +
@@ -1413,8 +1424,102 @@
       var btn = host.querySelector('#wh-bol-print');
       if(btn) btn.textContent = '🖨️ Print ' + (n ? n + ' pallet sheet' + (n === 1 ? '' : 's') : 'pallet sheets');
     };
-    host.addEventListener('input', sync);
+    host.addEventListener('input', function(){ state.bolFilled = []; state.bolNote = null; sync(); });
     sync();
+    var file = host.querySelector('#wh-bol-file');
+    if(file) file.addEventListener('change', function(){ var f = this.files && this.files[0]; if(f) readBol(f); });
+  }
+
+  // ── Read a BOL with AI ─────────────────────────────────────
+  // The file goes to the staff-only, rate-limited ai-proxy edge function
+  // (the API key never reaches the browser). What comes back is untrusted:
+  // a BOL is a document a stranger wrote. It only ever fills form fields,
+  // through bolFromAi() (type-checked, length-capped) and esc() on render,
+  // and a person reads the fields before anything prints.
+  var BOL_MAX_MB = 5;
+  var BOL_TYPES = { 'application/pdf': 'document', 'image/jpeg': 'image', 'image/png': 'image', 'image/webp': 'image', 'image/gif': 'image' };
+  var BOL_PROMPT =
+    'This is a bill of lading (BOL) for a shipment of pallets. Read it and reply with ONLY a JSON object, no other text, with these keys:\n' +
+    '{"bol_number": string, "po_number": string, "ship_date": "YYYY-MM-DD", "carrier": string, ' +
+    '"shipper": string, "consignee": string, "ship_to": string, "product": string, "lot": string, ' +
+    '"pallet_count": integer, "cases_per_pallet": integer}\n' +
+    'Rules: ship_to is the consignee name and full delivery address, one line per address line separated by \\n. ' +
+    'pallet_count is the total number of pallets (handling units) on the BOL. ' +
+    'cases_per_pallet only if every pallet has the same case count; otherwise null. ' +
+    'Use "" (or null for numbers) for anything not on the document. Never guess.';
+
+  function readFileB64(file){
+    return new Promise(function(resolve, reject){
+      var r = new FileReader();
+      r.onload = function(){ var s = String(r.result || ''); resolve(s.slice(s.indexOf(',') + 1)); };
+      r.onerror = function(){ reject(new Error('Could not read the file.')); };
+      r.readAsDataURL(file);
+    });
+  }
+
+  // Pure: the model's reply text in, form values out. Exposed for tests.
+  function bolFromAi(text, clientNames){
+    var t = String(text || '');
+    var a = t.indexOf('{'), z = t.lastIndexOf('}');
+    if(a < 0 || z <= a) throw new Error('The AI did not return any BOL fields.');
+    var j;
+    try { j = JSON.parse(t.slice(a, z + 1)); } catch(e){ throw new Error('The AI reply could not be read.'); }
+    if(!j || typeof j !== 'object') throw new Error('The AI reply could not be read.');
+    var str = function(x, max){ return (typeof x === 'string' || typeof x === 'number') ? String(x).replace(/\r/g, '').trim().slice(0, max || 120) : ''; };
+    var int = function(x, lo, hi){ var n = Number(x); return (x !== null && x !== '' && Math.floor(n) === n && n >= lo && n <= hi) ? String(n) : ''; };
+    var date = str(j.ship_date, 10);
+    var out = {
+      bol: str(j.bol_number, 60), po: str(j.po_number, 60), carrier: str(j.carrier),
+      shipto: str(j.ship_to, 400), product: str(j.product), lot: str(j.lot, 60),
+      date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '',
+      pallets: int(j.pallet_count, 1, BOL_MAX_PALLETS), cases: int(j.cases_per_pallet, 0, 100000),
+      client: ''
+    };
+    // Prefer one of our client names, matched here rather than sending the
+    // client list to the AI.
+    var shipper = str(j.shipper), consignee = str(j.consignee);
+    var hay = (shipper + ' ' + consignee).toLowerCase();
+    var hit = (clientNames || []).filter(function(n){ return n && hay.indexOf(String(n).toLowerCase()) >= 0; })
+      .sort(function(x, y){ return y.length - x.length; })[0];
+    out.client = hit || shipper;
+    return out;
+  }
+
+  async function readBol(file){
+    var kind = BOL_TYPES[file.type];
+    if(!kind){ state.bolNote = { kind: 'err', text: 'Upload a PDF, JPG or PNG of the BOL.' }; return renderBol(); }
+    if(file.size > BOL_MAX_MB * 1024 * 1024){ state.bolNote = { kind: 'err', text: 'That file is over ' + BOL_MAX_MB + ' MB. Try a smaller scan or a photo.' }; return renderBol(); }
+    if(!sb() || !sb().functions){ state.bolNote = { kind: 'err', text: 'Not connected. Type the BOL in instead.' }; return renderBol(); }
+    state.bolBusy = true; state.bolNote = null; renderBol();
+    try {
+      var data = await readFileB64(file);
+      var block = { type: kind, source: { type: 'base64', media_type: file.type, data: data } };
+      var resp = await sb().functions.invoke('ai-proxy', {
+        body: { model: 'claude-opus-5-5', maxTokens: 4096,
+                messages: [{ role: 'user', content: [block, { type: 'text', text: BOL_PROMPT }] }] }
+      });
+      if(resp.error) throw new Error(errMsg(resp.error));
+      if(!resp.data || resp.data.ok === false) throw new Error((resp.data && resp.data.error) || 'The AI could not read it.');
+      var got = bolFromAi(resp.data.text, state.clients.map(function(c){ return c.name; }));
+      var cur = state.bol || { date: todayISO() };
+      var filled = [];
+      BOL_FIELDS.forEach(function(k){ if(got[k]){ cur[k] = got[k]; filled.push(k); } });
+      state.bol = cur;
+      state.bolFilled = filled;
+      if(!filled.length){
+        state.bolNote = { kind: 'warn', text: 'Nothing readable was found on that file. Type the BOL in instead.' };
+      } else {
+        state.bolNote = { kind: got.pallets ? 'ok' : 'warn',
+          text: 'Filled ' + filled.length + ' field' + (filled.length === 1 ? '' : 's') + ' from ' + file.name + ' (outlined). Check them against the BOL before printing.' +
+            (got.pallets ? '' : ' The pallet count was not found: enter it.') };
+      }
+      audit('wh_bol_read_ai', got.bol || file.name, { fields: filled.length });
+    } catch(e){
+      state.bolNote = { kind: 'err', text: 'Could not read the BOL: ' + errMsg(e) + ' You can still type it in.' };
+    } finally {
+      state.bolBusy = false;
+      if(state.tab === 'bol') renderBol();
+    }
   }
 
   async function printBolSheets(){
@@ -1920,7 +2025,7 @@
     orderEmail: function(a){ return orderEmail(a); },
     shipOrder: function(a){ return shipOrder(a); },
     printBolSheets: function(){ return printBolSheets(); },
-    clearBol: function(){ state.bol = null; renderBol(); }
+    clearBol: function(){ state.bol = null; state.bolNote = null; state.bolFilled = []; renderBol(); }
   };
 
   document.addEventListener('click', function(e){
@@ -1938,7 +2043,7 @@
 
   // Exposed for tests: pure functions only.
   window.glWhInternals = { parseCsv: parseCsv, reconcile: reconcile, skuCsv: skuCsv, allocateFefo: allocateFefo,
-    sortFefo: sortFefo, scheduleEmailText: scheduleEmailText, lineIssues: lineIssues, upcWarning: upcWarning, fmtDate: fmtDate, bolInput: bolInput };
+    sortFefo: sortFefo, scheduleEmailText: scheduleEmailText, lineIssues: lineIssues, upcWarning: upcWarning, fmtDate: fmtDate, bolInput: bolInput, bolFromAi: bolFromAi };
 
   // Render when the page is opened. cNav hooks run after the page is shown.
   function boot(){

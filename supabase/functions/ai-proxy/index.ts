@@ -8,7 +8,7 @@
 //   {
 //     systemPrompt: string         the system message
 //     userPrompt:   string         the user turn
-//     model?:       string         default 'claude-haiku-4-5-20251001'
+//     model?:       string         default 'claude-haiku-4-5'
 //     maxTokens?:   number         default 1024
 //   }
 //
@@ -80,18 +80,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
     messages = [{ role: 'user', content: userPrompt }];
   }
 
+  // Opus 5.x can decline a request on a safety classifier. With the
+  // server-side fallback the API retries on another model instead of
+  // returning an empty refusal. Only the Opus 5 line takes the "default"
+  // form, so other models are sent exactly as before.
+  const useFallback = /^claude-opus-5/.test(model);
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'x-api-key': API_KEY,
+    'anthropic-version': '2023-06-01',
+  };
+  if (useFallback) headers['anthropic-beta'] = 'server-side-fallback-2026-07-01';
+
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': API_KEY,
-      'anthropic-version': '2023-06-01',
-    },
+    headers,
     body: JSON.stringify({
       model,
       max_tokens: maxTokens,
       messages,
       system: systemPrompt || undefined,
+      ...(useFallback ? { fallbacks: 'default' } : {}),
     }),
   });
 
@@ -101,6 +110,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return errorResponse('Anthropic rejected: ' + errText, r.status);
   }
   const data = await r.json().catch(() => ({}));
-  const text = data?.content?.[0]?.text || '';
+  if (data?.stop_reason === 'refusal') {
+    return jsonResponse({ ok: false, error: 'The AI declined this request.' });
+  }
+  // Join every text block. Models with thinking on put a thinking block
+  // first, so content[0] is not the answer; reading only it returned ''.
+  const blocks = Array.isArray(data?.content) ? data.content : [];
+  const text = blocks
+    .filter((b: { type?: string }) => b && b.type === 'text')
+    .map((b: { text?: string }) => b.text || '')
+    .join('');
   return jsonResponse({ ok: true, text });
 });

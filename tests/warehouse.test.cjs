@@ -18,6 +18,8 @@
  *   - reconciliation reports the right differences
  *   - outbound allocation is FEFO: earliest best-by first
  *   - BOL pallet sheets: a 14-pallet BOL prints 14 sheets, 1 OF 14 .. 14 OF 14
+ *   - BOL upload: the file goes to ai-proxy as a document/image block, the
+ *     reply fills the form, script inside a BOL stays text, failures explain
  *
  * WHAT IT DOES NOT PROVE
  * ----------------------
@@ -122,7 +124,11 @@ window.supa = { from: function(t){ return {
   select: function(){ return new Q(t, 'select'); },
   insert: function(p){ return new Q(t, 'insert', p); },
   update: function(p){ return new Q(t, 'update', p); },
-  delete: function(){ return new Q(t, 'delete'); } }; } };
+  delete: function(){ return new Q(t, 'delete'); } }; },
+  functions: { invoke: function(name, opts){
+    window.__aiCalls = (window.__aiCalls || []).concat([{ name: name, body: opts && opts.body }]);
+    return Promise.resolve(window.__aiReply || { data: { ok: false, error: 'no stub reply' }, error: null });
+  } } };
 <\/script>
 <script src="/jspdf.umd.min.js"><\/script>
 <script>window.ensureJsPdf = function(){ return Promise.resolve(window.jspdf.jsPDF); };<\/script>
@@ -333,6 +339,67 @@ const server = http.createServer((req, res) => {
       bhas('BOL-55821') && bhas('PO-9001') && bhas('XPO Logistics') && bhas('Publix DC') && bhas('Lakeland, FL 33815') && bhas('120'));
     if (process.env.WH_BOL_OUT) fs.writeFileSync(process.env.WH_BOL_OUT, Buffer.from(bol.raw, 'binary'));
   }
+
+  // ── BOL upload, read by AI ────────────────────────────────────────
+  const aiPure = await page.evaluate(() => {
+    const F = window.glWhInternals.bolFromAi;
+    const ok = F('Here you go:\n```json\n{"bol_number":"BOL-9","po_number":"PO-1","ship_date":"2026-10-07","carrier":"XPO","shipper":"CAMO ENERGY LLC c/o CONRI","consignee":"Publix","ship_to":"Publix DC\\nLakeland, FL","product":"Glow 12oz","lot":"628290B","pallet_count":14,"cases_per_pallet":120}\n```', ['Camo Energy', 'Evil']);
+    const bad = F('{"bol_number":"X","pallet_count":"lots","ship_date":"Oct 7","cases_per_pallet":2.5,"shipper":{"x":1}}', []);
+    let thrown = '';
+    try { F('Sorry, I cannot read that.', []); } catch (e) { thrown = e.message; }
+    return { ok, bad, thrown };
+  });
+  check('AI reply: JSON is found inside surrounding text and fenced code',
+    aiPure.ok.bol === 'BOL-9' && aiPure.ok.pallets === '14' && aiPure.ok.cases === '120' && aiPure.ok.date === '2026-10-07' && aiPure.ok.shipto === 'Publix DC\nLakeland, FL', JSON.stringify(aiPure.ok));
+  check('AI reply: the shipper is matched to our client name', aiPure.ok.client === 'Camo Energy', aiPure.ok.client);
+  check('AI reply: a non-number pallet count, a loose date, a fractional case count and an object are dropped',
+    aiPure.bad.pallets === '' && aiPure.bad.date === '' && aiPure.bad.cases === '' && aiPure.bad.client === '', JSON.stringify(aiPure.bad));
+  check('AI reply without JSON is an error, not empty fields', /did not return/.test(aiPure.thrown), aiPure.thrown);
+
+  await page.click('[data-wh="clearBol"]');
+  await page.evaluate((xss) => {
+    window.__aiCalls = [];
+    window.__aiReply = { error: null, data: { ok: true, text: JSON.stringify({
+      bol_number: 'BOL-77001', po_number: 'PO-555', ship_date: '2026-10-09', carrier: 'Estes',
+      shipper: 'Camo Energy', consignee: 'Kroger', ship_to: 'Kroger DC ' + xss + '\n100 Main St',
+      product: 'Glow ' + xss, lot: 'L1', pallet_count: 9, cases_per_pallet: 80 }) } };
+  }, XSS);
+  await page.setInputFiles('#wh-bol-file', { name: 'bol.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 fake') });
+  await page.waitForFunction(() => /Filled \d+ fields/.test((document.getElementById('wh-bol-msg') || {}).innerText || ''), null, { timeout: 5000 });
+  const up = await page.evaluate(() => {
+    const c = window.__aiCalls[0] || {};
+    const content = (((c.body || {}).messages || [])[0] || {}).content || [];
+    return {
+      fn: c.name, model: (c.body || {}).model, block: content[0] && { type: content[0].type, media: content[0].source.media_type, data: content[0].source.data },
+      hasPrompt: !!(content[1] && /bill of lading/.test(content[1].text)),
+      bol: document.getElementById('wh-bol-bol').value, pallets: document.getElementById('wh-bol-pallets').value,
+      client: document.getElementById('wh-bol-client').value, shipto: document.getElementById('wh-bol-shipto').value,
+      product: document.getElementById('wh-bol-product').value, date: document.getElementById('wh-bol-date').value,
+      btn: document.getElementById('wh-bol-print').textContent, msg: document.getElementById('wh-bol-msg').innerText,
+      outlined: /box-shadow:0 0 0 1px var\(--teal\)/.test(document.getElementById('wh-bol-bol').getAttribute('style') || ''),
+      xss: window.__xss === 1 || !!document.querySelector('#wh-body img'),
+    };
+  });
+  check('upload sends the PDF to ai-proxy as a base64 document block with the extraction prompt',
+    up.fn === 'ai-proxy' && up.model === 'claude-opus-5-5' && up.block && up.block.type === 'document' && up.block.media === 'application/pdf' &&
+    Buffer.from(up.block.data, 'base64').toString() === '%PDF-1.4 fake' && up.hasPrompt, JSON.stringify(up).slice(0, 300));
+  check('the BOL fields are filled from the reply', up.bol === 'BOL-77001' && up.pallets === '9' && up.client === 'Camo Energy' && up.date === '2026-10-09' && /100 Main St/.test(up.shipto), JSON.stringify(up));
+  check('the print button reflects the read pallet count', /Print 9 pallet sheets/.test(up.btn), up.btn);
+  check('filled fields are outlined and the note says to check them', up.outlined && /Check them against the BOL/.test(up.msg), up.msg);
+  check('script inside a BOL does not run; it stays text in the field', !up.xss && up.product.indexOf('<img') >= 0);
+
+  // A failed read leaves what was there and says so.
+  await page.evaluate(() => { window.__aiReply = { error: null, data: { ok: false, error: 'Rate limit reached' } }; });
+  await page.setInputFiles('#wh-bol-file', { name: 'bol2.png', mimeType: 'image/png', buffer: Buffer.from([137, 80, 78, 71]) });
+  await page.waitForFunction(() => /Could not read the BOL/.test((document.getElementById('wh-bol-msg') || {}).innerText || ''), null, { timeout: 5000 });
+  const fail = await page.evaluate(() => ({ bol: document.getElementById('wh-bol-bol').value, msg: document.getElementById('wh-bol-msg').innerText,
+    type: ((((window.__aiCalls[1] || {}).body || {}).messages || [])[0] || {}).content[0].type }));
+  check('a photo is sent as an image block', fail.type === 'image', fail.type);
+  check('a failed read keeps the fields and explains', fail.bol === 'BOL-77001' && /Rate limit reached/.test(fail.msg) && /type it in/.test(fail.msg), JSON.stringify(fail));
+  await page.evaluate(() => { window.__aiCalls = []; });
+  await page.setInputFiles('#wh-bol-file', { name: 'bol.docx', mimeType: 'application/msword', buffer: Buffer.from('x') });
+  const wrong = await page.evaluate(() => ({ msg: document.getElementById('wh-bol-msg').innerText, calls: window.__aiCalls.length }));
+  check('a Word file is refused before anything is sent', /Upload a PDF, JPG or PNG/.test(wrong.msg) && wrong.calls === 0, JSON.stringify(wrong));
 
   check('no page errors', errors.length === 0, JSON.stringify(errors));
   await browser.close(); server.close();
