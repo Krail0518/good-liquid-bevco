@@ -113,7 +113,144 @@
     window.glCipLogs    = pending.concat(dbRows);
     window.glCipPending = pending;
     window.glCipOffline = (rows === null);
+    if(search.term) await runSearch(search.term);   // keep a search open across reloads
+    else render();
+  }
+
+  // ── Equipment history search ──────────────────────────────
+  // "When was FB6 last cleaned?" The main list stops at the newest 200
+  // cycles, so a tank cleaned rarely can fall off the bottom of it, and
+  // scrolling 200 rows for one tank is the complaint this exists to fix.
+  // A search goes back to the database for EVERY cycle whose equipment
+  // matches, not just the ones already on screen.
+  var HISTORY_LIMIT = 2000;
+  var search = { term: '', rows: null, busy: false, error: null };
+
+  // ilike treats % and _ as wildcards (and PostgREST treats * as %), so a
+  // tank named "FB_6" must not match "FBX6". Escape them; drop the *.
+  function likeTerm(term){
+    return '%' + String(term).replace(/\*/g, '').replace(/[\\%_]/g, function(c){ return '\\' + c; }) + '%';
+  }
+  function matchesTerm(r, term){
+    return String(r.line_area || '').toLowerCase().indexOf(term.toLowerCase()) >= 0;
+  }
+  function byCycleDesc(a, b){
+    var ta = a.cycle_at ? new Date(a.cycle_at).getTime() : 0;
+    var tb = b.cycle_at ? new Date(b.cycle_at).getTime() : 0;
+    return (tb || 0) - (ta || 0);
+  }
+
+  async function runSearch(term){
+    term = String(term || '').trim();
+    search.term = term; search.error = null;
+    if(!term){ search.rows = null; render(); return; }
+    search.busy = true; render();
+    var dbRows = null;
+    if(window.supa){
+      try {
+        var r = await window.supa.from('compliance_records')
+          .select('*').eq('form_code', CIP_FORM)
+          .ilike('data->>equipment', likeTerm(term))
+          .order('recorded_at', { ascending: false })
+          .limit(HISTORY_LIMIT);
+        if(r && r.error) search.error = r.error.message;
+        else if(r && Array.isArray(r.data)) dbRows = r.data.map(mapComplianceCipRow);
+      } catch(e){ search.error = String((e && e.message) || e); }
+    } else {
+      search.error = 'Not connected to the database.';
+    }
+    // A stale response must not overwrite a newer search.
+    if(search.term !== term) return;
+    var seen = {};
+    var out = [];
+    (dbRows || []).forEach(function(r){ if(r && r.id){ seen[r.id] = 1; out.push(r); } });
+    // Unsaved local cycles for this equipment still count, and say so.
+    (window.glCipPending || []).forEach(function(r){ if(!seen[r.id] && matchesTerm(r, term)) out.push(r); });
+    // If the database could not be reached, fall back to what is loaded,
+    // and the banner below says the answer may be incomplete.
+    if(dbRows === null){
+      (window.glCipLogs || []).forEach(function(r){ if(!seen[r.id] && matchesTerm(r, term)){ seen[r.id] = 1; out.push(r); } });
+    }
+    out.sort(byCycleDesc);
+    search.rows = out;
+    search.busy = false;
     render();
+  }
+  window.glCipSearchEquipment = runSearch;
+
+  function knownEquipment(){
+    var names = {};
+    try {
+      var cached = JSON.parse(localStorage.getItem('gl_cip_equipment') || '[]');
+      if(Array.isArray(cached)) cached.forEach(function(n){ if(n) names[String(n)] = 1; });
+    } catch(e){}
+    (window.glCipLogs || []).forEach(function(r){ if(r.line_area && r.line_area !== '—') names[r.line_area] = 1; });
+    return Object.keys(names).sort(function(a, b){ return a.localeCompare(b, 'en', { numeric: true }); });
+  }
+
+  function fmtDay(ts){
+    return ts ? new Date(ts).toLocaleString('en-US',{ month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' }) : '—';
+  }
+  function daysAgo(ts){
+    if(!ts) return '';
+    var d = Math.floor((Date.now() - new Date(ts).getTime()) / 86400000);
+    if(isNaN(d)) return '';
+    return d <= 0 ? 'today' : d === 1 ? 'yesterday' : d + ' days ago';
+  }
+
+  // One line per matched piece of equipment: last cycle, last PASSING
+  // cycle (the answer to "is it clean"), and how many are on record.
+  function summaryHtml(rows){
+    var groups = {}, order = [];
+    rows.forEach(function(r){
+      var k = r.line_area || '—';
+      if(!groups[k]){ groups[k] = []; order.push(k); }
+      groups[k].push(r);
+    });
+    return order.map(function(k){
+      var g = groups[k];
+      var last = g[0];
+      var lastPass = g.filter(function(r){ return r.result === 'pass' && !r._localOnly; })[0];
+      var color = last.result === 'pass' ? '#5fcf9e' : last.result === 'fail' ? '#ff8579' : '#f5c842';
+      var passBit = (last === lastPass) ? '' :
+        '<div style="font-size:11px;color:var(--muted);margin-top:3px">Last <b>passing</b> clean: ' +
+          (lastPass ? esc(fmtDay(lastPass.cycle_at)) + ' (' + esc(daysAgo(lastPass.cycle_at)) + ')' : '<span style="color:#ff8579">none on record</span>') +
+        '</div>';
+      return '<div style="padding:12px 14px;border:1px solid rgba(0,229,192,.25);border-radius:10px;background:rgba(0,229,192,.05);margin:0 14px 10px">' +
+        '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline">' +
+          '<div style="font-weight:700;color:var(--white);font-size:14px">' + esc(k) + '</div>' +
+          '<div style="font-size:11px;color:var(--muted)">' + g.length + ' cycle' + (g.length === 1 ? '' : 's') + ' on record</div>' +
+        '</div>' +
+        '<div style="font-size:13px;color:var(--white);margin-top:5px">Last cleaned: <b>' + esc(fmtDay(last.cycle_at)) + '</b> ' +
+          '<span style="color:var(--muted)">(' + esc(daysAgo(last.cycle_at)) + ')</span> ' +
+          '<span style="color:' + color + ';font-weight:700;font-size:11px">' + esc((last.result || 'pending').toUpperCase()) + '</span>' +
+        '</div>' + passBit +
+      '</div>';
+    }).join('');
+  }
+
+  function toolbarHtml(){
+    var opts = knownEquipment().map(function(n){ return '<option value="' + esc(n) + '"></option>'; }).join('');
+    return '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 14px 4px">' +
+      '<input id="gl-cip-search" list="gl-cip-equip-list" autocomplete="off" placeholder="🔍 Tank / equipment history, e.g. FB6" value="' + esc(search.term) + '" ' +
+        'style="flex:1;min-width:200px;max-width:340px;padding:8px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:12px">' +
+      '<datalist id="gl-cip-equip-list">' + opts + '</datalist>' +
+      '<button type="button" class="cbtn pri" id="gl-cip-search-go">Search</button>' +
+      (search.term ? '<button type="button" class="cbtn" id="gl-cip-search-clear">Show all cycles</button>' : '') +
+    '</div>';
+  }
+
+  function wireToolbar(host){
+    var inp = host.querySelector('#gl-cip-search');
+    var go  = host.querySelector('#gl-cip-search-go');
+    var clr = host.querySelector('#gl-cip-search-clear');
+    if(inp){
+      inp.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); runSearch(inp.value); } });
+      // Picking a name from the datalist fires 'change'; run it straight away.
+      inp.addEventListener('change', function(){ if(inp.value.trim() !== search.term) runSearch(inp.value); });
+    }
+    if(go)  go.addEventListener('click', function(){ runSearch(inp ? inp.value : ''); });
+    if(clr) clr.addEventListener('click', function(){ runSearch(''); });
   }
 
   // Re-attempt the inserts that were rejected. Each cached row carries the
@@ -194,15 +331,43 @@
         '</div>';
     }
 
-    if(!rows.length){
-      host.innerHTML = banner + '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No cycles logged yet. Click "+ Log Cycle" above to open the canonical 9-step FDA form. FDA-required between every run.</div>';
-      return;
+    var toolbar = toolbarHtml();
+    var hint;
+    if(search.term){
+      // Searching: the table shows the full history for the matched
+      // equipment, newest first, with the "last cleaned" answer on top.
+      if(search.busy){
+        paint(host, banner + toolbar + '<div style="padding:24px;text-align:center;color:var(--muted);font-size:13px">Searching every CIP cycle for “' + esc(search.term) + '”…</div>');
+        return;
+      }
+      rows = search.rows || [];
+      var errBanner = search.error
+        ? '<div style="margin:6px 14px;padding:10px 14px;border:1px solid #f5c842;border-radius:8px;background:rgba(245,200,66,.08);color:#f5c842;font-size:11px">' +
+            'Could not search the database (' + esc(search.error) + '). Showing only the cycles already loaded on this page, so older dates may be missing.</div>'
+        : '';
+      if(!rows.length){
+        paint(host, banner + toolbar + errBanner + '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No CIP cycles on record for equipment matching “' + esc(search.term) + '”.</div>');
+        return;
+      }
+      var capped = !search.error && rows.length >= HISTORY_LIMIT
+        ? ' Showing the newest ' + HISTORY_LIMIT + '.' : '';
+      hint = banner + toolbar + errBanner +
+        '<div style="font-size:11px;color:var(--muted);padding:6px 14px 10px;line-height:1.5">' + rows.length + ' cycle' + (rows.length === 1 ? '' : 's') + ' for “' + esc(search.term) + '”, newest first.' + capped + ' Click any row for step-by-step detail.</div>' +
+        summaryHtml(rows);
+    } else {
+      if(!rows.length){
+        paint(host, banner + toolbar + '<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No cycles logged yet. Click "+ Log Cycle" above to open the canonical 9-step FDA form. FDA-required between every run.</div>');
+        return;
+      }
+      hint = banner + toolbar + '<div style="font-size:11px;color:var(--muted);padding:8px 14px 12px;line-height:1.5">Showing canonical 9-step CIP records (form <code>GMP-SAN-002</code>). Search a tank above to see every date it was cleaned. Click any row to see the full step-by-step detail.</div>';
     }
-    var hint = banner + '<div style="font-size:11px;color:var(--muted);padding:8px 14px 12px;line-height:1.5">Showing canonical 9-step CIP records (form <code>GMP-SAN-002</code>). Click any row to see the full step-by-step detail.</div>';
     var RES_COLOR = { pass:'#5fcf9e', fail:'#ff8579', draft:'#f5c842', pending:'#9aa7bd' };
-    host.innerHTML = hint + '<table class="ctbl"><thead><tr><th>When</th><th>Equipment</th><th>Steps done</th><th>Chemicals</th><th>Operator</th><th>PAA ppm</th><th>Result</th></tr></thead><tbody>' +
+    paint(host, hint + '<table class="ctbl"><thead><tr><th>When</th><th>Equipment</th><th>Steps done</th><th>Chemicals</th><th>Operator</th><th>PAA ppm</th><th>Result</th></tr></thead><tbody>' +
       rows.map(function(r){
-        var when = r.cycle_at ? new Date(r.cycle_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '—';
+        // A history spans years, so searched rows carry the year.
+        var when = r.cycle_at ? new Date(r.cycle_at).toLocaleString('en-US', search.term
+          ? {month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}
+          : {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '—';
         var resColor = RES_COLOR[r.result] || '#9aa7bd';
         var resLabel = (r.result || 'pending').toUpperCase();
         var unsaved = r._localOnly
@@ -217,7 +382,14 @@
           '<td style="padding:11px;color:var(--muted);font-family:var(--ff-mono);font-size:11px">' + esc(r.atp_reading || '—') + '</td>' +
           '<td style="padding:11px;color:' + resColor + ';font-weight:700">' + resLabel + '</td>' +
         '</tr>';
-      }).join('') + '</tbody></table>';
+      }).join('') + '</tbody></table>');
+  }
+
+  // The page's one raw-HTML sink. Callers build html with esc() on every
+  // interpolated value; the toolbar is re-wired after each paint.
+  function paint(host, html){
+    host.innerHTML = html;
+    wireToolbar(host);
   }
 
   // Read-only detail viewer for a CIP cycle. Shows all 9 steps with their
@@ -225,7 +397,8 @@
   // row click. Source is the cached glCipLogs entry (carries the raw
   // compliance_records row on _raw).
   window.glOpenCipDetail = function(id){
-    var row = (window.glCipLogs || []).find(function(x){ return x.id === id; });
+    // A searched history can reach past the 200 rows in glCipLogs.
+    var row = (window.glCipLogs || []).concat(search.rows || []).find(function(x){ return x.id === id; });
     if(!row){ alert('Cycle not found in current view.'); return; }
     var raw = row._raw || {};
     var fd  = raw.data || {};
