@@ -1570,27 +1570,63 @@
     ]);
 
   var SEC_CIP_LOG =
-    wf(620, 200,
-      box(0,0,620,200,'#142238','rgba(255,255,255,.05)') +
-      txt(20,22,'🧼 CIP / SANITATION LOG',12,'#fff') +
-      box(480,10,130,22,'rgba(0,229,192,.1)','rgba(0,229,192,.3)') + txt(545,24,'+ Add Cycle',9,'#00e5c0','middle') +
-      box(20,36,580,22,'#0d1e35','rgba(255,255,255,.05)') +
-      txt(30,51,'Date / Time',10,'#9aa7bd') + txt(155,51,'Line',10,'#9aa7bd') + txt(250,51,'Sanitizer',10,'#9aa7bd') + txt(350,51,'Temp (°F)',10,'#9aa7bd') + txt(420,51,'Duration',10,'#9aa7bd') + txt(490,51,'Logged by',10,'#9aa7bd') +
-      box(20,62,580,26,'#1a2c48','rgba(95,207,158,.05)') +
-      txt(30,79,'May 29  06:30',10,'#cfd9e6') + txt(155,79,'Canning L1',10,'#cfd9e6') + txt(250,79,'Saniclean 1%',10,'#cfd9e6') + txt(350,79,'145°F',10,'#cfd9e6') + txt(420,79,'22 min',10,'#cfd9e6') + txt(490,79,'J. Rivera',10,'#cfd9e6') +
-      box(20,94,580,26,'#1a2c48','rgba(255,255,255,.05)') +
-      txt(30,111,'May 28  17:15',10,'#cfd9e6') + txt(155,111,'Bottling L1',10,'#cfd9e6') + txt(250,111,'PAA 200ppm',10,'#cfd9e6') + txt(350,111,'140°F',10,'#cfd9e6') + txt(420,111,'18 min',10,'#cfd9e6') + txt(490,111,'M. Krail',10,'#cfd9e6') +
-      box(20,126,580,26,'#1a2c48','rgba(255,255,255,.05)') +
-      txt(30,143,'May 28  06:00',10,'#cfd9e6') + txt(155,143,'R&D Bench',10,'#cfd9e6') + txt(250,143,'Saniclean 1%',10,'#cfd9e6') + txt(350,143,'140°F',10,'#cfd9e6') + txt(420,143,'15 min',10,'#cfd9e6') + txt(490,143,'J. Rivera',10,'#cfd9e6') +
-      box(430,168,180,22,'#1a3c30','rgba(0,229,192,.3)') + txt(520,183,'FDA-defensible record ✓',9,'#00e5c0','middle') +
-      tag(480,10,1) + tag(430,168,2)
+    watch('tutorial-cip-history.mp4') +
+    wf(620, 236,
+      box(0,0,620,236,'#142238','rgba(255,255,255,.05)') +
+      txt(20,24,'CIP / SANITATION LOG',12,'#fff') +
+      box(500,10,104,24,'#00e5c0','#00e5c0') + txt(552,26,'+ Log Cycle',10,'#0a1628','middle') +
+      box(20,44,250,26,'#0d1e35','rgba(255,255,255,.15)') + txt(30,61,'fv6',11,'#fff') +
+      box(278,44,62,26,'#00e5c0','#00e5c0') + txt(309,61,'Search',10,'#0a1628','middle') +
+      box(348,44,110,26,'#243a56') + txt(403,61,'Show all cycles',10,'#cfd9e6','middle') +
+      box(20,80,580,58,'rgba(0,229,192,.06)','rgba(0,229,192,.35)') +
+      txt(32,98,'FV 6',12,'#fff') + txt(588,98,'5 cycles on record',9,'#9aa7bd','end') +
+      txt(32,115,'Last cleaned: Sep 30, 2026 (3 days ago)',11,'#fff') + txt(282,115,'FAIL',10,'#ff8579') +
+      txt(32,131,'Last passing clean: Sep 21, 2026 (12 days ago)',10,'#9aa7bd') +
+      txt(30,160,'When',9,'#9aa7bd') + txt(170,160,'Equipment',9,'#9aa7bd') + txt(290,160,'Operator',9,'#9aa7bd') + txt(560,160,'Result',9,'#9aa7bd','end') +
+      txt(30,182,'Sep 30, 2026, 7:15 AM',10,'#fff') + txt(170,182,'FV 6',10,'#cfd9e6') + txt(290,182,'J. Rivera',10,'#cfd9e6') + txt(560,182,'FAIL',10,'#ff8579','end') +
+      txt(30,204,'Sep 21, 2026, 7:15 AM',10,'#fff') + txt(170,204,'FV 6',10,'#cfd9e6') + txt(290,204,'J. Rivera',10,'#cfd9e6') + txt(560,204,'PASS',10,'#5fcf9e','end') +
+      txt(30,226,'Sep 7, 2026, 7:15 AM',10,'#fff') + txt(170,226,'FV 6',10,'#cfd9e6') + txt(290,226,'M. Krail',10,'#cfd9e6') + txt(560,226,'PASS',10,'#5fcf9e','end') +
+      tag(16,57,1) + tag(16,96,2) + tag(16,182,3) + tag(604,22,4)
     ) +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
-      '<b>What Clean-In-Place (CIP) is</b>: the automated or manual process of cleaning and sanitising production equipment without disassembly. Required between every production run under 21 CFR Part 117 (FSMA Preventive Controls).',
-      '<b>When to log it</b>: after every production run, before switching products, and at the start/end of each shift. The log should be completed by the operator who performed the CIP, not a supervisor.',
-      '<b>(1) + Add Cycle</b> — fill in: line, sanitizer name + concentration, rinse water temperature, contact time (minutes), and your name. Hit Save. The record is timestamped server-side and is immutable (Part 11 compliant).',
-      '<b>(2) FDA-defensible record</b> — each entry is stored in Supabase with a server timestamp, user ID, and a hash. During an FDA inspection you can export the full log as a signed PDF from the Compliance → 📤 Export button.'
+      '<b>What Clean-In-Place (CIP) is</b>: cleaning and sanitizing production equipment without taking it apart. It is required between production runs, and each cycle is logged here on the 9-step form (GMP-SAN-002).',
+      '<b>(1) Search a tank</b>: type the tank or equipment name in the search box (or pick it from the suggestions) and press <b>Enter</b> or click <b>Search</b>. It searches <i>every</i> cycle on record, not just the ones on screen.',
+      '<b>Spaces and dashes don\'t matter</b>: <b>FV6</b>, <b>fv 6</b> and <b>FV-6</b> all find a tank saved as "FV 6". Upper or lower case doesn\'t matter either. A different tank such as FV 16 is not mixed in.',
+      '<b>(2) The answer card</b>: for each tank found, it shows when it was <b>last cleaned</b>, how many days ago, whether that cycle passed, and how many cycles are on record. If the latest cycle failed, it also shows the <b>last passing clean</b>: that is the date that tells you the tank is actually clean.',
+      '<b>(3) Every cleaning date</b>: below the card is the full history for that tank, newest first, with the year. Click any row to open the full 9-step record: time, temperature, reading and pass/fail for each step.',
+      '<b>Back to everything</b>: <b>Show all cycles</b> clears the search and returns to the full log.',
+      '<b>(4) + Log Cycle</b>: opens the 9-step CIP form. Fill it in at the time of the cycle, not from memory. Log it after every run and before switching products.'
+    ]) +
+    '<div style="font-size:11.5px;color:#9aa7bd;margin:4px 0 12px;padding:8px 12px;background:rgba(245,200,66,.06);border-left:3px solid #f5c842;border-radius:0 6px 6px 0"><b style="color:#f5c842">Tip:</b> the search matches part of a name, so "FV" lists every FV tank and "1bbl" finds both "1 BBL Tank" and "1BBL Tank". To keep histories together, pick the tank from the equipment list when you log a cycle rather than typing a new name.</div>';
+
+  var SEC_BOL_SHEETS =
+    watch('tutorial-bol-sheets.mp4') +
+    wf(620, 250,
+      box(0,0,620,250,'#142238','rgba(255,255,255,.05)') +
+      txt(20,24,'WAREHOUSE STORAGE  ›  BOL pallet sheets',12,'#fff') +
+      box(20,38,180,26,'#00e5c0','#00e5c0') + txt(110,55,'Upload BOL (PDF or photo)',10,'#0a1628','middle') +
+      txt(210,55,'PDF, JPG or PNG, up to 5 MB',9,'#9aa7bd') +
+      txt(20,84,'BOL # *',9,'#9aa7bd') + box(20,88,280,24,'#0d1e35','#00e5c0') + txt(30,104,'BOL-558214',11,'#fff') +
+      txt(320,84,'Number of pallets *',9,'#9aa7bd') + box(320,88,280,24,'#0d1e35','#00e5c0') + txt(330,104,'14',11,'#fff') +
+      txt(20,130,'Ship to',9,'#9aa7bd') + box(20,134,280,40,'#0d1e35','#00e5c0') + txt(30,150,'Publix Distribution Center',10,'#fff') + txt(30,165,'Lakeland, FL 33815',10,'#cfd9e6') +
+      txt(320,130,'PO, carrier, product, lot, cases…',9,'#9aa7bd') + box(320,134,280,40,'#0d1e35','#00e5c0') + txt(330,158,'PO-77310 · XPO Logistics · CB-2041',10,'#fff') +
+      box(20,186,580,22,'rgba(95,207,158,.08)','rgba(95,207,158,.3)') + txt(30,201,'Filled 9 fields from BOL-558214.pdf (outlined). Check them against the BOL before printing.',9.5,'#5fcf9e') +
+      box(20,218,170,24,'#00e5c0','#00e5c0') + txt(105,234,'Print 14 pallet sheets',10,'#0a1628','middle') +
+      box(198,218,60,24,'#243a56') + txt(228,234,'Clear',10,'#cfd9e6','middle') +
+      tag(16,51,1) + tag(16,100,2) + tag(16,197,3) + tag(16,230,4)
+    ) +
+    '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
+    bullets([
+      '<b>What it\'s for</b>: when a client sends you a bill of lading (BOL), every pallet on it needs its own sheet. This makes one sheet per pallet, marked <b>PALLET 1 OF 14</b> through <b>14 OF 14</b>.',
+      '<b>Where to find it</b>: sidebar → 🏬 <b>Warehouse Storage</b> → the <b>📄 BOL pallet sheets</b> tab.',
+      '<b>(1) Upload the BOL</b>: click <b>Upload BOL</b> and pick the PDF the client sent, or a clear photo of the paper copy. AI reads it and fills in the form. It takes a few seconds.',
+      '<b>(2) What it fills in</b>: BOL number, PO number, ship date, carrier, ship to address, product, lot, the <b>number of pallets</b>, and cases per pallet. If the shipper matches one of your clients, it uses that client\'s name.',
+      '<b>(3) Check before you print</b>: every field the AI filled is outlined. Compare them to the paper, especially the pallet count, since that decides how many sheets print. Type over anything that\'s wrong.',
+      '<b>No upload? Type it</b>: you can fill the form by hand. Only the BOL number and the number of pallets are required.',
+      '<b>(4) Print</b>: the button shows how many sheets you\'ll get. It saves a PDF with one landscape page per pallet: the pallet number in big type, BOL and PO numbers, ship to, carrier, ship date, lot, cases and a barcode of the BOL number. Open it, print, and tape one sheet to each pallet.',
+      '<b>Nothing is saved</b>: this tab only prints. It doesn\'t change your warehouse records. <b>Clear</b> empties the form for the next BOL.',
+      '<b>If the upload doesn\'t work</b>: the form stays as it was and a message says why (for example, the wrong file type or a file over 5 MB). You can always type the details in instead.'
     ]);
 
   var SEC_HOLD_TAGS =
@@ -1990,6 +2026,7 @@
     videoCard('tutorial-training.mp4', '🎓 Training &amp; Competency — Keep Certifications Current', 'Reading the competency matrix and expiry badges, and adding a new training record that the system then tracks for renewal.') +
     videoCard('tutorial-audit.mp4', '🔍 Internal Audit &amp; Management Review', 'Logging audit findings, raising an NCR from a finding, scheduling an audit, and the live management-review KPI snapshot.') +
     videoCard('tutorial-auditor.mp4', '🔒 Auditor Portal — Read-Only Records Access', 'Exactly what an outside auditor sees through their read-only token link — every register and record visible, nothing changeable.') +
+    videoCard('tutorial-cip-history.mp4', '🧼 CIP Tank History: When Was It Last Cleaned?', 'Search any tank (spaces and dashes don\'t matter) to see when it was last cleaned, the last passing clean, and every cleaning date on record.') +
     videoGroup('💼 SALES, INVOICING & CLIENTS') +
     videoCard('tutorial-invoices.mp4', '🧾 Invoices — Bill Your Brands', 'The invoice list and status filters, then building a new invoice — pick a client and service and the price and preview build themselves from the rate card.') +
     videoCard('tutorial-pipeline.mp4', '📊 Pipeline — Your Sales Board', 'How deals move through Prospecting, Proposal, Negotiation and Closed — logging outreach on a card and opening the full deal.') +
@@ -2003,6 +2040,7 @@
     videoCard('tutorial-dashboard.mp4', '📊 Dashboard — Your Business at a Glance', 'The home screen: the FDA audit-readiness scorecard, your key financials, a pipeline snapshot, and the live activity feed.') +
     videoCard('tutorial-formula-vault.mp4', '🧪 Formula Vault — Every Recipe, Versioned', 'Where product recipes live — name, version, and status — with version control so you can approve and clone without losing history.') +
     videoCard('tutorial-production-runs.mp4', '🏭 Production Runs — Your Production Schedule', 'The stage board (Discovery → Ship): each run’s brand, format, cases, and date, with line-conflict warnings when you schedule.') +
+    videoCard('tutorial-bol-sheets.mp4', '📄 BOL Pallet Sheets: One Sheet Per Pallet', 'Upload a client\'s BOL and AI fills in the form, check it, then print one sheet per pallet marked PALLET 1 OF N through N OF N.') +
     videoGroup('🎓 LEARN THE CONCEPTS (EDUCATIONAL)') +
     lead('These aren’t how-to walkthroughs of the app — they explain the food-safety <i>ideas</i> behind it, in plain English. Great for onboarding new staff.') +
     videoCard('explainer-gmp-haccp-pcqi.mp4', '📚 Food Safety 101 — GMP · HACCP · PCQI', 'The three layers of compliance explained from the ground up: what GMP, HACCP (incl. the 7 principles), and the PCQI each are, and how they fit together.') +
@@ -2451,6 +2489,7 @@
     section('help-sample-shipments','📦 SAMPLE SHIPMENTS',           SEC_SAMPLE_SHIPMENTS) +
     section('help-content-calendar','📣 CONTENT CALENDAR',           SEC_CONTENT_CALENDAR) +
     section('help-cip-log',         '🧼 CIP / SANITATION LOG',       SEC_CIP_LOG) +
+    section('help-bol-sheets',      '📄 BOL PALLET SHEETS (WAREHOUSE)', SEC_BOL_SHEETS) +
     section('help-hold-tags',       '🚫 HOLD TAGS',                  SEC_HOLD_TAGS) +
     section('help-defects-ncr',     '⚠️ DEFECTS / NCRs',             SEC_DEFECTS_NCR) +
     section('help-vendors',         '🏭 VENDORS',                    SEC_VENDORS) +
@@ -2498,6 +2537,7 @@
     ['help-sample-shipments','📦 Sample Shipments'],
     ['help-content-calendar','📣 Content Calendar'],
     ['help-cip-log','🧼 CIP / Sanitation Log'],
+    ['help-bol-sheets','📄 BOL Pallet Sheets'],
     ['help-hold-tags','🚫 Hold Tags'],
     ['help-defects-ncr','⚠️ Defects / NCRs'],
     ['help-vendors','🏭 Vendors'],
@@ -2520,7 +2560,7 @@
     'cpg-documents':'help-documents','cpg-inventory':'help-inventory','cpg-announcements':'help-announcements',
     'cpg-customers':'help-customers','cpg-users':'help-users',
     'cpg-compliance':'help-compliance',
-    'cpg-holds':'help-hold-tags','cpg-cip':'help-cip-log',
+    'cpg-holds':'help-hold-tags','cpg-cip':'help-cip-log','cpg-warehouse':'help-bol-sheets',
     'cpg-ai':'help-ai-hub',
     'cpg-production-runs':'help-production-runs',
     'cpg-formulas':'help-formula-vault',

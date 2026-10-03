@@ -41,12 +41,19 @@ function installCommon(){
     function chain(table){
       const rows=function(){ return tables[table] || (tables[table]=[]); };
       const filters=[]; // {k,v}
-      const applyF=function(arr){ return arr.filter(function(r){ return filters.every(function(f){ return String(r[f.k])===String(f.v); }); }); };
+      const rx=[];      // {k,re} from regexIMatch; 'data->>x' reads r.data.x
+      const col=function(r,k){ const m=/^(\w+)->>(\w+)$/.exec(k); return m ? ((r[m[1]]||{})[m[2]]) : r[k]; };
+      const applyF=function(arr){ return arr.filter(function(r){
+        return filters.every(function(f){ return String(r[f.k])===String(f.v); }) &&
+               rx.every(function(f){ return f.re.test(String(col(r,f.k)==null?'':col(r,f.k))); }); }); };
       const keyF=function(){ return filters.find(function(f){ return f.k==='form_code'||f.k==='id'; }); };
       const c={};
       ['order','limit','gte','lte','gt','lt','neq','in','range','not','is','filter','contains','or','ilike','like','match'].forEach(function(m){ c[m]=function(){ return c; }; });
       c.select=function(cols,opts){ if(opts&&opts.count) c._count=true; return c; };
       c.eq=function(k,v){ filters.push({k:k,v:v}); return c; };
+      // Postgres ~* : unanchored, case-insensitive; the one POSIX class the
+      // CIP search uses is translated to its JS equivalent.
+      c.regexIMatch=function(k,v){ rx.push({k:k,re:new RegExp(String(v).split('[^[:alnum:]]').join('[^\\p{L}\\p{N}]'),'iu')}); return c; };
       c.maybeSingle=async function(){ let d=applyF(rows()); const f=keyF(); if(!d.length && f && single(table,f.v)) d=[single(table,f.v)]; return {data:d[0]||null,error:null}; };
       c.single=c.maybeSingle;
       c.insert=function(r){ const a=Array.isArray(r)?r:[r]; a.forEach(function(x){ rows().push(x); }); window.__inserted.push({table:table,rows:a});
@@ -63,6 +70,14 @@ function installCommon(){
     window.currentUser={id:'u1',email:'mike@krail.us',role:'admin',name:'Mike',initials:'MK'};
   };
   window.__hud=function(){
+    // The recording runs on stubbed data with no real Supabase session, so
+    // the GL-088 session-expiry watchdog (src/services/auth.js, a 60 s check)
+    // would put its red "session expired" bar across any video over a minute.
+    if(!document.getElementById('v-no-expiry')){
+      const ns=document.createElement('style'); ns.id='v-no-expiry';
+      ns.textContent='#gl-session-expired{display:none!important}';
+      document.head.appendChild(ns);
+    }
     if(!document.getElementById('vcursor')){
       const cur=document.createElement('div'); cur.id='vcursor';
       cur.style.cssText='position:fixed;left:130px;top:130px;width:22px;height:22px;border-radius:50%;background:rgba(0,229,192,.35);border:2px solid #00e5c0;box-shadow:0 0 10px rgba(0,229,192,.7);z-index:2147483647;pointer-events:none;transition:left .55s cubic-bezier(.4,0,.2,1),top .55s cubic-bezier(.4,0,.2,1);transform:translate(-50%,-50%)';
@@ -290,7 +305,117 @@ const PORTAL_DATA={
   client_allergen_declarations:[],sample_shipments:[],formulas:[],customer_requests:[]
 };
 
+// CIP history: one fermenter saved as "FV  6" (two spaces, as on the floor
+// tablets), plus neighbours whose names share its letters.
+function cipCycle(id, equip, daysAgo, opts){
+  opts=opts||{};
+  const t=new Date(Date.now()-daysAgo*86400000); t.setHours(opts.hour||7,15,0,0);
+  const CH=['Hot water','PBW','Hot water','Caustic (NaOH)','Hot water','Acid','Hot water','Peracetic Acid','Peracetic Acid'];
+  return {id:id,form_code:'GMP-SAN-002',status:opts.status||'signed',has_deviation:!!opts.fail,
+    deviation_notes:opts.fail||null,recorded_at:t.toISOString(),record_date:t.toISOString().slice(0,10),
+    signature_name:opts.op||'J. Rivera',product_name:'CIP — '+equip,
+    data:{equipment:equip,cycle_start:t.toISOString().slice(0,16),operator:opts.op||'J. Rivera',
+      steps:CH.map(function(c,i){ return {n:i+1,chem:c,done:true,actual_min:i===7||i===8?20:30,temp_f:i<7?(opts.fail&&i===3?150:165):null,
+        reading:i>=7?'180':(i===2||i===4?'32':''),pf:(opts.fail&&i===3)?'fail':'pass'}; })}};
+}
+const CIP_RECORDS=[
+  cipCycle('k1','Filling Line 1',0,{hour:6}),
+  cipCycle('k2','BT  9',1,{op:'M. Krail'}),
+  cipCycle('k3','FV  6',3,{fail:'Step 4 (Caustic Wash) temp 150°F < 160°F'}),
+  cipCycle('k4','FV  16',4),
+  cipCycle('k5','1BBL Tank',5,{op:'M. Krail'}),
+  cipCycle('k6','FV  6',12),
+  cipCycle('k7','FV  6',26,{op:'M. Krail'}),
+  cipCycle('k8','FV  6',41),
+  cipCycle('k9','FV  6',63)
+];
+// What the AI "reads" off the BOL in the video (the real call goes to
+// ai-proxy; here the stub answers after a short pause).
+const BOL_AI_REPLY={bol_number:'BOL-558214',po_number:'PO-77310',ship_date:'',carrier:'XPO Logistics',
+  shipper:'Perico Nutrition c/o Good Liquid Bev Co',consignee:'Publix Distribution Center',
+  ship_to:'Publix Distribution Center\n1936 George Jenkins Blvd\nLakeland, FL 33815',
+  product:'Cold Brew 12oz, 24-pack',lot:'CB-2041',pallet_count:14,cases_per_pallet:120};
+
 const STORYBOARDS={
+  'cip-history':{
+    title:'CIP Tank History — When Was It Last Cleaned?',
+    async setup(pg){
+      await pg.evaluate((recs)=>{
+        window.__chain({compliance_records:JSON.parse(JSON.stringify(recs))});
+        window.currentUser={id:'u1',email:'mike@krail.us',role:'admin',name:'Mike',initials:'MK'};
+        try { localStorage.removeItem('gl_cache_compliance_records'); } catch(e){}
+        if(window.GL_HOOKS){ window.GL_HOOKS._navGuards=[]; }
+        document.getElementById('crm-panel').classList.add('show');
+        window.cNav('cip');
+        window.__hud();
+      }, CIP_RECORDS);
+      await sleep(900); await pg.evaluate(()=>window.__hud());
+    },
+    steps:[
+      {say:"The C I P log records every cleaning cycle. When someone asks when a tank was last cleaned, you no longer have to scroll the whole list."},
+      {say:"Use the search box at the top. Type the tank's name, or pick it from the suggestions.", act:{type:'move',sel:'#gl-cip-search'}},
+      {say:"Spaces and dashes don't matter. F V 6, typed with no space, still finds the tank saved as F V, space, 6.", act:{type:'type',sel:'#gl-cip-search',text:'fv6'}},
+      {say:"Press Enter, or click Search. It searches every cycle on record, not just the ones on screen.", act:{type:'click',sel:'#gl-cip-search-go'}},
+      {say:"The summary answers the question straight away: when F V 6 was last cleaned, how many days ago, and whether that cycle passed.", act:{type:'move',sel:'text=Last cleaned:'}},
+      {say:"Here the latest cycle failed, so it also shows the last cleaning that passed. That is the date that tells you the tank is actually clean.", act:{type:'move',sel:'text=Last passing clean'}},
+      {say:"Below it is every cleaning date for this tank, newest first, with the year shown. Notice that F V 16 is not mixed in.", act:{type:'move',sel:'#cip-body table'}},
+      {say:"Click any row to open the full nine-step record for that cycle.", act:{type:'click',sel:'#cip-body tbody tr >> nth=1'}},
+      {say:"Each step shows its time, temperature, reading, and pass or fail, exactly as the operator logged it.", act:{type:'move',sel:'#gl-cip-detail table'}},
+      {say:"Close it when you're done.", act:{type:'click',sel:'#gl-cipd-done'}},
+      {say:"And Show all cycles takes you back to the full log.", act:{type:'click',sel:'#gl-cip-search-clear'}},
+      {say:"That's it. Any tank's complete cleaning history, in seconds."}
+    ]
+  },
+  'bol-sheets':{
+    title:'BOL Pallet Sheets — One Sheet Per Pallet',
+    async setup(pg){
+      await pg.evaluate((reply)=>{
+        window.__chain({clients:[{id:'c1',name:'Perico Nutrition'},{id:'c2',name:'Lotus Beverages'}]});
+        window.currentUser={id:'u1',email:'mike@krail.us',role:'admin',name:'Mike',initials:'MK'};
+        window.supa.functions.invoke=function(){
+          return new Promise(function(res){ setTimeout(function(){ res({data:{ok:true,text:JSON.stringify(reply)},error:null}); }, 2200); });
+        };
+        // The video stops at the print click; the PDF download is not needed.
+        window.ensureJsPdf=function(){ return Promise.resolve(function(){ return { addPage(){}, setTextColor(){}, setDrawColor(){}, setLineWidth(){}, rect(){}, setFont(){}, setFontSize(){}, getTextWidth(){ return 10; }, text(){}, line(){}, setFillColor(){}, save(){} }; }); };
+        // An on-screen copy of sheet 3 of 14, as it prints.
+        window.__showSheet=function(){
+          var o=document.createElement('div'); o.id='v-sheet';
+          o.style.cssText='position:fixed;inset:0;z-index:2147483640;background:rgba(6,13,26,.92);display:flex;align-items:center;justify-content:center;padding-bottom:70px';
+          o.innerHTML='<div style="width:640px;height:494px;background:#fff;border:7px solid #000;box-sizing:border-box;padding:22px 26px;color:#000;font-family:Arial;position:relative">'+
+            '<div style="position:absolute;right:30px;top:20px;text-align:center"><div style="font-weight:700;font-size:20px">PALLET</div><div style="font-weight:700;font-size:78px;line-height:1">3 OF 14</div></div>'+
+            '<div style="font-weight:700;font-size:22px">PERICO NUTRITION</div><div style="font-size:14px;margin-top:4px">Cold Brew 12oz, 24-pack</div>'+
+            '<div style="font-size:11px;color:#555;font-weight:700;margin-top:22px">BOL #</div><div style="font-weight:700;font-size:26px">BOL-558214</div>'+
+            '<div style="font-size:11px;color:#555;font-weight:700;margin-top:8px">PO #</div><div style="font-weight:700;font-size:19px">PO-77310</div>'+
+            '<div style="border-top:2px solid #000;margin:14px 0 10px"></div>'+
+            '<div style="display:flex;justify-content:space-between"><div><div style="font-size:11px;color:#555;font-weight:700">SHIP TO</div><div style="font-weight:700;font-size:18px">Publix Distribution Center</div><div style="font-size:14px">1936 George Jenkins Blvd</div><div style="font-size:14px">Lakeland, FL 33815</div></div>'+
+            '<div style="font-size:15px;line-height:1.9"><span style="font-size:11px;color:#555;font-weight:700;display:inline-block;width:80px">CARRIER</span><b>XPO Logistics</b><br><span style="font-size:11px;color:#555;font-weight:700;display:inline-block;width:80px">LOT</span><b>CB-2041</b><br><span style="font-size:11px;color:#555;font-weight:700;display:inline-block;width:80px">CASES</span><b>120</b></div></div>'+
+            '<div style="position:absolute;left:26px;bottom:44px;height:44px;width:300px;background:repeating-linear-gradient(90deg,#000 0 2px,#fff 2px 4px,#000 4px 7px,#fff 7px 8px)"></div>'+
+            '<div style="position:absolute;left:0;right:0;bottom:12px;text-align:center;font-size:10px;border-top:1px solid #000;padding-top:6px;margin:0 20px">FROM: Good Liquid Bev Co, 2011 51st Ave E, Unit 100, Palmetto, FL 34221 | BOL BOL-558214 | Pallet 3 of 14</div>'+
+          '</div>';
+          document.body.appendChild(o);
+        };
+        if(window.GL_HOOKS){ window.GL_HOOKS._navGuards=[]; }
+        document.getElementById('crm-panel').classList.add('show');
+        window.cNav('warehouse');
+        // Room below the form, so the Print button can scroll clear of the captions.
+        var pad=document.createElement('style'); pad.textContent='#cpg-warehouse{padding-bottom:300px}'; document.head.appendChild(pad);
+        window.__hud();
+      }, BOL_AI_REPLY);
+      await sleep(900); await pg.evaluate(()=>window.__hud());
+    },
+    steps:[
+      {say:"When a client sends you a bill of lading, every pallet on it needs its own sheet. Warehouse Storage now makes them for you."},
+      {say:"Open the B O L pallet sheets tab.", act:{type:'click',sel:'[data-wh="tab"][data-arg="bol"]'}},
+      {say:"Click Upload B O L, and pick the P D F the client sent you. A clear photo of the paper copy works too.", act:{type:'upload',sel:'#wh-bol-file',target:'label:has(#wh-bol-file)',file:{name:'BOL-558214.pdf',mimeType:'application/pdf',body:'%PDF-1.4'}}},
+      {say:"A I reads the B O L and fills in the form: the B O L and P O numbers, carrier, ship to address, product and lot.", act:{type:'move',sel:'#wh-bol-bol'}},
+      {say:"Most importantly, the number of pallets. This B O L lists fourteen.", act:{type:'move',sel:'#wh-bol-pallets'}},
+      {say:"Everything it filled in is outlined. Always check those fields against the paper before you print. If something is wrong, just type over it.", act:{type:'move',sel:'#wh-bol-msg',center:true}},
+      {say:"If you'd rather not upload, you can type the details in by hand. Only the B O L number and the pallet count are required.", act:{type:'move',sel:'#wh-bol-client'}},
+      {say:"When it looks right, click Print. The button tells you exactly how many sheets you'll get.", act:{type:'click',sel:'#wh-bol-print',center:true}},
+      {say:"You get a P D F with one page per pallet. Each sheet says pallet three of fourteen in big type, with the B O L, P O, ship to, carrier and a barcode, readable from across the dock.", act:{type:'call',fn:'__showSheet',sel:'#v-sheet'}},
+      {say:"Print them, tape one to each pallet, and the load is ready to ship."}
+    ]
+  },
   dashboard:{
     title:'Dashboard — Your Business at a Glance',
     async setup(pg){
@@ -579,9 +704,15 @@ const STORYBOARDS={
 
 // ─────────────────────────── driver ───────────────────────────
 const ATO=4000;   // per-action timeout so a bad step can't overrun and wreck sync
-async function moveCursor(pg,sel){
+// center: scroll the target to the middle of the screen. "If needed" counts an
+// element under the caption bar as visible, so a form's lower half can sit
+// hidden behind the captions.
+async function moveCursor(pg,sel,center){
   let box=null;
-  try { const loc=pg.locator(sel).first(); await loc.scrollIntoViewIfNeeded({timeout:ATO}); await sleep(180); box=await loc.boundingBox({timeout:ATO}); } catch(e){ return null; }
+  try { const loc=pg.locator(sel).first();
+    if(center) await loc.evaluate(el=>el.scrollIntoView({block:'center',behavior:'smooth'}),null,{timeout:ATO});
+    else await loc.scrollIntoViewIfNeeded({timeout:ATO});
+    await sleep(center?500:180); box=await loc.boundingBox({timeout:ATO}); } catch(e){ return null; }
   if(!box) return null;
   const x=Math.round(box.x+box.width/2), y=Math.round(box.y+Math.min(box.height/2,22));
   await pg.evaluate(({x,y})=>{const c=document.getElementById('vcursor');c.style.left=x+'px';c.style.top=y+'px';},{x,y});
@@ -589,12 +720,23 @@ async function moveCursor(pg,sel){
 }
 async function doAct(pg,act){
   if(!act) return;
-  if(act.type==='move'){ await moveCursor(pg,act.sel); return; }
-  const pt=await moveCursor(pg,act.sel);
+  if(act.type==='move'){ await moveCursor(pg,act.sel,act.center); return; }
+  if(act.type==='call'){ await pg.evaluate(fn=>window[fn](), act.fn); await sleep(250); if(act.sel) await moveCursor(pg,act.sel); return; }
+  if(act.type==='upload'){
+    // A file input is usually hidden behind its button: point at the button
+    // (act.target), then hand the input the file.
+    const up=await moveCursor(pg,act.target||act.sel);
+    if(up) await pg.evaluate(({x,y})=>window.__pulse(x,y),up);
+    await sleep(150);
+    await pg.setInputFiles(act.sel,{name:act.file.name,mimeType:act.file.mimeType,buffer:Buffer.from(act.file.body||'x')},{timeout:ATO});
+    return;
+  }
+  const pt=await moveCursor(pg,act.sel,act.center);
   if(act.type==='click'){ if(pt) await pg.evaluate(({x,y})=>window.__pulse(x,y),pt); await sleep(150); await pg.locator(act.sel).first().click({timeout:ATO}); }
   else if(act.type==='type'){ await pg.locator(act.sel).first().click({timeout:ATO}); await pg.locator(act.sel).first().pressSequentially(act.text,{delay:48,timeout:ATO}); }
   else if(act.type==='select'){ await pg.selectOption(act.sel, act.label?{label:act.label}:act.value, {timeout:ATO}); }
   else if(act.type==='fill'){ await pg.locator(act.sel).first().fill(act.text,{timeout:ATO}); }
+  else if(act.type==='press'){ await pg.locator(act.sel).first().press(act.key||'Enter',{timeout:ATO}); }
 }
 
 (async()=>{
