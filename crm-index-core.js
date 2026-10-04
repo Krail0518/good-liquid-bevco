@@ -870,7 +870,9 @@ function buildCharts(){
 
 /* Clients */
 function renderClients(list){
-  const rows=list||clients;
+  // Alphabetical by brand. The clients array itself stays newest-first (that
+  // is how it loads), so sort a copy rather than reordering it for everyone.
+  const rows=(list||clients).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||'',undefined,{sensitivity:'base'}));
   document.getElementById('client-sub').textContent=rows.length+' beverage brands';
   // Compute total billed from invoices on the fly. The clients.total_billed
   // DB column is never maintained (no trigger / cron updates it), so reading
