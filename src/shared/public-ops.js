@@ -881,7 +881,11 @@
 
     ov.querySelector('#gl-suggest-go').addEventListener('click', async function(){
       var btn = this; var out = ov.querySelector('#gl-suggest-out');
-      var clientsList = (window.clients||[]).slice(0, 20);
+      // The 20 most recent clients. window.clients is in name order
+      // (glSortClients), so sort by date rather than taking the first 20.
+      var clientsList = (window.clients||[]).slice().sort(function(a,b){
+        return String(b.createdAt||'').localeCompare(String(a.createdAt||''));
+      }).slice(0, 20);
       var recentInvs  = (window.invoices||[]).slice(0, 10);
       var activeClients = clientsList.filter(function(c){ return c.status === 'active'; }).length;
       var newLeads     = clientsList.filter(function(c){ return c.status === 'lead'; }).length;

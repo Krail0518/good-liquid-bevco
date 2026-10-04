@@ -2030,8 +2030,10 @@
             paymentTerms: data.paymentTerms, leadSource: data.leadSource,
             notes: data.notes, status: 'lead', billed: 0,
             init: (data.name || 'X').split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().slice(0,2),
-            color: '#1a3a6e', tc: '#9FE1CB'
+            color: '#1a3a6e', tc: '#9FE1CB',
+            createdAt: new Date().toISOString()
           });
+          if(typeof window.glSortClients === 'function') window.glSortClients();
         }
         if(typeof renderClients === 'function') renderClients();
         if(typeof renderDash === 'function')    renderDash();

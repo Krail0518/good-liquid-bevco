@@ -110,9 +110,13 @@ async function callHelper(src, mode, build) {
   }
 
   const delClient = extract('deleteClientHard') || extract('deleteClient') || '';
+  // The cache is purged in place (clients.splice) so `clients` and
+  // window.clients stay one array; see tests/client-order.test.cjs.
+  const guardAt = delClient.indexOf('res.ok');
+  const purgeAt = delClient.indexOf('clients.splice(');
   check('client delete purges the local cache only after the guard',
-    !delClient || delClient.indexOf('res.ok') < delClient.indexOf('window.clients ='),
-    'local cache mutation appears before the guard');
+    !!delClient && guardAt !== -1 && purgeAt !== -1 && guardAt < purgeAt,
+    'guard at ' + guardAt + ', purge at ' + purgeAt);
 
   // ── the helper's contract ────────────────────────────────────────────
   console.log('');

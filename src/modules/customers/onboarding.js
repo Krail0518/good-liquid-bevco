@@ -334,8 +334,8 @@
   // client-card button.
   window.glOpenOnboardPicker = function(preselectedClientId){
     var existing = document.getElementById('gl-onboard-picker'); if(existing) existing.remove();
+    // Already in name order (glSortClients, crm-index-core.js).
     var clients = (window.clients && Array.isArray(window.clients)) ? window.clients.slice() : [];
-    clients.sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
     var ov = document.createElement('div');
     ov.id = 'gl-onboard-picker';
     ov.setAttribute('style','position:fixed;inset:0;z-index:9500;background:rgba(6,13,26,.92);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:20px');

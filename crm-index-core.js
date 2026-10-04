@@ -219,6 +219,16 @@ const GL={name:'Good Liquid Bev Co',addr:'2011 51st Ave E, Unit 100',city:'Palme
 let referrers=window.referrers=[];
 let referrals=window.referrals=[];
 let clients=window.clients=[];
+/* Brand-name order for the one clients array. The Clients table and every
+   client picker (invoices, tasks, calendar, documents, AI drafts, production,
+   time tracking, quotes, ...) read this array, so ordering it here keeps all
+   of them alphabetical, including pickers added later. Call it after loading
+   and after adding a client. It sorts in place: `clients` and
+   `window.clients` must stay the same array, or one goes stale. */
+function glSortClients(){
+  clients.sort((a,b)=>(a.name||'').localeCompare(b.name||'',undefined,{sensitivity:'base'}));
+}
+window.glSortClients=glSortClients;
 
 let invoices=window.invoices=[];
 
@@ -872,9 +882,9 @@ function buildCharts(){
 
 /* Clients */
 function renderClients(list){
-  // Alphabetical by brand. The clients array itself stays newest-first (that
-  // is how it loads), so sort a copy rather than reordering it for everyone.
-  const rows=(list||clients).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||'',undefined,{sensitivity:'base'}));
+  // Already alphabetical: clients is kept in name order (glSortClients), and
+  // filterClients passes a filter of it, which keeps that order.
+  const rows=list||clients;
   document.getElementById('client-sub').textContent=rows.length+' beverage brands';
   // Compute total billed from invoices on the fly. The clients.total_billed
   // DB column is never maintained (no trigger / cron updates it), so reading
@@ -947,7 +957,11 @@ async function deleteClient(cid, cname){
   const res = await glCheckedDelete(sb => sb.from('clients').delete().eq('id', cid).select('id'));
   if(!res.ok){ alert('Delete failed — "' + cname + '" has NOT been deleted: ' + res.reason); return; }
   // Local cache + UI refresh
-  if(Array.isArray(window.clients)) window.clients = window.clients.filter(c => c.id !== cid);
+  // Remove in place. Reassigning window.clients to a filtered copy left the
+  // `clients` binding (which renderClients reads) holding the old array, so
+  // the deleted client stayed on screen until a reload.
+  const gone = clients.findIndex(c => c.id === cid);
+  if(gone !== -1) clients.splice(gone, 1);
   if(typeof renderClients === 'function') renderClients();
   if(typeof renderDash === 'function') renderDash();
   addNotification('🗑️ Client deleted', cname, 'warning');
@@ -1815,8 +1829,11 @@ async function loadSupabaseData(){
       formulationDone: !!c.formulation_done,
       formulationVendor: c.formulation_vendor||'',
       formulationSpend: c.formulation_spend==null?null:parseFloat(c.formulation_spend),
-      formulationPct: c.formulation_pct==null?null:parseFloat(c.formulation_pct)
+      formulationPct: c.formulation_pct==null?null:parseFloat(c.formulation_pct),
+      // The array is in name order, so "newest" has to be asked for by date.
+      createdAt: c.created_at||''
     }));
+    glSortClients();
   }
   if(iR.data && iR.data.length>0){
     invoices.length=0;
@@ -2342,8 +2359,10 @@ async function saveNewClientOnce(){
     coiOnFile, coiExpires, w9OnFile, w9Received, w9FilePath,
     taxExempt, taxExemptState, taxExemptFilePath,
     paLetterOnFile, paLetterExpires, paLetterFilePath,
-    billed:0, referredBy, color, tc, init, notes
+    billed:0, referredBy, color, tc, init, notes,
+    createdAt: new Date().toISOString()
   });
+  glSortClients();
 
   // Update UI
   renderClients();

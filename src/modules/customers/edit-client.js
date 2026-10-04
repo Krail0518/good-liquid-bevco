@@ -1027,6 +1027,8 @@
       window.glAudit('client_edited', clientId, { fields: Object.keys(diff) });
     }
 
+    // A rename can move the client in the alphabetical list every picker reads.
+    if(typeof window.glSortClients === 'function') window.glSortClients();
     if(typeof renderClients === 'function') try { renderClients(); } catch(e){}
     if(typeof renderDash === 'function')    try { renderDash();    } catch(e){}
 
