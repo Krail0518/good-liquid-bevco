@@ -29,6 +29,16 @@ const vm = require('vm');
 
 const SRC = fs.readFileSync(path.join(__dirname, '..', 'src', 'modules', 'customers', 'onboarding.js'), 'utf8');
 
+// The email/name match is shared with Add Client and lives in
+// crm-index-core.js, which loads before this module in index.html. Load the
+// real one rather than a stub, so this test covers the lookup actually used.
+const CORE = fs.readFileSync(path.join(__dirname, '..', 'crm-index-core.js'), 'utf8').replace(/\r\n/g, '\n');
+const HELPER = (() => {
+  const start = CORE.indexOf('window.glFindDuplicateClient = ');
+  if (start === -1) throw new Error('window.glFindDuplicateClient not found in crm-index-core.js');
+  return CORE.slice(start, CORE.indexOf('\n};\n', start) + 4);
+})();
+
 let failures = 0;
 function check(name, cond, detail) {
   if (cond) console.log('  PASS  ' + name);
@@ -115,6 +125,7 @@ function load(db, deal) {
     setTimeout, document: { getElementById: () => null },
   };
   vm.createContext(ctx);
+  vm.runInContext(HELPER, ctx);
   vm.runInContext(SRC, ctx);
   return { win, alerts, sent };
 }
