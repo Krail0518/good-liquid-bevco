@@ -1005,7 +1005,8 @@
         }
         if(r && r.error){
           console.warn('[GL] glUpdateClient: supabase error', r.error);
-          return failAndRestore('The database rejected the change: ' + r.error.message);
+          // A rename onto another client's name hits the unique name index.
+          return failAndRestore('The database rejected the change: ' + window.glClientWriteError(r.error, patch.name));
         }
         if(r && Array.isArray(r.data) && r.data.length === 0){
           console.warn('[GL] glUpdateClient: 0 rows updated (likely RLS)');
