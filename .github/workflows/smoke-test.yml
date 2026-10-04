@@ -105,6 +105,11 @@ jobs:
       - name: Run add-client duplicate tests
         run: node tests/add-client-duplicates.test.cjs
 
+      # Every client picker is alphabetical because the one clients array is
+      # kept in name order and never replaced. No browser needed.
+      - name: Run client order tests
+        run: node tests/client-order.test.cjs
+
       # A delete the database refused must not purge the local cache or write
       # an audit entry saying it happened. No browser needed.
       - name: Run checked-delete tests
