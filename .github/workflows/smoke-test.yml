@@ -100,6 +100,11 @@ jobs:
       - name: Run convert-lead duplicate tests
         run: node tests/convert-lead-duplicates.test.cjs
 
+      # Add Client and the Onboarding Wizard must not make a second copy of an
+      # existing client, by double click or otherwise. No browser needed.
+      - name: Run add-client duplicate tests
+        run: node tests/add-client-duplicates.test.cjs
+
       # A delete the database refused must not purge the local cache or write
       # an audit entry saying it happened. No browser needed.
       - name: Run checked-delete tests

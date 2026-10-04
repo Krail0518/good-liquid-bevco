@@ -115,7 +115,13 @@ async function callHelper(src, mode) {
   }
 
   // The client path must stop before uploading documents against a fake id.
-  const clientSrc = extract('saveNewClient') || '';
+  // saveNewClient is the double-click guard; the save itself is
+  // saveNewClientOnce. Check the wrapper really delegates, so the assertions
+  // below cannot pass against a function the button no longer reaches.
+  const wrapperSrc = extract('saveNewClient(') || '';
+  check('saveNewClient delegates to saveNewClientOnce',
+    /await saveNewClientOnce\(\)/.test(wrapperSrc), wrapperSrc.slice(0, 120));
+  const clientSrc = extract('saveNewClientOnce') || '';
   const guardAt  = clientSrc.indexOf('cid === localId');
   const uploadAt = clientSrc.indexOf('uploadComplianceDoc');
   const pushAt   = clientSrc.indexOf('clients.push');

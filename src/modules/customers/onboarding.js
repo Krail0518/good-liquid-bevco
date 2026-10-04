@@ -36,11 +36,9 @@
   // The Other Matcha two on 2026-09-23.
   var converting = false;
 
-  // ilike treats % and _ as wildcards, and an email can contain _.
-  function likeLiteral(s){ return String(s).replace(/[\\%_]/g, '\\$&'); }
-
   // The client this lead already became, if any: the deal's own link first,
-  // then a client with the same email or the same name. Read from the database
+  // then the same email-or-name match Add Client uses
+  // (window.glFindDuplicateClient, crm-index-core.js). Read from the database
   // rather than window.clients, which another tab or the previous click may
   // have left stale. A failed lookup throws: guessing "no match" is exactly
   // how the duplicates were made.
@@ -54,12 +52,7 @@
         if(cr.data) return cr.data;
       }
     }
-    var byEmail = await sb().from('clients').select('id, name').ilike('email', likeLiteral(email)).limit(1);
-    if(byEmail.error) throw new Error('client lookup: ' + byEmail.error.message);
-    if(byEmail.data && byEmail.data.length) return byEmail.data[0];
-    var byName = await sb().from('clients').select('id, name').ilike('name', likeLiteral(company.trim())).limit(1);
-    if(byName.error) throw new Error('client lookup: ' + byName.error.message);
-    return (byName.data && byName.data[0]) || null;
+    return await window.glFindDuplicateClient(company, email);
   }
 
   // Point the deal at its client so the next conversion attempt finds it.

@@ -2091,7 +2091,53 @@ async function uploadComplianceDoc(file, clientId, kind){
 }
 window.uploadComplianceDoc = uploadComplianceDoc;
 
+/* An existing client with the same email or the same brand name, or null.
+   Asked of the database, not the local clients array, which another tab may
+   have left stale. Throws when the lookup fails: assuming "no match" on an
+   error is how duplicates get made. Used by Add Client and the Onboarding
+   Wizard (src/shared/tools.js). ilike treats % and _ as wildcards and an
+   email can contain _, so both are escaped to match literally. */
+window.glFindDuplicateClient = async function(name, email){
+  const lit = s => String(s).replace(/[\\%_]/g, '\\$&');
+  const sb = window.supa;
+  if(!sb) throw new Error('Supabase not ready');
+  if(email && email.trim()){
+    const r = await sb.from('clients').select('id, name, email').ilike('email', lit(email.trim())).limit(1);
+    if(r.error) throw new Error(r.error.message);
+    if(r.data && r.data.length) return r.data[0];
+  }
+  if(name && name.trim()){
+    const r = await sb.from('clients').select('id, name, email').ilike('name', lit(name.trim())).limit(1);
+    if(r.error) throw new Error(r.error.message);
+    if(r.data && r.data.length) return r.data[0];
+  }
+  return null;
+};
+
+/* Asks before creating a client that looks like one we already have.
+   Returns true to go ahead. */
+window.glConfirmNotDuplicate = async function(name, email){
+  let dup;
+  try { dup = await window.glFindDuplicateClient(name, email); }
+  catch(e){
+    alert('Could not check whether "' + name + '" is already a client: ' + (e.message || e) + '\n\nNothing was saved. Please try again.');
+    return false;
+  }
+  if(!dup) return true;
+  return confirm('"' + dup.name + '"' + (dup.email ? ' (' + dup.email + ')' : '') + ' is already a client.\n\n' +
+                 'Create another client anyway? Choose Cancel and open the existing one from the Clients list instead.');
+};
+
+// Saving uploads documents after the insert and takes a few seconds, while
+// the Save button stays live. Without this a second click made a second client.
+let savingNewClient = false;
 async function saveNewClient(){
+  if(savingNewClient) return;
+  savingNewClient = true;
+  try { await saveNewClientOnce(); } finally { savingNewClient = false; }
+}
+
+async function saveNewClientOnce(){
   const $ = id => document.getElementById(id);
   const v = id => ($(id) ? $(id).value.trim() : '');
   const ck = id => !!($(id) && $(id).checked);
@@ -2170,6 +2216,8 @@ async function saveNewClient(){
   if(taxExemptFile) taxExempt = true;
   if(paLetterFile)  paLetterOnFile = true;
   const notes         = v('nc-notes');
+
+  if(!(await window.glConfirmNotDuplicate(name, email))) return;
 
   const init = name.split(' ').map(w=>w[0]||'').join('').toUpperCase().slice(0,2);
   const colors=['#1a3a6e','#0F6E56','#854F0B','#3C3489','#712B13','#27500A','#444441','#712B13'];

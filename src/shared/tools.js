@@ -1996,8 +1996,11 @@
       if(save) save.addEventListener('click', async function(){
         stash();
         save.disabled = true; save.textContent = 'Creating…';
-        var localId = 'c_' + Date.now();
-        var cid = localId;
+        function giveBack(){ save.disabled = false; save.textContent = '✓ Create client'; }
+        if(!(await window.glConfirmNotDuplicate(data.name, data.email))){ giveBack(); return; }
+        // No placeholder id: a client the database did not create must not
+        // appear on screen or be reported as onboarded.
+        var cid = null, saveErr = 'Supabase not ready';
         if(window.supa){
           try {
             var r = await window.supa.from('clients').insert([{
@@ -2009,8 +2012,14 @@
               notes: data.notes, status: 'lead', total_billed: 0,
               initials: (data.name || 'X').split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().slice(0,2)
             }]).select().single();
-            if(r && r.data){ cid = r.data.id; }
-          } catch(e){ console.warn('[GL] wizard save failed', e); }
+            if(r && r.data && r.data.id){ cid = r.data.id; }
+            else saveErr = (r && r.error && r.error.message) || 'the server did not return the new record';
+          } catch(e){ saveErr = (e && e.message) || String(e); console.warn('[GL] wizard save failed', e); }
+        }
+        if(!cid){
+          alert('The client was NOT saved: ' + saveErr + '\n\nNothing has been recorded. Please try again.');
+          giveBack();
+          return;
         }
         if(window.clients){
           window.clients.push({
