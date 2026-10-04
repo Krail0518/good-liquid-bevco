@@ -95,6 +95,11 @@ jobs:
       - name: Run checked-insert tests
         run: node tests/checked-inserts.test.cjs
 
+      # Converting a pipeline lead must not make a second client: a lead that
+      # is already a client gets onboarding, and a double click makes one.
+      - name: Run convert-lead duplicate tests
+        run: node tests/convert-lead-duplicates.test.cjs
+
       # A delete the database refused must not purge the local cache or write
       # an audit entry saying it happened. No browser needed.
       - name: Run checked-delete tests

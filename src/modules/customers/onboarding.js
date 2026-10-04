@@ -30,7 +30,55 @@
   // client their finish link, invite their portal login, and (via the DB
   // submit trigger) get a WhatsApp when they complete it. Every failure is
   // surfaced; nothing half-done is left silent.
+  // A conversion takes several seconds (insert, documents, RPC, email, reload)
+  // and the button stays live the whole time. Two clicks used to make two
+  // clients and send two links: KEWE Energy got three records on 2026-10-04,
+  // The Other Matcha two on 2026-09-23.
+  var converting = false;
+
+  // ilike treats % and _ as wildcards, and an email can contain _.
+  function likeLiteral(s){ return String(s).replace(/[\\%_]/g, '\\$&'); }
+
+  // The client this lead already became, if any: the deal's own link first,
+  // then a client with the same email or the same name. Read from the database
+  // rather than window.clients, which another tab or the previous click may
+  // have left stale. A failed lookup throws: guessing "no match" is exactly
+  // how the duplicates were made.
+  async function findExistingClient(dealId, email, company){
+    if(dealId){
+      var dr = await sb().from('deals').select('client_id').eq('id', dealId).maybeSingle();
+      if(dr.error) throw new Error('deal lookup: ' + dr.error.message);
+      if(dr.data && dr.data.client_id){
+        var cr = await sb().from('clients').select('id, name').eq('id', dr.data.client_id).maybeSingle();
+        if(cr.error) throw new Error('client lookup: ' + cr.error.message);
+        if(cr.data) return cr.data;
+      }
+    }
+    var byEmail = await sb().from('clients').select('id, name').ilike('email', likeLiteral(email)).limit(1);
+    if(byEmail.error) throw new Error('client lookup: ' + byEmail.error.message);
+    if(byEmail.data && byEmail.data.length) return byEmail.data[0];
+    var byName = await sb().from('clients').select('id, name').ilike('name', likeLiteral(company.trim())).limit(1);
+    if(byName.error) throw new Error('client lookup: ' + byName.error.message);
+    return (byName.data && byName.data[0]) || null;
+  }
+
+  // Point the deal at its client so the next conversion attempt finds it.
+  // Returns a problem string, or null when the link saved.
+  async function linkDealToClient(dealId, clientId){
+    if(!dealId) return null;
+    var r = await sb().from('deals').update({ client_id: clientId }).eq('id', dealId).select('id');
+    if(r.error) return 'the deal was not linked to the client (' + r.error.message + ')';
+    if(!Array.isArray(r.data) || r.data.length === 0) return 'the deal was not linked to the client (0 rows)';
+    return null;
+  }
+
   window.glConvertLeadToOnboarding = async function glConvertLeadToOnboarding(){
+    if(converting){ alert('Already converting this lead — wait for it to finish.'); return; }
+    converting = true;
+    try { await convertLead(); } finally { converting = false; }
+  };
+
+  async function convertLead(){
     var stage = window.currentDealStage, idx = window.currentDealIdx;
     if(stage == null || idx == null){ alert('No lead selected.'); return; }
     var d = ((window.deals && window.deals[stage]) || [])[idx];
@@ -41,6 +89,19 @@
     var email = (d.email || '').trim();
     if(!company){ alert('This lead has no company name — add one first (✏️ Edit).'); return; }
     if(!email){ alert('This lead has no email address — add one first so we can send the onboarding link.'); return; }
+
+    var realDealId = (d.id && !String(d.id).startsWith('tmp_')) ? d.id : null;
+    var existing;
+    try { existing = await findExistingClient(realDealId, email, company); }
+    catch(e){ alert('✗ Could not check whether "' + company + '" is already a client: ' + (e.message || e) + '\n\nNothing was created. Try again.'); return; }
+
+    if(existing){
+      if(!confirm('"' + existing.name + '" is already a client.\n\nSend them an onboarding link instead of creating another client?')) return;
+      var linkProblem = await linkDealToClient(realDealId, existing.id);
+      if(linkProblem) alert('Note: ' + linkProblem + '. The onboarding link will still be sent.');
+      await window.glSendOnboardingLink(existing.id);
+      return;
+    }
 
     if(!confirm('Convert "' + company + '" into a client and send them an onboarding link at ' + email + '?')) return;
 
@@ -69,8 +130,9 @@
       //     anything else stay linked to the client's Documents card. A failure
       //     here must not sink the whole conversion — the client is already made.
       var carryOverProblems = [];
+      var dealLinkProblem = await linkDealToClient(realDealId, clientId);
+      if(dealLinkProblem) carryOverProblems.push(dealLinkProblem);
       try {
-        var realDealId = (d.id && !String(d.id).startsWith('tmp_')) ? d.id : null;
         if(realDealId){
           var dd = await sb().from('deal_documents').select('*').eq('deal_id', realDealId);
           var docs = (dd.data) || [];
@@ -142,8 +204,7 @@
         product_type: d.productType || ''
       };
       var cr = await sb().rpc('gl_onboarding_create', {
-        p_client_id: clientId, p_prefill: prefill,
-        p_deal_id: (d.id && !String(d.id).startsWith('tmp_')) ? d.id : null
+        p_client_id: clientId, p_prefill: prefill, p_deal_id: realDealId
       });
       if(cr.error) throw new Error('onboarding create: ' + cr.error.message);
       if(!cr.data || cr.data.ok === false) throw new Error('onboarding create: ' + ((cr.data && cr.data.error) || 'unknown'));
@@ -171,7 +232,7 @@
       console.error('[onboarding] convert failed', e);
       alert('✗ Convert failed: ' + (e.message || e) + '\n\nNothing was sent. Check the browser console and try again.');
     }
-  };
+  }
 
   // ── Compose + send the branded onboarding email ──
   // Shared by the pipeline convert flow and the client-detail Send/Resend
