@@ -697,6 +697,7 @@
         <div class="cni-sec">Operations</div>
         <div class="cni" id="nav-production-runs" data-gl-action="cNav" data-gl-arg1="production-runs" data-gl-el><span class="cni-ico">🏭</span>Production Runs</div>
         <div class="cni" id="nav-samples" data-gl-action="cNav" data-gl-arg1="samples" data-gl-el><span class="cni-ico">📦</span>Sample Shipments</div>
+        <div class="cni" id="nav-warehouse" data-gl-action="cNav" data-gl-arg1="warehouse" data-gl-el style="display:none"><span class="cni-ico">🏬</span>Warehouse Storage</div>
         <div class="cni-sec">Calendars</div>
         <div class="cni" id="nav-calendar" data-gl-action="cNav" data-gl-arg1="calendar" data-gl-el><span class="cni-ico">📅</span>General Calendar</div>
         <div class="cni" id="nav-production-cal" data-gl-action="cNav" data-gl-arg1="production-cal" data-gl-el><span class="cni-ico">🏭</span>Production Schedule</div>
@@ -776,6 +777,9 @@
 
       <!-- ═══ TRACEABILITY / MOCK RECALL — mount point; all rendering in src/modules/production/trace.js ═══ -->
       <div id="cpg-trace" class="cpg"></div>
+
+      <!-- ═══ WAREHOUSE STORAGE (CONRI) — mount point; all rendering in src/modules/warehouse/warehouse.js ═══ -->
+      <div id="cpg-warehouse" class="cpg"></div>
 
       <!-- ═══ TRAINING & COMPETENCY — mount point; all rendering in src/modules/production/training.js ═══ -->
       <div id="cpg-training" class="cpg"></div>
@@ -1157,6 +1161,7 @@
             <button class="cbtn" data-gl-action="glOpenBulkNudge" style="background:rgba(196,164,248,.1);border-color:rgba(196,164,248,.3);color:#c4a4f8">⏰ Bulk Nudge</button>
             <button class="cbtn" data-gl-action="openAddDealModal" style="background:rgba(0,229,192,.1);border-color:rgba(0,229,192,.3);color:var(--teal)">+ Add Deal</button>
             <button id="gl-pipeline-quote-btn" class="cbtn" data-gl-action="glNewQuote" style="background:rgba(26,111,255,.1);border-color:rgba(26,111,255,.35);color:#5a9fff">📋 Quote Builder</button>
+            <button id="gl-pipeline-quotes-list-btn" class="cbtn" data-gl-action="glOpenQuotesList" style="background:rgba(26,111,255,.06);border-color:rgba(26,111,255,.3);color:#5a9fff">🗂 Quotes</button>
           </div>
         </div>
         <div class="pipeline-switch">
@@ -2193,6 +2198,7 @@
 <script src="/src/modules/production/training.js"></script>
 <script src="/src/modules/pipeline/formulation.js"></script>
 <script src="/src/modules/production/audit-review.js"></script>
+<script src="/src/modules/warehouse/warehouse.js"></script>
 <script src="/src/shared/selftest.js"></script>
 <script src="/src/shared/action-registry.js"></script>
 </body></html>

@@ -44,6 +44,9 @@ jobs:
           cd /tmp/pw
           npm init -y >/dev/null 2>&1
           npm install playwright@1.48.0 >/dev/null 2>&1
+          # jsPDF for tests/warehouse.test.cjs: the same version the CRM loads
+          # from cdnjs, installed here so the test runs without the CDN.
+          npm install jspdf@2.5.1 >/dev/null 2>&1
           # Download the Chromium browser Playwright will drive.
           npx playwright install chromium
 
@@ -332,6 +335,33 @@ jobs:
           NODE_PATH: /tmp/pw/node_modules
           REPO_ROOT: ${{ github.workspace }}
         run: node tests/training-edit.test.cjs
+
+      # Warehouse Storage: dashboard flags, transfer detail, the packing list
+      # and 7 pallet labels for the seeded Camo Energy transfer, CSV export,
+      # reconciliation, FEFO allocation, and BOL pallet sheets (1 OF N .. N OF N).
+      - name: Run warehouse test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/warehouse.test.cjs
+
+      # CIP tank history: searching a tank queries every cycle in the
+      # database (not just the newest 200 on screen) and answers "when was
+      # it last cleaned", including the last PASSING clean.
+      - name: Run CIP history search test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/cip-history-search.test.cjs
+
+      # Users & Permissions: an unticked page must lose its sidebar link. The
+      # gating read only onclick= links and went dark when every link moved to
+      # data-gl-action; this drives the real login and permission load.
+      - name: Run permission gating test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/permission-gating.test.cjs
 
       # Every migration must say how to undo it. Authorization changes reach
       # production through the Supabase MCP, so the file is what someone reads

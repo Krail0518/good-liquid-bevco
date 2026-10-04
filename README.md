@@ -19,3 +19,12 @@ See:
 - `ARCHITECTURE.md`
 - `SECURITY.md`
 - `docs/standards/engineering-standard.md`
+
+## Modules
+
+### Warehouse Storage (CONRI Services)
+Sidebar: Operations → Warehouse Storage (admin and sales). Tracks every pallet stored
+at CONRI (empty can overflow and finished goods), generates the transfer packing
+list, pallet labels and scheduling email, allocates outbound orders FEFO, and
+reconciles CONRI's inventory report. Workflow, tables and the rules the database
+enforces: `src/modules/warehouse/README.md`.

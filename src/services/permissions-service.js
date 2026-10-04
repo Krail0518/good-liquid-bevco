@@ -11,10 +11,10 @@
    ============================================================ */
 (function(){
   /* ── ROLE-BASED PERMISSIONS (core table + nav guards) ── */
-  var ALL=['dashboard','clients','pipeline','invoices','invoice-detail','newinv','referrals','referrers','activity','users','customers','calendar','production-cal','production-runs','samples','formulas','yield','content','compliance','holds','cip','audit','defects','vendors','tasks','documents','inventory','announcements','time-tracker','reports','ai-settings'];
+  var ALL=['dashboard','clients','pipeline','invoices','invoice-detail','newinv','referrals','referrers','activity','users','customers','calendar','production-cal','production-runs','samples','formulas','yield','content','compliance','holds','cip','audit','defects','vendors','tasks','documents','inventory','announcements','time-tracker','reports','ai-settings','warehouse'];
   var WAREHOUSE=['dashboard','production-runs','production-cal','inventory','cip','defects','yield','samples','tasks','announcements'];
-  if(window.PERMISSIONS){window.PERMISSIONS.admin=ALL;window.PERMISSIONS.sales=['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','content','cip','defects','vendors','tasks','announcements','reports'];window.PERMISSIONS.warehouse=WAREHOUSE;}
-  else{window.PERMISSIONS={admin:ALL,sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','content','cip','defects','vendors','tasks','announcements','reports'],warehouse:WAREHOUSE,viewer:['dashboard','clients','invoices','activity']};}
+  if(window.PERMISSIONS){window.PERMISSIONS.admin=ALL;window.PERMISSIONS.sales=['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','content','cip','defects','vendors','tasks','announcements','reports','warehouse'];window.PERMISSIONS.warehouse=WAREHOUSE;}
+  else{window.PERMISSIONS={admin:ALL,sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','calendar','production-cal','production-runs','samples','formulas','yield','content','cip','defects','vendors','tasks','announcements','reports','warehouse'],warehouse:WAREHOUSE,viewer:['dashboard','clients','invoices','activity']};}
   window.can=function(page){var u=window.currentUser;if(!u)return false;if(u.role==='admin')return true;return(window.PERMISSIONS[u.role]||[]).includes(page);};
   window.GL_HOOKS.registerNavGuard(function(page){
     if(!window.can(page)){if(typeof addNotification==='function')addNotification('Access denied',page,'warning');return false;}
@@ -103,16 +103,34 @@
 
   // Hide sidebar nav items the user doesn't have access to + show the
   // Users & permissions nav for admins.
+  // The page a sidebar item opens. Items were converted from onclick="cNav('x',this)"
+  // to data-gl-action="cNav" data-gl-arg1="x" (GL-DEF-01), and this used to read
+  // only onclick -- so after the conversion it matched no item at all and an
+  // unticked page kept its sidebar link (the click was still refused by the
+  // guard below). Both shapes are read so neither can go dark again.
+  function navPageId(el){
+    if(el.getAttribute('data-gl-action') === 'cNav') return el.getAttribute('data-gl-arg1') || null;
+    var m = (el.getAttribute('onclick') || '').match(/cNav\(\s*['"]([^'"]+)['"]/);
+    return m ? m[1] : null;
+  }
+
   function applyGating(){
     var navs = document.querySelectorAll('.cni');
     navs.forEach(function(el){
-      var onclick = el.getAttribute('onclick') || '';
-      var m = onclick.match(/cNav\(\s*['"]([^'"]+)['"]/);
-      if(!m) return;
-      var pageId = m[1];
-      var permId = permIdForPage(pageId);
-      var allowed = window.glCan(permId);
-      el.style.display = allowed ? '' : 'none';
+      var pageId = navPageId(el);
+      if(!pageId) return;
+      var allowed = window.glCan(permIdForPage(pageId));
+      // Hide what is unticked. Only un-hide what THIS function hid: items that
+      // start hidden for role reasons (Customer Logins, Audit Log, Warehouse
+      // Storage) are revealed by their own role checks, never by a default-on
+      // component.
+      if(!allowed){
+        el.style.display = 'none';
+        el.setAttribute('data-gl-gated', '1');
+      } else if(el.getAttribute('data-gl-gated')){
+        el.style.display = '';
+        el.removeAttribute('data-gl-gated');
+      }
     });
     // Admin-only nav items: surface them when user is admin.
     if(perms.isAdmin){
@@ -133,10 +151,9 @@
           var firstNav = null;
           navs.forEach(function(el){
             if(firstNav) return;
-            var oc = el.getAttribute('onclick') || '';
-            var m2 = oc.match(/cNav\(\s*['"]([^'"]+)['"]/);
-            if(m2 && window.glCan(permIdForPage(m2[1]))){
-              firstNav = { page: m2[1], el: el };
+            var pid = navPageId(el);
+            if(pid && el.style.display !== 'none' && window.glCan(permIdForPage(pid))){
+              firstNav = { page: pid, el: el };
             }
           });
           if(firstNav && typeof window.cNav === 'function') window.cNav(firstNav.page, firstNav.el);

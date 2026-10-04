@@ -113,6 +113,8 @@
  *
  *   /src/modules/quotes/quote-builder.js
  *
+ *   /src/modules/warehouse/warehouse.js
+ *
  *   /src/services/auth.js
  *   /src/services/email.js
  *   /src/services/integrations.js

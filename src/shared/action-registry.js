@@ -175,6 +175,7 @@
     'glOpenPermDefaults',
     'glOpenPricingSettings',
     'glOpenProductionLines',
+    'glOpenQuotesList',
     'glOpenTimerForm',
     'glPauseRecurring',
     'glPortalDownloadAgreement',
