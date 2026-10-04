@@ -2091,31 +2091,46 @@ async function uploadComplianceDoc(file, clientId, kind){
 }
 window.uploadComplianceDoc = uploadComplianceDoc;
 
-/* An existing client with the same email or the same brand name, or null.
+/* An existing client with the same brand name or the same email, or null;
+   the result's `by` says which ('name' or 'email'). Name is checked first
+   because the database forbids a repeated name (unique index
+   clients_name_unique_ci, migration 20261004150710) but allows a shared
+   email, so a name match is final and an email match is only a warning.
+   Both compare case-insensitively with outer spaces ignored, as the index does.
    Asked of the database, not the local clients array, which another tab may
    have left stale. Throws when the lookup fails: assuming "no match" on an
-   error is how duplicates get made. Used by Add Client and the Onboarding
-   Wizard (src/shared/tools.js). ilike treats % and _ as wildcards and an
-   email can contain _, so both are escaped to match literally. */
+   error is how duplicates get made. Used by Add Client, the Onboarding Wizard
+   (src/shared/tools.js) and the pipeline conversion (onboarding.js). ilike
+   treats % and _ as wildcards and an email can contain _, so both are escaped
+   to match literally. */
 window.glFindDuplicateClient = async function(name, email){
   const lit = s => String(s).replace(/[\\%_]/g, '\\$&');
   const sb = window.supa;
   if(!sb) throw new Error('Supabase not ready');
-  if(email && email.trim()){
-    const r = await sb.from('clients').select('id, name, email').ilike('email', lit(email.trim())).limit(1);
+  const lookups = [['name', name], ['email', email]];
+  for(const [col, val] of lookups){
+    if(!val || !String(val).trim()) continue;
+    const r = await sb.from('clients').select('id, name, email').ilike(col, lit(String(val).trim())).limit(1);
     if(r.error) throw new Error(r.error.message);
-    if(r.data && r.data.length) return r.data[0];
-  }
-  if(name && name.trim()){
-    const r = await sb.from('clients').select('id, name, email').ilike('name', lit(name.trim())).limit(1);
-    if(r.error) throw new Error(r.error.message);
-    if(r.data && r.data.length) return r.data[0];
+    if(r.data && r.data.length) return Object.assign({ by: col }, r.data[0]);
   }
   return null;
 };
 
-/* Asks before creating a client that looks like one we already have.
-   Returns true to go ahead. */
+/* Plain words for a client insert or rename the database refused. The unique
+   name index is the backstop for two people adding the same brand at once,
+   which no check in the browser can see. */
+window.glClientWriteError = function(err, name){
+  const msg = (err && err.message) ? err.message : String(err || '');
+  if((err && err.code === '23505') || /clients_name_unique_ci/.test(msg)){
+    return 'a client named "' + (name || '').trim() + '" already exists. Open it from the Clients list instead.';
+  }
+  return msg;
+};
+
+/* Checks before creating a client that looks like one we already have.
+   Returns true to go ahead. A repeated name is refused outright, since the
+   database would refuse it anyway; a shared email only asks. */
 window.glConfirmNotDuplicate = async function(name, email){
   let dup;
   try { dup = await window.glFindDuplicateClient(name, email); }
@@ -2124,8 +2139,12 @@ window.glConfirmNotDuplicate = async function(name, email){
     return false;
   }
   if(!dup) return true;
-  return confirm('"' + dup.name + '"' + (dup.email ? ' (' + dup.email + ')' : '') + ' is already a client.\n\n' +
-                 'Create another client anyway? Choose Cancel and open the existing one from the Clients list instead.');
+  if(dup.by === 'name'){
+    alert('"' + dup.name + '" is already a client. Open it from the Clients list instead.\n\nNothing was saved.');
+    return false;
+  }
+  return confirm('"' + dup.name + '" already uses ' + dup.email + '.\n\n' +
+                 'Create "' + name + '" as a separate client with the same email? Choose Cancel to open the existing one from the Clients list instead.');
 };
 
 // Saving uploads documents after the insert and takes a few seconds, while
@@ -2259,7 +2278,7 @@ async function saveNewClientOnce(){
       initials:init, color, tc
     }]).select().single();
     if(newC && !error) cid = newC.id;
-    if(error) insertError = error.message;
+    if(error) insertError = window.glClientWriteError(error, name);
   } catch(e){ insertError = (e && e.message) ? e.message : String(e); }
 
   /* Stop here if the client was not actually created. Previously cid stayed as

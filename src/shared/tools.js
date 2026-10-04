@@ -2013,7 +2013,7 @@
               initials: (data.name || 'X').split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().slice(0,2)
             }]).select().single();
             if(r && r.data && r.data.id){ cid = r.data.id; }
-            else saveErr = (r && r.error && r.error.message) || 'the server did not return the new record';
+            else saveErr = (r && r.error) ? window.glClientWriteError(r.error, data.name) : 'the server did not return the new record';
           } catch(e){ saveErr = (e && e.message) || String(e); console.warn('[GL] wizard save failed', e); }
         }
         if(!cid){

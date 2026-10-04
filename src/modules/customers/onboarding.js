@@ -113,7 +113,7 @@
         lead_source: d.leadSource || null, notes: d.notes || null,
         initials: initials, onboarding_status: 'invited'
       }]).select('id').single();
-      if(ins.error) throw new Error('client insert: ' + ins.error.message);
+      if(ins.error) throw new Error('client insert: ' + window.glClientWriteError(ins.error, company));
       var clientId = ins.data.id;
 
       // 1b) Carry the deal's documents over to the new client, and smart-file the

@@ -15,7 +15,10 @@
  *     either, and on a refused insert it still put a placeholder client on
  *     screen and announced "Client onboarded".
  *
- * Both now go through window.glConfirmNotDuplicate before inserting. This runs
+ * Both now go through window.glConfirmNotDuplicate before inserting, and the
+ * database refuses a repeated name outright (unique index
+ * clients_name_unique_ci, migration 20261004150710), so a name match is
+ * refused while a shared email only asks. This runs
  * the real helpers and the real double-click guard from crm-index-core.js
  * against a fake Supabase, and checks the ordering in both callers.
  *
@@ -103,8 +106,14 @@ const ROWS = [
   {
     const { ctx } = load(makeSupa(ROWS), { confirm: false });
     const f = ctx.window.glFindDuplicateClient;
-    check('matches by email, ignoring case', ((await f('New Brand', 'official@drinkkewe.com')) || {}).id === 'c1');
-    check('matches by name, ignoring case and outer spaces', ((await f('  kewe energy ', '')) || {}).id === 'c1');
+    const byEmail = await f('New Brand', 'official@drinkkewe.com') || {};
+    check('matches by email, ignoring case', byEmail.id === 'c1' && byEmail.by === 'email');
+    const byName = await f('  kewe energy ', '') || {};
+    check('matches by name, ignoring case and outer spaces', byName.id === 'c1' && byName.by === 'name');
+    // Email matches KEWE, name matches Decoy: the name is what the database
+    // enforces, so it must win.
+    const both = await f('Decoy', 'official@drinkkewe.com') || {};
+    check('name is checked before email', both.id === 'c2' && both.by === 'name', JSON.stringify(both));
     check('_ in an email is literal, not a wildcard', (await f('Nope', 'official_drinkkewe.com')) === null);
     check('no match returns null', (await f('Brand New Co', 'hello@brandnew.co')) === null);
   }
@@ -113,14 +122,38 @@ const ROWS = [
   {
     let t = load(makeSupa(ROWS), { confirm: false });
     check('a new client goes ahead without asking', (await t.ctx.window.glConfirmNotDuplicate('Brand New Co', 'x@y.co')) === true && t.confirms.length === 0);
-    t = load(makeSupa(ROWS), { confirm: false });
-    const stopped = await t.ctx.window.glConfirmNotDuplicate('KEWE Energy', '');
-    check('a duplicate asks, and Cancel stops the save', stopped === false && t.confirms.length === 1 && /already a client/.test(t.confirms[0]));
     t = load(makeSupa(ROWS), { confirm: true });
-    check('a duplicate can still be created deliberately', (await t.ctx.window.glConfirmNotDuplicate('KEWE Energy', '')) === true);
+    const named = await t.ctx.window.glConfirmNotDuplicate('KEWE Energy', '');
+    check('a repeated name is refused without offering to continue', named === false && t.confirms.length === 0 && t.alerts.length === 1 && /already a client/.test(t.alerts[0]));
+    t = load(makeSupa(ROWS), { confirm: false });
+    const stopped = await t.ctx.window.glConfirmNotDuplicate('KEWE Sparkling', 'official@drinkkewe.com');
+    check('a shared email asks, and Cancel stops the save', stopped === false && t.confirms.length === 1 && /already uses/.test(t.confirms[0]));
+    t = load(makeSupa(ROWS), { confirm: true });
+    check('a second brand on the same email can be created deliberately', (await t.ctx.window.glConfirmNotDuplicate('KEWE Sparkling', 'official@drinkkewe.com')) === true);
     t = load(makeSupa(ROWS, true), { confirm: true });
     const onError = await t.ctx.window.glConfirmNotDuplicate('Brand New Co', 'x@y.co');
     check('a failed lookup stops the save instead of assuming no match', onError === false && t.alerts.length === 1, t.alerts.join(' | '));
+  }
+
+  console.log('glClientWriteError');
+  {
+    const { ctx } = load(makeSupa([]), { confirm: true });
+    const e = ctx.window.glClientWriteError;
+    const dup = { code: '23505', message: 'duplicate key value violates unique constraint "clients_name_unique_ci"' };
+    check('the unique-name refusal reads as plain words', /a client named "KEWE Energy" already exists/.test(e(dup, ' KEWE Energy ')), e(dup, 'KEWE Energy'));
+    check('other errors pass through unchanged', e({ code: '42501', message: 'permission denied' }, 'X') === 'permission denied');
+
+    // Every place that writes a client's name must use it, or a refused
+    // write shows raw Postgres text.
+    const sites = {
+      'Add Client': CORE.slice(CORE.indexOf('async function saveNewClientOnce(')),
+      'Onboarding Wizard': TOOLS,
+      'pipeline conversion': read(path.join(ROOT, 'src', 'modules', 'customers', 'onboarding.js')),
+      'Edit Client': read(path.join(ROOT, 'src', 'modules', 'customers', 'edit-client.js')),
+    };
+    for (const [label, src] of Object.entries(sites)) {
+      check(label + ' reports a refused write through glClientWriteError', /glClientWriteError\(/.test(src));
+    }
   }
 
   console.log('saveNewClient double click');
