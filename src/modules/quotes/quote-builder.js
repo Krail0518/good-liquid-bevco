@@ -26,10 +26,13 @@
     return BTLS_PER_CASE;
   }
   function btlTier(cases, rate){ return { cases:cases, perCase:BTLS_PER_CASE, bottles:cases*BTLS_PER_CASE, ratePerBtl:rate }; }
-  // Standard bottling tiers start exactly on the first three price breaks
-  // (total bottles), rounded up to whole cases at the default bottles/case.
+  // Bottling minimum order is 220 cases, whatever the pack size.
+  var BTL_MIN_CASES = 220;
+  // Standard bottling tiers sit on the first three price breaks (total
+  // bottles), rounded up to whole cases at the default bottles/case and never
+  // below the minimum order — at 12/case that is 220 / 330 / 660 cases.
   var BTL_STD_BREAKS = [1320, 3960, 7920];
-  function btlCasesFor(bottles){ return Math.ceil(bottles / BTLS_PER_CASE); }
+  function btlCasesFor(bottles){ return Math.max(BTL_MIN_CASES, Math.ceil(bottles / BTLS_PER_CASE)); }
 
   // [min, max, $/unit] — canning tiers are by CASES, bottling tiers by TOTAL BOTTLES
   var DECK = {
@@ -1861,7 +1864,7 @@
 
     /* "minimum run", "smallest batch", "get started", "first run" → use minimum */
     if(!suggestCasesList.length && /minimum|smallest|starter|get\s*started|first\s*run|start\s*small/i.test((volume||'')+' '+(dealNotes||''))){
-      suggestCasesList = [ productType === 'bottling' ? btlCasesFor(BTL_STD_BREAKS[0]) : productType === 'keg' ? 50 : 200 ];
+      suggestCasesList = [ productType === 'bottling' ? BTL_MIN_CASES : productType === 'keg' ? 50 : 200 ];
     }
 
     var suggestCases = suggestCasesList.length ? suggestCasesList[0] : null;
