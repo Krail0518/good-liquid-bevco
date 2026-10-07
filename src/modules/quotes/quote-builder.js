@@ -748,7 +748,7 @@
             addonToggle('gl-qb-bfp','Batch Flash Pasteurization', B.pasteurPerBtl.toFixed(2),'per bottle') +
             addonToggle('gl-qb-otl','Over the Top Labels', B.otlPerBtl.toFixed(2),'per bottle') +
             addonToggle('gl-qb-labels','Labels Applied Front & Back', B.labelsPerBtl.toFixed(2),'per bottle') +
-            addonToggle('gl-qb-bcase','6-pack Bottle Case', B.casePerCase.toFixed(2),'per case') +
+            addonToggle('gl-qb-bcase','Bottle Case', B.casePerCase.toFixed(2),'per case') +
             addonToggle('gl-qb-bpallet','Pallet', B.palletEach.toFixed(2),'per pallet') +
             addonToggle('gl-qb-bpalletwrap','Pallet Shrink Wrap', B.palletWrapEach.toFixed(2),'per pallet') +
           '</div>' +
@@ -978,22 +978,20 @@
         });
       }
 
-      /* Rebuilding the whole table on every keystroke destroyed the box being
-         typed in, so only one digit went in at a time (and "1." lost its dot).
-         Rebuild only this row's OTHER cells, leave the focused box alone, and
-         wire up the new cells. */
+      /* Rebuilding the table on every keystroke destroyed the box being typed
+         in, so only one digit went in at a time (and "1." lost its dot). After
+         the rebuild, put the ORIGINAL box back in place of its fresh copy — it
+         keeps its text, caret and listeners — taking only the copy's styling
+         (the yellow "overridden" border). */
       function refreshTierRow(inp, idx){
-        var oldRow = inp.closest('tr');
-        var holder = document.createElement('tbody');
-        holder.innerHTML = buildTierRow(state.tiers[idx], idx, isCanning, isBottling, isKeg);
-        var fresh = holder.firstElementChild;
-        Array.prototype.slice.call(fresh.children).forEach(function(td, c){
-          var oldTd = oldRow.children[c];
-          if(!oldTd || oldTd.contains(inp)) return;
-          oldRow.replaceChild(td, oldTd);
-          td.querySelectorAll('[data-tier-field]').forEach(wireTierInput);
-          td.querySelectorAll('[data-del-tier]').forEach(wireDelTier);
-        });
+        var field = inp.getAttribute('data-tier-field');
+        renderTiers();
+        var twin = tbody.querySelector('[data-tier-idx="'+idx+'"][data-tier-field="'+field+'"]');
+        if(!twin) return;
+        inp.style.cssText = twin.style.cssText;
+        inp.title = twin.title;
+        twin.parentNode.replaceChild(inp, twin);
+        inp.focus();
       }
     }
 
@@ -1033,7 +1031,7 @@
           : '—';
         return '<tr>' +
           '<td style="'+TD+'">' + numInp(i,'cases',tier.cases,0,60) + '</td>' +
-          '<td style="'+TD+'">' + numInp(i,'perCase',btlPerCase(tier),0,50) + '</td>' +
+          '<td style="'+TD+'">' + perCaseSel(i, btlPerCase(tier)) + '</td>' +
           '<td style="'+TD+'">' + ovrInp(i,'bottles',tier.bottles||0,tier._countOverride,76,1) + '</td>' +
           '<td style="'+TD+'">' + rateInp(i,'ratePerBtl',tier.ratePerBtl,tier._rateOverride) + '</td>' +
           '<td style="'+TDM+';color:var(--muted)">' + fmtUsd(bAddPerBtl) + '</td>' +
@@ -1054,6 +1052,14 @@
       }
     }
 
+    // Bottles per case: 6 or 12. A saved quote with some other ratio keeps it as a third option.
+    function perCaseSel(i, val){
+      var opts = [6, 12];
+      if(opts.indexOf(val) < 0) opts.push(val);
+      return '<select data-tier-idx="'+i+'" data-tier-field="perCase" style="padding:5px 6px;background:#0a1628;border:1px solid rgba(255,255,255,.12);border-radius:4px;color:#fff;font-size:12px">' +
+        opts.map(function(n){ n = parseInt(n,10)||0; return '<option value="'+n+'"'+(n===val?' selected':'')+'>'+n+'</option>'; }).join('') +
+      '</select>';
+    }
     function numInp(i, field, val, step, width){
       return '<input data-tier-idx="'+i+'" data-tier-field="'+field+'" type="number" min="0" step="'+(step||1)+'" value="'+(val||0)+'" style="width:'+(width||60)+'px;padding:5px 6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:4px;color:#fff;font-size:12px">';
     }
@@ -1520,7 +1526,7 @@
     if(bpkg.pasteurOn) qItem(out, 'Batch flash pasteurization', bottles, 'bottle', bpkg.pasteurPerBtl);
     if(bpkg.otlOn)     qItem(out, 'Over-the-top labels',        bottles, 'bottle', bpkg.otlPerBtl);
     if(bpkg.labelsOn)  qItem(out, 'Labels, front and back',     bottles, 'bottle', bpkg.labelsPerBtl);
-    if(bpkg.caseOn)    qItem(out, '6-pack bottle case',         cases,   'case',   bpkg.casePerCase);
+    if(bpkg.caseOn)    qItem(out, 'Bottle case',                cases,   'case',   bpkg.casePerCase);
     if(bpkg.palletOn)     qItem(out, 'Pallet',             x.pallets, 'pallet', bpkg.palletEach);
     if(bpkg.palletWrapOn) qItem(out, 'Pallet shrink wrap', x.pallets, 'pallet', bpkg.palletWrapEach);
     return qReconcile(out, x.runTotal);
