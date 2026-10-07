@@ -28,8 +28,8 @@
 // Public actions are rate limited per IP; the function never accepts an
 // agreement id from a public caller.
 //
-// Secrets: MAILGUN_API_KEY, MAILGUN_DOMAIN, MAILGUN_FROM (already used by
-// booking emails). SITE_URL optional (defaults to https://www.goodliquidbevco.com).
+// Email goes out through the gmail-send function (the CRM's connected Google
+// account). SITE_URL optional (defaults to https://www.goodliquidbevco.com).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.112.4';
 import { PDFDocument, StandardFonts, rgb } from 'https://esm.sh/pdf-lib@1.17.1';
@@ -70,29 +70,35 @@ async function newToken(): Promise<{ token: string; hash: string }> {
 }
 const validEmail = (e: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
 
-// ── Mailgun ────────────────────────────────────────────────────
+// ── Email: through the CRM's connected Google account ─────────
+// Good Liquid sends everything through Gmail (Admin → Email Delivery), not
+// Mailgun. Reuse the gmail-send function so MIME building, attachments and the
+// OAuth token refresh live in one place; the service-role bearer is accepted
+// by its requireStaff() check as an internal call.
 async function sendMail(opts: { to: string; subject: string; text: string; html: string;
   attachment?: { bytes: Uint8Array; name: string } }): Promise<{ ok: boolean; reason?: string }> {
-  const apiKey = Deno.env.get('MAILGUN_API_KEY');
-  const domain = Deno.env.get('MAILGUN_DOMAIN');
-  const from = Deno.env.get('MAILGUN_FROM') || 'Good Liquid Bev Co <noreply@goodliquidbevco.com>';
-  if (!apiKey || !domain) return { ok: false, reason: 'Email is not configured (MAILGUN_API_KEY / MAILGUN_DOMAIN).' };
-  const form = new FormData();
-  form.set('from', from);
-  form.set('to', opts.to);
-  form.set('subject', opts.subject);
-  form.set('text', opts.text);
-  form.set('html', opts.html);
-  if (opts.attachment) form.append('attachment', new Blob([opts.attachment.bytes], { type: 'application/pdf' }), opts.attachment.name);
-  const r = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
-    method: 'POST', headers: { Authorization: 'Basic ' + btoa('api:' + apiKey) }, body: form,
-  });
-  if (!r.ok) {
-    const t = await r.text().catch(() => '');
-    console.error('[agreement-sign] Mailgun error', r.status, t);
-    return { ok: false, reason: 'The email provider rejected the message (' + r.status + ').' };
+  const body: Record<string, unknown> = { to: opts.to, subject: opts.subject, text: opts.text, html: opts.html };
+  if (opts.attachment) {
+    let bin = '';
+    for (let i = 0; i < opts.attachment.bytes.length; i += 0x8000) bin += String.fromCharCode(...opts.attachment.bytes.subarray(i, i + 0x8000));
+    body.attachments = [{ filename: opts.attachment.name, contentBase64: btoa(bin), contentType: 'application/pdf' }];
   }
-  return { ok: true };
+  try {
+    const r = await fetch(SUPABASE_URL + '/functions/v1/gmail-send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + SERVICE_KEY, apikey: SERVICE_KEY },
+      body: JSON.stringify(body),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) {
+      console.error('[agreement-sign] gmail-send failed', r.status, j && j.error);
+      return { ok: false, reason: (j && j.error) || ('Email failed (' + r.status + ').') };
+    }
+    return { ok: true };
+  } catch (e) {
+    console.error('[agreement-sign] gmail-send threw', e);
+    return { ok: false, reason: 'Email could not be sent.' };
+  }
 }
 
 function emailShell(inner: string): string {
