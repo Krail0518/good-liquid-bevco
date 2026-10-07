@@ -575,7 +575,7 @@
     };
 
     // ── Agreements & contracts (NDA etc.) — rows + download + upload ──
-    var AGM_COLOR = { 'NDA':'#6b9fff', 'Process Authority Letter':'#f5c842', 'Formula':'#c4a4f8', 'Label / Artwork':'#00e5c0', 'Product Render':'#ff9542', 'Market Analysis':'#7fc6f5', 'Other':'#9aa7bd' };
+    var AGM_COLOR = { 'NDA':'#6b9fff', 'Process Authority Letter':'#f5c842', 'Formula':'#c4a4f8', 'Label / Artwork':'#00e5c0', 'Product Render':'#ff9542', 'Market Analysis':'#7fc6f5', 'Manufacturing Agreement':'#6b9fff', 'Other':'#9aa7bd' };
 
     // ── Deliverables behind the two entitlement-gated tabs (phase 4b) ───────
     // Renders and market analysis are deal_documents with their own doc_type,

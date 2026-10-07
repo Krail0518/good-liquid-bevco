@@ -289,6 +289,11 @@ async function finalize(sb: ReturnType<typeof db>, agreementId: string) {
     doc_type: agreement.kind === 'nda' ? 'NDA' : 'Manufacturing Agreement',
     name: 'SIGNED ' + agreement.title, notes: 'Signed electronically in the CRM', file_path: path,
     file_type: 'pdf', uploaded_by: 'E-signature',
+    // The fully signed copy is published to the client's portal (Mike,
+    // 2026-10-07). Drafts and unsigned versions stay internal (the default).
+    // A deal-only agreement has no client_id yet; it becomes visible to the
+    // client once convert-to-client stamps client_id on the row.
+    client_visible: true,
   }]).select('id').single();
   if (doc.error) { console.error('[agreement-sign] doc row', doc.error); return; }
   const lastSigned = (signers as SignerRow[]).reduce((m, s) => (s.signed_at && s.signed_at > m ? s.signed_at : m), '');
