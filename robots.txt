@@ -1,0 +1,14 @@
+# Good Liquid Bev Co — https://www.goodliquidbevco.com
+# Public marketing pages are open to search engines. Private, link-only pages
+# (agreement signing, client onboarding, tour approval, auditor access, cache
+# reset) and the customer portal are kept out of search results.
+User-agent: *
+Allow: /
+Disallow: /sign.html
+Disallow: /onboard.html
+Disallow: /approve.html
+Disallow: /auditor.html
+Disallow: /reset.html
+Disallow: /*?portal=
+
+Sitemap: https://www.goodliquidbevco.com/sitemap.xml
