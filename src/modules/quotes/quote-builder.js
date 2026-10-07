@@ -27,7 +27,7 @@
   }
   function btlTier(cases, rate){ return { cases:cases, perCase:BTLS_PER_CASE, bottles:cases*BTLS_PER_CASE, ratePerBtl:rate }; }
 
-  // [minCases, maxCases, $/can or $/btl]
+  // [min, max, $/unit] — canning tiers are by CASES, bottling tiers by TOTAL BOTTLES
   var DECK = {
     canning: {
       formats: ['12oz Standard','12oz Sleek','16oz Standard'],
@@ -41,7 +41,9 @@
     bottling: {
       formats: ['750ml Bottle'],
       tiers: {
-        '750ml Bottle': [[220,659,2.16],[660,1319,1.91],[1320,2639,1.58],[2640,5279,1.41],[5280,1e9,1.12]]
+        // By total bottles, so the price is the same whether they ship 6 or 12 to a
+        // case. Breakpoints are the old case tiers at 6/case (220 cases = 1,320 btls).
+        '750ml Bottle': [[1320,3959,2.16],[3960,7919,1.91],[7920,15839,1.58],[15840,31679,1.41],[31680,1e9,1.12]]
       },
       defaultAddons: {}
     },
@@ -661,7 +663,7 @@
       /* One tier per selected volume — matches exactly what the client checked on the form */
       state.tiers = caseList.map(function(sc){
         if(t2==='canning')  return { cases:sc, cans:sc*CANS_PER_CASE, fillPerCan:autoRate(sc), nitrogenPerCan:0.03, trayPerCan:0.03 };
-        if(t2==='bottling') return btlTier(sc, autoRate(sc));
+        if(t2==='bottling') return btlTier(sc, autoRate(sc*BTLS_PER_CASE));
         return { kegs:Math.max(px('keg_minimum',40),sc), laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) };
       });
       renderTiers();
@@ -675,9 +677,9 @@
         ];
       } else if(t2==='bottling'){
         state.tiers = [
-          btlTier(220, autoRate(220)),
-          btlTier(660, autoRate(660)),
-          btlTier(1320, autoRate(1320))
+          btlTier(220, autoRate(220*BTLS_PER_CASE)),
+          btlTier(660, autoRate(660*BTLS_PER_CASE)),
+          btlTier(1320, autoRate(1320*BTLS_PER_CASE))
         ];
       } else {
         state.tiers = [{ kegs:px('keg_minimum',40), laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) }];
@@ -952,14 +954,16 @@
               if(!tier._fillOverride) tier.fillPerCan = deck;
             } else if(isBottling){
               if(!tier._countOverride) tier.bottles = Math.round(val * btlPerCase(tier));
-              var deck2 = autoRate(val);
-              if(!tier._rateOverride) tier.ratePerBtl = deck2;
             }
           }
           // Changing bottles/case means "recount from cases" — drop any typed bottle count.
           if(field === 'perCase' && isBottling){
             delete tier._countOverride;
             tier.bottles = Math.round((tier.cases||0) * val);
+          }
+          // Bottling is priced by total bottles, so any change to the count re-prices.
+          if(isBottling && (field === 'cases' || field === 'perCase' || field === 'bottles') && !tier._rateOverride){
+            tier.ratePerBtl = autoRate(tier.bottles||0);
           }
           if(field === 'fillPerCan' || field === 'ratePerBtl'){
             tier._fillOverride = true;
@@ -1092,7 +1096,7 @@
         if(isCanning && !t._fillOverride){
           t.fillPerCan = autoRate(t.cases||0);
         } else if(state.productType==='bottling' && !t._rateOverride){
-          t.ratePerBtl = autoRate(t.cases||0);
+          t.ratePerBtl = autoRate(t.bottles||0);
         }
       });
       renderTiers();
@@ -1106,7 +1110,7 @@
         state.tiers.push({ cases:cases, cans:cases*CANS_PER_CASE, fillPerCan:autoRate(cases), nitrogenPerCan:0.03, trayPerCan:0.03 });
       } else if(t==='bottling'){
         var c = 660;
-        state.tiers.push(btlTier(c, autoRate(c)));
+        state.tiers.push(btlTier(c, autoRate(c*BTLS_PER_CASE)));
       } else {
         state.tiers.push({ kegs:px('keg_minimum',40), laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) });
       }
@@ -1124,9 +1128,9 @@
         ];
       } else if(t==='bottling'){
         state.tiers = [
-          btlTier(220, autoRate(220)),
-          btlTier(660, autoRate(660)),
-          btlTier(1320, autoRate(1320))
+          btlTier(220, autoRate(220*BTLS_PER_CASE)),
+          btlTier(660, autoRate(660*BTLS_PER_CASE)),
+          btlTier(1320, autoRate(1320*BTLS_PER_CASE))
         ];
       } else {
         state.tiers = [{ kegs:px('keg_minimum',40), laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) }];
