@@ -99,10 +99,14 @@
   }
   function quarterStartMonthName(q){ return ['Jan','Apr','Jul','Oct'][q-1]; }
 
+  function quarterLabel(c){ return 'Q' + c.q + ' ' + c.y; }
+  // No made-up percentage: with nothing current on file the badge says
+  // "now booking" rather than inventing a booked figure.
   var DEFAULT_CAPACITY = {
-    quarter: 'Q' + currentQuarter().q + ' ' + currentQuarter().y,
-    booked: 60,
-    next_label: 'Q' + nextQuarter().q + ' opens ' + quarterStartMonthName(nextQuarter().q) + ' 1',
+    quarter: quarterLabel(currentQuarter()),
+    booked: null,
+    next_label: 'Q' + nextQuarter().q + (nextQuarter().y !== currentQuarter().y ? ' ' + nextQuarter().y : '') +
+                ' opens ' + quarterStartMonthName(nextQuarter().q) + ' 1',
     updated_at: ''
   };
 
@@ -124,9 +128,16 @@
     return DEFAULT_CAPACITY;
   }
 
+  // A saved row only counts while its quarter is the current one. The badge
+  // read "Q3 2026: 85% booked · Q4 opens Oct 1" well into Q4 (smoke test,
+  // 2026-10-07) because nothing rolled it over; a stale row now falls back to
+  // the current quarter with no percentage until a new figure is entered.
   function fmt(c){
-    var pct = Math.max(0, Math.min(100, parseInt(c.booked, 10) || 0));
-    return (c.quarter || DEFAULT_CAPACITY.quarter) + ': ' + pct + '% booked · ' + (c.next_label || DEFAULT_CAPACITY.next_label);
+    var current = String(c.quarter || '').replace(/\s+/g, ' ').trim().toUpperCase() === DEFAULT_CAPACITY.quarter.toUpperCase();
+    if(!current) c = DEFAULT_CAPACITY;
+    var n = parseInt(c.booked, 10);
+    var mid = (c.booked == null || isNaN(n)) ? 'now booking' : (Math.max(0, Math.min(100, n)) + '% booked');
+    return c.quarter + ': ' + mid + ' · ' + (c.next_label || DEFAULT_CAPACITY.next_label);
   }
 
   async function renderBadge(){
