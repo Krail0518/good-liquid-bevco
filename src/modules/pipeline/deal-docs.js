@@ -36,7 +36,7 @@
   // same storage rules and the same download path as everything else, so there
   // is one visibility mechanism to reason about rather than three.
   var DOC_TYPES = ['NDA', 'Process Authority Letter', 'Formula', 'Label / Artwork',
-                   'Product Render', 'Market Analysis', 'Other'];
+                   'Product Render', 'Market Analysis', 'Manufacturing Agreement', 'Other'];
   window.GL_DEAL_DOC_TYPES = DOC_TYPES;
 
   // A little colour per type so the list scans quickly.
@@ -47,6 +47,7 @@
     'Label / Artwork':         { icon:'🎨', bg:'rgba(0,229,192,.14)',   fg:'#00e5c0', br:'rgba(0,229,192,.35)' },
     'Product Render':          { icon:'🥤', bg:'rgba(255,149,66,.15)',  fg:'#ff9542', br:'rgba(255,149,66,.35)' },
     'Market Analysis':         { icon:'📊', bg:'rgba(127,198,245,.15)', fg:'#7fc6f5', br:'rgba(127,198,245,.35)' },
+    'Manufacturing Agreement': { icon:'🏭', bg:'rgba(26,111,255,.15)',  fg:'#6b9fff', br:'rgba(26,111,255,.35)' },
     'Other':                   { icon:'📄', bg:'rgba(255,255,255,.06)', fg:'#9aa7bd', br:'rgba(255,255,255,.14)' }
   };
   function typeStyle(t){ return TYPE_STYLE[t] || TYPE_STYLE['Other']; }

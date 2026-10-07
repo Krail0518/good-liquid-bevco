@@ -303,6 +303,8 @@ Three mechanisms, used in combination:
 | `deleteInvoice()` | `action.invoice.delete` | Remove an invoice |
 | `removeUser()` | (super-user only) | Delete user + purge auth record |
 | `glTogglePerm()` | (admin only) | Toggle per-user permission |
+| `glOpenAgreements({clientId|dealId})` | (admin only; DB: admin-only RLS) | **📄 Agreements** generator — Mutual NDA / Contract Manufacturing Agreement, auto-filled from the deal/client; Download PDF, Save to Documents, Send for e-signature (Dropbox Sign), check signatures. Module `src/modules/customers/agreements.js`. Buttons: Pipeline deal panel (view mode, saved deals, `glAgreementsFromDeal`), Clients list row (`glAgreementsForClient`), Edit Client modal footer (`#gl-ec-agreements`). Tables `agreement_templates`, `agreements` (migration 20261007120000). |
+| `glOpenAgreementTemplates()` | (admin only) | Edit the agreement template wording. 🤖 AI Tools → Settings & Integrations → Agreement Templates. |
 
 ---
 

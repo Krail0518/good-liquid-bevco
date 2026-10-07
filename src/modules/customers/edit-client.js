@@ -486,6 +486,7 @@
           '<div style="display:flex;gap:8px;margin-top:6px">' +
             '<button id="gl-ec-save" class="cbtn pri" style="flex:1;padding:13px;font-weight:800">💾 Save changes</button>' +
             '<button id="gl-ec-quote" class="cbtn" style="padding:13px 16px;background:rgba(26,111,255,.1);border-color:rgba(26,111,255,.35);color:#6b9fff">📋 Quote</button>' +
+            ((window.currentUser && window.currentUser.role === 'admin') ? '<button id="gl-ec-agreements" class="cbtn" title="NDA / manufacturing agreement" style="padding:13px 16px;background:rgba(26,111,255,.1);border-color:rgba(26,111,255,.35);color:#6b9fff">📄 Agreements</button>' : '') +
             '<button id="gl-ec-cancel" class="cbtn" style="padding:13px 20px">Cancel</button>' +
           '</div>' +
         '</div>' +
@@ -497,6 +498,10 @@
     ov.querySelector('#gl-ec-quote').addEventListener('click', function(){
       ov.remove();
       if(window.glQuoteFromClient) window.glQuoteFromClient(clientId);
+    });
+    var agrBtn = ov.querySelector('#gl-ec-agreements');
+    if(agrBtn) agrBtn.addEventListener('click', function(){
+      if(window.glOpenAgreements) window.glOpenAgreements({ clientId: clientId });
     });
 
     // ── Pricing overrides ──────────────────────────────────────
