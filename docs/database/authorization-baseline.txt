@@ -121,6 +121,7 @@ FUNC     public.wh_log_pallet_movement() | secdef=t | search_path=public, pg_tem
 FUNC     public.wh_movements_append_only() | secdef=f | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 GRANT    public.activity | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.activity_feed | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
+GRANT    public.agreement_signers | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.agreement_templates | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.agreements | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.ai_brief_todos | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
@@ -261,6 +262,8 @@ POLICY   public.activity_feed | gl tenant guard | RESTRICTIVE | {authenticated} 
 POLICY   public.activity_feed | gl viewer no delete | RESTRICTIVE | {authenticated} | DELETE | using=(NOT gl_is_viewer()) | check=-
 POLICY   public.activity_feed | gl viewer no insert | RESTRICTIVE | {authenticated} | INSERT | using=- | check=(NOT gl_is_viewer())
 POLICY   public.activity_feed | gl viewer no update | RESTRICTIVE | {authenticated} | UPDATE | using=(NOT gl_is_viewer()) | check=(NOT gl_is_viewer())
+POLICY   public.agreement_signers | agreement_signers admin all | PERMISSIVE | {authenticated} | ALL | using=(is_gl_staff() AND is_admin_user()) | check=(is_gl_staff() AND is_admin_user())
+POLICY   public.agreement_signers | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
 POLICY   public.agreement_templates | agreement_templates admin all | PERMISSIVE | {authenticated} | ALL | using=(is_gl_staff() AND is_admin_user()) | check=(is_gl_staff() AND is_admin_user())
 POLICY   public.agreement_templates | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
 POLICY   public.agreements | agreements admin all | PERMISSIVE | {authenticated} | ALL | using=(is_gl_staff() AND is_admin_user()) | check=(is_gl_staff() AND is_admin_user())
@@ -915,6 +918,7 @@ POLICY   storage.objects | sales-decks staff all | PERMISSIVE | {authenticated} 
 POLICY   storage.objects | warehouse-docs staff all | PERMISSIVE | {authenticated} | ALL | using=((bucket_id = 'warehouse-docs'::text) AND is_gl_staff()) | check=((bucket_id = 'warehouse-docs'::text) AND is_gl_staff())
 RLS      public.activity | enabled=t
 RLS      public.activity_feed | enabled=t
+RLS      public.agreement_signers | enabled=t
 RLS      public.agreement_templates | enabled=t
 RLS      public.agreements | enabled=t
 RLS      public.ai_brief_todos | enabled=t
