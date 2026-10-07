@@ -109,6 +109,7 @@ const CORE_FILES = [
   'src/modules/customers/client-detail.js',
   'src/modules/customers/artwork.js',
   'src/modules/pipeline/deal-docs.js',
+  'src/modules/customers/agreements.js',
   'src/modules/pipeline/meeting-notes.js',
   'src/modules/customers/intake.js',
   'src/modules/pipeline/deal-brief.js',

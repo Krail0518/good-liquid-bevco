@@ -16,6 +16,7 @@ FUNC     public.deals_outreach_stamp() | secdef=t | search_path=public, pg_temp 
 FUNC     public.get_page_blocked_slots(p_page_id uuid) | secdef=t | search_path=public | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres,anon=X/postgres
 FUNC     public.get_shared_allergen_declaration(p_token text) | secdef=t | search_path=public | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres,anon=X/postgres
 FUNC     public.get_shared_invoice(p_token text) | secdef=t | search_path=public | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres,anon=X/postgres
+FUNC     public.gl_agreements_touch() | secdef=f | search_path=public | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_apply_payment_event(p_provider text, p_event_id text, p_invoice_number text, p_amount numeric, p_currency text, p_method text, p_reference text) | secdef=t | search_path=public, extensions | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_apply_refund_event(p_provider text, p_event_id text, p_invoice_number text, p_amount numeric, p_reference text) | secdef=t | search_path=public, extensions | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_apply_stripe_refund(p_event_id text, p_invoice_number text, p_charge_id text, p_charge_cents bigint, p_refunded_cents bigint, p_base_cents bigint) | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
@@ -120,6 +121,8 @@ FUNC     public.wh_log_pallet_movement() | secdef=t | search_path=public, pg_tem
 FUNC     public.wh_movements_append_only() | secdef=f | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 GRANT    public.activity | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.activity_feed | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
+GRANT    public.agreement_templates | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
+GRANT    public.agreements | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.ai_brief_todos | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.ai_briefs | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.announcements | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
@@ -258,6 +261,10 @@ POLICY   public.activity_feed | gl tenant guard | RESTRICTIVE | {authenticated} 
 POLICY   public.activity_feed | gl viewer no delete | RESTRICTIVE | {authenticated} | DELETE | using=(NOT gl_is_viewer()) | check=-
 POLICY   public.activity_feed | gl viewer no insert | RESTRICTIVE | {authenticated} | INSERT | using=- | check=(NOT gl_is_viewer())
 POLICY   public.activity_feed | gl viewer no update | RESTRICTIVE | {authenticated} | UPDATE | using=(NOT gl_is_viewer()) | check=(NOT gl_is_viewer())
+POLICY   public.agreement_templates | agreement_templates admin all | PERMISSIVE | {authenticated} | ALL | using=(is_gl_staff() AND is_admin_user()) | check=(is_gl_staff() AND is_admin_user())
+POLICY   public.agreement_templates | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
+POLICY   public.agreements | agreements admin all | PERMISSIVE | {authenticated} | ALL | using=(is_gl_staff() AND is_admin_user()) | check=(is_gl_staff() AND is_admin_user())
+POLICY   public.agreements | gl tenant guard | RESTRICTIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
 POLICY   public.ai_brief_todos | ai_brief_todos staff all | PERMISSIVE | {authenticated} | ALL | using=is_staff_user() | check=is_staff_user()
 POLICY   public.ai_briefs | ai_briefs staff all | PERMISSIVE | {authenticated} | ALL | using=is_staff_user() | check=is_staff_user()
 POLICY   public.announcements | announcements admin delete | PERMISSIVE | {authenticated} | DELETE | using=((EXISTS ( SELECT 1
@@ -908,6 +915,8 @@ POLICY   storage.objects | sales-decks staff all | PERMISSIVE | {authenticated} 
 POLICY   storage.objects | warehouse-docs staff all | PERMISSIVE | {authenticated} | ALL | using=((bucket_id = 'warehouse-docs'::text) AND is_gl_staff()) | check=((bucket_id = 'warehouse-docs'::text) AND is_gl_staff())
 RLS      public.activity | enabled=t
 RLS      public.activity_feed | enabled=t
+RLS      public.agreement_templates | enabled=t
+RLS      public.agreements | enabled=t
 RLS      public.ai_brief_todos | enabled=t
 RLS      public.ai_briefs | enabled=t
 RLS      public.announcements | enabled=t

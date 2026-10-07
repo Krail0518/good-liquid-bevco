@@ -6,6 +6,10 @@
 // Request body (POST JSON), one of:
 //   { template_id, signer_email, signer_name, title, subject?, message?, custom_fields? }
 //   { raw_text,    signer_email, signer_name, title, subject?, message? }
+//   { file_base64, file_name?, signer_email, signer_name, title, subject?, message?,
+//     cc_signer?: { name, email } }          — a finished PDF (agreements)
+//   { action: 'status', signature_request_id } — is it fully signed yet?
+//   { action: 'file',   signature_request_id } — the signed PDF, base64
 //
 // Response:
 //   { ok: true, signature_request_id: string, signing_url?: string }
@@ -61,6 +65,44 @@ Deno.serve(async (req: Request): Promise<Response> => {
   let payload: Record<string, unknown>;
   try { payload = await req.json(); }
   catch { return errorResponse('Invalid JSON body', 400); }
+
+  // Auth: HelloSign uses HTTP Basic with the API key as the username.
+  const basicAuth = 'Basic ' + btoa(`${key}:`);
+
+  const action = payload.action ? String(payload.action) : '';
+  if (action === 'status' || action === 'file') {
+    const reqId = String(payload.signature_request_id || '').trim();
+    if (!/^[A-Za-z0-9]{8,64}$/.test(reqId)) return errorResponse('signature_request_id is required', 400);
+    if (action === 'status') {
+      const r = await fetch(`${HS_BASE}/signature_request/${reqId}`, { headers: { 'Authorization': basicAuth } });
+      if (!r.ok) {
+        const errText = await r.text();
+        console.error('[dropbox-sign] status error:', r.status, errText);
+        return errorResponse('Dropbox Sign could not look up that request', r.status, { hs_error: errText });
+      }
+      const data = await r.json();
+      const sr = data?.signature_request || {};
+      return jsonResponse({
+        ok: true,
+        is_complete: !!sr.is_complete,
+        is_declined: !!sr.is_declined,
+        signatures: (sr.signatures || []).map((x: Record<string, unknown>) => ({
+          name: x.signer_name, email: x.signer_email_address,
+          status: x.status_code, signed_at: x.signed_at,
+        })),
+      });
+    }
+    const r = await fetch(`${HS_BASE}/signature_request/files/${reqId}?file_type=pdf`, { headers: { 'Authorization': basicAuth } });
+    if (!r.ok) {
+      const errText = await r.text();
+      console.error('[dropbox-sign] file error:', r.status, errText);
+      return errorResponse('Dropbox Sign could not return the signed file', r.status, { hs_error: errText });
+    }
+    const bytes = new Uint8Array(await r.arrayBuffer());
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return jsonResponse({ ok: true, file_base64: btoa(bin) });
+  }
 
   const signer_email = String(payload.signer_email || '').trim();
   const signer_name  = String(payload.signer_name  || '').trim();
@@ -153,7 +195,52 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
   }
 
-  return errorResponse('Either template_id or raw_text is required', 400);
+  const file_base64 = payload.file_base64 ? String(payload.file_base64) : '';
+  if (file_base64) {
+    // === Finished-PDF flow (agreements) ===
+    // The browser renders the document; we only forward it. Bounded so one
+    // call cannot push an arbitrarily large upload through the function.
+    if (file_base64.length > 8_000_000) return errorResponse('PDF too large (max ~6 MB)', 413);
+    let bytes: Uint8Array;
+    try { bytes = Uint8Array.from(atob(file_base64), (c) => c.charCodeAt(0)); }
+    catch { return errorResponse('file_base64 is not valid base64', 400); }
+    if (bytes.length < 5 || String.fromCharCode(...bytes.subarray(0, 5)) !== '%PDF-') {
+      return errorResponse('file_base64 must be a PDF', 400);
+    }
+    const fileName = String(payload.file_name || 'agreement.pdf').replace(/[^A-Za-z0-9 ._-]/g, '').slice(0, 120) || 'agreement.pdf';
+    const form = new FormData();
+    form.set('test_mode', testMode);
+    form.set('title', title);
+    form.set('subject', subject);
+    if (message) form.set('message', message);
+    // Signature pages are placed by Dropbox Sign itself (no text tags).
+    form.set('signers[0][name]', signer_name);
+    form.set('signers[0][email_address]', signer_email);
+    const cc = payload.cc_signer as Record<string, unknown> | undefined;
+    if (cc && typeof cc === 'object' && String(cc.email || '').trim()) {
+      form.set('signers[1][name]', String(cc.name || 'Good Liquid Bev Co').trim());
+      form.set('signers[1][email_address]', String(cc.email).trim());
+    }
+    form.set('files[0]', new Blob([bytes], { type: 'application/pdf' }), fileName);
+    const r = await fetch(`${HS_BASE}/signature_request/send`, {
+      method: 'POST',
+      headers: { 'Authorization': basicAuth },
+      body: form,
+    });
+    if (!r.ok) {
+      const errText = await r.text();
+      console.error('[dropbox-sign] file send error:', r.status, errText);
+      return errorResponse('Dropbox Sign rejected the request', r.status, { hs_error: errText });
+    }
+    const data = await r.json();
+    return jsonResponse({
+      ok: true,
+      signature_request_id: data?.signature_request?.signature_request_id,
+      signing_url: data?.signature_request?.signing_url || null,
+    });
+  }
+
+  return errorResponse('Either template_id, raw_text or file_base64 is required', 400);
 });
 
 // Minimal single-page PDF builder. Good enough for short text (under ~2KB).

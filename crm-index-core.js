@@ -87,6 +87,7 @@
  *   /src/modules/pipeline/deal-brief.js
  *   /src/modules/pipeline/deal-detail.js
  *   /src/modules/pipeline/deal-docs.js
+ *   /src/modules/customers/agreements.js
  *   /src/modules/pipeline/followups.js
  *   /src/modules/pipeline/formulation.js
  *   /src/modules/pipeline/meeting-notes.js
@@ -899,6 +900,7 @@ function renderClients(list){
       <td style="color:var(--muted)">${ref?`🤝 ${esc(ref.name)}`:'-'}</td>
       <td data-gl-action="glSwallowClick" style="white-space:nowrap">
         <button class="cbtn" style="font-size:10px;padding:3px 9px" data-gl-action="createForClient" data-gl-arg1="${esc(c.id)}">+ Invoice</button>
+        ${(window.currentUser && window.currentUser.role==='admin') ? `<button class="cbtn" style="font-size:10px;padding:3px 9px;margin-left:4px" title="NDA / manufacturing agreement" data-gl-action="glAgreementsForClient" data-gl-arg1="${esc(c.id)}">📄 Agreements</button>` : ''}
         <button class="cbtn" style="font-size:10px;padding:3px 9px;margin-left:4px;background:rgba(26,111,255,.12);border-color:rgba(26,111,255,.35);color:#6b9fff" data-cname="${(c.name||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}" data-gl-action="glInviteCustomerLoginBtn" data-gl-arg1="${esc(c.id)}" data-gl-el="">🔑 Invite</button>
         ${(window.glIsSuperUser && window.glIsSuperUser()) ? `<button class="cbtn red" style="font-size:10px;padding:3px 9px;margin-left:4px" data-cname="${(c.name||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}" data-gl-action="deleteClient" data-gl-arg1="${esc(c.id)}" data-gl-el="">Delete</button>` : ''}
       </td>
@@ -3885,6 +3887,7 @@ function openDealDetail(stage, idx){
       <button data-gl-action="deleteDeal" style="padding:10px 16px;background:rgba(231,76,60,.15);color:#e74c3c;border:1px solid rgba(231,76,60,.3);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">Delete</button>
     </div>
     <button data-gl-action="glConvertLeadToOnboarding" style="width:100%;margin-top:8px;padding:12px;background:linear-gradient(135deg,#5fcf9e,#00c4a7);color:#04231d;border:none;border-radius:8px;font-weight:800;font-size:13.5px;cursor:pointer">🚀 Convert to Client &amp; Onboard</button>
+    ${(window.currentUser && window.currentUser.role==='admin' && d.id && !String(d.id).startsWith('tmp_')) ? `<button data-gl-action="glAgreementsFromDeal" data-gl-arg1="${esc(d.id)}" title="Generate an NDA or manufacturing agreement for this lead" style="width:100%;margin-top:8px;padding:10px;background:rgba(26,111,255,.12);color:#6b9fff;border:1px solid rgba(26,111,255,.35);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">📄 Agreements (NDA / Manufacturing)</button>` : ''}
     ${(d.id && !String(d.id).startsWith('tmp_')) ? `<div style="display:flex;gap:8px;margin-top:8px">
       <button data-gl-action="glSnoozeLead" data-gl-arg1="${esc(d.id)}" title="Pause follow-up drafts & reply alerts for 7 days" style="flex:1;padding:9px;background:rgba(143,179,255,.1);color:#8fb3ff;border:1px solid rgba(143,179,255,.3);border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer">💤 Snooze 7d${d.snoozedUntil && new Date(d.snoozedUntil)>new Date() ? ' ✓' : ''}</button>
       <button data-gl-action="glMarkLeadHandled" data-gl-arg1="${esc(d.id)}" title="Stop automations nagging about this lead" style="flex:1;padding:9px;background:rgba(95,207,158,.1);color:#5fcf9e;border:1px solid rgba(95,207,158,.3);border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer">✓ Handled${d.handledAt ? ' ✓' : ''}</button>

@@ -808,6 +808,7 @@
       { label:'🛡️ Sentry', fn:'openSentrySettings', admin:true },
       { label:'📅 Capacity badge', fn:'openCapacitySettings', admin:true },
       { label:'📝 E-Signatures', fn:'openSignSettings', admin:true },
+      { label:'📄 Agreement Templates', fn:'glOpenAgreementTemplates', admin:true },
       { label:'💼 QuickBooks', fn:'openQBOSettings', admin:true },
       { label:'✍️ Email Signature', fn:'openEmailSignatureSettings' },
       { label:'🗑️ Clear local cache', fn:'glClearLocalCache', admin:true, danger:true }
