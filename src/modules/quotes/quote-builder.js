@@ -922,12 +922,22 @@
         return buildTierRow(tier, i, isCanning, isBottling, isKeg);
       }).join('');
 
+      // Warn (don't block) when a bottling tier is under the minimum order.
+      var underMin = isBottling ? state.tiers.map(function(tier, i){
+        var c = Number(tier.cases) || 0;
+        return c < BTL_MIN_CASES ? 'tier ' + (i+1) + ' (' + fmtNum(c) + ' cases)' : null;
+      }).filter(Boolean) : [];
+      var minWarn = underMin.length
+        ? '<div style="margin-top:8px;font-size:12px;color:#ff8579">⚠ Below the ' + BTL_MIN_CASES +
+          '-case minimum order: ' + underMin.join(', ') + '.</div>'
+        : '';
+
       tbody.innerHTML =
         '<div style="overflow-x:auto">' +
         '<table style="width:100%;border-collapse:collapse;font-size:12px;min-width:560px">' +
           '<thead><tr>' + headerCols + '</tr></thead>' +
           '<tbody id="gl-qb-tbody">' + rows + '</tbody>' +
-        '</table></div>';
+        '</table></div>' + minWarn;
 
       // Wire up all inputs
       tbody.querySelectorAll('[data-tier-field]').forEach(wireTierInput);
@@ -1043,7 +1053,7 @@
           ? bx.pallets + '<div style="color:var(--muted);font-size:10px">' + fmtUsd(bx.palletCost) + '</div>'
           : '—';
         return '<tr>' +
-          '<td style="'+TD+'">' + numInp(i,'cases',tier.cases,0,60) + '</td>' +
+          '<td style="'+TD+'">' + numInp(i,'cases',tier.cases,0,60,(Number(tier.cases)||0) < BTL_MIN_CASES ? 'Below the ' + BTL_MIN_CASES + '-case minimum order' : '') + '</td>' +
           '<td style="'+TD+'">' + perCaseSel(i, btlPerCase(tier)) + '</td>' +
           '<td style="'+TD+'">' + ovrInp(i,'bottles',tier.bottles||0,tier._countOverride,76,1) + '</td>' +
           '<td style="'+TD+'">' + rateInp(i,'ratePerBtl',tier.ratePerBtl,tier._rateOverride) + '</td>' +
@@ -1073,8 +1083,9 @@
         opts.map(function(n){ n = parseInt(n,10)||0; return '<option value="'+n+'"'+(n===val?' selected':'')+'>'+n+'</option>'; }).join('') +
       '</select>';
     }
-    function numInp(i, field, val, step, width){
-      return '<input data-tier-idx="'+i+'" data-tier-field="'+field+'" type="number" min="0" step="'+(step||1)+'" value="'+(val||0)+'" style="width:'+(width||60)+'px;padding:5px 6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:4px;color:#fff;font-size:12px">';
+    // warn: optional tooltip text; turns the border red (e.g. under the minimum order).
+    function numInp(i, field, val, step, width, warn){
+      return '<input data-tier-idx="'+i+'" data-tier-field="'+field+'" type="number" min="0" step="'+(step||1)+'" value="'+(val||0)+'" style="width:'+(width||60)+'px;padding:5px 6px;background:rgba(255,255,255,.04);border:1px solid '+(warn?'#ff8579':'rgba(255,255,255,.12)')+';border-radius:4px;color:#fff;font-size:12px"'+(warn?' title="'+esc(warn)+'"':'')+'>';
     }
     // A cell that shows a CALCULATED value but accepts a typed one. Yellow
     // border once overridden, so at a glance you can see which numbers on a
