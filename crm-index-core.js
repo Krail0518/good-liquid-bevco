@@ -4964,7 +4964,7 @@ function renderInventory(){
     else alertEl.style.display='none';
   }
   
-  el.innerHTML=inventory.map(i=>{
+  el.innerHTML=!inventory.length ? '<div style="padding:28px 12px;text-align:center;color:var(--muted);font-size:13px">No inventory items yet. Click "+ Add Item" to track your first material or supply.</div>' : inventory.map(i=>{
     const pct=Math.round(i.qty/maxQty*100);
     const color=i.qty<=i.lowAt?'#e74c3c':i.qty<=i.lowAt*2?'#f5c842':'#1D9E75';
     return `<div class="inv-item-row">
