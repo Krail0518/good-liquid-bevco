@@ -218,10 +218,10 @@ function svcChange(){
     </div><div style="font-size:10px;color:var(--muted);margin-bottom:12px">Min 200 cases · 24 cans/case</div>`;
     if(svc==='copacking')html+=`<div class="frow"><div class="flbl">Benchtop verification</div><select class="fsel" id="verif" data-gl-action="updatePreview" data-gl-on="change"><option value="1">Yes — $500/SKU</option><option value="0">No (PAL provided)</option></select></div>`;
   }else if(svc==='bottling'){
-    html=`<div class="frow"><div class="flbl">Cases (6-pack)</div><select class="fsel" id="btl-cases" data-gl-action="updatePreview" data-gl-on="change">
-      <option value="220">220 cases (1,320 btls)</option><option value="660">660 cases (3,960 btls)</option>
-      <option value="1320">1,320 cases</option><option value="2640">2,640 cases</option><option value="5280">5,280 cases</option>
-    </select></div>`;
+    html=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <div class="frow"><div class="flbl">Cases</div><input type="number" class="finp" id="btl-cases" value="220" min="220" data-gl-action="updatePreview" data-gl-on="input"></div>
+      <div class="frow"><div class="flbl">Bottles / case</div><select class="fsel" id="btl-percase" data-gl-action="updatePreview" data-gl-on="change"><option value="6">6</option><option value="12" selected>12</option></select></div>
+    </div><div style="font-size:10px;color:var(--muted);margin-bottom:12px">Min 220 cases · priced per bottle by total bottles</div>`;
   }else if(svc==='rd'){
     html=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
       <div class="frow"><div class="flbl">R&D package</div><select class="fsel" id="rd-pkg" data-gl-action="updatePreview" data-gl-on="change"><option value="rd">R&D Only ($2,500)</option><option value="rd-lic">R&D + IP License ($7,000)</option><option value="rd-buy">R&D + IP Purchase ($16,000)</option></select></div>
@@ -268,10 +268,13 @@ function calcTotal(){
     if(selAddons.nitro){const c=Math.round(.03*cans*100)/100;lines.push({d:'Nitrogen Dosing @ $0.03/can',a:c});total+=c}
     desc=`Canning — ${cases} cases ${fmtL}`;
   }else if(svc==='bottling'){
-    const cases=parseInt(document.getElementById('btl-cases')?.value)||660;
-    const tier=PRICING.bottling.tiers.find(t=>t.cases===cases)||PRICING.bottling.tiers[1];
-    const btls=cases*6,mfg=Math.round(tier.perBtl*btls*100)/100;
-    lines.push({d:`Bottle filling — ${cases} cases @ $${tier.perBtl}/btl`,a:mfg});total=mfg;
+    const cases=Math.max(220,parseInt(document.getElementById('btl-cases')?.value)||220);
+    const perCase=parseInt(document.getElementById('btl-percase')?.value)||12;
+    const btls=cases*perCase;
+    // Highest tier whose bottle threshold this run reaches (220 cases × 6 = the first one).
+    const tier=PRICING.bottling.tiers.filter(t=>btls>=t.bottles).pop()||PRICING.bottling.tiers[0];
+    const mfg=Math.round(tier.perBtl*btls*100)/100;
+    lines.push({d:`Bottle filling — ${cases} cases × ${perCase} = ${btls.toLocaleString()} btls @ $${tier.perBtl}/btl`,a:mfg});total=mfg;
     if(selAddons.pastbtl){const c=Math.round(.20*btls*100)/100;lines.push({d:'Flash Pasteurization @ $0.20/btl',a:c});total+=c}
     if(selAddons.overlbl){const c=Math.round(.20*btls*100)/100;lines.push({d:'Over-Top Labels @ $0.20/btl',a:c});total+=c}
     desc=`Bottle Filling — ${cases} cases 750ml`;

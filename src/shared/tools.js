@@ -716,8 +716,10 @@
       '12sleek': [[200,11.52],[340,10.32],[501,9.12],[1000,8.40],[2500,7.44],[5000,6.72]],
       '16std':   [[200,13.92],[340,12.72],[501,11.52],[1000,10.80],[2500,9.84],[5000,9.12]]
     },
+    // Bottling is per BOTTLE by total bottles (matches the rate card), so 6- and
+    // 12-bottle cases price the same per bottle.
     bottling: {
-      '750ml':   [[220,12.96],[660,11.46],[1320,9.48],[2640,8.46],[5280,6.72]]
+      '750ml':   [[1320,2.16],[3960,1.91],[7920,1.58],[15840,1.41],[31680,1.12]]
     }
   };
 
@@ -731,7 +733,8 @@
 
   function fmt$(n){ return '$' + Math.round(n).toLocaleString(); }
 
-  var UNITS_PER_CASE = { canning: 24, bottling: 6 };
+  var UNITS_PER_CASE = { canning: 24 };   // bottling: chosen in #qc-btlcase (6 or 12)
+  var MIN_CASES = { canning: 200, bottling: 220 };
 
   // Count-up so the headline number rolls to its new value instead of snapping.
   var _reduce = false;
@@ -782,7 +785,10 @@
       if(fmt.value === '750ml') fmt.value = '12std';
     }
 
-    var cases = Math.max(200, parseInt(casesEl.value, 10) || 200);
+    var isBtl = service === 'bottling';
+    var minCases = MIN_CASES[service] || 200;
+    var cases = Math.max(minCases, parseInt(casesEl.value, 10) || minCases);
+    casesEl.min = minCases;
     // Keep the number field and the slider in sync — but don't fight the user mid-type.
     if(document.activeElement !== casesEl) casesEl.value = cases;
     if(rangeEl && document.activeElement !== rangeEl){
@@ -794,8 +800,16 @@
       rangeEl.style.setProperty('--pct', pct.toFixed(1) + '%');
     }
 
-    var unitsPerCase = UNITS_PER_CASE[service] || 24;
-    var unitWord = service === 'bottling' ? 'bottle' : 'can';
+    var btlCaseEl = document.getElementById('qc-btlcase');
+    var unitsPerCase = isBtl ? (parseInt(btlCaseEl && btlCaseEl.value, 10) || 12) : (UNITS_PER_CASE[service] || 24);
+    var unitWord = isBtl ? 'bottle' : 'can';
+    var units = cases * unitsPerCase;
+    // Bottling: pick 6 or 12 per case; nitro is can-only; pasteurization is per bottle.
+    var btlWrap = document.getElementById('qc-btlcase-wrap'); if(btlWrap) btlWrap.hidden = !isBtl;
+    var perLbl  = document.getElementById('qc-perlabel');     if(perLbl) perLbl.hidden = isBtl;
+    var nPill   = document.getElementById('qc-nitro-pill');   if(nPill) nPill.hidden = isBtl;
+    if(isBtl && nitro) nitro.checked = false;
+    var pX = document.getElementById('qc-pasteur-x');         if(pX) pX.textContent = isBtl ? '+20¢/bottle' : '+5¢/can';
     if(readoutEl) readoutEl.textContent = cases.toLocaleString();
     if(cansEl) cansEl.textContent = '· ' + (cases * unitsPerCase).toLocaleString() + ' ' + unitWord + 's';
 
@@ -806,22 +820,26 @@
     var table = (RATES[service] || {})[fmt.value];
     if(!table){ if(totalEl){ totalEl._v = 0; totalEl.textContent = '$0'; } if(bdEl) bdEl.textContent = ''; return; }
 
-    var perCase = rateForCases(table, cases);
-    var base = perCase * cases;
-    var pCost = pasteur && pasteur.checked ? (cases * 24 * 0.05) : 0;     // 5¢/can * 24 cans/case (flat rate, matches every other estimator)
-    var nCost = nitro && nitro.checked    ? (cases * 24 * 0.03) : 0;      // 3¢/can
+    // Canning tiers are $/case by cases; bottling tiers are $/bottle by total bottles.
+    var tierQty = isBtl ? units : cases;
+    var tierRate = rateForCases(table, tierQty);
+    var base = tierRate * tierQty;
+    var pCost = pasteur && pasteur.checked ? (isBtl ? units * 0.20 : cases * 24 * 0.05) : 0;   // 20¢/bottle, or 5¢/can * 24 cans/case
+    var nCost = nitro && nitro.checked && !isBtl ? (cases * 24 * 0.03) : 0;                    // 3¢/can
     var total = base + pCost + nCost;
 
     animateTotal(totalEl, total);
 
     // All-in per-unit (labor + add-ons) — makes the headline number tangible.
     if(perUnitEl){
-      var perUnit = total / (cases * unitsPerCase);
+      var perUnit = total / units;
       perUnitEl.textContent = '≈ $' + perUnit.toFixed(2) + ' / ' + unitWord + ' all-in (labor + add-ons)';
     }
 
     var lines = [
-      'Run cost: ' + fmt$(base) + ' (' + cases.toLocaleString() + ' cases @ ' + fmt$(perCase) + '/case)'
+      isBtl
+        ? 'Run cost: ' + fmt$(base) + ' (' + cases.toLocaleString() + ' cases × ' + unitsPerCase + ' = ' + units.toLocaleString() + ' bottles @ $' + tierRate.toFixed(2) + '/bottle)'
+        : 'Run cost: ' + fmt$(base) + ' (' + cases.toLocaleString() + ' cases @ ' + fmt$(tierRate) + '/case)'
     ];
     if(pCost) lines.push('+ Flash pasteurization: ' + fmt$(pCost));
     if(nCost) lines.push('+ Nitrogen dosing: ' + fmt$(nCost));
@@ -830,19 +848,20 @@
 
     // Volume-tier "next price break" nudge — gentle upsell + genuinely useful.
     var idx = 0;
-    for(var k = 0; k < table.length; k++){ if(cases >= table[k][0]) idx = k; }
+    for(var k = 0; k < table.length; k++){ if(tierQty >= table[k][0]) idx = k; }
     var cur = table[idx], nxt = table[idx + 1];
     if(fillEl && hintEl){
       if(nxt){
         var span = nxt[0] - cur[0];
-        var within = span > 0 ? (cases - cur[0]) / span : 1;
+        var within = span > 0 ? (tierQty - cur[0]) / span : 1;
         fillEl.style.width = Math.max(4, Math.min(100, within * 100)).toFixed(0) + '%';
-        var need = nxt[0] - cases;
+        var need = isBtl ? Math.ceil((nxt[0] - units) / unitsPerCase) : nxt[0] - cases;
         hintEl.innerHTML = '▲ Add <strong style="color:var(--teal)">' + need.toLocaleString() +
-          '</strong> more cases to drop to <strong style="color:var(--teal)">' + fmt$(nxt[1]) + '/case</strong>';
+          '</strong> more cases to drop to <strong style="color:var(--teal)">' +
+          (isBtl ? '$' + nxt[1].toFixed(2) + '/bottle' : fmt$(nxt[1]) + '/case') + '</strong>';
       } else {
         fillEl.style.width = '100%';
-        hintEl.innerHTML = '🎉 You’re at our best per-case rate.';
+        hintEl.innerHTML = '🎉 You’re at our best per-' + (isBtl ? 'bottle' : 'case') + ' rate.';
       }
     }
   }
@@ -857,7 +876,7 @@
         compute();
       });
     }
-    ['qc-service','qc-format','qc-cases','qc-pasteur','qc-nitro'].forEach(function(id){
+    ['qc-service','qc-format','qc-cases','qc-btlcase','qc-pasteur','qc-nitro'].forEach(function(id){
       var el = document.getElementById(id);
       if(el){ el.addEventListener('input', compute); el.addEventListener('change', compute); }
     });

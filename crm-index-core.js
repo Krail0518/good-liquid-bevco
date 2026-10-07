@@ -305,9 +305,10 @@ const PRICING={
     {min:2500,max:4999,'12std':.31,'12slk':.31,'16std':.41},
     {min:5000,max:9e9,'12std':.28,'12slk':.28,'16std':.38},
   ]},
+  // Per bottle, tiered by TOTAL bottles (6 or 12 per case; 220-case minimum).
   bottling:{tiers:[
-    {cases:220,perBtl:2.16},{cases:660,perBtl:1.91},{cases:1320,perBtl:1.58},
-    {cases:2640,perBtl:1.41},{cases:5280,perBtl:1.12},
+    {bottles:1320,perBtl:2.16},{bottles:3960,perBtl:1.91},{bottles:7920,perBtl:1.58},
+    {bottles:15840,perBtl:1.41},{bottles:31680,perBtl:1.12},
   ]}
 };
 
