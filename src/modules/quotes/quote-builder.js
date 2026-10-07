@@ -17,9 +17,24 @@
 
   /* ── Price deck ────────────────────────────────────────────── */
   var CANS_PER_CASE  = 24;
-  var BTLS_PER_CASE  = 6;
+  var BTLS_PER_CASE  = 12;   // default only — each bottling tier has its own editable Bottles / Case
+  /* Bottles per case for a tier. Quotes saved before the field existed have
+     no perCase, so derive it from what was actually quoted (bottles ÷ cases). */
+  function btlPerCase(t){
+    if(t && t.perCase > 0) return t.perCase;
+    if(t && t.cases > 0 && t.bottles > 0) return Math.round(t.bottles / t.cases);
+    return BTLS_PER_CASE;
+  }
+  function btlTier(cases, rate){ return { cases:cases, perCase:BTLS_PER_CASE, bottles:cases*BTLS_PER_CASE, ratePerBtl:rate }; }
+  // Bottling minimum order is 220 cases, whatever the pack size.
+  var BTL_MIN_CASES = 220;
+  // Standard bottling tiers sit on the first three price breaks (total
+  // bottles), rounded up to whole cases at the default bottles/case and never
+  // below the minimum order — at 12/case that is 220 / 330 / 660 cases.
+  var BTL_STD_BREAKS = [1320, 3960, 7920];
+  function btlCasesFor(bottles){ return Math.max(BTL_MIN_CASES, Math.ceil(bottles / BTLS_PER_CASE)); }
 
-  // [minCases, maxCases, $/can or $/btl]
+  // [min, max, $/unit] — canning tiers are by CASES, bottling tiers by TOTAL BOTTLES
   var DECK = {
     canning: {
       formats: ['12oz Standard','12oz Sleek','16oz Standard'],
@@ -33,7 +48,9 @@
     bottling: {
       formats: ['750ml Bottle'],
       tiers: {
-        '750ml Bottle': [[220,659,2.16],[660,1319,1.91],[1320,2639,1.58],[2640,5279,1.41],[5280,1e9,1.12]]
+        // By total bottles, so the price is the same whether they ship 6 or 12 to a
+        // case. Breakpoints are the old case tiers at 6/case (220 cases = 1,320 btls).
+        '750ml Bottle': [[1320,3959,2.16],[3960,7919,1.91],[7920,15839,1.58],[15840,31679,1.41],[31680,1e9,1.12]]
       },
       defaultAddons: {}
     },
@@ -567,7 +584,8 @@
 
     /* ── Wire close ── */
     ov.querySelector('#gl-qb-close').addEventListener('click', function(){ ov.remove(); });
-    ov.addEventListener('click', function(e){ if(e.target===ov) ov.remove(); });
+    /* No close on outside click: a stray click past the edge threw away a
+       half-built quote. Only the ✕ closes it. */
 
     /* ── Product type → format options ── */
     var typeEl = ov.querySelector('#gl-qb-type');
@@ -652,7 +670,7 @@
       /* One tier per selected volume — matches exactly what the client checked on the form */
       state.tiers = caseList.map(function(sc){
         if(t2==='canning')  return { cases:sc, cans:sc*CANS_PER_CASE, fillPerCan:autoRate(sc), nitrogenPerCan:0.03, trayPerCan:0.03 };
-        if(t2==='bottling') return { cases:sc, bottles:sc*BTLS_PER_CASE, ratePerBtl:autoRate(sc) };
+        if(t2==='bottling') return btlTier(sc, autoRate(sc*BTLS_PER_CASE));
         return { kegs:Math.max(px('keg_minimum',40),sc), laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) };
       });
       renderTiers();
@@ -665,11 +683,7 @@
           { cases:1000, cans:1000*CANS_PER_CASE, fillPerCan:autoRate(1000), nitrogenPerCan:0.03, trayPerCan:0.03 }
         ];
       } else if(t2==='bottling'){
-        state.tiers = [
-          { cases:220,  bottles:220*BTLS_PER_CASE,  ratePerBtl:autoRate(220) },
-          { cases:660,  bottles:660*BTLS_PER_CASE,  ratePerBtl:autoRate(660) },
-          { cases:1320, bottles:1320*BTLS_PER_CASE, ratePerBtl:autoRate(1320) }
-        ];
+        state.tiers = btlStdTiers();
       } else {
         state.tiers = [{ kegs:px('keg_minimum',40), laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) }];
       }
@@ -739,7 +753,7 @@
             addonToggle('gl-qb-bfp','Batch Flash Pasteurization', B.pasteurPerBtl.toFixed(2),'per bottle') +
             addonToggle('gl-qb-otl','Over the Top Labels', B.otlPerBtl.toFixed(2),'per bottle') +
             addonToggle('gl-qb-labels','Labels Applied Front & Back', B.labelsPerBtl.toFixed(2),'per bottle') +
-            addonToggle('gl-qb-bcase','6-pack Bottle Case', B.casePerCase.toFixed(2),'per case') +
+            addonToggle('gl-qb-bcase','Bottle Case', B.casePerCase.toFixed(2),'per case') +
             addonToggle('gl-qb-bpallet','Pallet', B.palletEach.toFixed(2),'per pallet') +
             addonToggle('gl-qb-bpalletwrap','Pallet Shrink Wrap', B.palletWrapEach.toFixed(2),'per pallet') +
           '</div>' +
@@ -877,6 +891,12 @@
     }
 
     /* ── Tier row rendering ── */
+    function btlStdTiers(){
+      return BTL_STD_BREAKS.map(function(b){
+        var c = btlCasesFor(b);
+        return btlTier(c, autoRate(c*BTLS_PER_CASE));
+      });
+    }
     function autoRate(cases){
       return getDeckRate(state.productType, state.format, cases);
     }
@@ -895,22 +915,33 @@
       var headerCols = isCanning
         ? '<th style="'+TH+'">Cases</th><th style="'+TH+'">Cans</th><th style="'+TH+'">Fill /Can</th><th style="'+TH+'">Add-ons /Can</th><th style="'+TH+'">Pkg /Case</th><th style="'+TH+'">Pallets</th><th style="'+TH+'">Run Total</th><th style="'+TH+'"></th>'
         : isBottling
-          ? '<th style="'+TH+'">Cases</th><th style="'+TH+'">Bottles</th><th style="'+TH+'">/Bottle</th><th style="'+TH+'">Add-ons /Btl</th><th style="'+TH+'">Pkg /Case</th><th style="'+TH+'">Pallets</th><th style="'+TH+'">Run Total</th><th style="'+TH+'"></th>'
+          ? '<th style="'+TH+'">Cases</th><th style="'+TH+'">Bottles / Case</th><th style="'+TH+'">Bottles</th><th style="'+TH+'">/Bottle</th><th style="'+TH+'">Add-ons /Btl</th><th style="'+TH+'">Pkg /Case</th><th style="'+TH+'">Pallets</th><th style="'+TH+'">Run Total</th><th style="'+TH+'"></th>'
           : '<th style="'+TH+'">Kegs</th><th style="'+TH+'">Labor /Keg</th><th style="'+TH+'">Keg Cost /Keg</th><th style="'+TH+'">Run Total</th><th style="'+TH+'"></th>';
 
       var rows = state.tiers.map(function(tier, i){
         return buildTierRow(tier, i, isCanning, isBottling, isKeg);
       }).join('');
 
+      // Warn (don't block) when a bottling tier is under the minimum order.
+      var underMin = isBottling ? state.tiers.map(function(tier, i){
+        var c = Number(tier.cases) || 0;
+        return c < BTL_MIN_CASES ? 'tier ' + (i+1) + ' (' + fmtNum(c) + ' cases)' : null;
+      }).filter(Boolean) : [];
+      var minWarn = underMin.length
+        ? '<div style="margin-top:8px;font-size:12px;color:#ff8579">⚠ Below the ' + BTL_MIN_CASES +
+          '-case minimum order: ' + underMin.join(', ') + '.</div>'
+        : '';
+
       tbody.innerHTML =
         '<div style="overflow-x:auto">' +
         '<table style="width:100%;border-collapse:collapse;font-size:12px;min-width:560px">' +
           '<thead><tr>' + headerCols + '</tr></thead>' +
           '<tbody id="gl-qb-tbody">' + rows + '</tbody>' +
-        '</table></div>';
+        '</table></div>' + minWarn;
 
       // Wire up all inputs
-      tbody.querySelectorAll('[data-tier-field]').forEach(function(inp){
+      tbody.querySelectorAll('[data-tier-field]').forEach(wireTierInput);
+      function wireTierInput(inp){
         inp.addEventListener('input', function(){
           var idx  = parseInt(inp.getAttribute('data-tier-idx'),10);
           var field = inp.getAttribute('data-tier-field');
@@ -925,7 +956,7 @@
           if(OVERRIDES.indexOf(field) >= 0){
             if(raw === ''){ delete tier[field]; }
             else { tier[field] = parseFloat(raw) || 0; }
-            renderTiers();
+            refreshTierRow(inp, idx);
             return;
           }
 
@@ -941,26 +972,50 @@
               var deck = autoRate(val);
               if(!tier._fillOverride) tier.fillPerCan = deck;
             } else if(isBottling){
-              if(!tier._countOverride) tier.bottles = Math.round(val * BTLS_PER_CASE);
-              var deck2 = autoRate(val);
-              if(!tier._rateOverride) tier.ratePerBtl = deck2;
+              if(!tier._countOverride) tier.bottles = Math.round(val * btlPerCase(tier));
             }
+          }
+          // Changing bottles/case means "recount from cases" — drop any typed bottle count.
+          if(field === 'perCase' && isBottling){
+            delete tier._countOverride;
+            tier.bottles = Math.round((tier.cases||0) * val);
+          }
+          // Bottling is priced by total bottles, so any change to the count re-prices.
+          if(isBottling && (field === 'cases' || field === 'perCase' || field === 'bottles') && !tier._rateOverride){
+            tier.ratePerBtl = autoRate(tier.bottles||0);
           }
           if(field === 'fillPerCan' || field === 'ratePerBtl'){
             tier._fillOverride = true;
             tier._rateOverride = true;
           }
-          renderTiers();
+          refreshTierRow(inp, idx);
         });
-      });
+      }
 
-      tbody.querySelectorAll('[data-del-tier]').forEach(function(btn){
+      tbody.querySelectorAll('[data-del-tier]').forEach(wireDelTier);
+      function wireDelTier(btn){
         btn.addEventListener('click', function(){
           var idx = parseInt(btn.getAttribute('data-del-tier'),10);
           state.tiers.splice(idx,1);
           renderTiers();
         });
-      });
+      }
+
+      /* Rebuilding the table on every keystroke destroyed the box being typed
+         in, so only one digit went in at a time (and "1." lost its dot). After
+         the rebuild, put the ORIGINAL box back in place of its fresh copy — it
+         keeps its text, caret and listeners — taking only the copy's styling
+         (the yellow "overridden" border). */
+      function refreshTierRow(inp, idx){
+        var field = inp.getAttribute('data-tier-field');
+        renderTiers();
+        var twin = tbody.querySelector('[data-tier-idx="'+idx+'"][data-tier-field="'+field+'"]');
+        if(!twin) return;
+        inp.style.cssText = twin.style.cssText;
+        inp.title = twin.title;
+        twin.parentNode.replaceChild(inp, twin);
+        inp.focus();
+      }
     }
 
     var TH = 'background:#0a1628;color:#9aa7bd;font-size:10px;letter-spacing:1.5px;padding:8px 10px;text-align:left;white-space:nowrap';
@@ -998,8 +1053,9 @@
           ? bx.pallets + '<div style="color:var(--muted);font-size:10px">' + fmtUsd(bx.palletCost) + '</div>'
           : '—';
         return '<tr>' +
-          '<td style="'+TD+'">' + numInp(i,'cases',tier.cases,0,60) + '</td>' +
-          '<td style="'+TD+';color:var(--muted)">' + fmtNum(tier.bottles||0) + '</td>' +
+          '<td style="'+TD+'">' + numInp(i,'cases',tier.cases,0,60,(Number(tier.cases)||0) < BTL_MIN_CASES ? 'Below the ' + BTL_MIN_CASES + '-case minimum order' : '') + '</td>' +
+          '<td style="'+TD+'">' + perCaseSel(i, btlPerCase(tier)) + '</td>' +
+          '<td style="'+TD+'">' + ovrInp(i,'bottles',tier.bottles||0,tier._countOverride,76,1) + '</td>' +
           '<td style="'+TD+'">' + rateInp(i,'ratePerBtl',tier.ratePerBtl,tier._rateOverride) + '</td>' +
           '<td style="'+TDM+';color:var(--muted)">' + fmtUsd(bAddPerBtl) + '</td>' +
           '<td style="'+TDM+';color:var(--muted)">' + fmtUsd(bx.caseExtra) + '</td>' +
@@ -1019,8 +1075,17 @@
       }
     }
 
-    function numInp(i, field, val, step, width){
-      return '<input data-tier-idx="'+i+'" data-tier-field="'+field+'" type="number" min="0" step="'+(step||1)+'" value="'+(val||0)+'" style="width:'+(width||60)+'px;padding:5px 6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:4px;color:#fff;font-size:12px">';
+    // Bottles per case: 6 or 12. A saved quote with some other ratio keeps it as a third option.
+    function perCaseSel(i, val){
+      var opts = [6, 12];
+      if(opts.indexOf(val) < 0) opts.push(val);
+      return '<select data-tier-idx="'+i+'" data-tier-field="perCase" style="padding:5px 6px;background:#0a1628;border:1px solid rgba(255,255,255,.12);border-radius:4px;color:#fff;font-size:12px">' +
+        opts.map(function(n){ n = parseInt(n,10)||0; return '<option value="'+n+'"'+(n===val?' selected':'')+'>'+n+'</option>'; }).join('') +
+      '</select>';
+    }
+    // warn: optional tooltip text; turns the border red (e.g. under the minimum order).
+    function numInp(i, field, val, step, width, warn){
+      return '<input data-tier-idx="'+i+'" data-tier-field="'+field+'" type="number" min="0" step="'+(step||1)+'" value="'+(val||0)+'" style="width:'+(width||60)+'px;padding:5px 6px;background:rgba(255,255,255,.04);border:1px solid '+(warn?'#ff8579':'rgba(255,255,255,.12)')+';border-radius:4px;color:#fff;font-size:12px"'+(warn?' title="'+esc(warn)+'"':'')+'>';
     }
     // A cell that shows a CALCULATED value but accepts a typed one. Yellow
     // border once overridden, so at a glance you can see which numbers on a
@@ -1051,7 +1116,7 @@
         if(isCanning && !t._fillOverride){
           t.fillPerCan = autoRate(t.cases||0);
         } else if(state.productType==='bottling' && !t._rateOverride){
-          t.ratePerBtl = autoRate(t.cases||0);
+          t.ratePerBtl = autoRate(t.bottles||0);
         }
       });
       renderTiers();
@@ -1065,7 +1130,7 @@
         state.tiers.push({ cases:cases, cans:cases*CANS_PER_CASE, fillPerCan:autoRate(cases), nitrogenPerCan:0.03, trayPerCan:0.03 });
       } else if(t==='bottling'){
         var c = 660;
-        state.tiers.push({ cases:c, bottles:c*BTLS_PER_CASE, ratePerBtl:autoRate(c) });
+        state.tiers.push(btlTier(c, autoRate(c*BTLS_PER_CASE)));
       } else {
         state.tiers.push({ kegs:px('keg_minimum',40), laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) });
       }
@@ -1082,11 +1147,7 @@
           { cases:5000, cans:5000*CANS_PER_CASE, fillPerCan:autoRate(5000), nitrogenPerCan:0.03, trayPerCan:0.03 }
         ];
       } else if(t==='bottling'){
-        state.tiers = [
-          { cases:220,  bottles:220*BTLS_PER_CASE,  ratePerBtl:autoRate(220) },
-          { cases:660,  bottles:660*BTLS_PER_CASE,  ratePerBtl:autoRate(660) },
-          { cases:1320, bottles:1320*BTLS_PER_CASE, ratePerBtl:autoRate(1320) }
-        ];
+        state.tiers = btlStdTiers();
       } else {
         state.tiers = [{ kegs:px('keg_minimum',40), laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) }];
       }
@@ -1485,7 +1546,7 @@
     if(bpkg.pasteurOn) qItem(out, 'Batch flash pasteurization', bottles, 'bottle', bpkg.pasteurPerBtl);
     if(bpkg.otlOn)     qItem(out, 'Over-the-top labels',        bottles, 'bottle', bpkg.otlPerBtl);
     if(bpkg.labelsOn)  qItem(out, 'Labels, front and back',     bottles, 'bottle', bpkg.labelsPerBtl);
-    if(bpkg.caseOn)    qItem(out, '6-pack bottle case',         cases,   'case',   bpkg.casePerCase);
+    if(bpkg.caseOn)    qItem(out, 'Bottle case',                cases,   'case',   bpkg.casePerCase);
     if(bpkg.palletOn)     qItem(out, 'Pallet',             x.pallets, 'pallet', bpkg.palletEach);
     if(bpkg.palletWrapOn) qItem(out, 'Pallet shrink wrap', x.pallets, 'pallet', bpkg.palletWrapEach);
     return qReconcile(out, x.runTotal);
@@ -1735,13 +1796,20 @@
 
     /* Find the deal object first — form inputs are inside #ddp-edit-mode (hidden in view mode)
        so they have no values when New Quote is clicked without entering edit mode. */
-    var nameEl  = document.getElementById('ddp-name');
-    var dealName = nameEl ? nameEl.value : '';
     var deals   = window.deals || {};
     var found   = null;
-    Object.keys(deals).forEach(function(s){
-      (deals[s]||[]).forEach(function(d){ if(d && d.name === dealName) found = d; });
-    });
+    /* The open deal is window.currentDealStage/Idx. #ddp-name is only filled
+       in Edit mode, so matching on it from the normal view found nothing (or
+       the last deal edited) and Prepared For / Email came up blank. */
+    var openStage = window.currentDealStage, openIdx = window.currentDealIdx;
+    if(openStage != null && openIdx != null && deals[openStage]) found = deals[openStage][openIdx] || null;
+    if(!found){
+      var nameEl  = document.getElementById('ddp-name');
+      var dealName = nameEl ? nameEl.value : '';
+      Object.keys(deals).forEach(function(s){
+        (deals[s]||[]).forEach(function(d){ if(d && dealName && d.name === dealName) found = d; });
+      });
+    }
 
     /* Read from in-memory deal object; hidden form fields are unreliable in view mode */
     var co      = (found && found.co)          || (document.getElementById('ddp-co')||{}).value      || '';
@@ -1751,14 +1819,16 @@
     var volume  = (found && found.volume)      || (document.getElementById('ddp-volume')||{}).value  || '';
     var dealNotes = (found && found.notes)     || (document.getElementById('ddp-notes')||{}).value   || '';
 
-    var client  = (window.clients||[]).find(function(c){ return c.name && c.name.toLowerCase() === co.toLowerCase(); });
+    if(!co && found) co = found.name || contact || '';
+    var client  = co ? (window.clients||[]).find(function(c){ return c.name && c.name.toLowerCase() === co.toLowerCase(); }) : null;
     var clientId = client ? client.id : null;
+    if(!email && client && client.email) email = client.email;
 
     /* ── Product type: service field first, then fall back to notes ── */
     var productType = 'canning';
-    if(/bottle/i.test(service))         productType = 'bottling';
+    if(/bottl/i.test(service))          productType = 'bottling';
     else if(/keg/i.test(service))       productType = 'keg';
-    else if(/bottle/i.test(dealNotes))  productType = 'bottling';
+    else if(/bottl/i.test(dealNotes))   productType = 'bottling';
     else if(/keg/i.test(dealNotes))     productType = 'keg';
 
     /* ── Volume: read exactly what the client selected ──────────────────
@@ -1805,7 +1875,7 @@
 
     /* "minimum run", "smallest batch", "get started", "first run" → use minimum */
     if(!suggestCasesList.length && /minimum|smallest|starter|get\s*started|first\s*run|start\s*small/i.test((volume||'')+' '+(dealNotes||''))){
-      suggestCasesList = [ productType === 'bottling' ? 220 : productType === 'keg' ? 50 : 200 ];
+      suggestCasesList = [ productType === 'bottling' ? BTL_MIN_CASES : productType === 'keg' ? 50 : 200 ];
     }
 
     var suggestCases = suggestCasesList.length ? suggestCasesList[0] : null;
