@@ -649,7 +649,10 @@
 
     /* ── Auto-select package format from notes (e.g. "16oz Sleek", "12oz Standard") ── */
     if(opts.dealNotes){
-      var fmtOpts = Array.from(fmtEl.options).map(function(o){ return o.value; });
+      // The format field is a free-text input with a datalist now, so it has no
+      // .options — reading them threw here, before Add Tier / Load Standard Tiers
+      // were wired, whenever a quote was opened from a deal with notes.
+      var fmtOpts = ((DECK[state.productType] || {}).formats || []).slice();
       var pickedFmt = null;
       if(/32\s*oz|crowler/i.test(opts.dealNotes))       pickedFmt = fmtOpts.find(function(f){ return /32/i.test(f); });
       else if(/19\.2\s*oz/i.test(opts.dealNotes))       pickedFmt = fmtOpts.find(function(f){ return /19/i.test(f); });
