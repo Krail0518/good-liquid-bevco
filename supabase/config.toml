@@ -69,3 +69,10 @@ verify_jwt = false
 # Rate-limited and validated in the function body.
 [functions.booking-confirm]
 verify_jwt = false
+
+# Agreement e-signatures. The public signing page (sign.html) calls the
+# view/sign/decline actions with no JWT; the link token is the credential,
+# checked in the function body (SHA-256 match, expiry, one signer at a time).
+# The staff send/resend actions call requireStaff({role:'admin'}) themselves.
+[functions.agreement-sign]
+verify_jwt = false

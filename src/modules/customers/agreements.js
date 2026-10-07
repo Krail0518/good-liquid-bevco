@@ -11,11 +11,14 @@
    Flow: pick NDA or Manufacturing Agreement → fields are pre-filled from the
    deal / client record (anything missing is flagged) → the template is
    filled into an editable text → Download PDF, Save to the record's
-   Documents card, or Send for e-signature (Dropbox Sign). Every saved or
+   Documents card, or Send for e-signature (built in: agreement-sign edge
+   function + public sign.html page). Every saved or
    sent agreement is logged in public.agreements with its exact text, so
-   "what did we send them?" always has an answer. A sent agreement can be
-   checked for signatures; once complete, the signed PDF is filed back into
-   Documents and the row marked signed.
+   "what did we send them?" always has an answer. Signing happens on
+   /sign.html through an emailed private link; the client signs first, then
+   Good Liquid (if a GL signer email is set). When everyone has signed, the
+   edge function files the signed PDF (with a signature certificate page)
+   into Documents, marks the agreement signed and emails everyone a copy.
 
    Data (migration 20261007120000_agreements.sql, admin-only RLS):
      agreement_templates(kind, title, body)   — body is plain text:
@@ -31,7 +34,7 @@
      window.ensureJsPdf (src/shared/password-change.js),
      window.glCheckedInsert (crm-index-core.js), window.glAudit,
      window.glOpenClientDoc / glDownloadClientDoc (client-detail.js),
-     window.glRenderDealDocs (deal-docs.js), edge function 'dropbox-sign'.
+     window.glRenderDealDocs (deal-docs.js), edge function 'agreement-sign'.
 
    No innerHTML anywhere in this file: every node is built with the h()
    helper below, so lead/client-typed text can never become markup.
@@ -47,6 +50,7 @@
     draft:  { bg: 'rgba(255,255,255,.08)', fg: '#cfd9e6', label: 'Draft' },
     sent:   { bg: 'rgba(245,200,66,.15)',  fg: '#f5c842', label: 'Sent for signature' },
     signed: { bg: 'rgba(0,196,167,.15)',   fg: '#00c4a7', label: 'Signed' },
+    declined: { bg: 'rgba(231,76,60,.12)', fg: '#ff8579', label: 'Declined' },
     void:   { bg: 'rgba(231,76,60,.12)',   fg: '#e74c3c', label: 'Void' }
   };
   var GL_DEFAULTS = {
@@ -269,19 +273,6 @@
     }
     return doc.output('blob');
   }
-  function blobToBase64(blob){
-    return new Promise(function(resolve, reject){
-      var r = new FileReader();
-      r.onload = function(){ resolve(String(r.result).split(',')[1] || ''); };
-      r.onerror = function(){ reject(r.error || new Error('read failed')); };
-      r.readAsDataURL(blob);
-    });
-  }
-  function base64ToBlob(b64, type){
-    var bin = atob(b64), arr = new Uint8Array(bin.length);
-    for(var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-    return new Blob([arr], { type: type || 'application/pdf' });
-  }
   function downloadBlob(blob, name){
     var url = URL.createObjectURL(blob);
     var a = h('a', { href:url, download:name });
@@ -308,11 +299,11 @@
     return { ok:true, id: ins.row.id, path: path };
   }
 
-  /* ── Edge function calls (dropbox-sign) ─────────────────────── */
+  /* ── Edge function calls (agreement-sign) ───────────────────── */
   async function callSign(body){
     var client = sb(); if(!client) return { ok:false, reason:'Not connected.' };
     try {
-      var r = await client.functions.invoke('dropbox-sign', { body: body });
+      var r = await client.functions.invoke('agreement-sign', { body: body });
       if(r.error){
         var reason = r.error.message || 'Request failed';
         try {
@@ -321,7 +312,6 @@
             if(j && j.error) reason = j.error;
           }
         } catch(_){}
-        if(/HELLOSIGN_API_KEY not configured/.test(reason)) reason = 'E-signature is not set up yet: the Dropbox Sign API key is missing from Supabase secrets (HELLOSIGN_API_KEY).';
         return { ok:false, reason: reason };
       }
       if(r.data && r.data.error) return { ok:false, reason: r.data.error };
@@ -329,6 +319,12 @@
     } catch(e){
       return { ok:false, reason: (e && e.message) || String(e) };
     }
+  }
+  async function loadSigners(agreementId){
+    var r = await sb().from('agreement_signers')
+      .select('role,sign_order,name,email,status,sent_at,viewed_at,signed_at,decline_reason')
+      .eq('agreement_id', agreementId).order('sign_order');
+    return r.error ? [] : (r.data || []);
   }
 
   /* ── agreements log ─────────────────────────────────────────── */
@@ -553,28 +549,11 @@
       try {
         var id = await onSave(true);
         if(!id) return;
-        setStatus('Sending to Dropbox Sign…');
-        var blob = await buildPdf(state.generated, docTitle(), footerNote());
-        var b64 = await blobToBase64(blob);
-        var glEmail = String(state.fields.gl_signer_email || '').trim();
-        var payload = {
-          file_base64: b64, file_name: safeFileName(docTitle()) + '.pdf',
-          signer_email: email, signer_name: state.fields.client_signer_name,
-          title: docTitle(),
-          subject: docTitle() + ' — please review and sign',
-          message: 'Hi ' + (state.fields.client_signer_name || 'there') + ', please review and sign the attached ' + KINDS[state.kind].label + ' from ' + state.fields.gl_legal_name + '.'
-        };
-        if(/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(glEmail) && glEmail.toLowerCase() !== email.toLowerCase()){
-          payload.cc_signer = { name: state.fields.gl_signer_name, email: glEmail };
-        }
-        var r = await callSign(payload);
+        setStatus('Emailing the signing link…');
+        var r = await callSign({ action:'send', agreement_id: id });
         if(!r.ok){ setStatus('Saved as a draft, but sending failed: ' + r.reason, '#ff8579'); refreshList(); return; }
-        var up = await updateAgreement(id, {
-          status: 'sent', signature_request_id: r.data.signature_request_id || null,
-          sent_to: email, sent_at: new Date().toISOString()
-        });
-        audit('agreement_sent', docTitle(), { to: email, request: r.data.signature_request_id });
-        setStatus(up.ok ? ('Sent to ' + email + ' for signature.') : ('Sent, but the status did not save: ' + up.reason), up.ok ? '#5fcf9e' : '#f5c842');
+        audit('agreement_sent', docTitle(), { to: r.data.sent_to });
+        setStatus('Signing link emailed to ' + r.data.sent_to + '. You will see progress under "On file".', '#5fcf9e');
         refreshList();
       } catch(e){
         setStatus('Send failed: ' + (e.message || e), '#ff8579');
@@ -613,7 +592,25 @@
         if(p && typeof window.glOpenClientDoc === 'function') window.glOpenClientDoc(p);
         else rowMsg.textContent = 'File not found.';
       }, S.btnGo));
-      if(a.status === 'sent' && a.signature_request_id) actions.appendChild(small('Check signatures', function(){ checkSigned(a, rowMsg); }));
+      var signersEl = h('div', { style:'font-size:11px;color:#9aa7bd;margin-top:3px' });
+      if(a.status === 'sent' || a.status === 'signed' || a.status === 'declined'){
+        loadSigners(a.id).then(function(rows){
+          rows.forEach(function(sg){
+            var label = sg.status === 'signed'   ? ('✓ signed ' + new Date(sg.signed_at).toLocaleString())
+                      : sg.status === 'viewed'   ? ('opened ' + new Date(sg.viewed_at).toLocaleString() + ', not signed yet')
+                      : sg.status === 'sent'     ? ('link sent ' + new Date(sg.sent_at).toLocaleString())
+                      : sg.status === 'declined' ? ('✗ declined' + (sg.decline_reason ? ': ' + sg.decline_reason : ''))
+                      : 'waits for the previous signer';
+            signersEl.appendChild(h('div', { text: (sg.role === 'gl' ? 'Good Liquid' : 'Client') + ' · ' + sg.name + ' (' + sg.email + ') — ' + label }));
+          });
+        });
+      }
+      if(a.status === 'sent') actions.appendChild(small('Resend link', async function(){
+        rowMsg.style.color = '#9aa7bd'; rowMsg.textContent = 'Sending…';
+        var r = await callSign({ action:'resend', agreement_id: a.id });
+        rowMsg.style.color = r.ok ? '#5fcf9e' : '#ff8579';
+        rowMsg.textContent = r.ok ? ('New link emailed to ' + r.data.sent_to + '.') : r.reason;
+      }));
       // Two-click confirm (CRM_FEATURE_MAP: confirm() can be suppressed by Chrome).
       var voidArmed = false, voidBtn = null;
       if(a.status === 'draft' || a.status === 'sent') actions.appendChild(voidBtn = small('Mark void', async function(){
@@ -635,37 +632,11 @@
             h('span', { style:'padding:1px 8px;border-radius:20px;font-size:10px;font-weight:700;margin-right:6px;background:' + st.bg + ';color:' + st.fg, text: st.label }),
             when
           ]),
+          signersEl,
           rowMsg
         ]),
         actions
       ]);
-    }
-
-    async function checkSigned(a, rowMsg){
-      rowMsg.style.color = '#9aa7bd'; rowMsg.textContent = 'Checking with Dropbox Sign…';
-      var r = await callSign({ action:'status', signature_request_id: a.signature_request_id });
-      if(!r.ok){ rowMsg.style.color = '#ff8579'; rowMsg.textContent = r.reason; return; }
-      if(r.data.is_declined){ rowMsg.style.color = '#ff8579'; rowMsg.textContent = 'The signer declined. Mark it void and send a revised version if needed.'; return; }
-      if(!r.data.is_complete){
-        var pending = (r.data.signatures || []).filter(function(s){ return s.status !== 'signed'; }).map(function(s){ return s.name || s.email; });
-        rowMsg.style.color = '#f5c842';
-        rowMsg.textContent = 'Not fully signed yet' + (pending.length ? ' — waiting on ' + pending.join(', ') : '') + '.';
-        return;
-      }
-      rowMsg.textContent = 'Signed! Filing the signed copy…';
-      var f = await callSign({ action:'file', signature_request_id: a.signature_request_id });
-      if(!f.ok || !f.data.file_base64){ rowMsg.style.color = '#ff8579'; rowMsg.textContent = 'Signed, but the signed PDF could not be downloaded: ' + (f.reason || 'empty file'); return; }
-      var docCtx = { dealId: a.deal_id || null, clientId: a.client_id || null };
-      var filed = await fileToDocuments(docCtx, base64ToBlob(f.data.file_base64), 'SIGNED ' + a.title,
-        a.kind === 'nda' ? 'NDA' : 'Manufacturing Agreement', 'Signed via Dropbox Sign');
-      if(!filed.ok){ rowMsg.style.color = '#ff8579'; rowMsg.textContent = filed.reason; return; }
-      var signedAt = (r.data.signatures || []).reduce(function(m, s){
-        var t = s.signed_at ? Number(s.signed_at) * 1000 : 0; return t > m ? t : m;
-      }, 0);
-      var up = await updateAgreement(a.id, { status:'signed', signed_document_id: filed.id, signed_at: new Date(signedAt || Date.now()).toISOString() });
-      if(!up.ok){ rowMsg.style.color = '#ff8579'; rowMsg.textContent = 'Signed copy filed, but the status did not save: ' + up.reason; return; }
-      audit('agreement_signed', a.title, { id: a.id });
-      refreshList();
     }
 
     refreshKind();

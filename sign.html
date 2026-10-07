@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>Review &amp; Sign — Good Liquid Bev Co</title>
+  <link rel="stylesheet" href="/sign.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">GOOD LIQUID BEV CO<small>2011 51st Ave E, Unit 100 · Palmetto, FL 34221</small></div>
+
+  <div id="loading" class="card">Loading your agreement…</div>
+
+  <div id="fatal" class="card hidden">
+    <h1>We couldn't open this link</h1>
+    <p class="sub" id="fatal-msg"></p>
+    <p class="sub">If you believe this is a mistake, contact Mike at <a href="mailto:mike@goodliquid.com">mike@goodliquid.com</a>.</p>
+  </div>
+
+  <div id="done" class="card hidden">
+    <h1 id="done-title">Thank you — you've signed</h1>
+    <p class="sub" id="done-msg"></p>
+  </div>
+
+  <div id="main" class="hidden">
+    <div class="card">
+      <h1 id="doc-title"></h1>
+      <p class="sub" id="doc-sub"></p>
+    </div>
+    <div class="card doc" id="doc-body"></div>
+    <div class="card" id="sign-card">
+      <h2>Sign</h2>
+      <label class="consent"><input type="checkbox" id="consent"> <span id="consent-text"></span></label>
+      <label class="lbl" for="typed">Type your full legal name</label>
+      <input type="text" id="typed" autocomplete="name" maxlength="120">
+      <div class="sig-preview" id="sig-preview" aria-hidden="true"></div>
+      <div class="err" id="err"></div>
+      <button type="button" id="sign-btn" class="btn" disabled>Sign agreement</button>
+      <button type="button" id="decline-toggle" class="link">I don't want to sign this</button>
+      <div id="decline-box" class="hidden">
+        <label class="lbl" for="decline-reason">Reason (optional)</label>
+        <textarea id="decline-reason" maxlength="1000"></textarea>
+        <button type="button" id="decline-btn" class="btn ghost">Decline to sign</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="/sign.js"></script>
+</body>
+</html>
