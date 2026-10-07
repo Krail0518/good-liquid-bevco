@@ -26,6 +26,10 @@
     return BTLS_PER_CASE;
   }
   function btlTier(cases, rate){ return { cases:cases, perCase:BTLS_PER_CASE, bottles:cases*BTLS_PER_CASE, ratePerBtl:rate }; }
+  // Standard bottling tiers start exactly on the first three price breaks
+  // (total bottles), rounded up to whole cases at the default bottles/case.
+  var BTL_STD_BREAKS = [1320, 3960, 7920];
+  function btlCasesFor(bottles){ return Math.ceil(bottles / BTLS_PER_CASE); }
 
   // [min, max, $/unit] — canning tiers are by CASES, bottling tiers by TOTAL BOTTLES
   var DECK = {
@@ -676,11 +680,7 @@
           { cases:1000, cans:1000*CANS_PER_CASE, fillPerCan:autoRate(1000), nitrogenPerCan:0.03, trayPerCan:0.03 }
         ];
       } else if(t2==='bottling'){
-        state.tiers = [
-          btlTier(220, autoRate(220*BTLS_PER_CASE)),
-          btlTier(660, autoRate(660*BTLS_PER_CASE)),
-          btlTier(1320, autoRate(1320*BTLS_PER_CASE))
-        ];
+        state.tiers = btlStdTiers();
       } else {
         state.tiers = [{ kegs:px('keg_minimum',40), laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) }];
       }
@@ -888,6 +888,12 @@
     }
 
     /* ── Tier row rendering ── */
+    function btlStdTiers(){
+      return BTL_STD_BREAKS.map(function(b){
+        var c = btlCasesFor(b);
+        return btlTier(c, autoRate(c*BTLS_PER_CASE));
+      });
+    }
     function autoRate(cases){
       return getDeckRate(state.productType, state.format, cases);
     }
@@ -1127,11 +1133,7 @@
           { cases:5000, cans:5000*CANS_PER_CASE, fillPerCan:autoRate(5000), nitrogenPerCan:0.03, trayPerCan:0.03 }
         ];
       } else if(t==='bottling'){
-        state.tiers = [
-          btlTier(220, autoRate(220*BTLS_PER_CASE)),
-          btlTier(660, autoRate(660*BTLS_PER_CASE)),
-          btlTier(1320, autoRate(1320*BTLS_PER_CASE))
-        ];
+        state.tiers = btlStdTiers();
       } else {
         state.tiers = [{ kegs:px('keg_minimum',40), laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) }];
       }
@@ -1859,7 +1861,7 @@
 
     /* "minimum run", "smallest batch", "get started", "first run" → use minimum */
     if(!suggestCasesList.length && /minimum|smallest|starter|get\s*started|first\s*run|start\s*small/i.test((volume||'')+' '+(dealNotes||''))){
-      suggestCasesList = [ productType === 'bottling' ? 220 : productType === 'keg' ? 50 : 200 ];
+      suggestCasesList = [ productType === 'bottling' ? btlCasesFor(BTL_STD_BREAKS[0]) : productType === 'keg' ? 50 : 200 ];
     }
 
     var suggestCases = suggestCasesList.length ? suggestCasesList[0] : null;
