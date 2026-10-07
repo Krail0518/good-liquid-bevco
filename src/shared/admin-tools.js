@@ -807,7 +807,6 @@
       { label:'💳 Stripe Checkout', fn:'openStripeSettings', admin:true },
       { label:'🛡️ Sentry', fn:'openSentrySettings', admin:true },
       { label:'📅 Capacity badge', fn:'openCapacitySettings', admin:true },
-      { label:'📝 E-Signatures', fn:'openSignSettings', admin:true },
       { label:'📄 Agreement Templates', fn:'glOpenAgreementTemplates', admin:true },
       { label:'💼 QuickBooks', fn:'openQBOSettings', admin:true },
       { label:'✍️ Email Signature', fn:'openEmailSignatureSettings' },

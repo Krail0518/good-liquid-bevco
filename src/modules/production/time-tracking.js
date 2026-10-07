@@ -221,13 +221,17 @@ async function toggleTimer() {
     }).eq('id', activeTimer.id).select();
     if(r.error){ alert('Stop timer failed: ' + r.error.message); return; }
     if(!r.data || !r.data.length){ alert('Stop timer failed (nothing was saved — you may not have permission)'); return; }
+    // loadTimeEntries() below resets activeTimer (no running row any more), so
+    // keep what we need first. Reading activeTimer.clientId after the reload
+    // threw on every Stop (error_log 2026-10-03) and hid the confirmation.
+    const stoppedClientId = activeTimer.clientId || null;
     clearInterval(timerInterval); timerInterval = null;
     document.getElementById('tt-start-btn').textContent = '▶ Start';
     document.getElementById('tt-start-btn').style.background = 'var(--teal)';
     document.getElementById('tt-display').textContent = '00:00:00';
     await loadTimeEntries();
     renderTimeTracker();
-    if(typeof glAudit === 'function') glAudit('time_entry_stopped', activeTimer.clientId || null, { seconds: elapsed });
+    if(typeof glAudit === 'function') glAudit('time_entry_stopped', stoppedClientId, { seconds: elapsed });
     addNotification('⏱️ Time logged', (elapsed/3600).toFixed(2) + ' hours recorded', 'success');
   } else {
     // Start: INSERT a row with ended_at=null. The partial unique index

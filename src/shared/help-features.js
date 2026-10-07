@@ -1163,7 +1163,6 @@
         { label:'SMS Alerts',             icon:'📱', fn:'openSmsSettings' },
         { label:'Stripe Checkout',        icon:'💳', fn:'openStripeSettings', admin:true },
         { label:'QuickBooks',             icon:'💼', fn:'openQBOSettings', admin:true },
-        { label:'E-Signatures',           icon:'📝', fn:'openSignSettings', admin:true },
         { label:'Agreement Templates',    icon:'📄', fn:'glOpenAgreementTemplates', admin:true },
         { label:'Two-Factor Auth',        icon:'🔒', fn:'openMFASettings' },
         { label:'Google Analytics',       icon:'📈', fn:'openGA4Settings', admin:true },

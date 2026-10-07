@@ -151,7 +151,7 @@ function calcRefComm(){
 
 /* Referrers */
 function renderReferrers(){
-  document.getElementById('referrers-list').innerHTML=referrers.map(r=>{
+  document.getElementById('referrers-list').innerHTML=!referrers.length ? '<div style="padding:28px 12px;text-align:center;color:var(--muted);font-size:13px">No referrers yet. Click "+ Add referrer" to add someone who sends you business.</div>' : referrers.map(r=>{
     const rRefs=referrals.filter(x=>x.referrerId===r.id);
     const totalEarned=rRefs.filter(x=>x.status==='paid').reduce((a,x)=>a+x.commAmount,0);
     const owed=rRefs.filter(x=>x.status==='won').reduce((a,x)=>a+x.commAmount,0);
