@@ -323,14 +323,19 @@
       <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
         <label class="qc-fld" style="letter-spacing:1px">EXACT</label>
         <input id="qc-cases" type="number" min="200" value="500" step="50" style="width:104px;padding:8px 10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:13px;font-family:var(--ff-body)">
-        <span style="font-size:11px;color:rgba(107,135,173,.7)">cases · 24 per case</span>
+        <span id="qc-perlabel" style="font-size:11px;color:rgba(107,135,173,.7)">cases · 24 per case</span>
+        <span id="qc-btlcase-wrap" hidden style="font-size:11px;color:rgba(107,135,173,.7)">
+          <select id="qc-btlcase" aria-label="Bottles per case" style="padding:6px 8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:12px;font-family:var(--ff-body)">
+            <option value="6">6</option><option value="12" selected>12</option>
+          </select> bottles per case
+        </span>
       </div>
     </div>
     <div style="margin-bottom:22px">
       <label class="qc-fld" style="display:block;margin-bottom:8px">ADD-ONS</label>
       <div class="qc-pills">
-        <label class="qc-pill"><input type="checkbox" id="qc-pasteur" hidden>🔥 Pasteurization <span class="qcp-x">+5¢/can</span></label>
-        <label class="qc-pill"><input type="checkbox" id="qc-nitro" hidden>💨 Nitro dosing <span class="qcp-x">+3¢/can</span></label>
+        <label class="qc-pill"><input type="checkbox" id="qc-pasteur" hidden>🔥 Pasteurization <span class="qcp-x" id="qc-pasteur-x">+5¢/can</span></label>
+        <label class="qc-pill" id="qc-nitro-pill"><input type="checkbox" id="qc-nitro" hidden>💨 Nitro dosing <span class="qcp-x">+3¢/can</span></label>
       </div>
     </div>
     <div style="background:rgba(0,229,192,.06);border:1px solid rgba(0,229,192,.25);border-radius:12px;padding:20px 22px;text-align:center">
