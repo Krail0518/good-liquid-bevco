@@ -20,6 +20,10 @@
  *   - BOL pallet sheets: a 14-pallet BOL prints 14 sheets, 1 OF 14 .. 14 OF 14
  *   - BOL upload: the file goes to ai-proxy as a document/image block, the
  *     reply fills the form, script inside a BOL stays text, failures explain
+ *   - Good Liquid's own packaging (client_id null): shown under its own owner
+ *     on the dashboard, a packaging transfer prints its packing list and
+ *     labels, new transfers and SKUs send client_id null, and Good Liquid
+ *     cannot be picked for a finished-goods move
  *
  * WHAT IT DOES NOT PROVE
  * ----------------------
@@ -88,14 +92,26 @@ const CONRI_PALLETS = [
     received_at_conri: '2026-09-20T12:00:00Z', sku: SKU_EVIL, lot: null },
 ];
 
+// Good Liquid's own packaging: no client anywhere.
+const SKU_TRAY = { id: 's-tray', client_id: null, client: null, upc_sku: 'TRAY12SLIM-1800', description: '12 ct Carrier Tray, Slim Cans ' + XSS,
+  brand: null, pack: '150/cs', units_per_case: 150, default_cases_per_pallet: null, default_pallet_weight_lbs: null,
+  default_pallet_height_in: null, inventory_type: 'packaging', active: true, notes: null, last_exported_at: null };
+const T2 = { id: 't-2', transfer_number: 'GL-TR-20261008-01', type: 'to_conri_packaging', transfer_date: '2026-10-08', status: 'draft',
+  scheduled_at: null, client_id: null, client: null, carrier: null, ship_to: null, conri_confirmation: null, released_by: 'Mike Krail', notes: null };
+const TRAY_PALLET = { id: 'p-tray', pallet_tag: 'GL-P-000200', cases: 2, weight_lbs: 300, height_in: 60, location: 'good_liquid', status: 'staged',
+  current_transfer_id: T2.id, received_at_conri: null, expected_pull_date: null, notes: null, sku: SKU_TRAY, lot: null, line_no: 1 };
+CONRI_PALLETS.push({ id: 'q-5', pallet_tag: 'GL-P-000105', cases: 4, location: 'conri', status: 'stored', current_transfer_id: null,
+  received_at_conri: '2026-10-01T12:00:00Z', sku: SKU_TRAY, lot: null });
+
 const FIX = {
   clients: [CAMO, EVIL],
-  wh_transfers: [T1],
-  wh_transfer_lines: SEED_PALLETS.map((p) => ({ transfer_id: T1.id, line_no: p.line_no, pallet: p })),
-  wh_pallets: SEED_PALLETS.concat(CONRI_PALLETS),
+  wh_transfers: [T1, T2],
+  wh_transfer_lines: SEED_PALLETS.map((p) => ({ transfer_id: T1.id, line_no: p.line_no, pallet: p }))
+    .concat([{ transfer_id: T2.id, line_no: 1, pallet: TRAY_PALLET }]),
+  wh_pallets: SEED_PALLETS.concat(CONRI_PALLETS, [TRAY_PALLET]),
   wh_movements: [],
   wh_outbound_orders: [],
-  wh_skus: [SKU, SKU_SOON, SKU_CANS],
+  wh_skus: [SKU, SKU_SOON, SKU_CANS, SKU_TRAY],
   wh_lots: [LOT, LOT_SOON, LOT_LATER],
 };
 
@@ -186,7 +202,9 @@ const server = http.createServer((req, res) => {
     yellowRows: [...document.querySelectorAll('#wh-body tr')].filter((r) => /245,\s*200,\s*66/.test(r.getAttribute('style') || '')).map((r) => r.innerText),
     xss: window.__xss === 1 || !!document.querySelector('#cpg-warehouse img'),
   }));
-  check('dashboard totals pallets at CONRI', /PALLETS AT CONRI\s*4/.test(dash.text), dash.text.slice(0, 200));
+  check('dashboard totals pallets at CONRI', /PALLETS AT CONRI\s*5/.test(dash.text), dash.text.slice(0, 200));
+  check('Good Liquid packaging is grouped under its own owner, not "unknown client"',
+    /Good Liquid \(own packaging\)/.test(dash.text) && /TRAY12SLIM-1800/.test(dash.text) && /\(packaging\)/.test(dash.text) && !/unknown client/.test(dash.text), dash.text);
   check('empty cans past 2 days are flagged red', dash.redRows.some((r) => /GL-P-000103/.test(r) && /3 days/.test(r)), JSON.stringify(dash.redRows));
   check('a finished lot under 90 days to best by is flagged yellow', dash.yellowRows.some((r) => /SOON1/.test(r)), JSON.stringify(dash.yellowRows));
   check('a lot 300 days out is not flagged', !dash.yellowRows.some((r) => /LATER1/.test(r)));
@@ -196,10 +214,12 @@ const server = http.createServer((req, res) => {
   // ── Transfers list -> detail ──────────────────────────────────────
   await page.click('[data-wh="tab"][data-arg="transfers"]');
   await page.waitForSelector('[data-wh="openTransfer"]', { timeout: 5000 });
-  const listRow = await page.evaluate(() => document.querySelector('[data-wh="openTransfer"]').innerText);
+  const listRow = await page.evaluate(() => document.querySelector('[data-wh="openTransfer"][data-arg="t-1"]').innerText);
   check('transfer list shows the seeded transfer with 7 pallets, 1,400 cases',
     /GL-TR-20260930-01/.test(listRow) && /\b7\b/.test(listRow) && /1,400/.test(listRow), listRow);
-  await page.click('[data-wh="openTransfer"]');
+  const glRow = await page.evaluate(() => document.querySelector('[data-wh="openTransfer"][data-arg="t-2"]').innerText);
+  check('a packaging transfer lists Good Liquid as the owner', /To CONRI: Good Liquid packaging/.test(glRow) && /Good Liquid \(own packaging\)/.test(glRow), glRow);
+  await page.click('[data-wh="openTransfer"][data-arg="t-1"]');
   await page.waitForSelector('[data-wh="printPaperwork"]', { timeout: 5000 });
   const detail = await page.evaluate(() => ({
     text: document.getElementById('wh-body').innerText,
@@ -400,6 +420,85 @@ const server = http.createServer((req, res) => {
   await page.setInputFiles('#wh-bol-file', { name: 'bol.docx', mimeType: 'application/msword', buffer: Buffer.from('x') });
   const wrong = await page.evaluate(() => ({ msg: document.getElementById('wh-bol-msg').innerText, calls: window.__aiCalls.length }));
   check('a Word file is refused before anything is sent', /Upload a PDF, JPG or PNG/.test(wrong.msg) && wrong.calls === 0, JSON.stringify(wrong));
+
+  // ── Good Liquid packaging ─────────────────────────────────────────
+  await page.evaluate(() => { document.querySelectorAll('.wh-ov').forEach((o) => o.remove()); });
+  await page.click('[data-wh="tab"][data-arg="transfers"]');
+  await page.waitForSelector('[data-wh="openTransfer"][data-arg="t-2"]', { timeout: 5000 });
+  await page.click('[data-wh="openTransfer"][data-arg="t-2"]');
+  await page.waitForSelector('[data-wh="printPaperwork"]', { timeout: 5000 });
+  const pk = await page.evaluate(() => ({
+    text: document.getElementById('wh-body').innerText,
+    schedDisabled: !!(document.querySelector('[data-wh="scheduleTransfer"]') || {}).disabled,
+    quick: !!document.querySelector('[data-wh="quickBuild"]'),
+    xss: window.__xss === 1 || !!document.querySelector('#wh-body img'),
+  }));
+  check('packaging transfer detail names the move and the owner',
+    /To CONRI: Good Liquid packaging · Good Liquid \(own packaging\)/.test(pk.text), pk.text.slice(0, 300));
+  check('packaging is inbound: quick build is offered', pk.quick);
+  check('a packaging SKU never exported to CONRI blocks scheduling', pk.schedDisabled && /TRAY12SLIM-1800 has never been exported/.test(pk.text));
+  check('script in a packaging description does not run', !pk.xss);
+  if (JSPDF) {
+    await page.evaluate(() => { window.__savedName = null; window.__savedPdf = null; });
+    await page.click('[data-wh="printPaperwork"]');
+    await page.waitForFunction(() => !!window.__savedName, null, { timeout: 8000 });
+    const ppdf = await page.evaluate(() => ({ name: window.__savedName, raw: window.__savedPdf }));
+    const phas = (x) => ppdf.raw.indexOf('(' + x) >= 0;
+    check('packaging PDF: packing list + 1 label', (ppdf.raw.match(/\/Type \/Page\b/g) || []).length === 2 && ppdf.name === 'GL-TR-20261008-01_paperwork.pdf', ppdf.name);
+    check('packaging PDF: owner, move, storage note, item and label banner',
+      phas('Good Liquid \\(own packaging\\)') && phas('To CONRI: Good Liquid packaging') && phas('Storage: Good Liquid packaging supplies') &&
+      phas('TRAY12SLIM-1800') && phas('PACKAGING SUPPLIES  |  PROPERTY OF GOOD LIQUID BEV CO') && phas('1/1'));
+    if (process.env.WH_PKG_OUT) fs.writeFileSync(process.env.WH_PKG_OUT, Buffer.from(ppdf.raw, 'binary'));
+  }
+
+  // New transfer: packaging forces Good Liquid and sends client_id null.
+  await page.evaluate(() => { window.__writes = []; });
+  await page.click('[data-wh="newTransfer"]');
+  await page.waitForSelector('#wnt-type', { timeout: 5000 });
+  await page.selectOption('#wnt-type', 'to_conri_packaging');
+  const owner = await page.evaluate(() => ({ v: document.getElementById('wnt-client').value, dis: document.getElementById('wnt-client').disabled }));
+  check('choosing a packaging transfer sets the owner to Good Liquid and locks it', owner.v === '__gl__' && owner.dis, JSON.stringify(owner));
+  await page.click('#wnt-save');
+  await page.waitForFunction(() => window.__writes.length > 0, null, { timeout: 5000 });
+  const ntw = await page.evaluate(() => window.__writes[0]);
+  check('the packaging transfer is inserted with client_id null', ntw.table === 'wh_transfers' && ntw.op === 'insert' &&
+    ntw.payload.type === 'to_conri_packaging' && ntw.payload.client_id === null && ntw.payload.released_by === 'Test Admin', JSON.stringify(ntw));
+
+  await page.evaluate(() => { document.querySelectorAll('.wh-ov').forEach((o) => o.remove()); window.__writes = []; });
+  await page.click('[data-wh="newTransfer"]');
+  await page.waitForSelector('#wnt-type', { timeout: 5000 });
+  await page.selectOption('#wnt-type', 'to_conri_finished');
+  await page.selectOption('#wnt-client', '__gl__');
+  await page.click('#wnt-save');
+  const refused = await page.evaluate(() => ({ msg: document.querySelector('.wh-ov-msg').innerText, writes: window.__writes.length }));
+  check('Good Liquid cannot be the owner of a finished-goods move', /only go to CONRI as packaging/.test(refused.msg) && refused.writes === 0, JSON.stringify(refused));
+
+  // New SKU: picking Good Liquid makes it packaging, and the insert has no client.
+  await page.evaluate(() => { document.querySelectorAll('.wh-ov').forEach((o) => o.remove()); window.__writes = []; });
+  await page.click('[data-wh="tab"][data-arg="skus"]');
+  await page.waitForSelector('[data-wh="newSku"]', { timeout: 5000 });
+  const skuList = await page.evaluate(() => document.getElementById('wh-body').innerText);
+  check('SKU master shows the packaging type', /TRAY12SLIM-1800/.test(skuList) && /Packaging/.test(skuList));
+  await page.click('[data-wh="newSku"]');
+  await page.waitForSelector('#ws-client', { timeout: 5000 });
+  await page.selectOption('#ws-client', '__gl__');
+  const t1 = await page.evaluate(() => document.getElementById('ws-type').value);
+  check('choosing Good Liquid as owner sets the type to Packaging', t1 === 'packaging', t1);
+  await page.selectOption('#ws-type', 'finished_good');
+  const o2 = await page.evaluate(() => document.getElementById('ws-client').value);
+  check('choosing a client type clears the Good Liquid owner', o2 === '', o2);
+  await page.selectOption('#ws-type', 'packaging');
+  await page.fill('#ws-upc', 'TRAY24-600');
+  await page.fill('#ws-desc', '24 ct Carrier Tray, Standard Cans');
+  await page.click('#ws-save');
+  await page.waitForFunction(() => window.__writes.length > 0, null, { timeout: 5000 });
+  const nsw = await page.evaluate(() => window.__writes[0]);
+  check('the packaging SKU is inserted with client_id null', nsw.table === 'wh_skus' && nsw.op === 'insert' &&
+    nsw.payload.client_id === null && nsw.payload.inventory_type === 'packaging', JSON.stringify(nsw));
+
+  const pcsv = await page.evaluate(() => window.glWhInternals.skuCsv([{ upc_sku: 'TRAY24-600', description: '24 ct tray', client: null,
+    units_per_case: 150, inventory_type: 'packaging' }]).split('\r\n')[1]);
+  check('CONRI CSV labels packaging and names Good Liquid as the customer', pcsv === 'TRAY24-600,24 ct tray,Good Liquid Bev Co,150,,,Packaging', pcsv);
 
   check('no page errors', errors.length === 0, JSON.stringify(errors));
   await browser.close(); server.close();

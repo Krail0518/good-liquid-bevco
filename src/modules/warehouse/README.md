@@ -38,6 +38,19 @@ The **dashboard** shows stock at CONRI by client, SKU and lot; empties in
 storage with days held (red past 2 days); finished lots under 90 days to best
 by (yellow); and upcoming transfers and pickups.
 
+## Good Liquid's own packaging
+
+Supplies Good Liquid buys for itself (carrier trays, lids, cartons) are stored
+the same way, with the owner **Good Liquid (own packaging)** instead of a
+client. In SKU master pick that owner (the type becomes **Packaging**), export
+the SKU to CONRI as usual, then start a **To CONRI: Good Liquid packaging**
+transfer, quick build the pallets (no lot needed) and print the paperwork.
+In the database this is `client_id IS NULL` on the SKU and the transfer, held
+exact by `wh_skus_packaging_owner_check` and `wh_transfers_owner_check`
+(`20261008120000_warehouse_packaging.sql`). A Good Liquid pallet cannot ride a
+client's transfer, or the other way round. One item per pallet, as for
+everything else.
+
 ## Tables
 
 | Table | Holds |
