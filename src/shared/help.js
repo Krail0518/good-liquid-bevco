@@ -1305,7 +1305,24 @@
       '<b>Editing an item</b> — click any row to reopen the edit modal. You can rename the item, change the unit, adjust the threshold, or update the quantity. Click Save.',
       '<b>Deleting an item</b> — open the edit modal → click the red <b>Delete</b> button → confirm. The item is permanently removed.',
       '<b>Sorting</b> — LOW items always appear first. Within the same status, items are sorted alphabetically.',
-      '<b>Data note</b> — inventory data lives in <code>localStorage (gl_inventory)</code> on your device. It is not synced to Supabase or shared with other team members. For shared, production-grade inventory (with audit trails and multi-user visibility), use the Supabase <code>inventory</code> table directly or connect your ERP.'
+      '<b>Data note</b> — inventory is saved to the cloud (the Supabase <code>inventory</code> table), so every staff member sees the same numbers. Anything left in this browser from the old device-only version is moved up automatically the first time you open the page.',
+      '<b>Pallets stored at CONRI</b> are tracked separately, pallet by pallet, in <b>Warehouse Storage</b>.'
+    ]);
+  var SEC_WAREHOUSE =
+    '<div style="font-size:13px;color:#cfd9e6;line-height:1.7;margin:4px 0 6px">Sidebar → <b>Operations → 🏬 Warehouse Storage</b> (admin and sales). ' +
+    'The record of every pallet stored at <b>CONRI Services</b> (Paul Nolletti, across the street): finished goods, empty-can overflow, and Good Liquid\'s own packaging. Every move is scheduled with CONRI first, then completed when Paul has it.</div>' +
+    bullets([
+      '<b>The 4 steps of every move</b>: <b>1)</b> the item is in SKU master and sent to CONRI, <b>2)</b> + New transfer and build the pallets, <b>3)</b> set the time and Mark scheduled, <b>4)</b> Complete (received) when Paul has them. Until step 4 the pallets still show at Good Liquid.',
+      '<b>Dashboard</b> — what is at CONRI now, by owner, item and lot; <b>Pallet notes at CONRI</b>; empty cans held past 2 days in red; finished lots under 90 days to best by in yellow; upcoming moves.',
+      '<b>1) SKU master</b> — the item list. Pick the owner at the top left: a client (their finished goods or empty cans) or <b>Good Liquid (own packaging)</b> for our supplies such as carrier trays and lids. <b>+ New SKU</b> adds an item. <b>⬇ Export CSV for CONRI</b> downloads the list for Paul and stamps the items as sent; a move cannot be scheduled until its items are stamped. Changing an item\'s number, description or units per case clears the stamp so it is sent again. Lots (+ Lot) and QA release live here too; finished goods only go to CONRI from a QA-released lot.',
+      '<b>2) + New transfer</b> — pick the type: <b>To CONRI: finished goods</b>, <b>empty can overflow</b>, <b>Good Liquid packaging</b>, <b>Pull back from CONRI</b> or <b>Outbound carrier pickup</b>, and the client the pallets belong to (packaging is always Good Liquid). It starts as a <b>DRAFT</b> with a number like GL-TR-20261008-01.',
+      '<b>Quick build</b> — makes the pallet records: item, lot, number of pallets, cases on each, weight and height, and a <b>note</b> that goes on every pallet built. It shows which client the pallets belong to; if that client has no item of this kind yet, use <b>+ New … item</b> right there. One item per pallet. <b>☑ Pick existing pallets</b> adds pallets already in the system (pull backs, pickups, leftovers), sorted earliest best-by first.',
+      '<b>Pallet notes</b> — <b>+ Note</b> or ✏️ on any pallet in a transfer adds or changes its note at any time. Notes show on the transfer, the dashboard, pick lists, the packing list, the pallet label and the scheduling email.',
+      '<b>🖨️ Print paperwork</b> — a PDF: the packing list with receiving and signature blocks, then one big label per pallet (pallet 1 of N, item, lot, cases, note, barcode of the pallet tag). Tape one label on each pallet.',
+      '<b>3) Schedule</b> — <b>✏️ Edit</b> to enter the time agreed with Paul, <b>✉ Scheduling email to CONRI</b> writes the email for you, then <b>📅 Mark scheduled</b>. That button stays grey until the items are sent to CONRI and a time is set.',
+      '<b>4) ✓ Complete (received)</b> — who received it, pallets and cases received, condition. If counts differ or something is damaged pick <b>Exceptions noted</b> and describe it. Attach the signed packing list now or later. Completing moves the pallets and writes the movement log; it cannot be undone.',
+      '<b>Outbound orders</b> — a client release: pallets per item, allocated earliest best-by first, creates the pickup transfer and the order email to CONRI; <b>Mark shipped</b> with the BOL number.',
+      '<b>Reconciliation</b> — upload CONRI\'s inventory CSV to compare it with what we show at CONRI. <b>BOL pallet sheets</b> — upload or type a client\'s BOL and print one PALLET X OF N sheet per pallet; nothing is saved.'
     ]);
   var SEC_ANNOUNCEMENTS =
     wf(620, 200,
@@ -2439,6 +2456,7 @@
     section('help-tasks',           '✅ TASKS',                      SEC_TASKS) +
     section('help-documents',       '📁 DOCUMENTS',                  SEC_DOCUMENTS) +
     section('help-inventory',       '📦 INVENTORY',                  SEC_INVENTORY) +
+    section('help-warehouse',       '🏬 WAREHOUSE STORAGE (CONRI)',  SEC_WAREHOUSE) +
     section('help-announcements',   '📣 ANNOUNCEMENTS',              SEC_ANNOUNCEMENTS) +
     section('help-customer-requests', '📩 CUSTOMER REQUESTS (INBOX)',  SEC_CUSTOMER_REQUESTS) +
     section('help-customers',       '🌐 CUSTOMER LOGINS (ADMIN)',    SEC_CUSTOMERS) +
@@ -2487,7 +2505,7 @@
     ['help-referrals','🤝 Referrals'],['help-referrers','👤 Referrers'],
     ['help-activity','📡 Activity'],['help-calendar','📅 Calendar'],
     ['help-production','🏭 Production'],['help-tasks','✅ Tasks'],
-    ['help-documents','📁 Documents'],['help-inventory','📦 Inventory'],
+    ['help-documents','📁 Documents'],['help-inventory','📦 Inventory'],['help-warehouse','🏬 Warehouse Storage'],
     ['help-announcements','📣 Announcements'],
     ['help-customer-requests','📩 Customer Requests'],['help-customers','🌐 Customer Logins'],
     ['help-users','🔑 Users'],['help-settings','⚙️ Settings'],
@@ -2531,8 +2549,19 @@
     'cpg-vendors':'help-vendors',
     'cpg-scheduling':'help-scheduling',
     'cpg-expenses':'help-expenses',
-    'cpg-recurring':'help-recurring-inv'
+    'cpg-recurring':'help-recurring-inv',
+    'cpg-warehouse':'help-warehouse',
+    'cpg-gmp':'help-daily-gmp',
+    'cpg-gmpsched':'help-gmp-schedule',
+    'cpg-trace':'help-trace-recall',
+    'cpg-training':'help-training-gmp',
+    'cpg-auditreview':'help-internal-audit',
+    // The Audit Log has no section of its own; it is covered in Quality &
+    // Supply, which help-features.js adds to the panel after it opens.
+    'cpg-audit':'help-qs'
   };
+  // Exposed so tests and add-ons can ask which section a page opens.
+  window.glHelpSectionFor = function(pageId){ return PAGE_TO_SECTION[pageId] || 'help-overview'; };
   function currentSection(){
     var active = document.querySelector('#crm-panel .cpg.act');
     if(active && PAGE_TO_SECTION[active.id]) return PAGE_TO_SECTION[active.id];
@@ -2612,12 +2641,28 @@
     });
 
     host.appendChild(ov);
-    // Initial scroll + TOC highlight after the modal lays out
-    setTimeout(function(){
+    // Scroll to the section for the page you are on. Some sections (Quality &
+    // Supply, Correspondence, ...) are added by add-ons a moment after the panel
+    // opens, so keep trying for up to 3 seconds; stop as soon as the person
+    // scrolls or clicks, so it never fights them.
+    var tries = 0, userMoved = false;
+    function stopAuto(){ userMoved = true; }
+    body.addEventListener('wheel', stopAuto, { passive: true });
+    body.addEventListener('touchmove', stopAuto, { passive: true });
+    body.addEventListener('keydown', stopAuto);
+    toc.addEventListener('click', stopAuto);
+    (function goToTarget(){
+      if(userMoved || !document.body.contains(ov)) return;
       var el = body.querySelector('#' + target);
-      if(el) el.scrollIntoView({behavior:'auto', block:'start'});
-      highlightToc(target);
-    }, 60);
+      if(el){
+        el.scrollIntoView({behavior:'auto', block:'start'});
+        highlightToc(target);
+        // Re-assert once more: sections injected above it shift the page down.
+        if(tries < 12){ tries = 12; setTimeout(goToTarget, 400); }
+        return;
+      }
+      if(++tries < 40) setTimeout(goToTarget, 75);
+    })();
   };
 
   // "?" hotkey to toggle

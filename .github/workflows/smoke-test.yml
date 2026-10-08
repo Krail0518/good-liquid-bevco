@@ -355,6 +355,14 @@ jobs:
           REPO_ROOT: ${{ github.workspace }}
         run: node tests/warehouse.test.cjs
 
+      # Help: the ❓ button opens the section for the page you are on, for
+      # every page in index.html, including sections add-ons insert late.
+      - name: Run help context test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/help-context.test.cjs
+
       # CIP tank history: searching a tank queries every cycle in the
       # database (not just the newest 200 on screen) and answers "when was
       # it last cleaned", including the last PASSING clean.
