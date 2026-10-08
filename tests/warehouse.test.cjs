@@ -20,6 +20,9 @@
  *   - BOL pallet sheets: a 14-pallet BOL prints 14 sheets, 1 OF 14 .. 14 OF 14
  *   - BOL upload: the file goes to ai-proxy as a document/image block, the
  *     reply fills the form, script inside a BOL stays text, failures explain
+ *   - pallet notes: typed in quick build, shown on the transfer, the dashboard
+ *     and pick list, edited per pallet, printed on the packing list and label,
+ *     listed in the scheduling email; script in a note stays text
  *   - Good Liquid's own packaging (client_id null): shown under its own owner
  *     on the dashboard, a packaging transfer prints its packing list and
  *     labels, new transfers and SKUs send client_id null, and Good Liquid
@@ -71,7 +74,7 @@ const T1 = { id: 't-1', transfer_number: 'GL-TR-20260930-01', type: 'to_conri_fi
   scheduled_at: null, client_id: CAMO.id, client: CAMO, carrier: null, ship_to: null, conri_confirmation: null, released_by: 'Mike Krail', notes: null };
 const SEED_PALLETS = [1, 2, 3, 4, 5, 6, 7].map((i) => ({
   id: 'p-' + i, pallet_tag: 'GL-P-00000' + i, cases: 200, weight_lbs: 2000, height_in: null, location: 'good_liquid', status: 'staged',
-  current_transfer_id: T1.id, received_at_conri: null, expected_pull_date: null, notes: null, sku: SKU, lot: LOT, line_no: i }));
+  current_transfer_id: T1.id, received_at_conri: null, expected_pull_date: null, notes: i === 2 ? 'Shrink wrap torn, rewrapped' : null, sku: SKU, lot: LOT, line_no: i }));
 
 // Dashboard stock at CONRI: one lot close to best-by, one empty-can pallet
 // in storage 3 days, and one carrying script in its description.
@@ -87,7 +90,7 @@ const CONRI_PALLETS = [
   { id: 'q-2', pallet_tag: 'GL-P-000102', cases: 100, weight_lbs: 1800, location: 'conri', status: 'stored', current_transfer_id: null,
     received_at_conri: '2026-09-12T12:00:00Z', sku: SKU_SOON, lot: LOT_SOON },
   { id: 'q-3', pallet_tag: 'GL-P-000103', cases: 50, location: 'conri', status: 'stored', current_transfer_id: null,
-    received_at_conri: threeDaysAgo, expected_pull_date: isoDaysFromNow(-1), sku: SKU_CANS, lot: null },
+    received_at_conri: threeDaysAgo, expected_pull_date: isoDaysFromNow(-1), sku: SKU_CANS, lot: null, notes: 'Back for Camo run ' + XSS },
   { id: 'q-4', pallet_tag: 'GL-P-000104', cases: 10, location: 'conri', status: 'stored', current_transfer_id: null,
     received_at_conri: '2026-09-20T12:00:00Z', sku: SKU_EVIL, lot: null },
 ];
@@ -98,6 +101,9 @@ const SKU_TRAY = { id: 's-tray', client_id: null, client: null, upc_sku: 'TRAY12
   default_pallet_height_in: null, inventory_type: 'packaging', active: true, notes: null, last_exported_at: null };
 const T2 = { id: 't-2', transfer_number: 'GL-TR-20261008-01', type: 'to_conri_packaging', transfer_date: '2026-10-08', status: 'draft',
   scheduled_at: null, client_id: null, client: null, carrier: null, ship_to: null, conri_confirmation: null, released_by: 'Mike Krail', notes: null };
+// An empty-can move for a client with no empty-can item yet.
+const T3 = { id: 't-3', transfer_number: 'GL-TR-20261008-02', type: 'to_conri_overflow', transfer_date: '2026-10-08', status: 'draft',
+  scheduled_at: null, client_id: EVIL.id, client: EVIL, carrier: null, ship_to: null, conri_confirmation: null, released_by: 'Mike Krail', notes: null };
 const TRAY_PALLET = { id: 'p-tray', pallet_tag: 'GL-P-000200', cases: 2, weight_lbs: 300, height_in: 60, location: 'good_liquid', status: 'staged',
   current_transfer_id: T2.id, received_at_conri: null, expected_pull_date: null, notes: null, sku: SKU_TRAY, lot: null, line_no: 1 };
 CONRI_PALLETS.push({ id: 'q-5', pallet_tag: 'GL-P-000105', cases: 4, location: 'conri', status: 'stored', current_transfer_id: null,
@@ -105,7 +111,7 @@ CONRI_PALLETS.push({ id: 'q-5', pallet_tag: 'GL-P-000105', cases: 4, location: '
 
 const FIX = {
   clients: [CAMO, EVIL],
-  wh_transfers: [T1, T2],
+  wh_transfers: [T1, T2, T3],
   wh_transfer_lines: SEED_PALLETS.map((p) => ({ transfer_id: T1.id, line_no: p.line_no, pallet: p }))
     .concat([{ transfer_id: T2.id, line_no: 1, pallet: TRAY_PALLET }]),
   wh_pallets: SEED_PALLETS.concat(CONRI_PALLETS, [TRAY_PALLET]),
@@ -210,6 +216,8 @@ const server = http.createServer((req, res) => {
   check('a lot 300 days out is not flagged', !dash.yellowRows.some((r) => /LATER1/.test(r)));
   check('script in a client name / SKU description does not run', !dash.xss);
   check('the escaped payload is shown as text', /<img src=x/.test(dash.text));
+  check('dashboard lists pallet notes at CONRI (empties table and notes card)',
+    /Pallet notes at CONRI/.test(dash.text) && (dash.text.match(/Back for Camo run/g) || []).length === 2, dash.text);
 
   // ── Transfers list -> detail ──────────────────────────────────────
   await page.click('[data-wh="tab"][data-arg="transfers"]');
@@ -230,6 +238,7 @@ const server = http.createServer((req, res) => {
     /7 pallets · 1,400 cases · 16,800 units · 14,000 lbs/.test(detail.text), detail.text.slice(0, 400));
   check('a SKU never exported to CONRI blocks scheduling', detail.schedDisabled && /never been exported/.test(detail.text));
   check('a 10-digit UPC is warned about, not rejected', /UPC has 10 digits/.test(detail.text));
+  check('detail shows the pallet note and a way to add one', /Shrink wrap torn, rewrapped/.test(detail.text) && /\+ Note/.test(detail.text));
 
   // ── Print paperwork (the real button) ─────────────────────────────
   if (JSPDF) {
@@ -250,6 +259,7 @@ const server = http.createServer((req, res) => {
     check('receiving block and both signature lines', has('RECEIVING') && has('Released by \\(Good Liquid\\)') && has('Received by \\(CONRI\\)'));
     check('labels: product, pallet 1/7 .. 7/7, tag under barcode', has('CAMO ENERGY GLOW') && has('1/7') && has('7/7') && has('LOT 628290B     GL-P-000001'));
     check('label footer names the route', has('GL-TR-20260930-01   |   09/30/2026   |   Good Liquid Bev Co to CONRI Services'));
+    check('the note prints under its packing-list row and on its label', has('Note: Shrink wrap torn, rewrapped') && has('NOTE') && /\(Shrink wrap torn, rewrapped\)/.test(pdf.raw));
     if (process.env.WH_PDF_OUT) fs.writeFileSync(process.env.WH_PDF_OUT, Buffer.from(pdf.raw, 'binary'));
   }
 
@@ -298,9 +308,23 @@ const server = http.createServer((req, res) => {
   check('email lists pallets, client, SKU, lot and dimensions',
     /Pallets: 7/.test(mail.body) && /Client \/ brand: Camo Energy/.test(mail.body) && /6001390576/.test(mail.body) &&
     /lot 628290B/.test(mail.body) && /48 x 40 in footprint/.test(mail.body) && /2,000 lbs each/.test(mail.body), mail.body);
+  check('email lists pallet notes for CONRI', /Pallet notes:\n  - GL-P-000002: Shrink wrap torn, rewrapped/.test(mail.body), mail.body);
+
+  // Edit one pallet's note: the write is checked and goes to that pallet only.
+  await page.evaluate(() => { document.querySelectorAll('.wh-ov').forEach((o) => o.remove()); window.__writes = []; });
+  await page.click('[data-wh="editPalletNote"][data-arg="p-2"]');
+  await page.waitForSelector('#wpn-note', { timeout: 5000 });
+  const before = await page.evaluate(() => document.getElementById('wpn-note').value);
+  check('the note editor opens with the current note', before === 'Shrink wrap torn, rewrapped', before);
+  await page.fill('#wpn-note', '  Rewrapped by Mike ' + XSS + '  ');
+  await page.click('#wpn-save');
+  await page.waitForFunction(() => window.__writes.length > 0, null, { timeout: 5000 });
+  const nw = await page.evaluate(() => window.__writes[0]);
+  check('saving a note updates only that pallet, trimmed', nw.table === 'wh_pallets' && nw.op === 'update' &&
+    nw.payload.notes === 'Rewrapped by Mike ' + XSS && JSON.stringify(nw.filters) === JSON.stringify([['id', 'p-2']]), JSON.stringify(nw));
 
   // ── Export writes the stamp and checks it ─────────────────────────
-  await page.evaluate(() => { document.querySelector('.wh-ov').remove(); window.__writes = []; });
+  await page.evaluate(() => { document.querySelectorAll('.wh-ov').forEach((o) => o.remove()); window.__writes = []; });
   await page.click('[data-wh="tab"][data-arg="skus"]');
   await page.waitForSelector('[data-wh="exportSkus"]', { timeout: 5000 });
   await page.evaluate(() => { URL.createObjectURL = () => 'blob:x'; });
@@ -452,6 +476,38 @@ const server = http.createServer((req, res) => {
       phas('TRAY12SLIM-1800') && phas('PACKAGING SUPPLIES  |  PROPERTY OF GOOD LIQUID BEV CO') && phas('1/1'));
     if (process.env.WH_PKG_OUT) fs.writeFileSync(process.env.WH_PKG_OUT, Buffer.from(ppdf.raw, 'binary'));
   }
+
+  // Quick build: the client is named, and the note goes on every pallet.
+  await page.evaluate(() => { document.querySelectorAll('.wh-ov').forEach((o) => o.remove()); window.__writes = []; });
+  await page.click('[data-wh="quickBuild"]');
+  await page.waitForSelector('#wqb-note', { timeout: 5000 });
+  const qbHead = await page.evaluate(() => document.querySelector('.wh-ov').innerText);
+  check('quick build names the client the pallets belong to', /Client: Good Liquid \(own packaging\)/.test(qbHead), qbHead.slice(0, 120));
+  await page.fill('#wqb-count', '2');
+  await page.fill('#wqb-cases', '3');
+  await page.fill('#wqb-note', 'From Pak-it, invoice 477256');
+  await page.click('#wqb-save');
+  await page.waitForFunction(() => window.__writes.some((w) => w.table === 'wh_pallets'), null, { timeout: 5000 });
+  const qbw = await page.evaluate(() => window.__writes.find((w) => w.table === 'wh_pallets'));
+  check('quick build writes the note on every pallet it creates', Array.isArray(qbw.payload) && qbw.payload.length === 2 &&
+    qbw.payload.every((r) => r.notes === 'From Pak-it, invoice 477256'), JSON.stringify(qbw));
+
+  // A client with no item of this kind: quick build offers to add one, for that client.
+  await page.evaluate(() => { document.querySelectorAll('.wh-ov').forEach((o) => o.remove()); });
+  await page.click('[data-wh="tab"][data-arg="transfers"]');
+  await page.waitForSelector('[data-wh="openTransfer"][data-arg="t-3"]', { timeout: 5000 });
+  await page.click('[data-wh="openTransfer"][data-arg="t-3"]');
+  await page.waitForSelector('[data-wh="quickBuild"]', { timeout: 5000 });
+  await page.click('[data-wh="quickBuild"]');
+  await page.waitForSelector('#wqb-newsku', { timeout: 5000 });
+  const ns = await page.evaluate(() => ({ text: document.querySelector('.wh-ov').innerText, xss: window.__xss === 1 || !!document.querySelector('.wh-ov img') }));
+  check('no item yet: quick build offers to add one for that client', /no empty cans items yet/.test(ns.text) && /\+ New empty cans item for Evil/.test(ns.text), ns.text);
+  check('a client name with script stays text in that offer', !ns.xss);
+  await page.click('#wqb-newsku');
+  await page.waitForSelector('#ws-client', { timeout: 5000 });
+  const pre = await page.evaluate(() => ({ owner: document.getElementById('ws-client').value, type: document.getElementById('ws-type').value }));
+  check('the new item form opens for that client, as empty cans', pre.owner === 'c-evil' && pre.type === 'empty_can', JSON.stringify(pre));
+  await page.evaluate(() => { document.querySelectorAll('.wh-ov').forEach((o) => o.remove()); });
 
   // New transfer: packaging forces Good Liquid and sends client_id null.
   await page.evaluate(() => { window.__writes = []; });

@@ -77,6 +77,8 @@
   var GL_OWNER_NAME = 'Good Liquid (own packaging)';
   function ownerName(client){ return (client && client.name) || GL_OWNER_NAME; }
   function ownerId(v){ return v === GL_OWNER ? null : (v || ''); }
+  var NOTE_MAX = 500;
+  function cleanNote(v){ v = String(v == null ? '' : v).trim().slice(0, NOTE_MAX); return v || null; }
 
   // ── Helpers ────────────────────────────────────────────────
   function sb(){ return window.supa || null; }
@@ -349,7 +351,7 @@
         '<td>' + esc(p.sku.description) + '</td>' +
         '<td>' + esc(fmtTs(p.received_at_conri)) + '</td>' +
         '<td style="font-weight:700;' + (late ? 'color:#ff8579' : '') + '">' + (days == null ? '' : esc(days) + ' days') + '</td>' +
-        '<td>' + esc(fmtDate(p.expected_pull_date)) + '</td></tr>';
+        '<td>' + esc(fmtDate(p.expected_pull_date)) + '</td><td>' + esc(p.notes || '') + '</td></tr>';
     }).join('');
 
     var soon = [];
@@ -384,6 +386,13 @@
       return '<div class="ccard" style="flex:1;min-width:140px"><div style="font-size:10.5px;letter-spacing:1px;color:var(--muted)">' + esc(label) +
         '</div><div style="font-family:var(--ff-disp);font-size:26px;color:var(--teal);margin-top:4px">' + esc(value) + '</div></div>';
     }
+    var noted = pallets.filter(function(p){ return p.notes; }).sort(function(a, b){ return String(a.pallet_tag).localeCompare(String(b.pallet_tag)); });
+    var noteRows = noted.map(function(p){
+      var s = p.sku || {};
+      return '<tr><td style="font-weight:700">' + esc(p.pallet_tag) + '</td><td>' + esc(ownerName(s.client)) + '</td>' +
+        '<td>' + esc(s.upc_sku) + ' · ' + esc(s.description) + '</td><td style="text-align:right">' + fmtInt(p.cases) + '</td>' +
+        '<td style="white-space:pre-line">' + esc(p.notes) + '</td></tr>';
+    }).join('');
     var lateCount = empties.filter(function(p){ var d = daysSince(p.received_at_conri); return d != null && d > EMPTY_MAX_DAYS; }).length;
 
     setBody(
@@ -395,8 +404,10 @@
         (rows ? '<div style="overflow-x:auto"><table class="ctbl"><tr><th>UPC / SKU</th><th>Description</th><th>Lot</th><th style="text-align:right">Pallets</th><th style="text-align:right">Cases</th><th style="text-align:right">Units</th><th>Best by</th></tr>' + rows + '</table></div>'
               : '<div style="color:#9aa7bd;font-size:12px">Nothing at CONRI right now.</div>') +
       '</div>' +
+      (noteRows ? '<div class="ccard" style="margin-bottom:14px"><div class="ccard-t">Pallet notes at CONRI</div>' +
+        '<div style="overflow-x:auto"><table class="ctbl"><tr><th>Pallet</th><th>Client</th><th>SKU</th><th style="text-align:right">Cases</th><th>Note</th></tr>' + noteRows + '</table></div></div>' : '') +
       '<div class="ccard" style="margin-bottom:14px"><div class="ccard-t">Empty cans at CONRI · red past ' + EMPTY_MAX_DAYS + ' days</div>' +
-        (emptyRows ? '<div style="overflow-x:auto"><table class="ctbl"><tr><th>Pallet</th><th>Client</th><th>SKU</th><th>Received</th><th>In storage</th><th>Expected pull</th></tr>' + emptyRows + '</table></div>'
+        (emptyRows ? '<div style="overflow-x:auto"><table class="ctbl"><tr><th>Pallet</th><th>Client</th><th>SKU</th><th>Received</th><th>In storage</th><th>Expected pull</th><th>Note</th></tr>' + emptyRows + '</table></div>'
                    : '<div style="color:#9aa7bd;font-size:12px">No empty cans in storage.</div>') +
       '</div>' +
       '<div class="ccard" style="margin-bottom:14px"><div class="ccard-t">Finished goods lots under ' + BEST_BY_WARN_DAYS + ' days to best by</div>' +
@@ -569,6 +580,8 @@
         '<td>' + esc(fmtDate(l.best_by_date)) + '</td><td>' + esc(fmtDate(l.production_date)) + '</td>' +
         '<td' + (tall ? ' style="color:#f5c842;font-weight:700"' : '') + '>' + (h ? esc(h) + '"' : '') + '</td>' +
         '<td>' + (p.weight_lbs ? fmtInt(p.weight_lbs) : '') + '</td>' +
+        '<td style="white-space:pre-line;max-width:220px">' + esc(p.notes || '') +
+          ' <button type="button" class="cbtn" style="padding:2px 8px;font-size:10.5px" data-wh="editPalletNote" data-arg="' + esc(p.id) + '" data-arg2="' + esc(t.id) + '">' + (p.notes ? '✏️' : '+ Note') + '</button></td>' +
         '<td>' + (draft ? '<button type="button" class="cbtn red" data-wh="removeLine" data-arg="' + esc(t.id) + '" data-arg2="' + esc(p.id) + '">Remove</button>' : '') + '</td></tr>';
     }).join('');
 
@@ -623,7 +636,7 @@
       '</div>' +
       '<div class="ccard"><div class="ccard-t">Pallets · ' + lines.length + ' pallets · ' + fmtInt(totC) + ' cases' + (totU ? ' · ' + fmtInt(totU) + ' units' : '') +
         (totW ? ' · ' + fmtInt(totW) + ' lbs' : '') + '</div>' +
-        (rows ? '<div style="overflow-x:auto"><table class="ctbl"><tr><th>Pallet</th><th>Tag</th><th>UPC / SKU</th><th>Description</th><th>Pack</th><th style="text-align:right">Cases</th><th>Lot</th><th>Best by</th><th>Prod.</th><th>Height</th><th>Lbs</th><th></th></tr>' + rows + '</table></div>'
+        (rows ? '<div style="overflow-x:auto"><table class="ctbl"><tr><th>Pallet</th><th>Tag</th><th>UPC / SKU</th><th>Description</th><th>Pack</th><th style="text-align:right">Cases</th><th>Lot</th><th>Best by</th><th>Prod.</th><th>Height</th><th>Lbs</th><th>Note</th><th></th></tr>' + rows + '</table></div>'
               : '<div style="color:#9aa7bd;font-size:12px">No pallets yet.</div>') +
         add +
       '</div>' + receipt +
@@ -646,6 +659,29 @@
             '<td>' + esc(m.to_location + ' / ' + m.to_status) + '</td></tr>';
         }).join('') + '</table></div></div>';
     } catch(e){ host.innerHTML = note('err','Could not load movements: ' + errMsg(e)); }
+  }
+
+  // A pallet's note can change at any time, wherever the pallet is: it is
+  // information about the pallet, not part of the move's record.
+  async function editPalletNote(palletId, transferId){
+    var r = await sb().from('wh_pallets').select('id,pallet_tag,notes').eq('id', palletId).limit(1);
+    if(r.error || !r.data || !r.data[0]){ alert('Could not load the pallet.'); return; }
+    var p = r.data[0];
+    var ov = overlay('wh-pnote', 'NOTE · ' + p.pallet_tag);
+    ovBody(ov, field('Note (shows on the transfer, the dashboard, the pallet label and the email to CONRI)',
+        '<textarea id="wpn-note" rows="3" maxlength="' + NOTE_MAX + '" style="' + INP + '">' + esc(p.notes || '') + '</textarea>', true) +
+      '<div style="display:flex;gap:10px;margin-top:14px"><button type="button" class="cbtn" data-wh="closeOverlay" style="flex:1;justify-content:center">Cancel</button>' +
+      '<button type="button" class="cbtn pri" id="wpn-save" style="flex:1;justify-content:center">Save note</button></div>');
+    ov.querySelector('#wpn-save').addEventListener('click', async function(){
+      var btn = this; btn.disabled = true; ovMsg(ov,'','Saving…');
+      try {
+        var note = cleanNote(ov.querySelector('#wpn-note').value);
+        checked(await sb().from('wh_pallets').update({ notes: note }).eq('id', palletId).select('id'), 1, 'Save note');
+        audit('wh_pallet_note', p.pallet_tag, {});
+        ov.remove();
+        if(transferId) reopen(transferId); else renderTab();
+      } catch(e){ btn.disabled = false; ovMsg(ov,'err','Save failed: ' + errMsg(e)); }
+    });
   }
 
   async function reopen(id){ try { var d = await loadTransfer(id); renderTransferDetail(d.t, d.lines); } catch(e){ setBody(note('err', errMsg(e))); } }
@@ -731,11 +767,18 @@
     if(sr.error){ alert(errMsg(sr.error)); return; }
     var skus = sr.data || [];
     var ov = overlay('wh-quick', '⚡ QUICK BUILD PALLETS', 620);
+    var who = '<div style="font-size:13px;margin-bottom:10px">Client: <b style="color:var(--teal)">' + esc(ownerName(t.client)) + '</b> · ' +
+      esc(TYPE_LABEL[wantType]) + '</div>';
     if(!skus.length){
-      ovBody(ov, note('warn', (t.client_id ? 'This client has' : 'Good Liquid has') + ' no active ' + TYPE_LABEL[wantType].toLowerCase() + ' SKUs. Add one in SKU master first.'));
+      ovBody(ov, who + note('warn', (t.client_id ? 'This client has' : 'Good Liquid has') + ' no ' + TYPE_LABEL[wantType].toLowerCase() + ' items yet. Add one, then build the pallets.') +
+        '<button type="button" class="cbtn pri" id="wqb-newsku">+ New ' + esc(TYPE_LABEL[wantType].toLowerCase()) + ' item for ' + esc(ownerName(t.client)) + '</button>');
+      ov.querySelector('#wqb-newsku').addEventListener('click', function(){
+        ov.remove();
+        editSku(null, { owner: t.client_id || GL_OWNER, type: wantType }, function(){ quickBuild(transferId); });
+      });
       return;
     }
-    ovBody(ov, '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+    ovBody(ov, who + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
         field('SKU *', '<select id="wqb-sku" style="' + INP + '">' + skus.map(function(s){
           return '<option value="' + esc(s.id) + '">' + esc(s.upc_sku + ' · ' + s.description) + '</option>'; }).join('') + '</select>', true) +
         field('Lot' + (wantType === 'finished_good' ? ' *' : ''), '<select id="wqb-lot" style="' + INP + '"></select>') +
@@ -745,6 +788,8 @@
         field('Weight per pallet (lbs)', '<input id="wqb-weight" type="number" min="1" step="any" style="' + INP + '">') +
         field('Height (in)', '<input id="wqb-height" type="number" min="1" step="any" style="' + INP + '">') +
         (wantType === 'empty_can' ? field('Expected pull date', '<input id="wqb-pull" type="date" style="' + INP + '">', true) : '') +
+        field('Note (goes on every pallet built here; edit one pallet later with ✏️)',
+          '<textarea id="wqb-note" rows="2" maxlength="' + NOTE_MAX + '" placeholder="e.g. 12oz sleek, for the Friday run" style="' + INP + '"></textarea>', true) +
       '</div><div id="wqb-hint"></div>' +
       '<div style="display:flex;gap:10px;margin-top:14px"><button type="button" class="cbtn" data-wh="closeOverlay" style="flex:1;justify-content:center">Cancel</button>' +
       '<button type="button" class="cbtn pri" id="wqb-save" style="flex:1;justify-content:center">Create pallets</button></div>');
@@ -809,7 +854,8 @@
           pRows.push({
             sku_id: skuId, lot_id: lotId || null, cases: cases,
             weight_lbs: weight ? num(weight) : null, height_in: height ? num(height) : null,
-            expected_pull_date: val(ov,'#wqb-pull') || null
+            expected_pull_date: val(ov,'#wqb-pull') || null,
+            notes: cleanNote(ov.querySelector('#wqb-note').value)
           });
         }
         created = checked(await sb().from('wh_pallets').insert(pRows).select('id,pallet_tag').order('pallet_tag'), count, 'Create pallets');
@@ -843,13 +889,13 @@
     var ov = overlay('wh-pick', '☑ PICK PALLETS · ' + (loc === 'conri' ? 'AT CONRI' : 'AT GOOD LIQUID'), 760);
     if(!list.length){ ovBody(ov, note('', 'No available pallets for ' + (t.client_id ? 'this client' : 'Good Liquid packaging') + ' ' + (loc === 'conri' ? 'at CONRI.' : 'at Good Liquid.'))); return; }
     ovBody(ov, '<div style="font-size:12px;color:#9aa7bd;margin-bottom:8px">Sorted FEFO: earliest best by first, then first received.</div>' +
-      '<div style="max-height:52vh;overflow:auto"><table class="ctbl"><tr><th></th><th>Tag</th><th>SKU</th><th>Lot</th><th>Best by</th><th style="text-align:right">Cases</th><th>Received</th></tr>' +
+      '<div style="max-height:52vh;overflow:auto"><table class="ctbl"><tr><th></th><th>Tag</th><th>SKU</th><th>Lot</th><th>Best by</th><th style="text-align:right">Cases</th><th>Received</th><th>Note</th></tr>' +
       list.map(function(p){
         return '<tr><td><input type="checkbox" class="wpk" value="' + esc(p.id) + '"></td><td>' + esc(p.pallet_tag) + '</td>' +
           '<td>' + esc(p.sku.upc_sku + ' · ' + p.sku.description) + '</td><td>' + esc(p.lot ? p.lot.lot_number : '') +
           (p.lot && p.lot.qa_status !== 'released' ? ' ' + badge('hold') : '') + '</td>' +
           '<td>' + esc(fmtDate(p.lot && p.lot.best_by_date)) + '</td><td style="text-align:right">' + fmtInt(p.cases) + '</td>' +
-          '<td>' + esc(fmtTs(p.received_at_conri)) + '</td></tr>';
+          '<td>' + esc(fmtTs(p.received_at_conri)) + '</td><td>' + esc(p.notes || '') + '</td></tr>';
       }).join('') + '</table></div>' +
       '<div style="display:flex;gap:10px;margin-top:14px"><button type="button" class="cbtn" data-wh="closeOverlay" style="flex:1;justify-content:center">Cancel</button>' +
       '<button type="button" class="cbtn pri" id="wpk-save" style="flex:1;justify-content:center">Add selected</button></div>');
@@ -993,6 +1039,9 @@
         (n.lot ? ', lot ' + n.lot.lot_number + (n.lot.best_by_date ? ', best by ' + fmtDate(n.lot.best_by_date) : '') : '') +
         ': ' + n.pallets + ' pallets, ' + fmtInt(n.cases) + ' cases';
     }).join('\n');
+    var noteLines = lines.filter(function(p){ return p.notes; }).map(function(p){
+      return '  - ' + p.pallet_tag + ': ' + String(p.notes).replace(/\s*\n\s*/g, ' ');
+    }).join('\n');
     var subject = 'Schedule ' + t.transfer_number + ': ' + lines.length + ' pallets, ' + client + ', ' + (when ? fmtDate(toLocalInput(t.scheduled_at).slice(0,10)) : 'date TBD');
     var bodyTxt =
       'Hi Paul,\n\n' +
@@ -1007,6 +1056,7 @@
       (t.carrier ? 'Carrier: ' + t.carrier + '\n' : '') +
       (t.ship_to ? 'Ship to: ' + t.ship_to.replace(/\n/g, ', ') + '\n' : '') +
       '\nSKUs:\n' + skuLines + '\n\n' +
+      (noteLines ? 'Pallet notes:\n' + noteLines + '\n\n' : '') +
       'Pallet dimensions: ' + PALLET_FOOTPRINT + ' footprint, ' + (maxH ? 'up to ' + maxH + ' in tall' : 'height to confirm') +
         (t.type === 'to_conri_overflow' ? ' (empty cans, floor stack)' : '') + ', ' + wRange + '.\n\n' +
       'Packing list and pallet labels will travel with the load.\n\n' +
@@ -1084,7 +1134,9 @@
     return state.skuClient ? q.eq('client_id', state.skuClient) : q;
   }
 
-  async function editSku(id){
+  // preset {owner, type} prefills a new SKU; onSaved replaces the page refresh
+  // (quick build uses it to come straight back once the item exists).
+  async function editSku(id, preset, onSaved){
     var s = {};
     if(id){
       var r = await sb().from('wh_skus').select(SKU_COLS).eq('id', id).limit(1);
@@ -1094,7 +1146,7 @@
     var ov = overlay('wh-sku', id ? 'EDIT SKU' : '+ NEW SKU', 620);
     ovBody(ov, '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
         field('Owner *', '<select id="ws-client" style="' + INP + '"' + (id ? ' disabled' : '') + '>' +
-          clientOptions(id ? (s.client_id || GL_OWNER) : state.skuClient, null, true) + '</select>', true) +
+          clientOptions(id ? (s.client_id || GL_OWNER) : (preset && preset.owner) || state.skuClient, null, true) + '</select>', true) +
         field('UPC / SKU *', '<input id="ws-upc" value="' + esc(s.upc_sku || '') + '" style="' + INP + '">') +
         field('Inventory type *', '<select id="ws-type" style="' + INP + '">' + Object.keys(TYPE_LABEL).map(function(k){
           return '<option value="' + k + '"' + (s.inventory_type === k ? ' selected' : '') + '>' + esc(TYPE_LABEL[k]) + '</option>'; }).join('') + '</select>') +
@@ -1117,6 +1169,7 @@
     // so picking one sets the other on a new SKU.
     var ownSel = ov.querySelector('#ws-client'), typeSel = ov.querySelector('#ws-type');
     if(!id){
+      if(preset && preset.type) typeSel.value = preset.type;
       if(ownSel.value === GL_OWNER) typeSel.value = 'packaging';
       ownSel.addEventListener('change', function(){
         if(ownSel.value === GL_OWNER) typeSel.value = 'packaging';
@@ -1153,7 +1206,8 @@
         if(id) checked(await sb().from('wh_skus').update(row).eq('id', id).select('id'), 1, 'Update SKU');
         else checked(await sb().from('wh_skus').insert(row).select('id'), 1, 'Add SKU');
         audit(id ? 'wh_sku_updated' : 'wh_sku_created', row.upc_sku, {});
-        ov.remove(); renderTab();
+        ov.remove();
+        if(onSaved) onSaved(); else renderTab();
       } catch(e){ btn.disabled = false; ovMsg(ov,'err','Save failed: ' + errMsg(e)); }
     });
   }
@@ -1835,6 +1889,12 @@
         doc.text(txt, c[2] === 'right' ? x + c[1] - 8 : x, y, c[2] === 'right' ? { align: 'right' } : undefined);
         x += c[1];
       });
+      if(p.notes){
+        doc.setFontSize(8.5); doc.setTextColor(80);
+        doc.text(cellText(doc, 'Note: ' + String(p.notes).replace(/\s*\n\s*/g, ' '), R - L - 60), L + 54, y + 11);
+        doc.setTextColor(0); doc.setFontSize(9.5);
+        y += 11;
+      }
       doc.setDrawColor(220); doc.setLineWidth(0.5); doc.line(L, y + 5, R, y + 5);
       y += 17;
     });
@@ -1958,6 +2018,14 @@
     doc.setFont('helvetica','bold'); doc.setFontSize(96);
     doc.text(idx + '/' + n, 656, 300, { align: 'center' });
     doc.setFontSize(24); doc.text('PALLET', 656, 336, { align: 'center' });
+    if(p.notes){
+      doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(70);
+      doc.text('NOTE', 556, 366);
+      doc.setTextColor(0); doc.setFont('helvetica','normal'); doc.setFontSize(12);
+      var nl = doc.splitTextToSize(String(p.notes), 190).slice(0, 4);
+      if(doc.splitTextToSize(String(p.notes), 190).length > 4) nl[3] = cellText(doc, nl[3] + '...', 190);
+      doc.text(nl, 556, 382);
+    }
 
     // Barcode of the pallet tag
     var bw = drawBarcode(doc, p.pallet_tag, 48, 440, 440, 78);
@@ -2071,6 +2139,7 @@
     unscheduleTransfer: function(a){ return setStatus(a, 'draft', null, 'Back to draft'); },
     completeTransfer: function(a){ return completeTransfer(a); },
     cancelTransfer: function(a){ return cancelTransfer(a); },
+    editPalletNote: function(a, a2){ return editPalletNote(a, a2); },
     removeLine: function(a, a2){ if(confirm('Remove this pallet from the transfer?')) return removeLine(a, a2); },
     quickBuild: function(a){ return quickBuild(a); },
     pickPallets: function(a){ return pickPallets(a); },

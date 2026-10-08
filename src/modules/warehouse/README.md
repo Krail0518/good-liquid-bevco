@@ -19,6 +19,12 @@ Schema: `supabase/migrations/20260930120000_warehouse_storage.sql`.
      per pallet; the system creates the pallet records with tags `GL-P-000123`.
    - **Pick existing pallets** (pull backs, outbound, or leftovers): sorted
      FEFO.
+   - **Notes:** quick build has a note field that goes on every pallet it
+     builds (it names the client the pallets belong to, and offers **+ New
+     item** if that client has none of this kind yet). Each pallet's note can
+     be added or changed any time with **+ Note / ✏️** on the transfer. Notes
+     show on the dashboard (**Pallet notes at CONRI**), in pick lists, under
+     the pallet's packing-list row, on its label, and in the scheduling email.
 3. **✏️ Edit** to set the time agreed with CONRI, then **✉ Scheduling email**
    (opens your mail app, addressed to CONRI) and **📅 Mark scheduled**.
 4. **🖨️ Print paperwork**: page 1 is the Transfer Packing List, then one
