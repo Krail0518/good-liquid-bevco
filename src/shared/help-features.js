@@ -1013,14 +1013,12 @@
   ];
 
   // Map new CRM pages to the right new help section so context-aware open works
+  // Pages open their OWN help section (help.js PAGE_TO_SECTION). This map
+  // used to send Pipeline and Clients to Correspondence, Formulas and Yield to
+  // Production & Operations, and so on, so the help button never landed on the
+  // page you were on. It now only covers a page that has no section of its own.
   var PAGE_TO_NEW_SECTION = {
-    'cpg-formulas':'help-ops-pro', 'cpg-yield':'help-ops-pro',
-    'cpg-production-runs':'help-ops-pro', 'cpg-samples':'help-ops-pro',
-    'cpg-cip':'help-ops-pro',
-    'cpg-audit':'help-qs', 'cpg-defects':'help-qs', 'cpg-vendors':'help-qs',
-    'cpg-content':'help-marketing',
-    // Correspondence lives on both the pipeline and the client record.
-    'cpg-pipeline':'help-corr', 'cpg-clients':'help-corr'
+    'cpg-audit':'help-qs'
   };
 
   function injectIntoModal(){
@@ -1074,12 +1072,8 @@
       var iv = setInterval(function(){
         if(injectIntoModal() || ++tries > 8) clearInterval(iv);
       }, 60);
-      if(scrollTo && /^help-(ops-pro|qs|marketing|growth|revops|cr|public|admin|integrations|quotes)$/.test(scrollTo)){
-        setTimeout(function(){
-          var t = document.getElementById(scrollTo);
-          if(t) t.scrollIntoView({ behavior:'smooth', block:'start' });
-        }, 250);
-      }
+      // No scroll of its own: help.js keeps trying until the section these
+      // add-ons insert exists, and stops the moment the person scrolls.
     };
   }
   wrapHelp();
