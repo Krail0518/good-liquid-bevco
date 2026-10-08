@@ -47,7 +47,7 @@ the SKU to CONRI as usual, then start a **To CONRI: Good Liquid packaging**
 transfer, quick build the pallets (no lot needed) and print the paperwork.
 In the database this is `client_id IS NULL` on the SKU and the transfer, held
 exact by `wh_skus_packaging_owner_check` and `wh_transfers_owner_check`
-(`20261008120000_warehouse_packaging.sql`). A Good Liquid pallet cannot ride a
+(`20261008140620_warehouse_packaging.sql`). A Good Liquid pallet cannot ride a
 client's transfer, or the other way round. One item per pallet, as for
 everything else.
 

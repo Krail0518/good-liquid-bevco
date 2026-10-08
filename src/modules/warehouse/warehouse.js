@@ -7,7 +7,7 @@
      * FINISHED GOODS — after QA release, wait for a carrier pickup
      * PACKAGING — Good Liquid's own supplies (carrier trays, lids,
        cartons). These belong to no client: client_id is NULL on the SKU
-       and on its transfers (20261008120000_warehouse_packaging.sql).
+       and on its transfers (20261008140620_warehouse_packaging.sql).
    This page is the system of record for where every pallet is and
    produces the paperwork for every move.
 
