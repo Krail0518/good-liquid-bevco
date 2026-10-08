@@ -271,7 +271,7 @@ const server = http.createServer((req, res) => {
     return {
       modules: widths.reduce((a, b) => a + b, 0), bars: widths.length,
       csv, rec: rec.rows, alloc: alloc.pallets.map((p) => p.id), short: I.allocateFefo(stock, { s: 4 }).short,
-      upc10: I.upcWarning('6001390576'), upc12: I.upcWarning('012345678905'),
+      upc10: I.upcWarning('6001390576'), upc12: I.upcWarning('012345678905'), pkgUpc: I.upcWarning('TRAY12-1800', 'packaging'),
       date: I.fmtDate('2026-09-30'),
     };
   });
@@ -287,6 +287,7 @@ const server = http.createServer((req, res) => {
   check('FEFO: earliest best-by first, then first received; held lots skipped', JSON.stringify(pure.alloc) === '["c","b"]', JSON.stringify(pure.alloc));
   check('allocation reports a shortfall rather than under-shipping', pure.short.length === 1, JSON.stringify(pure.short));
   check('UPC length: 10 digits warns, 12 does not', !!pure.upc10 && !pure.upc12);
+  check('a packaging item number is not warned about as a short UPC', pure.pkgUpc === '', pure.pkgUpc);
   check('date-only values are not shifted by timezone', pure.date === '09/30/2026');
 
   // ── Scheduling email ──────────────────────────────────────────────
@@ -437,6 +438,7 @@ const server = http.createServer((req, res) => {
     /To CONRI: Good Liquid packaging · Good Liquid \(own packaging\)/.test(pk.text), pk.text.slice(0, 300));
   check('packaging is inbound: quick build is offered', pk.quick);
   check('a packaging SKU never exported to CONRI blocks scheduling', pk.schedDisabled && /TRAY12SLIM-1800 has never been exported/.test(pk.text));
+  check('no UPC-length warning on a packaging item number', !/UPC has \d+ digits/.test(pk.text), pk.text.slice(0, 400));
   check('script in a packaging description does not run', !pk.xss);
   if (JSPDF) {
     await page.evaluate(() => { window.__savedName = null; window.__savedPdf = null; });

@@ -148,7 +148,10 @@
 
   // UPC-A is 12 digits, EAN-13 is 13. Anything else is kept exactly as entered
   // and flagged, because the SKU on a real delivery may be missing digits.
-  function upcWarning(upc){
+  // Packaging is keyed by the vendor's item number (TRAY12-1800), not a UPC,
+  // so it is never warned about.
+  function upcWarning(upc, type){
+    if(type === 'packaging') return '';
     var d = String(upc || '').replace(/\D/g,'');
     if(!d) return '';
     if(d.length === 12 || d.length === 13 || d.length === 14) return '';
@@ -528,7 +531,7 @@
         warn.push(s.upc_sku + ': pallet height ' + h + '" is not under ' + RACK_MAX_IN + '". CONRI cannot rack it.');
         seenSku['h' + s.id] = 1;
       }
-      var uw = upcWarning(s.upc_sku);
+      var uw = upcWarning(s.upc_sku, s.inventory_type);
       if(uw && !seenSku['u' + s.id]){ warn.push(s.upc_sku + ': ' + uw); seenSku['u' + s.id] = 1; }
       seenSku[s.id] = 1;
     });
@@ -765,7 +768,7 @@
       ov.querySelector('#wqb-height').value = s.default_pallet_height_in || '';
       var hint = [];
       if(!s.last_exported_at) hint.push(note('warn','This SKU has never been exported to CONRI; export it before scheduling.'));
-      var uw = upcWarning(s.upc_sku); if(uw) hint.push(note('warn', uw));
+      var uw = upcWarning(s.upc_sku, s.inventory_type); if(uw) hint.push(note('warn', uw));
       ov.querySelector('#wqb-hint').innerHTML = hint.join('');
     }
     ov.querySelector('#wqb-sku').addEventListener('change', loadLots);
@@ -1049,7 +1052,7 @@
     }
     var rows = skus.map(function(s){
       var lots = lotsBy[s.id] || [];
-      var uw = upcWarning(s.upc_sku);
+      var uw = upcWarning(s.upc_sku, s.inventory_type);
       return '<tr' + (s.active ? '' : ' style="opacity:.5"') + '><td style="font-weight:700">' + esc(s.upc_sku) +
           (uw ? ' <span title="' + esc(uw) + '" style="color:#f5c842">⚠</span>' : '') + '</td>' +
         '<td>' + esc(s.description) + '</td><td>' + esc(s.brand || ownerName(s.client)) + '</td><td>' + esc(s.pack) + '</td>' +
@@ -1108,8 +1111,8 @@
       '<div style="display:flex;gap:10px;margin-top:14px"><button type="button" class="cbtn" data-wh="closeOverlay" style="flex:1;justify-content:center">Cancel</button>' +
       '<button type="button" class="cbtn pri" id="ws-save" style="flex:1;justify-content:center">Save SKU</button></div>');
     var upcEl = ov.querySelector('#ws-upc');
-    var hint = function(){ var w = upcWarning(upcEl.value); ov.querySelector('#ws-hint').innerHTML = w ? note('warn', w) : ''; };
-    upcEl.addEventListener('input', hint); hint();
+    var hint = function(){ var w = upcWarning(upcEl.value, ov.querySelector('#ws-type').value); ov.querySelector('#ws-hint').innerHTML = w ? note('warn', w) : ''; };
+    upcEl.addEventListener('input', hint); ov.querySelector('#ws-type').addEventListener('change', hint); hint();
     // Packaging and Good Liquid ownership go together (wh_skus_packaging_owner_check),
     // so picking one sets the other on a new SKU.
     var ownSel = ov.querySelector('#ws-client'), typeSel = ov.querySelector('#ws-type');
