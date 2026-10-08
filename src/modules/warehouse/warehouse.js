@@ -5,6 +5,9 @@
    Palmetto facility, under ONE Good Liquid account:
      * EMPTY CANS (overflow) — 1-2 days, floor stacked, back for the run
      * FINISHED GOODS — after QA release, wait for a carrier pickup
+     * PACKAGING — Good Liquid's own supplies (carrier trays, lids,
+       cartons). These belong to no client: client_id is NULL on the SKU
+       and on its transfers (20261008140620_warehouse_packaging.sql).
    This page is the system of record for where every pallet is and
    produces the paperwork for every move.
 
@@ -56,6 +59,7 @@
   var TYPES = {
     to_conri_finished: 'To CONRI: finished goods',
     to_conri_overflow: 'To CONRI: empty can overflow',
+    to_conri_packaging: 'To CONRI: Good Liquid packaging',
     pull_back:         'Pull back from CONRI',
     outbound_pickup:   'Outbound carrier pickup'
   };
@@ -63,6 +67,16 @@
   var EMPTY_MAX_DAYS = 2;        // empties come back within 1-2 days
   var BEST_BY_WARN_DAYS = 90;
   var PALLET_FOOTPRINT = '48 x 40 in';   // standard GMA pallet; stated in the email
+  var INBOUND = { to_conri_finished: 1, to_conri_overflow: 1, to_conri_packaging: 1 };
+  var INV_TYPE = { to_conri_finished: 'finished_good', to_conri_overflow: 'empty_can', to_conri_packaging: 'packaging' };
+  var TYPE_LABEL = { finished_good: 'Finished good', empty_can: 'Empty cans', packaging: 'Packaging' };
+
+  // Good Liquid's own stock has no client. In a <select> it is this value;
+  // in the database it is client_id NULL.
+  var GL_OWNER = '__gl__';
+  var GL_OWNER_NAME = 'Good Liquid (own packaging)';
+  function ownerName(client){ return (client && client.name) || GL_OWNER_NAME; }
+  function ownerId(v){ return v === GL_OWNER ? null : (v || ''); }
 
   // ── Helpers ────────────────────────────────────────────────
   function sb(){ return window.supa || null; }
@@ -208,8 +222,9 @@
     var c = state.clients.filter(function(x){ return x.id === id; })[0];
     return c ? c.name : '';
   }
-  function clientOptions(selected, placeholder){
+  function clientOptions(selected, placeholder, withGl){
     return '<option value="">' + esc(placeholder || 'Choose a client…') + '</option>' +
+      (withGl ? '<option value="' + GL_OWNER + '"' + (selected === GL_OWNER ? ' selected' : '') + '>' + esc(GL_OWNER_NAME) + '</option>' : '') +
       state.clients.map(function(c){
         return '<option value="' + esc(c.id) + '"' + (c.id === selected ? ' selected' : '') + '>' + esc(c.name) + '</option>';
       }).join('');
@@ -286,7 +301,7 @@
     var tree = {};
     pallets.forEach(function(p){
       var s = p.sku || {}, l = p.lot || {};
-      var cKey = (s.client && s.client.name) || '(unknown client)';
+      var cKey = ownerName(s.client);
       var sKey = s.id || '?', lKey = l.id || 'nolot';
       tree[cKey] = tree[cKey] || {};
       tree[cKey][sKey] = tree[cKey][sKey] || { sku: s, lots: {} };
@@ -309,7 +324,8 @@
           var warn = s.inventory_type === 'finished_good' && d != null && d < BEST_BY_WARN_DAYS;
           rows += '<tr' + (warn ? ' style="background:rgba(245,200,66,.08)"' : '') + '>' +
             '<td>' + esc(s.upc_sku) + '</td>' +
-            '<td>' + esc(s.description) + (s.inventory_type === 'empty_can' ? ' <span style="color:#9aa7bd">(empty cans)</span>' : '') + '</td>' +
+            '<td>' + esc(s.description) + (s.inventory_type === 'empty_can' ? ' <span style="color:#9aa7bd">(empty cans)</span>' :
+              s.inventory_type === 'packaging' ? ' <span style="color:#9aa7bd">(packaging)</span>' : '') + '</td>' +
             '<td>' + esc(l.lot_number || '') + '</td>' +
             '<td style="text-align:right">' + fmtInt(n.pallets) + '</td>' +
             '<td style="text-align:right">' + fmtInt(n.cases) + '</td>' +
@@ -354,7 +370,7 @@
     var upRows = (tr.data || []).map(function(t){
       return '<tr style="cursor:pointer" data-wh="openTransfer" data-arg="' + esc(t.id) + '">' +
         '<td>' + esc(t.transfer_number) + '</td><td>' + esc(TYPES[t.type] || t.type) + '</td>' +
-        '<td>' + esc(t.client && t.client.name) + '</td>' +
+        '<td>' + esc(ownerName(t.client)) + '</td>' +
         '<td>' + esc(t.scheduled_at ? fmtTs(t.scheduled_at) : 'not scheduled') + '</td><td>' + badge(t.status) + '</td></tr>';
     }).join('') + (ob.data || []).map(function(o){
       return '<tr><td>' + esc(o.order_number) + '</td><td>Outbound order</td><td>' + esc(o.client && o.client.name) + '</td>' +
@@ -372,7 +388,7 @@
         stat('PALLETS AT CONRI', fmtInt(totP)) + stat('CASES', fmtInt(totC)) + stat('UNITS', fmtInt(totU)) +
         stat('EMPTIES PAST ' + EMPTY_MAX_DAYS + ' DAYS', fmtInt(lateCount)) + stat('LOTS < ' + BEST_BY_WARN_DAYS + ' DAYS TO BEST BY', fmtInt(soon.length)) +
       '</div>' +
-      '<div class="ccard" style="margin-bottom:14px"><div class="ccard-t">On hand at CONRI · by client, SKU, lot</div>' +
+      '<div class="ccard" style="margin-bottom:14px"><div class="ccard-t">On hand at CONRI · by owner, SKU, lot</div>' +
         (rows ? '<div style="overflow-x:auto"><table class="ctbl"><tr><th>UPC / SKU</th><th>Description</th><th>Lot</th><th style="text-align:right">Pallets</th><th style="text-align:right">Cases</th><th style="text-align:right">Units</th><th>Best by</th></tr>' + rows + '</table></div>'
               : '<div style="color:#9aa7bd;font-size:12px">Nothing at CONRI right now.</div>') +
       '</div>' +
@@ -413,7 +429,7 @@
       var c = counts[t.id] || { p: 0, c: 0 };
       return '<tr style="cursor:pointer" data-wh="openTransfer" data-arg="' + esc(t.id) + '">' +
         '<td style="font-weight:700">' + esc(t.transfer_number) + '</td><td>' + esc(fmtDate(t.transfer_date)) + '</td>' +
-        '<td>' + esc(TYPES[t.type] || t.type) + '</td><td>' + esc(t.client && t.client.name) + '</td>' +
+        '<td>' + esc(TYPES[t.type] || t.type) + '</td><td>' + esc(ownerName(t.client)) + '</td>' +
         '<td style="text-align:right">' + fmtInt(c.p) + '</td><td style="text-align:right">' + fmtInt(c.c) + '</td>' +
         '<td>' + esc(t.scheduled_at ? fmtTs(t.scheduled_at) : '') + '</td><td>' + badge(t.status) + '</td></tr>';
     }).join('');
@@ -427,7 +443,7 @@
     ovBody(ov, '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
         field('Type *', '<select id="wnt-type" style="' + INP + '">' + Object.keys(TYPES).map(function(k){
           return '<option value="' + k + '">' + esc(TYPES[k]) + '</option>'; }).join('') + '</select>', true) +
-        field('Client / brand *', '<select id="wnt-client" style="' + INP + '">' + clientOptions('') + '</select>', true) +
+        field('Client / brand *', '<select id="wnt-client" style="' + INP + '">' + clientOptions('', null, true) + '</select>', true) +
         field('Transfer date', '<input id="wnt-date" type="date" value="' + todayISO() + '" style="' + INP + '">') +
         field('Scheduled with CONRI for', '<input id="wnt-when" type="datetime-local" style="' + INP + '">') +
         '<div id="wnt-outbound" style="grid-column:1/-1;display:none;gap:10px;grid-template-columns:1fr 1fr">' +
@@ -438,14 +454,20 @@
       '</div>' +
       '<div style="display:flex;gap:10px;margin-top:14px"><button type="button" class="cbtn" data-wh="closeOverlay" style="flex:1;justify-content:center">Cancel</button>' +
       '<button type="button" class="cbtn pri" id="wnt-save" style="flex:1;justify-content:center">Create draft</button></div>');
-    var typeSel = ov.querySelector('#wnt-type');
-    var toggle = function(){ ov.querySelector('#wnt-outbound').style.display = typeSel.value === 'outbound_pickup' ? 'grid' : 'none'; };
+    var typeSel = ov.querySelector('#wnt-type'), ownerSel = ov.querySelector('#wnt-client');
+    var toggle = function(){
+      ov.querySelector('#wnt-outbound').style.display = typeSel.value === 'outbound_pickup' ? 'grid' : 'none';
+      // Packaging is always Good Liquid's own; nothing to choose.
+      if(typeSel.value === 'to_conri_packaging') ownerSel.value = GL_OWNER;
+      ownerSel.disabled = typeSel.value === 'to_conri_packaging';
+    };
     typeSel.addEventListener('change', toggle); toggle();
     ov.querySelector('#wnt-save').addEventListener('click', async function(){
       var btn = this;
+      var owner = val(ov,'#wnt-client');
       var row = {
         type: val(ov,'#wnt-type'),
-        client_id: val(ov,'#wnt-client'),
+        client_id: ownerId(owner),
         transfer_date: val(ov,'#wnt-date') || todayISO(),
         scheduled_at: fromLocalInput(val(ov,'#wnt-when')),
         carrier: val(ov,'#wnt-carrier') || null,
@@ -453,7 +475,11 @@
         notes: val(ov,'#wnt-notes') || null,
         released_by: row_releasedBy(val(ov,'#wnt-type'))
       };
-      if(!row.client_id){ ovMsg(ov,'err','Choose the client.'); return; }
+      if(!owner){ ovMsg(ov,'err','Choose the client.'); return; }
+      // Same rule as wh_transfers_owner_check, said in words first.
+      if(owner === GL_OWNER && row.type !== 'to_conri_packaging' && row.type !== 'pull_back'){
+        ovMsg(ov,'err','Good Liquid\'s own stock can only go to CONRI as packaging or be pulled back.'); return;
+      }
       btn.disabled = true; ovMsg(ov,'','Saving…');
       try {
         var rows = checked(await sb().from('wh_transfers').insert(row).select('id,transfer_number'), 1, 'Create transfer');
@@ -465,7 +491,7 @@
   }
   // The person releasing is Good Liquid staff on an inbound move to CONRI.
   function row_releasedBy(type){
-    return (type === 'to_conri_finished' || type === 'to_conri_overflow') ? (userName() || null) : null;
+    return INBOUND[type] ? (userName() || null) : null;
   }
 
   // ════════════════════════════════════════════════════════════
@@ -494,7 +520,7 @@
         if(!p.lot) block.push(p.pallet_tag + ': no lot (finished goods need a QA-released lot).');
         else if(l.qa_status !== 'released') block.push('Lot ' + l.lot_number + ' is on QA HOLD.');
       }
-      if((t.type === 'to_conri_finished' || t.type === 'to_conri_overflow') && !s.last_exported_at && !seenSku[s.id]){
+      if(INBOUND[t.type] && !s.last_exported_at && !seenSku[s.id]){
         block.push('SKU ' + s.upc_sku + ' has never been exported to CONRI. Export it from SKU master first.');
       }
       var h = num(p.height_in || s.default_pallet_height_in);
@@ -527,7 +553,7 @@
     var issues = lineIssues(t, lines);
     var totC = 0, totU = 0, totW = 0;
     lines.forEach(function(p){ totC += num(p.cases); totU += num(p.cases) * num(p.sku && p.sku.units_per_case); totW += num(p.weight_lbs); });
-    var inbound = t.type === 'to_conri_finished' || t.type === 'to_conri_overflow';
+    var inbound = !!INBOUND[t.type];
 
     var rows = lines.map(function(p, i){
       var sk = p.sku || {}, l = p.lot || {};
@@ -580,7 +606,7 @@
       '<div class="ccard" style="margin-bottom:14px">' +
         '<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">' +
           '<div><div style="font-family:var(--ff-disp);font-size:22px;letter-spacing:1px;color:var(--teal)">' + esc(t.transfer_number) + '</div>' +
-          '<div style="font-size:12.5px;color:#9aa7bd;margin-top:4px">' + esc(TYPES[t.type] || t.type) + ' · ' + esc(t.client && t.client.name) +
+          '<div style="font-size:12.5px;color:#9aa7bd;margin-top:4px">' + esc(TYPES[t.type] || t.type) + ' · ' + esc(ownerName(t.client)) +
             ' · dated ' + esc(fmtDate(t.transfer_date)) + '</div>' +
           '<div style="font-size:12.5px;color:#dfe7f1;margin-top:4px">Scheduled: ' + esc(t.scheduled_at ? fmtTs(t.scheduled_at) : 'not set') +
             (t.conri_confirmation ? ' · CONRI ref ' + esc(t.conri_confirmation) : '') +
@@ -695,13 +721,15 @@
   // ── Quick build ────────────────────────────────────────────
   async function quickBuild(transferId){
     var d = await loadTransfer(transferId), t = d.t;
-    var wantType = t.type === 'to_conri_overflow' ? 'empty_can' : 'finished_good';
-    var sr = await sb().from('wh_skus').select(SKU_COLS).eq('client_id', t.client_id).eq('active', true).eq('inventory_type', wantType).order('description');
+    var wantType = INV_TYPE[t.type] || 'finished_good';
+    var sq = sb().from('wh_skus').select(SKU_COLS);
+    sq = t.client_id ? sq.eq('client_id', t.client_id) : sq.is('client_id', null);
+    var sr = await sq.eq('active', true).eq('inventory_type', wantType).order('description');
     if(sr.error){ alert(errMsg(sr.error)); return; }
     var skus = sr.data || [];
     var ov = overlay('wh-quick', '⚡ QUICK BUILD PALLETS', 620);
     if(!skus.length){
-      ovBody(ov, note('warn', 'This client has no active ' + (wantType === 'empty_can' ? 'empty can' : 'finished goods') + ' SKUs. Add one in SKU master first.'));
+      ovBody(ov, note('warn', (t.client_id ? 'This client has' : 'Good Liquid has') + ' no active ' + TYPE_LABEL[wantType].toLowerCase() + ' SKUs. Add one in SKU master first.'));
       return;
     }
     ovBody(ov, '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
@@ -727,7 +755,7 @@
         lotsBySku[skuId] = lr.error ? [] : (lr.data || []);
       }
       var lots = lotsBySku[skuId];
-      ov.querySelector('#wqb-lot').innerHTML = '<option value="">' + (wantType === 'empty_can' ? '(no lot)' : 'Choose a lot…') + '</option>' +
+      ov.querySelector('#wqb-lot').innerHTML = '<option value="">' + (wantType === 'finished_good' ? 'Choose a lot…' : '(no lot)') + '</option>' +
         lots.map(function(l){
           return '<option value="' + esc(l.id) + '">' + esc(l.lot_number + ' · ' + (l.qa_status === 'released' ? 'released' : 'QA HOLD') +
             (l.best_by_date ? ' · BB ' + fmtDate(l.best_by_date) : '')) + '</option>';
@@ -803,13 +831,14 @@
     var loc = (t.type === 'pull_back' || t.type === 'outbound_pickup') ? 'conri' : 'good_liquid';
     var r = await sb().from('wh_pallets').select(PALLET_EMBED).eq('location', loc).is('current_transfer_id', null).not('status','in','(void,shipped)');
     if(r.error){ alert(errMsg(r.error)); return; }
-    var wantType = t.type === 'to_conri_overflow' ? 'empty_can' : t.type === 'to_conri_finished' ? 'finished_good' : null;
+    var wantType = INV_TYPE[t.type] || null;
+    // client_id is null on both sides for Good Liquid's own stock.
     var list = (r.data || []).filter(function(p){
-      return p.sku && p.sku.client_id === t.client_id && (!wantType || p.sku.inventory_type === wantType);
+      return p.sku && (p.sku.client_id || null) === (t.client_id || null) && (!wantType || p.sku.inventory_type === wantType);
     });
     sortFefo(list);
     var ov = overlay('wh-pick', '☑ PICK PALLETS · ' + (loc === 'conri' ? 'AT CONRI' : 'AT GOOD LIQUID'), 760);
-    if(!list.length){ ovBody(ov, note('', 'No available pallets for this client ' + (loc === 'conri' ? 'at CONRI.' : 'at Good Liquid.'))); return; }
+    if(!list.length){ ovBody(ov, note('', 'No available pallets for ' + (t.client_id ? 'this client' : 'Good Liquid packaging') + ' ' + (loc === 'conri' ? 'at CONRI.' : 'at Good Liquid.'))); return; }
     ovBody(ov, '<div style="font-size:12px;color:#9aa7bd;margin-bottom:8px">Sorted FEFO: earliest best by first, then first received.</div>' +
       '<div style="max-height:52vh;overflow:auto"><table class="ctbl"><tr><th></th><th>Tag</th><th>SKU</th><th>Lot</th><th>Best by</th><th style="text-align:right">Cases</th><th>Received</th></tr>' +
       list.map(function(p){
@@ -944,10 +973,11 @@
     var when = t.scheduled_at ? new Date(t.scheduled_at) : null;
     var dateStr = when ? when.toLocaleDateString('en-US', { weekday:'long', month:'2-digit', day:'2-digit', year:'numeric' }) : 'TBD';
     var timeStr = when ? when.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' }) : 'TBD';
-    var client = t.client && t.client.name;
+    var client = ownerName(t.client);
     var verb = {
       to_conri_finished: 'Inbound to CONRI: finished goods (rack, FEFO by best by date)',
       to_conri_overflow: 'Inbound to CONRI: empty can overflow (floor stack; returns for production)',
+      to_conri_packaging: 'Inbound to CONRI: Good Liquid packaging supplies',
       pull_back: 'Pull back to Good Liquid',
       outbound_pickup: 'Outbound carrier pickup from CONRI'
     }[t.type];
@@ -1007,7 +1037,7 @@
   // ════════════════════════════════════════════════════════════
   async function renderSkus(){
     var q = sb().from('wh_skus').select(SKU_COLS + ',client:clients!wh_skus_client_id_fkey(name)').order('description');
-    if(state.skuClient) q = q.eq('client_id', state.skuClient);
+    q = skuOwnerFilter(q);
     var r = await q;
     if(r.error) throw r.error;
     var skus = r.data || [];
@@ -1022,9 +1052,9 @@
       var uw = upcWarning(s.upc_sku);
       return '<tr' + (s.active ? '' : ' style="opacity:.5"') + '><td style="font-weight:700">' + esc(s.upc_sku) +
           (uw ? ' <span title="' + esc(uw) + '" style="color:#f5c842">⚠</span>' : '') + '</td>' +
-        '<td>' + esc(s.description) + '</td><td>' + esc(s.brand || (s.client && s.client.name)) + '</td><td>' + esc(s.pack) + '</td>' +
+        '<td>' + esc(s.description) + '</td><td>' + esc(s.brand || ownerName(s.client)) + '</td><td>' + esc(s.pack) + '</td>' +
         '<td style="text-align:right">' + esc(s.units_per_case || '') + '</td><td style="text-align:right">' + esc(s.default_cases_per_pallet || '') + '</td>' +
-        '<td>' + esc(s.inventory_type === 'empty_can' ? 'Empty cans' : 'Finished good') + '</td>' +
+        '<td>' + esc(TYPE_LABEL[s.inventory_type] || s.inventory_type) + '</td>' +
         '<td>' + (s.last_exported_at ? esc(fmtTs(s.last_exported_at)) : '<span style="color:#f5c842">never</span>') + '</td>' +
         '<td style="white-space:nowrap"><button type="button" class="cbtn" data-wh="editSku" data-arg="' + esc(s.id) + '">Edit</button> ' +
           '<button type="button" class="cbtn" data-wh="addLot" data-arg="' + esc(s.id) + '">+ Lot</button></td></tr>' +
@@ -1036,7 +1066,7 @@
         }).join('') + '</td></tr>' : '');
     }).join('');
     setBody('<div class="ccard"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">' +
-        '<select id="wh-sku-client" style="' + INP + ';max-width:260px">' + clientOptions(state.skuClient, 'All clients') + '</select>' +
+        '<select id="wh-sku-client" style="' + INP + ';max-width:260px">' + clientOptions(state.skuClient, 'All owners', true) + '</select>' +
         '<button type="button" class="cbtn pri" data-wh="newSku">+ New SKU</button>' +
         '<button type="button" class="cbtn" data-wh="exportSkus">⬇ Export CSV for CONRI</button>' +
         '<span style="font-size:11.5px;color:#9aa7bd">Exports active SKUs' + (state.skuClient ? ' for this client' : '') + ' and stamps them as sent to CONRI.</span></div>' +
@@ -1044,6 +1074,11 @@
             : '<div style="color:#9aa7bd;font-size:12px">No SKUs yet.</div>') + '</div>');
     var sel = document.getElementById('wh-sku-client');
     if(sel) sel.addEventListener('change', function(){ state.skuClient = this.value; renderTab(); });
+  }
+
+  function skuOwnerFilter(q){
+    if(state.skuClient === GL_OWNER) return q.is('client_id', null);
+    return state.skuClient ? q.eq('client_id', state.skuClient) : q;
   }
 
   async function editSku(id){
@@ -1055,9 +1090,11 @@
     }
     var ov = overlay('wh-sku', id ? 'EDIT SKU' : '+ NEW SKU', 620);
     ovBody(ov, '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
-        field('Client *', '<select id="ws-client" style="' + INP + '"' + (id ? ' disabled' : '') + '>' + clientOptions(s.client_id || state.skuClient) + '</select>', true) +
+        field('Owner *', '<select id="ws-client" style="' + INP + '"' + (id ? ' disabled' : '') + '>' +
+          clientOptions(id ? (s.client_id || GL_OWNER) : state.skuClient, null, true) + '</select>', true) +
         field('UPC / SKU *', '<input id="ws-upc" value="' + esc(s.upc_sku || '') + '" style="' + INP + '">') +
-        field('Inventory type *', '<select id="ws-type" style="' + INP + '"><option value="finished_good">Finished good</option><option value="empty_can"' + (s.inventory_type === 'empty_can' ? ' selected' : '') + '>Empty cans</option></select>') +
+        field('Inventory type *', '<select id="ws-type" style="' + INP + '">' + Object.keys(TYPE_LABEL).map(function(k){
+          return '<option value="' + k + '"' + (s.inventory_type === k ? ' selected' : '') + '>' + esc(TYPE_LABEL[k]) + '</option>'; }).join('') + '</select>') +
         field('Description *', '<input id="ws-desc" value="' + esc(s.description || '') + '" style="' + INP + '">', true) +
         field('Brand', '<input id="ws-brand" value="' + esc(s.brand || '') + '" style="' + INP + '">') +
         field('Pack', '<input id="ws-pack" placeholder="12 count tray" value="' + esc(s.pack || '') + '" style="' + INP + '">') +
@@ -1073,6 +1110,20 @@
     var upcEl = ov.querySelector('#ws-upc');
     var hint = function(){ var w = upcWarning(upcEl.value); ov.querySelector('#ws-hint').innerHTML = w ? note('warn', w) : ''; };
     upcEl.addEventListener('input', hint); hint();
+    // Packaging and Good Liquid ownership go together (wh_skus_packaging_owner_check),
+    // so picking one sets the other on a new SKU.
+    var ownSel = ov.querySelector('#ws-client'), typeSel = ov.querySelector('#ws-type');
+    if(!id){
+      if(ownSel.value === GL_OWNER) typeSel.value = 'packaging';
+      ownSel.addEventListener('change', function(){
+        if(ownSel.value === GL_OWNER) typeSel.value = 'packaging';
+        else if(typeSel.value === 'packaging') typeSel.value = 'finished_good';
+      });
+      typeSel.addEventListener('change', function(){
+        if(typeSel.value === 'packaging') ownSel.value = GL_OWNER;
+        else if(ownSel.value === GL_OWNER) ownSel.value = '';
+      });
+    }
     ov.querySelector('#ws-save').addEventListener('click', async function(){
       var btn = this;
       var n = function(sel){ var v = val(ov, sel); return v === '' ? null : num(v); };
@@ -1083,9 +1134,13 @@
         default_pallet_weight_lbs: n('#ws-w'), default_pallet_height_in: n('#ws-h'),
         inventory_type: val(ov,'#ws-type'), notes: val(ov,'#ws-notes') || null
       };
-      if(!id) row.client_id = val(ov,'#ws-client');
+      var owner = id ? (s.client_id || GL_OWNER) : val(ov,'#ws-client');
+      if(!id) row.client_id = ownerId(owner);
       else row.active = val(ov,'#ws-active') !== '0';
-      if(!id && !row.client_id){ ovMsg(ov,'err','Choose the client.'); return; }
+      if(!owner){ ovMsg(ov,'err','Choose the owner.'); return; }
+      if((owner === GL_OWNER) !== (row.inventory_type === 'packaging')){
+        ovMsg(ov,'err', owner === GL_OWNER ? 'Good Liquid\'s own SKUs are packaging.' : 'Packaging belongs to Good Liquid, not a client.'); return;
+      }
       if(!row.upc_sku || !row.description){ ovMsg(ov,'err','UPC / SKU and description are required.'); return; }
       // A SKU CONRI already has on file and whose keyed fields change must be
       // sent again: clear the stamp so scheduling asks for a fresh export.
@@ -1145,9 +1200,9 @@
     var lines = [head.map(csvCell).join(',')];
     skus.forEach(function(s){
       lines.push([
-        s.upc_sku, s.description, s.brand || (s.client && s.client.name) || '',
+        s.upc_sku, s.description, s.brand || (s.client && s.client.name) || (s.inventory_type === 'packaging' ? 'Good Liquid Bev Co' : ''),
         s.units_per_case || '', s.default_cases_per_pallet || '', s.default_pallet_weight_lbs || '',
-        s.inventory_type === 'empty_can' ? 'Empty Cans' : 'Finished Good'
+        s.inventory_type === 'empty_can' ? 'Empty Cans' : s.inventory_type === 'packaging' ? 'Packaging' : 'Finished Good'
       ].map(csvCell).join(','));
     });
     return lines.join('\r\n') + '\r\n';
@@ -1161,8 +1216,7 @@
   }
   async function exportSkus(){
     try {
-      var q = sb().from('wh_skus').select(SKU_COLS + ',client:clients!wh_skus_client_id_fkey(name)').eq('active', true).order('description');
-      if(state.skuClient) q = q.eq('client_id', state.skuClient);
+      var q = skuOwnerFilter(sb().from('wh_skus').select(SKU_COLS + ',client:clients!wh_skus_client_id_fkey(name)').eq('active', true).order('description'));
       var r = await q; if(r.error) throw r.error;
       var skus = r.data || [];
       if(!skus.length){ alert('No active SKUs to export.'); return; }
@@ -1711,7 +1765,7 @@
     var doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
     var W = 612, L = 40, R = 572;
     var pt = parties(t);
-    var client = (t.client && t.client.name) || '';
+    var client = ownerName(t.client);
     var dateStr = fmtDate(t.transfer_date);
     var n = lines.length;
 
@@ -1801,6 +1855,8 @@
       storage = 'Storage: empty cans, floor stack, pull date ' + (pulls.length ? fmtMD(pulls[0]) : 'TBD');
     } else if(t.type === 'to_conri_finished'){
       storage = 'Storage: finished goods, racked, FEFO by best by date';
+    } else if(t.type === 'to_conri_packaging'){
+      storage = 'Storage: Good Liquid packaging supplies';
     } else if(t.type === 'outbound_pickup'){
       storage = 'Pick: FEFO by best by date, then first received';
     } else {
@@ -1870,7 +1926,7 @@
     var name = fitText(doc, String(s.description || '').toUpperCase(), W - 100, 44, 24);
     doc.text(name, 48, 84);
     doc.setFont('helvetica','normal');
-    var sub = [s.brand || (s.client && s.client.name) || (t.client && t.client.name) || '', s.pack || '', s.units_per_case ? s.units_per_case + ' units / case' : '']
+    var sub = [s.brand || (s.client && s.client.name) || ownerName(t.client), s.pack || '', s.units_per_case ? s.units_per_case + ' units / case' : '']
       .filter(Boolean).join('  |  ');
     doc.setFontSize(19); doc.text(cellText(doc, sub, W - 100), 48, 114);
     doc.setLineWidth(2); doc.line(40, 130, W - 40, 130);
@@ -1889,6 +1945,9 @@
     if(s.inventory_type === 'empty_can'){
       doc.setFontSize(13); doc.setFont('helvetica','bold');
       doc.text('EMPTY CANS  |  FLOOR STACK' + (p.expected_pull_date ? '  |  PULL ' + fmtMD(p.expected_pull_date) : ''), 48, y - 18);
+    } else if(s.inventory_type === 'packaging'){
+      doc.setFontSize(13); doc.setFont('helvetica','bold');
+      doc.text('PACKAGING SUPPLIES  |  PROPERTY OF GOOD LIQUID BEV CO', 48, y - 18);
     }
 
     // Pallet number
