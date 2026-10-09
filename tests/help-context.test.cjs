@@ -124,6 +124,15 @@ const server = http.createServer((req, res) => {
   const wh = await page.evaluate(() => (document.getElementById('help-warehouse') || {}).innerText || '');
   check('the Warehouse section explains the 4 steps, notes and printing',
     /4 steps of every move/.test(wh) && /Pallet notes/.test(wh) && /Print paperwork/.test(wh) && /Good Liquid \(own packaging\)/.test(wh), wh.slice(0, 200));
+  const vids = await page.evaluate(() => ({
+    wh: [...document.querySelectorAll('#help-warehouse video')].map((v) => v.getAttribute('src')),
+    gallery: [...document.querySelectorAll('#help-videos video')].map((v) => v.getAttribute('src')),
+    all: [...new Set([...document.querySelectorAll('#gl-help-body video')].map((v) => v.getAttribute('src')))],
+  }));
+  check('the Warehouse section opens with its training video, which is also in the video gallery',
+    vids.wh[0] === '/tutorials/tutorial-warehouse.mp4' && vids.gallery.includes('/tutorials/tutorial-warehouse.mp4'), JSON.stringify(vids.wh));
+  const missing = vids.all.filter((src) => !fs.existsSync(path.join(ROOT, src)));
+  check('every video the help panel links to exists in the repo', vids.all.length > 0 && missing.length === 0, missing.join(', '));
   const inv = await page.evaluate(() => (document.getElementById('help-inventory') || {}).innerText || '');
   check('Inventory help no longer says the data stays on one device', !/localStorage/.test(inv) && /saved to the cloud/.test(inv));
 
