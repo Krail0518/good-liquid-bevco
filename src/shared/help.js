@@ -1308,7 +1308,7 @@
       '<b>Data note</b> — inventory is saved to the cloud (the Supabase <code>inventory</code> table), so every staff member sees the same numbers. Anything left in this browser from the old device-only version is moved up automatically the first time you open the page.',
       '<b>Pallets stored at CONRI</b> are tracked separately, pallet by pallet, in <b>Warehouse Storage</b>.'
     ]);
-  var SEC_WAREHOUSE =
+  var SEC_WAREHOUSE = watch('tutorial-warehouse.mp4') +
     '<div style="font-size:13px;color:#cfd9e6;line-height:1.7;margin:4px 0 6px">Sidebar → <b>Operations → 🏬 Warehouse Storage</b> (admin and sales). ' +
     'The record of every pallet stored at <b>CONRI Services</b> (Paul Nolletti, across the street): finished goods, empty-can overflow, and Good Liquid\'s own packaging. Every move is scheduled with CONRI first, then completed when Paul has it.</div>' +
     bullets([
@@ -2016,6 +2016,8 @@
     videoCard('explainer-deal-brief.mp4', '🧠 Never Drop a Lead — Brief, Board &amp; Digest', 'How the AI Deal Brief, the 🔥 Needs Attention board, the morning WhatsApp/email digest, and ⏰ Bulk Nudge work together so no lead slips through the cracks.') +
     videoCard('explainer-deal-docs.mp4', '📎 Deal Documents &amp; Meeting Notes', 'Storing NDAs, Process Authority letters, formulas &amp; labels on a deal, how they carry over automatically when you convert to a client, and the meeting-notes card that feeds the brief.') +
     videoCard('explainer-lead-automation.mp4', '🤖 Lead Automations — SLA, Follow-ups &amp; One-Tap Send', 'The safety net: the first-reply watchdog that pings you when a lead waits too long, AI-drafted follow-ups you send with one tap (from the desk or your phone), snooze/handled controls, returning-lead merging, and the auto-included booking link.') +
+    videoGroup('🏬 WAREHOUSE STORAGE (CONRI)') +
+    videoCard('tutorial-warehouse.mp4', '🏬 Warehouse Storage — Staff Training (14 min)', 'The whole system in 10 parts with on-screen captions (no sound needed): the dashboard and daily check, a client\'s pallet coming in with notes, sending items to CONRI, scheduling with Paul, completing, lots and QA release, our own packaging, shipping out by LTL, bringing pallets back, and the other tabs. Demo data.') +
     videoGroup('⚙️ RUNNING THE BUSINESS') +
     videoCard('tutorial-dashboard.mp4', '📊 Dashboard — Your Business at a Glance', 'The home screen: the FDA audit-readiness scorecard, your key financials, a pipeline snapshot, and the live activity feed.') +
     videoCard('tutorial-formula-vault.mp4', '🧪 Formula Vault — Every Recipe, Versioned', 'Where product recipes live — name, version, and status — with version control so you can approve and clone without losing history.') +
