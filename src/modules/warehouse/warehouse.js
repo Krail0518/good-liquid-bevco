@@ -252,7 +252,10 @@
       '<div class="cph">' +
         '<div><div class="cpt">WAREHOUSE STORAGE</div>' +
         '<div class="cps">Pallets at CONRI Services, Palmetto · one Good Liquid account · every move scheduled in advance</div></div>' +
-        '<button class="cbtn pri" type="button" data-wh="newTransfer">+ New transfer</button>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+          '<button class="cbtn" type="button" data-wh="newOrder">🚚 Ship out (LTL)</button>' +
+          '<button class="cbtn pri" type="button" data-wh="newTransfer">+ New transfer</button>' +
+        '</div>' +
       '</div>' +
       '<div class="cpills" id="wh-tabs">' + TABS.map(function(t){
         return '<span class="cpill' + (t[0] === state.tab ? ' act' : '') + '" data-wh="tab" data-arg="' + t[0] + '">' + esc(t[1]) + '</span>';
@@ -320,7 +323,7 @@
 
     var rows = '';
     Object.keys(tree).sort().forEach(function(cName){
-      rows += '<tr><td colspan="7" style="font-weight:700;color:var(--teal);padding-top:14px">' + esc(cName) + '</td></tr>';
+      rows += '<tr><td colspan="8" style="font-weight:700;color:var(--teal);padding-top:14px">' + esc(cName) + '</td></tr>';
       Object.keys(tree[cName]).forEach(function(sId){
         var sNode = tree[cName][sId];
         Object.keys(sNode.lots).forEach(function(lId){
@@ -336,7 +339,9 @@
             '<td style="text-align:right">' + fmtInt(n.cases) + '</td>' +
             '<td style="text-align:right">' + (n.units ? fmtInt(n.units) : '') + '</td>' +
             '<td' + (warn ? ' style="color:#f5c842;font-weight:700"' : '') + '>' + esc(fmtDate(l.best_by_date)) +
-              (warn ? ' · ' + esc(d) + ' days' : '') + '</td></tr>';
+              (warn ? ' · ' + esc(d) + ' days' : '') + '</td>' +
+            '<td style="text-align:right">' + (shippable(s) && !sNode.shipBtn ? (sNode.shipBtn = 1,
+              '<button type="button" class="cbtn" style="padding:3px 9px;font-size:11px" data-wh="shipSku" data-arg="' + esc(s.client_id) + '" data-arg2="' + esc(s.id) + '">🚚 Ship</button>') : '') + '</td></tr>';
         });
       });
     });
@@ -401,7 +406,7 @@
         stat('EMPTIES PAST ' + EMPTY_MAX_DAYS + ' DAYS', fmtInt(lateCount)) + stat('LOTS < ' + BEST_BY_WARN_DAYS + ' DAYS TO BEST BY', fmtInt(soon.length)) +
       '</div>' +
       '<div class="ccard" style="margin-bottom:14px"><div class="ccard-t">On hand at CONRI · by owner, SKU, lot</div>' +
-        (rows ? '<div style="overflow-x:auto"><table class="ctbl"><tr><th>UPC / SKU</th><th>Description</th><th>Lot</th><th style="text-align:right">Pallets</th><th style="text-align:right">Cases</th><th style="text-align:right">Units</th><th>Best by</th></tr>' + rows + '</table></div>'
+        (rows ? '<div style="overflow-x:auto"><table class="ctbl"><tr><th>UPC / SKU</th><th>Description</th><th>Lot</th><th style="text-align:right">Pallets</th><th style="text-align:right">Cases</th><th style="text-align:right">Units</th><th>Best by</th><th></th></tr>' + rows + '</table></div>'
               : '<div style="color:#9aa7bd;font-size:12px">Nothing at CONRI right now.</div>') +
       '</div>' +
       (noteRows ? '<div class="ccard" style="margin-bottom:14px"><div class="ccard-t">Pallet notes at CONRI</div>' +
@@ -1304,16 +1309,31 @@
         '<td>' + esc(o.ship_method || '') + (o.carrier ? ' · ' + esc(o.carrier) : '') + '</td>' +
         '<td>' + esc(o.bol_number || '') + '</td><td>' + badge(o.status) + '</td><td style="white-space:nowrap">' + act + '</td></tr>';
     }).join('');
-    setBody('<div class="ccard"><div style="display:flex;gap:8px;margin-bottom:12px;align-items:center"><button type="button" class="cbtn pri" data-wh="newOrder">+ New order from client release</button>' +
+    setBody('<div class="ccard"><div style="display:flex;gap:8px;margin-bottom:12px;align-items:center"><button type="button" class="cbtn pri" data-wh="newOrder">🚚 Ship out (LTL)</button>' +
       '<span style="font-size:11.5px;color:#9aa7bd">Allocates pallets at CONRI FEFO (earliest best by, then first received) and creates the pickup transfer.</span></div>' +
       (rows ? '<div style="overflow-x:auto"><table class="ctbl"><tr><th>Order</th><th>Client</th><th>Release ref</th><th>Pickup</th><th>Method</th><th>BOL</th><th>Status</th><th></th></tr>' + rows + '</table></div>'
             : '<div style="color:#9aa7bd;font-size:12px">No outbound orders yet.</div>') + '</div>');
   }
 
-  function newOrder(){
-    var ov = overlay('wh-order', '+ OUTBOUND ORDER', 700);
-    ovBody(ov, '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
-        field('Client *', '<select id="wo-client" style="' + INP + '">' + clientOptions('') + '</select>', true) +
+  // What can leave CONRI on an outbound order: a client's finished goods and
+  // empty cans. Good Liquid's own packaging has no client and is pulled back
+  // instead (wh_transfers_owner_check requires a client on an outbound pickup).
+  function shippable(s){ return !!(s && s.client_id && (s.inventory_type === 'finished_good' || s.inventory_type === 'empty_can')); }
+  // A finished good ships only from a QA-released lot; empty cans have no lot.
+  function canShipPallet(p){
+    if(!p.sku || !shippable(p.sku)) return false;
+    return p.sku.inventory_type !== 'finished_good' || !!(p.lot && p.lot.qa_status === 'released');
+  }
+
+  // preset {client, sku}: the dashboard's 🚚 Ship button opens the order with
+  // the client chosen and 1 pallet of that item filled in.
+  function newOrder(preset){
+    preset = preset || {};
+    var ov = overlay('wh-order', '🚚 SHIP OUT FROM CONRI', 700);
+    ovBody(ov, '<div style="font-size:12px;color:#9aa7bd;margin-bottom:10px;line-height:1.6">Pick the client and how many pallets of each item go out. ' +
+        'It picks the pallets (earliest best by first), creates the pickup, and writes the email to Paul. When the truck leaves, <b>Mark shipped</b> with the BOL number.</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+        field('Client *', '<select id="wo-client" style="' + INP + '">' + clientOptions(preset.client || '') + '</select>', true) +
         field('Client release / PO', '<input id="wo-ref" style="' + INP + '">') +
         field('Requested pickup date *', '<input id="wo-date" type="date" style="' + INP + '">') +
         field('Ship method', '<select id="wo-method" style="' + INP + '"><option value="LTL">LTL</option><option value="FTL">FTL</option><option value="parcel">Parcel</option><option value="customer_pickup">Customer pickup</option></select>') +
@@ -1331,15 +1351,20 @@
       host.innerHTML = '<div style="color:#9aa7bd;font-size:12px">Loading stock…</div>';
       var r = await sb().from('wh_pallets').select(PALLET_EMBED).eq('location','conri').eq('status','stored').is('current_transfer_id', null);
       if(r.error){ host.innerHTML = note('err', errMsg(r.error)); return; }
-      stock = (r.data || []).filter(function(p){ return p.sku && p.sku.client_id === cid && p.sku.inventory_type === 'finished_good'; });
+      stock = (r.data || []).filter(function(p){ return p.sku && p.sku.client_id === cid && canShipPallet(p); });
       var bySku = {};
       stock.forEach(function(p){ (bySku[p.sku.id] = bySku[p.sku.id] || { s: p.sku, n: 0 }).n++; });
       var keys = Object.keys(bySku);
       host.innerHTML = keys.length ? '<table class="ctbl"><tr><th>SKU</th><th style="text-align:right">At CONRI</th><th>Pallets to ship</th></tr>' + keys.map(function(k){
-        return '<tr><td>' + esc(bySku[k].s.upc_sku + ' · ' + bySku[k].s.description) + '</td><td style="text-align:right">' + bySku[k].n + '</td>' +
-          '<td><input type="number" min="0" max="' + bySku[k].n + '" value="0" class="wo-qty" data-sku="' + esc(k) + '" style="' + INP + ';max-width:110px"></td></tr>';
-      }).join('') + '</table>' : note('', 'This client has no finished goods stored at CONRI.');
+        var s = bySku[k].s;
+        return '<tr><td>' + esc(s.upc_sku + ' · ' + s.description) + (s.inventory_type === 'empty_can' ? ' <span style="color:#9aa7bd">(empty cans)</span>' : '') + '</td>' +
+          '<td style="text-align:right">' + bySku[k].n + '</td>' +
+          '<td><input type="number" min="0" max="' + bySku[k].n + '" value="' + (k === preset.sku ? 1 : 0) + '" class="wo-qty" data-sku="' + esc(k) + '" style="' + INP + ';max-width:110px"></td></tr>';
+      }).join('') + '</table>' : note('', 'This client has nothing at CONRI that can ship (finished goods need a QA-released lot).');
+      var pre = preset.sku && host.querySelector('.wo-qty[data-sku="' + preset.sku + '"]');
+      if(pre){ pre.focus(); pre.select(); }
     });
+    if(preset.client) ov.querySelector('#wo-client').dispatchEvent(new Event('change'));
     ov.querySelector('#wo-save').addEventListener('click', async function(){
       var btn = this;
       var cid = val(ov,'#wo-client'), date = val(ov,'#wo-date'), shipTo = val(ov,'#wo-shipto');
@@ -1365,7 +1390,9 @@
           ship_method: val(ov,'#wo-method'), carrier: val(ov,'#wo-carrier') || null, status: 'allocated', transfer_id: trId
         }).select('id,order_number'), 1, 'Create order');
         audit('wh_order_allocated', ord[0].order_number, { pallets: picked.pallets.length, transfer: tr[0].transfer_number });
-        ov.remove(); renderTab();
+        // Land on the order, with the email to CONRI already written.
+        ov.remove(); state.tab = 'outbound'; window.glRenderWarehouse();
+        orderEmail(ord[0].id);
       } catch(e){
         if(trId){ try { await sb().from('wh_transfers').update({ status: 'cancelled' }).eq('id', trId).select('id'); } catch(_){} }
         btn.disabled = false; ovMsg(ov,'err','Failed: ' + errMsg(e));
@@ -1376,7 +1403,10 @@
   function allocateFefo(stock, want){
     var pallets = [], short = [];
     Object.keys(want).forEach(function(skuId){
-      var avail = sortFefo(stock.filter(function(p){ return p.sku.id === skuId && p.lot && p.lot.qa_status === 'released'; }));
+      // Empty cans have no lot; anything else ships only from a released lot.
+      var avail = sortFefo(stock.filter(function(p){
+        return p.sku.id === skuId && (p.sku.inventory_type === 'empty_can' || (p.lot && p.lot.qa_status === 'released'));
+      }));
       if(avail.length < want[skuId]) short.push((avail[0] ? avail[0].sku.upc_sku : skuId) + ' needs ' + want[skuId] + ', ' + avail.length + ' available');
       pallets = pallets.concat(avail.slice(0, want[skuId]));
     });
@@ -1410,10 +1440,15 @@
         'Ship to: ' + String(o.ship_to || '').replace(/\n/g, ', ') + '\n\n' +
         'Pick (FEFO):\n' + Object.keys(bySku).map(function(k){
           var n = bySku[k], p = n.p;
-          return '  - ' + p.sku.upc_sku + '  ' + p.sku.description + ', lot ' + (p.lot ? p.lot.lot_number : '') +
+          return '  - ' + p.sku.upc_sku + '  ' + p.sku.description + (p.sku.inventory_type === 'empty_can' ? ' (empty cans)' : '') +
+            (p.lot ? ', lot ' + p.lot.lot_number : '') +
             (p.lot && p.lot.best_by_date ? ', best by ' + fmtDate(p.lot.best_by_date) : '') + ': ' + n.pallets + ' pallets, ' + fmtInt(n.cases) + ' cases\n' +
             '      tags ' + n.tags.join(', ');
-        }).join('\n') + '\n\nTotal: ' + d.lines.length + ' pallets.\nPlease send the BOL number once it ships.\n\nThanks,\n' +
+        }).join('\n') +
+        (d.lines.some(function(p){ return p.notes; }) ? '\n\nPallet notes:\n' + d.lines.filter(function(p){ return p.notes; }).map(function(p){
+          return '  - ' + p.pallet_tag + ': ' + String(p.notes).replace(/\s*\n\s*/g, ' ');
+        }).join('\n') : '') +
+        '\n\nTotal: ' + d.lines.length + ' pallets.\nPlease send the BOL number once it ships.\n\nThanks,\n' +
         (userName() || GL.contact) + '\n' + GL.name + '\n' + GL.phone;
       var ov = overlay('wh-oemail', '✉ ORDER EMAIL TO CONRI', 680);
       var href = 'mailto:' + encodeURIComponent(CONRI.email) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(bodyTxt);
@@ -2152,7 +2187,8 @@
     addLot: function(a){ return addLot(a); },
     toggleLot: function(a, a2){ return toggleLot(a, a2); },
     exportSkus: function(){ return exportSkus(); },
-    newOrder: function(){ return newOrder(); },
+    newOrder: function(){ return loadClients().then(function(){ return newOrder(); }); },
+    shipSku: function(a, a2){ return loadClients().then(function(){ return newOrder({ client: a, sku: a2 }); }); },
     orderEmail: function(a){ return orderEmail(a); },
     shipOrder: function(a){ return shipOrder(a); },
     printBolSheets: function(){ return printBolSheets(); },

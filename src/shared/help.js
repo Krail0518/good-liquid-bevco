@@ -1321,7 +1321,7 @@
       '<b>🖨️ Print paperwork</b> — a PDF: the packing list with receiving and signature blocks, then one big label per pallet (pallet 1 of N, item, lot, cases, note, barcode of the pallet tag). Tape one label on each pallet.',
       '<b>3) Schedule</b> — <b>✏️ Edit</b> to enter the time agreed with Paul, <b>✉ Scheduling email to CONRI</b> writes the email for you, then <b>📅 Mark scheduled</b>. That button stays grey until the items are sent to CONRI and a time is set.',
       '<b>4) ✓ Complete (received)</b> — who received it, pallets and cases received, condition. If counts differ or something is damaged pick <b>Exceptions noted</b> and describe it. Attach the signed packing list now or later. Completing moves the pallets and writes the movement log; it cannot be undone.',
-      '<b>Outbound orders</b> — a client release: pallets per item, allocated earliest best-by first, creates the pickup transfer and the order email to CONRI; <b>Mark shipped</b> with the BOL number.',
+      '<b>🚚 Ship out (LTL)</b> — sending a client\'s product out from CONRI by truck. Click <b>🚚 Ship</b> on that item\'s line on the Dashboard (client and item filled in) or <b>🚚 Ship out (LTL)</b> at the top. Enter how many pallets, pickup date, carrier and ship to. It picks the pallets (earliest best by first), creates the pickup and opens the email to Paul. When the truck leaves: <b>Outbound orders → Mark shipped</b> with the BOL number. Finished goods ship from a QA-released lot; empty cans ship too.',
       '<b>Reconciliation</b> — upload CONRI\'s inventory CSV to compare it with what we show at CONRI. <b>BOL pallet sheets</b> — upload or type a client\'s BOL and print one PALLET X OF N sheet per pallet; nothing is saved.'
     ]);
   var SEC_ANNOUNCEMENTS =
