@@ -23,6 +23,10 @@
  *   - pallet notes: typed in quick build, shown on the transfer, the dashboard
  *     and pick list, edited per pallet, printed on the packing list and label,
  *     listed in the scheduling email; script in a note stays text
+ *   - 🚚 Ship out: a button on each client line of the dashboard opens the
+ *     order with client and item filled in; empty cans ship (no lot needed),
+ *     finished goods only from a released lot, packaging never; saving
+ *     creates the LTL pickup for the earliest best-by pallet
  *   - Good Liquid's own packaging (client_id null): shown under its own owner
  *     on the dashboard, a packaging transfer prints its packing list and
  *     labels, new transfers and SKUs send client_id null, and Good Liquid
@@ -278,7 +282,9 @@ const server = http.createServer((req, res) => {
       { id: 'd', pallet_tag: 'D', received_at_conri: '2026-07-01', sku: { id: 's' }, lot: { best_by_date: '2026-12-01', qa_status: 'hold' } },
     ];
     const alloc = I.allocateFefo(stock, { s: 2 });
+    const cans = I.allocateFefo([{ id: 'e1', pallet_tag: 'E1', sku: { id: 'c', client_id: 'x', inventory_type: 'empty_can' }, lot: null }], { c: 1 });
     return {
+      cansAlloc: cans.pallets.map((p) => p.id), cansShort: cans.short,
       modules: widths.reduce((a, b) => a + b, 0), bars: widths.length,
       csv, rec: rec.rows, alloc: alloc.pallets.map((p) => p.id), short: I.allocateFefo(stock, { s: 4 }).short,
       upc10: I.upcWarning('6001390576'), upc12: I.upcWarning('012345678905'), pkgUpc: I.upcWarning('TRAY12-1800', 'packaging'),
@@ -296,6 +302,7 @@ const server = http.createServer((req, res) => {
   check('reconciliation: a line only CONRI has is reported', cans && cans.theirsP === 1 && cans.oursP === 0 && !cans.match);
   check('FEFO: earliest best-by first, then first received; held lots skipped', JSON.stringify(pure.alloc) === '["c","b"]', JSON.stringify(pure.alloc));
   check('allocation reports a shortfall rather than under-shipping', pure.short.length === 1, JSON.stringify(pure.short));
+  check('empty cans ship without a lot', JSON.stringify(pure.cansAlloc) === '["e1"]' && pure.cansShort.length === 0, JSON.stringify(pure));
   check('UPC length: 10 digits warns, 12 does not', !!pure.upc10 && !pure.upc12);
   check('a packaging item number is not warned about as a short UPC', pure.pkgUpc === '', pure.pkgUpc);
   check('date-only values are not shifted by timezone', pure.date === '09/30/2026');
@@ -557,6 +564,40 @@ const server = http.createServer((req, res) => {
   const pcsv = await page.evaluate(() => window.glWhInternals.skuCsv([{ upc_sku: 'TRAY24-600', description: '24 ct tray', client: null,
     units_per_case: 150, inventory_type: 'packaging' }]).split('\r\n')[1]);
   check('CONRI CSV labels packaging and names Good Liquid as the customer', pcsv === 'TRAY24-600,24 ct tray,Good Liquid Bev Co,150,,,Packaging', pcsv);
+
+  // ── 🚚 Ship out (LTL) ─────────────────────────────────────────────
+  await page.evaluate(() => { document.querySelectorAll('.wh-ov').forEach((o) => o.remove()); window.__writes = []; });
+  await page.click('[data-wh="tab"][data-arg="dashboard"]');
+  await page.waitForSelector('[data-wh="shipSku"]', { timeout: 5000 });
+  const ships = await page.evaluate(() => ({
+    header: !!document.querySelector('.cph [data-wh="newOrder"]'),
+    btns: [...document.querySelectorAll('[data-wh="shipSku"]')].map((b) => b.getAttribute('data-arg2')),
+  }));
+  check('a Ship out (LTL) button sits at the top of the page', ships.header);
+  check('each client item at CONRI has one 🚚 Ship button; Good Liquid packaging has none',
+    ships.btns.includes('s-soon') && ships.btns.includes('s-cans') && !ships.btns.includes('s-tray') &&
+    ships.btns.filter((x) => x === 's-soon').length === 1, JSON.stringify(ships));
+  await page.click('[data-wh="shipSku"][data-arg2="s-soon"]');
+  await page.waitForFunction(() => !!document.querySelector('.wo-qty[data-sku="s-soon"]'), null, { timeout: 5000 });
+  const so = await page.evaluate(() => ({
+    client: document.getElementById('wo-client').value, method: document.getElementById('wo-method').value,
+    qty: document.querySelector('.wo-qty[data-sku="s-soon"]').value,
+    text: document.getElementById('wo-lines').innerText,
+  }));
+  check('🚚 Ship opens the order with the client, LTL and 1 pallet of that item filled in',
+    so.client === 'c-camo' && so.method === 'LTL' && so.qty === '1', JSON.stringify(so));
+  check('the client\'s empty cans are offered too', /Empty 12oz cans \(empty cans\)/.test(so.text), so.text);
+  await page.fill('#wo-date', '2026-10-12');
+  await page.fill('#wo-shipto', 'Publix DC\nLakeland, FL');
+  await page.fill('#wo-carrier', 'Estes');
+  await page.click('#wo-save');
+  await page.waitForFunction(() => window.__writes.some((w) => w.table === 'wh_outbound_orders'), null, { timeout: 5000 });
+  const sw = await page.evaluate(() => window.__writes);
+  const trw = sw.find((w) => w.table === 'wh_transfers'), lw = sw.find((w) => w.table === 'wh_transfer_lines'), ow = sw.find((w) => w.table === 'wh_outbound_orders');
+  check('saving creates the outbound pickup for that client', trw && trw.payload.type === 'outbound_pickup' && trw.payload.client_id === 'c-camo' && trw.payload.carrier === 'Estes', JSON.stringify(trw));
+  check('it takes the pallet with the earliest best by', lw && lw.payload.length === 1 && lw.payload[0].pallet_id === 'q-2', JSON.stringify(lw));
+  check('the order is LTL and allocated', ow && ow.payload.ship_method === 'LTL' && ow.payload.status === 'allocated' && ow.payload.client_id === 'c-camo', JSON.stringify(ow));
+  await page.evaluate(() => { document.querySelectorAll('.wh-ov').forEach((o) => o.remove()); });
 
   check('no page errors', errors.length === 0, JSON.stringify(errors));
   await browser.close(); server.close();
