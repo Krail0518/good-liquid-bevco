@@ -2637,13 +2637,8 @@
     // read as "the generic help" rather than help for the page.) Sections
     // that add-ons insert a moment after opening are waited for; if the
     // section never appears, it falls back to the full guide.
-    if(!document.getElementById('gl-help-focus-css')){
-      var css = document.createElement('style');
-      css.id = 'gl-help-focus-css';
-      css.textContent = '#gl-help-body.gl-help-focus>section{display:none!important}' +
-        '#gl-help-body.gl-help-focus>section.gl-help-on{display:block!important}';
-      document.head.appendChild(css);
-    }
+    // The hide/show rules live in crm-runtime.css (#gl-help-body.gl-help-focus):
+    // the CSP blocks a <style> element built here.
     var where = header.querySelector('#gl-help-where');
     var modeBtn = header.querySelector('#gl-help-mode');
     var focusId = null;

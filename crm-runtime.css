@@ -113,3 +113,7 @@ grid-template-columns: 1fr 1fr !important; gap: 6px !important;
 /* ── capacity-badge-pulse ────────────────────────────────────
    was: src/shared/public-ops.js:144 */
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.85)}}
+
+/* Help panel, "this page only" view (src/shared/help.js setFocus). */
+#gl-help-body.gl-help-focus>section{display:none!important}
+#gl-help-body.gl-help-focus>section.gl-help-on{display:block!important}

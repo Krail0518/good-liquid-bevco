@@ -51,15 +51,22 @@ const EXPECT = {
   'cpg-training': 'help-training-gmp', 'cpg-auditreview': 'help-internal-audit', 'cpg-audit': 'help-qs',
 };
 
-const PAGE = '<!doctype html><meta charset="utf-8"><body>' +
-  '<script>window.GL_HOOKS = { _navHooks: [], registerNavHook: function(){}, registerLoginHook: function(){} };</script>' +
+// The real stylesheet (the one-page view's rules live there) and the real
+// Content-Security-Policy from vercel.json, so a <style> the CSP would block in
+// production is blocked here too.
+const CSP = JSON.parse(fs.readFileSync(path.join(ROOT, 'vercel.json'), 'utf8')).headers[0].headers
+  .find((h) => h.key === 'Content-Security-Policy').value.replace(/;\s*upgrade-insecure-requests/, '');
+const PAGE = '<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="/crm-runtime.css"><body>' +
+  '<script src="/test-hooks.js"></script>' +
   '<div id="crm-panel" class="show"><div id="crm-top"><div><div class="crm-brand">GL</div></div></div>' +
   PAGES.map((id) => '<div id="' + id + '" class="cpg"></div>').join('') + '</div>' +
   '<script src="/src/shared/help.js"></script><script src="/src/shared/help-features.js"></script></body>';
 
 const server = http.createServer((req, res) => {
   const p = decodeURIComponent(req.url.split('?')[0]);
-  if (p === '/') { res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end(PAGE); }
+  if (p === '/') { res.writeHead(200, { 'Content-Type': 'text/html', 'Content-Security-Policy': CSP }); return res.end(PAGE); }
+  if (p === '/test-hooks.js') { res.writeHead(200, { 'Content-Type': 'text/javascript' }); return res.end('window.GL_HOOKS = { _navHooks: [], registerNavHook: function(){}, registerLoginHook: function(){} };'); }
+  if (p === '/crm-runtime.css') { res.writeHead(200, { 'Content-Type': 'text/css' }); return res.end(fs.readFileSync(path.join(ROOT, p))); }
   if (p === '/src/shared/help.js' || p === '/src/shared/help-features.js') {
     res.writeHead(200, { 'Content-Type': 'text/javascript' }); return res.end(fs.readFileSync(path.join(ROOT, p)));
   }
@@ -76,6 +83,7 @@ const server = http.createServer((req, res) => {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String((e && e.message) || e)));
+  page.on('console', (m) => { if (/Content Security Policy|Refused to/.test(m.text())) errors.push('CSP: ' + m.text().slice(0, 160)); });
   await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'load' });
   await page.waitForSelector('.gl-help-btn', { timeout: 5000 });
 
