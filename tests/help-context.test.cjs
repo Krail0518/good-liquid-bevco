@@ -8,9 +8,13 @@
  * on); and the scroll ran once, 60 ms after opening, before the add-on
  * sections it pointed at existed.
  *
+ * Even when it scrolled to the right place it still opened the WHOLE guide,
+ * which read as "generic help". It now shows only that page's section, titled
+ * with the page's name, with "📚 Full guide" to see everything.
+ *
  * This drives the real help.js + help-features.js in Chromium: every page in
  * index.html is made active, the topbar ❓ Help button is clicked, and the
- * section expected for that page must be the one at the top of the panel.
+ * only section showing must be the one expected for that page.
  *
  * Run:  NODE_PATH=… node tests/help-context.test.cjs
  */
@@ -89,17 +93,12 @@ const server = http.createServer((req, res) => {
     const got = await page.evaluate(() => {
       const body = document.getElementById('gl-help-body');
       if (!body) return { top: null };
-      const bt = body.getBoundingClientRect().top;
-      // The section whose top is nearest the top of the panel.
-      let best = null, bestD = 1e9;
-      body.querySelectorAll('section[id^="help-"]').forEach((s) => {
-        const d = Math.abs(s.getBoundingClientRect().top - bt);
-        if (d < bestD) { bestD = d; best = s.id; }
-      });
+      const shown = [...body.querySelectorAll(':scope > section')].filter((x) => x.offsetParent !== null).map((x) => x.id);
       const toc = document.querySelector('#gl-help-toc a[style*="var(--teal)"]');
-      return { top: best, dist: Math.round(bestD), toc: toc && toc.getAttribute('data-anchor') };
+      return { top: shown.length === 1 ? shown[0] : shown.join('+') || 'none', dist: 0, n: shown.length,
+        where: document.getElementById('gl-help-where').textContent, toc: toc && toc.getAttribute('data-anchor') };
     });
-    if (got.top !== want || got.dist > 40) wrong.push(id + ' -> ' + got.top + ' (' + got.dist + 'px), want ' + want);
+    if (got.top !== want || !/^Help for this page: /.test(got.where)) wrong.push(id + ' -> ' + got.top + ' [' + got.where + '], want ' + want);
     if (id === 'cpg-warehouse') {
       check('Warehouse Storage: help opens on its own section and highlights it in the contents',
         got.top === 'help-warehouse' && got.toc === 'help-warehouse', JSON.stringify(got));
@@ -107,19 +106,38 @@ const server = http.createServer((req, res) => {
     if (id === 'cpg-pipeline') check('Pipeline opens Pipeline help, not Correspondence', got.top === 'help-pipeline', JSON.stringify(got));
     if (id === 'cpg-audit') check('Audit Log waits for the add-on section and lands on it', got.top === 'help-qs', JSON.stringify(got));
   }
-  check('all ' + PAGES.length + ' pages open their own help section', wrong.length === 0, wrong.join('\n          '));
+  check('all ' + PAGES.length + ' pages show only their own help section, titled for the page', wrong.length === 0, wrong.join('\n          '));
 
-  // A person scrolling while it loads is never fought.
+  // On Warehouse Storage: the title, the Full guide button, and back.
   await page.evaluate(() => {
     const m = document.getElementById('gl-help-modal'); if (m) m.remove();
-    document.querySelectorAll('.cpg').forEach((el) => el.classList.toggle('act', el.id === 'cpg-audit'));
+    document.querySelectorAll('.cpg').forEach((el) => el.classList.toggle('act', el.id === 'cpg-warehouse'));
   });
   await page.click('.gl-help-btn');
-  await page.waitForSelector('#gl-help-body');
-  await page.evaluate(() => { const b = document.getElementById('gl-help-body'); b.dispatchEvent(new WheelEvent('wheel')); b.scrollTop = 0; });
-  await page.waitForTimeout(1200);
-  const st = await page.evaluate(() => document.getElementById('gl-help-body').scrollTop);
-  check('scrolling yourself stops the automatic jump', st === 0, 'scrollTop=' + st);
+  await page.waitForFunction(() => /Help for this page/.test((document.getElementById('gl-help-where') || {}).textContent || ''), null, { timeout: 4000 });
+  const wh1 = await page.evaluate(() => ({ where: document.getElementById('gl-help-where').textContent, btn: document.getElementById('gl-help-mode').textContent }));
+  check('Warehouse: titled "Help for this page: 🏬 Warehouse Storage" with a Full guide button',
+    wh1.where === 'Help for this page: 🏬 Warehouse Storage' && /Full guide/.test(wh1.btn), JSON.stringify(wh1));
+  await page.click('#gl-help-mode');
+  await page.waitForTimeout(200);
+  const full = await page.evaluate(() => {
+    const body = document.getElementById('gl-help-body');
+    const shown = [...body.querySelectorAll(':scope > section')].filter((x) => x.offsetParent !== null).length;
+    const w = document.getElementById('help-warehouse').getBoundingClientRect().top - body.getBoundingClientRect().top;
+    return { shown, w: Math.round(w), btn: document.getElementById('gl-help-mode').textContent };
+  });
+  check('📚 Full guide shows every section and keeps Warehouse in view', full.shown > 40 && Math.abs(full.w) < 40 && /This page only/.test(full.btn), JSON.stringify(full));
+  await page.click('#gl-help-mode');
+  await page.waitForTimeout(200);
+  await page.click('#gl-help-toc a[data-anchor="help-inventory"]');
+  await page.waitForTimeout(200);
+  const sw = await page.evaluate(() => ({ shown: [...document.querySelectorAll('#gl-help-body > section')].filter((x) => x.offsetParent !== null).map((x) => x.id),
+    where: document.getElementById('gl-help-where').textContent }));
+  check('in the one-page view, the contents list switches which page is shown', JSON.stringify(sw.shown) === '["help-inventory"]' && /Inventory/.test(sw.where), JSON.stringify(sw));
+  await page.evaluate(() => { const m = document.getElementById('gl-help-modal'); if (m) m.remove(); window.glOpenHelp('help-overview'); });
+  await page.waitForTimeout(300);
+  const ov = await page.evaluate(() => [...document.querySelectorAll('#gl-help-body > section')].filter((x) => x.offsetParent !== null).length);
+  check('opening the overview still shows the full guide', ov > 40, String(ov));
 
   const wh = await page.evaluate(() => (document.getElementById('help-warehouse') || {}).innerText || '');
   check('the Warehouse section explains the 4 steps, notes and printing',
