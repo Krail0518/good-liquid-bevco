@@ -2595,9 +2595,12 @@
     header.innerHTML =
       '<div>' +
         '<div style="font-family:var(--ff-disp);font-size:18px;letter-spacing:2px;color:var(--teal)">❓ HELP &amp; GUIDE</div>' +
-        '<div style="font-size:11px;color:var(--muted);margin-top:2px">Press <kbd style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:1px 5px;font-size:10px">?</kbd> any time</div>' +
+        '<div id="gl-help-where" style="font-size:11px;color:var(--muted);margin-top:2px">Press <kbd style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:1px 5px;font-size:10px">?</kbd> any time</div>' +
       '</div>' +
-      '<button id="gl-help-close" title="Close" style="background:none;border:none;color:#9aa7bd;font-size:22px;cursor:pointer;padding:4px 8px;line-height:1">✕</button>';
+      '<div style="display:flex;align-items:center;gap:8px">' +
+        '<button id="gl-help-mode" type="button" style="display:none;padding:6px 12px;background:rgba(0,229,192,.08);border:1px solid rgba(0,229,192,.3);border-radius:7px;color:var(--teal);font-size:12px;cursor:pointer"></button>' +
+        '<button id="gl-help-close" title="Close" style="background:none;border:none;color:#9aa7bd;font-size:22px;cursor:pointer;padding:4px 8px;line-height:1">✕</button>' +
+      '</div>';
 
     var split = document.createElement('div');
     split.setAttribute('style','display:flex;flex:1 1 auto;min-height:0;overflow:hidden');
@@ -2627,11 +2630,59 @@
         x.style.color = on ? 'var(--teal)' : '#9aa7bd';
       });
     }
+    // ── This-page-only view ─────────────────────────────────────────
+    // Opened from a page with its own section, the panel shows ONLY that
+    // section, titled with the page's name, with "📚 Full guide" to see the
+    // rest. (It used to open the whole guide scrolled part-way down, which
+    // read as "the generic help" rather than help for the page.) Sections
+    // that add-ons insert a moment after opening are waited for; if the
+    // section never appears, it falls back to the full guide.
+    // The hide/show rules live in crm-runtime.css (#gl-help-body.gl-help-focus):
+    // the CSP blocks a <style> element built here.
+    var where = header.querySelector('#gl-help-where');
+    var modeBtn = header.querySelector('#gl-help-mode');
+    var focusId = null;
+    function labelFor(id){
+      var a = toc.querySelector('a[data-anchor="' + id + '"]');
+      if(a) return a.textContent.trim();
+      var h = body.querySelector('#' + id + ' h3');
+      return h ? h.textContent.trim() : '';
+    }
+    function setFocus(id){
+      var el = body.querySelector('#' + id);   // first match: one section, even if an add-on repeats an id
+      if(!el) return false;
+      focusId = id;
+      body.querySelectorAll('section.gl-help-on').forEach(function(x){ x.classList.remove('gl-help-on'); });
+      el.classList.add('gl-help-on');
+      body.classList.add('gl-help-focus');
+      body.scrollTop = 0;
+      highlightToc(id);
+      where.textContent = 'Help for this page: ' + labelFor(id);
+      modeBtn.textContent = '📚 Full guide';
+      modeBtn.style.display = '';
+      return true;
+    }
+    function showAll(scrollToId){
+      body.classList.remove('gl-help-focus');
+      modeBtn.textContent = focusId ? '🎯 This page only' : '';
+      modeBtn.style.display = focusId ? '' : 'none';
+      where.textContent = 'The full guide · press ? any time';
+      var el = scrollToId && body.querySelector('#' + scrollToId);
+      if(el){ el.scrollIntoView({behavior:'auto', block:'start'}); highlightToc(scrollToId); }
+    }
+    modeBtn.addEventListener('click', function(){
+      if(body.classList.contains('gl-help-focus')) showAll(focusId);
+      else if(focusId) setFocus(focusId);
+    });
+
     toc.querySelectorAll('a').forEach(function(a){
       a.addEventListener('click', function(e){
         e.preventDefault();
-        highlightToc(a.getAttribute('data-anchor'));
-        var el = body.querySelector('#' + a.getAttribute('data-anchor'));
+        var id = a.getAttribute('data-anchor');
+        // In the one-page view, the contents switch which page is shown.
+        if(body.classList.contains('gl-help-focus')){ setFocus(id); return; }
+        highlightToc(id);
+        var el = body.querySelector('#' + id);
         if(el) el.scrollIntoView({behavior:'smooth', block:'start'});
       });
     });
@@ -2643,27 +2694,17 @@
     });
 
     host.appendChild(ov);
-    // Scroll to the section for the page you are on. Some sections (Quality &
-    // Supply, Correspondence, ...) are added by add-ons a moment after the panel
-    // opens, so keep trying for up to 3 seconds; stop as soon as the person
-    // scrolls or clicks, so it never fights them.
-    var tries = 0, userMoved = false;
-    function stopAuto(){ userMoved = true; }
-    body.addEventListener('wheel', stopAuto, { passive: true });
-    body.addEventListener('touchmove', stopAuto, { passive: true });
-    body.addEventListener('keydown', stopAuto);
-    toc.addEventListener('click', stopAuto);
-    (function goToTarget(){
-      if(userMoved || !document.body.contains(ov)) return;
-      var el = body.querySelector('#' + target);
-      if(el){
-        el.scrollIntoView({behavior:'auto', block:'start'});
-        highlightToc(target);
-        // Re-assert once more: sections injected above it shift the page down.
-        if(tries < 12){ tries = 12; setTimeout(goToTarget, 400); }
-        return;
-      }
-      if(++tries < 40) setTimeout(goToTarget, 75);
+    if(target === 'help-overview'){ showAll(null); body.scrollTop = 0; return; }
+    // Hide everything at once so the page never flashes the overview, then
+    // show the section as soon as it exists (add-ons insert some late).
+    body.classList.add('gl-help-focus');
+    where.textContent = 'Loading help for this page…';
+    var tries = 0;
+    (function waitForTarget(){
+      if(!document.body.contains(ov)) return;
+      if(setFocus(target)) return;
+      if(++tries < 40) setTimeout(waitForTarget, 75);
+      else showAll(null);
     })();
   };
 
