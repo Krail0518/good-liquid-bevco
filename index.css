@@ -83,7 +83,11 @@ section{padding:96px 52px}
 .ag{display:grid;grid-template-columns:1fr 1fr;gap:76px;align-items:center;margin-top:60px}
 .sc{border-radius:18px;padding:22px 26px;border:1px solid rgba(255,255,255,.07);display:flex;align-items:center;gap:20px;transition:all .4s;background:rgba(255,255,255,.02);margin-bottom:13px;cursor:default}
 .sc:hover{background:rgba(0,229,192,.05);border-color:rgba(0,229,192,.25);transform:translateX(6px)}
-.sc-n{font-family:var(--ff-disp);font-size:46px;line-height:1;background:linear-gradient(135deg,var(--teal),var(--blue));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;min-width:72px}
+.sc-n{font-family:var(--ff-disp);font-size:46px;line-height:1;background:linear-gradient(135deg,var(--teal),var(--blue));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;min-width:86px;flex-shrink:0;white-space:nowrap}
+/* .sc-n used to shrink to 72px, narrower than "200+" (85px), and the gradient
+   is clipped to the box, so the "+" went invisible: the stat read "200". It
+   now keeps its width; 86px fits the widest number and keeps the four cards'
+   text lined up. */
 .sc-b h4{font-size:14px;font-weight:700;color:var(--white);margin-bottom:3px}
 .sc-b p{font-size:12px;color:var(--muted);line-height:1.6}
 .ah{font-family:var(--ff-disp);font-size:clamp(42px,5.5vw,68px);letter-spacing:2px;line-height:.9;color:var(--white);margin-bottom:22px}
@@ -273,10 +277,14 @@ footer{background:var(--ink);border-top:1px solid rgba(255,255,255,.06);padding:
   /* The stat cards' numbers shrank below their text, and the gradient text
      clip hid the overflow: "200+" read "200". */
   .sc{padding:20px 18px;gap:16px}
-  .sc-n{flex-shrink:0;min-width:86px}
   /* Services: the 3-column bento grid, and the 2-column grid inside the wide
      card (an inline style, hence !important). */
   .sb{grid-template-columns:minmax(0,1fr);margin-top:32px}
+  /* The floating ADMIN button sat on top of the content at the bottom right
+     of every screen. The menu has an Admin link that opens the same sign-in,
+     so phones do without the button. (html prefix: the #admin-btn rule
+     further down sets display and would otherwise win.) */
+  html #admin-btn{display:none}
   .sv.tall,.sv.wide{grid-row:auto;grid-column:auto}
   .sv{padding:26px 22px}
   .sv.wide > div[style*="grid-template-columns"]{grid-template-columns:minmax(0,1fr) !important;gap:18px !important}
