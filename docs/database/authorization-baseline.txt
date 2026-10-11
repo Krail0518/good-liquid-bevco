@@ -102,6 +102,7 @@ FUNC     public.set_updated_at() | secdef=f | search_path=public, pg_temp | acl=
 FUNC     public.submit_quote_request(p jsonb) | secdef=t | search_path=public | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres,anon=X/postgres
 FUNC     public.trigger_estimate_deal_value() | secdef=t | search_path=public, pg_temp | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.trigger_notify_new_deal() | secdef=t | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.trigger_notify_new_deals() | secdef=t | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.trigger_notify_new_quote() | secdef=t | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.trigger_notify_onboarding() | secdef=t | search_path=public | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.trigger_notify_tour_booked() | secdef=t | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
