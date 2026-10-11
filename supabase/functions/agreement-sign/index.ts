@@ -36,6 +36,7 @@ import { PDFDocument, StandardFonts, rgb } from 'https://esm.sh/pdf-lib@1.17.1';
 import { jsonResponse, errorResponse, handlePreflight } from '../_shared/cors.ts';
 import { requireStaff } from '../_shared/auth.ts';
 import { checkRateLimit, rateLimitMessage, rateLimitOutageMessage } from '../_shared/rate-limit.ts';
+import { redactSignLinks } from '../_shared/token-links.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
@@ -75,8 +76,30 @@ const validEmail = (e: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
 // Mailgun. Reuse the gmail-send function so MIME building, attachments and the
 // OAuth token refresh live in one place; the service-role bearer is accepted
 // by its requireStaff() check as an internal call.
+// Every agreement email is also written to email_log, so it shows in the CRM's
+// email activity next to the rest of the correspondence. Before this, a
+// signing request reached the customer but left no trace in the CRM, and the
+// only way to confirm it went out was Gmail's Sent folder. The text is logged
+// with the signing link removed (redactSignLinks): email_log is readable by
+// all staff, and the link lets whoever holds it sign as the customer.
+async function logEmail(opts: { to: string; subject: string; text: string },
+  meta: { clientId?: string | null; template: string }, gmailId: string | null): Promise<void> {
+  try {
+    const ins = await db().from('email_log').insert([{
+      mailgun_id: gmailId, to_email: opts.to, subject: opts.subject,
+      body_preview: redactSignLinks(opts.text).slice(0, 4000),
+      template_name: meta.template, client_id: meta.clientId || null,
+      direction: 'outbound', status: 'sent', sent_at: new Date().toISOString(),
+    }]).select('id');
+    if (ins.error || !ins.data?.length) console.error('[agreement-sign] email_log insert', ins.error?.message || 'no row');
+  } catch (e) {
+    console.error('[agreement-sign] email_log insert threw', e);
+  }
+}
+
 async function sendMail(opts: { to: string; subject: string; text: string; html: string;
-  attachment?: { bytes: Uint8Array; name: string } }): Promise<{ ok: boolean; reason?: string }> {
+  attachment?: { bytes: Uint8Array; name: string } },
+  meta?: { clientId?: string | null; template: string }): Promise<{ ok: boolean; reason?: string }> {
   const body: Record<string, unknown> = { to: opts.to, subject: opts.subject, text: opts.text, html: opts.html };
   if (opts.attachment) {
     let bin = '';
@@ -94,6 +117,7 @@ async function sendMail(opts: { to: string; subject: string; text: string; html:
       console.error('[agreement-sign] gmail-send failed', r.status, j && j.error);
       return { ok: false, reason: (j && j.error) || ('Email failed (' + r.status + ').') };
     }
+    if (meta) await logEmail(opts, meta, (j && j.id) || null);
     return { ok: true };
   } catch (e) {
     console.error('[agreement-sign] gmail-send threw', e);
@@ -107,7 +131,7 @@ function emailShell(inner: string): string {
 <p style="font-size:12px;color:#7a8799;margin-top:28px">Good Liquid Bev Co · 2011 51st Ave E, Unit 100, Palmetto, FL 34221</p></div>`;
 }
 
-async function emailSignLink(signer: { name: string; email: string }, agreement: { title: string; party_name: string },
+async function emailSignLink(signer: { name: string; email: string }, agreement: { title: string; party_name: string; client_id?: string | null },
   token: string, glName: string): Promise<{ ok: boolean; reason?: string }> {
   // Token in the fragment: never sent to a server, so it stays out of logs.
   const link = `${SITE_URL}/sign.html#t=${encodeURIComponent(token)}`;
@@ -119,7 +143,7 @@ async function emailSignLink(signer: { name: string; email: string }, agreement:
 <p>${esc(glName)} has sent you <b>${esc(agreement.title)}</b> to review and sign electronically.</p>
 <p style="margin:26px 0"><a href="${esc(link)}" style="background:#1a6fff;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:700">Review &amp; sign</a></p>
 <p style="font-size:13px;color:#5a6779">This link is personal to you and expires in ${TOKEN_DAYS} days. If the button does not work, copy this address into your browser:<br>${esc(link)}</p>`);
-  return sendMail({ to: signer.email, subject, text, html });
+  return sendMail({ to: signer.email, subject, text, html }, { clientId: agreement.client_id, template: 'agreement_sign_link' });
 }
 
 // ── PDF ────────────────────────────────────────────────────────
@@ -259,7 +283,7 @@ async function loadByToken(sb: ReturnType<typeof db>, token: string) {
   return { signer, agreement };
 }
 
-async function startNextSigner(sb: ReturnType<typeof db>, agreement: { id: string; title: string; party_name: string; fields: Record<string, string> }) {
+async function startNextSigner(sb: ReturnType<typeof db>, agreement: { id: string; title: string; party_name: string; fields: Record<string, string>; client_id?: string | null }) {
   const { data: rows } = await sb.from('agreement_signers').select('*').eq('agreement_id', agreement.id).order('sign_order');
   const next = (rows || []).find((r: SignerRow) => r.status !== 'signed');
   if (!next) return { ok: true, done: true };
@@ -308,7 +332,7 @@ async function finalize(sb: ReturnType<typeof db>, agreementId: string) {
       text: `Hi ${s.name},\n\n"${agreement.title}" has been signed by everyone. A copy of the signed agreement is attached for your records.\n\nGood Liquid Bev Co`,
       html: emailShell(`<p>Hi ${esc(s.name)},</p><p><b>${esc(agreement.title)}</b> has been signed by everyone. A copy of the signed agreement is attached for your records.</p>`),
       attachment: { bytes, name: fileName },
-    });
+    }, { clientId: agreement.client_id, template: 'agreement_signed' });
   }
 }
 
@@ -333,7 +357,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     const agreementId = String(payload.agreement_id || '');
     if (!/^[0-9a-f-]{36}$/i.test(agreementId)) return errorResponse('agreement_id is required', 400);
-    const { data: agreement } = await sb.from('agreements').select('id,title,party_name,status,fields').eq('id', agreementId).maybeSingle();
+    const { data: agreement } = await sb.from('agreements').select('id,title,party_name,status,fields,client_id').eq('id', agreementId).maybeSingle();
     if (!agreement) return errorResponse('Agreement not found', 404);
     if (agreement.status === 'signed' || agreement.status === 'void' || agreement.status === 'declined') {
       return errorResponse('This agreement is ' + agreement.status + ' and cannot be sent.', 409);
@@ -414,7 +438,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           to: glEmail, subject: `Declined: ${agreement.title}`,
           text: `${signer.name} (${signer.email}) declined to sign "${agreement.title}".${reason ? '\n\nReason: ' + reason : ''}`,
           html: emailShell(`<p><b>${esc(signer.name)}</b> (${esc(signer.email)}) declined to sign <b>${esc(agreement.title)}</b>.</p>${reason ? `<p>Reason: ${esc(reason)}</p>` : ''}`),
-        });
+        }, { clientId: agreement.client_id, template: 'agreement_declined' });
       }
       return jsonResponse({ ok: true, declined: true });
     }
