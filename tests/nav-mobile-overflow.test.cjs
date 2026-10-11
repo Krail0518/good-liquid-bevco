@@ -114,6 +114,12 @@ async function main() {
     await pg.waitForTimeout(300);
     const open = await pg.evaluate(state);
     check('phone: menu button opens the links', open.linksVisible, JSON.stringify(open));
+    const adm = await pg.evaluate(() => {
+      const btn = document.getElementById('admin-btn');
+      const link = document.querySelector('#nav-links-list [data-gl-action="openAdmin"]');
+      return { buttonShown: !!btn && getComputedStyle(btn).display !== 'none', linkShown: !!link && link.getBoundingClientRect().width > 0 };
+    });
+    check('phone: floating ADMIN button hidden, Admin link in the menu instead', !adm.buttonShown && adm.linkShown, JSON.stringify(adm));
     check('phone: open menu does not scroll sideways', open.scrolledX === 0, JSON.stringify(open));
     await pg.click('#mobile-menu-btn');
     await pg.evaluate(() => window.scrollTo(0, window.scrollY));
@@ -155,6 +161,14 @@ async function main() {
     await desk.waitForTimeout(2500);
     const d = await desk.evaluate(state);
     check('desktop: nav links shown, menu button hidden', d.linksVisible && !d.buttonVisible, JSON.stringify(d));
+    const dk = await desk.evaluate(() => ({
+      admin: getComputedStyle(document.getElementById('admin-btn')).display !== 'none',
+      // The stat numbers are gradient-clipped text: anything wider than the
+      // box is invisible, which turned "200+" into "200".
+      squeezed: [...document.querySelectorAll('.sc-n')].filter((e) => e.scrollWidth > e.clientWidth + 1).map((e) => e.textContent.trim()),
+    }));
+    check('desktop: floating ADMIN button still shown', dk.admin, JSON.stringify(dk));
+    check('desktop: About stat numbers fit their box ("200+" not "200")', dk.squeezed.length === 0, JSON.stringify(dk));
     check('desktop: no sideways scroll', d.scrolledX === 0, JSON.stringify(d));
     const dscan = await desk.evaluate(overflowScan);
     check('desktop: no section content past the right edge', dscan.count === 0, JSON.stringify(dscan));
