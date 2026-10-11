@@ -62,10 +62,32 @@
 
   // The case tray a new canning line starts with: the last line's, so a run
   // on 12-count trays stays on them; 24 on an empty invoice.
+  // On an invoice with no canning line yet, a ticked 12-count tray box decides.
   window.glInvCansPerCase = function(){
     var rows = canningRows();
-    return rows.length ? rowCpc(rows[rows.length - 1]) : CPC;
+    if(rows.length) return rowCpc(rows[rows.length - 1]);
+    var p = panel(), t12 = p && p.querySelector('input[data-addon="tray12"]'), t24 = p && p.querySelector('input[data-addon="tray24"]');
+    return t12 && t12.checked && !(t24 && t24.checked) ? 12 : CPC;
   };
+
+  // Ticking a tray box below the line items puts every canning line on that
+  // tray. That is how people pick it: tick "12-count case tray", go up to the
+  // canning line, type 880 cases — and expect 10,560 cans. The tray picker on
+  // each line was the only switch for a while, so the box only added a charge
+  // and the line stayed on 24 (21,120 cans). The two trays are alternatives,
+  // so ticking one unticks the other; unticking only drops the charge.
+  function trayBoxTicked(cb, key){
+    var n = TRAY_CPC[key];
+    if(!n || !cb.checked) return;
+    var other = panel().querySelector('input[data-addon="' + (key === 'tray12' ? 'tray24' : 'tray12') + '"]');
+    if(other) other.checked = false;
+    canningRows().forEach(function(row){
+      var te = document.getElementById(row.id + '-tray');
+      if(!te || parseInt(te.value, 10) === n) return;
+      te.value = String(n);
+      if(typeof window.glSetCanTray === 'function') window.glSetCanTray(row.id);
+    });
+  }
   function cpp(){
     var el = document.getElementById('gl-inv-addons-cpp');
     return Math.max(1, parseInt(el && el.value, 10) || 80);
@@ -178,7 +200,7 @@
       card.appendChild(top);
       card.appendChild(rateLine);
       grid.appendChild(card);
-      cb.addEventListener('change', sync);
+      cb.addEventListener('change', function(){ trayBoxTicked(cb, a.key); sync(); });
       rate.addEventListener('input', sync);
     });
     wrap.appendChild(grid);
