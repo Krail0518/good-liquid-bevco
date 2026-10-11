@@ -208,15 +208,20 @@ probe_public "public invoice links (get_shared_invoice)" -X POST "$SUPA/rest/v1/
 probe_public "client onboarding page (gl_onboarding_get)" -X POST "$SUPA/rest/v1/rpc/gl_onboarding_get" \
   -H "apikey: $ANON" -H 'Content-Type: application/json' -d '{"p_token":"probe"}'
 
-# Probed with an EMPTY payload so it validates and rejects without creating a
-# deal — reachability without side effects.
+# A COMPLETE submission with dry_run: the function runs the whole anonymous
+# path — validation, the contact_submissions row, the deal, the deck dispatch
+# and every trigger — then raises DRY_RUN_OK, which rolls all of it back.
+# This used to send an empty payload, which validation rejects before the
+# step that broke: from 2026-08-28 every real submission failed (42501 in
+# the deck call) while this probe passed every day.
+QUOTE_PROBE='{"p":{"dry_run":true,"brand_name":"Invariant probe","contact_name":"Invariant Probe","email":"invariant-probe@example.com","phone":"555-555-0199","details":"Automated dry run of the public quote form.","service":"Small batch canning","product_type":"Seltzer"}}'
 if ! http_probe -X POST "$SUPA/rest/v1/rpc/submit_quote_request" \
-     -H "apikey: $ANON" -H 'Content-Type: application/json' -d '{"p":{}}'; then
+     -H "apikey: $ANON" -H 'Content-Type: application/json' -d "$QUOTE_PROBE"; then
   unver "public quote form (submit_quote_request) — could not be reached ($(why)), so it was not tested."
-elif echo "$HTTP_BODY" | grep -q 'brand_name is required'; then
-  pass "public quote form (submit_quote_request)"
+elif echo "$HTTP_BODY" | grep -q 'DRY_RUN_OK'; then
+  pass "public quote form (submit_quote_request) — a full anonymous submission goes through"
 else
-  fail "quote form unreachable or changed: $(snip)"
+  fail "PUBLIC QUOTE FORM IS BROKEN: a valid anonymous submission does not go through: $(snip)"
 fi
 
 for p in "/" "/?portal=1" "/onboard.html"; do

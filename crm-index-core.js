@@ -3717,30 +3717,16 @@ async function submitContactForm(btn){
     });
     formspreeOk = emailRes.ok;
 
-    // 2. Save the raw submission (audit + future analytics).
-    try {
-      if(!window.supa) throw new Error('Supabase not loaded');
-      await window.supa.from('contact_submissions').insert([{
-        brand_name:    vals.brand_name,
-        contact_name:  vals.contact_name,
-        email:         vals.email,
-        phone:         vals.phone,
-        city:          vals.city,
-        state:         vals.state,
-        service:       vals.service,
-        product_type:  vals.product_type,
-        volume:        vals.volume,
-        timeline:      vals.timeline,
-        funding_stage: vals.funding_stage,
-        lead_source:   vals.lead_source,
-        message:       vals.details,
-        status:        'new'
-      }]);
-    } catch(e){ console.warn('Supabase contact_submissions insert failed:', e); }
+    // 2. The raw submission is recorded by submit_quote_request itself, in the
+    //    same transaction as the deal (and that fires the new-quote alert).
+    //    This page used to insert it directly, sending six columns the table
+    //    does not have and never checking the error, so nothing was saved
+    //    from 2026-07-21 on.
 
     // 3. Auto-create a deal in the Pipeline (Prospecting stage) so the lead
     //    lands on the kanban and shows up in pipeline reports immediately.
     let newDealId = null;
+    let dealError = null;
     try {
       const dealName = vals.brand_name + ' — Quote Request';
       // Submitted through a SECURITY DEFINER RPC: the anonymous role has NO
@@ -3789,14 +3775,21 @@ async function submitContactForm(btn){
         if(typeof renderKanban === 'function') renderKanban();
         if(typeof renderDash === 'function')   renderDash();
       }
-    } catch(e){ console.warn('Pipeline deal creation failed:', e); }
+    } catch(e){
+      dealError = e;
+      console.error('Pipeline deal creation failed:', e);
+    }
 
     // 4. Drop a notification in the CRM if it's open.
     if(typeof addNotification === 'function'){
       addNotification('💼 New quote request: ' + vals.brand_name, (vals.contact_name || '') + ' · ' + (vals.email || ''), 'success');
     }
 
-    if(formspreeOk){
+    // "Sent" means the lead is in the CRM. It used to mean Formspree accepted
+    // the email: from 2026-08-28 every visitor saw "sent" while the deal RPC
+    // failed for all of them, and Formspree's free plan silently drops mail
+    // past 50 a month.
+    if(newDealId){
       document.getElementById('form-ok').style.display = 'block';
       ['qf-brand','qf-name','qf-email','qf-phone','qf-city','qf-state','qf-volume','qf-timeline','qf-funding','qf-source','qf-details'].forEach(id => {
         const el = document.getElementById(id); if(el) el.value = '';
@@ -3813,7 +3806,17 @@ async function submitContactForm(btn){
     } else {
       btn.textContent = 'Send inquiry →';
       btn.disabled = false;
-      alert('Something went wrong sending the email. Your inquiry was saved — Mike will see it. Or email Mike@GoodLiquid.com directly.');
+      // The server's own messages are written for visitors ("We already have
+      // your request…", "please try again in a few minutes"); anything else
+      // gets the direct address. Never claim it was saved when it wasn't.
+      const msg = String((dealError && dealError.message) || '');
+      const friendly = /already have your request|try again in a few minutes|required|valid/i.test(msg);
+      const text = friendly
+        ? msg
+        : 'Sorry — your inquiry did not go through. Please try again, or email Mike@GoodLiquid.com directly.' +
+          (formspreeOk ? ' (A copy did reach our inbox, so we may already have it.)' : '');
+      if(errBox){ errBox.textContent = text; errBox.style.display = 'block'; errBox.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+      else alert(text);
     }
   } catch(e){
     console.error('submitContactForm threw', e);
