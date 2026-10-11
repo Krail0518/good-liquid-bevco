@@ -183,17 +183,89 @@ check('style-src does not allow arbitrary hosts',
   !style.includes('*') && !style.includes('https:'),
   'got: ' + style.join(' '));
 
-// No page may carry an inline <style> element. These were extracted to .css
-// files so that style-src-elem can eventually drop 'unsafe-inline'; a new one
-// would silently re-add a reason to keep it.
-const PAGES = fs.readdirSync(ROOT).filter((f) => f.endsWith('.html'));
+// No served page may carry an inline <style> element, and none may carry an
+// inline <script> body. style-src-elem and script-src both lack
+// 'unsafe-inline' and any hash, so the browser refuses to apply or run either
+// one -- and nothing on the server side notices.
+//
+// This used to read only the repo ROOT. The five articles under resources/
+// each styled themselves with an inline <style> block, so once #389 made
+// style-src-elem strict they all rendered as unstyled Times New Roman on
+// production, and this test kept passing because it never looked there. So
+// walk every directory Vercel actually publishes -- everything not excluded by
+// a directory rule in .vercelignore -- rather than a fixed list.
+const SKIP_DIRS = new Set(['node_modules', '.git']);
+const vercelIgnoredDirs = new Set();
+try {
+  for (const line of fs.readFileSync(path.join(ROOT, '.vercelignore'), 'utf8').split(/\r?\n/)) {
+    const m = line.trim().match(/^([^#*!][^*]*)\/$/);
+    if (m) vercelIgnoredDirs.add(m[1]);
+  }
+} catch (_) { /* no .vercelignore: everything is published */ }
+
+const PAGES = [];
+(function walkPages(dir) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    const rel = path.relative(ROOT, p).split(path.sep).join('/');
+    if (e.isDirectory()) {
+      if (SKIP_DIRS.has(e.name) || vercelIgnoredDirs.has(rel)) continue;
+      walkPages(p);
+    } else if (e.name.endsWith('.html')) {
+      PAGES.push(rel);
+    }
+  }
+})(ROOT);
+
+check('the served-page scan reaches resources/',
+  PAGES.some((p) => p.startsWith('resources/')),
+  'found: ' + PAGES.join(', ') + ' -- the articles under resources/ are ' +
+  'exactly the pages the old root-only scan missed');
+
 const withInlineStyle = PAGES.filter((f) =>
   /<style\b[^>]*>/i.test(fs.readFileSync(path.join(ROOT, f), 'utf8')));
 
 check('no page has an inline <style> element',
   withInlineStyle.length === 0,
   withInlineStyle.join(', ') + '\n          Move it to a .css file and <link> it ' +
-  'where the block was, so the cascade order does not change.');
+  'where the block was, so the cascade order does not change. ' +
+  "style-src-elem has no 'unsafe-inline', so the browser ignores the block.");
+
+// A <script> with no src and a non-empty body runs only under 'unsafe-inline'
+// or a matching hash/nonce, and script-src has neither. Data blocks (JSON-LD
+// and the like) are never executed, so CSP does not apply to them.
+const DATA_SCRIPT_TYPES = /^(application\/(ld\+)?json|text\/template|text\/x-template)$/i;
+function inlineScriptBodies(src) {
+  const out = [];
+  for (const m of src.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)) {
+    const attrs = m[1];
+    if (/\bsrc\s*=/i.test(attrs)) continue;
+    const type = (attrs.match(/\btype\s*=\s*["']?([^"'\s>]+)/i) || [])[1];
+    if (type && DATA_SCRIPT_TYPES.test(type)) continue;
+    if (m[2].trim() === '') continue;
+    out.push(src.slice(0, m.index).split('\n').length);
+  }
+  return out;
+}
+
+check('the inline-script detector recognises what CSP would block',
+  JSON.stringify(inlineScriptBodies(
+    '<script src="a.js"></script>\n<script>x()</script>\n' +
+    '<script type="application/ld+json">{}</script>\n' +
+    '<script type="module">\nimport "a";</script>')) === JSON.stringify([2, 4]),
+  'fixture: a src= script and a JSON-LD block are allowed; a classic and a ' +
+  'module inline body are not');
+
+const withInlineScript = [];
+for (const f of PAGES) {
+  for (const ln of inlineScriptBodies(fs.readFileSync(path.join(ROOT, f), 'utf8'))) {
+    withInlineScript.push(f + ':' + ln);
+  }
+}
+check('no page has an inline <script> body',
+  withInlineScript.length === 0,
+  withInlineScript.join(', ') + "\n          script-src has no 'unsafe-inline', " +
+  'so this code never runs in the browser. Move it to a .js file and load it with src=.');
 
 // The same rule for CSS built at runtime: document.createElement('style') is a
 // style ELEMENT too, and style-src-elem governs it exactly like a markup one.
