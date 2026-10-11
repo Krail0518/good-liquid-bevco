@@ -493,22 +493,37 @@
     window.glCalcInvTotal();
   };
 
+  /* ── Cans per case ──
+     A case is 24 cans unless the invoice uses 12-count case trays, in which
+     case every "case" on the row is a 12-can tray. Each canning row carries its
+     own count in data-gl-cpc, so the $/case, the cans shown and the add-on
+     quantities all agree. It used to be a fixed 24 everywhere: ticking the
+     12-count tray only added a tray charge while the row still billed 24 cans
+     per case, and pallets (cases ÷ trays per pallet) came out at half. */
+  window.glCanRowCpc=function(row){
+    var n=parseInt(row&&row.getAttribute('data-gl-cpc'),10);
+    return n>0?n:CPC;
+  };
+
   /* ── Update canning row ── */
   window.glUpdateCan=function(uid){
     var ce=document.getElementById(uid+'-cases'),fe=document.getElementById(uid+'-format'),pe=document.getElementById(uid+'-pcase');
     if(!ce||!fe)return;
     var cases=Math.max(1,parseInt(ce.value)||200),fmt=fe.value;
     var row=document.getElementById(uid);
+    var cpc=window.glCanRowCpc(row);
     var override = row && row.getAttribute('data-pu-override')==='1';
     var pcase;
     if(override && pe){ pcase = parseFloat(pe.value)||0; }
-    else { var pcDef = window.glGetCanRate(cases,fmt); pcase = pcDef*CPC; if(pe) pe.value = pcase.toFixed(2); }
-    var pc = CPC ? (pcase/CPC) : 0;
+    // Volume tiers (min_cases) are in 24-can cases, so look the rate up by
+    // the equivalent number of those.
+    else { var pcDef = window.glGetCanRate(Math.floor(cases*cpc/CPC),fmt); pcase = pcDef*cpc; if(pe) pe.value = pcase.toFixed(2); }
+    var pc = cpc ? (pcase/cpc) : 0;
     var total = pcase*cases;
     var pcanEl = document.getElementById(uid+'-pcan');
     if(pcanEl) pcanEl.innerHTML = window.glUsd(pc,4)+'/can <a href="#" data-gl-action="glResetCanPrice" data-gl-prevent="" data-gl-arg1="'+uid+'" style="color:var(--teal);text-decoration:none;margin-left:4px" title="Reset to default rate">&#x21BA;</a>';
     var cansEl = document.getElementById(uid+'-cans');
-    if(cansEl) cansEl.textContent=(cases*CPC).toLocaleString()+' cans';
+    if(cansEl) cansEl.textContent=(cases*cpc).toLocaleString()+' cans'+(cpc!==CPC?' ('+cpc+'/case)':'');
     var te=document.getElementById(uid+'-total');
     if(te) te.textContent=window.glUsd(total);
     if(row) row.setAttribute('data-gl-total',total);
@@ -567,18 +582,21 @@
   };
 
   /* ── Build canning row ── */
-  window.glBuildCanRow=function(uid,cases,fmt,fmts,pc,descPrefill){
-    var pcase=pc*CPC,total=pcase*cases,cans=cases*CPC;
+  // cpc: cans per case for this row. Omitted → whatever the invoice's case
+  // trays currently say (24 unless 12-count trays are ticked).
+  window.glBuildCanRow=function(uid,cases,fmt,fmts,pc,descPrefill,cpc){
+    cpc=cpc||(typeof window.glInvCansPerCase==='function'?window.glInvCansPerCase():CPC);
+    var pcase=pc*cpc,total=pcase*cases,cans=cases*cpc;
     var opts=fmts.map(function(f){return'<option value="'+f.value+'"'+(f.value===fmt?' selected':'')+'>'+f.label+'</option>';}).join('');
     var PSTY='width:84px;background:#1a2a3a;color:#fff;border:1px solid rgba(0,229,192,.25);border-radius:6px;padding:3px 6px;font-size:12px;font-weight:600;text-align:right';
     var DSTY='width:100%;background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:3px 6px;font-size:11px;margin-top:4px';
-    var row=document.createElement('div');row.id=uid;row.setAttribute('style',RS);row.setAttribute('data-gl-total',total);row.setAttribute('data-pu-override','0');
+    var row=document.createElement('div');row.id=uid;row.setAttribute('style',RS);row.setAttribute('data-gl-total',total);row.setAttribute('data-pu-override','0');row.setAttribute('data-gl-cpc',cpc);
     row.innerHTML=
       '<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Canning</div>'+
       '<select id="'+uid+'-format" data-gl-action="glUpdateCan" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" style="'+SS+'">'+opts+'</select>'+
       '<input id="'+uid+'-desc" type="text" placeholder="Description (optional)" value="'+(descPrefill||'').replace(/"/g,'&quot;').replace(/'/g, '&#39;')+'" style="'+DSTY+'"/></div>'+
       '<div style="text-align:center"><input id="'+uid+'-cases" type="number" min="1" value="'+cases+'" data-gl-action="glUpdateCan" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" style="'+SI+'"/>'+
-      '<div id="'+uid+'-cans" style="font-size:10px;color:var(--muted);margin-top:3px">'+cans.toLocaleString()+' cans</div></div>'+
+      '<div id="'+uid+'-cans" style="font-size:10px;color:var(--muted);margin-top:3px">'+cans.toLocaleString()+' cans'+(cpc!==CPC?' ('+cpc+'/case)':'')+'</div></div>'+
       '<div style="text-align:right;padding-right:4px">'+
       '<input id="'+uid+'-pcase" type="number" step="0.01" min="0" value="'+pcase.toFixed(2)+'" data-gl-action="glUpdateCanPrice" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" title="$/case — edit to override the default rate" style="'+PSTY+'"/>'+
       '<div id="'+uid+'-pcan" style="font-size:10px;color:var(--muted);margin-top:3px">'+window.glUsd(pc,4)+'/can <a href="#" data-gl-action="glResetCanPrice" data-gl-prevent="" data-gl-arg1="'+uid+'" style="color:var(--teal);text-decoration:none;margin-left:4px" title="Reset to default rate">&#x21BA;</a></div></div>'+
@@ -800,7 +818,9 @@
         var perCase=cases>0?total/cases:0;
         var canDesc='Canning - '+fLbl;
         if(userDesc) canDesc += ' — ' + userDesc;
-        lines.push({desc:canDesc,qty:cases,unitPrice:perCase,total:total,unit:'case'});
+        // cansPerCase lets a reopened invoice rebuild the row at the right
+        // case size (12-count trays) instead of assuming 24.
+        lines.push({desc:canDesc,qty:cases,unitPrice:perCase,total:total,unit:'case',cansPerCase:window.glCanRowCpc(row)});
       }else if(punitEl){
         var qtyEl=document.getElementById(uid+'-qty');
         var qty=qtyEl?parseInt(qtyEl.value)||0:0;
@@ -1200,8 +1220,11 @@
           var row = null;
           if(type === 'canning' && window.glBuildCanRow){
             var canFmt = findFormatByLabel(canFmts, parsed.fmtLabel) || canFmts[0].value;
-            var perCan = (l.unitPrice || 0) / 24; // unitPrice on canning lines is per-case
-            row = window.glBuildCanRow(uid, l.qty || 0, canFmt, canFmts, perCan, parsed.userDesc);
+            // unitPrice on canning lines is per-case; invoices saved before
+            // cansPerCase existed were all 24-can cases.
+            var lineCpc = l.cansPerCase || 24;
+            var perCan = (l.unitPrice || 0) / lineCpc;
+            row = window.glBuildCanRow(uid, l.qty || 0, canFmt, canFmts, perCan, parsed.userDesc, lineCpc);
             row.setAttribute('data-pu-override','1'); // user's saved price wins over catalog
             row.setAttribute('data-gl-total', (l.qty||0) * (l.unitPrice||0));
           } else if(type === 'bottling' && window.glBuildBtlRow){
