@@ -1030,3 +1030,4 @@ SECRET   gl_gmail_client_secret | len=35 | known_published=f
 SECRET   gl_gmail_connected_email | len=19 | known_published=f
 SECRET   gl_gmail_refresh_token | len=103 | known_published=f
 SECRET   gl_notify_secret | len=64 | known_published=f
+SECRET   gl_telegram_bot_token | len=46 | known_published=f
