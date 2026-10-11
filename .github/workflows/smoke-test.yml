@@ -378,6 +378,13 @@ jobs:
           REPO_ROOT: ${{ github.workspace }}
         run: node tests/estimator-case-size.test.cjs
 
+      # Marketing page on a phone: menu hidden behind its button, rate card fits.
+      - name: Run phone nav and rate card test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/nav-mobile-overflow.test.cjs
+
       # Help: the ❓ button opens the section for the page you are on, for
       # every page in index.html, including sections add-ons insert late.
       - name: Run help context test
