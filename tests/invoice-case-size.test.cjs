@@ -143,6 +143,44 @@ async function main() {
     check('back to 24-count: same 31,680 cans as 1,320 cases, typed $7.20 becomes $14.40', back24.cases === 1320 && /31,680 cans/.test(back24.cans) && back24.pcase === 14.4, JSON.stringify(back24));
     check('back to 24-count: the 24-count tray charge replaces the 12-count one', back24.tray24 === 1320 && back24.tray12 === null, JSON.stringify(back24));
     check('a new canning line starts on the 12-count tray the last line uses', second === '12', second);
+    // Mike's flow: tick "12-count case tray" in the add-ons below the line
+    // items, go up to the canning line, type 880 cases. Expect 10,560 cans —
+    // the tray box used to only add a charge, leaving 21,120.
+    const freshBuilder = async (withLine) => {
+      await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForTimeout(2500);
+      return page.evaluate(async (withLine) => {
+        const wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
+        window.currentUser = { id: 'test-admin', email: 'test@local', role: 'admin', is_admin: true, name: 'Test Admin' };
+        window._glR = { ok: true, b: [], c: [{ format: '12oz-sleek', format_label: '12oz Sleek', min_cases: 0, price_per_can: 0.5 }] };
+        window.glLoadRates = async () => {};
+        window.glGetClientOverride = () => null;
+        window.openNewInvoiceBuilder();
+        await wait(400);
+        if (withLine) { window.glAddLine('canning'); await wait(100); }
+        return true;
+      }, withLine);
+    };
+    const tickTray12ThenType880 = async (addLineAfter) => {
+      await page.click('#gl-inv-addons input[data-addon="tray12"]');
+      if (addLineAfter) { await page.evaluate(() => window.glAddLine('canning')); await page.waitForTimeout(100); }
+      const lid = await page.evaluate(() => document.querySelector('#gl-inv-body [id$="-cases"]').closest('[data-gl-total]').id);
+      await page.fill(`#${lid}-cases`, '880');
+      await page.press(`#${lid}-cases`, 'Tab');
+      await page.waitForTimeout(150);
+      return page.evaluate((lid) => ({
+        cases: Number(document.getElementById(lid + '-cases').value),
+        cans: document.getElementById(lid + '-cans').textContent,
+        tray: document.getElementById(lid + '-tray').value,
+        pcase: Number(document.getElementById(lid + '-pcase').value),
+      }), lid);
+    };
+    await freshBuilder(true);
+    const boxThenLine = await tickTray12ThenType880(false);
+    await freshBuilder(false);
+    const boxBeforeLine = await tickTray12ThenType880(true);
+    check('tick 12-count tray box, then 880 cases on the existing line = 10,560 cans', /10,560 cans/.test(boxThenLine.cans) && boxThenLine.tray === '12' && boxThenLine.pcase === 6, JSON.stringify(boxThenLine));
+    check('tick 12-count tray box, then add the line and type 880 = 10,560 cans', /10,560 cans/.test(boxBeforeLine.cans) && boxBeforeLine.tray === '12', JSON.stringify(boxBeforeLine));
     check('no page errors', errors.length === 0, errors.join(' | '));
   } finally {
     await browser.close();

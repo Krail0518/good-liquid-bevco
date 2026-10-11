@@ -136,6 +136,20 @@ section{padding:96px 52px}
 .pni:hover:not(.act){background:rgba(255,255,255,.03);border-color:rgba(255,255,255,.06)}
 .panels .panel{display:none}.panels .panel.act{display:block}
 .pt-wrap{background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.07);border-radius:16px;overflow:hidden;margin-bottom:16px}
+/* Phones: the rate card had no small-screen layout, so the 250px menu column
+   pushed the tables past the right edge, where the page clips them — the
+   16oz column could not be seen at all. Stack the menu above the tables and
+   let a table that is still too wide scroll inside its own box. */
+@media (max-width: 768px){
+  /* A phone page never scrolls sideways. body already clips, but opening the
+     menu let the page slide 176px left; clip (unlike hidden) keeps sticky
+     positioning working. */
+  html{overflow-x:clip}
+  .pl{grid-template-columns:minmax(0,1fr);gap:16px;margin-top:32px}
+  .pnav{position:static;flex-direction:row;overflow-x:auto;gap:8px;padding-bottom:4px}
+  .pnav .pni{flex:0 0 auto}
+  .pt-wrap{overflow-x:auto}
+}
 .pt-head{background:rgba(0,229,192,.06);border-bottom:1px solid rgba(0,229,192,.1);padding:16px 20px;display:flex;align-items:center;justify-content:space-between}
 .pt-head h4{font-size:14px;font-weight:700;color:var(--white)}.pt-head .tg{font-family:var(--ff-mono);font-size:10px;color:var(--teal)}
 .ptbl{width:100%;border-collapse:collapse}
@@ -910,11 +924,18 @@ select option, .fsel option {
 #ai-tools { padding-bottom: calc(env(safe-area-inset-bottom) + 8px); }
 
 
-  
+/* Desktop only. These lines lost their @media wrapper when the styles moved
+   out of index.html (GL-DEF-02), so they applied on phones too:
+   .nav-links { display: flex !important } beat the phone rule that hides the
+   links behind the menu button, so they sat beside it. */
+@media (min-width: 769px) {
   #mobile-crm-menu { display: none !important; }
   #mobile-menu-btn { display: none !important; }
   .nav-links { display: flex !important; position: static !important; }
-  #crm-body { flex: 1 !important; overflow-y: auto !important; }
+}
+/* Lost the same wrapper, but the phone CRM has scrolled with it since, so it
+   stays on every screen size. */
+#crm-body { flex: 1 !important; overflow-y: auto !important; }
 
 /* ── Bottom tab nav: hidden by default; all layout set in the phone media query ── */
 #crm-bottom-nav { display: none; }
