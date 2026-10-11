@@ -24,6 +24,7 @@ import { corsHeaders, jsonResponse, handlePreflight } from "../_shared/cors.ts";
 import { isCronCall } from "../_shared/cron-auth.ts";
 import { requireStaff } from "../_shared/auth.ts";
 import { sendCallMeBot } from "../_shared/callmebot.ts";
+import { sendTelegram } from "../_shared/telegram.ts";
 
 const MIKE_EMAIL = "mike@goodliquid.com";
 const DAY = 86400000;
@@ -189,14 +190,15 @@ Deno.serve(async (req) => {
   // The shared sender logs CallMeBot's own reply and counts its refusals
   // (e.g. "0 messages left ... Message not sent") as failures. The brief
   // used to report every one of those as sent.
-  const wa_ = await sendCallMeBot("attention-digest", wa);
+  const [wa_, tg_] = await Promise.all([sendCallMeBot("attention-digest", wa), sendTelegram("attention-digest", wa)]);
   const whatsappSent = wa_.ok;
+  const telegramSent = tg_.ok;
   const emailSent = await sendEmail(subject, text, html);
 
   try {
     await supa.from("audit_log").insert({ action: "attention_digest_sent", target: dateLabel,
-      details: { items: items.length, ...counts, whatsappSent, whatsappReply: wa_.reply, emailSent } });
+      details: { items: items.length, ...counts, whatsappSent, whatsappReply: wa_.reply, telegramSent, telegramReply: tg_.reply, emailSent } });
   } catch { /* non-fatal */ }
 
-  return jsonResponse({ items: items.length, counts, whatsappSent, whatsappReply: wa_.reply, emailSent }, 200);
+  return jsonResponse({ items: items.length, counts, whatsappSent, whatsappReply: wa_.reply, telegramSent, telegramReply: tg_.reply, emailSent }, 200);
 });
