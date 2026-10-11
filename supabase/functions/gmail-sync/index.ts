@@ -73,6 +73,12 @@ const FREE_DOMAINS = new Set([
   'gmx.com','zoho.com','mail.com','comcast.net','verizon.net','att.net','sbcglobal.net',
 ]);
 
+// Good Liquid's own domains. Never a contact: an internal test client on
+// @goodliquid.com made every email Mike sent look like it came FROM a
+// contact, so 525 sent emails were stored as inbound, 450 of them filed
+// under that test client, and 184 internal alert emails were pulled in.
+const OWN_DOMAINS = new Set(['goodliquid.com', 'goodliquidbevco.com']);
+
 // The company domain of an address, or '' if it's a free provider / malformed.
 // Used to attribute mail from a NEW address at a company we already know
 // (a client emails from sarah@acme.com after we only had john@acme.com).
@@ -153,6 +159,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const domainOwner = new Map<string, string | null>();
   const addContact = (email: unknown, clientId: string | null) => {
     for (const e of splitAddrs(email)) {
+      if (OWN_DOMAINS.has(String(e).split('@')[1] || '')) continue;
       // In single-lead mode we still want the whole COMPANY, so accept the
       // target addresses and anything at their domain.
       if (isOnly && !onlyEmails.includes(e) && !onlyDomains.has(companyDomain(e))) continue;
@@ -256,7 +263,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // moved to a second @-address and vanished from the CRM). Messages
     // involving nobody we track — by address or company domain — are ignored.
     const domainHit = (a: string) => { const d = companyDomain(a); return d && domainOwner.has(d); };
-    const inboundMatch  = fromAddrs.find((a) => contacts.has(a)) || fromAddrs.find(domainHit);
+    // Gmail's own SENT label settles the direction: a message we sent is
+    // outbound whoever else is on it.
+    const isSent = Array.isArray(msg.labelIds) && msg.labelIds.includes('SENT');
+    const inboundMatch  = isSent ? undefined : (fromAddrs.find((a) => contacts.has(a)) || fromAddrs.find(domainHit));
     const outboundMatch = toAddrs.find((a) => contacts.has(a))   || toAddrs.find(domainHit);
     if (!inboundMatch && !outboundMatch) continue;
 
