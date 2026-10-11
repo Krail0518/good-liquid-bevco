@@ -87,7 +87,10 @@ async function sendWhatsApp(message: string): Promise<{ ok: boolean; status: num
     const url = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(message)}&apikey=${encodeURIComponent(apiKey)}`;
     const r = await fetch(url);
     const reply = callMeBotReply(await r.text(), phone, apiKey);
-    if (!r.ok || reply.toLowerCase().includes('error')) {
+    // 'Message not sent' is how CallMeBot says it refused, e.g. a free key
+    // with 0 messages left — still HTTP 200, with no 'error' in it.
+    const lower = reply.toLowerCase();
+    if (!r.ok || lower.includes('error') || lower.includes('not sent') || lower.includes('0 messages left')) {
       console.error('[notify-deal] CallMeBot error:', r.status, reply);
       return { ok: false, status: r.status, reply };
     }
