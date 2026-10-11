@@ -1,5 +1,6 @@
 // notify-deal — internal notification dispatcher for pipeline deals and tour bookings.
-// Sends a WhatsApp message to Mike via CallMeBot and a Gmail notification email.
+// Sends Mike a Telegram message and a Gmail notification email. (WhatsApp via
+// CallMeBot was removed 2026-10-11: its free quota ran out and Telegram took over.)
 //
 // Called from:
 //   • booking-confirm  (tour booked via public book.html)
@@ -33,8 +34,6 @@
 //
 // Secrets required:
 //   GL_NOTIFY_SECRET          — shared secret, also stored in Postgres vault
-//   CALLMEBOT_PHONE           — recipient phone number (digits only, no +), e.g. 18034935065
-//   CALLMEBOT_API_KEY         — API key from CallMeBot WhatsApp activation
 //   SUPABASE_URL              — auto-provided
 //   SUPABASE_SERVICE_ROLE_KEY — auto-provided
 //
@@ -48,7 +47,6 @@ import { requireStaff } from '../_shared/auth.ts';
 // gmail-creds.ts for historical reasons; the gl_notify_secret is unrelated
 // to Gmail).
 import { vaultGet } from '../_shared/gmail-creds.ts';
-import { sendCallMeBot, type CallMeBotResult } from '../_shared/callmebot.ts';
 import { sendTelegram, setupTelegram } from '../_shared/telegram.ts';
 import { sendAlertEmail, logNotification, type EmailResult } from '../_shared/alert-delivery.ts';
 import {
@@ -76,27 +74,20 @@ const EMOJI_MAP: Record<string, string> = {
   onboarding_complete:'🚀',
 };
 
-// WhatsApp goes through the shared CallMeBot sender, which logs CallMeBot's
-// own reply and counts its refusals ("0 messages left ... Message not sent")
-// as failures. See _shared/callmebot.ts.
-function sendWhatsApp(message: string): Promise<CallMeBotResult> {
-  return sendCallMeBot('notify-deal', message);
-}
-
 // gmail-send with a retry on 429 / 5xx (see _shared/alert-delivery.ts). The
 // first version gave up on the first 429, so a burst of alerts lost emails.
 function sendEmail(subject: string, text: string): Promise<EmailResult> {
   return sendAlertEmail('notify-deal', MIKE_EMAILS, subject, text);
 }
 
-function buildMessage(event: string, data: Record<string, string>): { whatsapp: string; subject: string; body: string } {
+function buildMessage(event: string, data: Record<string, string>): { chatText: string; subject: string; body: string } {
   const emoji = EMOJI_MAP[event] || '🔔';
   const co    = data.company || data.name || 'Unknown';
   const name  = data.name || '';
 
   if (event === 'lead_sla_overdue') {
     const n = data.count || '1';
-    const whatsapp = `${emoji} ${n} lead${n === '1' ? '' : 's'} still waiting on a FIRST reply (past 1 business day):\n${data.summary || ''}`;
+    const chatText = `${emoji} ${n} lead${n === '1' ? '' : 's'} still waiting on a FIRST reply (past 1 business day):\n${data.summary || ''}`;
     const body = [
       `${n} lead(s) have gone past the one-business-day first-reply mark with no response from us:`,
       ``,
@@ -104,25 +95,25 @@ function buildMessage(event: string, data: Record<string, string>): { whatsapp: 
       ``,
       `Open the pipeline and get back to them before they go cold.`,
     ].join('\n');
-    return { whatsapp, subject: `⚠️ ${n} lead(s) awaiting a first reply`, body };
+    return { chatText, subject: `⚠️ ${n} lead(s) awaiting a first reply`, body };
   }
 
   if (event === 'followups_ready') {
     const n = data.count || '1';
     const link = data.review_url ? ` Review & send: ${data.review_url}` : '';
-    const whatsapp = `${emoji} ${n} follow-up${n === '1' ? '' : 's'} drafted and ready to send to quiet leads.${link}`;
+    const chatText = `${emoji} ${n} follow-up${n === '1' ? '' : 's'} drafted and ready to send to quiet leads.${link}`;
     const body = [
       `${n} follow-up email(s) have been drafted for leads that went quiet.`,
       ``,
       data.review_url ? `Review and send them with one tap: ${data.review_url}` : `Open the CRM Follow-ups card to review and send.`,
     ].join('\n');
-    return { whatsapp, subject: `✍️ ${n} follow-up(s) ready to send`, body };
+    return { chatText, subject: `✍️ ${n} follow-up(s) ready to send`, body };
   }
 
   if (event === 'tour_requested') {
     const when     = data.date ? `${data.date} at ${data.time || ''}`.trim() : 'time TBD';
     const review   = data.review_url ? ` Approve/decline: ${data.review_url}` : '';
-    const whatsapp = `${emoji} TOUR REQUEST: ${name}${data.company ? ' (' + data.company + ')' : ''} wants ${when}. Email: ${data.email || 'n/a'}.${review}`;
+    const chatText = `${emoji} TOUR REQUEST: ${name}${data.company ? ' (' + data.company + ')' : ''} wants ${when}. Email: ${data.email || 'n/a'}.${review}`;
     const body     = [
       `New tour request via Good Liquid scheduling link — awaiting your approval.`,
       ``,
@@ -133,12 +124,12 @@ function buildMessage(event: string, data: Record<string, string>): { whatsapp: 
       ``,
       data.review_url ? `Approve or decline: ${data.review_url}` : '',
     ].filter(Boolean).join('\n');
-    return { whatsapp, subject: `📅 Approve tour? ${name} — ${when}`, body };
+    return { chatText, subject: `📅 Approve tour? ${name} — ${when}`, body };
   }
 
   if (event === 'tour_booked') {
     const when     = data.date ? `${data.date} at ${data.time || ''}`.trim() : 'time TBD';
-    const whatsapp = `${emoji} TOUR BOOKED: ${name}${data.company ? ' (' + data.company + ')' : ''} — ${when}. Email: ${data.email || 'n/a'}`;
+    const chatText = `${emoji} TOUR BOOKED: ${name}${data.company ? ' (' + data.company + ')' : ''} — ${when}. Email: ${data.email || 'n/a'}`;
     const body     = [
       `Tour booked via Good Liquid scheduling link.`,
       ``,
@@ -148,11 +139,11 @@ function buildMessage(event: string, data: Record<string, string>): { whatsapp: 
       `Phone:   ${data.phone   || '—'}`,
       `When:    ${when}`,
     ].join('\n');
-    return { whatsapp, subject: `📅 New tour: ${name} — ${when}`, body };
+    return { chatText, subject: `📅 New tour: ${name} — ${when}`, body };
   }
 
   if (event === 'new_quote') {
-    const whatsapp = `${emoji} NEW QUOTE REQUEST from ${co}${data.email ? ' (' + data.email + ')' : ''}. Service: ${data.service || 'TBD'}. Check the pipeline.`;
+    const chatText = `${emoji} NEW QUOTE REQUEST from ${co}${data.email ? ' (' + data.email + ')' : ''}. Service: ${data.service || 'TBD'}. Check the pipeline.`;
     const body     = [
       `New quote request submitted via goodliquidbevco.com.`,
       ``,
@@ -163,13 +154,13 @@ function buildMessage(event: string, data: Record<string, string>): { whatsapp: 
       `Service: ${data.service || '—'}`,
       `Volume:  ${data.volume  || '—'}`,
     ].join('\n');
-    return { whatsapp, subject: `📩 New quote: ${co}`, body };
+    return { chatText, subject: `📩 New quote: ${co}`, body };
   }
 
   if (event === 'invoice_paid_stripe' || event === 'invoice_paid_manual') {
     const amt      = data.amount ? ` — $${parseFloat(data.amount).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2})}` : '';
     const method   = event === 'invoice_paid_stripe' ? ' via Stripe' : ' (manual)';
-    const whatsapp = `${emoji} INVOICE PAID${method}: ${data.invoice_number || '—'} · ${data.client || co}${amt}`;
+    const chatText = `${emoji} INVOICE PAID${method}: ${data.invoice_number || '—'} · ${data.client || co}${amt}`;
     const body     = [
       `Invoice marked paid${method}.`,
       ``,
@@ -177,18 +168,18 @@ function buildMessage(event: string, data: Record<string, string>): { whatsapp: 
       `Client:  ${data.client || co}`,
       `Amount:  ${amt ? amt.trim() : '—'}`,
     ].join('\n');
-    return { whatsapp, subject: `${emoji} Invoice paid: ${data.invoice_number || co}${amt}`, body };
+    return { chatText, subject: `${emoji} Invoice paid: ${data.invoice_number || co}${amt}`, body };
   }
 
   if (event === 'invoice_paid_bulk') {
-    const whatsapp = `${emoji} BULK PAYMENT: ${data.count || '?'} invoice${Number(data.count)===1?'':'s'} marked paid. Check the dashboard.`;
+    const chatText = `${emoji} BULK PAYMENT: ${data.count || '?'} invoice${Number(data.count)===1?'':'s'} marked paid. Check the dashboard.`;
     const body     = `${data.count || '?'} invoice${Number(data.count)===1?'':'s'} marked paid in bulk.`;
-    return { whatsapp, subject: `✅ ${data.count} invoices paid`, body };
+    return { chatText, subject: `✅ ${data.count} invoices paid`, body };
   }
 
   if (event === 'deal_closed_won') {
     const val      = data.value ? ` · $${parseFloat(data.value).toLocaleString()}` : '';
-    const whatsapp = `${emoji} CLOSED WON: ${co}${val}. 🎉 Check the pipeline.`;
+    const chatText = `${emoji} CLOSED WON: ${co}${val}. 🎉 Check the pipeline.`;
     const body     = [
       `Deal moved to Closed Won.`,
       ``,
@@ -198,11 +189,11 @@ function buildMessage(event: string, data: Record<string, string>): { whatsapp: 
       `Email:   ${data.email || '—'}`,
       `Phone:   ${data.phone || '—'}`,
     ].join('\n');
-    return { whatsapp, subject: `🏆 Closed Won: ${co}${val}`, body };
+    return { chatText, subject: `🏆 Closed Won: ${co}${val}`, body };
   }
 
   if (event === 'new_client') {
-    const whatsapp = `${emoji} NEW CLIENT: ${co}${data.contact ? ' · ' + data.contact : ''}. Service: ${data.service || 'TBD'}. Source: ${data.lead_source || 'unknown'}.`;
+    const chatText = `${emoji} NEW CLIENT: ${co}${data.contact ? ' · ' + data.contact : ''}. Service: ${data.service || 'TBD'}. Source: ${data.lead_source || 'unknown'}.`;
     const body     = [
       `New client added to the CRM.`,
       ``,
@@ -213,17 +204,17 @@ function buildMessage(event: string, data: Record<string, string>): { whatsapp: 
       `Service: ${data.service  || '—'}`,
       `Source:  ${data.lead_source || '—'}`,
     ].join('\n');
-    return { whatsapp, subject: `🤝 New client: ${co}`, body };
+    return { chatText, subject: `🤝 New client: ${co}`, body };
   }
 
   if (event === 'invoice_sent' || event === 'invoice_sent_bulk') {
     if (event === 'invoice_sent_bulk') {
-      const whatsapp = `${emoji} BULK SEND: ${data.count} invoice${Number(data.count)===1?'':'s'} sent${data.failed && data.failed!=='0' ? ', ' + data.failed + ' failed' : ''}.`;
+      const chatText = `${emoji} BULK SEND: ${data.count} invoice${Number(data.count)===1?'':'s'} sent${data.failed && data.failed!=='0' ? ', ' + data.failed + ' failed' : ''}.`;
       const body     = `${data.count} invoice${Number(data.count)===1?'':'s'} sent via Gmail bulk send.`;
-      return { whatsapp, subject: `📤 ${data.count} invoices sent`, body };
+      return { chatText, subject: `📤 ${data.count} invoices sent`, body };
     }
     const amt      = data.amount ? ` · $${parseFloat(data.amount).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2})}` : '';
-    const whatsapp = `${emoji} INVOICE SENT: ${data.invoice_number || '—'} → ${data.client || co}${amt}. To: ${data.to || '—'}`;
+    const chatText = `${emoji} INVOICE SENT: ${data.invoice_number || '—'} → ${data.client || co}${amt}. To: ${data.to || '—'}`;
     const body     = [
       `Invoice sent via Gmail.`,
       ``,
@@ -232,7 +223,7 @@ function buildMessage(event: string, data: Record<string, string>): { whatsapp: 
       `Amount:  ${amt ? amt.trim() : '—'}`,
       `To:      ${data.to || '—'}`,
     ].join('\n');
-    return { whatsapp, subject: `📤 Invoice sent: ${data.invoice_number || co}`, body };
+    return { chatText, subject: `📤 Invoice sent: ${data.invoice_number || co}`, body };
   }
 
   // Client / lead email replies: fired by gmail-sync for freshly imported
@@ -240,23 +231,23 @@ function buildMessage(event: string, data: Record<string, string>): { whatsapp: 
   // legacy mailgun-inbound. Text lives in _shared/inbound-alarms.mjs (tested).
   if (event === 'client_email_reply') {
     const m = clientReplyMessage(data);
-    return { whatsapp: m.short, subject: m.subject, body: m.body };
+    return { chatText: m.short, subject: m.subject, body: m.body };
   }
   if (event === 'client_email_replies') {
     const m = clientRepliesSummary(data);
-    return { whatsapp: m.short, subject: m.subject, body: m.body };
+    return { chatText: m.short, subject: m.subject, body: m.body };
   }
 
   // Customer portal requests — fired by the customer_requests insert trigger
   // (20261012010000_inbound_alarms.sql). They had no alert at all before.
   if (event === 'portal_request') {
     const m = portalRequestMessage(data);
-    return { whatsapp: m.short, subject: m.subject, body: m.body };
+    return { chatText: m.short, subject: m.subject, body: m.body };
   }
 
   if (event === 'new_referral') {
     const comm     = data.amount ? ` · $${parseFloat(data.amount).toLocaleString()} commission` : '';
-    const whatsapp = `${emoji} NEW REFERRAL: ${data.company || '—'} referred ${name || '—'}${comm}.`;
+    const chatText = `${emoji} NEW REFERRAL: ${data.company || '—'} referred ${name || '—'}${comm}.`;
     const body     = [
       `New referral logged.`,
       ``,
@@ -264,11 +255,11 @@ function buildMessage(event: string, data: Record<string, string>): { whatsapp: 
       `Client:      ${name || '—'}`,
       `Commission:  ${comm ? comm.replace(' · ', '') : '—'}`,
     ].join('\n');
-    return { whatsapp, subject: `🌟 Referral: ${name} from ${data.company || '—'}`, body };
+    return { chatText, subject: `🌟 Referral: ${name} from ${data.company || '—'}`, body };
   }
 
   if (event === 'onboarding_complete') {
-    const whatsapp = `${emoji} ONBOARDING DONE: ${co} finished their intake form. Their client record is updated — review it and schedule production.`;
+    const chatText = `${emoji} ONBOARDING DONE: ${co} finished their intake form. Their client record is updated — review it and schedule production.`;
     const body     = [
       `A client completed their onboarding form.`,
       ``,
@@ -277,7 +268,7 @@ function buildMessage(event: string, data: Record<string, string>): { whatsapp: 
       ``,
       `Their answers have been written onto the client record in the CRM.`,
     ].join('\n');
-    return { whatsapp, subject: `🚀 Onboarding complete: ${co}`, body };
+    return { chatText, subject: `🚀 Onboarding complete: ${co}`, body };
   }
 
   // One summary for an import (4+ deals in one insert) — see
@@ -288,17 +279,17 @@ function buildMessage(event: string, data: Record<string, string>): { whatsapp: 
     const shown = (data.names || '').split(', ').filter(Boolean);
     const more  = n > shown.length ? ` and ${n - shown.length} more` : '';
     const list  = shown.join(', ') || '—';
-    const whatsapp = `${emoji} ${n} NEW DEALS imported: ${list}${more}. Check the pipeline.`;
+    const chatText = `${emoji} ${n} NEW DEALS imported: ${list}${more}. Check the pipeline.`;
     const body     = [
       `${n} deals were added to the pipeline in one import.`,
       ``,
       `First few: ${list}${more}`,
     ].join('\n');
-    return { whatsapp, subject: `📋 ${n} new deals imported`, body };
+    return { chatText, subject: `📋 ${n} new deals imported`, body };
   }
 
   // new_deal (manually added from CRM)
-  const whatsapp = `${emoji} NEW DEAL: ${co}${data.stage ? ' → ' + data.stage : ''} stage. Check the pipeline.`;
+  const chatText = `${emoji} NEW DEAL: ${co}${data.stage ? ' → ' + data.stage : ''} stage. Check the pipeline.`;
   const body     = [
     `A new deal was added to the pipeline.`,
     ``,
@@ -307,7 +298,7 @@ function buildMessage(event: string, data: Record<string, string>): { whatsapp: 
     `Stage:   ${data.stage   || '—'}`,
     `Service: ${data.service || '—'}`,
   ].join('\n');
-  return { whatsapp, subject: `📋 New pipeline deal: ${co}`, body };
+  return { chatText, subject: `📋 New pipeline deal: ${co}`, body };
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -338,15 +329,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const event = String(payload.event || '');
   const data  = (payload.data || {}) as Record<string, string>;
 
-  // A WhatsApp-only check that hands back CallMeBot's reply, so "are alerts
-  // getting through?" can be answered without waiting for a real lead. No
-  // email is sent.
-  if (event === 'whatsapp_test') {
-    const wa = await sendWhatsApp('🔔 Good Liquid CRM test: WhatsApp alerts are working.');
-    console.log('[notify-deal] whatsapp_test →', wa.ok, wa.status, wa.reply);
-    return jsonResponse({ ok: true, whatsapp: wa });
-  }
-
   // Connect Telegram: remember the chat that pressed Start in the bot and
   // send it a test. Returns who it connected to.
   if (event === 'telegram_setup') {
@@ -359,42 +341,38 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return jsonResponse({ ok: tg.ok, telegram: tg });
   }
 
-  const { whatsapp, subject, body } = buildMessage(event, data);
+  const { chatText, subject, body } = buildMessage(event, data);
 
-  // Same text to WhatsApp and Telegram; either one getting through is enough.
-  const [wa, tg] = await Promise.all([sendWhatsApp(whatsapp), sendTelegram('notify-deal', whatsapp)]);
-  const whatsappSent = wa.ok;
+  const tg = await sendTelegram('notify-deal', chatText);
   let   telegramSent = tg.ok;
   const mail         = await sendEmail(subject, body);
   const emailSent    = mail.ok;
-  console.log('[notify-deal]', event, '→ whatsapp:', whatsappSent, 'telegram:', telegramSent, 'email:', emailSent);
+  console.log('[notify-deal]', event, '→ telegram:', telegramSent, 'email:', emailSent);
 
   // Neither reliable channel took it: say so on Telegram straight away rather
   // than waiting for the morning heartbeat. A Telegram refusal is often
   // momentary (rate limit, network), so this is also a second Telegram try,
-  // with the original alert text attached. WhatsApp is not counted: CallMeBot
-  // is out of quota more often than not.
+  // with the original alert text attached.
   let warned: boolean | null = null;
   if (!telegramSent && !emailSent) {
     console.error(`[notify-deal] ALERT REACHED NOBODY: ${event} — telegram: ${tg.reply} · email: ${mail.detail}`);
     await new Promise((r) => setTimeout(r, 2000));
-    const w = await sendTelegram('notify-deal', deliveryFailureWarning(event, whatsapp, { telegram: tg.reply, email: mail.detail }));
+    const w = await sendTelegram('notify-deal', deliveryFailureWarning(event, chatText, { telegram: tg.reply, email: mail.detail }));
     warned = w.ok;
     if (w.ok) telegramSent = true;
   }
 
   const errors = [
-    whatsappSent ? '' : `whatsapp: ${wa.reply}`,
     tg.ok ? '' : `telegram: ${tg.reply}`,
     emailSent ? '' : `email: ${mail.detail}`,
   ].filter(Boolean).join(' | ');
   await logNotification({
     source: 'notify-deal', event,
     ok: telegramSent || emailSent,
-    whatsapp_ok: whatsappSent, telegram_ok: tg.ok, email_ok: emailSent,
+    telegram_ok: tg.ok, email_ok: emailSent,
     error: errors || null,
     detail: { email_attempts: mail.attempts, failure_warning_sent: warned },
   });
 
-  return jsonResponse({ ok: true, whatsappSent, telegramSent, emailSent });
+  return jsonResponse({ ok: true, telegramSent, emailSent });
 });

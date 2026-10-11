@@ -186,7 +186,6 @@ function ago(iso, nowMs) {
 const CHANNELS = [
   ['telegram', 'Telegram', true],
   ['email', 'Email', true],
-  ['whatsapp', 'WhatsApp', false],  // CallMeBot: secondary, often out of quota
 ];
 
 // stats: the jsonb from public.gl_inbound_heartbeat_stats().

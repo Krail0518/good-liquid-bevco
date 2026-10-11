@@ -1,4 +1,4 @@
-// Telegram alerts, sent next to WhatsApp by notify-deal and attention-digest.
+// Telegram alerts, sent by notify-deal, attention-digest and inbound-heartbeat.
 //
 // Telegram's Bot API is free, official and has no message quota, and it says
 // plainly when a send fails — unlike CallMeBot, whose free WhatsApp quota ran

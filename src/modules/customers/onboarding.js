@@ -218,7 +218,7 @@
       var linkNote = emailOk
         ? 'An onboarding email was sent to ' + email + '. They\'ll complete their details and create their portal login (email + password) on the form.'
         : '⚠ The client was created but the email failed to send. Copy this onboarding link to them manually:\n\n' + link;
-      alert('✓ ' + company + ' is now a client.\n\n' + linkNote + '\n\nYou\'ll get a WhatsApp when they finish onboarding.');
+      alert('✓ ' + company + ' is now a client.\n\n' + linkNote + '\n\nYou\'ll get a Telegram alert when they finish onboarding.');
       if(typeof window.glAudit === 'function') window.glAudit('lead_converted', clientId, { company: company, email: email });
     } catch(e){
       if(typeof window.glEndBusy === 'function') window.glEndBusy();
