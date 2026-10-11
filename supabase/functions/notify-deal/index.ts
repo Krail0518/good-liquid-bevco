@@ -61,25 +61,41 @@ const EMOJI_MAP: Record<string, string> = {
   onboarding_complete:'🚀',
 };
 
-async function sendWhatsApp(message: string): Promise<boolean> {
+// CallMeBot answers HTTP 200 with a plain-text (often HTML) page whether or
+// not it delivered: a blocked, throttled or de-activated key still gets a 200.
+// We used to log only "sent ok" unless the page contained the word "error", so
+// when WhatsApp alerts stopped arriving the logs still said every one was
+// sent and there was no way to tell why. Now CallMeBot's own words are logged
+// on every send, with the key and phone masked.
+function callMeBotReply(text: string, phone: string, apiKey: string): string {
+  let t = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  if (apiKey) t = t.split(apiKey).join('[key]');
+  if (phone) t = t.split(phone).join('[phone]');
+  return t.slice(0, 400);
+}
+
+async function sendWhatsApp(message: string): Promise<{ ok: boolean; status: number; reply: string }> {
   const phone  = Deno.env.get('CALLMEBOT_PHONE');
   const apiKey = Deno.env.get('CALLMEBOT_API_KEY');
-  if (!phone || !apiKey) { console.error('[notify-deal] CALLMEBOT_PHONE or CALLMEBOT_API_KEY not set'); return false; }
+  if (!phone || !apiKey) {
+    console.error('[notify-deal] CALLMEBOT_PHONE or CALLMEBOT_API_KEY not set');
+    return { ok: false, status: 0, reply: 'CALLMEBOT_PHONE or CALLMEBOT_API_KEY not set' };
+  }
   try {
     // URL-encode every value — a phone stored with a leading '+' would otherwise
     // be read as a space by the receiver and the message would never arrive.
     const url = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(message)}&apikey=${encodeURIComponent(apiKey)}`;
     const r = await fetch(url);
-    const text = await r.text();
-    if (!r.ok || text.toLowerCase().includes('error')) {
-      console.error('[notify-deal] CallMeBot error:', r.status, text);
-      return false;
+    const reply = callMeBotReply(await r.text(), phone, apiKey);
+    if (!r.ok || reply.toLowerCase().includes('error')) {
+      console.error('[notify-deal] CallMeBot error:', r.status, reply);
+      return { ok: false, status: r.status, reply };
     }
-    console.log('[notify-deal] WhatsApp sent ok');
-    return true;
+    console.log('[notify-deal] CallMeBot replied:', r.status, reply);
+    return { ok: true, status: r.status, reply };
   } catch (e) {
     console.error('[notify-deal] WhatsApp error:', e);
-    return false;
+    return { ok: false, status: 0, reply: String(e) };
   }
 }
 
@@ -323,9 +339,18 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const event = String(payload.event || '');
   const data  = (payload.data || {}) as Record<string, string>;
 
+  // A WhatsApp-only check that hands back CallMeBot's reply, so "are alerts
+  // getting through?" can be answered without waiting for a real lead. No
+  // email is sent.
+  if (event === 'whatsapp_test') {
+    const wa = await sendWhatsApp('🔔 Good Liquid CRM test: WhatsApp alerts are working.');
+    console.log('[notify-deal] whatsapp_test →', wa.ok, wa.status, wa.reply);
+    return jsonResponse({ ok: true, whatsapp: wa });
+  }
+
   const { whatsapp, subject, body } = buildMessage(event, data);
 
-  const whatsappSent = await sendWhatsApp(whatsapp);
+  const whatsappSent = (await sendWhatsApp(whatsapp)).ok;
   const emailSent    = await sendEmail(subject, body);
   console.log('[notify-deal]', event, '→ whatsapp:', whatsappSent, 'email:', emailSent);
 
