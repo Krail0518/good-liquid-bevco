@@ -960,6 +960,7 @@ RLS      public.defects | enabled=t
 RLS      public.documents | enabled=t
 RLS      public.edge_rate_limits | enabled=t
 RLS      public.email_log | enabled=t
+RLS      public.email_log_removed | enabled=t
 RLS      public.email_schedule | enabled=t
 RLS      public.email_templates | enabled=t
 RLS      public.error_log | enabled=t
