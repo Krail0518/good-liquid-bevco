@@ -57,6 +57,7 @@ import {
 // falling back to the legacy GMAIL_* env secrets — see gmail-creds.ts.
 import { getGmailAccessToken as getAccessToken, gmailConfigured } from '../_shared/gmail-creds.ts';
 import { isCronCall } from '../_shared/cron-auth.ts';
+import { redactSignLinks } from '../_shared/token-links.ts';
 
 const GMAIL_API = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
@@ -272,8 +273,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
       // The real message text, falling back to Gmail's snippet only if the body
       // could not be decoded. Generous cap — the column is unlimited `text` and
       // the correspondence popup scrolls.
-      body_preview: trimToNewMessage(
-        extractBody(msg.payload) || decodeEntities(String(msg.snippet || ''))).slice(0, 8000),
+      // Signing-request emails carry a link that lets its holder sign as the
+      // customer; it is removed before the text is stored (staff-readable).
+      body_preview: redactSignLinks(trimToNewMessage(
+        extractBody(msg.payload) || decodeEntities(String(msg.snippet || '')))).slice(0, 8000),
       status:       'delivered',
       // Exact address wins; otherwise attribute a domain-matched message to the
       // client that owns the company domain. `??` (not `||`) so an on-file lead
