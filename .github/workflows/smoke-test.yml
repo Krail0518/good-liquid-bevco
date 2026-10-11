@@ -59,6 +59,11 @@ jobs:
       - name: Run OAuth error-mapping unit tests
         run: node tests/oauth-errors.test.mjs
 
+      # Inbound alarms: portal/reply alert text, which synced emails alert,
+      # the gmail-send retry policy and the daily heartbeat's problem flags.
+      - name: Run inbound-alarms unit tests
+        run: node tests/inbound-alarms.test.mjs
+
       # Stored-XSS guard for the calendar day panel. cal_events titles and notes
       # originate in the PUBLIC tour-booking form, so this asserts they render as
       # inert text rather than markup. Fails against the pre-fix code.

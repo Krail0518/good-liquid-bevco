@@ -55,9 +55,78 @@ import {
 } from '../_shared/email-text.mjs';
 // Credentials resolve Vault-first (written by the in-app Connect Gmail flow),
 // falling back to the legacy GMAIL_* env secrets — see gmail-creds.ts.
-import { getGmailAccessToken as getAccessToken, gmailConfigured } from '../_shared/gmail-creds.ts';
+import { getGmailAccessToken as getAccessToken, gmailConfigured, vaultGet } from '../_shared/gmail-creds.ts';
 import { isCronCall } from '../_shared/cron-auth.ts';
 import { redactSignLinks } from '../_shared/token-links.ts';
+import { logNotification } from '../_shared/alert-delivery.ts';
+import { selectReplyAlerts } from '../_shared/inbound-alarms.mjs';
+
+// ALERTS FOR CLIENT REPLIES
+// This function imported client and lead replies into email_log and told
+// nobody: the client_email_reply alert existed only in mailgun-inbound, which
+// is not in use. Now, after each run, the rows THIS run inserted (never rows
+// that were already stored) that are inbound, from outside Good Liquid's own
+// domains, recent, and not an auto-reply go to notify-deal: one alert each for
+// up to three, otherwise one summary. Rules: selectReplyAlerts() in
+// _shared/inbound-alarms.mjs, covered by tests/inbound-alarms.test.mjs.
+//
+// HEARTBEAT
+// Every full sync (not a single-lead sync) records its outcome in
+// notification_log (source 'gmail-sync', event 'sync_run'), so the daily
+// inbound-heartbeat can say "Gmail sync last worked 5h ago". pg_cron reports
+// "succeeded" as soon as the HTTP request is queued, so cron.job_run_details
+// cannot tell whether a sync actually ran.
+
+async function alertReplies(
+  rows: Array<Record<string, unknown>>,
+  clientNames: Map<string, string>,
+  leadNames: Map<string, string>,
+): Promise<number> {
+  const pick = selectReplyAlerts(rows, Date.now());
+  if (pick.mode === 'none') return 0;
+  const supaUrl = Deno.env.get('SUPABASE_URL');
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const secret = await vaultGet('gl_notify_secret');
+  if (!supaUrl || !serviceKey || !secret) {
+    console.error('[gmail-sync] cannot alert on client replies: notify secret or service key missing');
+    return 0;
+  }
+  const who = (r: Record<string, unknown>) => {
+    const cid = r.client_id ? String(r.client_id) : '';
+    if (cid && clientNames.has(cid)) return { name: clientNames.get(cid)!, kind: 'client' };
+    const from = String(r.from_email || '').toLowerCase();
+    return { name: leadNames.get(from) || '', kind: cid ? 'client' : 'lead' };
+  };
+  const post = (event: string, data: Record<string, string>) =>
+    fetch(`${supaUrl}/functions/v1/notify-deal`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${serviceKey}` },
+      body: JSON.stringify({ event, secret, data }),
+    }).then((r) => { if (!r.ok) console.error('[gmail-sync] notify-deal answered', r.status); })
+      .catch((e) => console.error('[gmail-sync] notify-deal error:', e));
+
+  if (pick.mode === 'each') {
+    for (const r of pick.items as Array<Record<string, unknown>>) {
+      const w = who(r);
+      await post('client_email_reply', {
+        from_email: String(r.from_email || ''), subject: String(r.subject || ''),
+        body_preview: String(r.body_preview || '').slice(0, 400),
+        client: w.name, kind: w.kind,
+      });
+    }
+  } else {
+    const lines = (pick.items as Array<Record<string, unknown>>).map((r) => {
+      const w = who(r);
+      return `${w.name || String(r.from_email || '')} — ${String(r.subject || '(no subject)')}`;
+    });
+    await post('client_email_replies', { count: String(lines.length), lines: lines.join('\n') });
+  }
+  return pick.items.length;
+}
+
+function recordRun(ok: boolean, error: string | null, detail: Record<string, unknown>) {
+  return logNotification({ source: 'gmail-sync', event: 'sync_run', ok, error, detail });
+}
 
 const GMAIL_API = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
@@ -171,8 +240,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
   };
 
-  const cRes = await supa.from('clients').select('id, email, additional_emails');
+  // Names, for the reply alerts: client id → name, lead address → deal name.
+  const clientNames = new Map<string, string>();
+  const leadNames = new Map<string, string>();
+
+  const cRes = await supa.from('clients').select('id, name, email, additional_emails');
   for (const c of cRes.data || []) {
+    const cn = String((c as Record<string, unknown>).name || '');
+    if (cn) clientNames.set(String((c as Record<string, string>).id), cn);
     addContact((c as Record<string, unknown>).email, (c as Record<string, string>).id);
     const extra = (c as Record<string, unknown>).additional_emails;
     if (Array.isArray(extra)) {
@@ -183,8 +258,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
   }
   // Leads have no clients row, so they log with client_id null.
-  const dRes = await supa.from('deals').select('email');
-  for (const d of dRes.data || []) addContact((d as Record<string, unknown>).email, null);
+  const dRes = await supa.from('deals').select('email, name, client_name');
+  for (const d of dRes.data || []) {
+    const dr = d as Record<string, unknown>;
+    addContact(dr.email, null);
+    const label = String(dr.client_name || dr.name || '');
+    if (label) for (const a of splitAddrs(dr.email)) if (!leadNames.has(a)) leadNames.set(a, label);
+  }
 
   if (!contacts.size) {
     return jsonResponse({ ok: true, scanned: 0, matched: 0, inserted: 0, skipped: 0, contacts: 0,
@@ -194,7 +274,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // ── 2) List candidate Gmail messages ──
   let accessToken: string;
   try { accessToken = await getAccessToken(); }
-  catch (e) { return errorResponse('Gmail token error: ' + String(e), 500); }
+  catch (e) {
+    if (!isOnly) await recordRun(false, 'Gmail token error: ' + String(e).slice(0, 300), {});
+    return errorResponse('Gmail token error: ' + String(e), 500);
+  }
 
   const gFetch = (path: string) =>
     fetch(GMAIL_API + path, { headers: { Authorization: `Bearer ${accessToken}` } });
@@ -221,6 +304,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       (pageToken ? `&pageToken=${pageToken}` : ''));
     if (!listRes.ok) {
       const errText = await listRes.text().catch(() => '');
+      if (!isOnly) await recordRun(false, `Gmail list failed ${listRes.status}: ${errText.slice(0, 300)}`, {});
       // A send-only refresh token fails here — say so plainly so the fix is obvious.
       if (listRes.status === 403) {
         return errorResponse(
@@ -305,7 +389,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // and those showed up as a second copy of an email the CRM had already
   // logged. So we also match on content: same subject, sent within ten minutes,
   // same contact on the row.
-  let inserted = 0, skipped = 0;
+  let inserted = 0, skipped = 0, insertFailures = 0;
+  // Rows this run actually stored with their direction — the only ones that
+  // may raise a reply alert (a row already in email_log never re-alerts).
+  const insertedRows: Row[] = [];
   if (candidates.length) {
     // (a) Precise: the Gmail message id is already stored.
     const byId = new Map<string, { id: string; body: string }>();
@@ -406,17 +493,31 @@ Deno.serve(async (req: Request): Promise<Response> => {
         ins = await supa.from('email_log').insert(reduced);
         if (ins.error) {
           console.error('[gmail-sync] insert failed:', ins.error.message);
+          insertFailures += batch.length;
           continue;
         }
+      } else {
+        insertedRows.push(...batch);
       }
       inserted += batch.length;
     }
   }
 
-  console.log(`[gmail-sync] scanned=${scanned} matched=${candidates.length} inserted=${inserted} skipped=${skipped}`);
+  // Alert on fresh client/lead replies. Awaited so the requests go out before
+  // the function returns; a failure here never fails the sync.
+  let alerted = 0;
+  try { alerted = await alertReplies(insertedRows as unknown as Array<Record<string, unknown>>, clientNames, leadNames); }
+  catch (e) { console.error('[gmail-sync] reply alerts failed:', e); }
+
+  console.log(`[gmail-sync] scanned=${scanned} matched=${candidates.length} inserted=${inserted} skipped=${skipped} alerted=${alerted}`);
   const upgradedCount = Number((globalThis as Record<string, unknown>).__glUpgraded || 0);
+  if (!isOnly) {
+    await recordRun(insertFailures === 0,
+      insertFailures ? `${insertFailures} email(s) could not be stored in email_log` : null,
+      { scanned, matched: candidates.length, inserted, skipped, alerted });
+  }
   return jsonResponse({
     ok: true, scanned, matched: candidates.length, inserted, skipped,
-    upgraded: upgradedCount, contacts: contacts.size,
+    upgraded: upgradedCount, contacts: contacts.size, alerted,
   });
 });
