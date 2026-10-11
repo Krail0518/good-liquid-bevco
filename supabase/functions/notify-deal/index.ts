@@ -6,6 +6,14 @@
 //   • index.html       (deal manually added in CRM, or tour booked via CRM widget)
 //   • request-a-quote.html  (public quote request form)
 //   • Supabase DB trigger on deals INSERT
+//   • Supabase DB trigger on customer_requests INSERT ('portal_request')
+//   • gmail-sync, for freshly imported client/lead mail
+//     ('client_email_reply', or 'client_email_replies' as one summary)
+//
+// Every dispatch is recorded in public.notification_log (server-only), which
+// the daily inbound-heartbeat reads to report whether alerts are arriving.
+// If an alert reaches neither Telegram nor email, a warning goes straight to
+// Telegram.
 //
 // Request body (POST JSON):
 //   {
@@ -42,6 +50,10 @@ import { requireStaff } from '../_shared/auth.ts';
 import { vaultGet } from '../_shared/gmail-creds.ts';
 import { sendCallMeBot, type CallMeBotResult } from '../_shared/callmebot.ts';
 import { sendTelegram, setupTelegram } from '../_shared/telegram.ts';
+import { sendAlertEmail, logNotification, type EmailResult } from '../_shared/alert-delivery.ts';
+import {
+  portalRequestMessage, clientReplyMessage, clientRepliesSummary, deliveryFailureWarning,
+} from '../_shared/inbound-alarms.mjs';
 
 const MIKE_EMAILS = ['mike@goodliquid.com'];
 const EMOJI_MAP: Record<string, string> = {
@@ -71,24 +83,10 @@ function sendWhatsApp(message: string): Promise<CallMeBotResult> {
   return sendCallMeBot('notify-deal', message);
 }
 
-async function sendEmail(subject: string, text: string): Promise<boolean> {
-  const supaUrl    = Deno.env.get('SUPABASE_URL');
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  if (!supaUrl || !serviceKey) { console.error('[notify-deal] missing SUPABASE_URL or SERVICE_ROLE_KEY'); return false; }
-  try {
-    const r = await fetch(`${supaUrl}/functions/v1/gmail-send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${serviceKey}` },
-      body: JSON.stringify({ to: MIKE_EMAILS, subject, text }),
-    });
-    const body = await r.json().catch(() => ({}));
-    if (!r.ok) { console.error('[notify-deal] gmail-send error:', r.status, JSON.stringify(body)); return false; }
-    console.log('[notify-deal] email sent ok, id:', body.id);
-    return true;
-  } catch (e) {
-    console.error('[notify-deal] email error:', e);
-    return false;
-  }
+// gmail-send with a retry on 429 / 5xx (see _shared/alert-delivery.ts). The
+// first version gave up on the first 429, so a burst of alerts lost emails.
+function sendEmail(subject: string, text: string): Promise<EmailResult> {
+  return sendAlertEmail('notify-deal', MIKE_EMAILS, subject, text);
 }
 
 function buildMessage(event: string, data: Record<string, string>): { whatsapp: string; subject: string; body: string } {
@@ -237,11 +235,23 @@ function buildMessage(event: string, data: Record<string, string>): { whatsapp: 
     return { whatsapp, subject: `📤 Invoice sent: ${data.invoice_number || co}`, body };
   }
 
+  // Client / lead email replies: fired by gmail-sync for freshly imported
+  // inbound mail (one each for up to 3, otherwise one summary), and by the
+  // legacy mailgun-inbound. Text lives in _shared/inbound-alarms.mjs (tested).
   if (event === 'client_email_reply') {
-    const preview  = data.body_preview ? '\n\n"' + data.body_preview.slice(0, 200) + (data.body_preview.length > 200 ? '…' : '') + '"' : '';
-    const whatsapp = `${emoji} CLIENT REPLY: ${data.from_email || '—'} · "${data.subject || '(no subject)'}"`;
-    const body     = [`Client replied to an email.`, ``, `From:    ${data.from_email || '—'}`, `Subject: ${data.subject || '—'}`, preview].join('\n');
-    return { whatsapp, subject: `📬 Reply from ${data.from_email || 'client'}`, body };
+    const m = clientReplyMessage(data);
+    return { whatsapp: m.short, subject: m.subject, body: m.body };
+  }
+  if (event === 'client_email_replies') {
+    const m = clientRepliesSummary(data);
+    return { whatsapp: m.short, subject: m.subject, body: m.body };
+  }
+
+  // Customer portal requests — fired by the customer_requests insert trigger
+  // (20261012010000_inbound_alarms.sql). They had no alert at all before.
+  if (event === 'portal_request') {
+    const m = portalRequestMessage(data);
+    return { whatsapp: m.short, subject: m.subject, body: m.body };
   }
 
   if (event === 'new_referral') {
@@ -354,9 +364,37 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // Same text to WhatsApp and Telegram; either one getting through is enough.
   const [wa, tg] = await Promise.all([sendWhatsApp(whatsapp), sendTelegram('notify-deal', whatsapp)]);
   const whatsappSent = wa.ok;
-  const telegramSent = tg.ok;
-  const emailSent    = await sendEmail(subject, body);
+  let   telegramSent = tg.ok;
+  const mail         = await sendEmail(subject, body);
+  const emailSent    = mail.ok;
   console.log('[notify-deal]', event, '→ whatsapp:', whatsappSent, 'telegram:', telegramSent, 'email:', emailSent);
+
+  // Neither reliable channel took it: say so on Telegram straight away rather
+  // than waiting for the morning heartbeat. A Telegram refusal is often
+  // momentary (rate limit, network), so this is also a second Telegram try,
+  // with the original alert text attached. WhatsApp is not counted: CallMeBot
+  // is out of quota more often than not.
+  let warned: boolean | null = null;
+  if (!telegramSent && !emailSent) {
+    console.error(`[notify-deal] ALERT REACHED NOBODY: ${event} — telegram: ${tg.reply} · email: ${mail.detail}`);
+    await new Promise((r) => setTimeout(r, 2000));
+    const w = await sendTelegram('notify-deal', deliveryFailureWarning(event, whatsapp, { telegram: tg.reply, email: mail.detail }));
+    warned = w.ok;
+    if (w.ok) telegramSent = true;
+  }
+
+  const errors = [
+    whatsappSent ? '' : `whatsapp: ${wa.reply}`,
+    tg.ok ? '' : `telegram: ${tg.reply}`,
+    emailSent ? '' : `email: ${mail.detail}`,
+  ].filter(Boolean).join(' | ');
+  await logNotification({
+    source: 'notify-deal', event,
+    ok: telegramSent || emailSent,
+    whatsapp_ok: whatsappSent, telegram_ok: tg.ok, email_ok: emailSent,
+    error: errors || null,
+    detail: { email_attempts: mail.attempts, failure_warning_sent: warned },
+  });
 
   return jsonResponse({ ok: true, whatsappSent, telegramSent, emailSent });
 });
