@@ -40,6 +40,7 @@ import { requireStaff } from '../_shared/auth.ts';
 // gmail-creds.ts for historical reasons; the gl_notify_secret is unrelated
 // to Gmail).
 import { vaultGet } from '../_shared/gmail-creds.ts';
+import { sendCallMeBot, type CallMeBotResult } from '../_shared/callmebot.ts';
 
 const MIKE_EMAILS = ['mike@goodliquid.com'];
 const EMOJI_MAP: Record<string, string> = {
@@ -61,45 +62,11 @@ const EMOJI_MAP: Record<string, string> = {
   onboarding_complete:'🚀',
 };
 
-// CallMeBot answers HTTP 200 with a plain-text (often HTML) page whether or
-// not it delivered: a blocked, throttled or de-activated key still gets a 200.
-// We used to log only "sent ok" unless the page contained the word "error", so
-// when WhatsApp alerts stopped arriving the logs still said every one was
-// sent and there was no way to tell why. Now CallMeBot's own words are logged
-// on every send, with the key and phone masked.
-function callMeBotReply(text: string, phone: string, apiKey: string): string {
-  let t = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-  if (apiKey) t = t.split(apiKey).join('[key]');
-  if (phone) t = t.split(phone).join('[phone]');
-  return t.slice(0, 400);
-}
-
-async function sendWhatsApp(message: string): Promise<{ ok: boolean; status: number; reply: string }> {
-  const phone  = Deno.env.get('CALLMEBOT_PHONE');
-  const apiKey = Deno.env.get('CALLMEBOT_API_KEY');
-  if (!phone || !apiKey) {
-    console.error('[notify-deal] CALLMEBOT_PHONE or CALLMEBOT_API_KEY not set');
-    return { ok: false, status: 0, reply: 'CALLMEBOT_PHONE or CALLMEBOT_API_KEY not set' };
-  }
-  try {
-    // URL-encode every value — a phone stored with a leading '+' would otherwise
-    // be read as a space by the receiver and the message would never arrive.
-    const url = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(message)}&apikey=${encodeURIComponent(apiKey)}`;
-    const r = await fetch(url);
-    const reply = callMeBotReply(await r.text(), phone, apiKey);
-    // 'Message not sent' is how CallMeBot says it refused, e.g. a free key
-    // with 0 messages left — still HTTP 200, with no 'error' in it.
-    const lower = reply.toLowerCase();
-    if (!r.ok || lower.includes('error') || lower.includes('not sent') || lower.includes('0 messages left')) {
-      console.error('[notify-deal] CallMeBot error:', r.status, reply);
-      return { ok: false, status: r.status, reply };
-    }
-    console.log('[notify-deal] CallMeBot replied:', r.status, reply);
-    return { ok: true, status: r.status, reply };
-  } catch (e) {
-    console.error('[notify-deal] WhatsApp error:', e);
-    return { ok: false, status: 0, reply: String(e) };
-  }
+// WhatsApp goes through the shared CallMeBot sender, which logs CallMeBot's
+// own reply and counts its refusals ("0 messages left ... Message not sent")
+// as failures. See _shared/callmebot.ts.
+function sendWhatsApp(message: string): Promise<CallMeBotResult> {
+  return sendCallMeBot('notify-deal', message);
 }
 
 async function sendEmail(subject: string, text: string): Promise<boolean> {
