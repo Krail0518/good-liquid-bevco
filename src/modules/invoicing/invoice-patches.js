@@ -529,6 +529,23 @@
     if(row) row.setAttribute('data-gl-total',total);
     window.glCalcInvTotal();
   };
+  // A line's case tray changed. The cans stay the same and the case count
+  // converts: 200 cases of 24 (4,800 cans) become 400 cases of 12. Pick the
+  // tray first and the cases you then type are cases of that tray (880 cases
+  // on 12-count = 10,560 cans). Price per case, the tray charge and every
+  // add-on quantity follow; a typed-over $/case keeps its per-can price.
+  window.glSetCanTray=function(uid){
+    var row=document.getElementById(uid),te=document.getElementById(uid+'-tray');
+    if(!row||!te)return;
+    var cpc=parseInt(te.value,10)||CPC,old=window.glCanRowCpc(row);
+    if(cpc===old)return;
+    row.setAttribute('data-gl-cpc',cpc);
+    var ce=document.getElementById(uid+'-cases');
+    if(ce) ce.value=Math.max(1,Math.round((parseInt(ce.value,10)||0)*old/cpc));
+    var pe=document.getElementById(uid+'-pcase');
+    if(pe&&row.getAttribute('data-pu-override')==='1') pe.value=((parseFloat(pe.value)||0)/old*cpc).toFixed(2);
+    window.glUpdateCan(uid);
+  };
   window.glUpdateCanPrice=function(uid){
     var row=document.getElementById(uid);
     if(row) row.setAttribute('data-pu-override','1');
@@ -582,8 +599,8 @@
   };
 
   /* ── Build canning row ── */
-  // cpc: cans per case for this row. Omitted → whatever the invoice's case
-  // trays currently say (24 unless 12-count trays are ticked).
+  // cpc: cans per case for this row — its case tray. Omitted → the tray the
+  // invoice's last canning line is on (24 on an empty invoice).
   window.glBuildCanRow=function(uid,cases,fmt,fmts,pc,descPrefill,cpc){
     cpc=cpc||(typeof window.glInvCansPerCase==='function'?window.glInvCansPerCase():CPC);
     var pcase=pc*cpc,total=pcase*cases,cans=cases*cpc;
@@ -594,6 +611,10 @@
     row.innerHTML=
       '<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Canning</div>'+
       '<select id="'+uid+'-format" data-gl-action="glUpdateCan" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" style="'+SS+'">'+opts+'</select>'+
+      // Canning → format → case tray: the tray sets how many cans a case is.
+      '<select id="'+uid+'-tray" data-gl-action="glSetCanTray" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" title="Case tray — how many cans in a case" style="'+SS+';margin-top:4px">'+
+        '<option value="24"'+(cpc===24?' selected':'')+'>24-count case tray</option>'+
+        '<option value="12"'+(cpc===12?' selected':'')+'>12-count case tray</option></select>'+
       '<input id="'+uid+'-desc" type="text" placeholder="Description (optional)" value="'+(descPrefill||'').replace(/"/g,'&quot;').replace(/'/g, '&#39;')+'" style="'+DSTY+'"/></div>'+
       '<div style="text-align:center"><input id="'+uid+'-cases" type="number" min="1" value="'+cases+'" data-gl-action="glUpdateCan" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" style="'+SI+'"/>'+
       '<div id="'+uid+'-cans" style="font-size:10px;color:var(--muted);margin-top:3px">'+cans.toLocaleString()+' cans'+(cpc!==CPC?' ('+cpc+'/case)':'')+'</div></div>'+

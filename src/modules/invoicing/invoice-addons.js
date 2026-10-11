@@ -4,10 +4,10 @@
    invoice builder. Tick nitrogen, trays, pallets… and each becomes its own
    line item, priced from the same Prices settings the quote uses, with the
    quantity worked out from the canning lines: cans, cases or pallets
-   (cases ÷ cases-per-pallet, rounded up). A case is 24 cans, or 12 when the
-   12-count case tray is ticked: that tray decides the case size on every
-   canning row (glInvCansPerCase / data-gl-cpc), so price per case, cans and
-   pallets all follow it.
+   (cases ÷ cases-per-pallet, rounded up). Each canning line picks its own
+   case tray, 24-count or 12-count, right under its format (data-gl-cpc), so
+   its price per case and cans follow it; picking a tray also ticks that
+   tray's charge here, and each tray charge counts the cases packed in it.
 
    The add-on list itself lives in quote-builder.js (window.glCanningAddons)
    so an item is named and priced identically on a quote and on its invoice.
@@ -46,48 +46,33 @@
   }
   // Total cases and cans across every canning row on the invoice. Cans are
   // summed per row because each row has its own case size.
+  // byCpc: cases per tray size, so the 12-count tray charge counts the cases
+  // on 12-count lines and the 24-count charge the rest.
   function canningCounts(){
-    var out = { cases: 0, cans: 0 };
+    var out = { cases: 0, cans: 0, byCpc: {} };
     canningRows().forEach(function(row){
-      var n = parseInt(document.getElementById(row.id + '-cases').value, 10) || 0;
+      var n = parseInt(document.getElementById(row.id + '-cases').value, 10) || 0, c = rowCpc(row);
       out.cases += n;
-      out.cans += n * rowCpc(row);
+      out.cans += n * c;
+      out.byCpc[c] = (out.byCpc[c] || 0) + n;
     });
     return out;
   }
+  var TRAY_CPC = { tray24: 24, tray12: 12 };
 
-  // Cans per case for this invoice: 12 when only the 12-count tray is ticked,
-  // otherwise 24.
-  function checked(key){
-    var p = panel(), cb = p && p.querySelector('input[data-addon="' + key + '"]');
-    return !!(cb && cb.checked);
-  }
+  // The case tray a new canning line starts with: the last line's, so a run
+  // on 12-count trays stays on them; 24 on an empty invoice.
   window.glInvCansPerCase = function(){
-    return checked('tray12') && !checked('tray24') ? 12 : CPC;
+    var rows = canningRows();
+    return rows.length ? rowCpc(rows[rows.length - 1]) : CPC;
   };
-
-  // Ticking or unticking a tray changes the case size on every canning row.
-  // The per-can price is kept: a typed-over $/case is rescaled to the new case
-  // size, and a catalog-priced row is simply re-priced by glUpdateCan.
-  function applyCaseSize(){
-    var cpc = window.glInvCansPerCase();
-    canningRows().forEach(function(row){
-      var old = rowCpc(row);
-      if(old === cpc) return;
-      row.setAttribute('data-gl-cpc', cpc);
-      var pe = document.getElementById(row.id + '-pcase');
-      if(pe && row.getAttribute('data-pu-override') === '1'){
-        pe.value = ((parseFloat(pe.value) || 0) / old * cpc).toFixed(2);
-      }
-      if(typeof window.glUpdateCan === 'function') window.glUpdateCan(row.id);
-    });
-  }
   function cpp(){
     var el = document.getElementById('gl-inv-addons-cpp');
     return Math.max(1, parseInt(el && el.value, 10) || 80);
   }
-  function qtyFor(unit, counts){
+  function qtyFor(unit, counts, key){
     var cases = counts.cases;
+    if(TRAY_CPC[key]) return counts.byCpc[TRAY_CPC[key]] || 0;
     if(unit === 'can')    return counts.cans;
     if(unit === 'case')   return cases;
     if(unit === 'pallet') return cases > 0 ? Math.ceil(cases / cpp()) : 0;
@@ -131,7 +116,7 @@
       if(!cb.checked){ if(row) row.remove(); return; }
       if(!row){
         removePlaceholder(tbl);
-        row = plainRow(cb.getAttribute('data-label'), qtyFor(unit, counts), rate, unit);
+        row = plainRow(cb.getAttribute('data-label'), qtyFor(unit, counts, key), rate, unit);
         row.setAttribute('data-gl-addon', key);
         var priceEl = row.querySelector('[id$="-price"]');
         // Editing the price on the row updates the panel, and the other way
@@ -142,13 +127,13 @@
       // lines even when a Canning line is added after the boxes are ticked.
       tbl.appendChild(row);
       var q = row.querySelector('[id$="-qty"]'), pr = row.querySelector('[id$="-price"]');
-      if(q && row.getAttribute('data-qty-manual') !== '1') q.value = qtyFor(unit, counts);
+      if(q && row.getAttribute('data-qty-manual') !== '1') q.value = qtyFor(unit, counts, key);
       if(pr) pr.value = rate;
       window.glUpdateManual(row.id);
     });
     var hint = document.getElementById('gl-inv-addons-hint');
     if(hint) hint.textContent = cases > 0
-      ? 'Quantities follow the canning lines: ' + cases.toLocaleString() + (window.glInvCansPerCase() === CPC ? ' cases' : ' cases of ' + window.glInvCansPerCase()) + ' · ' + counts.cans.toLocaleString() + ' cans · ' + qtyFor('pallet', counts) + ' pallets.'
+      ? 'Quantities follow the canning lines: ' + cases.toLocaleString() + ' cases · ' + counts.cans.toLocaleString() + ' cans · ' + qtyFor('pallet', counts) + ' pallets.'
       // GL-132: flat charges do not need a canning line, so "add one first" is
       // not true of all of them any more.
       : 'Add a Canning line first — add-on quantities are worked out from its case count. Flat charges like the change over fee work without one.';
@@ -193,16 +178,7 @@
       card.appendChild(top);
       card.appendChild(rateLine);
       grid.appendChild(card);
-      cb.addEventListener('change', function(){
-        if(a.key === 'tray12' || a.key === 'tray24'){
-          // The two trays are alternatives, as on the quote: ticking one
-          // unticks the other (sync then drops its row).
-          var other = grid.querySelector('input[data-addon="' + (a.key === 'tray12' ? 'tray24' : 'tray12') + '"]');
-          if(cb.checked && other) other.checked = false;
-          applyCaseSize();
-        }
-        sync();
-      });
+      cb.addEventListener('change', sync);
       rate.addEventListener('input', sync);
     });
     wrap.appendChild(grid);
@@ -282,6 +258,19 @@
   }
   // A canning row's case count drives every add-on quantity.
   after('glUpdateCan', sync);
+  // Picking a line's case tray ticks that tray's charge, and drops the other
+  // tray's charge once no line uses it. (glSetCanTray calls glUpdateCan, so
+  // the quantities are already in step; sync again for the ticked boxes.)
+  after('glSetCanTray', function(){
+    var p = panel();
+    if(!p) return;
+    var counts = canningCounts();
+    Object.keys(TRAY_CPC).forEach(function(key){
+      var cb = p.querySelector('input[data-addon="' + key + '"]');
+      if(cb) cb.checked = (counts.byCpc[TRAY_CPC[key]] || 0) > 0;
+    });
+    sync();
+  });
   after('glAddLine', function(){ ensurePanel(); sync(); });
   // Deleting an add-on row with its ✕ unticks the box; deleting a canning row
   // changes the counts.

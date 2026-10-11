@@ -886,6 +886,18 @@
         compute();
       });
     }
+    // Switching cans per case keeps the run's cans: 200 cases of 24 become
+    // 400 cases of 12 (4,800 cans either way), so the estimate holds steady.
+    var canCase = document.getElementById('qc-cancase');
+    if(canCase){
+      var prevCpc = parseInt(canCase.value, 10) || 24;
+      canCase.addEventListener('change', function(){
+        var cpc = parseInt(canCase.value, 10) || 24;
+        var n = document.getElementById('qc-cases');
+        if(n && cpc !== prevCpc) n.value = Math.round((parseInt(n.value, 10) || 0) * prevCpc / cpc);
+        prevCpc = cpc;
+      });
+    }
     ['qc-service','qc-format','qc-cases','qc-btlcase','qc-cancase','qc-pasteur','qc-nitro'].forEach(function(id){
       var el = document.getElementById(id);
       if(el){ el.addEventListener('input', compute); el.addEventListener('change', compute); }
