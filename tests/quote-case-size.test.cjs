@@ -85,6 +85,22 @@ async function main() {
       out.cansAfterTick = cans();
       const close = document.getElementById('gl-qb-close'); if (close) close.click();
 
+      // 1b) The prices arrive late: the builder fetches them after opening and
+      //     used to reset every add-on when they landed, undoing a tray picked
+      //     in the meantime. Hold the fetch, pick 12-count, then let it finish.
+      let release;
+      const realLoad = window.glLoadPricingSettings;
+      window.glLoadPricingSettings = () => new Promise((ok) => { release = ok; });
+      window.glOpenQuoteBuilder(null, null, { productType: 'canning', suggestCases: 100 });
+      await wait(400);
+      pick('12');
+      await wait(100);
+      release();
+      await wait(300);
+      out.afterLatePrices = { picker: document.getElementById('gl-qb-tray').value, t12: t12().checked, t24: t24().checked, cans: cans() };
+      window.glLoadPricingSettings = realLoad;
+      const close2 = document.getElementById('gl-qb-close'); if (close2) close2.click();
+
       // 2) Line items from a saved 12-count quote.
       const data = { sections: [{ productType: 'canning', format: '12oz Standard',
         pkg: { tray12On: true, tray12PerCase: 0.5, tray24On: false, nitrogenOn: true, nitrogenPerCan: 0.03,
@@ -119,6 +135,7 @@ async function main() {
     check('quote: picking 12-count ticks its tray charge and unticks 24-count', r.ticks12.t12 && !r.ticks12.t24, JSON.stringify(r.ticks12));
     check('quote: picking 24-count goes back to 100 cases and swaps the charge', r.casesBack[0] === 100 && r.cansBack[0] === 2400 && r.ticks24.t24 && !r.ticks24.t12, JSON.stringify([r.casesBack, r.cansBack, r.ticks24]));
     check('quote: ticking the 12-count tray charge moves the picker to 12, cans unchanged', r.pickerAfterTick === '12' && r.cansAfterTick[0] === 2400, JSON.stringify([r.pickerAfterTick, r.cansAfterTick]));
+    check('quote: a tray picked before the prices load is kept when they arrive', r.afterLatePrices.picker === '12' && r.afterLatePrices.t12 && !r.afterLatePrices.t24 && r.afterLatePrices.cans[0] === 2400, JSON.stringify(r.afterLatePrices));
     check('quote line: canning is 100 cases at $6.00 (12 × $0.50)', r.fill.qty === 100 && r.fill.unitPrice === 6 && r.fill.cansPerCase === 12, JSON.stringify(r.fill));
     check('quote line: 12-count tray × 100 cases', r.tray.qty === 100, JSON.stringify(r.tray));
     check('quote line: nitrogen on 1,200 cans', r.nitro.qty === 1200, JSON.stringify(r.nitro));

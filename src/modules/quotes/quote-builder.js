@@ -652,10 +652,22 @@
     // if the cache was cold when the builder opened, re-pull the DB prices and
     // refresh so the very first quote of a session never uses stale fallbacks.
     if(typeof window.glLoadPricingSettings === 'function'){
+      // What the packages looked like before the DB prices arrived. Anything
+      // that differs from these by the time they land was changed by hand (a
+      // tray picked, an add-on ticked, a rate typed) or came from a saved
+      // quote, and is kept. This used to replace both packages wholesale, so
+      // picking the 12-count tray in the first moments after opening was
+      // silently undone when the prices loaded.
+      var canBase = defaultCanningPkg(state.format), btlBase = defaultBottlingPkg();
+      var keepEdits = function(cur, base, fresh){
+        if(!cur) return fresh;
+        Object.keys(cur).forEach(function(k){ if(cur[k] !== base[k]) fresh[k] = cur[k]; });
+        return fresh;
+      };
       window.glLoadPricingSettings().then(function(){
         if(!document.body.contains(ov)) return;   // builder was closed
-        state.pkg  = defaultCanningPkg(state.format);
-        state.bpkg = defaultBottlingPkg();
+        state.pkg  = keepEdits(state.pkg,  canBase, defaultCanningPkg(state.format));
+        state.bpkg = keepEdits(state.bpkg, btlBase, defaultBottlingPkg());
         rebuildAddons();
         renderTiers();
       }).catch(function(){});
