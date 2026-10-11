@@ -4292,6 +4292,9 @@ function buildInvoiceEmailHtml(invId, opts){
   if(!inv) return '';
   const c = clients.find(x => x.id === inv.client) || { name: inv.clientName, contact: '', email: '' };
   const usd = n => '$' + (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  // Unit prices can be fractions of a cent ($0.025/can pasteurization); at
+  // two decimals they printed as $0.03 while the line total used $0.025.
+  const usdRate = n => '$' + (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:4});
   // Public portal link — drives "View & Pay" CTA. Falls back to wire-only
   // payment instructions when no token (e.g. caller didn't generate one).
   const portalUrl = opts.portalUrl || '';
@@ -4308,7 +4311,7 @@ function buildInvoiceEmailHtml(invId, opts){
     : [{ desc: inv.svc, qty: 1, unitPrice: inv.amount, total: inv.amount }];
   const lineRows = lines.map(l => {
     const qty = (l.qty != null) ? Number(l.qty).toLocaleString() : '';
-    const up = l.unitPrice != null ? usd(l.unitPrice) + (l.unit ? ' /'+l.unit : '') : '';
+    const up = l.unitPrice != null ? usdRate(l.unitPrice) + (l.unit ? ' /'+l.unit : '') : '';
     return `<tr><td style="padding:10px 14px;border-bottom:1px solid #eee">${esc(l.desc||'')}</td><td style="padding:10px 14px;text-align:center;border-bottom:1px solid #eee">${qty}</td><td style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee">${up}</td><td style="padding:10px 14px;text-align:right;font-weight:700;border-bottom:1px solid #eee">${usd(l.total||0)}</td></tr>`;
   }).join('');
   const discountRow = (inv.discount && inv.discountAmt)
