@@ -118,7 +118,8 @@ function serve(planName) {
     if (p.startsWith('/rest/v1/rpc/')) {
       const fn = p.slice('/rest/v1/rpc/'.length);
       // The quote form is probed by its validation message, not its status.
-      if (fn === 'submit_quote_request') return send(400, JSON.stringify({ message: 'brand_name is required' }));
+      // A healthy form runs the whole dry-run path and rolls it back.
+      if (fn === 'submit_quote_request') return send(400, JSON.stringify({ message: 'DRY_RUN_OK' }));
       return send(200, JSON.stringify({ ok: true }));
     }
     if (p.startsWith('/rest/v1/')) {
