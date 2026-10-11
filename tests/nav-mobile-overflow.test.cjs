@@ -10,6 +10,12 @@
  * price panels past the right edge, where the page clips them, so most of
  * the add-on prices and the 16oz column could not be seen.
  *
+ * The other marketing sections had no phone layout either: side-by-side
+ * grids, rows that never wrap and desktop gutters pushed the hero stats, the
+ * about text, the services list, the process cards, the quote form and the
+ * footer past the right edge. The overflow scan below checks every section
+ * at 360, 390 and 768 wide, and at 1280 so the desktop never regresses.
+ *
  *   NODE_PATH=/tmp/pw/node_modules node tests/nav-mobile-overflow.test.cjs
  */
 const http = require('http');
@@ -57,6 +63,37 @@ const state = () => {
   };
 };
 
+// Every visible element in every section and the footer must end inside the
+// viewport. Exempt: anything inside a box that scrolls sideways on purpose
+// (the rate card and capabilities tables), the ticker marquee, and fixed
+// elements such as #cursor. Geometry only: .rv elements start transparent.
+const overflowScan = () => {
+  const out = [];
+  const scrollsX = (el, stop) => {
+    for (let a = el.parentElement; a && a !== stop; a = a.parentElement) {
+      const o = getComputedStyle(a).overflowX;
+      if (o === 'auto' || o === 'scroll') return true;
+    }
+    return false;
+  };
+  for (const sec of document.querySelectorAll('section, footer')) {
+    if (!sec.getBoundingClientRect().width) continue;
+    for (const e of sec.querySelectorAll('*')) {
+      const cs = getComputedStyle(e);
+      if (cs.display === 'none' || cs.visibility === 'hidden' || cs.position === 'fixed') continue;
+      if (e.closest('.ticker-inner') || scrollsX(e, sec.parentElement)) continue;
+      const b = e.getBoundingClientRect();
+      if (!b.width || b.right <= innerWidth + 1) continue;
+      const cls = typeof e.className === 'string' && e.className.trim() ? '.' + e.className.trim().split(/\s+/).join('.') : '';
+      out.push((sec.id ? '#' + sec.id : sec.tagName.toLowerCase()) + ' ' + e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + cls + ' right=' + Math.round(b.right));
+    }
+  }
+  // The first offender in each section, so every broken section is named.
+  const seen = new Set();
+  const perSection = out.filter((x) => { const s = x.split(' ')[0]; return !seen.has(s) && seen.add(s); });
+  return { width: innerWidth, count: out.length, perSection };
+};
+
 async function main() {
   const server = await startServer();
   const browser = await chromium.launch({
@@ -80,6 +117,18 @@ async function main() {
     check('phone: open menu does not scroll sideways', open.scrolledX === 0, JSON.stringify(open));
     await pg.click('#mobile-menu-btn');
     await pg.evaluate(() => window.scrollTo(0, window.scrollY));
+
+    // Nothing in any section is cut off at the right edge.
+    const scan = await pg.evaluate(overflowScan);
+    check('phone: no section content past the right edge', scan.count === 0, JSON.stringify(scan));
+    // The hero grew taller than its fixed 100vh on a phone, and clipped the
+    // headline off the top.
+    const hero = await pg.evaluate(() => {
+      const s = document.getElementById('hero').getBoundingClientRect();
+      const h = document.querySelector('#hero .hero-c').getBoundingClientRect();
+      return { heroTop: Math.round(s.top), contentTop: Math.round(h.top) };
+    });
+    check('phone: hero headline not clipped at the top', hero.contentTop >= hero.heroTop, JSON.stringify(hero));
 
     // Every rate-card panel fits on screen, prices included.
     for (const panel of ['canning', 'bottling', 'rd', 'addons']) {
@@ -107,6 +156,19 @@ async function main() {
     const d = await desk.evaluate(state);
     check('desktop: nav links shown, menu button hidden', d.linksVisible && !d.buttonVisible, JSON.stringify(d));
     check('desktop: no sideways scroll', d.scrolledX === 0, JSON.stringify(d));
+    const dscan = await desk.evaluate(overflowScan);
+    check('desktop: no section content past the right edge', dscan.count === 0, JSON.stringify(dscan));
+    await desk.close();
+
+    // A smaller phone, and the widest width the phone rules apply to.
+    for (const w of [360, 768]) {
+      const pw = await browser.newPage({ viewport: { width: w, height: 800 } });
+      await pw.goto(base, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await pw.waitForTimeout(1500);
+      const ws = await pw.evaluate(overflowScan);
+      check(w + 'px: no section content past the right edge', ws.count === 0, JSON.stringify(ws));
+      await pw.close();
+    }
   } finally {
     await browser.close();
     server.close();
