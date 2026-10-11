@@ -132,6 +132,9 @@ async function generateInvoicePdfBlob(invId){
     const MUTED    = [107, 135, 173];    // #6b87ad — labels
     const LIGHT    = [240, 251, 247];    // #f0fbf7 — wire-info card bg
     const usd = n => '$' + (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+    // Unit prices can be fractions of a cent ($0.025/can pasteurization); at
+    // two decimals they printed as $0.03 while the line total used $0.025.
+    const usdRate = n => '$' + (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:4});
     const terms = inv.paymentTerms || c.paymentTerms || 'Due on receipt';
     const useBilling = c.billingSame === false && (c.billingStreet || c.billingCity);
     const bStreet = useBilling ? c.billingStreet : c.street;
@@ -245,7 +248,7 @@ async function generateInvoicePdfBlob(invId){
       const rowH = Math.max(22, 12 + (wrapped.length - 1) * 11);
       pdf.text(wrapped, colX[0]+8, y+14);
       pdf.text(l.qty != null ? Number(l.qty).toLocaleString() : '', colX[1]+colW[1]/2, y+14, { align:'center' });
-      const up = l.unitPrice != null ? usd(l.unitPrice) + (l.unit ? ' /'+l.unit : '') : '';
+      const up = l.unitPrice != null ? usdRate(l.unitPrice) + (l.unit ? ' /'+l.unit : '') : '';
       pdf.text(up, colX[2]+colW[2], y+14, { align:'right' });
       pdf.setFont('helvetica','bold');
       pdf.text(usd(l.total||0), colX[3]+colW[3]-2, y+14, { align:'right' });

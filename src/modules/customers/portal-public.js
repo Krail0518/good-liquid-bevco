@@ -12,6 +12,9 @@
   function getSB(){ return window.supa || null; }
   function escHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function usd(n){ return '$' + (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  // Unit prices can be fractions of a cent ($0.025/can pasteurization); at
+  // two decimals they printed as $0.03 while the line total used $0.025.
+  function usdRate(n){ return '$' + (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:4}); }
   function toast(msg, kind){
     var d = document.createElement('div');
     d.textContent = msg;
@@ -63,7 +66,7 @@
       : [{ desc: 'Service', qty: 1, unitPrice: inv.amount, total: inv.amount }];
     var rowsHtml = lines.map(function(l){
       var qty = (l.qty != null) ? Number(l.qty).toLocaleString() : '';
-      var up = (l.unitPrice != null) ? usd(l.unitPrice) + (l.unit ? '<span style="font-size:10px;color:#888;margin-left:4px">/'+escHtml(l.unit)+'</span>' : '') : '';
+      var up = (l.unitPrice != null) ? usdRate(l.unitPrice) + (l.unit ? '<span style="font-size:10px;color:#888;margin-left:4px">/'+escHtml(l.unit)+'</span>' : '') : '';
       return '<tr><td style="padding:11px 14px;border-bottom:1px solid #eee">' + escHtml(l.desc||'') + '</td>' +
         '<td style="padding:11px 14px;text-align:center;border-bottom:1px solid #eee">' + qty + '</td>' +
         '<td style="padding:11px 14px;text-align:right;border-bottom:1px solid #eee">' + up + '</td>' +
