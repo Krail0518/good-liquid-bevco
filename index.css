@@ -252,6 +252,50 @@ section{padding:96px 52px}
 footer{background:var(--ink);border-top:1px solid rgba(255,255,255,.06);padding:34px 52px;display:flex;align-items:center;justify-content:space-between}
 .flinks{display:flex;gap:22px}.flinks a{font-size:12px;color:var(--muted);transition:color .2s}.flinks a:hover{color:var(--teal)}
 .fright{font-size:12px;color:var(--muted)}
+/* Phones: the marketing sections above were laid out for desktop only. Side-
+   by-side grids, rows that never wrap and 52px gutters pushed content past
+   the right edge, where the page clips it. Each rule names its cause. */
+@media (max-width: 768px){
+  /* Hero: the subtitle and the buttons sat in one non-wrapping row, the two
+     buttons in another, and the four stats in a third; stack and wrap them.
+     The fixed 100vh height (an inline style, hence !important) then clipped
+     the taller stack at the top, headline first. */
+  #hero{height:auto !important;min-height:100vh !important}
+  .hero-row{flex-direction:column;align-items:flex-start;gap:24px}
+  .hero-acts{flex-wrap:wrap;flex-shrink:1;max-width:100%}
+  .hero-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px 0;margin-top:40px}
+  .hs,.hs:first-child{padding:0 16px}
+  .hs:nth-child(odd){padding-left:0}
+  .hs:nth-child(2){border-right:none}
+  .hs-n{font-size:38px}
+  /* About: two columns with a 76px gap. */
+  .ag{grid-template-columns:minmax(0,1fr);gap:40px;margin-top:0}
+  /* The stat cards' numbers shrank below their text, and the gradient text
+     clip hid the overflow: "200+" read "200". */
+  .sc{padding:20px 18px;gap:16px}
+  .sc-n{flex-shrink:0;min-width:86px}
+  /* Services: the 3-column bento grid, and the 2-column grid inside the wide
+     card (an inline style, hence !important). */
+  .sb{grid-template-columns:minmax(0,1fr);margin-top:32px}
+  .sv.tall,.sv.wide{grid-row:auto;grid-column:auto}
+  .sv{padding:26px 22px}
+  .sv.wide > div[style*="grid-template-columns"]{grid-template-columns:minmax(0,1fr) !important;gap:18px !important}
+  /* Process: three columns; the cards' padding and headings set a minimum
+     wider than a third of a phone. The connector lines join columns that
+     no longer sit side by side. */
+  .phases{grid-template-columns:minmax(0,1fr);gap:14px;margin-top:40px}
+  .phconn{display:none}
+  .phc{padding:28px 22px}
+  /* Contact: two columns with a 68px gap, then two fields per row inside a
+     40px-padded form. */
+  .clgrid{grid-template-columns:minmax(0,1fr);gap:36px;margin-top:32px}
+  .cf{padding:26px 18px}
+  .frow2{grid-template-columns:minmax(0,1fr);gap:0}
+  /* Footer: brand, links and copyright in one non-wrapping row with 52px
+     gutters. */
+  footer{flex-direction:column;align-items:flex-start;gap:18px;padding:28px 16px}
+  .flinks{flex-wrap:wrap;gap:10px 18px}
+}
 
 /* ADMIN BUTTON */
 #admin-btn{position:fixed;bottom:28px;right:28px;z-index:300;padding:9px 18px;background:rgba(6,13,26,.92);border:1px solid rgba(0,229,192,.28);color:var(--teal);border-radius:22px;font-family:var(--ff-mono);font-size:11px;letter-spacing:2px;cursor:pointer;backdrop-filter:blur(10px);transition:all .3s;display:flex;align-items:center;gap:7px}
