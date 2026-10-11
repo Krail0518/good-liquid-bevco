@@ -762,7 +762,7 @@
     '<b>Card vs ACH</b>: the surcharge only applies to card payments (per Visa / MC rules — that\'s why ACH is shown separately). The customer sees the surcharge broken out on Stripe\'s checkout page, so it\'s never a surprise charge.',
     '<b>From the admin side</b>: open any unpaid invoice → click <b>💳 Charge via Stripe</b> on the detail header. A picker lets you choose card / ACH / both and per-invoice surcharge override.',
     '<b>Test mode vs live</b>: currently using <code>sk_test_…</code> keys. To go live, register Visa/MC, swap in <code>sk_live_…</code> in the <code>STRIPE_SECRET_KEY</code> Edge Function secret, and redeploy the function. Stripe\'s test card <code>4242 4242 4242 4242</code> works for any expiry/CVC in test mode.',
-    '<b>Marking the invoice paid</b>: <b>automatic via Stripe webhook</b>. When a customer completes Stripe checkout, the <code>stripe-webhook</code> Edge Function is called by Stripe, marks the invoice paid in Supabase, and sends a WhatsApp + email notification. You can also manually click <b>✓ Mark Paid</b> on the invoice detail header for offline payments (cash / check / wire).',
+    '<b>Marking the invoice paid</b>: <b>automatic via Stripe webhook</b>. When a customer completes Stripe checkout, the <code>stripe-webhook</code> Edge Function is called by Stripe, marks the invoice paid in Supabase, and sends a Telegram + email notification. You can also manually click <b>✓ Mark Paid</b> on the invoice detail header for offline payments (cash / check / wire).',
     '<b>Receipts</b>: Stripe emails the customer a receipt automatically. They can also save the invoice as PDF from the customer portal.'
   ]);
 
@@ -2013,7 +2013,7 @@
     videoCard('tutorial-clients.mp4', '👥 Clients — Every Brand in One Place', 'The client list and what each row shows, then opening a brand’s complete, editable record in one click.') +
     videoCard('tutorial-portal.mp4', '🌐 Customer Portal — Your Clients’ Private Login', 'What a brand sees when they log into their own portal — invoices, production runs, COAs &amp; documents, and their label artwork.') +
     videoGroup('🚀 STAYING ON TOP OF LEADS') +
-    videoCard('explainer-deal-brief.mp4', '🧠 Never Drop a Lead — Brief, Board &amp; Digest', 'How the AI Deal Brief, the 🔥 Needs Attention board, the morning WhatsApp/email digest, and ⏰ Bulk Nudge work together so no lead slips through the cracks.') +
+    videoCard('explainer-deal-brief.mp4', '🧠 Never Drop a Lead — Brief, Board &amp; Digest', 'How the AI Deal Brief, the 🔥 Needs Attention board, the morning Telegram/email digest, and ⏰ Bulk Nudge work together so no lead slips through the cracks.') +
     videoCard('explainer-deal-docs.mp4', '📎 Deal Documents &amp; Meeting Notes', 'Storing NDAs, Process Authority letters, formulas &amp; labels on a deal, how they carry over automatically when you convert to a client, and the meeting-notes card that feeds the brief.') +
     videoCard('explainer-lead-automation.mp4', '🤖 Lead Automations — SLA, Follow-ups &amp; One-Tap Send', 'The safety net: the first-reply watchdog that pings you when a lead waits too long, AI-drafted follow-ups you send with one tap (from the desk or your phone), snooze/handled controls, returning-lead merging, and the auto-included booking link.') +
     videoGroup('🏬 WAREHOUSE STORAGE (CONRI)') +
@@ -2314,7 +2314,7 @@
     ]);
 
   var SEC_DEAL_BRIEF =
-    '<div style="font-size:12.5px;color:#cfd9e6;line-height:1.65;margin-bottom:12px">The <b>Deal Brief</b> system turns a full inbox into a short, prioritized list. Three parts work together: a living AI <b>brief</b> at the top of every deal &amp; client, the <b>🔥 Needs Attention</b> board that ranks all your open deals, and a <b>morning WhatsApp + email digest</b>. Plus <b>⏰ Bulk Nudge</b> to follow up on cold leads in one pass. Everything is built from your real emails and notes — there is nothing to maintain by hand.</div>' +
+    '<div style="font-size:12.5px;color:#cfd9e6;line-height:1.65;margin-bottom:12px">The <b>Deal Brief</b> system turns a full inbox into a short, prioritized list. Three parts work together: a living AI <b>brief</b> at the top of every deal &amp; client, the <b>🔥 Needs Attention</b> board that ranks all your open deals, and a <b>morning Telegram + email digest</b>. Plus <b>⏰ Bulk Nudge</b> to follow up on cold leads in one pass. Everything is built from your real emails and notes — there is nothing to maintain by hand.</div>' +
     watch('explainer-deal-brief.mp4') +
     wf(620, 244,
       box(0,0,620,244,'#0a1628','rgba(255,255,255,.05)') +
@@ -2343,8 +2343,8 @@
       '<b>🔄 Refresh</b> — forces an immediate re-summarize if you want the very latest. Otherwise it self-refreshes on open.',
       '<b>How “incremental” works</b> — when a new email lands, the brief folds in <b>only that email</b> and merges it into what it already knew. It does not re-read hundreds of old emails, and it does not repeat information — exactly what keeps it fast and accurate.',
       '<b>🔥 Needs Attention board</b> — Pipeline header → <b>🔥 Needs Attention</b>. One ranked list across every open deal: <span style="color:#f5c842">🟡 Your move</span> → <span style="color:#ff8579">⏰ Overdue to-do</span> → <span style="color:#7fc6f5">🧊 Cold (no reply 7+ days)</span> → <span style="color:#c4a4f8">✨ New lead</span>. Deals where the ball is genuinely with the customer drop off. Click any row to jump into that deal.',
-      '<b>📲 Send to my phone</b> — the button on that board fires your digest to WhatsApp + email right now (also the way to test it).',
-      '<b>Morning digest</b> — automatically each <b>weekday morning (~7–8am ET)</b> you get the same ranked list by WhatsApp and email, so you know who needs you before you open the CRM. If nothing is urgent, nothing is sent — no daily spam.',
+      '<b>📲 Send to my phone</b> — the button on that board fires your digest to Telegram + email right now (also the way to test it).',
+      '<b>Morning digest</b> — automatically each <b>weekday morning (~7–8am ET)</b> you get the same ranked list by Telegram and email, so you know who needs you before you open the CRM. If nothing is urgent, nothing is sent — no daily spam.',
       '<b>⏰ Bulk Nudge</b> — Pipeline header → <b>⏰ Bulk Nudge</b>. Set a “sitting for at least N days” threshold (7 / 10 / 21 or any number). It finds every lead that has gone quiet, drafts a friendly follow-up for each, and opens a review window where you edit and approve each one — only approved emails are sent.',
       '<b>Plain-English terms</b> — <b>Ball-in-court</b>: whose turn it is to act. <b>Cold</b>: you emailed and got no reply for a week or more. <b>Incremental</b>: only the new part is summarized, then merged. <b>Digest</b>: the once-a-day roundup of who needs you.'
     ]);
@@ -2410,10 +2410,10 @@
     ) +
     '<div style="font-size:11px;color:#9aa7bd;margin:8px 0 6px">Numbered callouts above:</div>' +
     bullets([
-      '<b>(1) First-response SLA watchdog</b> — your website promises a reply within one business day, so the system holds you to it. Every new lead starts a clock; if you have not sent them a first reply within <b>24 business hours</b> (weekends do not count), you get a <b>⚠️ WhatsApp alert</b> — once per lead, so it never spams. The same lead also wears a <span style="color:#ff8579">⚠️ awaiting reply</span> badge on its pipeline card so you can spot it at a glance.',
+      '<b>(1) First-response SLA watchdog</b> — your website promises a reply within one business day, so the system holds you to it. Every new lead starts a clock; if you have not sent them a first reply within <b>24 business hours</b> (weekends do not count), you get a <b>⚠️ Telegram alert</b> — once per lead, so it never spams. The same lead also wears a <span style="color:#ff8579">⚠️ awaiting reply</span> badge on its pipeline card so you can spot it at a glance.',
       '<b>(2) The badge</b> — <span style="color:#ff8579">⚠️ awaiting reply</span> means we have never replied and the business-day clock has run out. It disappears the moment you email them (or snooze / handle the lead).',
       '<b>(3) Auto follow-up drafts</b> — when a lead you emailed goes quiet for <b>4+ days</b> (the ball is on them), the AI writes a short, friendly nudge tailored to their project and drops it in the <b>✍️ Follow-ups</b> queue (the button in the Pipeline header shows the count). You never chase from a blank page.',
-      '<b>(4) Send or dismiss in one tap</b> — read the draft, then <b>✓ Send</b> (it goes out as you, from your Gmail, and lands in the lead\'s correspondence thread) or <b>✕ Dismiss</b>. You also get a <b>✍️ WhatsApp</b> when drafts are ready, with a link that opens the same review list <b>on your phone</b> — approve and send without opening the CRM.',
+      '<b>(4) Send or dismiss in one tap</b> — read the draft, then <b>✓ Send</b> (it goes out as you, from your Gmail, and lands in the lead\'s correspondence thread) or <b>✕ Dismiss</b>. You also get a <b>✍️ Telegram message</b> when drafts are ready, with a link that opens the same review list <b>on your phone</b> — approve and send without opening the CRM.',
       '<b>💤 Snooze / ✓ Handled</b> — on any deal (or from the phone links), <b>Snooze 7 days</b> pauses the watchdog and follow-ups for a week; <b>Mark handled</b> tells the automations to leave that lead alone for good. Use them so the alerts stay meaningful.',
       '<b>Returning-lead merging</b> — when someone who already has an open deal submits the website quote form again — even from a <b>different email at the same company</b> — their new request is appended to the existing deal instead of creating a duplicate. Your history stays in one place. (You still get the “new quote” ping.)',
       '<b>Auto booking link in drafts</b> — whenever an AI reply (or a follow-up) proposes a call or tour, it now includes your <b>scheduling link</b> automatically, so the lead can pick a time in one click instead of trading “what works for you?” emails. That link runs through the tour-approval flow, so you still confirm the time.',

@@ -1,4 +1,4 @@
-# Live check of the trigger-driven WhatsApp alert path: inserts a clearly
+# Live check of the trigger-driven Telegram/email alert path: inserts a clearly
 # labeled test deal (which fires the on_deal_insert trigger → notify-deal →
 # CallMeBot), then deletes it. The phone buzzing is the readout. Runs the SQL
 # through the Supabase Management API because the assistant's sandbox cannot
@@ -31,4 +31,4 @@ jobs:
           run_sql "insert into deals (name, client_name, stage, service) values ('TRIGGER TEST — ignore me', 'CRM verification', 'Prospecting', 'automated check') returning id, name;"
           sleep 5
           run_sql "delete from deals where name = 'TRIGGER TEST — ignore me' returning id;"
-          echo "test deal inserted and removed — the WhatsApp should have fired"
+          echo "test deal inserted and removed — the Telegram alert should have fired"

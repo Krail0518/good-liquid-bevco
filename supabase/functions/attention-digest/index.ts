@@ -1,7 +1,7 @@
 // attention-digest — the morning "who needs you today" brief.
 //
 // Ranks every open pipeline deal by urgency (same logic as the in-app
-// "🔥 Needs Attention" board) and sends Mike a WhatsApp + email each weekday
+// "🔥 Needs Attention" board) and sends Mike a Telegram + email each weekday
 // morning. Computed server-side from deals + email_log + ai_brief_todos +
 // ai_briefs, so it's current even when the CRM is closed.
 //
@@ -14,8 +14,8 @@
 // Deals waiting on the customer with nothing overdue are omitted. If nothing
 // needs attention, no message is sent (no morning spam).
 //
-// Secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (auto), CALLMEBOT_PHONE,
-//   CALLMEBOT_API_KEY (WhatsApp). Email goes through the gmail-send function.
+// Secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (auto); the Telegram bot token
+//   (see _shared/telegram.ts). Email goes through the gmail-send function.
 //
 // Deploy: supabase functions deploy attention-digest --no-verify-jwt
 
@@ -23,7 +23,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.112.4";
 import { corsHeaders, jsonResponse, handlePreflight } from "../_shared/cors.ts";
 import { isCronCall } from "../_shared/cron-auth.ts";
 import { requireStaff } from "../_shared/auth.ts";
-import { sendCallMeBot } from "../_shared/callmebot.ts";
 import { sendTelegram } from "../_shared/telegram.ts";
 
 const MIKE_EMAIL = "mike@goodliquid.com";
@@ -160,7 +159,7 @@ Deno.serve(async (req) => {
 
   const dateLabel = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
-  // ── WhatsApp (concise, top 8) ────────────────────────────────────────────
+  // ── Telegram (concise, top 8) ────────────────────────────────────────────
   const waLines = items.slice(0, 8).map((x) => `${x.tag} — ${x.name}${x.co && x.co !== x.name ? " (" + x.co + ")" : ""}${x.value ? " · " + fmtMoney(x.value) : ""}`);
   const moreWa = items.length > 8 ? `\n…and ${items.length - 8} more.` : "";
   const wa = `🔥 Good morning! ${items.length} deal${items.length === 1 ? "" : "s"} need you today:\n\n${waLines.join("\n")}${moreWa}\n\nOpen the CRM → 🔥 Needs Attention.`;
@@ -187,18 +186,15 @@ Deno.serve(async (req) => {
   const text = `NEEDS ATTENTION — ${dateLabel}\n\n` + items.map((x) => `${x.tag} — ${x.name}${x.co ? " (" + x.co + ")" : ""}${x.value ? " · " + fmtMoney(x.value) : ""}${x.status ? "\n   " + x.status : ""}`).join("\n");
   const subject = `🔥 ${items.length} deal${items.length === 1 ? "" : "s"} need you — ${dateLabel}`;
 
-  // The shared sender logs CallMeBot's own reply and counts its refusals
-  // (e.g. "0 messages left ... Message not sent") as failures. The brief
-  // used to report every one of those as sent.
-  const [wa_, tg_] = await Promise.all([sendCallMeBot("attention-digest", wa), sendTelegram("attention-digest", wa)]);
-  const whatsappSent = wa_.ok;
+  // Telegram (WhatsApp via CallMeBot was removed 2026-10-11).
+  const tg_ = await sendTelegram("attention-digest", wa);
   const telegramSent = tg_.ok;
   const emailSent = await sendEmail(subject, text, html);
 
   try {
     await supa.from("audit_log").insert({ action: "attention_digest_sent", target: dateLabel,
-      details: { items: items.length, ...counts, whatsappSent, whatsappReply: wa_.reply, telegramSent, telegramReply: tg_.reply, emailSent } });
+      details: { items: items.length, ...counts, telegramSent, telegramReply: tg_.reply, emailSent } });
   } catch { /* non-fatal */ }
 
-  return jsonResponse({ items: items.length, counts, whatsappSent, whatsappReply: wa_.reply, telegramSent, telegramReply: tg_.reply, emailSent }, 200);
+  return jsonResponse({ items: items.length, counts, telegramSent, telegramReply: tg_.reply, emailSent }, 200);
 });

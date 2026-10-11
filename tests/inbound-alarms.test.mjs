@@ -129,8 +129,9 @@ const probeOk = { status: 'ok', detail: 'dry run completed' };
   ok('heartbeat: says everything is flowing', /Everything is flowing/.test(hb.text));
   ok('heartbeat: lists every inbound count', ['Website quotes: 2', 'New deals: 3', 'Tour requests: 1 (1 awaiting approval)', 'Onboarding forms: 0',
     'Portal requests: 1 (2 open)', 'Client/lead emails in: 9 (4 from clients)'].every((s) => hb.text.includes(s)), hb.text);
-  ok('heartbeat: shows per-channel delivery', /Telegram 6\/6/.test(hb.text) && /Email 5\/6/.test(hb.text) && /WhatsApp 0\/6/.test(hb.text));
-  ok('heartbeat: a dead WhatsApp that never worked is shown, not flagged daily', !hb.problems.some((p) => /WhatsApp/.test(p)));
+  ok('heartbeat: shows per-channel delivery', /Telegram 6\/6/.test(hb.text) && /Email 5\/6/.test(hb.text));
+  // WhatsApp (CallMeBot) was removed 2026-10-11: old log rows must not surface it.
+  ok('heartbeat: WhatsApp is no longer reported at all', !/WhatsApp/.test(hb.text) && !hb.problems.some((p) => /WhatsApp/.test(p)));
   ok('heartbeat: short enough for a phone (< 1200 chars, < 25 lines)', hb.text.length < 1200 && hb.text.split('\n').length < 25, hb.text.length + ' chars');
   ok('heartbeat: dated in Eastern time', /Mon, Oct 12/.test(hb.text), hb.text.split('\n')[0]);
 
@@ -147,8 +148,6 @@ const probeOk = { status: 'ok', detail: 'dry run completed' };
     has({ ...healthy, channels: { ...healthy.channels, telegram: { attempts_24h: 4, ok_24h: 0, ok_30d: true, last_error: '403 bot blocked' } } }, probeOk, /Telegram: all 4 alerts failed.*403/));
   ok('flag: email failing every send even with no history (primary channel)',
     has({ ...healthy, channels: { ...healthy.channels, email: { attempts_24h: 2, ok_24h: 0, ok_30d: false } } }, probeOk, /Email: all 2 alerts failed/));
-  ok('flag: WhatsApp failing all sends when it used to work',
-    has({ ...healthy, channels: { ...healthy.channels, whatsapp: { attempts_24h: 3, ok_24h: 0, ok_30d: true } } }, probeOk, /WhatsApp: all 3/));
   ok('flag: a channel that used to deliver has gone quiet for 4 days',
     has({ ...healthy, channels: { ...healthy.channels, email: { attempts_24h: 0, ok_24h: 0, ok_30d: true, last_ok_at: iso(NOW - 4 * D), attempts_since_ok: 5 } } }, probeOk, /Email has not delivered since 4d ago/));
   ok('no flag: a quiet channel that simply had nothing to send',

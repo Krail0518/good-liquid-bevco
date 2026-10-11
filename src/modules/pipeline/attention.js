@@ -237,7 +237,7 @@
         '<div style="font-family:var(--ff-disp);font-size:20px;letter-spacing:2px;color:#f5c842">🔥 NEEDS ATTENTION TODAY</div>' +
         '<span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
           '<button id="gl-at-rescan" title="Re-read every email thread and refresh what each account needs from you" style="background:rgba(196,164,248,.12);border:1px solid rgba(196,164,248,.32);color:#c4a4f8;border-radius:7px;font-size:12px;font-weight:700;padding:5px 11px;cursor:pointer">🔄 Re-scan emails</button>' +
-          '<button id="gl-at-send" title="Send this list to your phone (WhatsApp) + email now" style="background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.3);color:#00e5c0;border-radius:7px;font-size:12px;font-weight:700;padding:5px 11px;cursor:pointer">📲 Send to my phone</button>' +
+          '<button id="gl-at-send" title="Send this list to your phone (Telegram) + email now" style="background:rgba(0,229,192,.12);border:1px solid rgba(0,229,192,.3);color:#00e5c0;border-radius:7px;font-size:12px;font-weight:700;padding:5px 11px;cursor:pointer">📲 Send to my phone</button>' +
           '<button id="gl-at-close" style="background:none;border:none;color:#9aa7bd;font-size:24px;cursor:pointer;line-height:1">✕</button>' +
         '</span>' +
       '</div>' +
