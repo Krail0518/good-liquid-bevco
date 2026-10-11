@@ -50,6 +50,7 @@ const EMOJI_MAP: Record<string, string> = {
   tour_requested:     '📅',
   tour_booked:        '📅',
   new_deal:           '📋',
+  deals_imported:     '📋',
   new_quote:          '📩',
   invoice_paid_stripe:'💳',
   invoice_paid_manual:'✅',
@@ -267,6 +268,23 @@ function buildMessage(event: string, data: Record<string, string>): { whatsapp: 
       `Their answers have been written onto the client record in the CRM.`,
     ].join('\n');
     return { whatsapp, subject: `🚀 Onboarding complete: ${co}`, body };
+  }
+
+  // One summary for an import (4+ deals in one insert) — see
+  // 20261011190000_deal_import_alert_summary.sql. One alert per deal sent
+  // 76 in two minutes on 2026-10-10.
+  if (event === 'deals_imported') {
+    const n     = Number(data.count) || 0;
+    const shown = (data.names || '').split(', ').filter(Boolean);
+    const more  = n > shown.length ? ` and ${n - shown.length} more` : '';
+    const list  = shown.join(', ') || '—';
+    const whatsapp = `${emoji} ${n} NEW DEALS imported: ${list}${more}. Check the pipeline.`;
+    const body     = [
+      `${n} deals were added to the pipeline in one import.`,
+      ``,
+      `First few: ${list}${more}`,
+    ].join('\n');
+    return { whatsapp, subject: `📋 ${n} new deals imported`, body };
   }
 
   // new_deal (manually added from CRM)
