@@ -17,6 +17,14 @@
 
   /* ── Price deck ────────────────────────────────────────────── */
   var CANS_PER_CASE  = 24;
+  /* Cans in one case of a canning quote. 12 when the 12-count case tray is the
+     tray on the run, otherwise 24. The two trays are alternatives (ticking one
+     unticks the other); a quote saved with both ticked counts 24, as it always
+     did. Before this, a 12-count tray only added its tray charge while every
+     case was still counted, filled and priced as 24 cans. */
+  function cansPerCase(pkg){
+    return pkg && pkg.tray12On && !pkg.tray24On ? 12 : CANS_PER_CASE;
+  }
   var BTLS_PER_CASE  = 12;   // default only — each bottling tier has its own editable Bottles / Case
   /* Bottles per case for a tier. Quotes saved before the field existed have
      no perCase, so derive it from what was actually quoted (bottles ÷ cases). */
@@ -76,7 +84,7 @@
   // Default packaging / pallet rates for a canning quote. Every value is
   // editable per quote in the add-on panel; these are the standing prices.
   //   nitrogen / pasteurization → per can
-  //   tray + case erector       → per case (24 cans)
+  //   tray + case erector       → per case (24 cans, or 12 with the 12-count tray)
   //   pallet + pallet wrap      → per pallet (casesPerPallet cases each)
   // Read a DB-backed price (pricing_settings, loaded by src/modules/invoicing/pricing-settings.js)
   // with a hard-coded fallback so quoting still works if the table is unreachable.
@@ -672,7 +680,7 @@
     if(caseList.length){
       /* One tier per selected volume — matches exactly what the client checked on the form */
       state.tiers = caseList.map(function(sc){
-        if(t2==='canning')  return { cases:sc, cans:sc*CANS_PER_CASE, fillPerCan:autoRate(sc), nitrogenPerCan:0.03, trayPerCan:0.03 };
+        if(t2==='canning')  return canTier(sc);
         if(t2==='bottling') return btlTier(sc, autoRate(sc*BTLS_PER_CASE));
         return { kegs:Math.max(px('keg_minimum',40),sc), laborPerKeg:px('keg_fill_per_keg',12), kegCostPerKeg:px('empty_keg_per_keg',17.50) };
       });
@@ -681,9 +689,7 @@
       /* Opening from a deal but no specific volume — load standard tiers so quote isn't blank */
       if(t2==='canning'){
         state.tiers = [
-          { cases:200,  cans:200*CANS_PER_CASE,  fillPerCan:autoRate(200),  nitrogenPerCan:0.03, trayPerCan:0.03 },
-          { cases:501,  cans:501*CANS_PER_CASE,  fillPerCan:autoRate(501),  nitrogenPerCan:0.03, trayPerCan:0.03 },
-          { cases:1000, cans:1000*CANS_PER_CASE, fillPerCan:autoRate(1000), nitrogenPerCan:0.03, trayPerCan:0.03 }
+          canTier(200), canTier(501), canTier(1000)
         ];
       } else if(t2==='bottling'){
         state.tiers = btlStdTiers();
@@ -743,7 +749,22 @@
         ];
         canningMap.forEach(function(m){
           var cb = el.querySelector('#'+m[0]+'-on'), rt = el.querySelector('#'+m[0]+'-rate');
-          if(cb){ cb.checked = !!P[m[1]]; cb.addEventListener('change', function(){ P[m[1]] = cb.checked; renderTiers(); }); }
+          if(cb){ cb.checked = !!P[m[1]]; cb.addEventListener('change', function(){
+            P[m[1]] = cb.checked;
+            // 24-count and 12-count trays are alternatives, and the one in use
+            // sets how many cans a case holds.
+            var TRAYS = { tray24On: ['tray12On', 'gl-qb-tray12'], tray12On: ['tray24On', 'gl-qb-tray24'] };
+            var other = TRAYS[m[1]];
+            if(other){
+              if(cb.checked){
+                P[other[0]] = false;
+                var ocb = el.querySelector('#' + other[1] + '-on');
+                if(ocb) ocb.checked = false;
+              }
+              recountCanTiers();
+            }
+            renderTiers();
+          }); }
           if(rt){ rt.addEventListener('input', function(){ P[m[2]] = parseFloat(rt.value)||0; renderTiers(); }); }
         });
         var cpp = el.querySelector('#gl-qb-cpp');
@@ -903,6 +924,23 @@
     function autoRate(cases){
       return getDeckRate(state.productType, state.format, cases);
     }
+    // Canning fill rate. The deck's volume breaks are in 24-can cases, so a
+    // run of 12-can cases is looked up by its 24-can equivalent.
+    function canRate(cases){
+      return autoRate(Math.floor(cases * cansPerCase(state.pkg) / CANS_PER_CASE));
+    }
+    function canTier(cases){
+      return { cases:cases, cans:cases*cansPerCase(state.pkg), fillPerCan:canRate(cases), nitrogenPerCan:0.03, trayPerCan:0.03 };
+    }
+    // The case size changed: recount every tier's cans from its cases, and
+    // re-rate it, except where a count or rate was typed over.
+    function recountCanTiers(){
+      var cpc = cansPerCase(state.pkg);
+      state.tiers.forEach(function(tier){
+        if(!tier._countOverride) tier.cans = Math.round((tier.cases||0) * cpc);
+        if(!tier._fillOverride) tier.fillPerCan = canRate(tier.cases||0);
+      });
+    }
 
     function renderTiers(){
       var tbody = ov.querySelector('#gl-qb-tiers');
@@ -966,13 +1004,13 @@
           var val = parseFloat(raw) || 0;
           tier[field] = val;
 
-          // Typing a can/bottle count means you want THAT count, not cases×24.
+          // Typing a can/bottle count means you want THAT count, not cases × cans per case.
           if(field === 'cans' || field === 'bottles') tier._countOverride = true;
 
           if(field === 'cases'){
             if(isCanning){
-              if(!tier._countOverride) tier.cans = Math.round(val * CANS_PER_CASE);
-              var deck = autoRate(val);
+              if(!tier._countOverride) tier.cans = Math.round(val * cansPerCase(state.pkg));
+              var deck = canRate(val);
               if(!tier._fillOverride) tier.fillPerCan = deck;
             } else if(isBottling){
               if(!tier._countOverride) tier.bottles = Math.round(val * btlPerCase(tier));
@@ -1130,7 +1168,7 @@
       var t = state.productType;
       if(t==='canning'){
         var cases = 500;
-        state.tiers.push({ cases:cases, cans:cases*CANS_PER_CASE, fillPerCan:autoRate(cases), nitrogenPerCan:0.03, trayPerCan:0.03 });
+        state.tiers.push(canTier(cases));
       } else if(t==='bottling'){
         var c = 660;
         state.tiers.push(btlTier(c, autoRate(c*BTLS_PER_CASE)));
@@ -1145,9 +1183,7 @@
       var t = state.productType;
       if(t==='canning'){
         state.tiers = [
-          { cases:501,  cans:501*CANS_PER_CASE,  fillPerCan:autoRate(501),  nitrogenPerCan:0.03, trayPerCan:0.03 },
-          { cases:1000, cans:1000*CANS_PER_CASE, fillPerCan:autoRate(1000), nitrogenPerCan:0.03, trayPerCan:0.03 },
-          { cases:5000, cans:5000*CANS_PER_CASE, fillPerCan:autoRate(5000), nitrogenPerCan:0.03, trayPerCan:0.03 }
+          canTier(501), canTier(1000), canTier(5000)
         ];
       } else if(t==='bottling'){
         state.tiers = btlStdTiers();
@@ -1476,7 +1512,7 @@
   // quote all read this list, so an item is named and priced the same way on a
   // quote and on the invoice that follows it.
   //   on / rate  → the keys in a canning pkg (see defaultCanningPkg)
-  //   unit       → what the quantity counts: can, case (24 cans) or pallet
+  //   unit       → what the quantity counts: can, case (see cansPerCase) or pallet
   var CANNING_ADDONS = [
     { key:'nitrogen',   on:'nitrogenOn',   rate:'nitrogenPerCan',   unit:'can',    label:'Nitrogen dosing' },
     { key:'pasteur',    on:'pasteurOn',    rate:'pasteurPerCan',    unit:'can',    label:'Batch flash pasteurization' },
@@ -1504,11 +1540,12 @@
     var cans = t.cans || 0, cases = t.cases || 0, fill = t.fillPerCan || 0;
     var label = 'Canning - ' + (format || 'Cans');
     // Fill is priced per case, the way the invoice prices it.
-    var fillItem = (cases > 0 && cans === cases * CANS_PER_CASE)
-      ? qItem(out, label, cases, 'case', fill * CANS_PER_CASE)
+    var cpc = cansPerCase(pkg);
+    var fillItem = (cases > 0 && cans === cases * cpc)
+      ? qItem(out, label, cases, 'case', fill * cpc)
       : qItem(out, label, cans, 'can', fill);
     // What "Create Invoice" needs to rebuild this as a real canning row.
-    if(fillItem){ fillItem.kind = 'canning'; fillItem.format = format || ''; fillItem.cases = cases; fillItem.perCan = fill; }
+    if(fillItem){ fillItem.kind = 'canning'; fillItem.format = format || ''; fillItem.cases = cases; fillItem.perCan = fill; fillItem.cansPerCase = cpc; }
 
     var qtyFor = { can: cans, 'case': cases, pallet: x.pallets };
     var overrideFor = { can: t.addonsOverride, 'case': t.caseExtraOverride, pallet: t.palletCostOverride };

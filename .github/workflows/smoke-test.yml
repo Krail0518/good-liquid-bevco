@@ -363,6 +363,14 @@ jobs:
           REPO_ROOT: ${{ github.workspace }}
         run: node tests/invoice-case-size.test.cjs
 
+      # Quote builder: the same 12-count tray rule, and "Create Invoice" from
+      # a 12-count quote keeps 12-can cases.
+      - name: Run quote case-size test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/quote-case-size.test.cjs
+
       # Help: the ❓ button opens the section for the page you are on, for
       # every page in index.html, including sections add-ons insert late.
       - name: Run help context test

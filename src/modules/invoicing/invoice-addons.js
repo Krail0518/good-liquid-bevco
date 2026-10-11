@@ -194,7 +194,13 @@
       card.appendChild(rateLine);
       grid.appendChild(card);
       cb.addEventListener('change', function(){
-        if(a.key === 'tray12' || a.key === 'tray24') applyCaseSize();
+        if(a.key === 'tray12' || a.key === 'tray24'){
+          // The two trays are alternatives, as on the quote: ticking one
+          // unticks the other (sync then drops its row).
+          var other = grid.querySelector('input[data-addon="' + (a.key === 'tray12' ? 'tray24' : 'tray12') + '"]');
+          if(cb.checked && other) other.checked = false;
+          applyCaseSize();
+        }
         sync();
       });
       rate.addEventListener('input', sync);
@@ -343,7 +349,9 @@
         var hit = canFmts.find(function(f){ return norm(f.label) === norm(l.format) || norm(f.value) === norm(l.format); });
         // An unknown format still invoices at the quoted price; its name goes
         // in the row's description so nothing is silently relabelled.
-        var row = window.glBuildCanRow(uid, l.cases, hit ? hit.value : canFmts[0].value, canFmts, l.perCan, hit ? '' : l.format);
+        // The quote's case size (12 with 12-count trays); quotes saved before
+        // it was recorded were all 24-can cases.
+        var row = window.glBuildCanRow(uid, l.cases, hit ? hit.value : canFmts[0].value, canFmts, l.perCan, hit ? '' : l.format, l.cansPerCase || 24);
         row.setAttribute('data-pu-override', '1');   // the quoted price wins over the catalog
         tbl.appendChild(row);
       } else if(l.kind === 'bottling' && window.glBuildBtlRow){
