@@ -3692,30 +3692,12 @@ async function submitContactForm(btn){
   btn.textContent = 'Sending…';
   btn.disabled = true;
 
-  // Build a single human-readable note block we'll reuse in the deal + the email.
-  const noteBlock = [
-    'Brand: ' + vals.brand_name,
-    'Contact: ' + vals.contact_name + ' (' + vals.email + (vals.phone ? ', ' + vals.phone : '') + ')',
-    (vals.city || vals.state) ? 'Location: ' + [vals.city, vals.state].filter(Boolean).join(', ') : null,
-    'Service: ' + (vals.service || '—'),
-    'Product type: ' + (vals.product_type || '—'),
-    'Volume: ' + (vals.volume || '—'),
-    'Timeline: ' + (vals.timeline || '—'),
-    'Funding stage: ' + (vals.funding_stage || '—'),
-    'Lead source: ' + (vals.lead_source || '—'),
-    '',
-    vals.details || '(no project details given)'
-  ].filter(Boolean).join('\n');
-
-  let formspreeOk = false;
   try {
-    // 1. Notify Mike + Sandra via Formspree
-    const emailRes = await fetch('https://formspree.io/f/mykolyee', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(Object.assign({}, vals, { _subject: '[Good Liquid] New quote: ' + vals.brand_name, summary: noteBlock }))
-    });
-    formspreeOk = emailRes.ok;
+    // 1. Formspree is gone (no longer used, 2026-10-11). It emailed a copy of
+    //    every submission, which landed in a filtered Gmail label, and its
+    //    free plan dropped anything past 50 a month. The alert now comes from
+    //    the server: submit_quote_request records the submission, and its
+    //    new_quote trigger notifies by Telegram and email.
 
     // 2. The raw submission is recorded by submit_quote_request itself, in the
     //    same transaction as the deal (and that fires the new-quote alert).
@@ -3786,9 +3768,8 @@ async function submitContactForm(btn){
     }
 
     // "Sent" means the lead is in the CRM. It used to mean Formspree accepted
-    // the email: from 2026-08-28 every visitor saw "sent" while the deal RPC
-    // failed for all of them, and Formspree's free plan silently drops mail
-    // past 50 a month.
+    // a copy by email: from 2026-08-28 every visitor saw "sent" while the
+    // deal RPC failed for all of them.
     if(newDealId){
       document.getElementById('form-ok').style.display = 'block';
       ['qf-brand','qf-name','qf-email','qf-phone','qf-city','qf-state','qf-volume','qf-timeline','qf-funding','qf-source','qf-details'].forEach(id => {
@@ -3813,8 +3794,7 @@ async function submitContactForm(btn){
       const friendly = /already have your request|try again in a few minutes|required|valid/i.test(msg);
       const text = friendly
         ? msg
-        : 'Sorry — your inquiry did not go through. Please try again, or email Mike@GoodLiquid.com directly.' +
-          (formspreeOk ? ' (A copy did reach our inbox, so we may already have it.)' : '');
+        : 'Sorry — your inquiry did not go through. Please try again, or email Mike@GoodLiquid.com directly.';
       if(errBox){ errBox.textContent = text; errBox.style.display = 'block'; errBox.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
       else alert(text);
     }
