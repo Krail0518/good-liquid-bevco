@@ -6,13 +6,16 @@
 //
 // Setup:
 //   1. Mike creates a bot with @BotFather and presses Start in a chat with it.
-//   2. The bot token goes in the Supabase secret TELEGRAM_BOT_TOKEN.
+//   2. The bot token goes in Vault as gl_telegram_bot_token (read through
+//      gl_secret_get, service role only), or in the TELEGRAM_BOT_TOKEN secret,
+//      which wins if both are set.
 //   3. notify-deal's 'telegram_setup' event reads the bot's recent messages,
 //      takes the private chat that pressed Start, saves its id in
 //      app_settings.telegram_chat_id (staff-only RLS) and sends a test.
 //      A TELEGRAM_CHAT_ID secret, if set, wins over the saved value.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.112.4';
+import { vaultGet } from './gmail-creds.ts';
 
 export interface TelegramResult { ok: boolean; status: number; reply: string }
 
@@ -22,6 +25,10 @@ function admin() {
   return createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
     auth: { persistSession: false },
   });
+}
+
+async function botToken(): Promise<string> {
+  return Deno.env.get('TELEGRAM_BOT_TOKEN') || await vaultGet('gl_telegram_bot_token');
 }
 
 async function chatId(): Promise<string> {
@@ -49,8 +56,8 @@ function describe(status: number, body: Record<string, unknown>): string {
 }
 
 export async function sendTelegram(tag: string, text: string): Promise<TelegramResult> {
-  const token = Deno.env.get('TELEGRAM_BOT_TOKEN');
-  if (!token) return { ok: false, status: 0, reply: 'TELEGRAM_BOT_TOKEN not set' };
+  const token = await botToken();
+  if (!token) return { ok: false, status: 0, reply: 'no Telegram bot token set' };
   const chat = await chatId();
   if (!chat) return { ok: false, status: 0, reply: 'no Telegram chat yet — run telegram_setup' };
   try {
@@ -77,8 +84,8 @@ export async function sendTelegram(tag: string, text: string): Promise<TelegramR
 // Find the private chat that pressed Start, remember it, and send a test.
 // Returns who it connected to, so the caller can confirm it is Mike.
 export async function setupTelegram(): Promise<{ ok: boolean; reply: string; who?: string }> {
-  const token = Deno.env.get('TELEGRAM_BOT_TOKEN');
-  if (!token) return { ok: false, reply: 'TELEGRAM_BOT_TOKEN not set' };
+  const token = await botToken();
+  if (!token) return { ok: false, reply: 'no Telegram bot token set' };
   let r: Response;
   try { r = await fetch(`https://api.telegram.org/bot${token}/getUpdates`); }
   catch (e) { return { ok: false, reply: mask(e, token) }; }
