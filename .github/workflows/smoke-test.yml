@@ -355,6 +355,14 @@ jobs:
           REPO_ROOT: ${{ github.workspace }}
         run: node tests/warehouse.test.cjs
 
+      # Invoice builder: ticking the 12-count case tray makes every case on the
+      # canning rows 12 cans, so $/case, cans, per-can add-ons and pallets follow.
+      - name: Run invoice case-size test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/invoice-case-size.test.cjs
+
       # Help: the ❓ button opens the section for the page you are on, for
       # every page in index.html, including sections add-ons insert late.
       - name: Run help context test
