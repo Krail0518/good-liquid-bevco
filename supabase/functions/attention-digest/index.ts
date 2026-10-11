@@ -23,6 +23,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.112.4";
 import { corsHeaders, jsonResponse, handlePreflight } from "../_shared/cors.ts";
 import { isCronCall } from "../_shared/cron-auth.ts";
 import { requireStaff } from "../_shared/auth.ts";
+import { sendCallMeBot } from "../_shared/callmebot.ts";
 
 const MIKE_EMAIL = "mike@goodliquid.com";
 const DAY = 86400000;
@@ -35,16 +36,6 @@ function tMs(row: Record<string, unknown>): number { return new Date(String(row.
 
 interface Item { name: string; co: string; stage: string; value: number; cat: string; tag: string; color: string; score: number; status: string; todos: string[]; }
 
-async function sendWhatsApp(message: string): Promise<boolean> {
-  const phone = Deno.env.get("CALLMEBOT_PHONE"), apiKey = Deno.env.get("CALLMEBOT_API_KEY");
-  if (!phone || !apiKey) { console.error("[attention-digest] CallMeBot secrets missing"); return false; }
-  try {
-    const url = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(message)}&apikey=${encodeURIComponent(apiKey)}`;
-    const r = await fetch(url); const t = await r.text();
-    if (!r.ok || t.toLowerCase().includes("error")) { console.error("[attention-digest] CallMeBot", r.status, t); return false; }
-    return true;
-  } catch (e) { console.error("[attention-digest] WhatsApp", e); return false; }
-}
 
 async function sendEmail(subject: string, text: string, html: string): Promise<boolean> {
   const supaUrl = Deno.env.get("SUPABASE_URL"), key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -195,13 +186,17 @@ Deno.serve(async (req) => {
   const text = `NEEDS ATTENTION — ${dateLabel}\n\n` + items.map((x) => `${x.tag} — ${x.name}${x.co ? " (" + x.co + ")" : ""}${x.value ? " · " + fmtMoney(x.value) : ""}${x.status ? "\n   " + x.status : ""}`).join("\n");
   const subject = `🔥 ${items.length} deal${items.length === 1 ? "" : "s"} need you — ${dateLabel}`;
 
-  const whatsappSent = await sendWhatsApp(wa);
+  // The shared sender logs CallMeBot's own reply and counts its refusals
+  // (e.g. "0 messages left ... Message not sent") as failures. The brief
+  // used to report every one of those as sent.
+  const wa_ = await sendCallMeBot("attention-digest", wa);
+  const whatsappSent = wa_.ok;
   const emailSent = await sendEmail(subject, text, html);
 
   try {
     await supa.from("audit_log").insert({ action: "attention_digest_sent", target: dateLabel,
-      details: { items: items.length, ...counts, whatsappSent, emailSent } });
+      details: { items: items.length, ...counts, whatsappSent, whatsappReply: wa_.reply, emailSent } });
   } catch { /* non-fatal */ }
 
-  return jsonResponse({ items: items.length, counts, whatsappSent, emailSent }, 200);
+  return jsonResponse({ items: items.length, counts, whatsappSent, whatsappReply: wa_.reply, emailSent }, 200);
 });
