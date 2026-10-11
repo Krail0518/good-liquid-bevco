@@ -59,21 +59,30 @@ async function main() {
       window.currentUser = { id: 'test-admin', email: 'test@local', role: 'admin', is_admin: true, name: 'Test Admin' };
       const out = {};
 
-      // 1) The builder on screen: a 100-case tier, then switch to 12-count trays.
+      // 1) The builder on screen: canning → format → case tray. A 100-case
+      //    tier, then pick the 12-count tray in the CASE TRAY picker.
       window.glOpenQuoteBuilder(null, null, { productType: 'canning', suggestCases: 100 });
       await wait(500);
       const cans = () => [...document.querySelectorAll('[data-tier-field="cans"]')].map((i) => Number(i.value));
+      const cases = () => [...document.querySelectorAll('[data-tier-field="cases"]')].map((i) => Number(i.value));
       const t24 = () => document.getElementById('gl-qb-tray24-on');
       const t12 = () => document.getElementById('gl-qb-tray12-on');
+      const pick = (v) => { const s = document.getElementById('gl-qb-tray'); s.value = v; s.dispatchEvent(new Event('change')); };
       out.cans24 = cans();
+      out.pickerShown = getComputedStyle(document.getElementById('gl-qb-tray-wrap')).display !== 'none';
+      pick('12');
+      await wait(200);
+      out.cans12 = cans(); out.cases12 = cases();
+      out.ticks12 = { t12: t12().checked, t24: t24().checked };
+      pick('24');
+      await wait(200);
+      out.cansBack = cans(); out.casesBack = cases();
+      out.ticks24 = { t12: t12().checked, t24: t24().checked };
+      // Ticking the 12-count tray charge by hand moves the picker too.
       const cb = t12(); cb.checked = true; cb.dispatchEvent(new Event('change'));
       await wait(200);
-      out.cans12 = cans();
-      out.tray24Unticked = !t24().checked;
-      const b = t24(); b.checked = true; b.dispatchEvent(new Event('change'));
-      await wait(200);
-      out.cansBack = cans();
-      out.tray12Unticked = !t12().checked;
+      out.pickerAfterTick = document.getElementById('gl-qb-tray').value;
+      out.cansAfterTick = cans();
       const close = document.getElementById('gl-qb-close'); if (close) close.click();
 
       // 2) Line items from a saved 12-count quote.
@@ -97,6 +106,7 @@ async function main() {
       const row = document.querySelector('#gl-inv-body [id$="-cases"]').closest('[data-gl-total]');
       out.inv = {
         cpc: row.getAttribute('data-gl-cpc'),
+        trayPicker: document.getElementById(row.id + '-tray').value,
         total: Number(row.getAttribute('data-gl-total')),
         cansPerCaseNow: window.glInvCansPerCase(),
       };
@@ -104,15 +114,18 @@ async function main() {
     });
 
     check('quote: 100 cases are 2,400 cans with 24-count trays', r.cans24[0] === 2400, JSON.stringify(r.cans24));
-    check('quote: ticking 12-count trays recounts to 1,200 cans', r.cans12[0] === 1200, JSON.stringify(r.cans12));
-    check('quote: ticking 12-count unticks 24-count', r.tray24Unticked);
-    check('quote: ticking 24-count again goes back to 2,400 and unticks 12', r.cansBack[0] === 2400 && r.tray12Unticked, JSON.stringify(r.cansBack));
+    check('quote: the CASE TRAY picker shows for canning', r.pickerShown);
+    check('quote: picking 12-count keeps 2,400 cans as 200 cases', r.cases12[0] === 200 && r.cans12[0] === 2400, JSON.stringify([r.cases12, r.cans12]));
+    check('quote: picking 12-count ticks its tray charge and unticks 24-count', r.ticks12.t12 && !r.ticks12.t24, JSON.stringify(r.ticks12));
+    check('quote: picking 24-count goes back to 100 cases and swaps the charge', r.casesBack[0] === 100 && r.cansBack[0] === 2400 && r.ticks24.t24 && !r.ticks24.t12, JSON.stringify([r.casesBack, r.cansBack, r.ticks24]));
+    check('quote: ticking the 12-count tray charge moves the picker to 12, cans unchanged', r.pickerAfterTick === '12' && r.cansAfterTick[0] === 2400, JSON.stringify([r.pickerAfterTick, r.cansAfterTick]));
     check('quote line: canning is 100 cases at $6.00 (12 × $0.50)', r.fill.qty === 100 && r.fill.unitPrice === 6 && r.fill.cansPerCase === 12, JSON.stringify(r.fill));
     check('quote line: 12-count tray × 100 cases', r.tray.qty === 100, JSON.stringify(r.tray));
     check('quote line: nitrogen on 1,200 cans', r.nitro.qty === 1200, JSON.stringify(r.nitro));
     check('quote line: 100 cases ÷ 40 per pallet = 3 pallets', r.pallet.qty === 3, JSON.stringify(r.pallet));
     check('invoice from quote: canning row is 12-can cases billing $600', r.inv.cpc === '12' && r.inv.total === 600, JSON.stringify(r.inv));
-    check('invoice from quote: the invoice case size is 12', r.inv.cansPerCaseNow === 12, JSON.stringify(r.inv));
+    check('invoice from quote: the line\'s case tray picker reads 12-count', r.inv.trayPicker === '12', JSON.stringify(r.inv));
+    check('invoice from quote: a new line would start on 12-count', r.inv.cansPerCaseNow === 12, JSON.stringify(r.inv));
   } finally {
     await browser.close();
     server.close();

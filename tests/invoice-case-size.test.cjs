@@ -1,14 +1,17 @@
 /*
- * invoice-case-size.test.cjs — 12-count case trays change what a "case" is.
+ * invoice-case-size.test.cjs — the case tray on a canning line.
  *
- * The invoice builder hard-coded 24 cans per case. Ticking "12-count case
- * tray" only added a tray charge: the canning row still billed 24 cans per
- * case, showed cases × 24 cans, and the pallet count (cases ÷ cases per
- * pallet) was computed from 24-can cases, so entering trays-per-pallet gave
- * half the pallets.
+ * The invoice builder hard-coded 24 cans per case, so 880 cases packed in
+ * 12-count trays were billed as 21,120 cans, and the pallet count was worked
+ * out from the wrong number of cases. Each canning line now has its own case
+ * tray picker under the format (canning → format → case tray). Changing the
+ * tray keeps the cans and converts the cases (200 of 24 = 400 of 12, 4,800
+ * cans either way); cases typed after picking the tray are cases of that
+ * tray (880 on 12-count = 10,560 cans). Price per case, the tray charge,
+ * per-can add-ons and pallets all follow.
  *
  * This loads the real page, opens the real builder with stubbed rates, and
- * checks the numbers a person sees.
+ * drives it the way a person does: type the cases, pick the tray.
  *
  *   NODE_PATH=/tmp/pw/node_modules node tests/invoice-case-size.test.cjs
  */
@@ -50,15 +53,17 @@ async function main() {
     executablePath: process.env.PW_CHROMIUM || undefined,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
-  const page = await browser.newPage();
+  const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e && e.message || e)));
   try {
     await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(2500);
 
-    const r = await page.evaluate(async () => {
+    // One flat rate so the expected numbers are easy to read: $0.50 a can.
+    const id = await page.evaluate(async () => {
       const wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
       window.currentUser = { id: 'test-admin', email: 'test@local', role: 'admin', is_admin: true, name: 'Test Admin' };
-      // One flat rate so the expected numbers are easy to read: $0.50 a can.
       window._glR = { ok: true, b: [], c: [{ format: '12oz-standard', format_label: '12oz Standard', min_cases: 0, price_per_can: 0.5 }] };
       window.glLoadRates = async () => {};
       window.glGetClientOverride = () => null;
@@ -66,53 +71,79 @@ async function main() {
       await wait(400);
       window.glAddLine('canning');
       await wait(100);
-      const row = document.querySelector('#gl-inv-body [id$="-cases"]').closest('[data-gl-total]');
-      const id = row.id;
-      const casesEl = document.getElementById(id + '-cases');
-      casesEl.value = '100';
-      window.glUpdateCan(id);
+      return document.querySelector('#gl-inv-body [id$="-cases"]').closest('[data-gl-total]').id;
+    });
 
-      const box = (key) => document.querySelector('#gl-inv-addons input[data-addon="' + key + '"]');
-      const addonQty = (key) => {
+    const snap = () => page.evaluate((id) => {
+      const qty = (key) => {
         const a = document.querySelector('#gl-inv-body [data-gl-addon="' + key + '"] [id$="-qty"]');
         return a ? Number(a.value) : null;
       };
-      const snap = () => ({
+      const row = document.getElementById(id);
+      return {
+        cases: Number(document.getElementById(id + '-cases').value),
+        cans: document.getElementById(id + '-cans').textContent,
         pcase: Number(document.getElementById(id + '-pcase').value),
         total: Number(row.getAttribute('data-gl-total')),
-        cans: document.getElementById(id + '-cans').textContent,
-      });
+        tray: document.getElementById(id + '-tray').value,
+        tray12: qty('tray12'), tray24: qty('tray24'), nitrogen: qty('nitrogen'), pallet: qty('pallet'),
+      };
+    }, id);
+    const typeCases = async (n) => {
+      await page.fill(`#${id}-cases`, String(n));
+      await page.press(`#${id}-cases`, 'Tab');
+      await page.waitForTimeout(100);
+    };
 
-      const before = snap();
+    // A new line: 200 cases of 24 = 4,800 cans. Nitrogen and pallets ticked,
+    // 208 cases a pallet.
+    await page.click('#gl-inv-addons input[data-addon="nitrogen"]');
+    await page.click('#gl-inv-addons input[data-addon="pallet"]');
+    await page.fill('#gl-inv-addons-cpp', '208');
+    const on24 = await snap();
 
-      // Tick 12-count trays, nitrogen (per can) and pallets; 40 trays a pallet.
-      const tick = (key) => { const cb = box(key); cb.checked = true; cb.dispatchEvent(new Event('change')); };
-      tick('tray12'); tick('nitrogen'); tick('pallet');
-      const cpp = document.getElementById('gl-inv-addons-cpp');
-      cpp.value = '40'; cpp.dispatchEvent(new Event('input'));
-      const after = snap();
-      const qty = { tray12: addonQty('tray12'), nitrogen: addonQty('nitrogen'), pallet: addonQty('pallet') };
+    // Pick the 12-count case tray: same 4,800 cans, 400 cases.
+    await page.selectOption(`#${id}-tray`, '12');
+    await page.waitForTimeout(150);
+    const switched = await snap();
 
-      // A typed-over $/case keeps its per-can price when the case size changes.
-      const pe = document.getElementById(id + '-pcase');
-      pe.value = '7.20'; window.glUpdateCanPrice(id);        // $0.60/can at 12 a case
-      const t12 = box('tray12'); t12.checked = false; t12.dispatchEvent(new Event('change'));
-      const backTo24 = snap();
+    // Now type the run in 12-count cases.
+    await typeCases(880);
+    const on12 = await snap();
 
-      // What gets saved for a 12-count row, and that it reopens the same.
-      t12.checked = true; t12.dispatchEvent(new Event('change'));
-      const pcase12 = Number(pe.value);
-      return { before, after, qty, backTo24, pcase12, cpc: row.getAttribute('data-gl-cpc') };
+    // The run from the pallet question: 31,680 cans = 2,640 cases of 12.
+    await typeCases(2640);
+    const big = await snap();
+
+    // A typed-over $/case keeps its per-can price when the tray changes.
+    await page.fill(`#${id}-pcase`, '7.20');
+    await page.press(`#${id}-pcase`, 'Tab');
+    await page.selectOption(`#${id}-tray`, '24');
+    await page.waitForTimeout(150);
+    const back24 = await snap();
+
+    // A second canning line starts on the tray the last one is on.
+    await page.selectOption(`#${id}-tray`, '12');
+    const second = await page.evaluate(async () => {
+      window.glAddLine('canning');
+      await new Promise((ok) => setTimeout(ok, 100));
+      const trays = [...document.querySelectorAll('#gl-inv-body [id$="-tray"]')];
+      return trays[trays.length - 1].value;
     });
 
-    check('24-can case by default: 100 cases × 24 × $0.50 = $1,200', r.before.total === 1200 && r.before.pcase === 12, JSON.stringify(r.before));
-    check('12-count trays: $/case is 12 cans × $0.50 = $6.00', r.after.pcase === 6, JSON.stringify(r.after));
-    check('12-count trays: 100 cases bill $600 for 1,200 cans', r.after.total === 600 && /1,200 cans/.test(r.after.cans), JSON.stringify(r.after));
-    check('12-count tray add-on quantity is the number of cases (100)', r.qty.tray12 === 100, JSON.stringify(r.qty));
-    check('per-can add-on counts real cans (1,200), not cases × 24', r.qty.nitrogen === 1200, JSON.stringify(r.qty));
-    check('pallets: 100 trays ÷ 40 per pallet = 3', r.qty.pallet === 3, JSON.stringify(r.qty));
-    check('typed $/case keeps its per-can price when switching back to 24 ($7.20 → $14.40)', r.backTo24.pcase === 14.4, JSON.stringify(r.backTo24));
-    check('switching to 12 again halves it back to $7.20', r.pcase12 === 7.2 && r.cpc === '12', JSON.stringify(r));
+    check('new line: 200 cases of 24 = 4,800 cans at $12.00 a case', on24.cases === 200 && /4,800 cans/.test(on24.cans) && on24.pcase === 12, JSON.stringify(on24));
+    check('12-count tray: same 4,800 cans, cases double to 400', switched.cases === 400 && /4,800 cans/.test(switched.cans), JSON.stringify(switched));
+    check('12-count tray: switching leaves the line total at $2,400', switched.total === 2400 && switched.pcase === 6, JSON.stringify(switched));
+    check('12-count tray: 880 cases typed are 10,560 cans', on12.cases === 880 && /10,560 cans/.test(on12.cans), JSON.stringify(on12));
+    check('12-count tray: $6.00 a case, $5,280 for the line', on12.pcase === 6 && on12.total === 5280, JSON.stringify(on12));
+    check('12-count tray charge is ticked automatically for 880 cases', on12.tray12 === 880 && on12.tray24 === null, JSON.stringify(on12));
+    check('nitrogen follows to 10,560 cans', on12.nitrogen === 10560, JSON.stringify(on12));
+    check('pallets: 880 ÷ 208 = 5', on12.pallet === 5, JSON.stringify(on12));
+    check('2,640 cases of 12: 31,680 cans and 13 pallets at 208 a pallet', /31,680 cans/.test(big.cans) && big.pallet === 13 && big.tray12 === 2640, JSON.stringify(big));
+    check('back to 24-count: same 31,680 cans as 1,320 cases, typed $7.20 becomes $14.40', back24.cases === 1320 && /31,680 cans/.test(back24.cans) && back24.pcase === 14.4, JSON.stringify(back24));
+    check('back to 24-count: the 24-count tray charge replaces the 12-count one', back24.tray24 === 1320 && back24.tray12 === null, JSON.stringify(back24));
+    check('a new canning line starts on the 12-count tray the last line uses', second === '12', second);
+    check('no page errors', errors.length === 0, errors.join(' | '));
   } finally {
     await browser.close();
     server.close();

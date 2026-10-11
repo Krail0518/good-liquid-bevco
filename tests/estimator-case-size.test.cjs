@@ -78,9 +78,9 @@ async function main() {
     if (!r.missing) {
       // 1,000 × 24-can cases: tier 1000 = $8.40/case → $8,400; nitro 24,000 × $0.03 = $720.
       check('24-can: 1,000 cases = 24,000 cans, $9,120 with nitrogen', /24,000 cans/.test(r.c24.cans) && r.c24.total === '$9,120', JSON.stringify(r.c24));
-      // 1,000 × 12-can cases = 500 rate-card cases: tier 501 not reached → 340 tier $10.32 × 500 = $5,160; nitro 12,000 × .03 = $360.
-      check('12-can: 1,000 cases = 12,000 cans, $5,520 with nitrogen', /12,000 cans/.test(r.c12.cans) && r.c12.total === '$5,520', JSON.stringify(r.c12));
-      check('12-can: breakdown shows $5.16 per 12-can case', /cases of 12 @ \$5\.16\/case/.test(r.c12.bd), r.c12.bd);
+      // Switching keeps the cans: 1,000 × 24 → 2,000 × 12, same $9,120.
+      check('12-can: switching keeps 24,000 cans as 2,000 cases, same $9,120', r.c12.cases === 2000 && /24,000 cans/.test(r.c12.cans) && r.c12.total === '$9,120', JSON.stringify(r.c12));
+      check('12-can: breakdown shows $4.20 per 12-can case', /cases of 12 @ \$4\.20\/case/.test(r.c12.bd), r.c12.bd);
       check('12-can: minimum run is 400 cases (same 4,800 cans as 200 × 24)', r.min12.cases === 400, JSON.stringify(r.min12));
     }
   } finally {

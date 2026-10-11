@@ -22,7 +22,10 @@
      unticks the other); a quote saved with both ticked counts 24, as it always
      did. Before this, a 12-count tray only added its tray charge while every
      case was still counted, filled and priced as 24 cans. */
+  // pkg.caseSize is the CASE TRAY picker beside the format; quotes saved
+  // before it existed fall back to which tray is ticked.
   function cansPerCase(pkg){
+    if(pkg && (pkg.caseSize === 12 || pkg.caseSize === 24)) return pkg.caseSize;
     return pkg && pkg.tray12On && !pkg.tray24On ? 12 : CANS_PER_CASE;
   }
   var BTLS_PER_CASE  = 12;   // default only — each bottling tier has its own editable Bottles / Case
@@ -368,8 +371,8 @@
         '<div style="'+LBL+'">FORMATS ON THIS QUOTE</div>' +
         '<div id="gl-qb-sections" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:16px"></div>' +
 
-        /* ── Row 2: Product type / format ── */
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px">' +
+        /* ── Row 2: Product type / format / case tray ── */
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px">' +
           '<div><div style="'+LBL+'">PRODUCT TYPE</div>' +
             '<select id="gl-qb-type" style="'+INP+'">' +
               '<option value="canning">Canning</option>' +
@@ -385,6 +388,15 @@
                applying, and those prices are editable in the add-ons grid. */
             '<input id="gl-qb-fmt" list="gl-qb-fmt-list" autocomplete="off" placeholder="Pick one, or type your own…" style="'+INP+'">' +
             '<datalist id="gl-qb-fmt-list"></datalist>' +
+          '</div>' +
+          /* Canning → format → case tray. The tray sets how many cans a case
+             is; every tier's cans, the fill per case, the tray charge and the
+             pallets follow it. */
+          '<div id="gl-qb-tray-wrap"><div style="'+LBL+'">CASE TRAY</div>' +
+            '<select id="gl-qb-tray" style="'+INP+'">' +
+              '<option value="24">24-count case tray</option>' +
+              '<option value="12">12-count case tray</option>' +
+            '</select>' +
           '</div>' +
         '</div>' +
 
@@ -700,11 +712,29 @@
     }
 
     /* ── Add-ons ── */
+    // The CASE TRAY picker: choosing one sets the case size and ticks that
+    // tray's charge (unticking the other). Tiers already entered keep their
+    // cans; their case counts convert.
+    var trayEl = ov.querySelector('#gl-qb-tray');
+    if(trayEl) trayEl.addEventListener('change', function(){
+      var P = state.pkg || (state.pkg = defaultCanningPkg(state.format));
+      var oldCpc = cansPerCase(P);
+      var n = parseInt(trayEl.value, 10) === 12 ? 12 : 24;
+      P.caseSize = n;
+      P.tray12On = n === 12;
+      P.tray24On = n === 24;
+      recountCanTiers(oldCpc);
+      rebuildAddons();
+      renderTiers();
+    });
     function rebuildAddons(){
       var t = state.productType;
       var el = ov.querySelector('#gl-qb-addons');
+      var trayWrap = ov.querySelector('#gl-qb-tray-wrap');
+      if(trayWrap) trayWrap.style.display = t === 'canning' ? '' : 'none';
       if(t === 'canning'){
         var P = state.pkg || (state.pkg = defaultCanningPkg());
+        if(trayEl) trayEl.value = String(cansPerCase(P));
         el.innerHTML =
           '<div style="'+LBL+'">ADD-ON SERVICES &amp; PACKAGING</div>' +
           '<div style="font-size:11px;color:#6b87ad;margin:-4px 0 8px">Check what applies to this run — each is priced from the “💲 Prices” settings and added to the tier totals below.</div>' +
@@ -750,18 +780,23 @@
         canningMap.forEach(function(m){
           var cb = el.querySelector('#'+m[0]+'-on'), rt = el.querySelector('#'+m[0]+'-rate');
           if(cb){ cb.checked = !!P[m[1]]; cb.addEventListener('change', function(){
+            var wasCpc = cansPerCase(P);
             P[m[1]] = cb.checked;
-            // 24-count and 12-count trays are alternatives, and the one in use
-            // sets how many cans a case holds.
-            var TRAYS = { tray24On: ['tray12On', 'gl-qb-tray12'], tray12On: ['tray24On', 'gl-qb-tray24'] };
+            // 24-count and 12-count trays are alternatives. Ticking one also
+            // sets the CASE TRAY picker; unticking one only drops its charge.
+            var TRAYS = { tray24On: ['tray12On', 'gl-qb-tray12', 24], tray12On: ['tray24On', 'gl-qb-tray24', 12] };
             var other = TRAYS[m[1]];
             if(other){
               if(cb.checked){
                 P[other[0]] = false;
                 var ocb = el.querySelector('#' + other[1] + '-on');
                 if(ocb) ocb.checked = false;
+                P.caseSize = other[2];
+              } else {
+                P.caseSize = wasCpc;
               }
-              recountCanTiers();
+              if(trayEl) trayEl.value = String(cansPerCase(P));
+              recountCanTiers(wasCpc);
             }
             renderTiers();
           }); }
@@ -932,13 +967,16 @@
     function canTier(cases){
       return { cases:cases, cans:cases*cansPerCase(state.pkg), fillPerCan:canRate(cases), nitrogenPerCan:0.03, trayPerCan:0.03 };
     }
-    // The case size changed: recount every tier's cans from its cases, and
-    // re-rate it, except where a count or rate was typed over.
-    function recountCanTiers(){
+    // The case tray changed from oldCpc. The cans stay the same and the case
+    // count converts: 200 cases of 24 (4,800 cans) become 400 cases of 12.
+    // Pick the tray first and the cases you then type are cases of that tray.
+    function recountCanTiers(oldCpc){
       var cpc = cansPerCase(state.pkg);
+      if(!oldCpc || cpc === oldCpc) return;
       state.tiers.forEach(function(tier){
-        if(!tier._countOverride) tier.cans = Math.round((tier.cases||0) * cpc);
-        if(!tier._fillOverride) tier.fillPerCan = canRate(tier.cases||0);
+        tier.cases = Math.round((tier.cases||0) * oldCpc / cpc);
+        if(!tier._countOverride) tier.cans = Math.round(tier.cases * cpc);
+        if(!tier._fillOverride) tier.fillPerCan = canRate(tier.cases);
       });
     }
 

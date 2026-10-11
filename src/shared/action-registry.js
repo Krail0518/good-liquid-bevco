@@ -218,6 +218,7 @@
     'glSendOnboardingLink',
     'glSetAddonDesc',
     'glSetAddonPrice',
+    'glSetCanTray',
     'glSetDefault',
     'glSetInvClient',
     'glSetInvDate',
