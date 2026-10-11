@@ -41,6 +41,7 @@ import { requireStaff } from '../_shared/auth.ts';
 // to Gmail).
 import { vaultGet } from '../_shared/gmail-creds.ts';
 import { sendCallMeBot, type CallMeBotResult } from '../_shared/callmebot.ts';
+import { sendTelegram, setupTelegram } from '../_shared/telegram.ts';
 
 const MIKE_EMAILS = ['mike@goodliquid.com'];
 const EMOJI_MAP: Record<string, string> = {
@@ -318,11 +319,26 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return jsonResponse({ ok: true, whatsapp: wa });
   }
 
+  // Connect Telegram: remember the chat that pressed Start in the bot and
+  // send it a test. Returns who it connected to.
+  if (event === 'telegram_setup') {
+    const tg = await setupTelegram();
+    console.log('[notify-deal] telegram_setup →', tg.ok, tg.reply, tg.who || '');
+    return jsonResponse({ ok: tg.ok, telegram: tg });
+  }
+  if (event === 'telegram_test') {
+    const tg = await sendTelegram('notify-deal', '🔔 Good Liquid CRM test: Telegram alerts are working.');
+    return jsonResponse({ ok: tg.ok, telegram: tg });
+  }
+
   const { whatsapp, subject, body } = buildMessage(event, data);
 
-  const whatsappSent = (await sendWhatsApp(whatsapp)).ok;
+  // Same text to WhatsApp and Telegram; either one getting through is enough.
+  const [wa, tg] = await Promise.all([sendWhatsApp(whatsapp), sendTelegram('notify-deal', whatsapp)]);
+  const whatsappSent = wa.ok;
+  const telegramSent = tg.ok;
   const emailSent    = await sendEmail(subject, body);
-  console.log('[notify-deal]', event, '→ whatsapp:', whatsappSent, 'email:', emailSent);
+  console.log('[notify-deal]', event, '→ whatsapp:', whatsappSent, 'telegram:', telegramSent, 'email:', emailSent);
 
-  return jsonResponse({ ok: true, whatsappSent, emailSent });
+  return jsonResponse({ ok: true, whatsappSent, telegramSent, emailSent });
 });
