@@ -323,7 +323,11 @@
       <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
         <label class="qc-fld" style="letter-spacing:1px">EXACT</label>
         <input id="qc-cases" type="number" min="200" value="500" step="50" style="width:104px;padding:8px 10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:13px;font-family:var(--ff-body)">
-        <span id="qc-perlabel" style="font-size:11px;color:rgba(107,135,173,.7)">cases · 24 per case</span>
+        <span id="qc-perlabel" style="font-size:11px;color:rgba(107,135,173,.7)">
+          <select id="qc-cancase" aria-label="Cans per case" style="padding:6px 8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:12px;font-family:var(--ff-body)">
+            <option value="24" selected>24</option><option value="12">12</option>
+          </select> cans per case
+        </span>
         <span id="qc-btlcase-wrap" hidden style="font-size:11px;color:rgba(107,135,173,.7)">
           <select id="qc-btlcase" aria-label="Bottles per case" style="padding:6px 8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--white);font-size:12px;font-family:var(--ff-body)">
             <option value="6">6</option><option value="12" selected>12</option>

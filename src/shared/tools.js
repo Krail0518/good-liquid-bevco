@@ -733,7 +733,12 @@
 
   function fmt$(n){ return '$' + Math.round(n).toLocaleString(); }
 
-  var UNITS_PER_CASE = { canning: 24 };   // bottling: chosen in #qc-btlcase (6 or 12)
+  // Canning: 24 or 12 cans a case, chosen in #qc-cancase (12-count case
+  // trays). The rate card is in 24-can cases, so a 12-can run is priced and
+  // tiered by its 24-can equivalent: same price per can, half the price per
+  // case, and twice the cases for the same minimum. Bottling: chosen in
+  // #qc-btlcase (6 or 12).
+  var RATE_CANS_PER_CASE = 24;
   var MIN_CASES = { canning: 200, bottling: 220 };
 
   // Count-up so the headline number rolls to its new value instead of snapping.
@@ -786,7 +791,11 @@
     }
 
     var isBtl = service === 'bottling';
-    var minCases = MIN_CASES[service] || 200;
+    var canCaseEl = document.getElementById('qc-cancase');
+    var cansPerCase = parseInt(canCaseEl && canCaseEl.value, 10) || RATE_CANS_PER_CASE;
+    // Rate-card cases per case on screen: 1 for a 24-can case, 0.5 for 12.
+    var caseScale = isBtl ? 1 : cansPerCase / RATE_CANS_PER_CASE;
+    var minCases = isBtl ? (MIN_CASES.bottling) : Math.ceil(MIN_CASES.canning / caseScale);
     var cases = Math.max(minCases, parseInt(casesEl.value, 10) || minCases);
     casesEl.min = minCases;
     // Keep the number field and the slider in sync — but don't fight the user mid-type.
@@ -801,7 +810,7 @@
     }
 
     var btlCaseEl = document.getElementById('qc-btlcase');
-    var unitsPerCase = isBtl ? (parseInt(btlCaseEl && btlCaseEl.value, 10) || 12) : (UNITS_PER_CASE[service] || 24);
+    var unitsPerCase = isBtl ? (parseInt(btlCaseEl && btlCaseEl.value, 10) || 12) : cansPerCase;
     var unitWord = isBtl ? 'bottle' : 'can';
     var units = cases * unitsPerCase;
     // Bottling: pick 6 or 12 per case; nitro is can-only; pasteurization is per bottle.
@@ -820,12 +829,13 @@
     var table = (RATES[service] || {})[fmt.value];
     if(!table){ if(totalEl){ totalEl._v = 0; totalEl.textContent = '$0'; } if(bdEl) bdEl.textContent = ''; return; }
 
-    // Canning tiers are $/case by cases; bottling tiers are $/bottle by total bottles.
-    var tierQty = isBtl ? units : cases;
+    // Canning tiers are $/case by 24-can cases; bottling tiers are $/bottle by total bottles.
+    var tierQty = isBtl ? units : Math.floor(cases * caseScale);
     var tierRate = rateForCases(table, tierQty);
-    var base = tierRate * tierQty;
-    var pCost = pasteur && pasteur.checked ? (isBtl ? units * 0.20 : cases * 24 * 0.05) : 0;   // 20¢/bottle, or 5¢/can * 24 cans/case
-    var nCost = nitro && nitro.checked && !isBtl ? (cases * 24 * 0.03) : 0;                    // 3¢/can
+    var base = isBtl ? tierRate * units : tierRate * cases * caseScale;
+    var caseRate = tierRate * caseScale;   // $ per case as shown (canning)
+    var pCost = pasteur && pasteur.checked ? units * (isBtl ? 0.20 : 0.05) : 0;   // 20¢/bottle, or 5¢/can
+    var nCost = nitro && nitro.checked && !isBtl ? units * 0.03 : 0;            // 3¢/can
     var total = base + pCost + nCost;
 
     animateTotal(totalEl, total);
@@ -839,7 +849,7 @@
     var lines = [
       isBtl
         ? 'Run cost: ' + fmt$(base) + ' (' + cases.toLocaleString() + ' cases × ' + unitsPerCase + ' = ' + units.toLocaleString() + ' bottles @ $' + tierRate.toFixed(2) + '/bottle)'
-        : 'Run cost: ' + fmt$(base) + ' (' + cases.toLocaleString() + ' cases @ ' + fmt$(tierRate) + '/case)'
+        : 'Run cost: ' + fmt$(base) + ' (' + cases.toLocaleString() + ' cases of ' + cansPerCase + ' @ $' + caseRate.toFixed(2) + '/case)'
     ];
     if(pCost) lines.push('+ Flash pasteurization: ' + fmt$(pCost));
     if(nCost) lines.push('+ Nitrogen dosing: ' + fmt$(nCost));
@@ -855,10 +865,10 @@
         var span = nxt[0] - cur[0];
         var within = span > 0 ? (tierQty - cur[0]) / span : 1;
         fillEl.style.width = Math.max(4, Math.min(100, within * 100)).toFixed(0) + '%';
-        var need = isBtl ? Math.ceil((nxt[0] - units) / unitsPerCase) : nxt[0] - cases;
+        var need = isBtl ? Math.ceil((nxt[0] - units) / unitsPerCase) : Math.ceil(nxt[0] / caseScale) - cases;
         hintEl.innerHTML = '▲ Add <strong style="color:var(--teal)">' + need.toLocaleString() +
           '</strong> more cases to drop to <strong style="color:var(--teal)">' +
-          (isBtl ? '$' + nxt[1].toFixed(2) + '/bottle' : fmt$(nxt[1]) + '/case') + '</strong>';
+          (isBtl ? '$' + nxt[1].toFixed(2) + '/bottle' : '$' + (nxt[1] * caseScale).toFixed(2) + '/case') + '</strong>';
       } else {
         fillEl.style.width = '100%';
         hintEl.innerHTML = '🎉 You’re at our best per-' + (isBtl ? 'bottle' : 'case') + ' rate.';
@@ -876,7 +886,7 @@
         compute();
       });
     }
-    ['qc-service','qc-format','qc-cases','qc-btlcase','qc-pasteur','qc-nitro'].forEach(function(id){
+    ['qc-service','qc-format','qc-cases','qc-btlcase','qc-cancase','qc-pasteur','qc-nitro'].forEach(function(id){
       var el = document.getElementById(id);
       if(el){ el.addEventListener('input', compute); el.addEventListener('change', compute); }
     });
