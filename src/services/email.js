@@ -389,8 +389,12 @@
       var statusColor = STATUS_COLOR[r.status] || '#9aa7bd';
       // Build a sent → delivered → opened → clicked timeline so the user
       // can see exactly when each stage happened.
-      var timeline =
-        stepHtml('Sent',      r.sent_at,         '#5fcf9e') +
+      // gmail-sync stores replies as direction 'inbound'; they used to render
+      // as "→ mike@…" with a Sent timeline, as if we had sent them.
+      var inbound = r.direction === 'inbound';
+      var timeline = inbound
+        ? stepHtml('Received', r.sent_at || r.created_at, '#5fcf9e')
+        : stepHtml('Sent',      r.sent_at,         '#5fcf9e') +
         stepHtml('Delivered', r.delivered_at,    '#5fcf9e') +
         stepHtml('Opened',    r.first_opened_at, '#1a6fff') +
         (r.click_count > 0 ? stepHtml('Clicked', r.first_opened_at /* approx */, '#7c3aed') : '');
@@ -401,7 +405,7 @@
         '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">' +
           '<div style="flex:1;min-width:0">' +
             '<div style="color:#fff;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(r.subject) + '</div>' +
-            '<div style="font-size:11px;color:var(--muted);margin-top:2px">→ ' + escHtml(r.to_email) +
+            '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + (inbound ? '← from ' + escHtml(r.from_email || '') : '→ ' + escHtml(r.to_email)) +
               (r.cc_emails && r.cc_emails.length ? ' · cc ' + r.cc_emails.length : '') +
             '</div>' +
           '</div>' +

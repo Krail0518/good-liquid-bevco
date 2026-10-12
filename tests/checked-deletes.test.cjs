@@ -111,7 +111,10 @@ async function callHelper(src, mode, build) {
 
   const delClient = extract('deleteClientHard') || extract('deleteClient') || '';
   check('client delete purges the local cache only after the guard',
-    !delClient || delClient.indexOf('res.ok') < delClient.indexOf('window.clients ='),
+    // The cache is edited in place (clients.splice) since #490; reassigning
+    // window.clients split it from the core binding. Either form must come
+    // after the guard, and one of them must exist.
+    !delClient || (function(){ const m = [delClient.indexOf('clients.splice'), delClient.indexOf('window.clients =')].filter(i => i !== -1); return m.length > 0 && delClient.indexOf('res.ok') < Math.min.apply(null, m); })(),
     'local cache mutation appears before the guard');
 
   // ── the helper's contract ────────────────────────────────────────────
