@@ -61,19 +61,24 @@ export function firstName(contactName) {
   return word === word.toLowerCase() ? word.charAt(0).toUpperCase() + word.slice(1) : word;
 }
 
-// The approved email. Subject and body text are Mike's wording, verbatim.
+// The approved email, laid out to Mike's standing email rules: no dashes as
+// punctuation, proper grammar, indented paragraphs, greeting / body /
+// closing / signature. (The first draft's subject used an em dash.)
 export function deckEmail(deal) {
   const d = deal || {};
   const name = firstName(d.contact_name);
   const brand = oneLine(d.client_name, 120) || 'your brand';
-  const subject = 'Good Liquid Bev Co — capabilities and pricing';
-  const para2 = 'Thank you for reaching out about ' + brand + '. Attached is our capabilities and pricing deck so you can see how we work, our minimums and our rate card. We will follow up within one business day to talk through your project.';
-  const text = 'Hi ' + name + ',\n\n' + para2 + '\n\nMike Krail\nGood Liquid Bev Co';
+  const subject = 'Good Liquid Bev Co: Capabilities and Pricing';
+  const para2 = 'Thank you for reaching out about ' + brand + '. Attached is our capabilities and pricing deck so you can see how we work, our minimums, and our rate card. We will follow up within one business day to talk through your project.';
+  // Plain text: the body paragraph carries a first-line indent, as in a letter.
+  const text = 'Hi ' + name + ',\n\n     ' + para2 + '\n\nBest regards,\n\nMike Krail\nGood Liquid Bev Co';
   const p = 'margin:0 0 14px';
+  const body = p + ';text-indent:2.5em';
   const html =
     '<div style="font-family:-apple-system,Segoe UI,Arial,sans-serif;font-size:15px;line-height:1.55;color:#1a2433;max-width:560px">' +
     '<p style="' + p + '">Hi ' + escHtml(name) + ',</p>' +
-    '<p style="' + p + '">' + escHtml(para2) + '</p>' +
+    '<p style="' + body + '">' + escHtml(para2) + '</p>' +
+    '<p style="' + p + '">Best regards,</p>' +
     '<p style="' + p + '">Mike Krail<br>Good Liquid Bev Co</p>' +
     '</div>';
   return { subject, text, html };

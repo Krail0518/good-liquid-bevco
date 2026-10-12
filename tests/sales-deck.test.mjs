@@ -36,9 +36,11 @@ console.log('sales deck — approved email, once per prospect, never the wrong d
 
 // ── The approved email ─────────────────────────────────────────────
 const m = deckEmail({ contact_name: 'Ann Avery', client_name: 'Acme Sparkling Co' });
-ok('subject is the approved subject', m.subject === 'Good Liquid Bev Co — capabilities and pricing', m.subject);
+ok('subject is the approved subject, with no dash', m.subject === 'Good Liquid Bev Co: Capabilities and Pricing' && !/[—–]/.test(m.subject), m.subject);
+ok('no dashes as punctuation anywhere in the email (Mike\'s email rules)', !/[—–]| - /.test(m.subject + m.text + m.html));
+ok('body paragraph is indented and the email closes with "Best regards,"', /\n\n {5}Thank you/.test(m.text) && /text-indent/.test(m.html) && /Best regards,/.test(m.text) && /Best regards,/.test(m.html));
 ok('plain text is the approved body, verbatim',
-  m.text === 'Hi Ann,\n\nThank you for reaching out about Acme Sparkling Co. Attached is our capabilities and pricing deck so you can see how we work, our minimums and our rate card. We will follow up within one business day to talk through your project.\n\nMike Krail\nGood Liquid Bev Co',
+  m.text === 'Hi Ann,\n\n     Thank you for reaching out about Acme Sparkling Co. Attached is our capabilities and pricing deck so you can see how we work, our minimums, and our rate card. We will follow up within one business day to talk through your project.\n\nBest regards,\n\nMike Krail\nGood Liquid Bev Co',
   JSON.stringify(m.text));
 ok('HTML carries the same words', /Hi Ann,/.test(m.html) && /about Acme Sparkling Co\./.test(m.html) && /Mike Krail<br>Good Liquid Bev Co/.test(m.html));
 
