@@ -5111,9 +5111,8 @@ initCRM=function(){
   // Update PERMISSIONS to include new pages
   PERMISSIONS.admin.push('calendar','production-cal','tasks','documents','inventory','announcements','customers');
   PERMISSIONS.sales.push('calendar','production-cal','tasks','announcements');
-  
-  bkCurrentDate=new Date();
-  renderBkCal();
+  // The public tour booking overlay was removed from index.html, so there is
+  // no booking calendar left to pre-render here.
 };
 
 /* ═══════════════════════════════════════════
