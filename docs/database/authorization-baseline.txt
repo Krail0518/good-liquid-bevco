@@ -164,7 +164,6 @@ GRANT    public.compliance_acks | authenticated | DELETE,INSERT,REFERENCES,SELEC
 GRANT    public.compliance_records | anon | SELECT
 GRANT    public.compliance_records | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.compliance_tasks | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
-GRANT    public.contact_submissions | anon | INSERT
 GRANT    public.contact_submissions | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.content_calendar | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
 GRANT    public.customer_requests | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE
@@ -434,9 +433,7 @@ POLICY   public.compliance_tasks | gl tenant guard | RESTRICTIVE | {authenticate
 POLICY   public.compliance_tasks | gl viewer no delete | RESTRICTIVE | {authenticated} | DELETE | using=(NOT gl_is_viewer()) | check=-
 POLICY   public.compliance_tasks | gl viewer no insert | RESTRICTIVE | {authenticated} | INSERT | using=- | check=(NOT gl_is_viewer())
 POLICY   public.compliance_tasks | gl viewer no update | RESTRICTIVE | {authenticated} | UPDATE | using=(NOT gl_is_viewer()) | check=(NOT gl_is_viewer())
-POLICY   public.contact_submissions | Anyone can submit contact form | PERMISSIVE | {public} | INSERT | using=- | check=true
 POLICY   public.contact_submissions | Authenticated can read submissions | PERMISSIVE | {public} | SELECT | using=(auth.role() = 'authenticated'::text) | check=-
-POLICY   public.contact_submissions | anon insert | PERMISSIVE | {anon} | INSERT | using=- | check=true
 POLICY   public.contact_submissions | contact_submissions authed all | PERMISSIVE | {authenticated} | ALL | using=true | check=true
 POLICY   public.contact_submissions | contact_submissions staff select | PERMISSIVE | {authenticated} | SELECT | using=is_staff_user() | check=-
 POLICY   public.contact_submissions | contact_submissions staff update | PERMISSIVE | {authenticated} | UPDATE | using=is_staff_user() | check=is_staff_user()
