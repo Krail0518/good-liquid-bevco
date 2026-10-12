@@ -29,6 +29,7 @@
 //     in tests/stripe-webhook-behavior.test.cjs, so the tested code is this code.
 
 import { corsHeaders } from '../_shared/cors.ts';
+import { notifyDeal } from '../_shared/notify.ts';
 import { decideCheckout, refundArgs, verdictOutcome } from './settlement.mjs';
 
 const WEBHOOK_SECRET = Deno.env.get('STRIPE_WEBHOOK_SECRET') || '';
@@ -214,16 +215,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return json({ ok: false, declined: applied.verdict });
     }
     console.log('[stripe-webhook] payment applied:', d.invoiceNumber, '$' + d.amount, 'status=' + applied.verdict.status);
-    // Fire-and-forget WhatsApp alert
-    fetch(`${SUPABASE_URL}/functions/v1/notify-deal`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SERVICE_KEY}` },
-      body: JSON.stringify({
-        event: 'invoice_paid_stripe',
-        secret: Deno.env.get('GL_NOTIFY_SECRET') || '',
-        data: { invoice_number: d.invoiceNumber, amount: String(d.amount ?? ''), paid_method: d.method || 'card' },
-      }),
-    }).catch(e => console.warn('[stripe-webhook] notify-deal error:', e));
+    // "Invoice paid" alert to Mike (Telegram + email). Awaited and checked via
+    // notifyDeal, which uses the Vault notify secret: this used to be
+    // fire-and-forget with the env GL_NOTIFY_SECRET, which notify-deal no
+    // longer accepts once the Vault value exists. A failed alert is logged and
+    // never fails the webhook (the payment is already recorded).
+    await notifyDeal('stripe-webhook', 'invoice_paid_stripe',
+      { invoice_number: String(d.invoiceNumber ?? ''), amount: String(d.amount ?? ''), paid_method: d.method || 'card' });
     return json({ ok: true, invoice: d.invoiceNumber, amount: d.amount });
   }
 
