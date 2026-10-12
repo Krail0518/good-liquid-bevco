@@ -305,6 +305,7 @@ Three mechanisms, used in combination:
 | `glTogglePerm()` | (admin only) | Toggle per-user permission |
 | `glOpenAgreements({clientId|dealId})` | (admin only; DB: admin-only RLS) | **📄 Agreements** generator — Mutual NDA / Contract Manufacturing Agreement, auto-filled from the deal/client; Download PDF, Save to Documents, Send for e-signature (built in: edge function `agreement-sign` emails a private link to the public page `/sign.html`; client signs, then Good Liquid; signed PDF + certificate filed to Documents automatically; per-signer progress + Resend link under "On file"). Table `agreement_signers` (migration 20261007140000). Module `src/modules/customers/agreements.js`. Buttons: Pipeline deal panel (view mode, saved deals, `glAgreementsFromDeal`), Clients list row (`glAgreementsForClient`), Edit Client modal footer (`#gl-ec-agreements`). Tables `agreement_templates`, `agreements` (migration 20261007120000). |
 | `glOpenAgreementTemplates()` | (admin only) | Edit the agreement template wording. 🤖 AI Tools → Settings & Integrations → Agreement Templates. |
+| `glOpenSalesDecks()` | (admin only; DB: restrictive admin-only writes on `sales_decks` and the `sales-decks` bucket) | **📑 Sales Decks** — 🤖 AI Tools → Settings & Integrations → Sales Decks. Lists `sales_decks` (label, file, size, upload date), **⬆ Upload / Replace PDF** per deck (PDF only, 15 MB max, stored at `sales-decks/<key>/<filename>`), and an **Auto-send to new quote requests** toggle (one deck at a time — unique index; a deck labelled confidential needs an inline second step). The auto-send deck is emailed by the `quote-decks` edge function to every new website quote request, once per prospect (`deals.deck_sent_at`, `email_log` template `sales_deck`). `lotus_nutra_pricing` is another client's confidential pricing: never auto-send it (the sender refuses it anyway). Module `src/modules/pipeline/sales-decks.js`; migration 20261012050000. |
 
 ---
 
@@ -328,6 +329,7 @@ Three mechanisms, used in combination:
 | `daily-digest` | Sends daily summary email | Cron (7am UTC) + `runDailyDigestNow()` | Mailgun secrets | Sends to all opted-in users |
 | `mailgun-send` | Wrapper for Mailgun API | Other functions | `MAILGUN_API_KEY`, `MAILGUN_DOMAIN`, `MAILGUN_FROM_EMAIL` | |
 | `mailgun-webhook` | Receives Mailgun bounces/opens (no-verify-jwt) | Mailgun → Supabase | None | Updates `contacts` table |
+| `quote-decks` | Emails the auto-send sales deck (PDF) to a new website quote request, once per prospect; alerts Mike (`deck_send_failed`) on any failure | `gl_dispatch_quote_decks` via pg_net, from `submit_quote_request` | Vault `gl_notify_secret` (body secret); Gmail via `gmail-send` | verify_jwt=true (anon bearer); max 30 sends/hour, fails closed |
 
 ---
 

@@ -76,7 +76,14 @@ function businessHoursBetween(start: Date, end: Date): number {
   return hrs;
 }
 
-interface MailRow { to_email: string; from_email: string | null; direction: string | null; sent_at: string | null; created_at: string | null }
+interface MailRow { to_email: string; from_email: string | null; direction: string | null; sent_at: string | null; created_at: string | null; template_name?: string | null }
+
+// The automatic sales-deck email (quote-decks, template 'sales_deck') goes to
+// every website lead within seconds of their request. It is not a reply from
+// Mike — it promises one "within one business day" — so it must not count as
+// our first response, or it would backfill first_response_at and silence the
+// SLA watchdog for exactly the leads it is meant to protect.
+const AUTOMATED_TEMPLATES = new Set(['sales_deck']);
 
 // For a lead, the last time they wrote to us and the last time we wrote to them,
 // matching by any of the lead's addresses OR their company domain OR a
@@ -86,6 +93,7 @@ function contactTimes(mail: MailRow[], emails: string[], co: string): { lastIn: 
   const tok = companyToken(co);
   let lastIn = 0, lastOut = 0, firstOut = 0;
   for (const m of mail) {
+    if (m.template_name && AUTOMATED_TEMPLATES.has(m.template_name)) continue;
     const t = Date.parse(String(m.sent_at || m.created_at || '')) || 0;
     if (!t) continue;
     const inbound = m.direction === 'inbound';
@@ -175,7 +183,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // this function does not use.
   const sinceIso = new Date(nowMs - 150 * 864e5).toISOString();
   const mailRes = await supa.from('email_log')
-    .select('to_email, from_email, direction, sent_at, created_at, body_preview')
+    .select('to_email, from_email, direction, sent_at, created_at, body_preview, template_name')
     .gte('sent_at', sinceIso)
     .order('sent_at', { ascending: false })
     .limit(5000);

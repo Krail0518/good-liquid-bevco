@@ -10,6 +10,7 @@
 //                       'pending' and are covered by tour_requested)
 //   • Supabase DB trigger on contact_submissions INSERT ('new_quote')
 //   • agreement-sign   ('agreement_signed' / 'agreement_declined')
+//   • quote-decks      ('deck_send_failed': the sales deck did not reach a lead)
 //   • index.html       (deal manually added in CRM)
 //   • Supabase DB trigger on deals INSERT
 //   • Supabase DB trigger on customer_requests INSERT ('portal_request')
@@ -58,6 +59,7 @@ import {
   portalRequestMessage, clientReplyMessage, clientRepliesSummary, deliveryFailureWarning,
   quoteRequestMessage, agreementSignedMessage, agreementDeclinedMessage,
 } from '../_shared/inbound-alarms.mjs';
+import { deckSendFailedMessage } from '../_shared/sales-deck.mjs';
 
 const MIKE_EMAILS = ['mike@goodliquid.com'];
 const EMOJI_MAP: Record<string, string> = {
@@ -80,6 +82,7 @@ const EMOJI_MAP: Record<string, string> = {
   onboarding_complete:'🚀',
   agreement_signed:   '✍️',
   agreement_declined: '🛑',
+  deck_send_failed:   '⚠️',
 };
 
 // gmail-send with a retry on 429 / 5xx (see _shared/alert-delivery.ts). The
@@ -169,6 +172,13 @@ function buildMessage(event: string, data: Record<string, string>): { chatText: 
   }
   if (event === 'agreement_declined') {
     const m = agreementDeclinedMessage(data);
+    return { chatText: m.short, subject: m.subject, body: m.body };
+  }
+
+  // The automatic sales-deck email to a website lead did not go out — fired
+  // by quote-decks. Text lives in _shared/sales-deck.mjs (tested).
+  if (event === 'deck_send_failed') {
+    const m = deckSendFailedMessage(data);
     return { chatText: m.short, subject: m.subject, body: m.body };
   }
 

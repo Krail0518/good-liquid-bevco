@@ -94,6 +94,7 @@
  *   /src/modules/pipeline/multi-pipeline.js
  *   /src/modules/pipeline/referrals.js
  *   /src/modules/pipeline/revenue-forecast.js
+ *   /src/modules/pipeline/sales-decks.js
  *   /src/modules/pipeline/scheduling.js
  *   /src/modules/pipeline/stale-deals.js
  *

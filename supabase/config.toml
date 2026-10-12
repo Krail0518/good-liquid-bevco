@@ -31,6 +31,16 @@ verify_jwt = false
 [functions.booking-availability]
 verify_jwt = false
 
+# Emails the sales deck to a new website lead. Called by
+# gl_dispatch_quote_decks (pg_net) with the publishable key as the bearer, so
+# the gateway check stays ON: it costs the trigger nothing and refuses callers
+# with no project key at all. The real authorization is the Vault-held
+# gl_notify_secret in the body, checked in the function — same pattern as
+# notify-deal. Declared explicitly so a recreated function cannot come back
+# with a different setting.
+[functions.quote-decks]
+verify_jwt = true
+
 # ── Declared from live state, 2026-08-28 ─────────────────────────────────────
 # The four below were already verify_jwt=false in production but appeared in no
 # config file, so the setting existed only as server-side state. That works
