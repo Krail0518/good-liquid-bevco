@@ -64,6 +64,12 @@ jobs:
       - name: Run inbound-alarms unit tests
         run: node tests/inbound-alarms.test.mjs
 
+      # Inbound alert gaps: one tour alert per request, gmail-sync never takes
+      # a client's quick reply for Mike's email, agreement signed/declined
+      # alerts (no signing link), quote alert shows volume and message.
+      - name: Run inbound-alert-gaps unit tests
+        run: node tests/inbound-alert-gaps.test.mjs
+
       # Stored-XSS guard for the calendar day panel. cal_events titles and notes
       # originate in the PUBLIC tour-booking form, so this asserts they render as
       # inert text rather than markup. Fails against the pre-fix code.

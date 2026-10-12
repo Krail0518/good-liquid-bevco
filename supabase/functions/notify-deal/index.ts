@@ -3,9 +3,14 @@
 // CallMeBot was removed 2026-10-11: its free quota ran out and Telegram took over.)
 //
 // Called from:
-//   • booking-confirm  (tour booked via public book.html)
-//   • index.html       (deal manually added in CRM, or tour booked via CRM widget)
-//   • request-a-quote.html  (public quote request form)
+//   • booking-confirm  ('tour_requested': public book.html request, with the
+//                       Approve/Decline review link; awaited)
+//   • Supabase DB trigger on bookings INSERT ('tour_booked': only rows that
+//                       arrive already confirmed; public requests start
+//                       'pending' and are covered by tour_requested)
+//   • Supabase DB trigger on contact_submissions INSERT ('new_quote')
+//   • agreement-sign   ('agreement_signed' / 'agreement_declined')
+//   • index.html       (deal manually added in CRM)
 //   • Supabase DB trigger on deals INSERT
 //   • Supabase DB trigger on customer_requests INSERT ('portal_request')
 //   • gmail-sync, for freshly imported client/lead mail
@@ -51,6 +56,7 @@ import { sendTelegram, setupTelegram } from '../_shared/telegram.ts';
 import { sendAlertEmail, logNotification, type EmailResult } from '../_shared/alert-delivery.ts';
 import {
   portalRequestMessage, clientReplyMessage, clientRepliesSummary, deliveryFailureWarning,
+  quoteRequestMessage, agreementSignedMessage, agreementDeclinedMessage,
 } from '../_shared/inbound-alarms.mjs';
 
 const MIKE_EMAILS = ['mike@goodliquid.com'];
@@ -72,6 +78,8 @@ const EMOJI_MAP: Record<string, string> = {
   client_email_reply: '📬',
   new_referral:       '🌟',
   onboarding_complete:'🚀',
+  agreement_signed:   '✍️',
+  agreement_declined: '🛑',
 };
 
 // gmail-send with a retry on 429 / 5xx (see _shared/alert-delivery.ts). The
@@ -129,9 +137,12 @@ function buildMessage(event: string, data: Record<string, string>): { chatText: 
 
   if (event === 'tour_booked') {
     const when     = data.date ? `${data.date} at ${data.time || ''}`.trim() : 'time TBD';
-    const chatText = `${emoji} TOUR BOOKED: ${name}${data.company ? ' (' + data.company + ')' : ''} — ${when}. Email: ${data.email || 'n/a'}`;
+    // Only bookings inserted already 'confirmed' reach this (the bookings
+    // insert trigger skips pending public requests, which alert as
+    // tour_requested from booking-confirm).
+    const chatText = `${emoji} TOUR BOOKED (confirmed): ${name}${data.company ? ' (' + data.company + ')' : ''} — ${when}. Email: ${data.email || 'n/a'}`;
     const body     = [
-      `Tour booked via Good Liquid scheduling link.`,
+      `A confirmed tour was added to the schedule.`,
       ``,
       `Name:    ${name}`,
       `Company: ${data.company || '—'}`,
@@ -142,19 +153,23 @@ function buildMessage(event: string, data: Record<string, string>): { chatText: 
     return { chatText, subject: `📅 New tour: ${name} — ${when}`, body };
   }
 
+  // Website quote request — fired by trigger_notify_new_quote, which sends
+  // volume and the customer's message since 20261012030000. Text lives in
+  // _shared/inbound-alarms.mjs (tested).
   if (event === 'new_quote') {
-    const chatText = `${emoji} NEW QUOTE REQUEST from ${co}${data.email ? ' (' + data.email + ')' : ''}. Service: ${data.service || 'TBD'}. Check the pipeline.`;
-    const body     = [
-      `New quote request submitted via goodliquidbevco.com.`,
-      ``,
-      `Brand:   ${co}`,
-      `Contact: ${name}`,
-      `Email:   ${data.email   || '—'}`,
-      `Phone:   ${data.phone   || '—'}`,
-      `Service: ${data.service || '—'}`,
-      `Volume:  ${data.volume  || '—'}`,
-    ].join('\n');
-    return { chatText, subject: `📩 New quote: ${co}`, body };
+    const m = quoteRequestMessage(data);
+    return { chatText: m.short, subject: m.subject, body: m.body };
+  }
+
+  // E-signature outcomes — fired by agreement-sign. Never carry the signing
+  // link (it lets its holder sign as that person).
+  if (event === 'agreement_signed') {
+    const m = agreementSignedMessage(data);
+    return { chatText: m.short, subject: m.subject, body: m.body };
+  }
+  if (event === 'agreement_declined') {
+    const m = agreementDeclinedMessage(data);
+    return { chatText: m.short, subject: m.subject, body: m.body };
   }
 
   if (event === 'invoice_paid_stripe' || event === 'invoice_paid_manual') {

@@ -25,6 +25,10 @@
 // SHA-256 of the exact text signed), files it in deal_documents / client-docs,
 // marks the agreement signed and emails every signer a copy.
 //
+// Mike is alerted on Telegram + email (notify-deal) when the last signer signs
+// ('agreement_signed') and when any signer declines ('agreement_declined').
+// The alerts never carry a signing link.
+//
 // Public actions are rate limited per IP; the function never accepts an
 // agreement id from a public caller.
 //
@@ -37,6 +41,7 @@ import { jsonResponse, errorResponse, handlePreflight } from '../_shared/cors.ts
 import { requireStaff } from '../_shared/auth.ts';
 import { checkRateLimit, rateLimitMessage, rateLimitOutageMessage } from '../_shared/rate-limit.ts';
 import { redactSignLinks } from '../_shared/token-links.ts';
+import { notifyDeal } from '../_shared/notify.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
@@ -299,15 +304,20 @@ async function startNextSigner(sb: ReturnType<typeof db>, agreement: { id: strin
   return { ok: true, done: false, sentTo: next.email };
 }
 
-async function finalize(sb: ReturnType<typeof db>, agreementId: string) {
+// Returns whether the signed copy was filed, and a "Name (side)" list of the
+// signers for the agreement_signed alert.
+async function finalize(sb: ReturnType<typeof db>, agreementId: string): Promise<{ ok: boolean; reason?: string; signers: string }> {
   const { data: agreement } = await sb.from('agreements').select('*').eq('id', agreementId).single();
   const { data: signers } = await sb.from('agreement_signers').select('*').eq('agreement_id', agreementId).order('sign_order');
+  const names = ((signers || []) as SignerRow[])
+    .map((s) => `${s.name} (${s.role === 'gl' ? 'Good Liquid' : 'Company'})`).join(', ');
+  if (!agreement || !signers?.length) return { ok: false, reason: 'agreement or signers could not be read', signers: names };
   const docHash = await sha256Hex(agreement.body);
   const bytes = await buildSignedPdf(agreement, signers as SignerRow[], docHash);
   const base = agreement.deal_id ? `deal/${agreement.deal_id}` : `${agreement.client_id}/docs`;
   const path = `${base}/${Date.now()}_${crypto.randomUUID().slice(0, 5)}.pdf`;
   const up = await sb.storage.from('client-docs').upload(path, bytes, { contentType: 'application/pdf', upsert: false });
-  if (up.error) { console.error('[agreement-sign] upload', up.error); return; }
+  if (up.error) { console.error('[agreement-sign] upload', up.error); return { ok: false, reason: 'PDF upload failed', signers: names }; }
   const doc = await sb.from('deal_documents').insert([{
     deal_id: agreement.deal_id, client_id: agreement.client_id,
     doc_type: agreement.kind === 'nda' ? 'NDA' : 'Manufacturing Agreement',
@@ -319,11 +329,18 @@ async function finalize(sb: ReturnType<typeof db>, agreementId: string) {
     // client once convert-to-client stamps client_id on the row.
     client_visible: true,
   }]).select('id').single();
-  if (doc.error) { console.error('[agreement-sign] doc row', doc.error); return; }
+  if (doc.error) { console.error('[agreement-sign] doc row', doc.error); return { ok: false, reason: 'document record could not be saved', signers: names }; }
   const lastSigned = (signers as SignerRow[]).reduce((m, s) => (s.signed_at && s.signed_at > m ? s.signed_at : m), '');
-  await sb.from('agreements').update({
+  const aUpd = await sb.from('agreements').update({
     status: 'signed', signed_document_id: doc.data.id, signed_at: lastSigned || new Date().toISOString(),
   }).eq('id', agreementId).select('id');
+  // Rule 4: an error OR zero rows means the status did not save. The PDF is
+  // filed, so keep going (signers still get their copy) but report it.
+  let statusOk = true;
+  if (aUpd.error || !aUpd.data?.length) {
+    statusOk = false;
+    console.error('[agreement-sign] agreement status update failed', aUpd.error?.message || 'no row');
+  }
   const fileName = (agreement.title + ' - signed').replace(/[^A-Za-z0-9 ._-]+/g, '').slice(0, 100) + '.pdf';
   for (const s of signers as SignerRow[]) {
     await sendMail({
@@ -334,6 +351,9 @@ async function finalize(sb: ReturnType<typeof db>, agreementId: string) {
       attachment: { bytes, name: fileName },
     }, { clientId: agreement.client_id, template: 'agreement_signed' });
   }
+  return statusOk
+    ? { ok: true, signers: names }
+    : { ok: false, reason: 'PDF filed, but the agreement status did not save as signed', signers: names };
 }
 
 // ── Handler ────────────────────────────────────────────────────
@@ -427,11 +447,37 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     if (action === 'decline') {
       const reason = String(payload.reason || '').trim().slice(0, 1000) || null;
-      await sb.from('agreement_signers').update({
-        status: 'declined', decline_reason: reason, token_hash: null, signed_ip: ip,
+      // Three checked writes (CLAUDE.md rule 4: an error OR zero rows is a
+      // failure). Before, both updates were unchecked and the signer was told
+      // "declined" even when nothing saved. Ordered so a failure can be
+      // retried with the same link: the token is only cleared once the
+      // agreement itself is closed (after which loadByToken refuses the link
+      // anyway, so a failed clear is logged, not fatal).
+      const sUpd = await sb.from('agreement_signers').update({
+        status: 'declined', decline_reason: reason, signed_ip: ip,
         signed_user_agent: (req.headers.get('user-agent') || '').slice(0, 300),
       }).eq('id', signer.id).select('id');
-      await sb.from('agreements').update({ status: 'declined' }).eq('id', agreement.id).select('id');
+      if (sUpd.error || !sUpd.data?.length) {
+        console.error('[agreement-sign] decline: signer update failed', sUpd.error?.message || 'no row');
+        return errorResponse('Your decline could not be saved. Please try again.', 500);
+      }
+      const aUpd = await sb.from('agreements').update({ status: 'declined' }).eq('id', agreement.id).select('id');
+      if (aUpd.error || !aUpd.data?.length) {
+        console.error('[agreement-sign] decline: agreement update failed', aUpd.error?.message || 'no row');
+        return errorResponse('Your decline could not be saved. Please try again.', 500);
+      }
+      const tClr = await sb.from('agreement_signers').update({ token_hash: null }).eq('id', signer.id).select('id');
+      if (tClr.error || !tClr.data?.length) {
+        console.error('[agreement-sign] decline: token clear failed (agreement is closed, link refused)', tClr.error?.message || 'no row');
+      }
+      // Telegram + email to Mike. Awaited; a failure is logged and never
+      // turns a saved decline into an error. No signing link in the alert.
+      const declinedAlert = await notifyDeal('agreement-sign', 'agreement_declined', {
+        title: String(agreement.title || ''), party: String(agreement.party_name || ''),
+        signer: signer.name || '', signer_email: signer.email || '', role: signer.role || '',
+        reason: reason || '',
+      });
+      if (!declinedAlert.ok) console.error('[agreement-sign] agreement_declined alert failed:', declinedAlert.detail);
       const glEmail = String((agreement.fields || {}).gl_signer_email || '').trim();
       if (validEmail(glEmail)) {
         await sendMail({
@@ -457,7 +503,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (upd.error || !upd.data?.length) return errorResponse('Your signature could not be saved. Please try again.', 500);
 
     const next = await startNextSigner(sb, agreement as never);
-    if (next.ok && next.done) await finalize(sb, agreement.id);
+    if (next.ok && next.done) {
+      const fin = await finalize(sb, agreement.id);
+      // Everyone has signed: tell Mike (Telegram + email). Awaited and
+      // logged; it never fails the signature, which is already saved. The
+      // alert names the agreement and the signers, never a signing link.
+      const signedAlert = await notifyDeal('agreement-sign', 'agreement_signed', {
+        title: String(agreement.title || ''), party: String(agreement.party_name || ''),
+        signers: fin.signers, filed: fin.ok ? 'yes' : 'no', filed_error: fin.ok ? '' : (fin.reason || ''),
+      });
+      if (!signedAlert.ok) console.error('[agreement-sign] agreement_signed alert failed:', signedAlert.detail);
+    }
     else if (!next.ok) console.error('[agreement-sign] next signer email failed:', next.reason);
     return jsonResponse({ ok: true, signed: true, complete: !!(next.ok && next.done) });
   }
