@@ -2015,7 +2015,7 @@
     videoGroup('🚀 STAYING ON TOP OF LEADS') +
     videoCard('explainer-deal-brief.mp4', '🧠 Never Drop a Lead — Brief, Board &amp; Digest', 'How the AI Deal Brief, the 🔥 Needs Attention board, the morning Telegram/email digest, and ⏰ Bulk Nudge work together so no lead slips through the cracks.') +
     videoCard('explainer-deal-docs.mp4', '📎 Deal Documents &amp; Meeting Notes', 'Storing NDAs, Process Authority letters, formulas &amp; labels on a deal, how they carry over automatically when you convert to a client, and the meeting-notes card that feeds the brief.') +
-    videoCard('explainer-lead-automation.mp4', '🤖 Lead Automations — SLA, Follow-ups &amp; One-Tap Send', 'The safety net: the first-reply watchdog that pings you when a lead waits too long, AI-drafted follow-ups you send with one tap (from the desk or your phone), snooze/handled controls, returning-lead merging, and the auto-included booking link.') +
+    videoCard('explainer-lead-automation.mp4', '🤖 Lead Automations — SLA, Follow-ups &amp; One-Tap Send', 'The safety net: the first-reply watchdog that pings you when a lead waits too long, AI-drafted follow-ups you send with one tap (from the desk or your phone), snooze/handled controls, and returning-lead merging.') +
     videoGroup('🏬 WAREHOUSE STORAGE (CONRI)') +
     videoCard('tutorial-warehouse.mp4', '🏬 Warehouse Storage — Staff Training (16 min)', 'The whole system in 10 parts with on-screen captions (no sound needed): the dashboard and daily check, a client\'s pallet coming in with notes, sending items to CONRI, scheduling with Paul, completing, lots and QA release, our own packaging, shipping out by LTL with 🚚 Ship (Part 8: the order, the email to Paul, Mark shipped with the BOL), bringing pallets back, and the other tabs. Demo data.') +
     videoGroup('⚙️ RUNNING THE BUSINESS') +
@@ -2384,7 +2384,7 @@
     ]);
 
   var SEC_LEAD_AUTOMATION =
-    '<div style="font-size:12.5px;color:#cfd9e6;line-height:1.65;margin-bottom:12px">The <b>Lead Automations</b> are the safety net: they work in the background so a lead cannot sit ignored. Five parts — a <b>first-reply watchdog</b>, <b>auto-drafted follow-ups</b> you send with one tap, <b>snooze / handled</b> controls, <b>duplicate-lead merging</b> on the website, and an <b>auto-included booking link</b> in your AI drafts. Nothing to schedule or remember; the system pokes <i>you</i>.</div>' +
+    '<div style="font-size:12.5px;color:#cfd9e6;line-height:1.65;margin-bottom:12px">The <b>Lead Automations</b> are the safety net: they work in the background so a lead cannot sit ignored. Four parts — a <b>first-reply watchdog</b>, <b>auto-drafted follow-ups</b> you send with one tap, <b>snooze / handled</b> controls, and <b>duplicate-lead merging</b> on the website. Nothing to schedule or remember; the system pokes <i>you</i>.</div>' +
     watch('explainer-lead-automation.mp4') +
     wf(620, 250,
       box(0,0,620,250,'#0a1628','rgba(255,255,255,.05)') +
@@ -2416,7 +2416,7 @@
       '<b>(4) Send or dismiss in one tap</b> — read the draft, then <b>✓ Send</b> (it goes out as you, from your Gmail, and lands in the lead\'s correspondence thread) or <b>✕ Dismiss</b>. You also get a <b>✍️ Telegram message</b> when drafts are ready, with a link that opens the same review list <b>on your phone</b> — approve and send without opening the CRM.',
       '<b>💤 Snooze / ✓ Handled</b> — on any deal (or from the phone links), <b>Snooze 7 days</b> pauses the watchdog and follow-ups for a week; <b>Mark handled</b> tells the automations to leave that lead alone for good. Use them so the alerts stay meaningful.',
       '<b>Returning-lead merging</b> — when someone who already has an open deal submits the website quote form again — even from a <b>different email at the same company</b> — their new request is appended to the existing deal instead of creating a duplicate. Your history stays in one place. (You still get the “new quote” ping.)',
-      '<b>Auto booking link in drafts</b> — whenever an AI reply (or a follow-up) proposes a call or tour, it now includes your <b>scheduling link</b> automatically, so the lead can pick a time in one click instead of trading “what works for you?” emails. That link runs through the tour-approval flow, so you still confirm the time.',
+      '<b>No booking link in drafts</b> — AI replies and follow-ups never include your scheduling link or offer a tour. Tours are by invitation only, after a lead is pre-qualified, so you send the link yourself when you decide.',
       '<b>Plain-English terms</b> — <b>SLA</b>: the response-time promise you are holding yourself to (one business day). <b>Business hours</b>: elapsed time with weekends skipped. <b>Ball on them</b>: you replied last and are waiting. <b>Snooze</b>: mute automations for a week. <b>Handled</b>: mute them for good.'
     ]);
 
