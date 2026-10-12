@@ -10,9 +10,9 @@
 //  2) AUTO FOLLOW-UP DRAFTS. For every open lead where the ball is on THEM
 //     (we emailed last, no reply) past a threshold of quiet days, we have the AI
 //     draft a short, tailored follow-up and drop it in the lead_followups queue
-//     as 'ready'. Mike approves/sends it with one tap (see lead-action). If the
-//     lead's last message was about scheduling, the draft offers the booking
-//     link so they can self-schedule.
+//     as 'ready'. Mike approves/sends it with one tap (see lead-action). Drafts
+//     never include the booking link: tours are by invitation only, after a
+//     prospect is pre-qualified, and Mike sends that link himself.
 //
 // Leads Mike has snoozed (deals.snoozed_until) or marked handled
 // (deals.handled_at), and closed deals, are left alone by both jobs.
@@ -32,7 +32,6 @@ import { vaultGet } from '../_shared/gmail-creds.ts';
 import { signBooking } from '../_shared/booking-token.ts';
 
 const ANTHROPIC_KEY = Deno.env.get('ANTHROPIC_API_KEY') || '';
-const SITE = 'https://goodliquidbevco.com';
 const FOLLOWUP_QUIET_DAYS = 4;   // ball on them this long → draft a nudge
 const SLA_BUSINESS_HOURS  = 24;  // first reply owed within one business day
 
@@ -110,9 +109,9 @@ function contactTimes(mail: MailRow[], emails: string[], co: string): { lastIn: 
   return { lastIn, lastOut, firstOut };
 }
 
-async function draftFollowup(ctx: { name: string; co: string; product: string; lastInboundHint: string; days: number; bookingUrl: string }): Promise<{ subject: string; body: string } | null> {
+async function draftFollowup(ctx: { name: string; co: string; product: string; lastInboundHint: string; days: number }): Promise<{ subject: string; body: string } | null> {
   if (!ANTHROPIC_KEY) return null;
-  const sys = `You write brief, warm follow-up emails for Good Liquid Bev Co, a beverage co-packer. The prospect went quiet after we last wrote. Write a SHORT nudge (3–5 sentences), friendly and low-pressure, that references their project and asks if they'd like to keep moving. Do NOT invent pricing or specifics. If — and only if — scheduling a call/tour would clearly help move it forward, include this booking link on its own line: ${ctx.bookingUrl}
+  const sys = `You write brief, warm follow-up emails for Good Liquid Bev Co, a beverage co-packer. The prospect went quiet after we last wrote. Write a SHORT nudge (3–5 sentences), friendly and low-pressure, that references their project and asks if they'd like to keep moving. Do NOT invent pricing or specifics. Never include a scheduling or booking link, and never offer a facility tour.
 Return STRICT JSON, no prose, no code fences: {"subject": "...", "body": "..."} — body is plain text with real newlines, signed "— Mike, Good Liquid Bev Co".`;
   const user = [
     `Prospect: ${ctx.name || '(unknown)'}${ctx.co ? ' at ' + ctx.co : ''}`,
@@ -150,13 +149,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const supa = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
   const now = new Date();
   const nowMs = now.getTime();
-
-  // Active booking slug for the auto-offered link.
-  let bookingUrl = `${SITE}/book.html`;
-  try {
-    const { data: bp } = await supa.from('booking_pages').select('slug').eq('is_active', true).order('created_at').limit(1).maybeSingle() as { data: any };
-    if (bp?.slug) bookingUrl = `${SITE}/book.html?u=${bp.slug}`;
-  } catch { /* default */ }
 
   // Open leads + recent mail (one pass, matched in memory).
   const { data: deals } = await supa.from('deals')
@@ -306,7 +298,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (addr) drafting.add(addr);
     const draft = await draftFollowup({
       name: c.deal.name || '', co: c.deal.client_name || '', product: c.deal.product_type || '',
-      lastInboundHint: c.hint, days: c.days, bookingUrl,
+      lastInboundHint: c.hint, days: c.days,
     });
     if (!draft) continue;
     const ins = await supa.from('lead_followups').insert([{

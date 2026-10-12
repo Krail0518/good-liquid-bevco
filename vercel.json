@@ -1,6 +1,7 @@
 {
-  "rewrites": [
-    { "source": "/book", "destination": "/book.html" }
+  "redirects": [
+    { "source": "/book", "destination": "/", "permanent": false },
+    { "source": "/book.html", "destination": "/", "permanent": false }
   ],
   "headers": [
     {

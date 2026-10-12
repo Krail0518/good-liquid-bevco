@@ -3955,10 +3955,6 @@ function openDealDetail(stage, idx){
 /* AI calls now route through the `ai-proxy` Edge Function. The Anthropic
    API key lives in Supabase secrets only — never exposed to the browser. */
 const AI_MODEL = 'claude-haiku-4-5';
-// Self-serve scheduling link, offered by AI reply drafts when a call/tour is the
-// next step so the lead can pick a time without a back-and-forth. Update the
-// slug if the active booking page changes.
-const GL_BOOKING_URL = 'https://goodliquidbevco.com/book.html?u=mike-krail';
 
 function openAISettings(){
   const existing = document.getElementById('ai-settings-overlay');
@@ -3988,9 +3984,9 @@ const GL_AI_STYLE = '\n\nWriting style rules (follow strictly):\n' +
   '- For number ranges write "2 to 6 weeks", not "2-6 weeks".\n' +
   '- Hyphens inside hyphenated words are fine (co-packing, small-batch, shelf-stable).\n' +
   '- Write plainly, the way a person speaks. No filler and no marketing padding.\n' +
-  '- ONLY when the email proposes a call, tour, or meeting as the next step, ' +
-  'include this scheduling link on its own line so they can pick a time: ' +
-  GL_BOOKING_URL + ' — do not include it otherwise.';
+  // Tours are by invitation only after a prospect is pre-qualified, so drafts
+  // never hand a lead a self-serve scheduling link. Mike sends it himself.
+  '- Never include a scheduling or booking link, and never offer a facility tour.';
 
 // Models ignore style instructions often enough that the rule alone is not
 // enough, so the output is also cleaned deterministically. A dash between two
@@ -5111,9 +5107,8 @@ initCRM=function(){
   // Update PERMISSIONS to include new pages
   PERMISSIONS.admin.push('calendar','production-cal','tasks','documents','inventory','announcements','customers');
   PERMISSIONS.sales.push('calendar','production-cal','tasks','announcements');
-  
-  bkCurrentDate=new Date();
-  renderBkCal();
+  // The public tour booking overlay was removed from index.html, so there is
+  // no booking calendar left to pre-render here.
 };
 
 /* ═══════════════════════════════════════════
