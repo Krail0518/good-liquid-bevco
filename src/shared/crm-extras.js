@@ -1855,10 +1855,19 @@
           var p = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
           prof = p.data || null;
         } catch(e){}
+        // Staff only. A signed-in account with no profiles row (a portal
+        // customer, or anyone who self-registered — signup is open) used to be
+        // given role 'sales' and the staff shell here. The normal sign-in
+        // refuses them; so does this path now. Only an existing, active staff
+        // profile is let in; anything else falls through to the password
+        // modal, whose own checks apply.
+        if(!prof || (prof.status && prof.status !== 'active')){
+          return false;
+        }
         var profile = {
           id: user.id, email: user.email,
           name: (prof && prof.name) || (user.email||'').split('@')[0],
-          role: (prof && prof.role) || 'sales',
+          role: prof.role,
           status: (prof && prof.status) || 'active',
           initials: (prof && prof.initials) || (user.email||'?').slice(0,2).toUpperCase(),
           color: (prof && prof.color) || '#1a6fff',

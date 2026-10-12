@@ -363,7 +363,7 @@
         var d = (r && r.data) || {};
         if(r && r.error) throw new Error(r.error.message || 'send failed');
         if(d.items === 0 || d.skipped){ btn.textContent = '✓ Nothing urgent to send'; }
-        else { btn.textContent = '✓ Sent'+((d.whatsappSent||d.emailSent)?'':' (check secrets)'); }
+        else { btn.textContent = '✓ Sent'+((d.telegramSent||d.emailSent)?'':' (check secrets)'); }
       } catch(e){ btn.textContent = '✗ Failed'; if(typeof window.addNotification==='function') window.addNotification('Digest failed', (e&&e.message)||'See console', 'warning'); console.error('[attention] send', e); }
       setTimeout(function(){ if(btn){ btn.disabled=false; btn.textContent='📲 Send to my phone'; } }, 3000);
     };

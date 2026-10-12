@@ -916,6 +916,13 @@ function filterClients(q){renderClients(clients.filter(c=>!q||c.name.toLowerCase
    (or set null) so the DB cleanup is one DELETE — but the warning is
    honest about what's about to disappear. */
 async function deleteClient(cid, cname){
+  // The row button passes itself (data-gl-el) as the second argument, so the
+  // confirm prompt read "[object HTMLButtonElement]" and only typing that
+  // literal confirmed. Take the name from the button's data-cname (or the
+  // client list) instead.
+  if(cname && typeof cname === 'object' && cname.getAttribute) cname = cname.getAttribute('data-cname') || '';
+  if(!cname){ const c0 = (clients || []).find(c => c.id === cid); cname = (c0 && c0.name) || ''; }
+  if(!cname){ alert('Could not find that client — reload and try again.'); return; }
   if(!window.glIsSuperUser || !window.glIsSuperUser()){
     alert('Only the workspace owner can delete clients.');
     return;
@@ -950,7 +957,9 @@ async function deleteClient(cid, cname){
   const res = await glCheckedDelete(sb => sb.from('clients').delete().eq('id', cid).select('id'));
   if(!res.ok){ alert('Delete failed — "' + cname + '" has NOT been deleted: ' + res.reason); return; }
   // Local cache + UI refresh
-  if(Array.isArray(window.clients)) window.clients = window.clients.filter(c => c.id !== cid);
+  // Edit the shared array in place: reassigning window.clients split it from
+  // the core `clients` binding the rest of the CRM reads.
+  for(let i = clients.length - 1; i >= 0; i--){ if(clients[i].id === cid) clients.splice(i, 1); }
   if(typeof renderClients === 'function') renderClients();
   if(typeof renderDash === 'function') renderDash();
   addNotification('🗑️ Client deleted', cname, 'warning');
@@ -1514,6 +1523,8 @@ function viewInvoice(id){
         </tr></thead>
         <tbody>${(function(){
           const usd = n => '$' + (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+          // Unit prices can be fractions of a cent ($0.025/can); missed by #474.
+          const usdRate = n => '$' + (Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:4});
           // Filter out "junk" line items — historical invoices have rows
           // like { desc: "0", qty: 1, total: 0 } that come from accidentally
           // clicking + Add Line and not filling it in. Rendering them makes
@@ -1527,7 +1538,7 @@ function viewInvoice(id){
           return lines.map(function(l){
             const qty = (l.qty != null) ? Number(l.qty).toLocaleString() : '';
             const unitLbl = l.unit ? '<span style="font-size:10px;color:var(--muted);margin-left:4px">/'+l.unit+'</span>' : '';
-            const unitPrice = l.unitPrice != null ? usd(l.unitPrice) + unitLbl : '';
+            const unitPrice = l.unitPrice != null ? usdRate(l.unitPrice) + unitLbl : '';
             return '<tr>' +
               '<td style="padding:11px;color:var(--white);border-bottom:1px solid rgba(255,255,255,.05)">' + esc(l.desc || '') + '</td>' +
               '<td style="padding:11px;text-align:center;color:var(--white);border-bottom:1px solid rgba(255,255,255,.05)">' + qty + '</td>' +
@@ -4969,7 +4980,12 @@ function renderInventory(){
 async function adjustInventory(id,delta){
   const item=inventory.find(i=>i.id===id);
   if(!item) return;
-  const newQty = Math.max(0, item.qty + delta);
+  // data-gl-arg2 reaches here as the STRING "10" / "-10": item.qty + delta
+  // concatenated (2400 + "10" = "240010") and "-10" produced NaN, which
+  // saved as null. Both sides are numbers now, and a bad value saves nothing.
+  const d = Number(delta), cur = Number(item.qty) || 0;
+  if(!Number.isFinite(d)){ alert('Inventory not changed: bad adjustment.'); return; }
+  const newQty = Math.max(0, cur + d);
   if(!window.supa){ item.qty = newQty; renderInventory(); return; }
   const r = await window.supa.from('inventory').update({ qty: newQty }).eq('id', id).select();
   if(r.error){ alert('Update failed: ' + r.error.message); return; }

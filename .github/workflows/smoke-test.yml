@@ -525,3 +525,42 @@ jobs:
       # text and source. The live half is scripts/rls-identity-invariants.sql.
       - name: Run portal tenant-isolation tests
         run: node tests/portal-tenant-isolation.test.cjs
+
+  # Click every visible control in the CRM, the customer portal, the public
+  # site and the token pages (onboard/book/sign/approve/auditor/reset), at
+  # desktop 1280x900 and phone 390x844, plus explicit checks on the invoice
+  # builder, quote builder, Needs Attention, agreements, correspondence, the
+  # quote form and the auto-login path. Supabase is replaced by an in-page stub
+  # and every non-local request is aborted, so nothing reaches production.
+  # Its own job: it takes several minutes and must not slow the smoke gate.
+  # CLICK_DEPTH=1 here (page controls only); run it locally with the default
+  # CLICK_DEPTH=2 to also click inside every overlay those controls open.
+  # Real bugs still open are listed in KNOWN_FAILURES in the test and print as
+  # KNOWN; anything new fails the job.
+  click-every-button:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out the site
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+
+      - name: Install Playwright (into a temp dir, not the repo)
+        run: |
+          mkdir -p /tmp/pw
+          cd /tmp/pw
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.48.0 >/dev/null 2>&1
+          npx playwright install chromium
+
+      - name: Click every button
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+          CLICK_DEPTH: '1'
+          CLICK_WORKERS: '4'
+        run: node tests/click-every-button.test.cjs
