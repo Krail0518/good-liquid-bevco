@@ -47,7 +47,7 @@ async function sendChatMsg(){
     - Contact: Mike@GoodLiquid.com | (803) 493-5065
     - Address: 2011 51st Ave E, Unit 100, Palmetto, FL 34221
     
-    Be friendly, helpful, and concise. If they want to get started, encourage them to fill out the contact form. Do not offer or schedule facility tours; tours are by invitation only after we review their project.`,
+    Be friendly, helpful, and concise. If they want to get started, encourage them to fill out the contact form. Never mention or offer tours, facility visits, or meetings at the facility.`,
     msg);
   
   document.getElementById('chat-thinking').outerHTML=`<div class="chat-msg bot">${esc(reply)}</div>`;

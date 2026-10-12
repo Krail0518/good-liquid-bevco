@@ -73,7 +73,7 @@
       { key:'shelf_life_target', label:'Desired shelf life', type:'text', required:false, placeholder:'e.g. 12 months' },
       { key:'certifications', label:'Certifications needed (check all)', type:'multiselect', required:false,
         options:['Organic','Kosher','Gluten-free','Non-GMO','Vegan','None'] },
-      { key:'goals', label:'What do you want to get out of the tour / this project?', type:'textarea', required:true, placeholder:'What you’re hoping to see, decisions you’re trying to make, questions for Mike' }
+      { key:'goals', label:'What do you want to get out of this project?', type:'textarea', required:true, placeholder:'What you’re hoping to see, decisions you’re trying to make, questions for Mike' }
     ]}
   ];
 
