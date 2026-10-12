@@ -40,6 +40,7 @@ import { corsHeaders, jsonResponse, errorResponse, handlePreflight } from '../_s
 import { localToUTC, fmtLocalDate, fmtLocalTime, tzLabel, sendMail } from '../_shared/booking-email.ts';
 import { signBooking } from '../_shared/booking-token.ts';
 import { checkBusy } from '../_shared/google-calendar.ts';
+import { notifyDeal } from '../_shared/notify.ts';
 
 // ── Main handler ──────────────────────────────────────────────────────────
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -273,8 +274,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // — books the slot, writes the admin General Calendar (cal_events) row, creates
   // the event on the host's Google Calendar, and emails the customer. Keeping the
   // whole flow server-side sidesteps the CRM's login/cache fragility entirely.
-  const supaUrl    = Deno.env.get('SUPABASE_URL');
-  const siteUrl    = Deno.env.get('GL_SITE_URL') || 'https://goodliquidbevco.com';
+  const siteUrl   = Deno.env.get('GL_SITE_URL') || 'https://goodliquidbevco.com';
   let reviewUrl = '';
   try {
     const token = await signBooking(booking.id);
@@ -399,30 +399,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
   }
 
-  // ── WhatsApp alert to Mike via notify-deal (with the review link) ───────
-  const notifySecret = Deno.env.get('GL_NOTIFY_SECRET');
-  const serviceKey   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  if (notifySecret && supaUrl && serviceKey) {
-    fetch(`${supaUrl}/functions/v1/notify-deal`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${serviceKey}`,
-      },
-      body: JSON.stringify({
-        event:  'tour_requested',
-        secret: notifySecret,
-        data: {
-          name:       safeName,
-          company:    safeCompany || '',
-          email:      booker_email,
-          date:       dateLabel,
-          time:       startLabel,
-          review_url: reviewUrl,
-        },
-      }),
-    }).catch(() => {}); // fire-and-forget
-  }
+  // ── Telegram + email alert to Mike via notify-deal (with the review link) ─
+  // The ONE alert for a public tour request: the bookings insert trigger
+  // skips 'pending' rows (20261012030000), so this is not doubled by a
+  // mislabelled "TOUR BOOKED". Awaited — a fire-and-forget fetch could be
+  // dropped when the worker exited after the response — and checked; a
+  // failure is logged but never fails the booking, which is already saved
+  // and has emailed the booker and the host.
+  const alert = await notifyDeal('booking-confirm', 'tour_requested', {
+    name:       safeName,
+    company:    safeCompany || '',
+    email:      String(booker_email),
+    date:       dateLabel,
+    time:       startLabel,
+    review_url: reviewUrl,
+  });
+  if (!alert.ok) console.error('[booking-confirm] tour_requested alert failed for booking', booking.id, alert.detail);
 
   return jsonResponse({ ok: true, booking_id: booking.id, pending: true });
 });

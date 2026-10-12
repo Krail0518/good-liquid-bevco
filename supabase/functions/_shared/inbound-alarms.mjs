@@ -14,6 +14,8 @@
  * functions run (notify-deal, gmail-sync, inbound-heartbeat):
  *
  *   portalRequestMessage / clientReplyMessage / clientRepliesSummary
+ *   quoteRequestMessage         website quote request (with volume + message)
+ *   agreementSignedMessage / agreementDeclinedMessage  e-signature outcomes
  *   deliveryFailureWarning      the immediate "an alert reached nobody" text
  *   selectReplyAlerts           which freshly synced emails deserve an alert
  *   isRetryableStatus/withRetry the gmail-send retry policy
@@ -118,6 +120,89 @@ export function deliveryFailureWarning(event, shortText, results) {
     r.email ? `Email: ${clip(r.email, 80)}` : '',
   ].filter(Boolean).join(' · ');
   return `⚠️ ALERT DELIVERY FAILED (${event})${why ? ' — ' + why : ''}\n\n${clip(shortText, 1500)}`;
+}
+
+// ── Website quote requests ──────────────────────────────────────────────────
+// data: { name, company, email, phone, service, volume, message } — fired by
+// trigger_notify_new_quote. volume and message were never sent before
+// 20261012030000, so the email always read "Volume: —".
+export function quoteRequestMessage(data) {
+  const d = data || {};
+  const co = clip(d.company, 120) || clip(d.name, 120) || 'Unknown';
+  const email = clip(d.email, 120);
+  const volume = clip(d.volume, 80);
+  const msg = clip(d.message, 200);
+  const short = `📩 NEW QUOTE REQUEST from ${co}${email ? ' (' + email + ')' : ''}. ` +
+    `Service: ${clip(d.service, 80) || 'TBD'}. Volume: ${volume || 'not given'}.` +
+    (msg ? `\n${msg}` : '') + `\nCheck the pipeline.`;
+  const body = [
+    `New quote request submitted via goodliquidbevco.com.`,
+    ``,
+    `Brand:   ${co}`,
+    `Contact: ${clip(d.name, 120) || '—'}`,
+    `Email:   ${email || '—'}`,
+    `Phone:   ${clip(d.phone, 60) || '—'}`,
+    `Service: ${clip(d.service, 80) || '—'}`,
+    `Volume:  ${volume || '—'}`,
+    ``,
+    `Message:`,
+    clip(d.message, 2000) || '(none)',
+  ].join('\n');
+  return { short, subject: `📩 New quote: ${co}`, body };
+}
+
+// ── E-signature agreements ──────────────────────────────────────────────────
+// Fired by agreement-sign. These NEVER carry the signing link: the link's
+// token lets whoever holds it sign as that person. Anything shaped like one
+// in signer-typed text (a decline reason) is removed as well.
+const SIGN_LINK = /\S*sign\.html#t=\S*/gi;
+const noLinks = (s) => String(s == null ? '' : s).replace(SIGN_LINK, '[link removed]');
+
+// data: { title, party, signers ("Name (Company), Name (Good Liquid)"), filed ('yes'|'no'), filed_error? }
+export function agreementSignedMessage(data) {
+  const d = data || {};
+  const title = clip(noLinks(d.title), 150) || 'An agreement';
+  const party = clip(noLinks(d.party), 120);
+  const signers = clip(noLinks(d.signers), 300);
+  const filed = d.filed !== 'no';
+  const warn = filed ? '' : `\n⚠️ The signed PDF was NOT filed${d.filed_error ? ': ' + clip(d.filed_error, 120) : ''}. Open the agreement in the CRM.`;
+  const short = `✍️ AGREEMENT SIGNED: "${title}"${party ? ' with ' + party : ''}. Everyone has signed.` + warn;
+  const body = [
+    `Every party has signed an agreement.`,
+    ``,
+    `Agreement: ${title}`,
+    `Party:     ${party || '—'}`,
+    `Signed by: ${signers || '—'}`,
+    ``,
+    filed
+      ? `The signed PDF is filed on the record and each signer was emailed a copy.`
+      : `The signed PDF could NOT be filed${d.filed_error ? ' (' + clip(d.filed_error, 200) + ')' : ''}. Open the agreement in the CRM.`,
+  ].join('\n');
+  return { short, subject: `✍️ Signed: ${title}${party ? ' (' + party + ')' : ''}`, body };
+}
+
+// data: { title, party, signer, signer_email, role ('client'|'gl'), reason }
+export function agreementDeclinedMessage(data) {
+  const d = data || {};
+  const title = clip(noLinks(d.title), 150) || 'An agreement';
+  const party = clip(noLinks(d.party), 120);
+  const who = clip(noLinks(d.signer), 120) || 'A signer';
+  const email = clip(noLinks(d.signer_email), 120);
+  const side = d.role === 'gl' ? 'Good Liquid signer' : 'Client signer';
+  const reasonShort = clip(noLinks(d.reason), 200);
+  const short = `🛑 AGREEMENT DECLINED: ${who}${email ? ' (' + email + ')' : ''} declined "${title}"${party ? ' with ' + party : ''}.` +
+    `\nReason: ${reasonShort || 'none given'}`;
+  const body = [
+    `A signer declined an agreement. It is now closed; send a new one if needed.`,
+    ``,
+    `Agreement: ${title}`,
+    `Party:     ${party || '—'}`,
+    `${side}: ${who}${email ? ' <' + email + '>' : ''}`,
+    ``,
+    `Reason:`,
+    clip(noLinks(d.reason), 1000) || '(none given)',
+  ].join('\n');
+  return { short, subject: `🛑 Declined: ${title}${party ? ' (' + party + ')' : ''}`, body };
 }
 
 // ── Which synced emails deserve an alert ────────────────────────────────────

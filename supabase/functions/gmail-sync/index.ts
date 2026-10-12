@@ -60,6 +60,7 @@ import { isCronCall } from '../_shared/cron-auth.ts';
 import { redactSignLinks } from '../_shared/token-links.ts';
 import { logNotification } from '../_shared/alert-delivery.ts';
 import { selectReplyAlerts } from '../_shared/inbound-alarms.mjs';
+import { findExistingEmail } from '../_shared/email-dedup.mjs';
 
 // ALERTS FOR CLIENT REPLIES
 // This function imported client and lead replies into email_log and told
@@ -388,7 +389,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // that capture existed (or by any path that didn't record an id) have none —
   // and those showed up as a second copy of an email the CRM had already
   // logged. So we also match on content: same subject, sent within ten minutes,
-  // same contact on the row.
+  // same contact on the row — but never across directions, and never between
+  // two different Gmail message ids (_shared/email-dedup.mjs). Ignoring
+  // direction made a client's reply within 10 minutes of Mike's email look
+  // like Mike's email, so it was never imported and never alerted.
   let inserted = 0, skipped = 0, insertFailures = 0;
   // Rows this run actually stored with their direction — the only ones that
   // may raise a reply alert (a row already in email_log never re-alerts).
@@ -412,34 +416,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
       const lo = new Date(Math.min(...times) - 15 * 60000).toISOString();
       const hi = new Date(Math.max(...times) + 15 * 60000).toISOString();
       const pRes = await supa.from('email_log')
-        .select('id, subject, to_email, from_email, sent_at, created_at, body_preview')
+        .select('id, subject, to_email, from_email, direction, mailgun_id, sent_at, created_at, body_preview')
         .gte('sent_at', lo).lte('sent_at', hi).limit(2000);
       if (!pRes.error) priorRows = (pRes.data || []) as Record<string, unknown>[];
       else console.warn('[gmail-sync] content-dedup lookup failed:', pRes.error.message);
     }
 
-    // "Re: x" and "x" are the same conversation for dedup purposes.
-    const normSubject = (v: unknown) =>
-      String(v || '').replace(/^\s*(re|fwd|fw)\s*:\s*/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
-
     // Returns the existing row this candidate duplicates, or null if it's new.
+    // The matching rules live in _shared/email-dedup.mjs (unit tested).
     const findExisting = (c: Row): { id: string; body: string } | null => {
       const hit = byId.get(c.mailgun_id);
       if (hit) return hit;
-      const cSub = normSubject(c.subject);
-      const cAt = Date.parse(c.sent_at);
-      const contact = String((c.direction === 'inbound' ? c.from_email : c.to_email) || '').toLowerCase();
-      for (const e of priorRows) {
-        if (normSubject(e.subject) !== cSub) continue;
-        const eAt = Date.parse(String(e.sent_at || e.created_at || ''));
-        if (!Number.isFinite(eAt) || !Number.isFinite(cAt)) continue;
-        if (Math.abs(eAt - cAt) > 10 * 60000) continue;
-        // Direction is intentionally not compared: older rows predate the column.
-        const addrs = (String(e.to_email || '') + ' ' + String(e.from_email || '')).toLowerCase();
-        if (contact && !addrs.includes(contact)) continue;
-        return { id: String(e.id), body: String(e.body_preview || '') };
-      }
-      return null;
+      const e = findExistingEmail(c, null, priorRows) as Record<string, unknown> | null;
+      return e ? { id: String(e.id), body: String(e.body_preview || '') } : null;
     };
 
     // Rows logged before this function extracted real message bodies hold only
@@ -472,8 +461,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     let upgraded = 0;
     for (const u of upgrades) {
-      const uRes = await supa.from('email_log').update({ body_preview: u.body }).eq('id', u.id);
-      if (uRes.error) console.warn('[gmail-sync] body upgrade failed:', uRes.error.message);
+      const uRes = await supa.from('email_log').update({ body_preview: u.body }).eq('id', u.id).select('id');
+      if (uRes.error || !uRes.data?.length) console.warn('[gmail-sync] body upgrade failed:', uRes.error?.message || 'no row updated');
       else upgraded++;
     }
     if (upgraded) console.log(`[gmail-sync] filled in the full text of ${upgraded} existing email(s)`);
