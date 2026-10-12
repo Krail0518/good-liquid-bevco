@@ -160,6 +160,7 @@ const IDS = {
   proj1: uuid(401),
   agr1: uuid(501),
   cu1: uuid(601),
+  sd1: uuid(1801), sd2: uuid(1802),
 };
 const CLIENTS = [IDS.c1, IDS.c2, IDS.c3];
 const CLIENT_NAMES = ['Acme Sparkling Co', 'Brightwater Teas', 'Citrus Grove Beverage'];
@@ -291,6 +292,12 @@ function buildFixtures() {
     { id: uuid(1701), name: '12oz Standard cans', qty: 2400, unit: 'cans', low_at: 1000, created_at: iso(-9) },
     { id: uuid(1702), name: '24-count case trays', qty: 120, unit: 'trays', low_at: 150, created_at: iso(-9) },
   ];
+  // Production's two decks: ours (auto-send) and another client's confidential
+  // pricing, whose label carries markup to prove the screen renders it as text.
+  F.sales_decks = [
+    { id: uuid(1801), key: 'good_liquid_capabilities', label: 'Good Liquid capabilities & pricing deck', filename: 'Good Liquid Bev Co - Capabilities and Pricing.pdf', storage_path: null, active: true, auto_send: true, sort_order: 10, size_bytes: null, uploaded_at: null },
+    { id: uuid(1802), key: 'lotus_nutra_pricing', label: 'Lotus Nutra R&D pricing (confidential) <img src=x onerror="window.__sdXss=1">', filename: 'Lotus Nutra - R&D Pricing.pdf', storage_path: null, active: true, auto_send: false, sort_order: 20, size_bytes: null, uploaded_at: null },
+  ];
   F.app_settings = [];
   F.user_permissions = [];
   F.permission_components = [];
@@ -408,9 +415,9 @@ function STUB_LIB(FIX, CFG) {
     return b;
   }
   function storageBucket(name) {
-    var ok = function (d) { calls.push({ kind: 'storage', bucket: name }); return Promise.resolve({ data: d, error: null }); };
+    var ok = function (d, p) { calls.push({ kind: 'storage', bucket: name, path: p }); return Promise.resolve({ data: d, error: null }); };
     return {
-      upload: function (p) { return ok({ path: p }); }, remove: function () { return ok([]); }, list: function () { return ok([]); },
+      upload: function (p) { return ok({ path: p }, p); }, remove: function () { return ok([]); }, list: function () { return ok([]); },
       download: function () { return ok(new Blob(['stub'])); },
       createSignedUrl: function () { return ok({ signedUrl: '/__stub_signed_url' }); },
       createSignedUrls: function (ps) { return ok((ps || []).map(function () { return { signedUrl: '/__stub_signed_url' }; })); },
@@ -1139,7 +1146,7 @@ async function runFeatures(browser, vp) {
 
 // Each feature: [name, async (sess, check) => {}, opts]. Runs on a fresh admin
 // session unless opts.boot says otherwise. Driven through the real controls.
-const stubCalls = (p) => p.evaluate(() => (window.__stubCalls || []).map((c) => ({ kind: c.kind, name: c.name || c.table, payload: c.payload, body: c.body })));
+const stubCalls = (p) => p.evaluate(() => (window.__stubCalls || []).map((c) => ({ kind: c.kind, name: c.name || c.table || c.bucket, payload: c.payload, body: c.body, path: c.path })));
 const callsSince = async (p, n) => (await stubCalls(p)).slice(n);
 const clickText = (p, scopeSel, re) => p.evaluate(({ scopeSel, src, flags }) => {
   const re = new RegExp(src, flags);
@@ -1326,6 +1333,99 @@ const FEATURES = [
     check('send saves the PDF + agreement row, then calls agreement-sign with action "send"', calls.some((c) => c.kind === 'storage') && calls.some((c) => c.kind === 'insert' && c.name === 'agreements') && sign.length === 1 && sign[0].body && sign[0].body.action === 'send', JSON.stringify(calls.filter((c) => c.kind !== 'select').map((c) => c.kind + ':' + c.name)));
     const status = await p.evaluate(() => document.body.innerText.match(/Signing link emailed to [^\n.]+|sending failed[^\n]*|PDF failed[^\n]*/i));
     check('UI confirms the signing link was emailed', !!status && /emailed to ann@/.test(status[0]), status ? status[0] : 'no status line');
+  }],
+
+  ['Sales decks (admin)', async (sess, check) => {
+    const p = sess.page;
+    const GL = IDS.sd1, LOTUS = IDS.sd2;
+    // Through the real menu: 🤖 AI Tools → 📑 Sales Decks.
+    const fab = await p.evaluate(() => { const b = document.querySelector('button[title="AI Tools"]'); if (b) b.click(); return !!b; });
+    await settle(p, 300);
+    if (await p.$('#gl-ai-search')) { await p.fill('#gl-ai-search', 'sales deck'); await settle(p, 200); }
+    const item = fab && await clickText(p, '#gl-ai-panel', /Sales Decks$/);
+    check('AI Tools menu has "📑 Sales Decks" for an admin', !!item);
+    if (!item) await p.evaluate(() => window.glOpenSalesDecks());
+    await p.waitForFunction(() => document.querySelectorAll('#gl-sd-modal [data-sd-deck]').length === 2, null, { timeout: 5000 }).catch(() => {});
+    const view = await p.evaluate(() => {
+      const m = document.getElementById('gl-sd-modal');
+      const row = (k) => m && m.querySelector('[data-sd-deck="' + k + '"]');
+      const box = (k) => { const r = row(k); const b = r && r.querySelector('input[type=checkbox]'); return b ? b.checked : null; };
+      return { open: !!m, rows: m ? m.querySelectorAll('[data-sd-deck]').length : 0, glOn: box('good_liquid_capabilities'), lotusOn: box('lotus_nutra_pricing'),
+        lotusText: row('lotus_nutra_pricing') ? row('lotus_nutra_pricing').innerText : '', imgs: m ? m.querySelectorAll('img').length : -1, xss: window.__sdXss === 1,
+        glMeta: row('good_liquid_capabilities') ? row('good_liquid_capabilities').innerText : '' };
+    });
+    check('screen lists both decks with their auto-send state', view.open && view.rows === 2 && view.glOn === true && view.lotusOn === false, JSON.stringify(view).slice(0, 300));
+    check('a deck with no PDF says so', /No PDF uploaded yet/.test(view.glMeta), view.glMeta.slice(0, 160));
+    check('the confidential deck carries a warning', /Confidential: never send/.test(view.lotusText));
+    check('deck labels render as text, never markup', view.imgs === 0 && !view.xss && /<img src=x/.test(view.lotusText), 'imgs=' + view.imgs + ' xss=' + view.xss);
+
+    // Upload: a real PDF header, through the file input's change event.
+    const n0 = (await stubCalls(p)).length;
+    await p.setInputFiles('#gl-sd-file-' + GL, { name: 'GL Deck v2.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n% test deck\n') });
+    await settle(p, 800);
+    const up = await callsSince(p, n0);
+    const st = up.filter((c) => c.kind === 'storage');
+    const wr = up.filter((c) => c.kind === 'update' && c.name === 'sales_decks');
+    check('upload stores the PDF in sales-decks at <key>/<filename>', st.length >= 1 && st[0].name === 'sales-decks' && st[0].path === 'good_liquid_capabilities/GL Deck v2.pdf', JSON.stringify(st));
+    check('upload records path, file name and size on the deck row', wr.length === 1 && wr[0].payload.storage_path === 'good_liquid_capabilities/GL Deck v2.pdf' && wr[0].payload.filename === 'GL Deck v2.pdf' && wr[0].payload.size_bytes > 0 && !!wr[0].payload.uploaded_at, JSON.stringify(wr.map((c) => c.payload)));
+    const after = await p.evaluate(() => (document.querySelector('#gl-sd-modal [data-sd-deck="good_liquid_capabilities"]') || {}).innerText || '');
+    check('the screen confirms the upload and shows the new file', /Uploaded GL Deck v2\.pdf/.test(after) && /File: GL Deck v2\.pdf/.test(after), after.replace(/\s+/g, ' ').slice(0, 200));
+
+    // A non-PDF is refused before anything is written.
+    const n1 = (await stubCalls(p)).length;
+    await p.setInputFiles('#gl-sd-file-' + GL, { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') });
+    await settle(p, 400);
+    // Only this screen's writes: the CRM runs unrelated background jobs.
+    const mine = (c) => (c.kind === 'storage' && c.name === 'sales-decks') || (c.kind !== 'select' && c.name === 'sales_decks');
+    const bad = (await callsSince(p, n1)).filter(mine);
+    const badMsg = await p.evaluate(() => (document.querySelector('#gl-sd-modal [data-sd-status]') || {}).textContent || '');
+    check('a non-PDF upload is refused with a message and no writes', bad.length === 0 && /not a PDF/.test(badMsg), JSON.stringify(bad) + ' ' + badMsg);
+
+    // Turning on the confidential deck needs a second step; Cancel changes nothing.
+    const n2 = (await stubCalls(p)).length;
+    await p.click('#gl-sd-auto-' + LOTUS); await settle(p, 300);
+    const conf = await p.evaluate(() => ({ shown: !!document.querySelector('#gl-sd-modal [data-sd-confirm]'), boxNow: document.querySelector('#gl-sd-modal [data-sd-deck="lotus_nutra_pricing"] input[type=checkbox]').checked }));
+    check('enabling a confidential deck asks first and writes nothing yet', conf.shown && conf.boxNow === false && !(await callsSince(p, n2)).some(mine), JSON.stringify(conf));
+    check('"Cancel" is offered', !!await clickText(p, '#gl-sd-modal', /^Cancel$/));
+    await settle(p, 200);
+    check('Cancel leaves auto-send unchanged', await p.evaluate(() => !document.querySelector('#gl-sd-modal [data-sd-confirm]')) && !(await callsSince(p, n2)).some(mine));
+
+    // Confirming moves auto-send: the old deck off first, then the new one on.
+    await p.click('#gl-sd-auto-' + LOTUS); await settle(p, 300);
+    const n3 = (await stubCalls(p)).length;
+    check('"Yes, turn on auto-send" is offered', !!await clickText(p, '#gl-sd-modal', /^Yes, turn on auto-send$/));
+    await settle(p, 700);
+    const moves = (await callsSince(p, n3)).filter((c) => c.kind === 'update' && c.name === 'sales_decks').map((c) => c.payload.auto_send);
+    const boxes = await p.evaluate(() => ['good_liquid_capabilities', 'lotus_nutra_pricing'].map((k) => document.querySelector('#gl-sd-modal [data-sd-deck="' + k + '"] input[type=checkbox]').checked));
+    check('only one deck auto-sends: the other is turned off, then this one on', JSON.stringify(moves) === '[false,true]' && boxes[0] === false && boxes[1] === true, JSON.stringify({ moves, boxes }));
+
+    // And back: a non-confidential deck switches straight away.
+    const n4 = (await stubCalls(p)).length;
+    await p.click('#gl-sd-auto-' + GL); await settle(p, 700);
+    const back = (await callsSince(p, n4)).filter((c) => c.kind === 'update' && c.name === 'sales_decks').map((c) => c.payload.auto_send);
+    const boxes2 = await p.evaluate(() => ['good_liquid_capabilities', 'lotus_nutra_pricing'].map((k) => document.querySelector('#gl-sd-modal [data-sd-deck="' + k + '"] input[type=checkbox]').checked));
+    check('switching back to the Good Liquid deck needs no second step', JSON.stringify(back) === '[false,true]' && boxes2[0] === true && boxes2[1] === false, JSON.stringify({ back, boxes2 }));
+
+    // A refused write is reported, not shown as saved.
+    await p.evaluate(() => { window.__STUB_CFG.failWrites = true; });
+    await p.click('#gl-sd-auto-' + GL); await settle(p, 600);
+    const refused = await p.evaluate(() => ({ msg: (document.querySelector('#gl-sd-modal [data-sd-status]') || {}).textContent || '', on: document.querySelector('#gl-sd-modal [data-sd-deck="good_liquid_capabilities"] input[type=checkbox]').checked }));
+    check('a refused write says so and the toggle stays on', /not changed/.test(refused.msg) && refused.on === true, JSON.stringify(refused));
+    await p.evaluate(() => { window.__STUB_CFG.failWrites = false; });
+
+    await p.keyboard.press('Escape'); await settle(p, 200);
+    check('Escape closes the screen', await p.evaluate(() => !document.getElementById('gl-sd-modal')));
+  }],
+
+  ['Sales decks: hidden from sales users', async (sess, check) => {
+    const p = sess.page;
+    const r = await p.evaluate(() => {
+      const real = window.currentUser; window.currentUser = Object.assign({}, real, { role: 'sales' });
+      const alerts = []; const a = window.alert; window.alert = (m) => alerts.push(String(m));
+      try { window.glOpenSalesDecks(); } finally { window.alert = a; window.currentUser = real; }
+      return { modal: !!document.getElementById('gl-sd-modal'), alerts };
+    });
+    check('a non-admin cannot open the Sales decks screen', !r.modal && /Admin only/.test(r.alerts.join(' ')), JSON.stringify(r));
   }],
 
   ['Email correspondence direction', async (sess, check) => {

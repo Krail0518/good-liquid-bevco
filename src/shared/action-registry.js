@@ -176,6 +176,7 @@
     'glOpenPricingSettings',
     'glOpenProductionLines',
     'glOpenQuotesList',
+    'glOpenSalesDecks',
     'glOpenTimerForm',
     'glPauseRecurring',
     'glPortalDownloadAgreement',
@@ -206,6 +207,10 @@
     'glResetCanPrice',
     'glRetryCipPending',
     'glRunMockRecall',
+    'glSalesDeckCancelAuto',
+    'glSalesDeckConfirmAuto',
+    'glSalesDeckSetAuto',
+    'glSalesDeckUpload',
     'glSaveAndSend',
     'glSaveInvoice',
     'glSaveNotesClick',
@@ -348,5 +353,5 @@
     'viewInvoice',
   ]);
 
-  console.log('[GL] 301 actions registered');
+  console.log('[GL] 306 actions registered');
 }());

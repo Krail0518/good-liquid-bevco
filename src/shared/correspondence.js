@@ -352,11 +352,15 @@ window.GL_OUTREACH = window.GL_OUTREACH || {};
 async function glLoadOutreachIndex(){
   if(!window.supa) return false;
   var r = await window.supa.from('email_log')
-    .select('to_email, from_email, direction, sent_at, created_at')
+    .select('to_email, from_email, direction, sent_at, created_at, template_name')
     .order('created_at', { ascending: false }).limit(2000);
   if(r.error){ console.warn('[GL] outreach index failed', r.error); return false; }
   var idx = {};
   (r.data || []).forEach(function(row){
+    // The automatic sales deck (quote-decks) is not Mike writing to the lead:
+    // counting it would show "sent" and hide the "awaiting reply" badge on
+    // every new website lead. Same rule as lead-automations' SLA watchdog.
+    if(row.template_name === 'sales_deck') return;
     var inbound = row.direction === 'inbound';
     var raw = String((inbound ? row.from_email : row.to_email) || '');
     var t = glCorrTime(row);

@@ -1158,6 +1158,7 @@
         { label:'Stripe Checkout',        icon:'💳', fn:'openStripeSettings', admin:true },
         { label:'QuickBooks',             icon:'💼', fn:'openQBOSettings', admin:true },
         { label:'Agreement Templates',    icon:'📄', fn:'glOpenAgreementTemplates', admin:true },
+        { label:'Sales Decks',            icon:'📑', fn:'glOpenSalesDecks', admin:true },
         { label:'Two-Factor Auth',        icon:'🔒', fn:'openMFASettings' },
         { label:'Google Analytics',       icon:'📈', fn:'openGA4Settings', admin:true },
         { label:'Sentry',                 icon:'🛡️', fn:'openSentrySettings', admin:true },

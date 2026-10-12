@@ -23,5 +23,4 @@ capacity|SELECT|authenticated       # Same row, same table, same reasoning as th
 nps_responses|INSERT|anon           # The public NPS form. INSERT-only, same reasoning.
 login_events|INSERT|authenticated   # An append-only audit trail. A signed-in user recording their own sign-in is the intended behaviour; there is no SELECT for them.
 formulators|INSERT|authenticated    # Probed as a stranger: refused 42501. A separate RESTRICTIVE policy on the table constrains it even though this query does not pair them by command, so the finding is conservative rather than live.
-sales_decks|INSERT|authenticated    # Probed as a stranger: refused 42501. Same conservatism as formulators.
 permission_components|SELECT|authenticated  # A catalogue of permission component IDs and labels — the vocabulary of the permissions UI, not data about anyone. Read as stranger: 42 rows, all static component definitions. Anon is refused outright (42501).

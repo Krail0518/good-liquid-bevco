@@ -70,6 +70,14 @@ jobs:
       - name: Run inbound-alert-gaps unit tests
         run: node tests/inbound-alert-gaps.test.mjs
 
+      # Automatic sales deck for website quote requests: the approved email
+      # text and its escaping, once per prospect, the deck picker that never
+      # sends another client's confidential pricing, and the function /
+      # migration / CRM wiring. The admin screen itself is driven through its
+      # real controls in click-every-button.test.cjs ("Sales decks").
+      - name: Run sales-deck unit tests
+        run: node tests/sales-deck.test.mjs
+
       # Stored-XSS guard for the calendar day panel. cal_events titles and notes
       # originate in the PUBLIC tour-booking form, so this asserts they render as
       # inert text rather than markup. Fails against the pre-fix code.
