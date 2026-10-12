@@ -807,6 +807,8 @@ POLICY   public.referrers | gl warehouse guard | RESTRICTIVE | {authenticated} |
 POLICY   public.referrers | referrers authed all | PERMISSIVE | {authenticated} | ALL | using=true | check=true
 POLICY   public.resources | resources read public | PERMISSIVE | {anon,authenticated} | SELECT | using=(published = true) | check=-
 POLICY   public.resources | resources staff all | PERMISSIVE | {authenticated} | ALL | using=is_gl_staff() | check=is_gl_staff()
+POLICY   public.sales_decks | sales_decks admin insert | RESTRICTIVE | {authenticated} | INSERT | using=- | check=(is_gl_staff() AND is_admin_user())
+POLICY   public.sales_decks | sales_decks admin update | RESTRICTIVE | {authenticated} | UPDATE | using=(is_gl_staff() AND is_admin_user()) | check=(is_gl_staff() AND is_admin_user())
 POLICY   public.sales_decks | sales_decks staff insert | PERMISSIVE | {authenticated} | INSERT | using=- | check=(is_gl_staff() AND (NOT gl_is_viewer()))
 POLICY   public.sales_decks | sales_decks staff read | PERMISSIVE | {authenticated} | SELECT | using=is_gl_staff() | check=-
 POLICY   public.sales_decks | sales_decks staff update | PERMISSIVE | {authenticated} | UPDATE | using=(is_gl_staff() AND (NOT gl_is_viewer())) | check=(is_gl_staff() AND (NOT gl_is_viewer()))
@@ -915,6 +917,9 @@ POLICY   storage.objects | client-docs referenced-object delete guard | RESTRICT
 POLICY   storage.objects | client-docs referenced-object update guard | RESTRICTIVE | {authenticated} | UPDATE | using=((bucket_id <> 'client-docs'::text) OR (NOT gl_storage_object_is_record(name))) | check=-
 POLICY   storage.objects | client-docs staff all | PERMISSIVE | {authenticated} | ALL | using=((bucket_id = 'client-docs'::text) AND is_gl_staff()) | check=((bucket_id = 'client-docs'::text) AND is_gl_staff())
 POLICY   storage.objects | compliance-photos staff all | PERMISSIVE | {authenticated} | ALL | using=((bucket_id = 'compliance-photos'::text) AND is_gl_staff()) | check=((bucket_id = 'compliance-photos'::text) AND is_gl_staff())
+POLICY   storage.objects | sales-decks admin writes (delete) | RESTRICTIVE | {authenticated} | DELETE | using=((bucket_id <> 'sales-decks'::text) OR (is_gl_staff() AND is_admin_user())) | check=-
+POLICY   storage.objects | sales-decks admin writes (insert) | RESTRICTIVE | {authenticated} | INSERT | using=- | check=((bucket_id <> 'sales-decks'::text) OR (is_gl_staff() AND is_admin_user()))
+POLICY   storage.objects | sales-decks admin writes (update) | RESTRICTIVE | {authenticated} | UPDATE | using=((bucket_id <> 'sales-decks'::text) OR (is_gl_staff() AND is_admin_user())) | check=((bucket_id <> 'sales-decks'::text) OR (is_gl_staff() AND is_admin_user()))
 POLICY   storage.objects | sales-decks staff all | PERMISSIVE | {authenticated} | ALL | using=((bucket_id = 'sales-decks'::text) AND is_gl_staff()) | check=((bucket_id = 'sales-decks'::text) AND is_gl_staff())
 POLICY   storage.objects | warehouse-docs staff all | PERMISSIVE | {authenticated} | ALL | using=((bucket_id = 'warehouse-docs'::text) AND is_gl_staff()) | check=((bucket_id = 'warehouse-docs'::text) AND is_gl_staff())
 RLS      public.activity | enabled=t
