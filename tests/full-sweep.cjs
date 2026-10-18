@@ -252,7 +252,7 @@ const corr=await pg.evaluate(async()=>{
   o.nudgeStale=window.glNoReplyFor([{direction:'outbound',sent_at:D(11),created_at:D(11)}]);
   o.nudgeReplied=window.glNoReplyFor(rows);
   // badges
-  window.supa.from=()=>({select:()=>({order:()=>({limit:async()=>({data:[
+  window.supa.from=()=>({select:()=>({order:()=>({range:async()=>({data:[
     {to_email:'sweep@test.local',direction:'outbound',sent_at:D(13),created_at:D(13)},
     {to_email:'sweep@test.local',direction:'outbound',sent_at:D(2),created_at:D(2)}
   ]})})})});

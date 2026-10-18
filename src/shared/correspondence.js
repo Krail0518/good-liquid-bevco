@@ -139,8 +139,10 @@ window.ddpNudgeLead = ddpNudgeLead;
 async function glSyncGmail(email, opts){
   opts = opts || {};
   if(!window.supa){ if(typeof addNotification==='function') addNotification('Sync unavailable','Not connected to the server.','warning'); return null; }
-  var body = email ? { email: email, days: opts.days || 90, max: opts.max || 200 }
-                   : { days: opts.days || 90, max: opts.max || 400 };
+  // A year back by default: prospects are often first emailed months before
+  // anyone opens their card, and a 90-day window left them looking unemailed.
+  var body = email ? { email: email, days: opts.days || 365, max: opts.max || 300 }
+                   : { days: opts.days || 365, max: opts.max || 2000 };
   try {
     var r = await window.supa.functions.invoke('gmail-sync', { body: body });
     // A failed invoke puts the reason in r.error; the function itself reports
@@ -242,7 +244,7 @@ window.glSyncCorrPanel = glSyncCorrPanel;
 function glAutoSyncContact(email, panel, id){
   if(!email || !window.supa || !window.currentUser) return;
   if(!glAutoSyncDue('c_' + String(email).toLowerCase(), 15)) return;
-  glSyncGmail(email, { days: 90, max: 100, silent: true }).then(function(res){
+  glSyncGmail(email, { days: 365, max: 150, silent: true }).then(function(res){
     if(!res || !(res.inserted > 0)) return;
     if(panel === 'cde'){
       var c = (window.clients||[]).find(function(x){ return x.id === id; });
@@ -351,12 +353,19 @@ window.glNoReplyFor = glNoReplyFor;
 window.GL_OUTREACH = window.GL_OUTREACH || {};
 async function glLoadOutreachIndex(){
   if(!window.supa) return false;
-  var r = await window.supa.from('email_log')
-    .select('to_email, from_email, direction, sent_at, created_at, template_name')
-    .order('created_at', { ascending: false }).limit(2000);
-  if(r.error){ console.warn('[GL] outreach index failed', r.error); return false; }
+  // Paged: a single .limit(2000) silently dropped everything older once the log
+  // passed 2,000 rows, so prospects emailed in the summer lost their badge.
+  var all = [], PAGE = 1000;
+  for(var from = 0; from < 20000; from += PAGE){
+    var r = await window.supa.from('email_log')
+      .select('to_email, from_email, direction, sent_at, created_at, template_name')
+      .order('created_at', { ascending: false }).range(from, from + PAGE - 1);
+    if(r.error){ console.warn('[GL] outreach index failed', r.error); if(!all.length) return false; break; }
+    all = all.concat(r.data || []);
+    if(!r.data || r.data.length < PAGE) break;
+  }
   var idx = {};
-  (r.data || []).forEach(function(row){
+  all.forEach(function(row){
     // The automatic sales deck (quote-decks) is not Mike writing to the lead:
     // counting it would show "sent" and hide the "awaiting reply" badge on
     // every new website lead. Same rule as lead-automations' SLA watchdog.

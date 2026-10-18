@@ -27,10 +27,11 @@
 //
 // REQUEST (POST JSON, all optional):
 //   { days?: number,        // how far back to look (default 30, max 365)
-//     max?: number,         // max Gmail messages to scan (default 150, max 500)
+//     max?: number,         // max Gmail messages to list (default 150, max 3000)
 //     email?: string }      // sync just this one address (fast, on-demand)
 //
-// RESPONSE: { ok, scanned, matched, inserted, skipped, contacts }
+// RESPONSE: { ok, scanned, matched, inserted, skipped, contacts, partial, remaining }
+//   partial/remaining: the run hit its time budget; call again to continue.
 //
 // AUTH: a staff JWT (for the in-app "Sync now" button) OR the CRON_SECRET
 // (for the scheduled run), matching the pattern used by daily-digest.
@@ -199,7 +200,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
   let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch { /* all params optional */ }
   const days = Math.min(Math.max(Number(body.days) || 30, 1), 365);
-  const max  = Math.min(Math.max(Number(body.max)  || 150, 1), 500);
+  // Full sweeps can match thousands of messages across every lead; a single
+  // lead never needs more than a few hundred.
+  const max  = Math.min(Math.max(Number(body.max)  || 150, 1), 3000);
+  const startedAt = Date.now();
+  // Stop opening new messages after this long so the request finishes well
+  // inside the edge runtime's wall clock. Whatever is left is reported as
+  // `remaining` and the caller simply runs again: ids already stored are
+  // skipped before any fetch, so each run picks up where the last stopped.
+  const BUDGET_MS = 95_000;
   // A single email field can hold SEVERAL addresses (a lead stored as
   // "rachel@housewata.com,hello@housewata.com"). Split on commas/semicolons so
   // each is a real, matchable address — an un-split value matches nothing and,
@@ -283,43 +292,79 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const gFetch = (path: string) =>
     fetch(GMAIL_API + path, { headers: { Authorization: `Bearer ${accessToken}` } });
 
-  // For a single lead let Gmail do the filtering (cheap + precise): search each
-  // of the lead's addresses AND each company domain (Gmail's `from:domain.com`
-  // matches every sender at that domain), so a lead who wrote from a second
-  // address at the same company still gets pulled in. For a full sync, scan
-  // recent mail and filter locally against `contacts` / `domainOwner`.
-  let q = `newer_than:${days}d -in:chats`;
+  // Let Gmail do the filtering in BOTH modes. The full sweep used to list the
+  // newest N messages in the whole mailbox and filter them here. Mike's inbox
+  // carries hundreds of digests, alerts and vendor mails a week, so N=400
+  // reached back only a few days: a lead emailed three weeks earlier was never
+  // even looked at, and "Sync email history" reported success while leaving
+  // most prospects with an empty correspondence panel. Now the query names the
+  // contacts themselves, chunked so each query stays under Gmail's length limit.
+  const terms: string[] = [];
   if (isOnly) {
-    const terms: string[] = [];
-    for (const a of onlyEmails)    terms.push(`from:${a}`, `to:${a}`);
-    for (const d of onlyDomains)   terms.push(`from:${d}`, `to:${d}`);
-    if (terms.length) q += ` (${terms.join(' OR ')})`;
+    for (const a of onlyEmails)  terms.push(`from:${a}`, `to:${a}`, `cc:${a}`);
+    for (const d of onlyDomains) terms.push(`from:${d}`, `to:${d}`, `cc:${d}`);
+  } else {
+    for (const a of contacts.keys())    terms.push(`from:${a}`, `to:${a}`, `cc:${a}`);
+    for (const d of domainOwner.keys()) terms.push(`from:${d}`, `to:${d}`, `cc:${d}`);
   }
+  const base = `newer_than:${days}d -in:chats`;
+  const queries: string[] = [];
+  let cur: string[] = [];
+  let curLen = 0;
+  for (const t of terms) {
+    if (cur.length && curLen + t.length + 1 > 1200) { queries.push(cur.join(' OR ')); cur = []; curLen = 0; }
+    cur.push(t); curLen += t.length + 4;
+  }
+  if (cur.length) queries.push(cur.join(' OR '));
 
   const ids: string[] = [];
-  let pageToken = '';
-  while (ids.length < max) {
-    const pageSize = Math.min(100, max - ids.length);
-    const listRes = await gFetch(
-      `/messages?maxResults=${pageSize}&q=${encodeURIComponent(q)}` +
-      (pageToken ? `&pageToken=${pageToken}` : ''));
-    if (!listRes.ok) {
-      const errText = await listRes.text().catch(() => '');
-      if (!isOnly) await recordRun(false, `Gmail list failed ${listRes.status}: ${errText.slice(0, 300)}`, {});
-      // A send-only refresh token fails here — say so plainly so the fix is obvious.
-      if (listRes.status === 403) {
-        return errorResponse(
-          'Gmail refused to read mail (403). The connection is missing the ' +
-          'gmail.readonly scope — reconnect Gmail from Admin → 📧 Email Delivery ' +
-          '(the connect flow requests read + send together). ' + errText,
-          403);
+  const seenIds = new Set<string>();
+  for (const terms of queries) {
+    const q = `${base} (${terms})`;
+    let pageToken = '';
+    while (ids.length < max) {
+      const pageSize = Math.min(100, max - ids.length);
+      const listRes = await gFetch(
+        `/messages?maxResults=${pageSize}&q=${encodeURIComponent(q)}` +
+        (pageToken ? `&pageToken=${pageToken}` : ''));
+      if (!listRes.ok) {
+        const errText = await listRes.text().catch(() => '');
+        if (!isOnly) await recordRun(false, `Gmail list failed ${listRes.status}: ${errText.slice(0, 300)}`, {});
+        // A send-only refresh token fails here — say so plainly so the fix is obvious.
+        if (listRes.status === 403) {
+          return errorResponse(
+            'Gmail refused to read mail (403). The connection is missing the ' +
+            'gmail.readonly scope — reconnect Gmail from Admin → 📧 Email Delivery ' +
+            '(the connect flow requests read + send together). ' + errText,
+            403);
+        }
+        return errorResponse(`Gmail list failed ${listRes.status}: ${errText}`, listRes.status);
       }
-      return errorResponse(`Gmail list failed ${listRes.status}: ${errText}`, listRes.status);
+      const page = await listRes.json();
+      for (const m of page.messages || []) {
+        if (!seenIds.has(m.id)) { seenIds.add(m.id); ids.push(m.id); }
+      }
+      pageToken = page.nextPageToken || '';
+      if (!pageToken) break;
     }
-    const page = await listRes.json();
-    for (const m of page.messages || []) ids.push(m.id);
-    pageToken = page.nextPageToken || '';
-    if (!pageToken) break;
+    if (ids.length >= max) break;
+  }
+
+  // A full sweep skips messages already stored BEFORE downloading them, so a
+  // re-run spends its time only on what is missing (and can resume after a
+  // run that stopped at the time budget). A single-lead sync still reads them
+  // all, because that is also how short stored bodies get filled in.
+  let preSkipped = 0;
+  let toFetch = ids;
+  if (!isOnly && ids.length) {
+    const stored = new Set<string>();
+    for (let i = 0; i < ids.length; i += 200) {
+      const chunk = ids.slice(i, i + 200);
+      const r = await supa.from('email_log').select('mailgun_id').in('mailgun_id', chunk);
+      for (const row of r.data || []) stored.add(String((row as Record<string, unknown>).mailgun_id));
+    }
+    toFetch = ids.filter((id) => !stored.has(id));
+    preSkipped = ids.length - toFetch.length;
   }
 
   // ── 3) Read headers, keep messages involving a known contact ──
@@ -331,11 +376,24 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const candidates: Row[] = [];
   let scanned = 0;
 
-  for (const id of ids) {
-    // format=full (not metadata) so the actual body comes back, not just a snippet.
-    const mRes = await gFetch(`/messages/${id}?format=full`);
-    if (!mRes.ok) continue;
-    const msg = await mRes.json();
+  // format=full (not metadata) so the actual body comes back, not just a
+  // snippet. Fetched a few at a time: one by one, a backfill of a few hundred
+  // messages outran the edge runtime's wall clock.
+  const messages: Record<string, any>[] = [];
+  let remaining = 0;
+  const CONCURRENCY = 8;
+  for (let i = 0; i < toFetch.length; i += CONCURRENCY) {
+    if (Date.now() - startedAt > BUDGET_MS) { remaining = toFetch.length - i; break; }
+    const batch = toFetch.slice(i, i + CONCURRENCY);
+    const got = await Promise.all(batch.map(async (id) => {
+      const mRes = await gFetch(`/messages/${id}?format=full`);
+      return mRes.ok ? await mRes.json() : null;
+    }));
+    for (const m of got) if (m) messages.push(m);
+  }
+
+  for (const msg of messages) {
+    const id = String(msg.id);
     scanned++;
     const headers = msg.payload?.headers || [];
     const fromAddrs = addressesIn(header(headers, 'From'));
@@ -498,7 +556,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   try { alerted = await alertReplies(insertedRows as unknown as Array<Record<string, unknown>>, clientNames, leadNames); }
   catch (e) { console.error('[gmail-sync] reply alerts failed:', e); }
 
-  console.log(`[gmail-sync] scanned=${scanned} matched=${candidates.length} inserted=${inserted} skipped=${skipped} alerted=${alerted}`);
+  console.log(`[gmail-sync] listed=${ids.length} scanned=${scanned} matched=${candidates.length} inserted=${inserted} skipped=${skipped + preSkipped} remaining=${remaining} alerted=${alerted}`);
   const upgradedCount = Number((globalThis as Record<string, unknown>).__glUpgraded || 0);
   if (!isOnly) {
     await recordRun(insertFailures === 0,
@@ -506,7 +564,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       { scanned, matched: candidates.length, inserted, skipped, alerted });
   }
   return jsonResponse({
-    ok: true, scanned, matched: candidates.length, inserted, skipped,
+    ok: true, scanned, matched: candidates.length, inserted, skipped: skipped + preSkipped,
     upgraded: upgradedCount, contacts: contacts.size, alerted,
+    // partial: the time budget ran out; call again to continue.
+    partial: remaining > 0, remaining,
   });
 });
