@@ -152,7 +152,7 @@ await p.evaluate(()=>{document.getElementById('title').remove();window.glRenderW
 await chapter(1,'THE PAGE','Where it is, what it tracks, and the buttons you will use every day.');
 await cap('WHERE IT IS','In the CRM sidebar, open Operations and click 🏬 Warehouse Storage. Admin and sales logins can see it.');
 await cap('WHAT IT IS','This is the record of every pallet we keep at CONRI Services, across the street. Paul Nolletti is our contact there. If a pallet is at CONRI, it should be in here.');
-await cap('THREE KINDS OF PALLETS','We store three kinds: a client\'s FINISHED GOODS (racked, waiting for a truck), a client\'s EMPTY CANS (overflow, back to us for a run in 1 to 2 days), and GOOD LIQUID PACKAGING (our own supplies, like Pak-it carrier trays).');
+await cap('THREE KINDS OF PALLETS','We store three kinds: a client\'s FINISHED GOODS (racked, waiting for a truck), a client\'s EMPTY CANS (overflow, back to us for a run in 1 to 2 days), and PACKAGING (carrier trays, lids, cartons). Packaging belongs to whoever owns it: usually a client, sometimes Good Liquid.');
 await hl('[data-wh="newTransfer"]');
 await cap('TOP BUTTONS','"+ New transfer" starts any move of pallets in or out of CONRI.');
 await hl('.cph [data-wh="newOrder"]');
@@ -168,7 +168,7 @@ await scrollTo('.cph');
 await hl('#wh-body .ccard');
 await cap('TOTALS','Across the top: pallets at CONRI, cases, units, empty-can pallets held more than 2 days, and finished lots within 90 days of best by.');
 await cardBy('On hand at CONRI');
-await cap('ON HAND','"On hand at CONRI" lists every item there, grouped by client. Each line shows the lot, pallets, cases, units and best by date. Our Pak-it trays are here under "Good Liquid (own packaging)".');
+await cap('ON HAND','"On hand at CONRI" lists every item there, grouped by client. Each line shows the lot, pallets, cases, units and best by date. Demo Canning Co\'s carrier trays are here under their own name, because they own them.');
 await cardBy('Every pallet at CONRI');
 await cap('EVERY PALLET','"Every pallet at CONRI" lists each pallet with our tag AND Paul\'s own number, the CONRI #. Paul pulls pallets by his number, so this is the column to read him over the phone. Yellow "not recorded" means we still need his number (Part 6).');
 await cardBy('Empty cans at CONRI');
@@ -184,7 +184,7 @@ await chapter(3,'A PALLET OF CANS COMES IN','Example: Demo Beverage Co\'s empty 
 await click('[data-wh="newTransfer"]');
 await cap('STEP 1 · NEW TRANSFER','Click "+ New transfer". The first box is the TYPE of move.');
 await hl('#wnt-type');
-await cap('THE 5 TYPES','To CONRI: finished goods. To CONRI: empty can overflow. To CONRI: Good Liquid packaging (our supplies). Pull back from CONRI (bringing pallets home). Outbound carrier pickup (made for you by Ship out).');
+await cap('THE 5 TYPES','To CONRI: finished goods. To CONRI: empty can overflow. To CONRI: packaging (trays, lids, cartons). Pull back from CONRI (bringing pallets home). Outbound carrier pickup (made for you by Ship out).');
 await pick('#wnt-type','to_conri_overflow');
 await cap('PICK THE TYPE','These are empty cans going over, so pick "To CONRI: empty can overflow".');
 await pick('#wnt-client',await p.evaluate(()=>FIX_CLIENT()));
@@ -332,13 +332,27 @@ await cap('QA RELEASE','When QA signs off, click "QA release" on the lot. Only t
 await cap('THE REST','After that it is the same 4 steps: + New transfer, "To CONRI: finished goods", the client, Quick build with the released lot, print, schedule, complete.');
 await top();
 
-// ═════ PART 7 · OUR PACKAGING
-await chapter(8,'OUR OWN PACKAGING','Carrier trays, lids, cartons: supplies Good Liquid owns, not a client.');
+// ═════ PART 7 · PACKAGING AND WHO OWNS IT
+await chapter(8,'PACKAGING AND WHO OWNS IT','Carrier trays, lids and cartons. They belong to whoever owns them, usually a client, and the owner is who gets billed.');
 await click('[data-wh="newTransfer"]');
 await pick('#wnt-type','to_conri_packaging');
-await cap('PACKAGING','Pick "To CONRI: Good Liquid packaging". The owner fills in as "Good Liquid (own packaging)" by itself. Everything else is the same as Part 3.');
-await cap('PACKAGING ITEMS','Packaging items are added in SKU master with the owner "Good Liquid (own packaging)". The item number is the vendor\'s part number, like TRAY12-1800.');
+await cap('PACKAGING','Pick "To CONRI: packaging". Then pick the OWNER: the client the trays belong to. Pick "Good Liquid (own packaging)" only for supplies we own ourselves.');
+await pick('#wnt-client','c-canning');
+await cap('THE OWNER MATTERS','The owner is who the pallets belong to, whose name prints on the labels, and who is billed for storing them. Here: Demo Canning Co. Everything else is the same as Part 3.');
 await closeOv();
+await click('[data-wh="tab"][data-arg="skus"]');
+await pick('#wh-sku-client','__gl__'); await p.waitForSelector('[data-wh="editSku"]'); await wait(600);
+await cap('WRONG OWNER?','Every item in SKU master has an owner. Here, one carrier tray was entered as Good Liquid\'s own, but it really belongs to Demo Canning Co.');
+await click('[data-wh="editSku"]'); await p.waitForSelector('#ws-client');
+await hl('#ws-client');
+await cap('CHANGE THE OWNER','Click Edit on the item and pick the right owner from the Owner box.');
+await pick('#ws-client','c-canning');
+await cap('IT MOVES THE PALLETS','Save. It asks you to confirm, because every pallet of that item moves to the new owner and is billed to them from then on. It will not let you change it while one of its pallets is on an open transfer.');
+await click('#ws-save'); await wait(1500);
+await pick('#wh-sku-client','c-canning'); await wait(800);
+await cap('MOVED','Now the tray is listed under Demo Canning Co, with its pallets.');
+await click('[data-wh="tab"][data-arg="dashboard"]'); await p.waitForSelector('#wh-body .ccard'); await wait(600);
+await top();
 
 // ═════ PART 8 · SHIP OUT LTL
 await chapter(9,'SHIP OUT BY LTL','A client\'s product is sitting at CONRI and has to go out on a truck. Two buttons start it.');
@@ -352,7 +366,7 @@ await cap('BUTTON 1 · TOP OF THE PAGE','"🚚 Ship out (LTL)" at the top of War
 await p.waitForSelector('.wo-qty'); await wait(900);
 await cap('ALREADY FILLED IN','The order opens with the client chosen (Demo Beverage Co), Ship method LTL, and 1 pallet of Lemon Fizz filled in.');
 await hl('#wo-lines');
-await cap('WHAT CAN SHIP','The table lists everything this client has at CONRI that can ship, and how many pallets of each. Finished goods only ship from a QA-released lot. Empty cans ship too. Our own packaging never ships out.');
+await cap('WHAT CAN SHIP','The table lists everything this client has at CONRI that can ship, and how many pallets of each. Finished goods only ship from a QA-released lot. Empty cans ship too, and so does packaging the client owns. Good Liquid\'s own supplies never ship out.');
 await type('.wo-qty','2');
 await cap('HOW MANY','Type how many pallets go out. Here: 2. If you ask for more than are at CONRI, it tells you and does not create the order.');
 await type('#wo-ref','PO 7781');
@@ -429,7 +443,7 @@ await cap('ONE LINE PER CLIENT','One line per client. Demo Beverage Co: the pall
   await click('#wbm-save'); await p.waitForSelector('[data-wh="billUnmark"]'); await wait(900);
   await hl('#wh-body table.ctbl tr:nth-child(2)');
   await cap('BILLED','The line now says Billed, with the date and invoice number. If a pallet move is added for that month later, the line turns red and shows the new amount, and "↻ Update billed" records it. "Undo" removes the billed mark.'); }
-await cap('OUR OWN TRAYS','Good Liquid\'s own packaging is listed too, but marked "not billed": it is our stock.');
+await cap('PACKAGING IS BILLED TOO','A client\'s packaging, like Demo Canning Co\'s carrier trays, is billed like any other pallet. Only Good Liquid\'s own supplies show as "not billed".');
 await click('[data-wh="billRates"]'); await p.waitForSelector('#wr-client');
 await cap('✏️ RATES','"✏️ Rates" changes the prices. The default ($30 and $15) applies to every client. Pick a client to give them their own rate, for example a discount for a big account.');
 await closeOv();
@@ -446,8 +460,9 @@ await p.evaluate(()=>{document.getElementById('cap').style.opacity=0;var t=docum
  '<p><b style="color:#00e5c0">Ship out:</b> 🚚 Ship on the item (or 🚚 Ship out at the top) → pallets, date, carrier, ship to → email Paul → truck leaves → Mark shipped + BOL</p>'+
  '<p><b style="color:#00e5c0">Bring back:</b> + New transfer → Pull back → ☑ Pick pallets → same steps</p>'+
  '<p><b style="color:#00e5c0">Paul\'s numbers:</b> his ticket arrives → open the transfer → 📎 CONRI receipt → upload → check → Save (✂ Split if he has more pallets)</p>'+
+ '<p><b style="color:#00e5c0">Owner:</b> every item has one, and they get billed. Wrong owner? SKU master → Edit → Owner</p>'+
  '<p><b style="color:#00e5c0">Billing (monthly):</b> 💵 Billing → last month → 🧾 Create invoice → send → ✓ Mark billed</p>'+
- '<p style="color:#9aa7bd;margin-top:18px">Stuck? ❓ Help or press ?</p>';t.querySelectorAll('p').forEach(x=>x.style.fontSize='19px');document.body.appendChild(t);});
+ '<p style="color:#9aa7bd;margin-top:18px">Stuck? ❓ Help or press ?</p>';t.querySelectorAll('p').forEach(x=>x.style.fontSize='17px');document.body.appendChild(t);});
 await wait(Math.max(20000, await say("That's the whole system. Pause here if you want to copy the cheat sheet, and remember: the Help button, or the question mark key, opens this guide from anywhere in the C R M. Thanks for watching.")));
 console.log((record?'record':'dry')+' pass errors:',JSON.stringify(errs));
 if(errs.length) throw new Error('page errors: '+errs.join(' | '));
