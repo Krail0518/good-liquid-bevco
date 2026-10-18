@@ -12,6 +12,19 @@ const SCRATCH=process.env.GL_VIDEO_OUT
   || '/tmp/claude-0/-home-user-good-liquid-bevco/a8dbf2c3-6093-5bf2-adf9-cca45eb015ed/scratchpad';
 try { require('fs').mkdirSync(SCRATCH,{recursive:true}); } catch(e){}
 const MODEL=process.env.GL_PIPER_MODEL || '/opt/piper-voices/en-us-lessac-medium.onnx';
+// Kokoro (voice 1, af_heart) replaced Piper as the narrator on 2026-10-18:
+// Piper sounded robotic. Used when GL_KOKORO_MODEL is set; Piper otherwise.
+const KOKORO=process.env.GL_KOKORO_MODEL || '';
+const HOST=require('./host.cjs');
+function synthAll(lines, work){
+  if(KOKORO){
+    const jobs=path.join(work,'tts-jobs.json');
+    fs.writeFileSync(jobs, JSON.stringify(lines));
+    execSync(`python3 "${path.join(__dirname,'tts-kokoro.py')}" "${jobs}"`, { stdio: 'inherit' });
+  } else {
+    lines.forEach(function(l){ execSync(`piper --model ${MODEL} --output_file "${l[1]}"`,{input:l[0]}); });
+  }
+}
 const W=1280,H=720, LEAD=0.2, TAILPAD=0.7;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const dur=f=>parseFloat(execSync(`ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "${f}"`).toString().trim());
@@ -255,17 +268,19 @@ body{margin:0;min-height:100vh;background:transparent;font-family:Inter,Segoe UI
 @keyframes pop{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:none}}
 `;
 
-function hudJs(){
+function hudJs(host){
   const cap=document.createElement('div'); cap.id='vcap';
   cap.style.cssText='position:fixed;left:0;right:0;bottom:0;padding:16px 200px 18px 200px;background:linear-gradient(180deg,rgba(10,22,40,0),rgba(10,22,40,.97) 45%);color:#eaf3f0;font-size:19px;line-height:1.5;font-weight:600;z-index:9;text-align:center;min-height:60px;pointer-events:none';
   document.body.appendChild(cap);
   window.__vcap=t=>{cap.textContent=t;};
-  const st=document.createElement('style'); st.textContent=
-    '@keyframes gm-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}@keyframes gm-blink{0%,90%,100%{transform:scaleY(1)}95%{transform:scaleY(.08)}}@keyframes gm-talk{0%,100%{transform:scaleY(.32)}50%{transform:scaleY(1)}}@keyframes gm-wave{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(-32deg)}}#gm{animation:gm-bob 2.6s ease-in-out infinite;position:fixed;left:26px;bottom:74px;width:120px;height:150px;z-index:10;filter:drop-shadow(0 6px 14px rgba(0,0,0,.5))}#gm .gm-eyes{transform-box:fill-box;transform-origin:center;animation:gm-blink 4s infinite}#gm .gm-mouth{transform-box:fill-box;transform-origin:center;animation:gm-talk .26s ease-in-out infinite}#gm .gm-arm{transform-box:fill-box;transform-origin:top center;animation:gm-wave 1.1s ease-in-out infinite}';
+  // Sofia, the host (host.cjs). Her open mouth shows only while __speak runs.
+  const st=document.createElement('style'); st.textContent=host.css+
+    '#gm{position:fixed;left:18px;bottom:64px;width:136px;height:166px;z-index:10;filter:drop-shadow(0 6px 14px rgba(0,0,0,.5))}';
   document.head.appendChild(st);
   const m=document.createElement('div'); m.id='gm';
-  m.innerHTML='<svg viewBox="0 0 120 152" width="120" height="150"><defs><linearGradient id="gc" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#00e5c0"/><stop offset="1" stop-color="#00a88c"/></linearGradient></defs><rect class="gm-arm" x="14" y="72" width="12" height="34" rx="6" fill="#00c4a7"/><rect x="94" y="74" width="12" height="30" rx="6" fill="#00c4a7"/><rect x="28" y="34" width="64" height="98" rx="16" fill="url(#gc)" stroke="#0a3d34" stroke-width="2"/><ellipse cx="60" cy="34" rx="32" ry="8" fill="#7ff0dd" stroke="#0a3d34" stroke-width="2"/><rect x="28" y="82" width="64" height="24" fill="rgba(255,255,255,.15)"/><text x="60" y="99" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="12" fill="#eafff9">GOOD LIQUID</text><circle cx="42" cy="64" r="4" fill="rgba(255,120,120,.5)"/><circle cx="78" cy="64" r="4" fill="rgba(255,120,120,.5)"/><g class="gm-eyes"><circle cx="49" cy="54" r="9" fill="#fff"/><circle cx="71" cy="54" r="9" fill="#fff"/><circle cx="50" cy="55" r="4" fill="#08201b"/><circle cx="72" cy="55" r="4" fill="#08201b"/></g><ellipse class="gm-mouth" cx="60" cy="70" rx="8.5" ry="6" fill="#08201b"/><rect x="42" y="132" width="9" height="12" rx="4" fill="#00a88c"/><rect x="69" y="132" width="9" height="12" rx="4" fill="#00a88c"/></svg>';
+  m.innerHTML=host.svg;
   document.body.appendChild(m);
+  window.__speak=function(ms){ m.classList.add('gm-talking'); clearTimeout(window.__spk); window.__spk=setTimeout(function(){ m.classList.remove('gm-talking'); }, ms); };
 }
 
 (async()=>{
@@ -275,10 +290,11 @@ const SLIDES=D.slides;
 const work=path.join(SCRATCH,'video','exp-'+deck); fs.mkdirSync(work,{recursive:true});
 console.log('deck',deck,'— synthesizing narration…');
 const T=[]; let A=0;
+const SPK=[];
+synthAll(SLIDES.map((s,i)=>[s.say, path.join(work,`raw_${i}.wav`)]), work);
 SLIDES.forEach((s,i)=>{
   const raw=path.join(work,`raw_${i}.wav`);
-  execSync(`piper --model ${MODEL} --output_file "${raw}"`,{input:s.say});
-  const d=dur(raw); const Ti=LEAD+d+TAILPAD; T.push(Ti); A+=Ti;
+  const d=dur(raw); const Ti=LEAD+d+TAILPAD; T.push(Ti); A+=Ti; SPK.push(d);
   execSync(`ffmpeg -y -loglevel error -i "${raw}" -af "adelay=${Math.round(LEAD*1000)}:all=1,apad" -t ${Ti.toFixed(3)} -ar 22050 -ac 1 "${path.join(work,`seg_${i}.wav`)}"`);
 });
 fs.writeFileSync(path.join(work,'list.txt'), SLIDES.map((_,i)=>`file 'seg_${i}.wav'`).join('\n'));
@@ -290,11 +306,12 @@ const br=await chromium.launch({executablePath:process.env.PW_CHROMIUM||undefine
 const ctx=await br.newContext({viewport:{width:W,height:H},deviceScaleFactor:1,recordVideo:{dir:work,size:{width:W,height:H}}});
 const pg=await ctx.newPage();
 await pg.setContent('<!doctype html><html><head><meta charset="utf-8"><style>'+CSS+'</style></head><body><div id="brandbar"><b>GOOD LIQUID BEV CO</b>&nbsp;&nbsp;·&nbsp;&nbsp;'+D.brand+'</div><div id="slide-root"></div></body></html>',{waitUntil:'domcontentloaded'});
-await pg.evaluate(hudJs);
+await pg.evaluate(hudJs, { svg: HOST.HOST_SVG, css: HOST.HOST_CSS });
 await sleep(300);
 for(let i=0;i<SLIDES.length;i++){
   const t=Date.now();
-  await pg.evaluate(({html,say})=>{ document.getElementById('slide-root').innerHTML=html; window.__vcap(say); }, {html:SLIDES[i].html, say:SLIDES[i].say});
+  await pg.evaluate(({html,say,lead,ms})=>{ document.getElementById('slide-root').innerHTML=html; window.__vcap(say);
+    setTimeout(function(){ window.__speak(ms); }, lead); }, {html:SLIDES[i].html, say:SLIDES[i].say, lead:LEAD*1000, ms:SPK[i]*1000});
   const el=(Date.now()-t)/1000, rem=T[i]-el; if(rem>0) await sleep(rem*1000);
 }
 const video=pg.video(); await ctx.close();

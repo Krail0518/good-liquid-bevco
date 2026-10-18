@@ -4,7 +4,7 @@
  *   node gen-video.cjs <storyboardKey>
  *
  * Pipeline: Playwright drives the real app (stubbed data) → silent .webm with a
- * visible cursor + caption banner; Piper synthesizes each step's narration; the
+ * visible cursor + caption banner; Kokoro (or Piper) synthesizes each step's narration; the
  * per-step wall-time is forced to the narration length so audio lines up; ffmpeg
  * trims the pre-roll, muxes the narration track, and encodes an MP4.
  *
@@ -27,6 +27,19 @@ const SCRATCH=process.env.GL_VIDEO_OUT
   || '/tmp/claude-0/-home-user-good-liquid-bevco/a8dbf2c3-6093-5bf2-adf9-cca45eb015ed/scratchpad';
 try { require('fs').mkdirSync(SCRATCH,{recursive:true}); } catch(e){}
 const MODEL=process.env.GL_PIPER_MODEL || '/opt/piper-voices/en-us-lessac-medium.onnx';
+// Kokoro (voice 1, af_heart) replaced Piper as the narrator on 2026-10-18:
+// Piper sounded robotic. Used when GL_KOKORO_MODEL is set; Piper otherwise.
+const KOKORO=process.env.GL_KOKORO_MODEL || '';
+const HOST=require('./host.cjs');
+function synthAll(lines, work){
+  if(KOKORO){
+    const jobs=path.join(work,'tts-jobs.json');
+    fs.writeFileSync(jobs, JSON.stringify(lines));
+    execSync(`python3 "${path.join(__dirname,'tts-kokoro.py')}" "${jobs}"`, { stdio: 'inherit' });
+  } else {
+    lines.forEach(function(l){ execSync(`piper --model ${MODEL} --output_file "${l[1]}"`,{input:l[0]}); });
+  }
+}
 const W=1120,H=740, LEAD=0.15, TAILPAD=0.55;   // per-step: LEAD + narration + TAILPAD
 const MIME={'.html':'text/html','.js':'text/javascript','.css':'text/css'};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -74,35 +87,17 @@ function installCommon(){
       document.body.appendChild(cap);
     }
     if(!document.getElementById('gm-mascot')){
+      // Sofia, the host (host.cjs, injected as window.__host before this runs).
+      // Her open mouth shows only while __speak says she is talking.
       const st=document.createElement('style'); st.id='gm-style';
-      st.textContent=
-        '@keyframes gm-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}'+
-        '@keyframes gm-blink{0%,90%,100%{transform:scaleY(1)}95%{transform:scaleY(.08)}}'+
-        '@keyframes gm-talk{0%,100%{transform:scaleY(.32)}50%{transform:scaleY(1)}}'+
-        '@keyframes gm-wave{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(-32deg)}}'+
-        '#gm-mascot{animation:gm-bob 2.6s ease-in-out infinite}'+
-        '#gm-mascot .gm-eyes{transform-box:fill-box;transform-origin:center;animation:gm-blink 4s infinite}'+
-        '#gm-mascot .gm-mouth{transform-box:fill-box;transform-origin:center;animation:gm-talk .26s ease-in-out infinite}'+
-        '#gm-mascot .gm-arm{transform-box:fill-box;transform-origin:top center;animation:gm-wave 1.1s ease-in-out infinite}';
+      st.textContent=(window.__host?window.__host.css:'');
       document.head.appendChild(st);
       const m=document.createElement('div'); m.id='gm-mascot';
-      m.style.cssText='position:fixed;left:22px;bottom:92px;width:118px;height:152px;z-index:2147483646;pointer-events:none;filter:drop-shadow(0 6px 14px rgba(0,0,0,.5))';
-      m.innerHTML='<svg viewBox="0 0 120 152" width="118" height="152">'+
-        '<defs><linearGradient id="gmcan" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#00e5c0"/><stop offset="1" stop-color="#00a88c"/></linearGradient></defs>'+
-        '<rect class="gm-arm" x="14" y="72" width="12" height="34" rx="6" fill="#00c4a7"/>'+
-        '<rect x="94" y="74" width="12" height="30" rx="6" fill="#00c4a7"/>'+
-        '<rect x="28" y="34" width="64" height="98" rx="16" fill="url(#gmcan)" stroke="#0a3d34" stroke-width="2"/>'+
-        '<ellipse cx="60" cy="34" rx="32" ry="8" fill="#7ff0dd" stroke="#0a3d34" stroke-width="2"/>'+
-        '<rect x="28" y="82" width="64" height="24" fill="rgba(255,255,255,.15)"/>'+
-        '<text x="60" y="99" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="12" fill="#eafff9">GOOD LIQUID</text>'+
-        '<circle cx="42" cy="64" r="4" fill="rgba(255,120,120,.5)"/><circle cx="78" cy="64" r="4" fill="rgba(255,120,120,.5)"/>'+
-        '<g class="gm-eyes"><circle cx="49" cy="54" r="9" fill="#fff"/><circle cx="71" cy="54" r="9" fill="#fff"/>'+
-        '<circle cx="50" cy="55" r="4" fill="#08201b"/><circle cx="72" cy="55" r="4" fill="#08201b"/></g>'+
-        '<ellipse class="gm-mouth" cx="60" cy="70" rx="8.5" ry="6" fill="#08201b"/>'+
-        '<rect x="42" y="132" width="9" height="12" rx="4" fill="#00a88c"/><rect x="69" y="132" width="9" height="12" rx="4" fill="#00a88c"/>'+
-        '</svg>';
+      m.style.cssText='position:fixed;left:16px;bottom:84px;width:132px;height:162px;z-index:2147483646;pointer-events:none;filter:drop-shadow(0 6px 14px rgba(0,0,0,.5))';
+      m.innerHTML=(window.__host?window.__host.svg:'');
       document.body.appendChild(m);
     }
+    window.__speak=function(ms){ const m=document.getElementById('gm-mascot'); if(!m) return; m.classList.add('gm-talking'); clearTimeout(window.__spk); window.__spk=setTimeout(function(){ m.classList.remove('gm-talking'); }, ms); };
     window.__vcap=t=>{const c=document.getElementById('vcap'); if(c) c.textContent=t;};
     window.__pulse=(x,y)=>{const p=document.createElement('div');p.style.cssText='position:fixed;left:'+x+'px;top:'+y+'px;width:14px;height:14px;border-radius:50%;border:2px solid #00e5c0;z-index:2147483645;pointer-events:none;transform:translate(-50%,-50%);transition:all .5s ease-out';document.body.appendChild(p);requestAnimationFrame(()=>{p.style.width='64px';p.style.height='64px';p.style.opacity='0';});setTimeout(()=>p.remove(),520);};
   };
@@ -605,10 +600,11 @@ const work=path.join(SCRATCH,'video',key); fs.mkdirSync(work,{recursive:true});
 // 1) synth narration per step, compute per-step target length T_i
 console.log('synthesizing narration…');
 const T=[]; let A=0;
+const SPK=[];
+synthAll(sb.steps.map((s,i)=>[s.say, path.join(work,`raw_${i}.wav`)]), work);
 sb.steps.forEach((s,i)=>{
   const raw=path.join(work,`raw_${i}.wav`);
-  execSync(`piper --model ${MODEL} --output_file "${raw}"`,{input:s.say});
-  const d=dur(raw); const Ti=LEAD+d+TAILPAD; T.push(Ti); A+=Ti;
+  const d=dur(raw); const Ti=LEAD+d+TAILPAD; T.push(Ti); A+=Ti; SPK.push(d);
   const seg=path.join(work,`seg_${i}.wav`);
   execSync(`ffmpeg -y -loglevel error -i "${raw}" -af "adelay=${Math.round(LEAD*1000)}:all=1,apad" -t ${Ti.toFixed(3)} -ar 22050 -ac 1 "${seg}"`);
 });
@@ -638,6 +634,7 @@ if(sb.mockRest){
 const startUrl = sb.url ? ('http://127.0.0.1:8941'+sb.url) : 'http://127.0.0.1:8941/index.html';
 await pg.goto(startUrl,{waitUntil:'domcontentloaded',timeout:30000});
 await pg.waitForTimeout(sb.url?2200:1400);
+await pg.evaluate(h=>{ window.__host=h; }, { svg: HOST.HOST_SVG, css: HOST.HOST_CSS });
 await pg.evaluate(installCommon);
 if(sb.seedCore){ await pg.evaluate(d=>{ window.__coreData=d; }, {clients:CORE_CLIENTS,invoices:CORE_INVOICES,deals:CORE_DEALS}); }
 if(sb.url){ await pg.evaluate(()=>window.__hud()); }
@@ -646,7 +643,7 @@ await sleep(300);
 
 for(let i=0;i<sb.steps.length;i++){
   const t=Date.now();
-  await pg.evaluate(t=>window.__vcap(t), sb.steps[i].say);
+  await pg.evaluate(({t,lead,ms})=>{ window.__vcap(t); setTimeout(function(){ window.__speak && window.__speak(ms); }, lead); }, { t: sb.steps[i].say, lead: LEAD*1000, ms: SPK[i]*1000 });
   try { await doAct(pg, sb.steps[i].act); } catch(e){ console.error('step',i,'act failed:',e.message); }
   const el=(Date.now()-t)/1000, rem=T[i]-el;
   if(rem>0) await sleep(rem*1000);

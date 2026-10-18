@@ -45,10 +45,18 @@ The MP4 lands in the scratchpad; copy it to `/tutorials/tutorial-<key>.mp4`.
 3. Add a `videoCard(...)` to `SEC_VIDEO_TUTORIALS` and a `watch('tutorial-<key>.mp4')`
    at the top of the matching help section in `crm-help.js`.
 
-## Voice
+## Voice and host
 
-Piper `en-us-lessac-medium`. To change the voice, download a different Piper
-model and point `MODEL` at it, then regenerate — every video re-synthesizes.
+Narrator: **Kokoro**, voice `af_heart` (voice 1 of the samples in
+`tools/voice-samples/`, chosen by the owner on 2026-10-18; Piper sounded
+robotic). Set `GL_KOKORO_MODEL` and `GL_KOKORO_VOICES` to the model files
+(the CI workflow downloads them from the kokoro-onnx GitHub release) and
+optionally `GL_TTS_VOICE` / `GL_TTS_SPEED`. Without `GL_KOKORO_MODEL` the
+generators fall back to Piper as before.
+
+On-screen host: **Sofia**, an original cartoon in a Good Liquid cap, drawn in
+`host.cjs` (replaced the talking can). Her mouth moves only while she is
+speaking: each step calls `window.__speak(ms)` with that line's length.
 
 ## Rebuilding from CI (GL-129)
 
