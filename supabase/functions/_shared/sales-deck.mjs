@@ -176,3 +176,75 @@ export function deckSendFailedMessage(data) {
   ].join('\n');
   return { short, subject: '⚠️ Sales deck not sent: ' + lead, body };
 }
+
+// ── Deck plus project questionnaire (staff triggered) ─────────────────────
+// Staff send this to a pipeline lead who has not filled out the product
+// intake: the questionnaire in the body, the deck attached. Leads answer by
+// replying, and the answers are entered on the deal's Product Intake panel.
+// It mirrors the fields in intake-questions.js. Mike's email rules apply:
+// no dashes as punctuation, ranges as "X to Y", no call offers, and no
+// mention of any preservative other than potassium sorbate by name.
+export const QUESTIONNAIRE_TEMPLATE = 'deck_questionnaire';
+
+export const QUESTIONNAIRE_ITEMS = [
+  'Brand and contact: brand name, your role, and website.',
+  'Product: what is it (energy drink, soda, tea, coffee, water, RTD cocktail, other), and is it carbonated or still?',
+  'Alcohol: if it contains alcohol, what is the target ABV, and do you hold or plan to file for federal and state licenses?',
+  'Formula: do you have a finished commercial formula ready to scale, a working recipe that needs development, or do you need us to formulate from scratch?',
+  'Ingredients: does it contain dairy, protein, coffee, or other low acid ingredients? If you know the target pH, include it.',
+  'Preservative: does your formula include a preservative, such as potassium sorbate? If so, which one?',
+  'Process Authority Letter: do you already have one for this product?',
+  'Flavors: how many flavors at launch?',
+  'First run size per flavor: 200 to 499 cases, 500 to 999, 1,000 to 2,499, or 2,500 or more.',
+  'Can format: 12oz standard, 12oz sleek, or 16oz standard?',
+  'Decoration: printed cans or shrink sleeves, and is your artwork finished?',
+  'Case packing: 24 count trays, 12 count trays, 4 pack carriers, or variety packs?',
+  'Timeline: when do you need finished product in hand?',
+  'Budget: what have you set aside for the first run, including R&D, cans, packaging, and ingredients?',
+  'Sales channels: where will it sell (retail, online, distribution), and do you need storage after production?',
+];
+
+// opts.nudge: they already received the questionnaire and have not answered.
+// opts.firstName: a staff supplied first name, used when it is a real name.
+export function questionnaireEmail(deal, opts) {
+  const d = deal || {};
+  const o = opts || {};
+  const given = firstName(o.firstName);
+  const name = given !== 'there' ? given : firstName(d.contact_name);
+  const subject = 'Good Liquid Bev Co: Project Questionnaire';
+  const intro = o.nudge
+    ? 'Checking back on the project questionnaire. Our capabilities and pricing deck is attached again. Once we have your answers, we can put together real costs and a timeline for you. Reply to this email with your answers to the questions below.'
+    : 'Following up on your project with Good Liquid. Our capabilities and pricing deck is attached. To get you real costs and a timeline, reply to this email with your answers to the questionnaire below. Our minimum is 200 cases (4,800 cans) per flavor, and every product we run must include a preservative.';
+  const list = QUESTIONNAIRE_ITEMS.map((q, i) => (i + 1) + '. ' + q);
+  const text = 'Hi ' + name + ',\n\n' + intro + '\n\nPROJECT QUESTIONNAIRE\n\n' + list.join('\n') +
+    '\n\nMike Krail\nGood Liquid Bev Co';
+  const p = 'margin:0 0 14px';
+  const html =
+    '<div style="font-family:-apple-system,Segoe UI,Arial,sans-serif;font-size:15px;line-height:1.55;color:#1a2433;max-width:620px">' +
+    '<p style="' + p + '">Hi ' + escHtml(name) + ',</p>' +
+    '<p style="' + p + '">' + escHtml(intro) + '</p>' +
+    '<p style="' + p + ';font-weight:700">PROJECT QUESTIONNAIRE</p>' +
+    '<ol style="margin:0 0 14px;padding-left:22px">' +
+    QUESTIONNAIRE_ITEMS.map((q) => '<li style="margin:0 0 6px">' + escHtml(q) + '</li>').join('') +
+    '</ol>' +
+    '<p style="' + p + '">Mike Krail<br>Good Liquid Bev Co</p>' +
+    '</div>';
+  return { subject, text, html };
+}
+
+/*
+ * Should this lead get the deck plus questionnaire now?
+ *   deal            the deals row
+ *   hasIntake       a product_intake row already exists for this deal or address
+ *   sentRecentlyAt  an earlier questionnaire email to this address in the last day
+ * Unlike deckSendDecision this is not limited to website quote requests and
+ * does not care whether the deck went out before: staff choose who gets it.
+ * It never goes to someone who already filled out the intake.
+ */
+export function questionnaireSendDecision(deal, hasIntake, sentRecentlyAt) {
+  if (!deal) return { send: false, reason: 'deal not found' };
+  if (!validEmail(deal.email)) return { send: false, reason: 'no valid email on the deal' };
+  if (hasIntake) return { send: false, reason: 'intake already filled out' };
+  if (sentRecentlyAt) return { send: false, reason: 'questionnaire already sent to this address today' };
+  return { send: true };
+}

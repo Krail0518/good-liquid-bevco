@@ -183,5 +183,26 @@ ok('CRM screen is admin-gated', /function isAdmin\(\)/.test(ui) && /if\(!isAdmin
 ok('CRM screen has no innerHTML (text goes in with textContent)', !/\.innerHTML\s*=|insertAdjacentHTML/.test(ui.replace(/\/\*[\s\S]*?\*\//g, '')));
 ok('CRM writes are checked (.select + empty check)', (ui.match(/\.update\(/g) || []).length === (ui.match(/\.update\([^;]*?\.select\(/g) || []).length);
 
+// ── deck plus questionnaire ───────────────────────────────────────────
+{
+  const Q = await import('../supabase/functions/_shared/sales-deck.mjs');
+  for (const nudge of [false, true]) {
+    const m = Q.questionnaireEmail({ contact_name: 'frankroney' }, { nudge, firstName: 'Frank' });
+    const tag = nudge ? ' (nudge)' : '';
+    ok('questionnaire greets by the given first name' + tag, m.text.startsWith('Hi Frank,'));
+    ok('questionnaire has no em or en dash' + tag, !/[\u2014\u2013]/.test(m.text + m.subject));
+    ok('questionnaire never names sodium benzoate' + tag, !/sodium benzoate/i.test(m.text));
+    ok('questionnaire never offers a call' + tag, !/\bcall\b|\bphone\b|\bzoom\b/i.test(m.text));
+    ok('questionnaire says the deck is attached' + tag, /attached/.test(m.text));
+  }
+  ok('questionnaire has the 15 questions', Q.QUESTIONNAIRE_ITEMS.length === 15);
+  ok('questionnaire HTML escapes the name', !/<script/i.test(Q.questionnaireEmail({ contact_name: '<script>x' }, {}).html));
+  ok('questionnaire sends to a lead with no intake', Q.questionnaireSendDecision({ email: 'a@b.co' }, false, null).send === true);
+  ok('questionnaire never goes to someone who filled out the intake', Q.questionnaireSendDecision({ email: 'a@b.co' }, true, null).send === false);
+  ok('questionnaire not sent twice in a day', Q.questionnaireSendDecision({ email: 'a@b.co' }, false, '2026-10-18').send === false);
+  ok('questionnaire refuses a bad address', Q.questionnaireSendDecision({ email: 'nope' }, false, null).send === false);
+  ok('quote-decks routes template questionnaire', /body\.template === 'questionnaire'/.test(fn));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

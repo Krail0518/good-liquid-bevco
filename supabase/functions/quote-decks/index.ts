@@ -45,13 +45,17 @@ import { notifyDeal } from '../_shared/notify.ts';
 import { checkRateLimit } from '../_shared/rate-limit.ts';
 import {
   deckEmail, deckSendDecision, pickSendableDeck, validEmail,
-  DECK_TEMPLATE, MAX_DECK_BYTES,
+  questionnaireEmail, questionnaireSendDecision,
+  DECK_TEMPLATE, QUESTIONNAIRE_TEMPLATE, MAX_DECK_BYTES,
 } from '../_shared/sales-deck.mjs';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 const BUCKET = 'sales-decks';
 const SEND_CAP_PER_HOUR = 30;
+// Staff triggered questionnaire sends are counted separately, so a batch of
+// follow ups cannot starve new website leads of their deck.
+const QUESTIONNAIRE_CAP_PER_HOUR = 80;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const db = () => createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
@@ -127,6 +131,84 @@ async function sendViaGmail(to: string, subject: string, text: string, html: str
   }
 }
 
+// ── template: 'questionnaire' ───────────────────────────────────────────
+// Staff send (gl_send_deck_questionnaire): the project questionnaire in the
+// body, the deck attached, to a pipeline lead who has not filled out the
+// product intake. Not limited to website quote requests, and sent even when
+// the deck went out before. Refuses anyone with a product_intake row.
+async function sendQuestionnaire(sb: ReturnType<typeof db>, deal: Deal | null, body: Record<string, unknown>): Promise<Response> {
+  const email = String(deal?.email || '').trim().toLowerCase();
+  const nudge = body.nudge === true;
+  const givenFirst = typeof body.first_name === 'string' ? body.first_name.slice(0, 60) : '';
+
+  let hasIntake = false;
+  let sentRecentlyAt: string | null = null;
+  if (deal && validEmail(email)) {
+    const [byDeal, byEmail, prior] = await Promise.all([
+      sb.from('product_intake').select('id').eq('deal_id', deal.id).limit(1),
+      sb.from('product_intake').select('id').ilike('email', email.replace(/([%_\\])/g, '\\$1')).limit(1),
+      sb.from('email_log').select('sent_at').eq('template_name', QUESTIONNAIRE_TEMPLATE).neq('status', 'failed')
+        .eq('to_email', email).gte('sent_at', new Date(Date.now() - 86400000).toISOString()).limit(1),
+    ]);
+    const err = byDeal.error || byEmail.error || prior.error;
+    if (err) {
+      // Cannot prove they have not filled it out: do not risk the email.
+      console.error('[quote-decks] questionnaire precheck failed', err.message);
+      return jsonResponse({ ok: false, sent: false, error: 'precheck failed: ' + err.message }, 500);
+    }
+    hasIntake = !!(byDeal.data?.length || byEmail.data?.length);
+    if (prior.data?.length) sentRecentlyAt = prior.data[0].sent_at || 'unknown time';
+  }
+  const decision = questionnaireSendDecision(deal, hasIntake, sentRecentlyAt);
+  if (!decision.send) return skip(decision.reason || 'not sendable');
+
+  const [decksR, clientsR] = await Promise.all([
+    sb.from('sales_decks').select('id, key, label, filename, storage_path, active, auto_send, sort_order, size_bytes')
+      .eq('auto_send', true).eq('active', true),
+    sb.from('clients').select('name'),
+  ]);
+  if (decksR.error || clientsR.error) {
+    return jsonResponse({ ok: false, sent: false, error: 'deck lookup failed: ' + (decksR.error || clientsR.error)!.message }, 500);
+  }
+  const pick = pickSendableDeck(decksR.data || [], (clientsR.data || []).map((c: { name: string }) => c.name));
+  if (!pick.deck) return skip(pick.missing ? 'no deck uploaded' : 'no sendable deck');
+  const deck = pick.deck;
+
+  const rl = await checkRateLimit('quote-decks:questionnaire', QUESTIONNAIRE_CAP_PER_HOUR, 3600, { onOutage: 'closed' });
+  if (!rl.allowed) return skip(rl.outage ? 'rate counter unavailable' : 'hourly questionnaire cap reached');
+
+  const dl = await sb.storage.from(BUCKET).download(String(deck.storage_path));
+  if (dl.error || !dl.data) return jsonResponse({ ok: false, sent: false, error: 'could not download the deck PDF' }, 502);
+  const pdf = new Uint8Array(await dl.data.arrayBuffer());
+  if (!pdf.length || pdf.length > MAX_DECK_BYTES || new TextDecoder().decode(pdf.subarray(0, 5)) !== '%PDF-') {
+    return jsonResponse({ ok: false, sent: false, error: 'the uploaded deck is not a usable PDF' }, 502);
+  }
+
+  const msg = questionnaireEmail(deal, { nudge, firstName: givenFirst });
+  const filename = String(deck.filename || 'Good Liquid Bev Co - Capabilities and Pricing.pdf').replace(/[\r\n"]/g, '').slice(0, 150);
+  const sent = await sendViaGmail(email, msg.subject, msg.text, msg.html, pdf, filename);
+  if (!sent.ok) {
+    console.error('[quote-decks] questionnaire NOT sent to', deal!.id, sent.reason);
+    return jsonResponse({ ok: false, sent: false, error: sent.reason || 'gmail-send failed' }, 502);
+  }
+
+  const log = await sb.from('email_log').insert([{
+    to_email: email, subject: msg.subject, body_preview: msg.text.slice(0, 4000),
+    template_name: QUESTIONNAIRE_TEMPLATE, client_id: null, direction: 'outbound', status: 'sent',
+    mailgun_id: sent.id || null, sent_at: new Date().toISOString(),
+  }]).select('id');
+  const logged = !log.error && !!log.data?.length;
+  if (!logged) console.error('[quote-decks] questionnaire sent, but the email_log insert failed:', log.error?.message || 'no row returned');
+  // The deck went out with it: stamp deck_sent_at if it was empty (checked).
+  if (!deal!.deck_sent_at) {
+    const st = await sb.from('deals').update({ deck_sent_at: new Date().toISOString() })
+      .eq('id', deal!.id).is('deck_sent_at', null).select('id');
+    if (st.error) console.error('[quote-decks] could not stamp deck_sent_at', st.error.message);
+  }
+  console.log('[quote-decks] questionnaire sent to deal', deal!.id);
+  return jsonResponse({ ok: true, sent: true, template: QUESTIONNAIRE_TEMPLATE, deck: deck.key, logged });
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   const pre = handlePreflight(req);
   if (pre) return pre;
@@ -157,6 +239,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return jsonResponse({ ok: false, sent: false, error: 'deal lookup failed' }, 500);
   }
   const deal = dr.data as Deal | null;
+  if (body.template === 'questionnaire') return sendQuestionnaire(sb, deal, body);
   const email = String(deal?.email || '').trim().toLowerCase();
 
   let sentToEmailAt: string | null = null;
