@@ -950,7 +950,7 @@
       '<b>It runs on its own.</b> A quick check of the last 3 days shortly after you open the CRM, then every 15 minutes while it stays open — plus an hourly server-side sweep even when the CRM is closed. Opening a client or lead also refreshes just that contact.',
       '<b>Quiet unless it finds something</b> — you only get a notification when new mail is actually filed.',
       '<b>🔄 Sync</b> on a correspondence panel pulls just that one contact, which is quick.',
-      '<b>🔄 Sync email history from Gmail</b> in Email Delivery does a 180-day sweep of everyone. Use it for a first-time backfill, or to force a refresh.',
+      '<b>🔄 Sync email history from Gmail</b> in Email Delivery does a one year sweep of everyone. Use it for a first-time backfill, or to force a refresh.',
       'Safe to run repeatedly — it recognises what it already has and never creates duplicates.',
       '<b>Only client and lead email is touched.</b> Mail with anyone who is not in the CRM is ignored, and the sync only ever <i>reads</i> — it never sends, deletes or changes anything in your mailbox.'
     ]) +

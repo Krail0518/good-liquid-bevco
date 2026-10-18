@@ -244,7 +244,7 @@
   /* Full Gmail history sync, triggered from the Email Delivery panel. Runs the
      gmail-sync edge function over every client/lead address and reports the
      result inline on the button so the outcome is obvious without opening the
-     console. Deliberately a wide sweep (180 days) since this is the one-time
+     console. Deliberately a wide sweep (365 days) since this is the one-time
      backfill; the per-client 🔄 Sync buttons handle day-to-day top-ups. */
   window.glSyncAllEmail = async function(btn){
     if(typeof window.glSyncGmail !== 'function'){
@@ -264,18 +264,38 @@
     }
     if(btn){ btn.disabled = true; btn.textContent = '🔄 Syncing…'; }
 
-    var res = await window.glSyncGmail(null, { days: 180, max: 400 });
+    // A year of history for every client and lead. One call stops at a time
+    // budget and reports `partial`; keep calling (each round skips what is
+    // already stored) until it says it is done, so one click is a full backfill.
+    var res = null, filed = 0, already = 0, fixed = 0, scanned = 0, rounds = 0;
+    while(rounds < 12){
+      rounds++;
+      var r = await window.glSyncGmail(null, { days: 365, max: 3000, silent: true });
+      if(!r){ res = null; break; }
+      res = r;
+      filed += r.inserted || 0; fixed += r.upgraded || 0; scanned += r.scanned || 0;
+      already = r.skipped || 0;
+      if(!r.partial) break;
+      out && (out.textContent = 'Still reading your Gmail… ' + filed + ' filed so far, ' +
+        (r.remaining || 0) + ' message(s) left. You can leave this open.');
+    }
+    if(res){ res = Object.assign({}, res, { inserted: filed, upgraded: fixed, scanned: scanned }); }
 
     if(btn){ btn.disabled = false; btn.textContent = orig; }
+    if(typeof window.glLoadOutreachIndex === 'function'){ try { await window.glLoadOutreachIndex(); } catch(_e){} }
+    if(typeof renderKanban === 'function'){ try { renderKanban(); } catch(_e){} }
     if(!out) return;
     if(!res){
       out.style.color = '#ff8579';
       out.textContent = '⚠ Sync failed. ' + (window.glSyncGmail.lastError || 'See the notification for details.');
       return;
     }
-    var filed   = res.inserted || 0;
-    var already = res.skipped  || 0;
-    var fixed   = res.upgraded || 0;
+    if(res.partial){
+      out.style.color = '#f5c842';
+      out.textContent = '✓ ' + filed + ' new email' + (filed === 1 ? '' : 's') + ' filed. ' +
+        (res.remaining || 0) + ' message(s) still to read; click Sync again to finish.';
+      return;
+    }
     if(filed || already || fixed){
       out.style.color = '#5fcf9e';
       out.textContent = '✓ Done — ' + filed + ' new email' + (filed === 1 ? '' : 's') + ' filed, ' +
@@ -287,7 +307,7 @@
       out.style.color = '#f5c842';
       out.textContent = '✓ Ran fine, but found no matching email. Checked ' +
         (res.scanned || 0) + ' recent message(s) against ' + (res.contacts || 0) +
-        ' client/lead address(es). Likely means no email in the last 180 days with an address saved in the CRM.';
+        ' client/lead address(es). Likely means no email in the last 365 days with an address saved in the CRM.';
     }
   };
 
