@@ -87,6 +87,17 @@ const server = http.createServer((req, res) => {
   await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'load' });
   await page.waitForSelector('.gl-help-btn', { timeout: 5000 });
 
+  // The video each page's help must open with: the help button lands on the
+  // page's own section, so its video has to be first there.
+  const VIDEO_FOR = {
+    'cpg-dashboard': 'tutorial-dashboard', 'cpg-clients': 'tutorial-clients', 'cpg-pipeline': 'tutorial-pipeline',
+    'cpg-invoices': 'tutorial-invoices', 'cpg-invoice-detail': 'tutorial-invoices', 'cpg-warehouse': 'tutorial-warehouse',
+    'cpg-production-runs': 'tutorial-production-runs', 'cpg-formulas': 'tutorial-formula-vault', 'cpg-gmp': 'tutorial-daily',
+    'cpg-gmpsched': 'tutorial-schedule', 'cpg-trace': 'tutorial-trace', 'cpg-training': 'tutorial-training',
+    'cpg-auditreview': 'tutorial-audit', 'cpg-compliance': 'explainer-gmp-haccp-pcqi', 'cpg-cip': 'explainer-sanitation',
+    'cpg-customers': 'tutorial-portal'
+  };
+  const wrongVideo = [];
   const wrong = [];
   for (const id of PAGES) {
     const want = EXPECT[id];
@@ -103,10 +114,14 @@ const server = http.createServer((req, res) => {
       if (!body) return { top: null };
       const shown = [...body.querySelectorAll(':scope > section')].filter((x) => x.offsetParent !== null).map((x) => x.id);
       const toc = document.querySelector('#gl-help-toc a[style*="var(--teal)"]');
+      const sec = shown.length === 1 ? document.getElementById(shown[0]) : null;
+      const v = sec && sec.querySelector('video');
       return { top: shown.length === 1 ? shown[0] : shown.join('+') || 'none', dist: 0, n: shown.length,
+        video: v ? v.getAttribute('src') : null,
         where: document.getElementById('gl-help-where').textContent, toc: toc && toc.getAttribute('data-anchor') };
     });
     if (got.top !== want || !/^Help for this page: /.test(got.where)) wrong.push(id + ' -> ' + got.top + ' [' + got.where + '], want ' + want);
+    if (VIDEO_FOR[id] && got.video !== '/tutorials/' + VIDEO_FOR[id] + '.mp4') wrongVideo.push(id + ' -> ' + got.video + ', want ' + VIDEO_FOR[id]);
     if (id === 'cpg-warehouse') {
       check('Warehouse Storage: help opens on its own section and highlights it in the contents',
         got.top === 'help-warehouse' && got.toc === 'help-warehouse', JSON.stringify(got));
@@ -115,6 +130,7 @@ const server = http.createServer((req, res) => {
     if (id === 'cpg-audit') check('Audit Log waits for the add-on section and lands on it', got.top === 'help-qs', JSON.stringify(got));
   }
   check('all ' + PAGES.length + ' pages show only their own help section, titled for the page', wrong.length === 0, wrong.join('\n          '));
+  check(Object.keys(VIDEO_FOR).length + ' pages open help with their own video first', wrongVideo.length === 0, wrongVideo.join('\n          '));
 
   // On Warehouse Storage: the title, the Full guide button, and back.
   await page.evaluate(() => {

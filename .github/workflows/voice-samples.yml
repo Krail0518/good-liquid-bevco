@@ -5,8 +5,10 @@
 # several voices so the owner can pick one before any video is rebuilt.
 # The sandbox that writes this code cannot download models; a runner can.
 #
-# Runs when tools/voice-samples/ changes on a non-main branch, or by hand.
-# It commits the MP3s back to that branch with [skip ci].
+# Run by hand (Actions → Voice samples → Run workflow, on a branch other than
+# main). It commits the MP3s back to that branch with [skip ci]. It used to
+# run on every push that touched samples.py, and a force-push re-ran it and
+# dropped the MP3s into an unrelated PR, so it is manual only now.
 #
 # ROLLBACK: delete this file and tools/voice-samples/.
 
@@ -14,11 +16,6 @@ name: Voice samples
 
 on:
   workflow_dispatch:
-  push:
-    branches-ignore: [main]
-    paths:
-      - 'tools/voice-samples/samples.py'
-      - '.github/workflows/voice-samples.yml'
 
 permissions:
   contents: write

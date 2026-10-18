@@ -770,6 +770,13 @@
   // Compliance
   // ────────────────────────────────────────────────────────────
   var SEC_COMPLIANCE =
+    watch('explainer-gmp-haccp-pcqi.mp4') +
+    moreVideos([
+      ['explainer-lacf.mp4', '🥫 LACF &amp; Acidified Foods — The FDA Rules'],
+      ['explainer-sqf.mp4', '🏅 SQF Certification — What It Is &amp; How to Get There'],
+      ['explainer-allergen.mp4', '🥜 Allergen Control'],
+      ['explainer-envmon.mp4', '🧫 Environmental Monitoring']
+    ]) +
     wf(620, 244,
       box(0,0,620,244,'#0a1628','rgba(0,0,0,0)') +
       box(0,0,620,32,'#0d1e35','rgba(0,229,192,.12)') +
@@ -1070,7 +1077,12 @@
       '<b>Printing</b>: click <b>🖨️ Print Statement</b> in the modal to open the browser print dialog. Use "Save as PDF" to email a statement to your client.'
     ]);
 
-  var SEC_PIPELINE = watch('tutorial-pipeline.mp4') + MOCK_PIPELINE +
+  var SEC_PIPELINE = watch('tutorial-pipeline.mp4') +
+    moreVideos([
+      ['explainer-deal-brief.mp4', '🧠 Never Drop a Lead — Brief, Board &amp; Digest'],
+      ['explainer-deal-docs.mp4', '📎 Deal Documents &amp; Meeting Notes'],
+      ['explainer-lead-automation.mp4', '🤖 Lead Automations — SLA, Follow-ups &amp; One-Tap Send']
+    ]) + MOCK_PIPELINE +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
       '<b>(1) + Add Deal</b> — creates a card in Prospecting. Click any card to open the deal detail modal (edit name / company / value / probability / notes / stage).',
@@ -1354,7 +1366,7 @@
       '<b>Deleting a post</b> — open the edit modal → click the red Delete button → confirm. The post is immediately removed from all dashboards.',
       '<b>Data note</b> — announcements are stored in localStorage on each device. They are visible only to users on the same browser/device and are not synced across the team via Supabase. For team-wide sync, use the Supabase <code>announcements</code> table directly.'
     ]);
-  var SEC_CUSTOMERS = MOCK_CUSTOMERS +
+  var SEC_CUSTOMERS = watch('tutorial-portal.mp4') + MOCK_CUSTOMERS +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
       '<b>(1) 📧 Send Onboarding Email</b> — opens the invite picker (client dropdown + email field). Behind the scenes it calls Supabase to create a real auth user, links them to the picked client, and fires a password-reset email so the customer sets their own password. Email is sent from your Gmail (the <code>gmail-send</code> Edge Function, with Mailgun as fallback), configured server-side — no per-browser API key needed.',
@@ -1590,6 +1602,7 @@
     ]);
 
   var SEC_CIP_LOG =
+    watch('explainer-sanitation.mp4') +
     wf(620, 200,
       box(0,0,620,200,'#142238','rgba(255,255,255,.05)') +
       txt(20,22,'🧼 CIP / SANITATION LOG',12,'#fff') +
@@ -1992,6 +2005,13 @@
       '<video controls preload="none" playsinline style="width:100%;max-width:760px;border-radius:9px;border:1px solid rgba(0,229,192,.2);background:#000;display:block" src="/tutorials/' + file + '"></video>' +
     '</div>';
   }
+  // More videos for a page that has several, under its main one. The help
+  // button opens the page's own section, so a video that belongs to the page
+  // has to be in that section to be found.
+  function moreVideos(list){
+    return '<div style="font-size:11px;letter-spacing:1.5px;color:#9aa7bd;margin:0 0 8px">MORE VIDEOS FOR THIS PAGE</div>' +
+      list.map(function(v){ return videoCard(v[0], v[1], v[2] || ''); }).join('');
+  }
   function videoCard(file, title, desc){
     return '<div style="margin:0 0 18px;padding:14px;background:#0d1a2e;border:1px solid rgba(0,229,192,.15);border-radius:12px">' +
       '<div style="font-weight:700;font-size:14px;color:#eef4ff;margin-bottom:2px">' + title + '</div>' +
@@ -2129,6 +2149,7 @@
 
   var SEC_TRACE_RECALL =
     watch('tutorial-trace.mp4') +
+    moreVideos([['explainer-traceability.mp4', '🔗 Traceability &amp; Recall — Account for Every Unit']]) +
     lead('The <b>🔗 Trace / Recall</b> page gives one-lot traceability and a mock-recall exercise — the test auditors always ask for.') +
     bullets([
       '<b>Trace a run</b> — search a run to see its inputs (material, supplier, supplier lot), its shipments (customer, qty, date, + total units), and the GMP trail from the records tied to that run.',
