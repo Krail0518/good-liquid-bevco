@@ -23,57 +23,71 @@
 (function(){
   'use strict';
 
+  // Mirrors the PROJECT QUESTIONNAIRE emailed to leads, so answers that come
+  // back by email can be entered here field for field. Keys are stable; when an
+  // option's wording changes, remap stored answers in a migration.
   var SECTIONS = [
-    { key:'product', title:'Product & format', fields:[
+    { key:'product', title:'Brand & product', fields:[
       { key:'company',        label:'Brand / company name',   type:'text',     required:true },
       { key:'first_name',     label:'First name',             type:'text',     required:true },
       { key:'last_name',      label:'Last name',              type:'text',     required:true },
+      { key:'role',           label:'Your role',              type:'text',     required:false, placeholder:'e.g. Founder' },
       { key:'email',          label:'Email',                  type:'email',    required:true },
       { key:'phone',          label:'Phone',                  type:'tel',      required:true },
-      { key:'product_description', label:'What are you making? Describe the product', type:'textarea', required:true, placeholder:'e.g. A yerba-mate energy drink, lightly sweetened, natural citrus flavor' },
+      { key:'website',        label:'Website',                type:'text',     required:false, placeholder:'e.g. yourbrand.com' },
+      { key:'product_description', label:'What are you making? Describe the product', type:'textarea', required:true, placeholder:'e.g. A yerba mate energy drink, lightly sweetened, natural citrus flavor' },
       { key:'product_category', label:'Product category', type:'select', required:true,
-        options:['Sparkling / seltzer water','Soda','Energy drink','Kombucha','Cold brew / coffee','Tea','Juice','Functional / wellness','RTD cocktail','Hard seltzer','Wine / cider','Other'] },
-      { key:'format', label:'Package format', type:'select', required:true,
-        options:['12oz standard can','12oz sleek can','16oz can','750ml bottle','Not sure yet'] },
-      { key:'target_volume', label:'Target first-run volume', type:'select', required:true,
-        options:['200–339 cases','340–500 cases','501–999 cases','1,000–2,499 cases','2,500–4,999 cases','5,000+ cases'] },
-      { key:'timeline', label:'Timeline to produce', type:'select', required:true,
-        options:['ASAP','1–3 months','3–6 months','6+ months','Just exploring'] }
+        options:['Energy drink','Soda','Sparkling / seltzer water','Water','Tea','Cold brew / coffee','Juice','Kombucha','Functional / wellness','RTD cocktail','Hard seltzer','Other'] },
+      { key:'carbonation', label:'Carbonated or still?', type:'select', required:true,
+        options:['Still (no carbonation)','Lightly carbonated','Fully carbonated','Nitro'] },
+      { key:'flavors', label:'How many flavors at launch?', type:'text', required:true, placeholder:'e.g. 3' },
+      { key:'contains_alcohol', label:'Contains alcohol?', type:'select', required:true, options:['No','Yes'] },
+      { key:'abv', label:'Target ABV %', type:'text', required:false, showIf:{ key:'contains_alcohol', value:'Yes' }, placeholder:'e.g. 5.0' },
+      { key:'alcohol_licenses', label:'Federal and state licenses', type:'select', required:false, showIf:{ key:'contains_alcohol', value:'Yes' },
+        options:['We hold them','Filing or planning to file','Not yet'] }
     ]},
     { key:'formula', title:'Formula & ingredients', fields:[
       { key:'formula_status', label:'Where is your formula?', type:'select', required:true,
-        options:['I have a finished, tested formula','I have a draft — needs refinement','I need R&D from scratch'] },
+        options:['Finished commercial formula, ready to scale','Working recipe that needs development','Need formulation from scratch'] },
       { key:'ingredients', label:'Key ingredients / short ingredient list', type:'textarea', required:true, placeholder:'e.g. filtered water, cane sugar, yerba mate extract, citric acid, natural flavor' },
-      { key:'carbonation', label:'Carbonation', type:'select', required:true,
-        options:['Still (no carbonation)','Lightly carbonated','Fully carbonated','Nitro'] },
-      { key:'ph_known', label:'Do you know the pH / acidity?', type:'select', required:false,
-        options:['Below 4.6 (acidic)','4.6 or above (low-acid)','Not sure'] },
-      { key:'allergens', label:'Allergens present (check all)', type:'multiselect', required:true,
+      { key:'low_acid', label:'Does it contain dairy, protein, coffee, or other low acid ingredients?', type:'select', required:true,
+        options:['No','Yes','Not sure'] },
+      { key:'ph_known', label:'Target pH, if known', type:'select', required:false,
+        options:['Below 4.6 (acidic)','4.6 or above (low acid)','Not sure'] },
+      { key:'preservative', label:'Does your formula include a preservative? Every product we run must have one', type:'select', required:true,
+        options:['Yes, potassium sorbate','Yes, another preservative','No preservative yet','Not sure'] },
+      { key:'preservative_name', label:'Which preservative?', type:'text', required:false, showIf:{ key:'preservative', value:'Yes, another preservative' } },
+      { key:'allergens', label:'Allergens present (check all)', type:'multiselect', required:false,
         options:['None','Milk','Eggs','Fish','Shellfish','Tree nuts','Peanuts','Wheat / gluten','Soy','Sesame'] },
-      { key:'contains_alcohol', label:'Contains alcohol?', type:'select', required:true, options:['No','Yes'] },
-      { key:'abv', label:'ABV %', type:'text', required:false, showIf:{ key:'contains_alcohol', value:'Yes' }, placeholder:'e.g. 5.0' }
+      { key:'process_authority', label:'Process Authority Letter for this product', type:'select', required:true,
+        options:['I have a PA letter','In progress','Don’t have one / need guidance','Not sure what that is'] }
     ]},
-    { key:'packaging', title:'Packaging & labels', fields:[
-      { key:'container', label:'Container plan', type:'select', required:true,
-        options:['Cans — brite + shrink sleeve / label','Cans — pre-printed (CDL)','Bottles','Not sure yet'] },
-      { key:'label_type', label:'Label type', type:'select', required:true,
-        options:['Shrink sleeve','Pressure-sensitive label','Pre-printed can','None yet'] },
+    { key:'run', title:'Run size & packaging', fields:[
+      { key:'target_volume', label:'First run size per flavor (minimum 200 cases, 4,800 cans)', type:'select', required:true,
+        options:['200 to 499 cases','500 to 999 cases','1,000 to 2,499 cases','2,500 cases or more'] },
+      { key:'format', label:'Package format', type:'select', required:true,
+        options:['12oz standard can','12oz sleek can','16oz standard can','750ml bottle','Not sure yet'] },
+      { key:'label_type', label:'Decoration', type:'select', required:true,
+        options:['Printed cans','Shrink sleeves','Bottle labels','Not decided yet'] },
       { key:'artwork_status', label:'Artwork status', type:'select', required:true,
-        options:['Print-ready artwork','In design','Not started'] },
-      { key:'secondary_packaging', label:'Secondary packaging (check all)', type:'multiselect', required:false,
-        options:['PakTech handles','Trays','Shrink multipack','None / not sure'] }
+        options:['Print ready artwork','In design','Not started'] },
+      { key:'secondary_packaging', label:'Case packing (check all)', type:'multiselect', required:true,
+        options:['24 count trays','12 count trays','4 pack carriers (PakTech)','Variety packs','Not sure yet'] },
+      { key:'timeline', label:'When do you need finished product in hand?', type:'select', required:true,
+        options:['ASAP','1 to 3 months','3 to 6 months','6+ months','Just exploring'] }
     ]},
-    { key:'compliance', title:'Compliance & certifications', fields:[
-      { key:'process_authority', label:'Process authority (PA) letter', type:'select', required:true,
-        options:['I have a PA letter','In progress','Don’t have one / need guidance','Not sure what that is'] },
-      { key:'nutritional_panel', label:'Nutritional / label panel', type:'select', required:true,
+    { key:'business', title:'Budget & sales', fields:[
+      { key:'budget', label:'Budget set aside for the first run, including R&D, cans, packaging, and ingredients', type:'text', required:true, placeholder:'e.g. $25,000' },
+      { key:'sales_channels', label:'Where will it sell? (check all)', type:'multiselect', required:true,
+        options:['Retail','Online','Distribution','Food service / on premise'] },
+      { key:'storage_needed', label:'Need storage after production?', type:'select', required:true, options:['Yes','No','Not sure'] },
+      { key:'shelf_stability', label:'Shelf stability', type:'select', required:false,
+        options:['Shelf stable / ambient','Refrigerated / cold chain','Not sure'] },
+      { key:'nutritional_panel', label:'Nutrition / label panel', type:'select', required:false,
         options:['Have it','Need it','Not sure'] },
-      { key:'shelf_stability', label:'Shelf stability', type:'select', required:true,
-        options:['Shelf-stable / ambient','Refrigerated / cold-chain','Not sure'] },
-      { key:'shelf_life_target', label:'Desired shelf life', type:'text', required:false, placeholder:'e.g. 12 months' },
       { key:'certifications', label:'Certifications needed (check all)', type:'multiselect', required:false,
-        options:['Organic','Kosher','Gluten-free','Non-GMO','Vegan','None'] },
-      { key:'goals', label:'What do you want to get out of this project?', type:'textarea', required:true, placeholder:'What you’re hoping to see, decisions you’re trying to make, questions for Mike' }
+        options:['Gluten free','Non GMO','Vegan','None'] },
+      { key:'goals', label:'Anything else we should know?', type:'textarea', required:false, placeholder:'Questions for Mike, decisions you are trying to make' }
     ]}
   ];
 
