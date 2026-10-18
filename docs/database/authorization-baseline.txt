@@ -120,6 +120,7 @@ FUNC     public.wh_guard_line_delete() | secdef=f | search_path=public, pg_temp 
 FUNC     public.wh_guard_line_insert() | secdef=f | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.wh_guard_outbound_order() | secdef=f | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.wh_guard_pallet() | secdef=f | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.wh_guard_sku_owner() | secdef=f | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.wh_guard_transfer() | secdef=f | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.wh_log_pallet_movement() | secdef=t | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.wh_movements_append_only() | secdef=f | search_path=public, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
