@@ -91,7 +91,7 @@ const threeDaysAgo = new Date(Date.now() - 3 * 86400000 - 3600000).toISOString()
 const CONRI_PALLETS = [
   { id: 'q-1', pallet_tag: 'GL-P-000101', cases: 100, weight_lbs: 1800, location: 'conri', status: 'stored', current_transfer_id: null,
     received_at_conri: '2026-09-10T12:00:00Z', sku: SKU_SOON, lot: LOT_LATER },
-  { id: 'q-2', pallet_tag: 'GL-P-000102', cases: 100, weight_lbs: 1800, location: 'conri', status: 'stored', current_transfer_id: null,
+  { id: 'q-2', pallet_tag: 'GL-P-000102', conri_pallet_id: '9701', cases: 100, weight_lbs: 1800, location: 'conri', status: 'stored', current_transfer_id: null,
     received_at_conri: '2026-09-12T12:00:00Z', sku: SKU_SOON, lot: LOT_SOON },
   { id: 'q-3', pallet_tag: 'GL-P-000103', cases: 50, location: 'conri', status: 'stored', current_transfer_id: null,
     received_at_conri: threeDaysAgo, expected_pull_date: isoDaysFromNow(-1), sku: SKU_CANS, lot: null, notes: 'Back for Camo run ' + XSS },
@@ -119,7 +119,23 @@ const FIX = {
   wh_transfer_lines: SEED_PALLETS.map((p) => ({ transfer_id: T1.id, line_no: p.line_no, pallet: p }))
     .concat([{ transfer_id: T2.id, line_no: 1, pallet: TRAY_PALLET }]),
   wh_pallets: SEED_PALLETS.concat(CONRI_PALLETS, [TRAY_PALLET]),
-  wh_movements: [],
+  // Billing: Camo's q-1 arrived 09/15 and was pulled back 10/03; q-2 arrived
+  // 10/31. Evil's q-4 is a ✂ split (no transfer), there since 09/20. The
+  // tray pallet q-5 is Good Liquid's own: listed, never billed.
+  wh_movements: [
+    { seq: 1, at: '2026-09-16T09:00:00Z', pallet_id: 'q-1', transfer_id: 't-b1', from_location: 'good_liquid', to_location: 'conri',
+      transfer: { type: 'to_conri_finished', transfer_number: 'GL-TR-B1', scheduled_at: '2026-09-15T14:00:00Z', completed_at: '2026-09-16T09:00:00Z' } },
+    { seq: 2, at: '2026-10-03T15:00:00Z', pallet_id: 'q-1', transfer_id: 't-b2', from_location: 'conri', to_location: 'good_liquid',
+      transfer: { type: 'pull_back', transfer_number: 'GL-TR-B2', scheduled_at: '2026-10-03T14:00:00Z', completed_at: '2026-10-03T15:00:00Z' } },
+    { seq: 3, at: '2026-10-31T15:00:00Z', pallet_id: 'q-2', transfer_id: 't-b3', from_location: 'good_liquid', to_location: 'conri',
+      transfer: { type: 'to_conri_finished', transfer_number: 'GL-TR-B3', scheduled_at: '2026-10-31T13:00:00Z', completed_at: '2026-10-31T15:00:00Z' } },
+    { seq: 4, at: '2026-10-18T12:00:00Z', pallet_id: 'q-4', transfer_id: null, from_location: null, to_location: 'conri', transfer: null },
+    { seq: 5, at: '2026-10-01T12:00:00Z', pallet_id: 'q-5', transfer_id: 't-b4', from_location: 'good_liquid', to_location: 'conri',
+      transfer: { type: 'to_conri_packaging', transfer_number: 'GL-TR-B4', scheduled_at: '2026-10-01T12:00:00Z', completed_at: '2026-10-01T12:00:00Z' } },
+  ],
+  wh_billing_rates: [{ id: 'r-def', client_id: null, storage_per_pallet_month: 30, pull_per_pallet: 15 },
+                     { id: 'r-evil', client_id: 'c-evil', storage_per_pallet_month: 25, pull_per_pallet: 10 }],
+  wh_billing_statements: [],
   wh_outbound_orders: [],
   wh_skus: [SKU, SKU_SOON, SKU_CANS, SKU_TRAY],
   wh_lots: [LOT, LOT_SOON, LOT_LATER],
@@ -131,14 +147,20 @@ const PAGE = `<!doctype html><meta charset="utf-8"><body>
 window.currentUser = { id: 'test-admin', email: 'test@local', role: 'admin', name: 'Test Admin' };
 window.GL_HOOKS = { _navHooks: [], registerNavHook: function(fn){ this._navHooks.push(fn); } };
 var FIX = ${JSON.stringify(FIX)};
+window.__fixPallets = FIX.wh_pallets; window.__fixMoves = FIX.wh_movements;
 window.__writes = [];
 function Q(table, op, payload){ this.t = table; this.op = op; this.payload = payload; this.f = []; }
-['select','neq','in','is','not','order','limit'].forEach(function(m){ Q.prototype[m] = function(){ return this; }; });
+['select','neq','is','not','order','limit','or','range'].forEach(function(m){ Q.prototype[m] = function(){ return this; }; });
 Q.prototype.eq = function(k, v){ this.f.push([k, v]); return this; };
+// A row without the column passes, as with eq; split_from is the exception,
+// because "no split_from" is exactly what most pallets are.
+Q.prototype.in = function(k, vals){ this.f.push([k, vals, 'in']); return this; };
 Q.prototype.then = function(res, rej){
   var self = this, rows;
   if(self.op === 'select'){
-    rows = (FIX[self.t] || []).filter(function(r){ return self.f.every(function(f){ return r[f[0]] === undefined || r[f[0]] === f[1]; }); });
+    rows = (FIX[self.t] || []).filter(function(r){ return self.f.every(function(f){
+      if(f[2] === 'in') return r[f[0]] === undefined ? f[0] !== 'split_from' : f[1].indexOf(r[f[0]]) >= 0;
+      return r[f[0]] === undefined || r[f[0]] === f[1]; }); });
   } else {
     window.__writes.push({ table: self.t, op: self.op, payload: self.payload, filters: self.f });
     rows = Array.isArray(self.payload) ? self.payload.map(function(r, i){ return Object.assign({ id: self.t + '-new-' + i }, r); })
@@ -146,7 +168,10 @@ Q.prototype.then = function(res, rej){
   }
   return Promise.resolve({ data: rows, error: null }).then(res, rej);
 };
-window.supa = { from: function(t){ return {
+window.supa = { rpc: function(fn, args){
+    window.__writes.push({ table: 'rpc:' + fn, op: 'rpc', payload: args, filters: [] });
+    return Promise.resolve({ data: { id: 'p-split-new', pallet_tag: 'GL-P-000300', cases: args.p_cases }, error: null });
+  }, from: function(t){ return {
   select: function(){ return new Q(t, 'select'); },
   insert: function(p){ return new Q(t, 'insert', p); },
   update: function(p){ return new Q(t, 'update', p); },
@@ -220,8 +245,10 @@ const server = http.createServer((req, res) => {
   check('a lot 300 days out is not flagged', !dash.yellowRows.some((r) => /LATER1/.test(r)));
   check('script in a client name / SKU description does not run', !dash.xss);
   check('the escaped payload is shown as text', /<img src=x/.test(dash.text));
-  check('dashboard lists pallet notes at CONRI (empties table and notes card)',
-    /Pallet notes at CONRI/.test(dash.text) && (dash.text.match(/Back for Camo run/g) || []).length === 2, dash.text);
+  check('dashboard lists every pallet with its note (empties table and pallet list)',
+    /Every pallet at CONRI/.test(dash.text) && (dash.text.match(/Back for Camo run/g) || []).length === 2, dash.text);
+  check('dashboard shows CONRI pallet numbers and counts the pallets without one',
+    /9701/.test(dash.text) && /NO CONRI #\s*4/.test(dash.text) && /4 pallets have no CONRI # yet/.test(dash.text), dash.text.slice(0, 400));
 
   // ── Transfers list -> detail ──────────────────────────────────────
   await page.click('[data-wh="tab"][data-arg="transfers"]');
@@ -598,6 +625,157 @@ const server = http.createServer((req, res) => {
   check('it takes the pallet with the earliest best by', lw && lw.payload.length === 1 && lw.payload[0].pallet_id === 'q-2', JSON.stringify(lw));
   check('the order is LTL and allocated', ow && ow.payload.ship_method === 'LTL' && ow.payload.status === 'allocated' && ow.payload.client_id === 'c-camo', JSON.stringify(ow));
   await page.evaluate(() => { document.querySelectorAll('.wh-ov').forEach((o) => o.remove()); });
+
+  // ── CONRI pallet numbers, split, CONRI receipt ────────────────────
+  // The real ticket, as the AI returns it: transaction 3032503, three Slim
+  // pallets (9606, 9607, 9612), two Standard (9608, 9609), one 24 ct (9611).
+  const RECEIPT_REPLY = 'Here it is:\n```json\n' + JSON.stringify({
+    transaction: '3032503', reference: '477256', received_date: '2026-10-09',
+    pallets: [
+      { pallet: '9606', sku: 'TRAY12SLIM-1800', description: '12 CT TRAY, SLIM CANS 150/CS', qty: 1 },
+      { pallet: '9607', sku: 'TRAY12SLIM-1800', qty: 1 },
+      { pallet: '9612', sku: 'TRAY12SLIM-1800', qty: 1 },
+      { pallet: '9608', sku: 'TRAY12-1800', qty: 1 },
+      { pallet: '9609', sku: 'TRAY12-1800', qty: 1 },
+      { pallet: '9611', sku: 'TRAY24-600', qty: 1 },
+      { pallet: '9611', sku: 'TRAY24-600', qty: 1 },
+      { pallet: XSS, sku: 'X', qty: 1 },
+      { pallet: { a: 1 }, sku: 'Y' },
+    ] }) + '\n```';
+  const rc = await page.evaluate((reply) => {
+    const W = window.glWhInternals;
+    const r = W.receiptFromAi(reply);
+    const sku = (code) => ({ upc_sku: code });
+    const ours = [
+      { id: 'a', pallet_tag: 'GL-P-000026', cases: 2, sku: sku('TRAY12SLIM-1800') },
+      { id: 'b', pallet_tag: 'GL-P-000027', cases: 2, sku: sku('TRAY12-1800') },
+      { id: 'c', pallet_tag: 'GL-P-000028', cases: 1, sku: sku('TRAY24-SLK-1200') },
+      { id: 'd', pallet_tag: 'GL-P-000029', cases: 1, sku: sku('TRAY24-600') },
+    ];
+    const show = (m) => m.rows.map((x) => x.r.pallet + '>' + (x.pallet ? x.pallet.pallet_tag.slice(-2) : (/Split/.test(x.why) ? 'SPLIT?' : '-'))).join(' ') +
+      ' | left ' + m.unmatched.map((p) => p.pallet_tag.slice(-2)).join(',');
+    const before = show(W.matchReceipt(r, ours));
+    // After splitting 26 and 27 (GL-P-000030, -31), and with 9606 already typed on 26.
+    const split = ours.concat([{ id: 'e', pallet_tag: 'GL-P-000030', cases: 1, sku: sku('TRAY12SLIM-1800') },
+                               { id: 'f', pallet_tag: 'GL-P-000031', cases: 1, sku: sku('TRAY12-1800') }]);
+    split[0] = Object.assign({}, split[0], { cases: 1, conri_pallet_id: '9606' });
+    const m2 = W.matchReceipt(r, split);
+    let thrown = '';
+    try { W.receiptFromAi('no json here'); } catch (e) { thrown = e.message; }
+    return { r, before, after: show(m2), why12: m2.rows.find((x) => x.r.pallet === '9612').why, thrown,
+             pull: W.pullRef({ pallet_tag: 'GL-P-000027', conri_pallet_id: '9608' }), pullNone: W.pullRef({ pallet_tag: 'GL-P-000027' }) };
+  }, RECEIPT_REPLY);
+  check('receipt: transaction, reference and date are read', rc.r.transaction === '3032503' && rc.r.reference === '477256' && rc.r.received_date === '2026-10-09', JSON.stringify(rc.r));
+  check('receipt: six pallets; a duplicate, a script and an object are dropped',
+    rc.r.pallets.map((x) => x.pallet).join(',') === '9606,9607,9612,9608,9609,9611', JSON.stringify(rc.r.pallets));
+  check('receipt without JSON is an error', /did not return/.test(rc.thrown), rc.thrown);
+  check('match: one CONRI number per record by item; extra CONRI pallets ask for a split; the Sleek tray is left over',
+    rc.before === '9606>26 9607>SPLIT? 9612>SPLIT? 9608>27 9609>SPLIT? 9611>29 | left 28', rc.before);
+  check('match after splitting: every Slim and Standard number lands on its own record, a typed number is kept',
+    rc.after === '9606>26 9607>30 9612>- 9608>27 9609>31 9611>29 | left 28', rc.after);
+  check('match: the extra Slim pallet says it may be listed under the wrong item', /wrong item/.test(rc.why12), rc.why12);
+  check('pull requests name the CONRI number first', rc.pull === 'CONRI #9608 (our GL-P-000027)' && /no CONRI # recorded/.test(rc.pullNone), rc.pull + ' / ' + rc.pullNone);
+
+  // Edit CONRI # + note in one dialog; a leading # is dropped.
+  await page.evaluate(() => { document.querySelectorAll('.wh-ov').forEach((o) => o.remove()); window.__writes = []; });
+  await page.click('[data-wh="tab"][data-arg="dashboard"]');
+  await page.waitForSelector('[data-wh="editPalletNote"][data-arg="q-3"]', { timeout: 5000 });
+  await page.click('[data-wh="editPalletNote"][data-arg="q-3"]');
+  await page.waitForSelector('#wpn-conri', { timeout: 5000 });
+  await page.fill('#wpn-conri', ' #9610 ');
+  await page.click('#wpn-save');
+  await page.waitForFunction(() => window.__writes.length > 0, null, { timeout: 5000 });
+  const cw = await page.evaluate(() => window.__writes[0]);
+  check('saving a CONRI # updates that pallet, cleaned, with its note kept', cw.table === 'wh_pallets' && cw.payload.conri_pallet_id === '9610' &&
+    /Back for Camo run/.test(cw.payload.notes) && JSON.stringify(cw.filters) === JSON.stringify([['id', 'q-3']]), JSON.stringify(cw));
+
+  // ✂ Split: a 4-case tray pallet at CONRI, 1 case off with its CONRI #.
+  await page.evaluate(() => { document.querySelectorAll('.wh-ov').forEach((o) => o.remove()); window.__writes = []; });
+  await page.waitForSelector('[data-wh="splitPallet"][data-arg="q-5"]', { timeout: 5000 });
+  const splitBtns = await page.evaluate(() => [...document.querySelectorAll('[data-wh="splitPallet"]')].map((b) => b.getAttribute('data-arg')).sort().join(','));
+  check('✂ Split is offered on every multi-case pallet at CONRI', splitBtns === 'q-1,q-2,q-3,q-4,q-5', splitBtns);
+  await page.click('[data-wh="splitPallet"][data-arg="q-5"]');
+  await page.waitForSelector('#wsp-cases', { timeout: 5000 });
+  await page.fill('#wsp-cases', '4');
+  await page.click('#wsp-save');
+  const tooMany = await page.evaluate(() => ({ msg: document.querySelector('#wh-split .wh-ov-msg').innerText, n: window.__writes.length }));
+  check('splitting off every case is refused before anything is sent', /between 1 and 3/.test(tooMany.msg) && tooMany.n === 0, JSON.stringify(tooMany));
+  await page.fill('#wsp-cases', '1');
+  await page.fill('#wsp-conri', '9609');
+  await page.click('#wsp-save');
+  await page.waitForFunction(() => window.__writes.length >= 2, null, { timeout: 5000 });
+  const spw = await page.evaluate(() => window.__writes);
+  check('split calls wh_split_pallet once, then saves the new pallet\'s CONRI #',
+    spw[0].table === 'rpc:wh_split_pallet' && spw[0].payload.p_pallet === 'q-5' && spw[0].payload.p_cases === 1 &&
+    spw[1].table === 'wh_pallets' && spw[1].payload.conri_pallet_id === '9609' && JSON.stringify(spw[1].filters) === JSON.stringify([['id', 'p-split-new']]), JSON.stringify(spw));
+
+  // Pull email names CONRI numbers.
+  const pullMail = await page.evaluate(() => {
+    const W = window.glWhInternals;
+    const p = { id: 'x', pallet_tag: 'GL-P-000102', conri_pallet_id: '9701', cases: 100, notes: 'Top layer short',
+      sku: { upc_sku: '012345678905', description: 'Soon Lot Soda', units_per_case: 12 }, lot: null };
+    return W.scheduleEmailText({ transfer_number: 'GL-TR-X', type: 'pull_back', scheduled_at: null, client: { name: 'Camo Energy' } }, [p]).body;
+  });
+  check('a pull-back email asks Paul for the CONRI pallet number', /Please pull these pallets \(CONRI pallet #\):\n  - CONRI #9701 \(our GL-P-000102\): 012345678905 Soon Lot Soda, 100 cases/.test(pullMail) &&
+    /  - CONRI #9701 \/ GL-P-000102: Top layer short/.test(pullMail), pullMail);
+
+  if (JSPDF) {
+    const cpdf = await page.evaluate(() => {
+      const t = { transfer_number: 'GL-TR-C', type: 'pull_back', transfer_date: '2026-10-18', client: null };
+      const p = { pallet_tag: 'GL-P-000027', conri_pallet_id: '9608', cases: 1, notes: 'Top tray cracked',
+        sku: { upc_sku: 'TRAY12-1800', description: 'Tray', inventory_type: 'packaging' }, lot: null };
+      const doc = window.glWhBuildPaperworkPdf(window.jspdf.jsPDF, t, [p]);
+      return doc.output();
+    });
+    check('packing list row and pallet label carry the CONRI #', (cpdf.match(/CONRI #9608/g) || []).length >= 2 && /Note: Top tray cracked/.test(cpdf), (cpdf.match(/CONRI #9608/g) || []).length);
+  }
+
+  // ── Billing ───────────────────────────────────────────────────────
+  const bill = await page.evaluate(() => {
+    const W = window.glWhInternals;
+    const P = {}; window.__fixPallets.forEach((p) => { P[p.id] = p; });
+    const rate = (cid) => cid === 'c-evil' ? { storage: 25, pull: 10 } : { storage: 30, pull: 15 };
+    const sum = (ym) => W.billMonth(window.__fixMoves, P, ym, rate).map((o) => o.name.slice(0, 4) + ':' + o.stored.length + 's/' + o.pulls.length + 'p=' + o.total + (o.billable ? '' : '(own)')).join(' ');
+    const oct = W.billMonth(window.__fixMoves, P, '2026-10', rate);
+    return { sep: sum('2026-09'), oct: sum('2026-10'), nov: sum('2026-11'), aug: sum('2026-08'),
+             lines: W.billLines(oct[0], '2026-10') };
+  });
+  check('September: Camo 1 pallet ($30); Evil\'s split pallet counts from the original arrival ($25)', bill.sep === 'Camo:1s/0p=30 Evil:1s/0p=25', bill.sep);
+  check('October: Camo 2 pallets (one pulled 10/03, one in 10/31) + 1 pull = $75; Good Liquid trays listed, not billed',
+    bill.oct === 'Camo:2s/1p=75 Evil:1s/0p=25 Good:1s/0p=0(own)', bill.oct);
+  check('November: the pulled pallet is gone; the rest carry on', bill.nov === 'Camo:1s/0p=30 Evil:1s/0p=25 Good:1s/0p=0(own)', bill.nov);
+  check('a month before anything arrived bills nothing', bill.aug === '', bill.aug);
+  check('invoice lines: storage and pulls at the rate, naming CONRI numbers',
+    bill.lines.length === 2 && bill.lines[0].qty === 2 && bill.lines[0].unitPrice === 30 && /October 2026: 2 pallets \(GL-P-000101, CONRI #9701\)/.test(bill.lines[0].desc) &&
+    bill.lines[1].qty === 1 && bill.lines[1].unitPrice === 15 && /Pallet pulls, October 2026: 1 pallet/.test(bill.lines[1].desc), JSON.stringify(bill.lines));
+
+  await page.evaluate(() => { document.querySelectorAll('.wh-ov').forEach((o) => o.remove()); window.__writes = []; window.__inv = null;
+    window.glInvoiceFromQuote = function(spec){ window.__inv = spec; return Promise.resolve(); }; });
+  await page.click('[data-wh="tab"][data-arg="billing"]');
+  await page.waitForSelector('#wb-month', { timeout: 5000 });
+  await page.evaluate(() => { const m = document.getElementById('wb-month'); m.value = '2026-10'; m.dispatchEvent(new Event('change')); });
+  await page.waitForFunction(() => /October 2026/.test((document.getElementById('wh-body') || {}).innerText || ''), null, { timeout: 5000 });
+  const bt = await page.evaluate(() => ({ text: document.getElementById('wh-body').innerText, xss: window.__xss === 1 || !!document.querySelector('#cpg-warehouse img') }));
+  check('Billing tab: per-client totals for the month, total and not-billed-yet', /Camo Energy/.test(bt.text) && /\$75\.00/.test(bt.text) &&
+    /TOTAL OCTOBER 2026\s*\$100\.00/.test(bt.text) && /NOT BILLED YET\s*\$100\.00/.test(bt.text), bt.text.slice(0, 600));
+  check('Billing tab: Good Liquid\'s own trays are shown as not billed', /not billed \(Good Liquid's own stock\)/.test(bt.text));
+  check('Billing tab: a client name with script stays text', !bt.xss && /Evil <img/.test(bt.text));
+  await page.click('[data-wh="billInvoice"][data-arg="c-camo"]');
+  await page.waitForFunction(() => !!window.__inv, null, { timeout: 5000 });
+  const inv = await page.evaluate(() => window.__inv);
+  check('🧾 Create invoice opens the invoice builder for the client with both lines', inv.clientId === 'c-camo' && inv.items.length === 2 && inv.items[0].unit === 'pallet-month', JSON.stringify(inv));
+  await page.click('[data-wh="billMark"][data-arg="c-camo"]');
+  await page.waitForSelector('#wbm-ref', { timeout: 5000 });
+  await page.fill('#wbm-ref', 'INV-1042');
+  await page.click('#wbm-save');
+  await page.waitForFunction(() => window.__writes.some((w) => w.table === 'wh_billing_statements'), null, { timeout: 5000 });
+  const bw = await page.evaluate(() => window.__writes.find((w) => w.table === 'wh_billing_statements'));
+  check('✓ Mark billed records the month, counts, rates, amount and invoice #', bw.op === 'insert' && bw.payload.client_id === 'c-camo' && bw.payload.period === '2026-10-01' &&
+    bw.payload.storage_pallets === 2 && bw.payload.pulls === 1 && bw.payload.amount === 75 && bw.payload.storage_rate === 30 && bw.payload.invoice_ref === 'INV-1042' &&
+    bw.payload.detail.stored.join(',') === 'GL-P-000101,CONRI #9701 / GL-P-000102', JSON.stringify(bw));
+  const tabsWh = await page.evaluate(() => { window.currentUser.role = 'warehouse'; window.glRenderWarehouse();
+    const has = !!document.querySelector('[data-wh="tab"][data-arg="billing"]'); window.currentUser.role = 'admin'; return has; });
+  check('the warehouse role is not offered the Billing tab', !tabsWh);
 
   check('no page errors', errors.length === 0, JSON.stringify(errors));
   await browser.close(); server.close();

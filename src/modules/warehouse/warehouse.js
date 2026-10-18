@@ -13,7 +13,8 @@
 
    Tables (all staff-only, see 20260930120000_warehouse_storage.sql):
      wh_skus, wh_lots, wh_pallets, wh_transfers, wh_transfer_lines,
-     wh_movements (append-only, trigger-written), wh_outbound_orders
+     wh_movements (append-only, trigger-written), wh_outbound_orders,
+     wh_billing_rates, wh_billing_statements (also warehouse-role guarded)
 
    THE RULES THAT COST MONEY ARE IN THE DATABASE, NOT HERE. QA hold,
    draft -> scheduled -> completed, "every SKU exported to CONRI before
@@ -37,6 +38,11 @@
      window.glWhBuildPaperworkPdf(t, l) — jsPDF doc for a transfer
      window.glWhCode128(text)           — Code 128-B module widths
      window.glWhBuildBolSheetsPdf(j, i) — jsPDF pallet sheets from a BOL
+
+   CONRI keys each pallet under its own number (wh_pallets.conri_pallet_id,
+   from the Receive Summary Ticket) and pulls by it, so pull and ship
+   requests name it. Billing (storage per pallet-month, a fee per pull) is
+   computed from wh_movements; see 20261018191518_warehouse_conri_ids_billing.sql.
    ============================================================ */
 (function(){
   'use strict';
@@ -79,6 +85,13 @@
   function ownerId(v){ return v === GL_OWNER ? null : (v || ''); }
   var NOTE_MAX = 500;
   function cleanNote(v){ v = String(v == null ? '' : v).trim().slice(0, NOTE_MAX); return v || null; }
+  // CONRI keys every pallet it receives under its own number (9608) and pulls
+  // by that number, so every request to pull or ship names it first.
+  var CONRI_ID_MAX = 40;
+  function cleanConriId(v){ v = String(v == null ? '' : v).trim().replace(/^#\s*/, '').slice(0, CONRI_ID_MAX); return v || null; }
+  function pullRef(p){ return p.conri_pallet_id ? 'CONRI #' + p.conri_pallet_id + ' (our ' + p.pallet_tag + ')' : p.pallet_tag + ' (no CONRI # recorded)'; }
+  function tagRef(p){ return (p.conri_pallet_id ? 'CONRI #' + p.conri_pallet_id + ' / ' : '') + p.pallet_tag; }
+  function isWarehouseRole(){ return !!(window.currentUser && window.currentUser.role === 'warehouse'); }
 
   // ── Helpers ────────────────────────────────────────────────
   function sb(){ return window.supa || null; }
@@ -209,7 +222,7 @@
   // ── Shared data ────────────────────────────────────────────
   var SKU_COLS = 'id,client_id,upc_sku,description,brand,pack,units_per_case,default_cases_per_pallet,default_pallet_weight_lbs,default_pallet_height_in,inventory_type,active,notes,last_exported_at';
   var LOT_COLS = 'id,sku_id,lot_number,production_date,best_by_date,qa_status,notes';
-  var PALLET_EMBED = 'id,pallet_tag,cases,weight_lbs,height_in,location,status,current_transfer_id,received_at_conri,expected_pull_date,notes,' +
+  var PALLET_EMBED = 'id,pallet_tag,conri_pallet_id,split_from,cases,weight_lbs,height_in,location,status,current_transfer_id,received_at_conri,expected_pull_date,notes,' +
     'sku:wh_skus!wh_pallets_sku_id_fkey(' + SKU_COLS + ',client:clients!wh_skus_client_id_fkey(id,name)),' +
     'lot:wh_lots!wh_pallets_lot_matches_sku(' + LOT_COLS + ')';
 
@@ -242,7 +255,8 @@
     ['skus','🏷️ SKU master'],
     ['outbound','📤 Outbound orders'],
     ['recon','🧮 Reconciliation'],
-    ['bol','📄 BOL pallet sheets']
+    ['bol','📄 BOL pallet sheets'],
+    ['billing','💵 Billing']
   ];
 
   window.glRenderWarehouse = function glRenderWarehouse(){
@@ -257,7 +271,9 @@
           '<button class="cbtn pri" type="button" data-wh="newTransfer">+ New transfer</button>' +
         '</div>' +
       '</div>' +
-      '<div class="cpills" id="wh-tabs">' + TABS.map(function(t){
+      // Billing is financial: the warehouse role is refused it by RLS
+      // ("gl warehouse guard"), so the tab is not offered either.
+      '<div class="cpills" id="wh-tabs">' + TABS.filter(function(t){ return t[0] !== 'billing' || !isWarehouseRole(); }).map(function(t){
         return '<span class="cpill' + (t[0] === state.tab ? ' act' : '') + '" data-wh="tab" data-arg="' + t[0] + '">' + esc(t[1]) + '</span>';
       }).join('') + '</div>' +
       '<div id="wh-body"></div>';
@@ -280,6 +296,7 @@
       else if(state.tab === 'outbound') await renderOutbound();
       else if(state.tab === 'recon') renderRecon();
       else if(state.tab === 'bol') renderBol();
+      else if(state.tab === 'billing') await renderBilling();
     } catch(e){
       setBody(note('err', 'Could not load: ' + errMsg(e)));
     }
@@ -352,7 +369,7 @@
       var days = daysSince(p.received_at_conri);
       var late = days != null && days > EMPTY_MAX_DAYS;
       return '<tr' + (late ? ' style="background:rgba(231,76,60,.10)"' : '') + '>' +
-        '<td>' + esc(p.pallet_tag) + '</td><td>' + esc(p.sku.client && p.sku.client.name) + '</td>' +
+        '<td>' + esc(p.pallet_tag) + '</td><td>' + esc(p.conri_pallet_id || '') + '</td><td>' + esc(p.sku.client && p.sku.client.name) + '</td>' +
         '<td>' + esc(p.sku.description) + '</td>' +
         '<td>' + esc(fmtTs(p.received_at_conri)) + '</td>' +
         '<td style="font-weight:700;' + (late ? 'color:#ff8579' : '') + '">' + (days == null ? '' : esc(days) + ' days') + '</td>' +
@@ -391,28 +408,39 @@
       return '<div class="ccard" style="flex:1;min-width:140px"><div style="font-size:10.5px;letter-spacing:1px;color:var(--muted)">' + esc(label) +
         '</div><div style="font-family:var(--ff-disp);font-size:26px;color:var(--teal);margin-top:4px">' + esc(value) + '</div></div>';
     }
-    var noted = pallets.filter(function(p){ return p.notes; }).sort(function(a, b){ return String(a.pallet_tag).localeCompare(String(b.pallet_tag)); });
-    var noteRows = noted.map(function(p){
+    // Every pallet, with CONRI's own number: the one Paul pulls by.
+    var listed = pallets.slice().sort(function(a, b){
+      var ca = ownerName(a.sku && a.sku.client), cb = ownerName(b.sku && b.sku.client);
+      return ca !== cb ? ca.localeCompare(cb) : String(a.pallet_tag).localeCompare(String(b.pallet_tag));
+    });
+    var noConri = pallets.filter(function(p){ return !p.conri_pallet_id; }).length;
+    var palletRows = listed.map(function(p){
       var s = p.sku || {};
-      return '<tr><td style="font-weight:700">' + esc(p.pallet_tag) + '</td><td>' + esc(ownerName(s.client)) + '</td>' +
+      return '<tr><td style="font-weight:700">' + esc(p.pallet_tag) + '</td>' +
+        '<td style="font-weight:700;' + (p.conri_pallet_id ? 'color:var(--teal)' : 'color:#f5c842') + '">' + esc(p.conri_pallet_id || 'not recorded') + '</td>' +
+        '<td>' + esc(ownerName(s.client)) + '</td>' +
         '<td>' + esc(s.upc_sku) + ' · ' + esc(s.description) + '</td><td style="text-align:right">' + fmtInt(p.cases) + '</td>' +
-        '<td style="white-space:pre-line">' + esc(p.notes) + '</td></tr>';
+        '<td>' + esc(fmtTs(p.received_at_conri)) + '</td>' +
+        '<td style="white-space:pre-line">' + esc(p.notes || '') + '</td>' +
+        '<td style="white-space:nowrap">' + palletButtons(p, '') + '</td></tr>';
     }).join('');
     var lateCount = empties.filter(function(p){ var d = daysSince(p.received_at_conri); return d != null && d > EMPTY_MAX_DAYS; }).length;
 
     setBody(
       '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">' +
         stat('PALLETS AT CONRI', fmtInt(totP)) + stat('CASES', fmtInt(totC)) + stat('UNITS', fmtInt(totU)) +
+        stat('NO CONRI #', fmtInt(noConri)) +
         stat('EMPTIES PAST ' + EMPTY_MAX_DAYS + ' DAYS', fmtInt(lateCount)) + stat('LOTS < ' + BEST_BY_WARN_DAYS + ' DAYS TO BEST BY', fmtInt(soon.length)) +
       '</div>' +
       '<div class="ccard" style="margin-bottom:14px"><div class="ccard-t">On hand at CONRI · by owner, SKU, lot</div>' +
         (rows ? '<div style="overflow-x:auto"><table class="ctbl"><tr><th>UPC / SKU</th><th>Description</th><th>Lot</th><th style="text-align:right">Pallets</th><th style="text-align:right">Cases</th><th style="text-align:right">Units</th><th>Best by</th><th></th></tr>' + rows + '</table></div>'
               : '<div style="color:#9aa7bd;font-size:12px">Nothing at CONRI right now.</div>') +
       '</div>' +
-      (noteRows ? '<div class="ccard" style="margin-bottom:14px"><div class="ccard-t">Pallet notes at CONRI</div>' +
-        '<div style="overflow-x:auto"><table class="ctbl"><tr><th>Pallet</th><th>Client</th><th>SKU</th><th style="text-align:right">Cases</th><th>Note</th></tr>' + noteRows + '</table></div></div>' : '') +
+      (palletRows ? '<div class="ccard" style="margin-bottom:14px"><div class="ccard-t">Every pallet at CONRI · CONRI pallet # and notes</div>' +
+        (noConri ? note('warn', noConri + ' pallet' + (noConri === 1 ? ' has' : 's have') + ' no CONRI # yet. Open the inbound transfer and use 📎 CONRI receipt, or ✏️ to type it in. Paul pulls by his number.') : '') +
+        '<div style="overflow-x:auto"><table class="ctbl"><tr><th>Pallet</th><th>CONRI #</th><th>Client</th><th>SKU</th><th style="text-align:right">Cases</th><th>Received</th><th>Note</th><th></th></tr>' + palletRows + '</table></div></div>' : '') +
       '<div class="ccard" style="margin-bottom:14px"><div class="ccard-t">Empty cans at CONRI · red past ' + EMPTY_MAX_DAYS + ' days</div>' +
-        (emptyRows ? '<div style="overflow-x:auto"><table class="ctbl"><tr><th>Pallet</th><th>Client</th><th>SKU</th><th>Received</th><th>In storage</th><th>Expected pull</th><th>Note</th></tr>' + emptyRows + '</table></div>'
+        (emptyRows ? '<div style="overflow-x:auto"><table class="ctbl"><tr><th>Pallet</th><th>CONRI #</th><th>Client</th><th>SKU</th><th>Received</th><th>In storage</th><th>Expected pull</th><th>Note</th></tr>' + emptyRows + '</table></div>'
                    : '<div style="color:#9aa7bd;font-size:12px">No empty cans in storage.</div>') +
       '</div>' +
       '<div class="ccard" style="margin-bottom:14px"><div class="ccard-t">Finished goods lots under ' + BEST_BY_WARN_DAYS + ' days to best by</div>' +
@@ -525,7 +553,32 @@
       .eq('transfer_id', id).order('line_no');
     if(l.error) throw l.error;
     var lines = (l.data || []).map(function(x){ var p = x.pallet || {}; p.line_no = x.line_no; return p; });
-    return { t: t.data[0], lines: lines };
+    return { t: t.data[0], lines: lines, splits: await loadSplits(lines) };
+  }
+
+  // Pallets split off this transfer's pallets after it moved (✂ Split). They
+  // are not lines of the transfer (its record is closed), but they arrived on
+  // it, so its CONRI receipt has to match them too. Splits of splits included.
+  async function loadSplits(lines){
+    var out = [], seen = {}, ids = lines.map(function(p){ return p.id; }).filter(Boolean);
+    ids.forEach(function(id){ seen[id] = 1; });
+    for(var depth = 0; ids.length && depth < 6; depth++){
+      var r = await sb().from('wh_pallets').select(PALLET_EMBED).in('split_from', ids).neq('status','void');
+      if(r.error) throw r.error;
+      ids = [];
+      (r.data || []).forEach(function(p){ if(!seen[p.id]){ seen[p.id] = 1; out.push(p); ids.push(p.id); } });
+    }
+    return out.sort(function(a, b){ return String(a.pallet_tag).localeCompare(String(b.pallet_tag)); });
+  }
+
+  function palletButtons(p, transferId){
+    var b = '<button type="button" class="cbtn" style="padding:2px 8px;font-size:10.5px" data-wh="editPalletNote" data-arg="' + esc(p.id) + '" data-arg2="' + esc(transferId || '') +
+      '" title="CONRI # and note">' + (p.notes || p.conri_pallet_id ? '✏️' : '+ Note') + '</button>';
+    if(num(p.cases) > 1 && !p.current_transfer_id && p.status !== 'void'){
+      b += ' <button type="button" class="cbtn" style="padding:2px 8px;font-size:10.5px" data-wh="splitPallet" data-arg="' + esc(p.id) + '" data-arg2="' + esc(transferId || '') +
+        '" title="CONRI tagged this as more than one pallet">✂ Split</button>';
+    }
+    return b;
   }
 
   // Warnings the page can see before the trigger would refuse. Blocking ones
@@ -563,15 +616,20 @@
     loading();
     try {
       var d = await loadTransfer(id);
-      renderTransferDetail(d.t, d.lines);
+      renderTransferDetail(d.t, d.lines, d.splits);
     } catch(e){ setBody(note('err','Could not load transfer: ' + errMsg(e))); }
   }
 
-  function renderTransferDetail(t, lines){
+  function renderTransferDetail(t, lines, splits){
+    splits = splits || [];
     var s = t.status, draft = s === 'draft';
     var issues = lineIssues(t, lines);
     var totC = 0, totU = 0, totW = 0;
-    lines.forEach(function(p){ totC += num(p.cases); totU += num(p.cases) * num(p.sku && p.sku.units_per_case); totW += num(p.weight_lbs); });
+    lines.concat(splits).forEach(function(p){ totC += num(p.cases); totU += num(p.cases) * num(p.sku && p.sku.units_per_case); totW += num(p.weight_lbs); });
+    // A ✂ split moves cases off a line onto a new record, so what arrived on
+    // this transfer is the lines plus their splits.
+    var nPallets = lines.length + splits.length;
+    var palletsTxt = lines.length + ' pallets' + (splits.length ? ' + ' + splits.length + ' split off' : '');
     var inbound = !!INBOUND[t.type];
 
     var rows = lines.map(function(p, i){
@@ -579,15 +637,26 @@
       var h = num(p.height_in || sk.default_pallet_height_in);
       var tall = sk.inventory_type !== 'empty_can' && h >= RACK_MAX_IN;
       return '<tr><td>' + (i+1) + ' of ' + lines.length + '</td><td style="font-weight:700">' + esc(p.pallet_tag) + '</td>' +
+        '<td style="font-weight:700;color:var(--teal)">' + esc(p.conri_pallet_id || '') + '</td>' +
         '<td>' + esc(sk.upc_sku) + '</td><td>' + esc(sk.description) + '</td><td>' + esc(sk.pack) + '</td>' +
         '<td style="text-align:right">' + fmtInt(p.cases) + '</td><td>' + esc(l.lot_number || '') +
           (p.lot && l.qa_status !== 'released' ? ' ' + badge('hold') : '') + '</td>' +
         '<td>' + esc(fmtDate(l.best_by_date)) + '</td><td>' + esc(fmtDate(l.production_date)) + '</td>' +
         '<td' + (tall ? ' style="color:#f5c842;font-weight:700"' : '') + '>' + (h ? esc(h) + '"' : '') + '</td>' +
         '<td>' + (p.weight_lbs ? fmtInt(p.weight_lbs) : '') + '</td>' +
-        '<td style="white-space:pre-line;max-width:220px">' + esc(p.notes || '') +
-          ' <button type="button" class="cbtn" style="padding:2px 8px;font-size:10.5px" data-wh="editPalletNote" data-arg="' + esc(p.id) + '" data-arg2="' + esc(t.id) + '">' + (p.notes ? '✏️' : '+ Note') + '</button></td>' +
-        '<td>' + (draft ? '<button type="button" class="cbtn red" data-wh="removeLine" data-arg="' + esc(t.id) + '" data-arg2="' + esc(p.id) + '">Remove</button>' : '') + '</td></tr>';
+        '<td style="white-space:pre-line;max-width:220px">' + esc(p.notes || '') + '</td>' +
+        '<td style="white-space:nowrap">' + palletButtons(p, t.id) +
+          (draft ? ' <button type="button" class="cbtn red" data-wh="removeLine" data-arg="' + esc(t.id) + '" data-arg2="' + esc(p.id) + '">Remove</button>' : '') + '</td></tr>';
+    }).join('') + splits.map(function(p){
+      var sk = p.sku || {};
+      var from = lines.concat(splits).filter(function(x){ return x.id === p.split_from; })[0];
+      return '<tr style="background:rgba(0,229,192,.04)"><td style="color:#9aa7bd">↳ split</td><td style="font-weight:700">' + esc(p.pallet_tag) + '</td>' +
+        '<td style="font-weight:700;color:var(--teal)">' + esc(p.conri_pallet_id || '') + '</td>' +
+        '<td>' + esc(sk.upc_sku) + '</td><td>' + esc(sk.description) + '</td><td>' + esc(sk.pack) + '</td>' +
+        '<td style="text-align:right">' + fmtInt(p.cases) + '</td><td colspan="5" style="color:#9aa7bd">split from ' + esc(from ? from.pallet_tag : '') +
+          ' · now ' + esc(p.location) + ' / ' + esc(p.status) + '</td>' +
+        '<td style="white-space:pre-line;max-width:220px">' + esc(p.notes || '') + '</td>' +
+        '<td style="white-space:nowrap">' + palletButtons(p, t.id) + '</td></tr>';
     }).join('');
 
     var actions = '';
@@ -603,6 +672,9 @@
       actions += '<button type="button" class="cbtn grn" data-wh="completeTransfer" data-arg="' + esc(t.id) + '">✓ Complete (received)</button>';
     }
     if(draft || s === 'scheduled') actions += '<button type="button" class="cbtn red" data-wh="cancelTransfer" data-arg="' + esc(t.id) + '">Cancel transfer</button>';
+    if(s === 'completed' && inbound){
+      actions += '<button type="button" class="cbtn pri" data-wh="conriReceipt" data-arg="' + esc(t.id) + '">📎 CONRI receipt (pallet #s)</button>';
+    }
     if(s === 'completed'){
       actions += '<button type="button" class="cbtn" data-wh="uploadSigned" data-arg="' + esc(t.id) + '">📎 ' + (t.signed_doc_path ? 'Replace' : 'Upload') + ' signed packing list</button>';
     }
@@ -618,7 +690,8 @@
     var receipt = s === 'completed'
       ? '<div class="ccard" style="margin-top:14px"><div class="ccard-t">Receipt</div><div style="font-size:12.5px;line-height:1.8;color:#dfe7f1">' +
         'Received by <b>' + esc(t.received_by) + '</b> · ' + esc(fmtTs(t.completed_at)) + '<br>' +
-        'Pallets received ' + esc(t.pallets_received) + ' of ' + lines.length + ' · cases received ' + fmtInt(t.cases_received) + ' of ' + fmtInt(totC) + '<br>' +
+        'Pallets received ' + esc(t.pallets_received) + ' of ' + lines.length + ' · cases received ' + fmtInt(t.cases_received) + ' of ' + fmtInt(totC) +
+          (splits.length ? ' (CONRI now holds them as ' + nPallets + ' pallets after ✂ split)' : '') + '<br>' +
         'Condition: ' + esc(t.receipt_condition === 'exceptions' ? 'Exceptions noted' : 'Good') +
         (t.exceptions ? '<br>Exceptions: ' + esc(t.exceptions) : '') + '</div></div>'
       : '';
@@ -639,9 +712,9 @@
         issues.block.map(function(x){ return note('err', '⛔ ' + x); }).join('') +
         issues.warn.map(function(x){ return note('warn', '⚠ ' + x); }).join('') +
       '</div>' +
-      '<div class="ccard"><div class="ccard-t">Pallets · ' + lines.length + ' pallets · ' + fmtInt(totC) + ' cases' + (totU ? ' · ' + fmtInt(totU) + ' units' : '') +
+      '<div class="ccard"><div class="ccard-t">Pallets · ' + esc(palletsTxt) + ' · ' + fmtInt(totC) + ' cases' + (totU ? ' · ' + fmtInt(totU) + ' units' : '') +
         (totW ? ' · ' + fmtInt(totW) + ' lbs' : '') + '</div>' +
-        (rows ? '<div style="overflow-x:auto"><table class="ctbl"><tr><th>Pallet</th><th>Tag</th><th>UPC / SKU</th><th>Description</th><th>Pack</th><th style="text-align:right">Cases</th><th>Lot</th><th>Best by</th><th>Prod.</th><th>Height</th><th>Lbs</th><th>Note</th><th></th></tr>' + rows + '</table></div>'
+        (rows ? '<div style="overflow-x:auto"><table class="ctbl"><tr><th>Pallet</th><th>Tag</th><th>CONRI #</th><th>UPC / SKU</th><th>Description</th><th>Pack</th><th style="text-align:right">Cases</th><th>Lot</th><th>Best by</th><th>Prod.</th><th>Height</th><th>Lbs</th><th>Note</th><th></th></tr>' + rows + '</table></div>'
               : '<div style="color:#9aa7bd;font-size:12px">No pallets yet.</div>') +
         add +
       '</div>' + receipt +
@@ -666,30 +739,75 @@
     } catch(e){ host.innerHTML = note('err','Could not load movements: ' + errMsg(e)); }
   }
 
-  // A pallet's note can change at any time, wherever the pallet is: it is
-  // information about the pallet, not part of the move's record.
+  // A pallet's note and CONRI # can change at any time, wherever the pallet
+  // is: they are information about the pallet, not part of the move's record.
+  function conriTaken(e, id){
+    return e && (e.code === '23505' || /conri_pallet_id/.test(errMsg(e))) ? 'CONRI #' + id + ' is already on another pallet. Each CONRI number belongs to one pallet.' : null;
+  }
   async function editPalletNote(palletId, transferId){
-    var r = await sb().from('wh_pallets').select('id,pallet_tag,notes').eq('id', palletId).limit(1);
+    var r = await sb().from('wh_pallets').select('id,pallet_tag,conri_pallet_id,notes').eq('id', palletId).limit(1);
     if(r.error || !r.data || !r.data[0]){ alert('Could not load the pallet.'); return; }
     var p = r.data[0];
-    var ov = overlay('wh-pnote', 'NOTE · ' + p.pallet_tag);
-    ovBody(ov, field('Note (shows on the transfer, the dashboard, the pallet label and the email to CONRI)',
+    var ov = overlay('wh-pnote', 'PALLET · ' + p.pallet_tag);
+    ovBody(ov, field('CONRI pallet # (the number on CONRI\'s label and receipt; Paul pulls by it)',
+        '<input id="wpn-conri" maxlength="' + CONRI_ID_MAX + '" value="' + esc(p.conri_pallet_id || '') + '" placeholder="e.g. 9608" style="' + INP + '">', true) +
+      '<div style="height:10px"></div>' +
+      field('Note (shows on the transfer, the dashboard, the pallet label and the email to CONRI)',
         '<textarea id="wpn-note" rows="3" maxlength="' + NOTE_MAX + '" style="' + INP + '">' + esc(p.notes || '') + '</textarea>', true) +
       '<div style="display:flex;gap:10px;margin-top:14px"><button type="button" class="cbtn" data-wh="closeOverlay" style="flex:1;justify-content:center">Cancel</button>' +
-      '<button type="button" class="cbtn pri" id="wpn-save" style="flex:1;justify-content:center">Save note</button></div>');
+      '<button type="button" class="cbtn pri" id="wpn-save" style="flex:1;justify-content:center">Save</button></div>');
     ov.querySelector('#wpn-save').addEventListener('click', async function(){
       var btn = this; btn.disabled = true; ovMsg(ov,'','Saving…');
+      var cid = cleanConriId(ov.querySelector('#wpn-conri').value);
       try {
         var note = cleanNote(ov.querySelector('#wpn-note').value);
-        checked(await sb().from('wh_pallets').update({ notes: note }).eq('id', palletId).select('id'), 1, 'Save note');
-        audit('wh_pallet_note', p.pallet_tag, {});
+        checked(await sb().from('wh_pallets').update({ notes: note, conri_pallet_id: cid }).eq('id', palletId).select('id'), 1, 'Save');
+        audit('wh_pallet_note', p.pallet_tag, { conri: cid });
         ov.remove();
         if(transferId) reopen(transferId); else renderTab();
-      } catch(e){ btn.disabled = false; ovMsg(ov,'err','Save failed: ' + errMsg(e)); }
+      } catch(e){ btn.disabled = false; ovMsg(ov,'err', conriTaken(e, cid) || 'Save failed: ' + errMsg(e)); }
     });
   }
 
-  async function reopen(id){ try { var d = await loadTransfer(id); renderTransferDetail(d.t, d.lines); } catch(e){ setBody(note('err', errMsg(e))); } }
+  // CONRI tagged what we recorded as one pallet as several (for example 2
+  // cases of trays on our record, 2 CONRI pallets). Split off cases onto a new
+  // record so each CONRI number has its own. wh_split_pallet() does both
+  // writes in one transaction and refuses a pallet that is on a transfer.
+  async function splitPallet(palletId, transferId){
+    var r = await sb().from('wh_pallets').select('id,pallet_tag,conri_pallet_id,cases,current_transfer_id').eq('id', palletId).limit(1);
+    if(r.error || !r.data || !r.data[0]){ alert('Could not load the pallet.'); return; }
+    var p = r.data[0];
+    if(num(p.cases) < 2){ alert(p.pallet_tag + ' has 1 case; there is nothing to split.'); return; }
+    var ov = overlay('wh-split', '✂ SPLIT ' + p.pallet_tag);
+    ovBody(ov, '<div style="font-size:12px;color:#9aa7bd;margin-bottom:10px;line-height:1.6">' + esc(p.pallet_tag) + ' has ' + fmtInt(p.cases) +
+        ' cases. The cases you split off become a new pallet record in the same place, with the same item, lot and note.</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+        field('Cases onto the new pallet *', '<input id="wsp-cases" type="number" min="1" max="' + (num(p.cases) - 1) + '" value="1" style="' + INP + '">') +
+        field('CONRI # of the new pallet', '<input id="wsp-conri" maxlength="' + CONRI_ID_MAX + '" placeholder="e.g. 9609" style="' + INP + '">') +
+      '</div>' +
+      '<div style="display:flex;gap:10px;margin-top:14px"><button type="button" class="cbtn" data-wh="closeOverlay" style="flex:1;justify-content:center">Cancel</button>' +
+      '<button type="button" class="cbtn pri" id="wsp-save" style="flex:1;justify-content:center">Split</button></div>');
+    ov.querySelector('#wsp-save').addEventListener('click', async function(){
+      var btn = this, n = parseInt(val(ov,'#wsp-cases'), 10), cid = cleanConriId(val(ov,'#wsp-conri'));
+      if(!(n >= 1 && n < num(p.cases))){ ovMsg(ov,'err','Split off between 1 and ' + (num(p.cases) - 1) + ' cases.'); return; }
+      btn.disabled = true; ovMsg(ov,'','Splitting…');
+      try {
+        var res = await sb().rpc('wh_split_pallet', { p_pallet: palletId, p_cases: n });
+        if(res.error) throw res.error;
+        var made = Array.isArray(res.data) ? res.data[0] : res.data;
+        if(!made || !made.id) throw new Error('The split did not take effect. You may not have access.');
+        audit('wh_pallet_split', p.pallet_tag, { new_pallet: made.pallet_tag, cases: n });
+        if(cid){
+          try { checked(await sb().from('wh_pallets').update({ conri_pallet_id: cid }).eq('id', made.id).select('id'), 1, 'Save CONRI #'); }
+          catch(e2){ alert('Split done (' + made.pallet_tag + '), but the CONRI # was not saved: ' + (conriTaken(e2, cid) || errMsg(e2)) + ' Set it with ✏️.'); }
+        }
+        ov.remove();
+        if(transferId) reopen(transferId); else renderTab();
+      } catch(e){ btn.disabled = false; ovMsg(ov,'err','Split failed: ' + errMsg(e)); }
+    });
+  }
+
+  async function reopen(id){ try { var d = await loadTransfer(id); renderTransferDetail(d.t, d.lines, d.splits); } catch(e){ setBody(note('err', errMsg(e))); } }
 
   async function editTransfer(id){
     var d = await loadTransfer(id), t = d.t;
@@ -894,9 +1012,9 @@
     var ov = overlay('wh-pick', '☑ PICK PALLETS · ' + (loc === 'conri' ? 'AT CONRI' : 'AT GOOD LIQUID'), 760);
     if(!list.length){ ovBody(ov, note('', 'No available pallets for ' + (t.client_id ? 'this client' : 'Good Liquid packaging') + ' ' + (loc === 'conri' ? 'at CONRI.' : 'at Good Liquid.'))); return; }
     ovBody(ov, '<div style="font-size:12px;color:#9aa7bd;margin-bottom:8px">Sorted FEFO: earliest best by first, then first received.</div>' +
-      '<div style="max-height:52vh;overflow:auto"><table class="ctbl"><tr><th></th><th>Tag</th><th>SKU</th><th>Lot</th><th>Best by</th><th style="text-align:right">Cases</th><th>Received</th><th>Note</th></tr>' +
+      '<div style="max-height:52vh;overflow:auto"><table class="ctbl"><tr><th></th><th>Tag</th><th>CONRI #</th><th>SKU</th><th>Lot</th><th>Best by</th><th style="text-align:right">Cases</th><th>Received</th><th>Note</th></tr>' +
       list.map(function(p){
-        return '<tr><td><input type="checkbox" class="wpk" value="' + esc(p.id) + '"></td><td>' + esc(p.pallet_tag) + '</td>' +
+        return '<tr><td><input type="checkbox" class="wpk" value="' + esc(p.id) + '"></td><td>' + esc(p.pallet_tag) + '</td><td style="font-weight:700">' + esc(p.conri_pallet_id || '') + '</td>' +
           '<td>' + esc(p.sku.upc_sku + ' · ' + p.sku.description) + '</td><td>' + esc(p.lot ? p.lot.lot_number : '') +
           (p.lot && p.lot.qa_status !== 'released' ? ' ' + badge('hold') : '') + '</td>' +
           '<td>' + esc(fmtDate(p.lot && p.lot.best_by_date)) + '</td><td style="text-align:right">' + fmtInt(p.cases) + '</td>' +
@@ -1045,8 +1163,14 @@
         ': ' + n.pallets + ' pallets, ' + fmtInt(n.cases) + ' cases';
     }).join('\n');
     var noteLines = lines.filter(function(p){ return p.notes; }).map(function(p){
-      return '  - ' + p.pallet_tag + ': ' + String(p.notes).replace(/\s*\n\s*/g, ' ');
+      return '  - ' + tagRef(p) + ': ' + String(p.notes).replace(/\s*\n\s*/g, ' ');
     }).join('\n');
+    // Leaving CONRI: name each pallet by CONRI's own number, which is how
+    // Paul finds it on the rack.
+    var pullLines = (t.type === 'pull_back' || t.type === 'outbound_pickup') ? lines.map(function(p){
+      var s = p.sku || {};
+      return '  - ' + pullRef(p) + ': ' + s.upc_sku + ' ' + s.description + ', ' + fmtInt(p.cases) + ' cases';
+    }).join('\n') : '';
     var subject = 'Schedule ' + t.transfer_number + ': ' + lines.length + ' pallets, ' + client + ', ' + (when ? fmtDate(toLocalInput(t.scheduled_at).slice(0,10)) : 'date TBD');
     var bodyTxt =
       'Hi Paul,\n\n' +
@@ -1061,6 +1185,7 @@
       (t.carrier ? 'Carrier: ' + t.carrier + '\n' : '') +
       (t.ship_to ? 'Ship to: ' + t.ship_to.replace(/\n/g, ', ') + '\n' : '') +
       '\nSKUs:\n' + skuLines + '\n\n' +
+      (pullLines ? 'Please pull these pallets (CONRI pallet #):\n' + pullLines + '\n\n' : '') +
       (noteLines ? 'Pallet notes:\n' + noteLines + '\n\n' : '') +
       'Pallet dimensions: ' + PALLET_FOOTPRINT + ' footprint, ' + (maxH ? 'up to ' + maxH + ' in tall' : 'height to confirm') +
         (t.type === 'to_conri_overflow' ? ' (empty cans, floor stack)' : '') + ', ' + wRange + '.\n\n' +
@@ -1428,7 +1553,7 @@
       d.lines.forEach(function(p){
         var k = p.sku.upc_sku + '|' + (p.lot ? p.lot.lot_number : '');
         var n = bySku[k] = bySku[k] || { p: p, pallets: 0, cases: 0, tags: [] };
-        n.pallets++; n.cases += num(p.cases); n.tags.push(p.pallet_tag);
+        n.pallets++; n.cases += num(p.cases); n.tags.push(pullRef(p));
       });
       var subject = 'Outbound order ' + o.order_number + ': ' + (o.client && o.client.name) + ', pickup ' + fmtDate(o.requested_pickup_date);
       var bodyTxt = 'Hi Paul,\n\nPlease pull the following for pickup from the Good Liquid Bev Co account.\n\n' +
@@ -1443,10 +1568,10 @@
           return '  - ' + p.sku.upc_sku + '  ' + p.sku.description + (p.sku.inventory_type === 'empty_can' ? ' (empty cans)' : '') +
             (p.lot ? ', lot ' + p.lot.lot_number : '') +
             (p.lot && p.lot.best_by_date ? ', best by ' + fmtDate(p.lot.best_by_date) : '') + ': ' + n.pallets + ' pallets, ' + fmtInt(n.cases) + ' cases\n' +
-            '      tags ' + n.tags.join(', ');
+            '      pull ' + n.tags.join(', ');
         }).join('\n') +
         (d.lines.some(function(p){ return p.notes; }) ? '\n\nPallet notes:\n' + d.lines.filter(function(p){ return p.notes; }).map(function(p){
-          return '  - ' + p.pallet_tag + ': ' + String(p.notes).replace(/\s*\n\s*/g, ' ');
+          return '  - ' + tagRef(p) + ': ' + String(p.notes).replace(/\s*\n\s*/g, ' ');
         }).join('\n') : '') +
         '\n\nTotal: ' + d.lines.length + ' pallets.\nPlease send the BOL number once it ships.\n\nThanks,\n' +
         (userName() || GL.contact) + '\n' + GL.name + '\n' + GL.phone;
@@ -1924,9 +2049,10 @@
         doc.text(txt, c[2] === 'right' ? x + c[1] - 8 : x, y, c[2] === 'right' ? { align: 'right' } : undefined);
         x += c[1];
       });
-      if(p.notes){
+      if(p.notes || p.conri_pallet_id){
+        var sub = (p.conri_pallet_id ? 'CONRI #' + p.conri_pallet_id + '  ' : '') + (p.notes ? 'Note: ' + String(p.notes).replace(/\s*\n\s*/g, ' ') : '');
         doc.setFontSize(8.5); doc.setTextColor(80);
-        doc.text(cellText(doc, 'Note: ' + String(p.notes).replace(/\s*\n\s*/g, ' '), R - L - 60), L + 54, y + 11);
+        doc.text(cellText(doc, sub, R - L - 60), L + 54, y + 11);
         doc.setTextColor(0); doc.setFontSize(9.5);
         y += 11;
       }
@@ -2053,13 +2179,18 @@
     doc.setFont('helvetica','bold'); doc.setFontSize(96);
     doc.text(idx + '/' + n, 656, 300, { align: 'center' });
     doc.setFontSize(24); doc.text('PALLET', 656, 336, { align: 'center' });
+    var noteY = 366, noteMax = 4;
+    if(p.conri_pallet_id){
+      doc.setFontSize(20); doc.text(cellText(doc, 'CONRI #' + p.conri_pallet_id, 200), 656, 368, { align: 'center' });
+      noteY = 392; noteMax = 3;
+    }
     if(p.notes){
       doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(70);
-      doc.text('NOTE', 556, 366);
+      doc.text('NOTE', 556, noteY);
       doc.setTextColor(0); doc.setFont('helvetica','normal'); doc.setFontSize(12);
-      var nl = doc.splitTextToSize(String(p.notes), 190).slice(0, 4);
-      if(doc.splitTextToSize(String(p.notes), 190).length > 4) nl[3] = cellText(doc, nl[3] + '...', 190);
-      doc.text(nl, 556, 382);
+      var all = doc.splitTextToSize(String(p.notes), 190), nl = all.slice(0, noteMax);
+      if(all.length > noteMax) nl[noteMax - 1] = cellText(doc, nl[noteMax - 1] + '...', 190);
+      doc.text(nl, 556, noteY + 16);
     }
 
     // Barcode of the pallet tag
@@ -2162,6 +2293,499 @@
   }
 
   // ════════════════════════════════════════════════════════════
+  // 3b. CONRI RECEIPT -> CONRI PALLET NUMBERS
+  // CONRI's Receive Summary Ticket lists every pallet it received under its
+  // own number, grouped by item. Read it (AI, the same staff-only ai-proxy
+  // path as the BOL reader), propose which of our pallets each number belongs
+  // to by item, and let a person check before anything saves. The ticket is
+  // a document from outside: it only ever fills inputs, through
+  // receiptFromAi() (type-checked, length-capped) and esc() on render.
+  // ════════════════════════════════════════════════════════════
+  var RECEIPT_PROMPT =
+    'This is a warehouse receiving document from CONRI Services: a Receive Summary Ticket, or the pallet labels printed from one. ' +
+    'Reply with ONLY a JSON object, no other text:\n' +
+    '{"transaction": string, "reference": string, "received_date": "YYYY-MM-DD", ' +
+    '"pallets": [{"pallet": string, "sku": string, "description": string, "qty": integer}]}\n' +
+    'Rules: one entry in pallets per pallet number (the "Pallet: 9606" lines, or the large number on each label), in the order listed. ' +
+    'sku is the item code that pallet is listed under; join it back together if it wraps onto two lines (TRAY12SLIM- / 1800 is TRAY12SLIM-1800). ' +
+    'qty is the quantity on that pallet. transaction is the Transaction # or Transaction ID. ' +
+    'Use "" (or null for numbers) for anything not on the document. Never guess.';
+
+  function normSku(v){ return String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+
+  // Pure: the model's reply text in, a clean receipt out. Exposed for tests.
+  function receiptFromAi(text){
+    var t = String(text || '');
+    var a = t.indexOf('{'), z = t.lastIndexOf('}');
+    if(a < 0 || z <= a) throw new Error('The AI did not return any receipt fields.');
+    var j;
+    try { j = JSON.parse(t.slice(a, z + 1)); } catch(e){ throw new Error('The AI reply could not be read.'); }
+    if(!j || typeof j !== 'object') throw new Error('The AI reply could not be read.');
+    var str = function(x, max){ return (typeof x === 'string' || typeof x === 'number') ? String(x).replace(/[\r\n]+/g, ' ').trim().slice(0, max || 120) : ''; };
+    var date = str(j.received_date, 10);
+    var seen = {}, pallets = [];
+    (Array.isArray(j.pallets) ? j.pallets : []).slice(0, 300).forEach(function(x){
+      if(!x || typeof x !== 'object') return;
+      var id = cleanConriId(str(x.pallet, CONRI_ID_MAX));
+      if(!id || !/^[A-Za-z0-9._-]+$/.test(id) || seen[id]) return;
+      seen[id] = 1;
+      var q = Number(x.qty);
+      pallets.push({ pallet: id, sku: str(x.sku, 60), description: str(x.description), qty: (x.qty !== null && Math.floor(q) === q && q > 0 && q < 1e6) ? q : null });
+    });
+    return { transaction: str(j.transaction, 40), reference: str(j.reference, 40),
+             received_date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '', pallets: pallets };
+  }
+
+  // Pure: receipt + our pallets in, proposed CONRI numbers out. A pallet that
+  // already carries one of the receipt's numbers keeps it; the other numbers
+  // of each item go to our pallets of that item that have none, in tag order.
+  // Whatever is left on either side is reported, never forced.
+  function matchReceipt(receipt, ours){
+    var used = {}, byId = {};
+    ours.forEach(function(p){ if(p.conri_pallet_id) byId[p.conri_pallet_id] = p; });
+    var rows = receipt.pallets.map(function(r){ return { r: r, pallet: null, why: '' }; });
+    rows.forEach(function(x){
+      var p = byId[x.r.pallet];
+      if(!p) return;
+      x.pallet = p; used[p.id] = 1;
+      if(normSku(p.sku && p.sku.upc_sku) !== normSku(x.r.sku)) x.why = 'CONRI lists it as ' + (x.r.sku || '?') + '; our record says ' + (p.sku && p.sku.upc_sku) + '.';
+    });
+    var free = ours.filter(function(p){ return !p.conri_pallet_id; })
+      .sort(function(a, b){ return String(a.pallet_tag).localeCompare(String(b.pallet_tag)); });
+    rows.forEach(function(x){
+      if(x.pallet) return;
+      var k = normSku(x.r.sku);
+      var hit = free.filter(function(p){ return !used[p.id] && normSku(p.sku && p.sku.upc_sku) === k; })[0];
+      if(hit){ x.pallet = hit; used[hit.id] = 1; return; }
+      var same = ours.filter(function(p){ return normSku(p.sku && p.sku.upc_sku) === k; });
+      x.why = !same.length ? 'We have no pallet of ' + (x.r.sku || 'this item') + ' on this transfer.'
+        : 'CONRI has more pallets of ' + x.r.sku + ' than we have records.' +
+          (same.some(function(p){ return num(p.cases) > 1; }) ? ' If one of ours is really several pallets, ✂ Split it first.' : ' It may have been pulled, or listed under the wrong item.');
+    });
+    return { rows: rows, unmatched: ours.filter(function(p){ return !used[p.id] && !p.conri_pallet_id; }) };
+  }
+
+  async function conriReceipt(transferId){
+    var d = await loadTransfer(transferId), t = d.t;
+    var ours = d.lines.concat(d.splits).filter(function(p){ return p.status !== 'void'; });
+    var ov = overlay('wh-receipt', '📎 CONRI RECEIPT · ' + t.transfer_number, 820);
+    var found = null;
+    function ourRows(){
+      return ours.map(function(p){
+        var s = p.sku || {};
+        return '<tr><td style="font-weight:700">' + esc(p.pallet_tag) + '</td><td>' + esc(s.upc_sku) + ' · ' + esc(s.description) + '</td>' +
+          '<td style="text-align:right">' + fmtInt(p.cases) + '</td><td>' + esc(p.location) + ' / ' + esc(p.status) + '</td>' +
+          '<td><input class="wrc-id" data-id="' + esc(p.id) + '" maxlength="' + CONRI_ID_MAX + '" value="' + esc(p.conri_pallet_id || '') + '" style="' + INP + ';max-width:120px"></td></tr>';
+      }).join('');
+    }
+    ovBody(ov, '<div style="font-size:12px;color:#9aa7bd;margin-bottom:10px;line-height:1.6">CONRI gives every pallet its own number (on their receipt and labels). ' +
+        'Upload the Receive Summary Ticket to fill them in, or type them. Nothing saves until you press Save; check every match first.</div>' +
+      '<div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;align-items:end">' +
+        field('Receive Summary Ticket or labels (PDF or photo)', '<input id="wrc-file" type="file" accept="application/pdf,image/*" style="' + INP + '">') +
+        field('CONRI transaction #', '<input id="wrc-tx" maxlength="40" value="' + esc(t.conri_confirmation || '') + '" style="' + INP + '">') +
+      '</div>' +
+      '<div id="wrc-found" style="margin-top:10px"></div>' +
+      '<div style="font-size:11px;color:#9aa7bd;margin:12px 0 6px;letter-spacing:1px">OUR PALLETS ON THIS TRANSFER</div>' +
+      '<div style="overflow-x:auto"><table class="ctbl"><tr><th>Pallet</th><th>SKU</th><th style="text-align:right">Cases</th><th>Now</th><th>CONRI #</th></tr>' + ourRows() + '</table></div>' +
+      '<div style="display:flex;gap:10px;margin-top:14px"><button type="button" class="cbtn" data-wh="closeOverlay" style="flex:1;justify-content:center">Cancel</button>' +
+      '<button type="button" class="cbtn pri" id="wrc-save" style="flex:1;justify-content:center">Save CONRI numbers</button></div>');
+
+    ov.querySelector('#wrc-file').addEventListener('change', async function(){
+      var file = this.files[0], host = ov.querySelector('#wrc-found');
+      if(!file) return;
+      var kind = BOL_TYPES[file.type];
+      if(!kind){ host.innerHTML = note('err', 'Upload a PDF, JPG or PNG of the receipt.'); return; }
+      if(file.size > BOL_MAX_MB * 1024 * 1024){ host.innerHTML = note('err', 'That file is over ' + BOL_MAX_MB + ' MB.'); return; }
+      if(!sb().functions){ host.innerHTML = note('err', 'Not connected. Type the numbers in instead.'); return; }
+      host.innerHTML = note('', 'Reading ' + file.name + '…');
+      try {
+        var data = await readFileB64(file);
+        var resp = await sb().functions.invoke('ai-proxy', {
+          body: { model: 'claude-opus-5-5', maxTokens: 4096,
+                  messages: [{ role: 'user', content: [{ type: kind, source: { type: 'base64', media_type: file.type, data: data } }, { type: 'text', text: RECEIPT_PROMPT }] }] }
+        });
+        if(resp.error) throw new Error(errMsg(resp.error));
+        if(!resp.data || resp.data.ok === false) throw new Error((resp.data && resp.data.error) || 'The AI could not read it.');
+        found = receiptFromAi(resp.data.text);
+        if(!found.pallets.length){ host.innerHTML = note('warn', 'No CONRI pallet numbers were found on that file. Type them in instead.'); return; }
+        if(found.transaction && !val(ov, '#wrc-tx')) ov.querySelector('#wrc-tx').value = found.transaction;
+        var m = matchReceipt(found, ours);
+        m.rows.forEach(function(x){
+          if(!x.pallet) return;
+          var inp = ov.querySelector('.wrc-id[data-id="' + x.pallet.id + '"]');
+          if(inp && !inp.value) inp.value = x.r.pallet;
+        });
+        var bad = m.rows.filter(function(x){ return x.why; }).length + m.unmatched.length;
+        host.innerHTML = note(bad ? 'warn' : 'ok', 'Found ' + found.pallets.length + ' CONRI pallets' + (found.transaction ? ' on transaction ' + found.transaction : '') +
+            (found.received_date ? ', received ' + fmtDate(found.received_date) : '') + '. ' + (bad ? bad + ' need a look (yellow).' : 'Every one matched an item of ours.')) +
+          '<div style="overflow-x:auto"><table class="ctbl"><tr><th>CONRI #</th><th>CONRI item</th><th style="text-align:right">Qty</th><th>Our pallet</th><th></th></tr>' +
+          m.rows.map(function(x){
+            return '<tr' + (x.why ? ' style="background:rgba(245,200,66,.08)"' : '') + '><td style="font-weight:700">' + esc(x.r.pallet) + '</td>' +
+              '<td>' + esc(x.r.sku) + (x.r.description ? ' · ' + esc(x.r.description) : '') + '</td><td style="text-align:right">' + esc(x.r.qty == null ? '' : x.r.qty) + '</td>' +
+              '<td style="font-weight:700">' + esc(x.pallet ? x.pallet.pallet_tag : '') + '</td><td style="color:#f5c842">' + esc(x.why) + '</td></tr>';
+          }).join('') + '</table></div>' +
+          (m.unmatched.length ? note('warn', 'Our pallets with no CONRI number on this receipt: ' + m.unmatched.map(function(p){ return p.pallet_tag + ' (' + (p.sku && p.sku.upc_sku) + ')'; }).join(', ') +
+            '. Type the number in by hand if CONRI listed it under a different item, and ask Paul to correct his record.') : '');
+        audit('wh_conri_receipt_read', t.transfer_number, { pallets: found.pallets.length });
+      } catch(e){ host.innerHTML = note('err', 'Could not read the receipt: ' + errMsg(e) + ' You can still type the numbers in.'); }
+    });
+
+    ov.querySelector('#wrc-save').addEventListener('click', async function(){
+      var btn = this, want = {}, dup = {}, errs = [];
+      Array.prototype.forEach.call(ov.querySelectorAll('.wrc-id'), function(inp){
+        var id = cleanConriId(inp.value);
+        if(id && !/^[A-Za-z0-9._-]+$/.test(id)) errs.push('"' + id + '" is not a CONRI pallet number.');
+        if(id && dup[id]) errs.push('CONRI #' + id + ' is on two pallets.');
+        if(id) dup[id] = 1;
+        want[inp.getAttribute('data-id')] = id;
+      });
+      if(errs.length){ ovMsg(ov, 'err', errs.join(' ')); return; }
+      var changed = ours.filter(function(p){ return (p.conri_pallet_id || null) !== want[p.id]; });
+      var tx = val(ov, '#wrc-tx') || null;
+      if(!changed.length && tx === (t.conri_confirmation || null)){ ov.remove(); return; }
+      btn.disabled = true; ovMsg(ov, '', 'Saving…');
+      try {
+        // Clear first, so numbers can move between our pallets without
+        // tripping the one-number-one-pallet index halfway through.
+        for(var i = 0; i < changed.length; i++){
+          if(changed[i].conri_pallet_id) checked(await sb().from('wh_pallets').update({ conri_pallet_id: null }).eq('id', changed[i].id).select('id'), 1, 'Clear ' + changed[i].pallet_tag);
+        }
+        for(var k = 0; k < changed.length; k++){
+          var id = want[changed[k].id];
+          if(!id) continue;
+          try { checked(await sb().from('wh_pallets').update({ conri_pallet_id: id }).eq('id', changed[k].id).select('id'), 1, 'Save ' + changed[k].pallet_tag); }
+          catch(e1){ throw new Error(changed[k].pallet_tag + ': ' + (conriTaken(e1, id) || errMsg(e1))); }
+        }
+        if(tx !== (t.conri_confirmation || null)){
+          checked(await sb().from('wh_transfers').update({ conri_confirmation: tx }).eq('id', transferId).select('id'), 1, 'Save transaction #');
+        }
+        audit('wh_conri_numbers_saved', t.transfer_number, { pallets: changed.length, transaction: tx });
+        ov.remove(); reopen(transferId);
+      } catch(e){ btn.disabled = false; ovMsg(ov, 'err', 'Save failed: ' + errMsg(e) + ' Some numbers may have saved; reopen to check.'); }
+    });
+  }
+
+  // ════════════════════════════════════════════════════════════
+  // 7. BILLING
+  // Clients pay for their pallets at CONRI: a storage rate per pallet for
+  // every month it is there (any part of a month counts as the month) and a
+  // fee for each pallet pulled out (back to Good Liquid or shipped). It is
+  // worked out from the append-only movement log, so it needs no data entry;
+  // "Mark billed" keeps a snapshot (wh_billing_statements) so a month is not
+  // billed twice and a later change shows as a difference. Good Liquid's own
+  // packaging is listed but never billed.
+  // ════════════════════════════════════════════════════════════
+  var DEFAULT_RATES = { storage: 30, pull: 15 };
+  function money(n){ return '$' + num(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function localDay(ts){
+    if(!ts) return '';
+    var d = new Date(ts); if(isNaN(d)) return '';
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+  function monthBounds(ym){
+    var m = /^(\d{4})-(\d{2})$/.exec(String(ym || ''));
+    if(!m) return null;
+    var last = new Date(+m[1], +m[2], 0).getDate();
+    return { first: ym + '-01', last: ym + '-' + String(last).padStart(2,'0') };
+  }
+  function monthLabel(ym){
+    var b = monthBounds(ym); if(!b) return ym;
+    return localDate(b.first).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  }
+  // When a move really happened: the appointment, or the moment it was
+  // completed if that came first. A pallet that appeared at CONRI with no
+  // transfer is a ✂ split, and it has been there since the original arrived.
+  function moveTime(m, pallet){
+    var t = m.transfer;
+    if(t && (t.scheduled_at || t.completed_at)){
+      if(t.scheduled_at && t.completed_at) return t.scheduled_at < t.completed_at ? t.scheduled_at : t.completed_at;
+      return t.scheduled_at || t.completed_at;
+    }
+    if(!m.from_location && m.to_location === 'conri' && pallet && pallet.received_at_conri) return pallet.received_at_conri;
+    return m.at;
+  }
+
+  // Pure: movements + pallets + month + rates in, one bill per owner out.
+  // Exposed for tests. rateFor(client_id) -> { storage, pull }.
+  function billMonth(moves, pallets, ym, rateFor){
+    var b = monthBounds(ym);
+    if(!b) throw new Error('Choose a month.');
+    var byPallet = {};
+    (moves || []).slice().sort(function(x, y){ return num(x.seq) - num(y.seq); }).forEach(function(m){
+      (byPallet[m.pallet_id] = byPallet[m.pallet_id] || []).push(m);
+    });
+    var owners = {};
+    Object.keys(byPallet).forEach(function(pid){
+      var p = pallets[pid];
+      if(!p) return;
+      var s = p.sku || {}, cid = s.client_id || null, key = cid || GL_OWNER;
+      var stays = [], open = null, pulls = [];
+      byPallet[pid].forEach(function(m){
+        var day = localDay(moveTime(m, p));
+        if(m.to_location === 'conri' && m.from_location !== 'conri'){ open = { in: day, out: null }; stays.push(open); }
+        else if(m.from_location === 'conri' && m.to_location !== 'conri'){
+          if(open){ open.out = day; open = null; }
+          pulls.push({ day: day, type: m.transfer && m.transfer.type, transfer: m.transfer && m.transfer.transfer_number });
+        }
+      });
+      var hit = stays.filter(function(x){ return x.in && x.in <= b.last && (!x.out || x.out >= b.first); });
+      var monthPulls = pulls.filter(function(x){ return x.day >= b.first && x.day <= b.last; });
+      if(!hit.length && !monthPulls.length) return;
+      var o = owners[key] = owners[key] || { client_id: cid, name: cid ? ((s.client && s.client.name) || clientName(cid) || 'Client') : GL_OWNER_NAME,
+        billable: !!cid, rate: cid ? rateFor(cid) : { storage: 0, pull: 0 }, stored: [], pulls: [] };
+      var ref = { id: pid, pallet_tag: p.pallet_tag, conri_pallet_id: p.conri_pallet_id || null, sku: s.upc_sku || '', description: s.description || '' };
+      if(hit.length) o.stored.push(Object.assign({ in: hit[0].in, out: hit[hit.length - 1].out }, ref));
+      monthPulls.forEach(function(x){ o.pulls.push(Object.assign({ day: x.day, type: x.type, transfer: x.transfer }, ref)); });
+    });
+    return Object.keys(owners).map(function(k){
+      var o = owners[k];
+      o.stored.sort(function(x, y){ return String(x.pallet_tag).localeCompare(String(y.pallet_tag)); });
+      o.pulls.sort(function(x, y){ return x.day < y.day ? -1 : x.day > y.day ? 1 : String(x.pallet_tag).localeCompare(String(y.pallet_tag)); });
+      o.storageAmt = Math.round(o.stored.length * num(o.rate.storage) * 100) / 100;
+      o.pullAmt = Math.round(o.pulls.length * num(o.rate.pull) * 100) / 100;
+      o.total = Math.round((o.storageAmt + o.pullAmt) * 100) / 100;
+      return o;
+    }).sort(function(x, y){ return x.billable !== y.billable ? (x.billable ? -1 : 1) : x.name.localeCompare(y.name); });
+  }
+
+  async function fetchAll(build){
+    var out = [], size = 1000;
+    for(var from = 0; from < 200000; from += size){
+      var r = await build().range(from, from + size - 1);
+      if(r.error) throw r.error;
+      out = out.concat(r.data || []);
+      if(!r.data || r.data.length < size) break;
+    }
+    return out;
+  }
+
+  async function loadRates(){
+    var r = await sb().from('wh_billing_rates').select('id,client_id,storage_per_pallet_month,pull_per_pallet');
+    if(r.error) throw r.error;
+    var def = { storage: DEFAULT_RATES.storage, pull: DEFAULT_RATES.pull }, per = {};
+    (r.data || []).forEach(function(x){
+      var v = { id: x.id, storage: num(x.storage_per_pallet_month), pull: num(x.pull_per_pallet) };
+      if(x.client_id) per[x.client_id] = v; else def = v;
+    });
+    return { def: def, per: per, rateFor: function(cid){ return per[cid] || def; } };
+  }
+
+  async function loadBilling(ym){
+    var moves = await fetchAll(function(){
+      return sb().from('wh_movements')
+        .select('seq,at,pallet_id,from_location,to_location,transfer:wh_transfers!wh_movements_transfer_id_fkey(type,transfer_number,scheduled_at,completed_at)')
+        .or('to_location.eq.conri,from_location.eq.conri').order('seq');
+    });
+    var ids = moves.map(function(m){ return m.pallet_id; }).filter(function(x, i, a){ return a.indexOf(x) === i; });
+    var pallets = {};
+    for(var i = 0; i < ids.length; i += 150){
+      var r = await sb().from('wh_pallets').select(PALLET_EMBED).in('id', ids.slice(i, i + 150));
+      if(r.error) throw r.error;
+      (r.data || []).forEach(function(p){ pallets[p.id] = p; });
+    }
+    var rates = await loadRates();
+    var st = await sb().from('wh_billing_statements').select('*').eq('period', ym + '-01');
+    if(st.error) throw st.error;
+    var stmts = {};
+    (st.data || []).forEach(function(x){ stmts[x.client_id] = x; });
+    return { bills: billMonth(moves, pallets, ym, rates.rateFor), rates: rates, stmts: stmts };
+  }
+
+  async function renderBilling(){
+    if(isWarehouseRole()){ setBody(note('', 'Billing is for admin and sales staff.')); return; }
+    var ym = state.billMonth || todayISO().slice(0, 7);
+    state.billMonth = ym;
+    var data = await loadBilling(ym);
+    state.billData = data;
+    var cur = ym === todayISO().slice(0, 7);
+    var billable = data.bills.filter(function(o){ return o.billable; });
+    var own = data.bills.filter(function(o){ return !o.billable; });
+    var rows = billable.map(function(o){
+      var st = data.stmts[o.client_id];
+      var status = !st ? '<span style="color:#f5c842;font-weight:700">Not billed</span>'
+        : '<span style="color:#5fcf9e;font-weight:700">Billed ' + esc(fmtDate(localDay(st.billed_at))) + '</span>' + (st.invoice_ref ? ' · ' + esc(st.invoice_ref) : '') + ' · ' + esc(money(st.amount)) +
+          (Math.abs(num(st.amount) - o.total) > 0.004 ? '<div style="color:#ff8579;font-size:11px">now ' + esc(money(o.total)) + ': changed since it was billed</div>' : '');
+      var act = '<button type="button" class="cbtn" style="padding:3px 9px;font-size:11px" data-wh="billDetail" data-arg="' + esc(o.client_id) + '">Details</button> ' +
+        '<button type="button" class="cbtn" style="padding:3px 9px;font-size:11px" data-wh="billInvoice" data-arg="' + esc(o.client_id) + '">🧾 Create invoice</button> ' +
+        (st ? '<button type="button" class="cbtn" style="padding:3px 9px;font-size:11px" data-wh="billMark" data-arg="' + esc(o.client_id) + '">' + (Math.abs(num(st.amount) - o.total) > 0.004 ? '↻ Update billed' : '✏️') + '</button> ' +
+              '<button type="button" class="cbtn red" style="padding:3px 9px;font-size:11px" data-wh="billUnmark" data-arg="' + esc(o.client_id) + '">Undo</button>'
+            : '<button type="button" class="cbtn grn" style="padding:3px 9px;font-size:11px" data-wh="billMark" data-arg="' + esc(o.client_id) + '">✓ Mark billed</button>');
+      return '<tr><td style="font-weight:700">' + esc(o.name) + '</td>' +
+        '<td style="text-align:right">' + fmtInt(o.stored.length) + '</td><td style="text-align:right">' + esc(money(o.storageAmt)) + '</td>' +
+        '<td style="text-align:right">' + fmtInt(o.pulls.length) + '</td><td style="text-align:right">' + esc(money(o.pullAmt)) + '</td>' +
+        '<td style="text-align:right;font-weight:700;color:var(--teal)">' + esc(money(o.total)) + '</td>' +
+        '<td style="font-size:11.5px">' + esc(money(o.rate.storage)) + ' / ' + esc(money(o.rate.pull)) + '</td>' +
+        '<td>' + status + '</td><td style="white-space:nowrap">' + act + '</td></tr>' +
+        '<tr id="wb-det-' + esc(o.client_id) + '" style="display:none"><td colspan="9">' + billDetailHtml(o) + '</td></tr>';
+    }).join('');
+    var sum = billable.reduce(function(a, o){ return { p: a.p + o.stored.length, s: a.s + o.storageAmt, n: a.n + o.pulls.length, f: a.f + o.pullAmt, t: a.t + o.total }; }, { p: 0, s: 0, n: 0, f: 0, t: 0 });
+    var unbilled = billable.filter(function(o){ return !data.stmts[o.client_id] && o.total > 0; }).reduce(function(a, o){ return a + o.total; }, 0);
+    var ownRows = own.map(function(o){
+      return '<tr style="color:#9aa7bd"><td>' + esc(o.name) + '</td><td style="text-align:right">' + fmtInt(o.stored.length) + '</td><td></td>' +
+        '<td style="text-align:right">' + fmtInt(o.pulls.length) + '</td><td colspan="5">not billed (Good Liquid\'s own stock) · ' +
+        '<button type="button" class="cbtn" style="padding:3px 9px;font-size:11px" data-wh="billDetail" data-arg="' + GL_OWNER + '">Details</button></td></tr>' +
+        '<tr id="wb-det-' + GL_OWNER + '" style="display:none"><td colspan="9">' + billDetailHtml(o) + '</td></tr>';
+    }).join('');
+    function stat(label, value){
+      return '<div class="ccard" style="flex:1;min-width:140px"><div style="font-size:10.5px;letter-spacing:1px;color:var(--muted)">' + esc(label) +
+        '</div><div style="font-family:var(--ff-disp);font-size:24px;color:var(--teal);margin-top:4px">' + esc(value) + '</div></div>';
+    }
+    setBody(
+      '<div class="ccard" style="margin-bottom:14px"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">' +
+        '<div><label style="display:block;font-size:11px;color:#9aa7bd;margin:0 0 4px">Month</label><input id="wb-month" type="month" value="' + esc(ym) + '" style="' + INP + ';max-width:180px"></div>' +
+        '<button type="button" class="cbtn" data-wh="billRates">✏️ Rates</button>' +
+        '<button type="button" class="cbtn" data-wh="billCsv">⬇ CSV</button>' +
+        '<div style="font-size:12px;color:#9aa7bd;line-height:1.6;flex:1;min-width:220px">Default ' + esc(money(data.rates.def.storage)) + ' per pallet per month at CONRI (any part of a month counts) and ' +
+          esc(money(data.rates.def.pull)) + ' per pallet pulled out. Worked out from the pallet movement log.</div>' +
+      '</div>' + (cur ? note('warn', monthLabel(ym) + ' is still in progress: pulls later this month will add to it. Bill it once the month is over.') : '') + '</div>' +
+      '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">' +
+        stat('PALLET-MONTHS', fmtInt(sum.p)) + stat('STORAGE', money(sum.s)) + stat('PULLS', fmtInt(sum.n)) + stat('PULL FEES', money(sum.f)) +
+        stat('TOTAL ' + monthLabel(ym).toUpperCase(), money(sum.t)) + stat('NOT BILLED YET', money(unbilled)) +
+      '</div>' +
+      '<div class="ccard"><div class="ccard-t">Warehouse billing · ' + esc(monthLabel(ym)) + '</div>' +
+        (rows || ownRows ? '<div style="overflow-x:auto"><table class="ctbl"><tr><th>Client</th><th style="text-align:right">Pallets stored</th><th style="text-align:right">Storage</th>' +
+          '<th style="text-align:right">Pulls</th><th style="text-align:right">Pull fees</th><th style="text-align:right">Total</th><th>Rate</th><th>Status</th><th></th></tr>' + rows + ownRows + '</table></div>'
+          : '<div style="color:#9aa7bd;font-size:12px">Nothing was at CONRI or pulled in ' + esc(monthLabel(ym)) + '.</div>') +
+      '</div>');
+    var mi = document.getElementById('wb-month');
+    if(mi) mi.addEventListener('change', function(){ if(/^\d{4}-\d{2}$/.test(this.value)){ state.billMonth = this.value; renderTab(); } });
+  }
+
+  function billDetailHtml(o){
+    var stored = o.stored.map(function(x){
+      return '<tr><td>' + esc(x.pallet_tag) + '</td><td>' + esc(x.conri_pallet_id || '') + '</td><td>' + esc(x.sku) + ' · ' + esc(x.description) + '</td>' +
+        '<td>' + esc(fmtDate(x.in)) + '</td><td>' + esc(x.out ? fmtDate(x.out) : 'still there') + '</td></tr>';
+    }).join('');
+    var pulls = o.pulls.map(function(x){
+      return '<tr><td>' + esc(x.pallet_tag) + '</td><td>' + esc(x.conri_pallet_id || '') + '</td><td>' + esc(x.sku) + ' · ' + esc(x.description) + '</td>' +
+        '<td>' + esc(fmtDate(x.day)) + '</td><td>' + esc((TYPES[x.type] || x.type || '') + (x.transfer ? ' · ' + x.transfer : '')) + '</td></tr>';
+    }).join('');
+    return '<div style="font-size:11px;color:#9aa7bd;margin:4px 0;letter-spacing:1px">STORED (' + o.stored.length + ')</div>' +
+      (stored ? '<table class="ctbl"><tr><th>Pallet</th><th>CONRI #</th><th>SKU</th><th>In</th><th>Out</th></tr>' + stored + '</table>' : '<div style="font-size:12px;color:#9aa7bd">None.</div>') +
+      '<div style="font-size:11px;color:#9aa7bd;margin:10px 0 4px;letter-spacing:1px">PULLED (' + o.pulls.length + ')</div>' +
+      (pulls ? '<table class="ctbl"><tr><th>Pallet</th><th>CONRI #</th><th>SKU</th><th>Pulled</th><th>Move</th></tr>' + pulls + '</table>' : '<div style="font-size:12px;color:#9aa7bd">None.</div>');
+  }
+
+  function billFor(cid){
+    var d = state.billData;
+    var o = d && d.bills.filter(function(x){ return (x.client_id || GL_OWNER) === cid; })[0];
+    if(!o) throw new Error('Reload the billing tab and try again.');
+    return o;
+  }
+
+  // Pure: a client's month in, invoice lines out. Exposed for tests.
+  function billLines(o, ym){
+    var label = monthLabel(ym), items = [];
+    var refs = function(list){
+      var r = list.map(function(x){ return x.conri_pallet_id ? 'CONRI #' + x.conri_pallet_id : x.pallet_tag; });
+      return r.length > 12 ? r.slice(0, 12).join(', ') + ' and ' + (r.length - 12) + ' more' : r.join(', ');
+    };
+    if(o.stored.length) items.push({ kind: 'other', desc: 'Warehouse storage, ' + label + ': ' + o.stored.length + ' pallet' + (o.stored.length === 1 ? '' : 's') + ' (' + refs(o.stored) + ')',
+      qty: o.stored.length, unitPrice: num(o.rate.storage), unit: 'pallet-month' });
+    if(o.pulls.length) items.push({ kind: 'other', desc: 'Pallet pulls, ' + label + ': ' + o.pulls.length + ' pallet' + (o.pulls.length === 1 ? '' : 's') + ' (' + refs(o.pulls) + ')',
+      qty: o.pulls.length, unitPrice: num(o.rate.pull), unit: 'pallet' });
+    return items;
+  }
+
+  async function billInvoice(cid){
+    var o = billFor(cid), ym = state.billMonth;
+    if(!o.total){ alert('Nothing to invoice for ' + o.name + ' in ' + monthLabel(ym) + '.'); return; }
+    if(state.billData.stmts[cid] && !confirm(o.name + ' is already marked billed for ' + monthLabel(ym) + '. Create another invoice anyway?')) return;
+    if(typeof window.glInvoiceFromQuote !== 'function'){ alert('Invoice builder not ready. Reload and try again.'); return; }
+    await window.glInvoiceFromQuote({ clientId: cid, quoteNumber: '', items: billLines(o, ym) });
+    audit('wh_billing_invoice_opened', o.name, { month: ym, total: o.total });
+  }
+
+  function billMark(cid){
+    var o = billFor(cid), ym = state.billMonth, st = state.billData.stmts[cid];
+    var ov = overlay('wh-billmark', '✓ MARK BILLED · ' + o.name);
+    ovBody(ov, '<div style="font-size:12.5px;color:#dfe7f1;line-height:1.7;margin-bottom:10px">' + esc(monthLabel(ym)) + ': ' + fmtInt(o.stored.length) + ' pallets stored (' + esc(money(o.storageAmt)) + '), ' +
+        fmtInt(o.pulls.length) + ' pulls (' + esc(money(o.pullAmt)) + '). Total <b>' + esc(money(o.total)) + '</b>.</div>' +
+      field('Invoice # or reference', '<input id="wbm-ref" maxlength="80" value="' + esc((st && st.invoice_ref) || '') + '" style="' + INP + '">', true) +
+      '<div style="display:flex;gap:10px;margin-top:14px"><button type="button" class="cbtn" data-wh="closeOverlay" style="flex:1;justify-content:center">Cancel</button>' +
+      '<button type="button" class="cbtn grn" id="wbm-save" style="flex:1;justify-content:center">Save</button></div>');
+    ov.querySelector('#wbm-save').addEventListener('click', async function(){
+      var btn = this; btn.disabled = true; ovMsg(ov, '', 'Saving…');
+      var row = { client_id: cid, period: ym + '-01', storage_pallets: o.stored.length, storage_rate: num(o.rate.storage), pulls: o.pulls.length,
+        pull_rate: num(o.rate.pull), amount: o.total, invoice_ref: val(ov, '#wbm-ref') || null,
+        detail: { stored: o.stored.map(function(x){ return tagRef(x); }), pulled: o.pulls.map(function(x){ return tagRef(x) + ' ' + x.day; }) } };
+      try {
+        if(st){ row.billed_at = new Date().toISOString(); checked(await sb().from('wh_billing_statements').update(row).eq('id', st.id).select('id'), 1, 'Update'); }
+        else checked(await sb().from('wh_billing_statements').insert(row).select('id'), 1, 'Mark billed');
+        audit('wh_billing_marked', o.name, { month: ym, amount: o.total, ref: row.invoice_ref });
+        ov.remove(); renderTab();
+      } catch(e){ btn.disabled = false; ovMsg(ov, 'err', 'Save failed: ' + errMsg(e)); }
+    });
+  }
+
+  async function billUnmark(cid){
+    var st = state.billData && state.billData.stmts[cid];
+    if(!st || !confirm('Undo "billed" for ' + billFor(cid).name + ', ' + monthLabel(state.billMonth) + '? This does not touch any invoice.')) return;
+    try {
+      checked(await sb().from('wh_billing_statements').delete().eq('id', st.id).select('id'), 1, 'Undo');
+      audit('wh_billing_unmarked', billFor(cid).name, { month: state.billMonth });
+      renderTab();
+    } catch(e){ alert('Undo failed: ' + errMsg(e)); }
+  }
+
+  function billCsv(){
+    var d = state.billData; if(!d) return;
+    var ym = state.billMonth, out = [['Month','Client','Kind','Pallet','CONRI #','SKU','Description','In / pulled','Out','Rate']];
+    d.bills.forEach(function(o){
+      o.stored.forEach(function(x){ out.push([ym, o.name, 'storage', x.pallet_tag, x.conri_pallet_id || '', x.sku, x.description, x.in, x.out || '', o.billable ? o.rate.storage : 0]); });
+      o.pulls.forEach(function(x){ out.push([ym, o.name, 'pull', x.pallet_tag, x.conri_pallet_id || '', x.sku, x.description, x.day, '', o.billable ? o.rate.pull : 0]); });
+    });
+    download('warehouse_billing_' + ym + '.csv', out.map(function(r){ return r.map(csvCell).join(','); }).join('\r\n') + '\r\n', 'text/csv');
+  }
+
+  async function billRates(){
+    var d = state.billData || {}, r = d.rates || await loadRates();
+    var ov = overlay('wh-rates', '✏️ WAREHOUSE RATES', 640);
+    var rowsHtml = function(){
+      return Object.keys(r.per).map(function(cid){
+        return '<tr><td>' + esc(clientName(cid) || cid) + '</td><td>' + esc(money(r.per[cid].storage)) + '</td><td>' + esc(money(r.per[cid].pull)) + '</td>' +
+          '<td><button type="button" class="cbtn red" style="padding:3px 9px;font-size:11px" data-wh="billRateDrop" data-arg="' + esc(r.per[cid].id) + '">Remove</button></td></tr>';
+      }).join('');
+    };
+    ovBody(ov, '<div style="font-size:12px;color:#9aa7bd;margin-bottom:10px">The default applies to every client without its own rate. Changing a rate changes any month not yet marked billed.</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;align-items:end">' +
+        field('Rates for', '<select id="wr-client" style="' + INP + '"><option value="">Default (all clients)</option>' +
+          state.clients.map(function(c){ return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>'; }).join('') + '</select>') +
+        field('Storage $ / pallet / month', '<input id="wr-st" type="number" min="0" step="0.01" value="' + esc(r.def.storage) + '" style="' + INP + '">') +
+        field('Pull $ / pallet', '<input id="wr-pu" type="number" min="0" step="0.01" value="' + esc(r.def.pull) + '" style="' + INP + '">') +
+      '</div>' +
+      (Object.keys(r.per).length ? '<div style="font-size:11px;color:#9aa7bd;margin:12px 0 6px;letter-spacing:1px">CLIENT RATES</div><table class="ctbl"><tr><th>Client</th><th>Storage</th><th>Pull</th><th></th></tr>' + rowsHtml() + '</table>' : '') +
+      '<div style="display:flex;gap:10px;margin-top:14px"><button type="button" class="cbtn" data-wh="closeOverlay" style="flex:1;justify-content:center">Close</button>' +
+      '<button type="button" class="cbtn pri" id="wr-save" style="flex:1;justify-content:center">Save rate</button></div>');
+    ov.querySelector('#wr-client').addEventListener('change', function(){
+      var v = this.value ? (r.per[this.value] || r.def) : r.def;
+      ov.querySelector('#wr-st').value = v.storage; ov.querySelector('#wr-pu').value = v.pull;
+    });
+    ov.querySelector('#wr-save').addEventListener('click', async function(){
+      var btn = this, cid = val(ov, '#wr-client') || null, stv = Number(val(ov, '#wr-st')), puv = Number(val(ov, '#wr-pu'));
+      if(!(stv >= 0) || !(puv >= 0) || val(ov, '#wr-st') === '' || val(ov, '#wr-pu') === ''){ ovMsg(ov, 'err', 'Enter both rates (0 or more).'); return; }
+      btn.disabled = true; ovMsg(ov, '', 'Saving…');
+      var cur = cid ? r.per[cid] : (r.def.id ? r.def : null);
+      var patch = { storage_per_pallet_month: Math.round(stv * 100) / 100, pull_per_pallet: Math.round(puv * 100) / 100 };
+      try {
+        if(cur && cur.id) checked(await sb().from('wh_billing_rates').update(patch).eq('id', cur.id).select('id'), 1, 'Save rate');
+        else checked(await sb().from('wh_billing_rates').insert(Object.assign({ client_id: cid }, patch)).select('id'), 1, 'Save rate');
+        audit('wh_billing_rate', cid ? clientName(cid) : 'default', patch);
+        ov.remove(); renderTab();
+      } catch(e){ btn.disabled = false; ovMsg(ov, 'err', 'Save failed: ' + errMsg(e)); }
+    });
+  }
+
+  async function billRateDrop(id){
+    if(!confirm('Remove this client\'s own rate? They go back to the default.')) return;
+    try {
+      checked(await sb().from('wh_billing_rates').delete().eq('id', id).select('id'), 1, 'Remove rate');
+      var ov = document.getElementById('wh-rates'); if(ov) ov.remove();
+      renderTab();
+    } catch(e){ alert('Remove failed: ' + errMsg(e)); }
+  }
+
+  // ════════════════════════════════════════════════════════════
   // Actions (module-private allowlist) + delegated listener
   // ════════════════════════════════════════════════════════════
   var ACTIONS = {
@@ -2175,6 +2799,15 @@
     completeTransfer: function(a){ return completeTransfer(a); },
     cancelTransfer: function(a){ return cancelTransfer(a); },
     editPalletNote: function(a, a2){ return editPalletNote(a, a2); },
+    splitPallet: function(a, a2){ return splitPallet(a, a2); },
+    conriReceipt: function(a){ return conriReceipt(a); },
+    billDetail: function(a){ var r = document.getElementById('wb-det-' + a); if(r) r.style.display = r.style.display === 'none' ? '' : 'none'; },
+    billInvoice: function(a){ return billInvoice(a); },
+    billMark: function(a){ return billMark(a); },
+    billUnmark: function(a){ return billUnmark(a); },
+    billCsv: function(){ return billCsv(); },
+    billRates: function(){ return billRates(); },
+    billRateDrop: function(a){ return billRateDrop(a); },
     removeLine: function(a, a2){ if(confirm('Remove this pallet from the transfer?')) return removeLine(a, a2); },
     quickBuild: function(a){ return quickBuild(a); },
     pickPallets: function(a){ return pickPallets(a); },
@@ -2210,7 +2843,8 @@
 
   // Exposed for tests: pure functions only.
   window.glWhInternals = { parseCsv: parseCsv, reconcile: reconcile, skuCsv: skuCsv, allocateFefo: allocateFefo,
-    sortFefo: sortFefo, scheduleEmailText: scheduleEmailText, lineIssues: lineIssues, upcWarning: upcWarning, fmtDate: fmtDate, bolInput: bolInput, bolFromAi: bolFromAi };
+    sortFefo: sortFefo, scheduleEmailText: scheduleEmailText, lineIssues: lineIssues, upcWarning: upcWarning, fmtDate: fmtDate, bolInput: bolInput, bolFromAi: bolFromAi,
+    receiptFromAi: receiptFromAi, matchReceipt: matchReceipt, billMonth: billMonth, billLines: billLines, pullRef: pullRef };
 
   // Render when the page is opened. cNav hooks run after the page is shown.
   function boot(){
