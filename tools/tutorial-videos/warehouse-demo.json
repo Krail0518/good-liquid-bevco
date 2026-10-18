@@ -1,1 +1,291 @@
-{"clients": [{"id": "c-demo", "name": "Demo Beverage Co"}, {"id": "c-sample", "name": "Sample Seltzer Co"}, {"id": "c-example", "name": "Example Kombucha"}], "wh_skus": [{"id": "285ac02b-3d15-47ae-b386-cf0d0ef4c0aa", "pack": "150/cs", "brand": "Pak-it Products", "notes": null, "active": true, "client": null, "upc_sku": "TRAY12SLIM-1800", "client_id": null, "created_at": "2026-10-08T14:07:52.090096+00:00", "updated_at": "2026-10-08T14:40:00.343477+00:00", "description": "12 ct Carrier Tray, Slim Cans", "inventory_type": "packaging", "units_per_case": 150, "last_exported_at": "2026-10-08T14:40:00.343477+00:00", "default_cases_per_pallet": null, "default_pallet_height_in": null, "default_pallet_weight_lbs": null}, {"id": "c0d3c471-b3f9-4872-946a-404654786b12", "pack": "150/cs", "brand": "Pak-it Products", "notes": null, "active": true, "client": null, "upc_sku": "TRAY12-1800", "client_id": null, "created_at": "2026-10-08T14:07:52.090096+00:00", "updated_at": "2026-10-08T14:40:00.343477+00:00", "description": "12 ct Carrier Tray, Standard Cans", "inventory_type": "packaging", "units_per_case": 150, "last_exported_at": "2026-10-08T14:40:00.343477+00:00", "default_cases_per_pallet": null, "default_pallet_height_in": null, "default_pallet_weight_lbs": null}, {"id": "bc7bedd9-73f2-40a6-97d8-e25daa0c96a3", "pack": "150/cs", "brand": "Pak-it Products", "notes": null, "active": true, "client": null, "upc_sku": "TRAY24-SLK-1200", "client_id": null, "created_at": "2026-10-08T14:07:52.090096+00:00", "updated_at": "2026-10-08T14:40:00.343477+00:00", "description": "24 ct Sleek Can Carrier Tray", "inventory_type": "packaging", "units_per_case": 150, "last_exported_at": "2026-10-08T14:40:00.343477+00:00", "default_cases_per_pallet": null, "default_pallet_height_in": null, "default_pallet_weight_lbs": null}, {"id": "cc8b6acd-1040-465d-a5b8-3e17998f99f8", "pack": "150/cs", "brand": "Pak-it Products", "notes": null, "active": true, "client": null, "upc_sku": "TRAY24-600", "client_id": null, "created_at": "2026-10-08T14:07:52.090096+00:00", "updated_at": "2026-10-08T14:40:00.343477+00:00", "description": "24 ct Carrier Tray, Standard Cans", "inventory_type": "packaging", "units_per_case": 150, "last_exported_at": "2026-10-08T14:40:00.343477+00:00", "default_cases_per_pallet": null, "default_pallet_height_in": null, "default_pallet_weight_lbs": null}, {"id": "s-demo-lemon", "client_id": "c-demo", "upc_sku": "012345678905", "description": "Demo Lemon Fizz 12oz", "brand": "Demo Beverage Co", "pack": "12 count tray", "units_per_case": 12, "default_cases_per_pallet": 180, "default_pallet_weight_lbs": 1900, "default_pallet_height_in": 60, "inventory_type": "finished_good", "active": true, "notes": null, "last_exported_at": "2026-09-20T12:00:00Z"}], "wh_lots": [{"id": "l-demo-1", "sku_id": "s-demo-lemon", "lot_number": "DL0915A", "production_date": "2026-09-15", "best_by_date": "2027-09-15", "qa_status": "released", "notes": null}], "wh_pallets": [{"id": "b0519c53-f6dd-48c1-9646-26487241bd63", "cases": 2, "notes": null, "lot_id": null, "sku_id": "285ac02b-3d15-47ae-b386-cf0d0ef4c0aa", "status": "stored", "location": "conri", "height_in": null, "created_at": "2026-10-08T14:07:56.816193+00:00", "pallet_tag": "GL-P-000026", "updated_at": "2026-10-08T14:40:21.445637+00:00", "weight_lbs": null, "received_at_conri": "2026-10-08T14:00:00+00:00", "expected_pull_date": null, "current_transfer_id": null}, {"id": "f4aad119-9972-40c2-928e-a4ec46eff9a1", "cases": 2, "notes": null, "lot_id": null, "sku_id": "c0d3c471-b3f9-4872-946a-404654786b12", "status": "stored", "location": "conri", "height_in": null, "created_at": "2026-10-08T14:07:56.816193+00:00", "pallet_tag": "GL-P-000027", "updated_at": "2026-10-08T14:40:21.445637+00:00", "weight_lbs": null, "received_at_conri": "2026-10-08T14:00:00+00:00", "expected_pull_date": null, "current_transfer_id": null}, {"id": "88b4e7c1-d8f0-4f46-8306-52bfb6353de3", "cases": 1, "notes": null, "lot_id": null, "sku_id": "bc7bedd9-73f2-40a6-97d8-e25daa0c96a3", "status": "stored", "location": "conri", "height_in": null, "created_at": "2026-10-08T14:07:56.816193+00:00", "pallet_tag": "GL-P-000028", "updated_at": "2026-10-08T14:40:21.445637+00:00", "weight_lbs": null, "received_at_conri": "2026-10-08T14:00:00+00:00", "expected_pull_date": null, "current_transfer_id": null}, {"id": "980d5c5c-bf29-45d5-9968-0aafd67d39b3", "cases": 1, "notes": null, "lot_id": null, "sku_id": "cc8b6acd-1040-465d-a5b8-3e17998f99f8", "status": "stored", "location": "conri", "height_in": null, "created_at": "2026-10-08T14:07:56.816193+00:00", "pallet_tag": "GL-P-000029", "updated_at": "2026-10-08T14:40:21.445637+00:00", "weight_lbs": null, "received_at_conri": "2026-10-08T14:00:00+00:00", "expected_pull_date": null, "current_transfer_id": null}, {"id": "p-dl-1", "pallet_tag": "GL-P-000901", "sku_id": "s-demo-lemon", "lot_id": "l-demo-1", "cases": 180, "weight_lbs": 1900, "height_in": 60, "location": "conri", "status": "stored", "current_transfer_id": null, "received_at_conri": "2026-09-22T14:00:00Z", "expected_pull_date": null, "notes": null}, {"id": "p-dl-2", "pallet_tag": "GL-P-000902", "sku_id": "s-demo-lemon", "lot_id": "l-demo-1", "cases": 180, "weight_lbs": 1900, "height_in": 60, "location": "conri", "status": "stored", "current_transfer_id": null, "received_at_conri": "2026-09-22T14:00:00Z", "expected_pull_date": null, "notes": null}, {"id": "p-dl-3", "pallet_tag": "GL-P-000903", "sku_id": "s-demo-lemon", "lot_id": "l-demo-1", "cases": 180, "weight_lbs": 1900, "height_in": 60, "location": "conri", "status": "stored", "current_transfer_id": null, "received_at_conri": "2026-09-22T14:00:00Z", "expected_pull_date": null, "notes": null}], "wh_transfers": [{"id": "80ca64e6-e40f-4dff-8593-13a172714100", "type": "to_conri_packaging", "notes": "Pak-it carrier trays", "client": null, "status": "completed", "carrier": null, "ship_to": null, "client_id": null, "created_at": "2026-10-08T14:07:52.090096+00:00", "created_by": null, "exceptions": null, "updated_at": "2026-10-08T14:40:21.445637+00:00", "received_by": "Paul Nolletti (CONRI)", "released_by": "Mike Krail", "completed_at": "2026-10-08T14:40:12.400705+00:00", "scheduled_at": "2026-10-08T14:00:00+00:00", "transfer_date": "2026-10-08", "cases_received": 6, "signed_doc_path": null, "transfer_number": "GL-TR-20261008-01", "pallets_received": 4, "receipt_condition": "good", "conri_confirmation": null}], "wh_transfer_lines": [{"line_no": 1, "pallet_id": "b0519c53-f6dd-48c1-9646-26487241bd63", "transfer_id": "80ca64e6-e40f-4dff-8593-13a172714100"}, {"line_no": 2, "pallet_id": "f4aad119-9972-40c2-928e-a4ec46eff9a1", "transfer_id": "80ca64e6-e40f-4dff-8593-13a172714100"}, {"line_no": 3, "pallet_id": "88b4e7c1-d8f0-4f46-8306-52bfb6353de3", "transfer_id": "80ca64e6-e40f-4dff-8593-13a172714100"}, {"line_no": 4, "pallet_id": "980d5c5c-bf29-45d5-9968-0aafd67d39b3", "transfer_id": "80ca64e6-e40f-4dff-8593-13a172714100"}], "wh_outbound_orders": [], "wh_movements": []}
+{
+ "clients": [
+  {
+   "id": "c-demo",
+   "name": "Demo Beverage Co"
+  },
+  {
+   "id": "c-sample",
+   "name": "Sample Seltzer Co"
+  },
+  {
+   "id": "c-example",
+   "name": "Example Kombucha"
+  },
+  {
+   "id": "c-canning",
+   "name": "Demo Canning Co"
+  }
+ ],
+ "wh_skus": [
+  {
+   "id": "285ac02b-3d15-47ae-b386-cf0d0ef4c0aa",
+   "pack": "150/cs",
+   "brand": "Pak-it Products",
+   "notes": null,
+   "active": true,
+   "client": null,
+   "upc_sku": "TRAY12SLIM-1800",
+   "client_id": "c-canning",
+   "created_at": "2026-10-08T14:07:52.090096+00:00",
+   "updated_at": "2026-10-08T14:40:00.343477+00:00",
+   "description": "12 ct Carrier Tray, Slim Cans",
+   "inventory_type": "packaging",
+   "units_per_case": 150,
+   "last_exported_at": "2026-10-08T14:40:00.343477+00:00",
+   "default_cases_per_pallet": null,
+   "default_pallet_height_in": null,
+   "default_pallet_weight_lbs": null
+  },
+  {
+   "id": "c0d3c471-b3f9-4872-946a-404654786b12",
+   "pack": "150/cs",
+   "brand": "Pak-it Products",
+   "notes": null,
+   "active": true,
+   "client": null,
+   "upc_sku": "TRAY12-1800",
+   "client_id": "c-canning",
+   "created_at": "2026-10-08T14:07:52.090096+00:00",
+   "updated_at": "2026-10-08T14:40:00.343477+00:00",
+   "description": "12 ct Carrier Tray, Standard Cans",
+   "inventory_type": "packaging",
+   "units_per_case": 150,
+   "last_exported_at": "2026-10-08T14:40:00.343477+00:00",
+   "default_cases_per_pallet": null,
+   "default_pallet_height_in": null,
+   "default_pallet_weight_lbs": null
+  },
+  {
+   "id": "bc7bedd9-73f2-40a6-97d8-e25daa0c96a3",
+   "pack": "150/cs",
+   "brand": "Pak-it Products",
+   "notes": null,
+   "active": true,
+   "client": null,
+   "upc_sku": "TRAY24-SLK-1200",
+   "client_id": "c-canning",
+   "created_at": "2026-10-08T14:07:52.090096+00:00",
+   "updated_at": "2026-10-08T14:40:00.343477+00:00",
+   "description": "24 ct Sleek Can Carrier Tray",
+   "inventory_type": "packaging",
+   "units_per_case": 150,
+   "last_exported_at": "2026-10-08T14:40:00.343477+00:00",
+   "default_cases_per_pallet": null,
+   "default_pallet_height_in": null,
+   "default_pallet_weight_lbs": null
+  },
+  {
+   "id": "cc8b6acd-1040-465d-a5b8-3e17998f99f8",
+   "pack": "150/cs",
+   "brand": "Pak-it Products",
+   "notes": null,
+   "active": true,
+   "client": null,
+   "upc_sku": "TRAY24-600",
+   "client_id": null,
+   "created_at": "2026-10-08T14:07:52.090096+00:00",
+   "updated_at": "2026-10-08T14:40:00.343477+00:00",
+   "description": "24 ct Carrier Tray, Standard Cans",
+   "inventory_type": "packaging",
+   "units_per_case": 150,
+   "last_exported_at": "2026-10-08T14:40:00.343477+00:00",
+   "default_cases_per_pallet": null,
+   "default_pallet_height_in": null,
+   "default_pallet_weight_lbs": null
+  },
+  {
+   "id": "s-demo-lemon",
+   "client_id": "c-demo",
+   "upc_sku": "012345678905",
+   "description": "Demo Lemon Fizz 12oz",
+   "brand": "Demo Beverage Co",
+   "pack": "12 count tray",
+   "units_per_case": 12,
+   "default_cases_per_pallet": 180,
+   "default_pallet_weight_lbs": 1900,
+   "default_pallet_height_in": 60,
+   "inventory_type": "finished_good",
+   "active": true,
+   "notes": null,
+   "last_exported_at": "2026-09-20T12:00:00Z"
+  }
+ ],
+ "wh_lots": [
+  {
+   "id": "l-demo-1",
+   "sku_id": "s-demo-lemon",
+   "lot_number": "DL0915A",
+   "production_date": "2026-09-15",
+   "best_by_date": "2027-09-15",
+   "qa_status": "released",
+   "notes": null
+  }
+ ],
+ "wh_pallets": [
+  {
+   "id": "b0519c53-f6dd-48c1-9646-26487241bd63",
+   "cases": 2,
+   "notes": null,
+   "lot_id": null,
+   "sku_id": "285ac02b-3d15-47ae-b386-cf0d0ef4c0aa",
+   "status": "stored",
+   "location": "conri",
+   "height_in": null,
+   "created_at": "2026-10-08T14:07:56.816193+00:00",
+   "pallet_tag": "GL-P-000026",
+   "updated_at": "2026-10-08T14:40:21.445637+00:00",
+   "weight_lbs": null,
+   "received_at_conri": "2026-10-08T14:00:00+00:00",
+   "expected_pull_date": null,
+   "current_transfer_id": null
+  },
+  {
+   "id": "f4aad119-9972-40c2-928e-a4ec46eff9a1",
+   "cases": 2,
+   "notes": null,
+   "lot_id": null,
+   "sku_id": "c0d3c471-b3f9-4872-946a-404654786b12",
+   "status": "stored",
+   "location": "conri",
+   "height_in": null,
+   "created_at": "2026-10-08T14:07:56.816193+00:00",
+   "pallet_tag": "GL-P-000027",
+   "updated_at": "2026-10-08T14:40:21.445637+00:00",
+   "weight_lbs": null,
+   "received_at_conri": "2026-10-08T14:00:00+00:00",
+   "expected_pull_date": null,
+   "current_transfer_id": null
+  },
+  {
+   "id": "88b4e7c1-d8f0-4f46-8306-52bfb6353de3",
+   "cases": 1,
+   "notes": null,
+   "lot_id": null,
+   "sku_id": "bc7bedd9-73f2-40a6-97d8-e25daa0c96a3",
+   "status": "stored",
+   "location": "conri",
+   "height_in": null,
+   "created_at": "2026-10-08T14:07:56.816193+00:00",
+   "pallet_tag": "GL-P-000028",
+   "updated_at": "2026-10-08T14:40:21.445637+00:00",
+   "weight_lbs": null,
+   "received_at_conri": "2026-10-08T14:00:00+00:00",
+   "expected_pull_date": null,
+   "current_transfer_id": null
+  },
+  {
+   "id": "980d5c5c-bf29-45d5-9968-0aafd67d39b3",
+   "cases": 1,
+   "notes": null,
+   "lot_id": null,
+   "sku_id": "cc8b6acd-1040-465d-a5b8-3e17998f99f8",
+   "status": "stored",
+   "location": "conri",
+   "height_in": null,
+   "created_at": "2026-10-08T14:07:56.816193+00:00",
+   "pallet_tag": "GL-P-000029",
+   "updated_at": "2026-10-08T14:40:21.445637+00:00",
+   "weight_lbs": null,
+   "received_at_conri": "2026-10-08T14:00:00+00:00",
+   "expected_pull_date": null,
+   "current_transfer_id": null
+  },
+  {
+   "id": "p-dl-1",
+   "pallet_tag": "GL-P-000901",
+   "sku_id": "s-demo-lemon",
+   "lot_id": "l-demo-1",
+   "cases": 180,
+   "weight_lbs": 1900,
+   "height_in": 60,
+   "location": "conri",
+   "status": "stored",
+   "current_transfer_id": null,
+   "received_at_conri": "2026-09-22T14:00:00Z",
+   "expected_pull_date": null,
+   "notes": null
+  },
+  {
+   "id": "p-dl-2",
+   "pallet_tag": "GL-P-000902",
+   "sku_id": "s-demo-lemon",
+   "lot_id": "l-demo-1",
+   "cases": 180,
+   "weight_lbs": 1900,
+   "height_in": 60,
+   "location": "conri",
+   "status": "stored",
+   "current_transfer_id": null,
+   "received_at_conri": "2026-09-22T14:00:00Z",
+   "expected_pull_date": null,
+   "notes": null
+  },
+  {
+   "id": "p-dl-3",
+   "pallet_tag": "GL-P-000903",
+   "sku_id": "s-demo-lemon",
+   "lot_id": "l-demo-1",
+   "cases": 180,
+   "weight_lbs": 1900,
+   "height_in": 60,
+   "location": "conri",
+   "status": "stored",
+   "current_transfer_id": null,
+   "received_at_conri": "2026-09-22T14:00:00Z",
+   "expected_pull_date": null,
+   "notes": null
+  }
+ ],
+ "wh_transfers": [
+  {
+   "id": "80ca64e6-e40f-4dff-8593-13a172714100",
+   "type": "to_conri_packaging",
+   "notes": "Pak-it carrier trays",
+   "client": null,
+   "status": "completed",
+   "carrier": null,
+   "ship_to": null,
+   "client_id": "c-canning",
+   "created_at": "2026-10-08T14:07:52.090096+00:00",
+   "created_by": null,
+   "exceptions": null,
+   "updated_at": "2026-10-08T14:40:21.445637+00:00",
+   "received_by": "Paul Nolletti (CONRI)",
+   "released_by": "Mike Krail",
+   "completed_at": "2026-10-08T14:40:12.400705+00:00",
+   "scheduled_at": "2026-10-08T14:00:00+00:00",
+   "transfer_date": "2026-10-08",
+   "cases_received": 6,
+   "signed_doc_path": null,
+   "transfer_number": "GL-TR-20261008-01",
+   "pallets_received": 4,
+   "receipt_condition": "good",
+   "conri_confirmation": null
+  }
+ ],
+ "wh_transfer_lines": [
+  {
+   "line_no": 1,
+   "pallet_id": "b0519c53-f6dd-48c1-9646-26487241bd63",
+   "transfer_id": "80ca64e6-e40f-4dff-8593-13a172714100"
+  },
+  {
+   "line_no": 2,
+   "pallet_id": "f4aad119-9972-40c2-928e-a4ec46eff9a1",
+   "transfer_id": "80ca64e6-e40f-4dff-8593-13a172714100"
+  },
+  {
+   "line_no": 3,
+   "pallet_id": "88b4e7c1-d8f0-4f46-8306-52bfb6353de3",
+   "transfer_id": "80ca64e6-e40f-4dff-8593-13a172714100"
+  },
+  {
+   "line_no": 4,
+   "pallet_id": "980d5c5c-bf29-45d5-9968-0aafd67d39b3",
+   "transfer_id": "80ca64e6-e40f-4dff-8593-13a172714100"
+  }
+ ],
+ "wh_outbound_orders": [],
+ "wh_movements": []
+}
