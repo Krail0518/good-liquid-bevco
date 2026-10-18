@@ -5,9 +5,10 @@
    Palmetto facility, under ONE Good Liquid account:
      * EMPTY CANS (overflow) — 1-2 days, floor stacked, back for the run
      * FINISHED GOODS — after QA release, wait for a carrier pickup
-     * PACKAGING — Good Liquid's own supplies (carrier trays, lids,
-       cartons). These belong to no client: client_id is NULL on the SKU
-       and on its transfers (20261008140620_warehouse_packaging.sql).
+     * PACKAGING — carrier trays, lids, cartons. Owned by a client (for
+       example Atlas Canning's Pak-it trays) or by Good Liquid itself, which
+       is client_id NULL on the SKU and its transfers
+       (20261018223546_warehouse_packaging_any_owner.sql).
    This page is the system of record for where every pallet is and
    produces the paperwork for every move.
 
@@ -65,7 +66,7 @@
   var TYPES = {
     to_conri_finished: 'To CONRI: finished goods',
     to_conri_overflow: 'To CONRI: empty can overflow',
-    to_conri_packaging: 'To CONRI: Good Liquid packaging',
+    to_conri_packaging: 'To CONRI: packaging (trays, lids, cartons)',
     pull_back:         'Pull back from CONRI',
     outbound_pickup:   'Outbound carrier pickup'
   };
@@ -504,9 +505,8 @@
     var typeSel = ov.querySelector('#wnt-type'), ownerSel = ov.querySelector('#wnt-client');
     var toggle = function(){
       ov.querySelector('#wnt-outbound').style.display = typeSel.value === 'outbound_pickup' ? 'grid' : 'none';
-      // Packaging is always Good Liquid's own; nothing to choose.
-      if(typeSel.value === 'to_conri_packaging') ownerSel.value = GL_OWNER;
-      ownerSel.disabled = typeSel.value === 'to_conri_packaging';
+      // Packaging can be a client's or Good Liquid's own: the owner is chosen,
+      // never assumed (Atlas Canning's trays were once labelled Good Liquid).
     };
     typeSel.addEventListener('change', toggle); toggle();
     ov.querySelector('#wnt-save').addEventListener('click', async function(){
@@ -1010,7 +1010,7 @@
     });
     sortFefo(list);
     var ov = overlay('wh-pick', '☑ PICK PALLETS · ' + (loc === 'conri' ? 'AT CONRI' : 'AT GOOD LIQUID'), 760);
-    if(!list.length){ ovBody(ov, note('', 'No available pallets for ' + (t.client_id ? 'this client' : 'Good Liquid packaging') + ' ' + (loc === 'conri' ? 'at CONRI.' : 'at Good Liquid.'))); return; }
+    if(!list.length){ ovBody(ov, note('', 'No available pallets for ' + (t.client_id ? 'this client' : 'Good Liquid\'s own packaging') + ' ' + (loc === 'conri' ? 'at CONRI.' : 'at Good Liquid.'))); return; }
     ovBody(ov, '<div style="font-size:12px;color:#9aa7bd;margin-bottom:8px">Sorted FEFO: earliest best by first, then first received.</div>' +
       '<div style="max-height:52vh;overflow:auto"><table class="ctbl"><tr><th></th><th>Tag</th><th>CONRI #</th><th>SKU</th><th>Lot</th><th>Best by</th><th style="text-align:right">Cases</th><th>Received</th><th>Note</th></tr>' +
       list.map(function(p){
@@ -1149,7 +1149,7 @@
     var verb = {
       to_conri_finished: 'Inbound to CONRI: finished goods (rack, FEFO by best by date)',
       to_conri_overflow: 'Inbound to CONRI: empty can overflow (floor stack; returns for production)',
-      to_conri_packaging: 'Inbound to CONRI: Good Liquid packaging supplies',
+      to_conri_packaging: 'Inbound to CONRI: packaging supplies',
       pull_back: 'Pull back to Good Liquid',
       outbound_pickup: 'Outbound carrier pickup from CONRI'
     }[t.type];
@@ -1275,7 +1275,7 @@
     }
     var ov = overlay('wh-sku', id ? 'EDIT SKU' : '+ NEW SKU', 620);
     ovBody(ov, '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
-        field('Owner *', '<select id="ws-client" style="' + INP + '"' + (id ? ' disabled' : '') + '>' +
+        field('Owner * (who the pallets belong to, and who is billed for storage)', '<select id="ws-client" style="' + INP + '">' +
           clientOptions(id ? (s.client_id || GL_OWNER) : (preset && preset.owner) || state.skuClient, null, true) + '</select>', true) +
         field('UPC / SKU *', '<input id="ws-upc" value="' + esc(s.upc_sku || '') + '" style="' + INP + '">') +
         field('Inventory type *', '<select id="ws-type" style="' + INP + '">' + Object.keys(TYPE_LABEL).map(function(k){
@@ -1295,21 +1295,13 @@
     var upcEl = ov.querySelector('#ws-upc');
     var hint = function(){ var w = upcWarning(upcEl.value, ov.querySelector('#ws-type').value); ov.querySelector('#ws-hint').innerHTML = w ? note('warn', w) : ''; };
     upcEl.addEventListener('input', hint); ov.querySelector('#ws-type').addEventListener('change', hint); hint();
-    // Packaging and Good Liquid ownership go together (wh_skus_packaging_owner_check),
-    // so picking one sets the other on a new SKU.
+    // Good Liquid only stores its own packaging (wh_skus_gl_owner_packaging_check),
+    // so choosing Good Liquid sets the type. A client can own any type.
     var ownSel = ov.querySelector('#ws-client'), typeSel = ov.querySelector('#ws-type');
-    if(!id){
-      if(preset && preset.type) typeSel.value = preset.type;
-      if(ownSel.value === GL_OWNER) typeSel.value = 'packaging';
-      ownSel.addEventListener('change', function(){
-        if(ownSel.value === GL_OWNER) typeSel.value = 'packaging';
-        else if(typeSel.value === 'packaging') typeSel.value = 'finished_good';
-      });
-      typeSel.addEventListener('change', function(){
-        if(typeSel.value === 'packaging') ownSel.value = GL_OWNER;
-        else if(ownSel.value === GL_OWNER) ownSel.value = '';
-      });
-    }
+    if(!id && preset && preset.type) typeSel.value = preset.type;
+    if(ownSel.value === GL_OWNER) typeSel.value = 'packaging';
+    ownSel.addEventListener('change', function(){ if(ownSel.value === GL_OWNER) typeSel.value = 'packaging'; });
+    typeSel.addEventListener('change', function(){ if(typeSel.value !== 'packaging' && ownSel.value === GL_OWNER) ownSel.value = ''; });
     ov.querySelector('#ws-save').addEventListener('click', async function(){
       var btn = this;
       var n = function(sel){ var v = val(ov, sel); return v === '' ? null : num(v); };
@@ -1320,13 +1312,18 @@
         default_pallet_weight_lbs: n('#ws-w'), default_pallet_height_in: n('#ws-h'),
         inventory_type: val(ov,'#ws-type'), notes: val(ov,'#ws-notes') || null
       };
-      var owner = id ? (s.client_id || GL_OWNER) : val(ov,'#ws-client');
-      if(!id) row.client_id = ownerId(owner);
-      else row.active = val(ov,'#ws-active') !== '0';
+      var owner = val(ov,'#ws-client');
       if(!owner){ ovMsg(ov,'err','Choose the owner.'); return; }
-      if((owner === GL_OWNER) !== (row.inventory_type === 'packaging')){
-        ovMsg(ov,'err', owner === GL_OWNER ? 'Good Liquid\'s own SKUs are packaging.' : 'Packaging belongs to Good Liquid, not a client.'); return;
+      row.client_id = ownerId(owner);
+      if(id) row.active = val(ov,'#ws-active') !== '0';
+      if(owner === GL_OWNER && row.inventory_type !== 'packaging'){
+        ovMsg(ov,'err','Good Liquid\'s own SKUs are packaging. Pick the client who owns this item.'); return;
       }
+      // Changing the owner moves every pallet of this item to the new owner,
+      // and their storage is billed to them from then on.
+      if(id && (row.client_id || null) !== (s.client_id || null) &&
+         !confirm('Change the owner of ' + s.upc_sku + ' to ' + (row.client_id ? clientName(row.client_id) : GL_OWNER_NAME) +
+           '? All its pallets move to the new owner and are billed to them.')) return;
       if(!row.upc_sku || !row.description){ ovMsg(ov,'err','UPC / SKU and description are required.'); return; }
       // A SKU CONRI already has on file and whose keyed fields change must be
       // sent again: clear the stamp so scheduling asks for a fresh export.
@@ -1440,10 +1437,11 @@
             : '<div style="color:#9aa7bd;font-size:12px">No outbound orders yet.</div>') + '</div>');
   }
 
-  // What can leave CONRI on an outbound order: a client's finished goods and
-  // empty cans. Good Liquid's own packaging has no client and is pulled back
-  // instead (wh_transfers_owner_check requires a client on an outbound pickup).
-  function shippable(s){ return !!(s && s.client_id && (s.inventory_type === 'finished_good' || s.inventory_type === 'empty_can')); }
+  // What can leave CONRI on an outbound order: anything a client owns (their
+  // finished goods, empty cans or packaging). Good Liquid's own packaging has
+  // no client and is pulled back instead (wh_transfers_owner_check requires a
+  // client on an outbound pickup).
+  function shippable(s){ return !!(s && s.client_id && (s.inventory_type === 'finished_good' || s.inventory_type === 'empty_can' || s.inventory_type === 'packaging')); }
   // A finished good ships only from a QA-released lot; empty cans have no lot.
   function canShipPallet(p){
     if(!p.sku || !shippable(p.sku)) return false;
@@ -2080,7 +2078,7 @@
     } else if(t.type === 'to_conri_finished'){
       storage = 'Storage: finished goods, racked, FEFO by best by date';
     } else if(t.type === 'to_conri_packaging'){
-      storage = 'Storage: Good Liquid packaging supplies';
+      storage = 'Storage: packaging supplies';
     } else if(t.type === 'outbound_pickup'){
       storage = 'Pick: FEFO by best by date, then first received';
     } else {
@@ -2171,7 +2169,7 @@
       doc.text('EMPTY CANS  |  FLOOR STACK' + (p.expected_pull_date ? '  |  PULL ' + fmtMD(p.expected_pull_date) : ''), 48, y - 18);
     } else if(s.inventory_type === 'packaging'){
       doc.setFontSize(13); doc.setFont('helvetica','bold');
-      doc.text('PACKAGING SUPPLIES  |  PROPERTY OF GOOD LIQUID BEV CO', 48, y - 18);
+      doc.text(cellText(doc, 'PACKAGING SUPPLIES  |  PROPERTY OF ' + String((s.client && s.client.name) || (t.client && t.client.name) || GL.name).toUpperCase(), 480), 48, y - 18);
     }
 
     // Pallet number

@@ -257,7 +257,7 @@ const server = http.createServer((req, res) => {
   check('transfer list shows the seeded transfer with 7 pallets, 1,400 cases',
     /GL-TR-20260930-01/.test(listRow) && /\b7\b/.test(listRow) && /1,400/.test(listRow), listRow);
   const glRow = await page.evaluate(() => document.querySelector('[data-wh="openTransfer"][data-arg="t-2"]').innerText);
-  check('a packaging transfer lists Good Liquid as the owner', /To CONRI: Good Liquid packaging/.test(glRow) && /Good Liquid \(own packaging\)/.test(glRow), glRow);
+  check('a packaging transfer lists Good Liquid as the owner', /To CONRI: packaging \(trays, lids, cartons\)/.test(glRow) && /Good Liquid \(own packaging\)/.test(glRow), glRow);
   await page.click('[data-wh="openTransfer"][data-arg="t-1"]');
   await page.waitForSelector('[data-wh="printPaperwork"]', { timeout: 5000 });
   const detail = await page.evaluate(() => ({
@@ -493,7 +493,7 @@ const server = http.createServer((req, res) => {
     xss: window.__xss === 1 || !!document.querySelector('#wh-body img'),
   }));
   check('packaging transfer detail names the move and the owner',
-    /To CONRI: Good Liquid packaging · Good Liquid \(own packaging\)/.test(pk.text), pk.text.slice(0, 300));
+    /To CONRI: packaging \(trays, lids, cartons\) · Good Liquid \(own packaging\)/.test(pk.text), pk.text.slice(0, 300));
   check('packaging is inbound: quick build is offered', pk.quick);
   check('a packaging SKU never exported to CONRI blocks scheduling', pk.schedDisabled && /TRAY12SLIM-1800 has never been exported/.test(pk.text));
   check('no UPC-length warning on a packaging item number', !/UPC has \d+ digits/.test(pk.text), pk.text.slice(0, 400));
@@ -506,7 +506,7 @@ const server = http.createServer((req, res) => {
     const phas = (x) => ppdf.raw.indexOf('(' + x) >= 0;
     check('packaging PDF: packing list + 1 label', (ppdf.raw.match(/\/Type \/Page\b/g) || []).length === 2 && ppdf.name === 'GL-TR-20261008-01_paperwork.pdf', ppdf.name);
     check('packaging PDF: owner, move, storage note, item and label banner',
-      phas('Good Liquid \\(own packaging\\)') && phas('To CONRI: Good Liquid packaging') && phas('Storage: Good Liquid packaging supplies') &&
+      phas('Good Liquid \\(own packaging\\)') && phas('To CONRI: packaging \\(trays, lids, cartons\\)') && phas('Storage: packaging supplies') &&
       phas('TRAY12SLIM-1800') && phas('PACKAGING SUPPLIES  |  PROPERTY OF GOOD LIQUID BEV CO') && phas('1/1'));
     if (process.env.WH_PKG_OUT) fs.writeFileSync(process.env.WH_PKG_OUT, Buffer.from(ppdf.raw, 'binary'));
   }
@@ -543,13 +543,25 @@ const server = http.createServer((req, res) => {
   check('the new item form opens for that client, as empty cans', pre.owner === 'c-evil' && pre.type === 'empty_can', JSON.stringify(pre));
   await page.evaluate(() => { document.querySelectorAll('.wh-ov').forEach((o) => o.remove()); });
 
-  // New transfer: packaging forces Good Liquid and sends client_id null.
+  // New transfer: packaging can belong to a client (Atlas Canning's trays)
+  // or to Good Liquid; the owner is chosen, never assumed.
   await page.evaluate(() => { window.__writes = []; });
   await page.click('[data-wh="newTransfer"]');
   await page.waitForSelector('#wnt-type', { timeout: 5000 });
   await page.selectOption('#wnt-type', 'to_conri_packaging');
   const owner = await page.evaluate(() => ({ v: document.getElementById('wnt-client').value, dis: document.getElementById('wnt-client').disabled }));
-  check('choosing a packaging transfer sets the owner to Good Liquid and locks it', owner.v === '__gl__' && owner.dis, JSON.stringify(owner));
+  check('a packaging transfer does not assume Good Liquid: the owner is open to choose', owner.v === '' && !owner.dis, JSON.stringify(owner));
+  await page.selectOption('#wnt-client', 'c-camo');
+  await page.click('#wnt-save');
+  await page.waitForFunction(() => window.__writes.length > 0, null, { timeout: 5000 });
+  const cpw = await page.evaluate(() => window.__writes[0]);
+  check('a client\'s packaging transfer is inserted with that client', cpw.table === 'wh_transfers' && cpw.payload.type === 'to_conri_packaging' &&
+    cpw.payload.client_id === 'c-camo', JSON.stringify(cpw));
+  await page.evaluate(() => { document.querySelectorAll('.wh-ov').forEach((o) => o.remove()); window.__writes = []; });
+  await page.click('[data-wh="newTransfer"]');
+  await page.waitForSelector('#wnt-type', { timeout: 5000 });
+  await page.selectOption('#wnt-type', 'to_conri_packaging');
+  await page.selectOption('#wnt-client', '__gl__');
   await page.click('#wnt-save');
   await page.waitForFunction(() => window.__writes.length > 0, null, { timeout: 5000 });
   const ntw = await page.evaluate(() => window.__writes[0]);
@@ -580,6 +592,7 @@ const server = http.createServer((req, res) => {
   const o2 = await page.evaluate(() => document.getElementById('ws-client').value);
   check('choosing a client type clears the Good Liquid owner', o2 === '', o2);
   await page.selectOption('#ws-type', 'packaging');
+  await page.selectOption('#ws-client', '__gl__');
   await page.fill('#ws-upc', 'TRAY24-600');
   await page.fill('#ws-desc', '24 ct Carrier Tray, Standard Cans');
   await page.click('#ws-save');
@@ -587,6 +600,21 @@ const server = http.createServer((req, res) => {
   const nsw = await page.evaluate(() => window.__writes[0]);
   check('the packaging SKU is inserted with client_id null', nsw.table === 'wh_skus' && nsw.op === 'insert' &&
     nsw.payload.client_id === null && nsw.payload.inventory_type === 'packaging', JSON.stringify(nsw));
+
+  // Change the owner of an existing item: Good Liquid's trays are really a
+  // client's (Atlas Canning). The owner box is open on edit and the update
+  // carries the new client.
+  await page.evaluate(() => { document.querySelectorAll('.wh-ov').forEach((o) => o.remove()); window.__writes = []; });
+  await page.click('[data-wh="editSku"][data-arg="s-tray"]');
+  await page.waitForSelector('#ws-client', { timeout: 5000 });
+  const ed = await page.evaluate(() => ({ v: document.getElementById('ws-client').value, dis: document.getElementById('ws-client').disabled }));
+  check('editing an item shows its owner and lets you change it', ed.v === '__gl__' && !ed.dis, JSON.stringify(ed));
+  await page.selectOption('#ws-client', 'c-camo');
+  await page.click('#ws-save');
+  await page.waitForFunction(() => window.__writes.length > 0, null, { timeout: 5000 });
+  const skuOw = await page.evaluate(() => window.__writes[0]);
+  check('saving moves the item (and so its pallets) to the client, still packaging', skuOw.table === 'wh_skus' && skuOw.op === 'update' &&
+    skuOw.payload.client_id === 'c-camo' && skuOw.payload.inventory_type === 'packaging' && JSON.stringify(skuOw.filters) === JSON.stringify([['id', 's-tray']]), JSON.stringify(skuOw));
 
   const pcsv = await page.evaluate(() => window.glWhInternals.skuCsv([{ upc_sku: 'TRAY24-600', description: '24 ct tray', client: null,
     units_per_case: 150, inventory_type: 'packaging' }]).split('\r\n')[1]);
