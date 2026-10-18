@@ -1,0 +1,63 @@
+# Voice samples for the training-video narrator.
+#
+# The tutorial videos use Piper today, which sounds robotic. Kokoro (open
+# source, Apache-2.0) sounds like a person. This renders the same line in
+# several voices so the owner can pick one before any video is rebuilt.
+# The sandbox that writes this code cannot download models; a runner can.
+#
+# Runs when tools/voice-samples/ changes on a non-main branch, or by hand.
+# It commits the MP3s back to that branch with [skip ci].
+#
+# ROLLBACK: delete this file and tools/voice-samples/.
+
+name: Voice samples
+
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore: [main]
+    paths:
+      - 'tools/voice-samples/samples.py'
+      - '.github/workflows/voice-samples.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  samples:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install ffmpeg, espeak-ng and Kokoro
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg espeak-ng
+          python3 -m pip install --quiet --upgrade pip
+          python3 -m pip install --quiet kokoro-onnx soundfile
+
+      - name: Download the Kokoro model (GitHub release, not HuggingFace)
+        run: |
+          mkdir -p /tmp/kokoro && cd /tmp/kokoro
+          curl -fsSL --retry 3 -o kokoro.onnx https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx
+          curl -fsSL --retry 3 -o voices.bin https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
+          ls -la
+
+      - name: Render the samples
+        run: python3 tools/voice-samples/samples.py /tmp/kokoro/kokoro.onnx /tmp/kokoro/voices.bin
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: voice-samples
+          path: tools/voice-samples/out/
+
+      - name: Commit the samples back to this branch
+        if: github.ref != 'refs/heads/main'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tools/voice-samples/out
+          git diff --cached --quiet && { echo "nothing new"; exit 0; }
+          git commit -m "Voice samples (Kokoro) [skip ci]"
+          git push

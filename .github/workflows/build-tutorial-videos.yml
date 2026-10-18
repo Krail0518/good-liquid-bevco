@@ -31,7 +31,7 @@ on:
   workflow_dispatch:
     inputs:
       targets:
-        description: 'Space-separated keys, or "all" (e.g. "invoices dashboard"). A key is a storyboard in gen-video.cjs or a deck in gen-explainer.cjs — run it with a wrong key and the log prints every valid one.'
+        description: 'Space-separated keys, or "all" (e.g. "invoices dashboard"). A key is a storyboard in gen-video.cjs, a deck in gen-explainer.cjs, or "warehouse" (gen-warehouse.cjs) — run it with a wrong key and the log prints every valid one.'
         required: false
         default: 'all'
       open_pr:
@@ -73,7 +73,7 @@ jobs:
       - name: Install ffmpeg + espeak-ng
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq ffmpeg espeak-ng
+          sudo apt-get install -y -qq ffmpeg espeak-ng poppler-utils fonts-noto-color-emoji
           ffmpeg -version | head -1
           ffprobe -version | head -1
 
@@ -89,13 +89,27 @@ jobs:
           test -f "$GL_PIPER_MODEL" || { echo "voice model missing at $GL_PIPER_MODEL"; ls -R /opt/piper-voices; exit 1; }
           command -v piper >/dev/null || { echo "piper not on PATH after install"; exit 1; }
 
+      # Kokoro, voice 1 (af_heart), chosen by the owner on 2026-10-18 because
+      # Piper sounded robotic. Piper stays installed as the fallback: the
+      # generators use Kokoro whenever GL_KOKORO_MODEL is set.
+      - name: Install Kokoro and its model
+        run: |
+          python3 -m pip install --quiet kokoro-onnx soundfile
+          sudo mkdir -p /opt/kokoro
+          sudo curl -fsSL --retry 3 -o /opt/kokoro/kokoro-v1.0.onnx https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx
+          sudo curl -fsSL --retry 3 -o /opt/kokoro/voices-v1.0.bin https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
+          test -s /opt/kokoro/kokoro-v1.0.onnx && test -s /opt/kokoro/voices-v1.0.bin
+          echo "GL_KOKORO_MODEL=/opt/kokoro/kokoro-v1.0.onnx" >> "$GITHUB_ENV"
+          echo "GL_KOKORO_VOICES=/opt/kokoro/voices-v1.0.bin" >> "$GITHUB_ENV"
+          echo "GL_TTS_VOICE=af_heart" >> "$GITHUB_ENV"
+
       - name: Install Playwright Chromium
         run: |
           # Into a temp dir, NOT the repo — a package.json at the root would
           # change what Vercel does with this static site.
           mkdir -p /tmp/pw && cd /tmp/pw
           npm init -y >/dev/null 2>&1
-          npm install --silent playwright@1.48.0
+          npm install --silent playwright@1.48.0 jspdf@2.5.1
           npx playwright install --with-deps chromium
           echo "NODE_PATH=/tmp/pw/node_modules" >> "$GITHUB_ENV"
 
@@ -124,19 +138,24 @@ jobs:
 
           REQ="$REQUESTED"
           [ -z "$REQ" ] && REQ=all
+          # "warehouse" is its own generator (gen-warehouse.cjs): a long scripted
+          # walkthrough rather than a storyboard.
+          WHS=""
           if [ "$REQ" = "all" ]; then
-            TUT="$TUTORIALS"; EXP="$EXPLAINERS"
+            TUT="$TUTORIALS"; EXP="$EXPLAINERS"; WHS=warehouse
           else
             TUT=""; EXP=""
             for k in $REQ; do
-              if echo " $TUTORIALS " | grep -q " $k "; then TUT="$TUT $k"
+              if [ "$k" = "warehouse" ]; then WHS=warehouse
+              elif echo " $TUTORIALS " | grep -q " $k "; then TUT="$TUT $k"
               elif echo " $EXPLAINERS " | grep -q " $k "; then EXP="$EXP $k"
-              else echo "Unknown key: $k"; echo "Tutorials:  $TUTORIALS"; echo "Explainers: $EXPLAINERS"; exit 1
+              else echo "Unknown key: $k"; echo "Tutorials:  $TUTORIALS"; echo "Explainers: $EXPLAINERS"; echo "Also: warehouse"; exit 1
               fi
             done
           fi
           echo "tutorials=$(echo $TUT)" >> "$GITHUB_OUTPUT"
           echo "explainers=$(echo $EXP)" >> "$GITHUB_OUTPUT"
+          echo "warehouse=$WHS" >> "$GITHUB_OUTPUT"
           echo "Will build tutorials: ${TUT:-none}"
           echo "Will build explainers: ${EXP:-none}"
 
@@ -156,6 +175,11 @@ jobs:
             node gen-explainer.cjs "$k" || FAILED="$FAILED explainer:$k"
             echo "::endgroup::"
           done
+          if [ -n "${{ steps.plan.outputs.warehouse }}" ]; then
+            echo "::group::warehouse training"
+            node gen-warehouse.cjs || FAILED="$FAILED warehouse"
+            echo "::endgroup::"
+          fi
           echo "--- produced ---"
           ls -la "$GL_VIDEO_OUT" || true
           if [ -n "$FAILED" ]; then
