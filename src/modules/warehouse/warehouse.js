@@ -625,7 +625,11 @@
     var s = t.status, draft = s === 'draft';
     var issues = lineIssues(t, lines);
     var totC = 0, totU = 0, totW = 0;
-    lines.forEach(function(p){ totC += num(p.cases); totU += num(p.cases) * num(p.sku && p.sku.units_per_case); totW += num(p.weight_lbs); });
+    lines.concat(splits).forEach(function(p){ totC += num(p.cases); totU += num(p.cases) * num(p.sku && p.sku.units_per_case); totW += num(p.weight_lbs); });
+    // A ✂ split moves cases off a line onto a new record, so what arrived on
+    // this transfer is the lines plus their splits.
+    var nPallets = lines.length + splits.length;
+    var palletsTxt = lines.length + ' pallets' + (splits.length ? ' + ' + splits.length + ' split off' : '');
     var inbound = !!INBOUND[t.type];
 
     var rows = lines.map(function(p, i){
@@ -686,7 +690,8 @@
     var receipt = s === 'completed'
       ? '<div class="ccard" style="margin-top:14px"><div class="ccard-t">Receipt</div><div style="font-size:12.5px;line-height:1.8;color:#dfe7f1">' +
         'Received by <b>' + esc(t.received_by) + '</b> · ' + esc(fmtTs(t.completed_at)) + '<br>' +
-        'Pallets received ' + esc(t.pallets_received) + ' of ' + lines.length + ' · cases received ' + fmtInt(t.cases_received) + ' of ' + fmtInt(totC) + '<br>' +
+        'Pallets received ' + esc(t.pallets_received) + ' of ' + lines.length + ' · cases received ' + fmtInt(t.cases_received) + ' of ' + fmtInt(totC) +
+          (splits.length ? ' (CONRI now holds them as ' + nPallets + ' pallets after ✂ split)' : '') + '<br>' +
         'Condition: ' + esc(t.receipt_condition === 'exceptions' ? 'Exceptions noted' : 'Good') +
         (t.exceptions ? '<br>Exceptions: ' + esc(t.exceptions) : '') + '</div></div>'
       : '';
@@ -707,7 +712,7 @@
         issues.block.map(function(x){ return note('err', '⛔ ' + x); }).join('') +
         issues.warn.map(function(x){ return note('warn', '⚠ ' + x); }).join('') +
       '</div>' +
-      '<div class="ccard"><div class="ccard-t">Pallets · ' + lines.length + ' pallets · ' + fmtInt(totC) + ' cases' + (totU ? ' · ' + fmtInt(totU) + ' units' : '') +
+      '<div class="ccard"><div class="ccard-t">Pallets · ' + esc(palletsTxt) + ' · ' + fmtInt(totC) + ' cases' + (totU ? ' · ' + fmtInt(totU) + ' units' : '') +
         (totW ? ' · ' + fmtInt(totW) + ' lbs' : '') + '</div>' +
         (rows ? '<div style="overflow-x:auto"><table class="ctbl"><tr><th>Pallet</th><th>Tag</th><th>CONRI #</th><th>UPC / SKU</th><th>Description</th><th>Pack</th><th style="text-align:right">Cases</th><th>Lot</th><th>Best by</th><th>Prod.</th><th>Height</th><th>Lbs</th><th>Note</th><th></th></tr>' + rows + '</table></div>'
               : '<div style="color:#9aa7bd;font-size:12px">No pallets yet.</div>') +
