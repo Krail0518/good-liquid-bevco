@@ -105,11 +105,24 @@ function buildMime(
   return out.join('\r\n');
 }
 
+// Encode in 32 KB chunks. Appending one character at a time builds a string
+// with one node per byte, and for a ~6 MB message with an attached deck that
+// exceeded the edge function memory limit (546 "Memory limit exceeded").
+// Each chunk is a multiple of 3 bytes, so the per chunk base64 strings join
+// without padding in the middle.
 function toBase64url(str: string): string {
   const bytes = new TextEncoder().encode(str);
-  let bin = '';
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  const CHUNK = 0x8000 * 3;
+  const parts: string[] = [];
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    const slice = bytes.subarray(i, i + CHUNK);
+    let bin = '';
+    for (let j = 0; j < slice.length; j += 0x8000) {
+      bin += String.fromCharCode(...slice.subarray(j, j + 0x8000));
+    }
+    parts.push(btoa(bin));
+  }
+  return parts.join('').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 function normalizeList(v: unknown): string[] {
