@@ -717,6 +717,25 @@ const server = http.createServer((req, res) => {
   check('saving a CONRI # updates that pallet, cleaned, with its note kept', cw.table === 'wh_pallets' && cw.payload.conri_pallet_id === '9610' &&
     /Back for Camo run/.test(cw.payload.notes) && JSON.stringify(cw.filters) === JSON.stringify([['id', 'q-3']]), JSON.stringify(cw));
 
+  // Owner on one pallet: Good Liquid's tray pallet q-5 really belongs to a
+  // client. The client has no copy of the item yet, so one is made for them
+  // (same item number, stamp kept), and the pallet moves onto it.
+  await page.evaluate(() => { document.querySelectorAll('.wh-ov').forEach((o) => o.remove()); window.__writes = []; });
+  await page.click('[data-wh="editPalletNote"][data-arg="q-5"]');
+  await page.waitForSelector('#wpn-owner', { timeout: 5000 });
+  const po = await page.evaluate(() => document.getElementById('wpn-owner').value);
+  check('the pallet editor shows the pallet\'s owner', po === '__gl__', po);
+  await page.selectOption('#wpn-owner', 'c-evil');
+  await page.click('#wpn-save');
+  await page.waitForFunction(() => window.__writes.some((w) => w.table === 'wh_pallets'), null, { timeout: 5000 });
+  const pow = await page.evaluate(() => window.__writes);
+  const skuIns = pow.find((w) => w.table === 'wh_skus'), palUpd = pow.find((w) => w.table === 'wh_pallets');
+  check('changing one pallet\'s owner makes the item for that client and moves only that pallet onto it',
+    skuIns && skuIns.op === 'insert' && skuIns.payload.client_id === 'c-evil' && skuIns.payload.upc_sku === 'TRAY12SLIM-1800' &&
+    skuIns.payload.inventory_type === 'packaging' && palUpd && palUpd.payload.sku_id === 'wh_skus-new' && palUpd.payload.lot_id === null &&
+    JSON.stringify(palUpd.filters) === JSON.stringify([['id', 'q-5']]), JSON.stringify(pow));
+  await page.waitForSelector('[data-wh="splitPallet"][data-arg="q-5"]', { timeout: 5000 });
+
   // ✂ Split: a 4-case tray pallet at CONRI, 1 case off with its CONRI #.
   await page.evaluate(() => { document.querySelectorAll('.wh-ov').forEach((o) => o.remove()); window.__writes = []; });
   await page.waitForSelector('[data-wh="splitPallet"][data-arg="q-5"]', { timeout: 5000 });
@@ -786,6 +805,8 @@ const server = http.createServer((req, res) => {
   const bt = await page.evaluate(() => ({ text: document.getElementById('wh-body').innerText, xss: window.__xss === 1 || !!document.querySelector('#cpg-warehouse img') }));
   check('Billing tab: per-client totals for the month, total and not-billed-yet', /Camo Energy/.test(bt.text) && /\$75\.00/.test(bt.text) &&
     /TOTAL OCTOBER 2026\s*\$100\.00/.test(bt.text) && /NOT BILLED YET\s*\$100\.00/.test(bt.text), bt.text.slice(0, 600));
+  check('Billing tab shows the math: pulls × the per-pull rate, and the rates per month and per pull',
+    /1 × \$15\.00\s*\$15\.00/.test(bt.text) && /2 × \$30\.00\s*\$60\.00/.test(bt.text) && /\$15\.00 per pull/.test(bt.text), bt.text.slice(0, 900));
   check('Billing tab: Good Liquid\'s own trays are shown as not billed', /not billed \(Good Liquid's own stock\)/.test(bt.text));
   check('Billing tab: a client name with script stays text', !bt.xss && /Evil <img/.test(bt.text));
   await page.click('[data-wh="billInvoice"][data-arg="c-camo"]');
