@@ -28,6 +28,7 @@
     'bkIntakeToSchedule',
     'bkNext',
     'bkPrev',
+    'bookSpecialty',
     'bulkMarkPaid',
     'bulkSendInvoices',
     'calcRefComm',
@@ -353,5 +354,5 @@
     'viewInvoice',
   ]);
 
-  console.log('[GL] 306 actions registered');
+  console.log('[GL] 307 actions registered');
 }());
