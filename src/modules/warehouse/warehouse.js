@@ -745,11 +745,18 @@
     return e && (e.code === '23505' || /conri_pallet_id/.test(errMsg(e))) ? 'CONRI #' + id + ' is already on another pallet. Each CONRI number belongs to one pallet.' : null;
   }
   async function editPalletNote(palletId, transferId){
-    var r = await sb().from('wh_pallets').select('id,pallet_tag,conri_pallet_id,notes').eq('id', palletId).limit(1);
+    await loadClients();
+    var r = await sb().from('wh_pallets').select('id,pallet_tag,conri_pallet_id,notes,current_transfer_id,sku_id,lot_id,' +
+      'sku:wh_skus!wh_pallets_sku_id_fkey(' + SKU_COLS + '),lot:wh_lots!wh_pallets_lot_matches_sku(' + LOT_COLS + ')').eq('id', palletId).limit(1);
     if(r.error || !r.data || !r.data[0]){ alert('Could not load the pallet.'); return; }
-    var p = r.data[0];
+    var p = r.data[0], sk = p.sku || {};
+    var curOwner = sk.client_id || GL_OWNER;
     var ov = overlay('wh-pnote', 'PALLET · ' + p.pallet_tag);
-    ovBody(ov, field('CONRI pallet # (the number on CONRI\'s label and receipt; Paul pulls by it)',
+    ovBody(ov, field('Owner (the customer this pallet belongs to; they are billed for its storage)',
+        '<select id="wpn-owner" style="' + INP + '">' + clientOptions(curOwner, null, true) + '</select>', true) +
+      '<div style="font-size:11px;color:#9aa7bd;margin:4px 0 10px">Changes this pallet only. To move every pallet of ' + esc(sk.upc_sku || 'this item') +
+        ', change the owner on the item in SKU master.</div>' +
+      field('CONRI pallet # (the number on CONRI\'s label and receipt; Paul pulls by it)',
         '<input id="wpn-conri" maxlength="' + CONRI_ID_MAX + '" value="' + esc(p.conri_pallet_id || '') + '" placeholder="e.g. 9608" style="' + INP + '">', true) +
       '<div style="height:10px"></div>' +
       field('Note (shows on the transfer, the dashboard, the pallet label and the email to CONRI)',
@@ -757,16 +764,56 @@
       '<div style="display:flex;gap:10px;margin-top:14px"><button type="button" class="cbtn" data-wh="closeOverlay" style="flex:1;justify-content:center">Cancel</button>' +
       '<button type="button" class="cbtn pri" id="wpn-save" style="flex:1;justify-content:center">Save</button></div>');
     ov.querySelector('#wpn-save').addEventListener('click', async function(){
-      var btn = this; btn.disabled = true; ovMsg(ov,'','Saving…');
+      var btn = this;
       var cid = cleanConriId(ov.querySelector('#wpn-conri').value);
+      var owner = val(ov, '#wpn-owner');
+      if(!owner){ ovMsg(ov,'err','Choose the owner.'); return; }
+      var patch = { notes: cleanNote(ov.querySelector('#wpn-note').value), conri_pallet_id: cid };
+      var moving = owner !== curOwner;
+      if(moving){
+        if(p.current_transfer_id){ ovMsg(ov,'err','This pallet is on an open transfer. Finish or cancel it before changing the owner.'); return; }
+        if(owner === GL_OWNER && sk.inventory_type !== 'packaging'){ ovMsg(ov,'err','Good Liquid only owns packaging. Pick the customer this pallet belongs to.'); return; }
+      }
+      btn.disabled = true; ovMsg(ov,'','Saving…');
       try {
-        var note = cleanNote(ov.querySelector('#wpn-note').value);
-        checked(await sb().from('wh_pallets').update({ notes: note, conri_pallet_id: cid }).eq('id', palletId).select('id'), 1, 'Save');
-        audit('wh_pallet_note', p.pallet_tag, { conri: cid });
+        if(moving){
+          var t = await ownerItem(sk, p.lot, ownerId(owner));
+          patch.sku_id = t.sku_id; patch.lot_id = t.lot_id;
+        }
+        checked(await sb().from('wh_pallets').update(patch).eq('id', palletId).select('id'), 1, 'Save');
+        audit(moving ? 'wh_pallet_owner' : 'wh_pallet_note', p.pallet_tag, moving ? { conri: cid, to: owner === GL_OWNER ? null : owner } : { conri: cid });
         ov.remove();
         if(transferId) reopen(transferId); else renderTab();
       } catch(e){ btn.disabled = false; ovMsg(ov,'err', conriTaken(e, cid) || 'Save failed: ' + errMsg(e)); }
     });
+  }
+
+  // An item belongs to one owner (wh_skus.client_id), so moving one pallet to
+  // another owner moves it onto that owner's copy of the same item, made here
+  // if they have none yet, and onto the same lot under it. The copy keeps the
+  // CONRI export stamp: it is the same physical item CONRI already keys.
+  async function ownerItem(sk, lot, clientId){
+    var q = sb().from('wh_skus').select(SKU_COLS).eq('upc_sku', sk.upc_sku).limit(1);
+    q = clientId ? q.eq('client_id', clientId) : q.is('client_id', null);
+    var r = await q;
+    if(r.error) throw r.error;
+    var target = (r.data || [])[0];
+    if(!target){
+      var copy = {};
+      ['upc_sku','description','brand','pack','units_per_case','default_cases_per_pallet','default_pallet_weight_lbs',
+       'default_pallet_height_in','inventory_type','notes','last_exported_at'].forEach(function(k){ copy[k] = sk[k] == null ? null : sk[k]; });
+      copy.client_id = clientId;
+      target = checked(await sb().from('wh_skus').insert(copy).select('id'), 1, 'Add the item for the new owner')[0];
+    }
+    if(!lot) return { sku_id: target.id, lot_id: null };
+    var lr = await sb().from('wh_lots').select('id').eq('sku_id', target.id).eq('lot_number', lot.lot_number).limit(1);
+    if(lr.error) throw lr.error;
+    var tl = (lr.data || [])[0];
+    if(!tl){
+      tl = checked(await sb().from('wh_lots').insert({ sku_id: target.id, lot_number: lot.lot_number, production_date: lot.production_date || null,
+        best_by_date: lot.best_by_date || null, qa_status: lot.qa_status, notes: lot.notes || null }).select('id'), 1, 'Add the lot for the new owner')[0];
+    }
+    return { sku_id: target.id, lot_id: tl.id };
   }
 
   // CONRI tagged what we recorded as one pallet as several (for example 2
@@ -2609,10 +2656,12 @@
               '<button type="button" class="cbtn red" style="padding:3px 9px;font-size:11px" data-wh="billUnmark" data-arg="' + esc(o.client_id) + '">Undo</button>'
             : '<button type="button" class="cbtn grn" style="padding:3px 9px;font-size:11px" data-wh="billMark" data-arg="' + esc(o.client_id) + '">✓ Mark billed</button>');
       return '<tr><td style="font-weight:700">' + esc(o.name) + '</td>' +
-        '<td style="text-align:right">' + fmtInt(o.stored.length) + '</td><td style="text-align:right">' + esc(money(o.storageAmt)) + '</td>' +
-        '<td style="text-align:right">' + fmtInt(o.pulls.length) + '</td><td style="text-align:right">' + esc(money(o.pullAmt)) + '</td>' +
+        // Show the multiplication: "2 × $15.00 = $30.00" was being read as a
+        // $30 pull fee when it is two pulls at $15.
+        '<td style="text-align:right">' + fmtInt(o.stored.length) + '</td><td style="text-align:right">' + mathCell(o.stored.length, o.rate.storage, o.storageAmt) + '</td>' +
+        '<td style="text-align:right">' + fmtInt(o.pulls.length) + '</td><td style="text-align:right">' + mathCell(o.pulls.length, o.rate.pull, o.pullAmt) + '</td>' +
         '<td style="text-align:right;font-weight:700;color:var(--teal)">' + esc(money(o.total)) + '</td>' +
-        '<td style="font-size:11.5px">' + esc(money(o.rate.storage)) + ' / ' + esc(money(o.rate.pull)) + '</td>' +
+        '<td style="font-size:11.5px">' + esc(money(o.rate.storage)) + ' per pallet per month<br>' + esc(money(o.rate.pull)) + ' per pull</td>' +
         '<td>' + status + '</td><td style="white-space:nowrap">' + act + '</td></tr>' +
         '<tr id="wb-det-' + esc(o.client_id) + '" style="display:none"><td colspan="9">' + billDetailHtml(o) + '</td></tr>';
     }).join('');
@@ -2642,11 +2691,15 @@
       '</div>' +
       '<div class="ccard"><div class="ccard-t">Warehouse billing · ' + esc(monthLabel(ym)) + '</div>' +
         (rows || ownRows ? '<div style="overflow-x:auto"><table class="ctbl"><tr><th>Client</th><th style="text-align:right">Pallets stored</th><th style="text-align:right">Storage</th>' +
-          '<th style="text-align:right">Pulls</th><th style="text-align:right">Pull fees</th><th style="text-align:right">Total</th><th>Rate</th><th>Status</th><th></th></tr>' + rows + ownRows + '</table></div>'
+          '<th style="text-align:right">Pulls</th><th style="text-align:right">Pull fees ($ per pull × pulls)</th><th style="text-align:right">Total</th><th>Rate</th><th>Status</th><th></th></tr>' + rows + ownRows + '</table></div>'
           : '<div style="color:#9aa7bd;font-size:12px">Nothing was at CONRI or pulled in ' + esc(monthLabel(ym)) + '.</div>') +
       '</div>');
     var mi = document.getElementById('wb-month');
     if(mi) mi.addEventListener('change', function(){ if(/^\d{4}-\d{2}$/.test(this.value)){ state.billMonth = this.value; renderTab(); } });
+  }
+
+  function mathCell(n, rate, amt){
+    return (n ? '<div style="font-size:10.5px;color:#9aa7bd">' + fmtInt(n) + ' × ' + esc(money(rate)) + '</div>' : '') + esc(money(amt));
   }
 
   function billDetailHtml(o){
@@ -2698,7 +2751,7 @@
     var o = billFor(cid), ym = state.billMonth, st = state.billData.stmts[cid];
     var ov = overlay('wh-billmark', '✓ MARK BILLED · ' + o.name);
     ovBody(ov, '<div style="font-size:12.5px;color:#dfe7f1;line-height:1.7;margin-bottom:10px">' + esc(monthLabel(ym)) + ': ' + fmtInt(o.stored.length) + ' pallets stored (' + esc(money(o.storageAmt)) + '), ' +
-        fmtInt(o.pulls.length) + ' pulls (' + esc(money(o.pullAmt)) + '). Total <b>' + esc(money(o.total)) + '</b>.</div>' +
+        fmtInt(o.pulls.length) + ' pulls × ' + esc(money(o.rate.pull)) + ' = ' + esc(money(o.pullAmt)) + '. Total <b>' + esc(money(o.total)) + '</b>.</div>' +
       field('Invoice # or reference', '<input id="wbm-ref" maxlength="80" value="' + esc((st && st.invoice_ref) || '') + '" style="' + INP + '">', true) +
       '<div style="display:flex;gap:10px;margin-top:14px"><button type="button" class="cbtn" data-wh="closeOverlay" style="flex:1;justify-content:center">Cancel</button>' +
       '<button type="button" class="cbtn grn" id="wbm-save" style="flex:1;justify-content:center">Save</button></div>');
