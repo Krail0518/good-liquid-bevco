@@ -37,6 +37,7 @@
     <a href="#" data-gl-action="navTo" data-gl-arg1="about" data-gl-prevent>About</a>
     <a href="#" data-gl-action="navTo" data-gl-arg1="services" data-gl-prevent>Services</a>
     <a href="#" data-gl-action="navTo" data-gl-arg1="pricing" data-gl-prevent>Pricing</a>
+    <a href="#" data-gl-action="navTo" data-gl-arg1="specialty" data-gl-prevent>Specialty</a>
     <a href="#" data-gl-action="navTo" data-gl-arg1="certifications" data-gl-prevent>Certifications</a>
     <a href="#" class="nav-cta" data-gl-action="navTo" data-gl-prevent="" data-gl-arg1="contact">Get a Quote</a>
     <a href="?portal=1" style="padding:9px 22px;border:1.5px solid rgba(0,229,192,.45);color:#00e5c0;border-radius:6px;font-size:13px;font-weight:600;transition:all .25s;margin-left:8px;text-decoration:none">🔑 Customer Portal</a>
@@ -116,6 +117,43 @@
     </div><div class="sbgn">04</div></div>
   </div>
   <div class="skew-bot"></div>
+</section>
+
+<section id="specialty">
+  <div class="spx-head rv">
+    <div class="sec-tag">Specialty services</div>
+    <h2 class="sec-h">EXPERT HELP, <em>BY THE PROJECT.</em></h2>
+    <p class="spx-lead">Add focused support where your product launch demands it most. Book any service on its own, with or without a production run.</p>
+  </div>
+  <div class="spx-grid rv">
+    <div class="spx"><div class="sg sg-t">📊</div><h3>IN-DEPTH MARKETING ANALYSIS</h3>
+      <p>Expanded review of economic feasibility, audience, positioning, major competitors and launch strategies.</p>
+      <div class="spx-foot"><div class="spt"><span class="sn">$1,200</span><span class="ss">per project</span></div>
+      <a href="#" class="spx-book" data-gl-action="bookSpecialty" data-gl-prevent="" data-gl-arg1="svc-mkt-deep">Book this →</a></div></div>
+    <div class="spx"><div class="sg sg-b">🎨</div><h3>DESIGN HELP &amp; 3D MOCKUPS</h3>
+      <p>Packaging design assistance and realistic product visuals for presentations and ecommerce.</p>
+      <div class="spx-foot"><div class="spt"><span class="sn">$1,000</span><span class="ss">per project</span></div>
+      <a href="#" class="spx-book" data-gl-action="bookSpecialty" data-gl-prevent="" data-gl-arg1="svc-design">Book this →</a></div></div>
+    <div class="spx"><div class="sg sg-g">🔎</div><h3>BASIC MARKETING ANALYSIS</h3>
+      <p>Focused review of market positioning and the competitive landscape.</p>
+      <div class="spx-foot"><div class="spt"><span class="sn">$750</span><span class="ss">per project</span></div>
+      <a href="#" class="spx-book" data-gl-action="bookSpecialty" data-gl-prevent="" data-gl-arg1="svc-mkt-basic">Book this →</a></div></div>
+    <div class="spx"><div class="sg sg-t">📋</div><h3>REGULATORY REVIEW</h3>
+      <p>Review of container design and label verbiage. Final quote depends on project scope.</p>
+      <div class="spx-foot"><div class="spt"><span class="sn">$500 to $750</span><span class="ss">per SKU</span></div>
+      <a href="#" class="spx-book" data-gl-action="bookSpecialty" data-gl-prevent="" data-gl-arg1="svc-regulatory">Book this →</a></div></div>
+    <div class="spx"><div class="sg sg-b">🤝</div><h3>COMMERCIAL BEVERAGE CONSULTING</h3>
+      <p>One on one technical and commercial guidance for your beverage project, from industry contacts to proprietary information, so you succeed on your first try without costly mistakes.</p>
+      <div class="spx-foot"><div class="spt"><span class="sn">$250</span><span class="ss">per hour</span></div>
+      <a href="#" class="spx-book" data-gl-action="bookSpecialty" data-gl-prevent="" data-gl-arg1="svc-consult-hr">Book this →</a></div></div>
+    <div class="spx spx-terms"><h3>ADDITIONAL PRICING</h3>
+      <ul class="svbuls">
+        <li>Digital print can samples: $250 per SKU</li>
+        <li>Rush project fee: 25% added</li>
+        <li>Travel: expenses plus consulting fees, quoted to the scope of the project</li>
+      </ul>
+      <p class="spx-note">Pick a service and send the form. We confirm the scope and send your invoice before work begins.</p></div>
+  </div>
 </section>
 
 <section id="capabilities" style="background:var(--ink);padding-top:90px;padding-bottom:90px">
@@ -435,6 +473,11 @@
           <input type="checkbox" id="svc-bottle"  value="Bottle filling"><label for="svc-bottle">Bottle filling</label>
           <input type="checkbox" id="svc-copak"   value="Co-packing"><label for="svc-copak">Co-packing</label>
           <input type="checkbox" id="svc-consult" value="Consulting"><label for="svc-consult">Consulting</label>
+          <input type="checkbox" id="svc-mkt-deep"   value="In-Depth Marketing Analysis ($1,200)"><label for="svc-mkt-deep">In-depth marketing analysis</label>
+          <input type="checkbox" id="svc-mkt-basic"  value="Basic Marketing Analysis ($750)"><label for="svc-mkt-basic">Basic marketing analysis</label>
+          <input type="checkbox" id="svc-design"     value="Design Help &amp; 3D Mockups ($1,000)"><label for="svc-design">Design help &amp; 3D mockups</label>
+          <input type="checkbox" id="svc-regulatory" value="Regulatory Review ($500 to $750 per SKU)"><label for="svc-regulatory">Regulatory review</label>
+          <input type="checkbox" id="svc-consult-hr" value="Commercial Beverage Consulting ($250/hr)"><label for="svc-consult-hr">Consulting by the hour</label>
           <input type="checkbox" id="svc-unsure"  value="Not sure yet"><label for="svc-unsure">Not sure yet</label>
         </div>
       </div>
@@ -509,7 +552,7 @@
     <div><div style="font-size:13px;font-weight:700;color:var(--white)">Good Liquid Bev Co</div><div style="font-size:10px;color:var(--muted)">Veteran-owned · Est. 2017 · Palmetto, FL 34221</div></div>
   </div>
   <div class="flinks">
-    <a href="#" data-gl-action="navTo" data-gl-prevent="" data-gl-arg1="about">About</a><a href="#" data-gl-action="navTo" data-gl-prevent="" data-gl-arg1="services">Services</a><a href="#" data-gl-action="navTo" data-gl-prevent="" data-gl-arg1="pricing">Pricing</a>
+    <a href="#" data-gl-action="navTo" data-gl-prevent="" data-gl-arg1="about">About</a><a href="#" data-gl-action="navTo" data-gl-prevent="" data-gl-arg1="services">Services</a><a href="#" data-gl-action="navTo" data-gl-prevent="" data-gl-arg1="pricing">Pricing</a><a href="#" data-gl-action="navTo" data-gl-prevent="" data-gl-arg1="specialty">Specialty Services</a>
     <a href="#" data-gl-action="navTo" data-gl-prevent="" data-gl-arg1="certifications">Certifications</a><a href="#" data-gl-action="navTo" data-gl-prevent="" data-gl-arg1="contact">Contact</a>
   </div>
   <div class="fright">© 2026 Good Liquid Bev Co.</div>

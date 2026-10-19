@@ -42,6 +42,8 @@ async function sendChatMsg(){
     - Minimum order: 200 cases (4,800 units)
     - R&D starting at $2,500/SKU (3 iterations)
     - Canning from $0.28/can at volume
+    - Specialty services (sold on their own): In-Depth Marketing Analysis $1,200; Design Help & 3D Mockups $1,000; Basic Marketing Analysis $750; Regulatory Review (container design and label verbiage) $500 to $750 per SKU; Commercial Beverage Consulting $250 per hour. Digital print can samples $250 per SKU. Rush project fee adds 25%. Travel is billed as expenses plus consulting fees.
+    - Detailed technical, regulatory or commercial advice on a specific project is paid Commercial Beverage Consulting ($250/hour). Answer general questions briefly, then point visitors to the Specialty Services section and the quote form to book.
     - Typical timeline: 8 weeks concept to pallet
     - GMP, PCQI, HACCP certified
     - Contact: Mike@GoodLiquid.com | (803) 493-5065

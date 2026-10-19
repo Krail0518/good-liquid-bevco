@@ -3617,6 +3617,18 @@ function navTo(id){
 }
 
 
+// A "Book this" button in the Specialty Services section: tick that service
+// on the quote form and take the visitor there. The form and its rate-limited
+// submit_quote_request RPC do the rest, so a booking lands in the Pipeline
+// like any other quote request.
+function bookSpecialty(pillId){
+  const cb = document.getElementById(pillId);
+  if(!cb || !cb.closest('#qf-service-group')) return;
+  cb.checked = true;
+  const w = cb.closest('.pill-field'); if(w) w.classList.remove('err');
+  navTo('contact');
+}
+
 function getCheckedMain(groupId){
   var boxes = document.querySelectorAll('#' + groupId + ' input[type="checkbox"]:checked');
   return Array.prototype.map.call(boxes, function(cb){ return cb.value; });
@@ -4096,6 +4108,7 @@ async function aiEstimateQuote() {
     BOTTLING — 750ml, per bottle, tiered by TOTAL BOTTLES (6 or 12 bottles per case; 220-case minimum): 1,320-3,959 bottles=$2.16, 3,960-7,919=$1.91, 7,920-15,839=$1.58, 15,840-31,679=$1.41, 31,680+=$1.12.
     R&D: From $2,500 (includes 3 iterations). If the client already has a formula there is NO R&D fee — just a $500 test batch + a Process Authority Letter. IP License=$6,000/yr. Full IP buyout=$15,000.
     ADD-ONS: Flash Pasteurization=$0.05/can or $0.20/bottle. Nitrogen Dosing=$0.03/can.
+    SPECIALTY: Specialty services (sold on their own): In-Depth Marketing Analysis $1,200; Design Help & 3D Mockups $1,000; Basic Marketing Analysis $750; Regulatory Review (container design and label verbiage) $500 to $750 per SKU; Commercial Beverage Consulting $250 per hour. Digital print can samples $250 per SKU. Rush project fee adds 25%. Travel is billed as expenses plus consulting fees.
     IMPORTANT: canning tiers are per CASE — if the customer gives a CAN count, divide by 24 to get cases before picking a tier. Bottling tiers are per BOTTLE — multiply cases by bottles per case (ask if unknown; 12 is typical).`,
     `Estimate the cost for this project: ${desc}
     
@@ -4111,7 +4124,8 @@ async function aiDraftInvoice() {
   showAIModal('Invoice Drafter', '', true);
   const text = await callAI(
     `You are a billing specialist for Good Liquid Bev Co. Create clear invoice line items based on job descriptions.
-    Rates (per can; 24 cans = 1 case; 200-case minimum): 12oz canning labor by volume — 200-339 cases=$0.48/can, 340-500=$0.43, 501-999=$0.38, 1,000-2,499=$0.35, 2,500-4,999=$0.31, 5,000+=$0.28; 16oz runs $0.38-0.58/can. Bottling (750ml) $1.12-2.16/bottle by volume. R&D from $2,500 (existing formula: no R&D fee, $500 test batch instead). Flash Pasteurization +$0.05/can or +$0.20/bottle. Nitrogen Dosing +$0.03/can. Convert can counts to cases (÷24) before picking a tier.`,
+    Rates (per can; 24 cans = 1 case; 200-case minimum): 12oz canning labor by volume — 200-339 cases=$0.48/can, 340-500=$0.43, 501-999=$0.38, 1,000-2,499=$0.35, 2,500-4,999=$0.31, 5,000+=$0.28; 16oz runs $0.38-0.58/can. Bottling (750ml) $1.12-2.16/bottle by volume. R&D from $2,500 (existing formula: no R&D fee, $500 test batch instead). Flash Pasteurization +$0.05/can or +$0.20/bottle. Nitrogen Dosing +$0.03/can. Convert can counts to cases (÷24) before picking a tier.
+    Specialty services (sold on their own): In-Depth Marketing Analysis $1,200; Design Help & 3D Mockups $1,000; Basic Marketing Analysis $750; Regulatory Review (container design and label verbiage) $500 to $750 per SKU; Commercial Beverage Consulting $250 per hour. Digital print can samples $250 per SKU. Rush project fee adds 25%. Travel is billed as expenses plus consulting fees.`,
     `Create invoice line items for: ${desc}
     
     Format as clear line items with description, quantity, unit price, and subtotal. Include a total. Flag any assumptions.`
