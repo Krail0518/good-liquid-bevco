@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Project Questionnaire | Good Liquid Bev Co</title>
+  <link rel="stylesheet" href="/onboard.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">GOOD LIQUID BEV CO<small>2011 51st Ave E, Unit 100 · Palmetto, FL 34221</small></div>
+
+  <div id="loading" class="card loading">Loading your questionnaire…</div>
+
+  <div id="fatal" class="card hidden">
+    <h1>We couldn't open this link</h1>
+    <div class="sub" id="fatal-msg"></div>
+    <div class="sub">Reply to the email we sent you, or write to <a href="mailto:mike@goodliquid.com">mike@goodliquid.com</a>, and we'll send a fresh link.</div>
+  </div>
+
+  <div id="done" class="card center hidden">
+    <div class="big-ok">✅</div>
+    <h1>Thanks, your answers are in</h1>
+    <div class="sub">We'll review your project and reply by email with next steps. If anything changes, you can open this same link again and update your answers.</div>
+  </div>
+
+  <form id="form" class="card hidden" autocomplete="on" novalidate>
+    <h1 id="hi">Project questionnaire</h1>
+    <div class="sub">These answers let us give you real costs and a timeline. Our minimum is 200 cases (4,800 cans) per flavor, and every product we run must include a preservative. Takes about 5 minutes.</div>
+    <div class="sub" id="returning" style="display:none">We've loaded the answers you gave us before. Update anything that has changed and submit again.</div>
+
+    <div id="q-mount"></div>
+
+    <button type="submit" class="btn" id="submit-btn">Submit questionnaire</button>
+    <div id="msg" class="msg"></div>
+  </form>
+</div>
+
+<script src="/intake-questions.js"></script>
+<script src="/questionnaire.js"></script>
+</body>
+</html>

@@ -80,6 +80,7 @@ const EMOJI_MAP: Record<string, string> = {
   client_email_reply: '📬',
   new_referral:       '🌟',
   onboarding_complete:'🚀',
+  questionnaire_submitted:'📋',
   agreement_signed:   '✍️',
   agreement_declined: '🛑',
   deck_send_failed:   '⚠️',
@@ -281,6 +282,22 @@ function buildMessage(event: string, data: Record<string, string>): { chatText: 
       `Commission:  ${comm ? comm.replace(' · ', '') : '—'}`,
     ].join('\n');
     return { chatText, subject: `🌟 Referral: ${name} from ${data.company || '—'}`, body };
+  }
+
+  // A pipeline lead submitted the web questionnaire (questionnaire.html) —
+  // fired by gl_questionnaire_submit, at most once an hour per link.
+  if (event === 'questionnaire_submitted') {
+    const again    = data.updated === 'yes';
+    const chatText = `📋 QUESTIONNAIRE ${again ? 'UPDATED' : 'IN'}: ${co} ${again ? 'updated' : 'submitted'} their project questionnaire. Answers are under Intake on their pipeline deal.`;
+    const body     = [
+      `A lead ${again ? 'updated' : 'submitted'} the project questionnaire.`,
+      ``,
+      `Company: ${co}`,
+      `Email:   ${data.email || '—'}`,
+      ``,
+      `The answers are saved under Intake on their pipeline deal in the CRM.`,
+    ].join('\n');
+    return { chatText, subject: `📋 Questionnaire ${again ? 'updated' : 'submitted'}: ${co}`, body };
   }
 
   if (event === 'onboarding_complete') {
