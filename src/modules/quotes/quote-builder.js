@@ -114,7 +114,10 @@
     format = format || '12oz Sleek';
     return {
       nitrogenOn:true,   nitrogenPerCan:px('nitrogen_per_can',0.03),
-      pasteurOn:false,   pasteurPerCan:px('pasteurization_per_can',0.05),
+      // Flash pasteurization is priced by can volume: 16 oz has its own rate.
+      pasteurOn:false,   pasteurPerCan:(/16/.test(String(format))
+                           ? px('pasteurization_per_can_16',0.05)
+                           : px('pasteurization_per_can',0.03)),
       // Case trays: 24-count is the default; check 12-count instead for that job.
       tray24On:true,     tray24PerCase:px('case_tray_24_per_case',0.50),
       tray12On:false,    tray12PerCase:px('case_tray_12_per_case',0.50),
@@ -133,7 +136,7 @@
       // GL-132: the one add-on that does not scale with the run. Charged per
       // changeover, so it is added once rather than per can, case or pallet.
       // Off by default — most runs do not need one.
-      changeOverOn:false, changeOverFee:px('change_over_fee',100)
+      changeOverOn:false, changeOverFee:px('change_over_fee',125)
     };
   }
 
@@ -631,6 +634,8 @@
       state.pkg.canBlankPerCan   = canRate('blank',   state.format);
       state.pkg.canShrinkPerCan  = canRate('shrink',  state.format);
       state.pkg.canPrintedPerCan = canRate('printed', state.format);
+      // Flash pasteurization is priced by can volume, so it follows the format too.
+      state.pkg.pasteurPerCan    = defaultCanningPkg(state.format).pasteurPerCan;
     }
     typeEl.addEventListener('change', function(){
       rebuildFormats(); state.tiers=[]; renderTiers();
