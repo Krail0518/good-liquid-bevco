@@ -111,7 +111,27 @@
       body = readView(answers) +
         '<button id="gl-intake-edit" style="margin-top:8px;padding:6px 13px;background:rgba(255,255,255,.05);color:#c7d2e0;border:1px solid rgba(255,255,255,.14);border-radius:8px;font-size:12px;cursor:pointer">✏️ Edit intake</button>';
     }
+    // Pipeline deals get a link to the public web questionnaire, so a lead can
+    // answer on a form instead of typing into an email.
+    var realDeal = ctx.dealId && !String(ctx.dealId).startsWith('tmp_');
+    if(realDeal){
+      body += '<div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+        '<button id="gl-intake-link" style="padding:6px 13px;background:rgba(0,229,192,.08);color:var(--teal);border:1px solid rgba(0,229,192,.25);border-radius:8px;font-size:12px;cursor:pointer">🔗 Copy questionnaire link</button>' +
+        '<span id="gl-intake-link-msg" style="font-size:11.5px;color:#9aa7bd"></span></div>';
+    }
     host.innerHTML = wrap + head + body + '</div>';
+    var lk = host.querySelector('#gl-intake-link');
+    if(lk) lk.onclick = async function(){
+      var m = host.querySelector('#gl-intake-link-msg');
+      m.style.color = '#9aa7bd'; m.textContent = 'Getting link…';
+      try {
+        var r = await sb().rpc('gl_questionnaire_link', { p_deal_id: ctx.dealId });
+        if(r.error || !r.data) throw new Error((r.error && r.error.message) || 'no link');
+        var url = location.origin + '/questionnaire.html?t=' + encodeURIComponent(r.data);
+        try { await navigator.clipboard.writeText(url); m.textContent = 'Copied. Paste it into your email.'; }
+        catch(e){ m.textContent = url; }
+      } catch(e){ m.style.color = '#ff8579'; m.textContent = 'Could not get the link: ' + (e.message || e); }
+    };
     var add = host.querySelector('#gl-intake-add'); if(add) add.onclick = function(){ paint(host, ctx, existing, true); };
     var ed = host.querySelector('#gl-intake-edit'); if(ed) ed.onclick = function(){ paint(host, ctx, existing, true); };
   }
