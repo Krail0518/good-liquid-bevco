@@ -77,7 +77,7 @@
         options:['ASAP','1 to 3 months','3 to 6 months','6+ months','Just exploring'] }
     ]},
     { key:'business', title:'Budget & sales', fields:[
-      { key:'budget', label:'Budget set aside for the first run, including R&D, cans, packaging, and ingredients', type:'text', required:true, placeholder:'e.g. $25,000' },
+      { key:'budget', label:'Budget set aside for the first run, including R&D, cans, packaging, and ingredients (optional)', type:'text', required:false, placeholder:'e.g. $25,000' },
       { key:'sales_channels', label:'Where will it sell? (check all)', type:'multiselect', required:true,
         options:['Retail','Online','Distribution','Food service / on premise'] },
       { key:'storage_needed', label:'Need storage after production?', type:'select', required:true, options:['Yes','No','Not sure'] },
