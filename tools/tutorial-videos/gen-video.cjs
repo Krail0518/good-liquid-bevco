@@ -319,8 +319,8 @@ const JI_DOCS=[
   {id:'fd2',client_id:'cj',doc_type:'Formula',name:'Brightwater Lime Seltzer.pdf',file_path:'cj/portal/f2.pdf',created_at:'2026-09-18T14:00:00Z',client_visible:true,project_id:null}
 ];
 const JI_ROWS=[
-  {id:'j3',job_no:1003,client_id:'cj',submitted_via:'portal',end_customer:'Volt Energy',product_name:'Mango Peach',job_type:'repeat',cases:420,can_size:'12oz_sleek',can_decoration:'printed',carbonation:'carbonated',co2_volumes:2.8,lid_color:'Black',tray_format:24,shrink_wrap:true,paktech:'4',paktech_color:'White',flash_pasteurize:true,preservative:'Potassium sorbate',pa_letter_on_file:true,client_supplies:['cans','lids'],fg_disposition:'warehouse',needed_by:'2026-11-14',notes:'Same spec as the September run.',formula_doc_id:'fd1',status:'submitted',created_at:'2026-10-27T13:05:00Z'},
-  {id:'j2',job_no:1002,client_id:'cj',submitted_via:'portal',end_customer:'Brightwater Seltzer',product_name:'Lime',job_type:'new',cases:300,can_size:'12oz_standard',can_decoration:'sleeved',carbonation:'carbonated',co2_volumes:3.5,lid_color:'Silver',tray_format:12,shrink_wrap:true,paktech:'none',flash_pasteurize:false,preservative:'None (water)',client_supplies:['cans'],fg_disposition:'pickup',formula_doc_id:'fd2',status:'scheduled',created_at:'2026-10-20T15:30:00Z'}
+  {id:'j3',job_no:1003,client_id:'cj',submitted_via:'portal',end_customer:'Volt Energy',product_name:'Mango Peach',job_type:'repeat',cases:420,can_size:'12oz_sleek',can_decoration:'printed',carbonation:'carbonated',co2_volumes:2.8,lid_color:'Black',tray_format:24,shrink_wrap:true,paktech:'4',paktech_color:'White',flash_pasteurize:true,preservative:'Potassium sorbate',pa_letter_on_file:true,client_supplies:['cans','lids'],fg_disposition:'warehouse',needed_by:'2026-11-14',expiration_date:'2027-11-14',batch_code:'VE1114A',notes:'Same spec as the September run.',formula_doc_id:'fd1',status:'submitted',created_at:'2026-10-27T13:05:00Z'},
+  {id:'j2',job_no:1002,client_id:'cj',submitted_via:'portal',end_customer:'Brightwater Seltzer',product_name:'Lime',job_type:'new',cases:300,can_size:'12oz_standard',can_decoration:'sleeved',carbonation:'carbonated',co2_volumes:3.5,lid_color:'Silver',tray_format:12,shrink_wrap:true,paktech:'none',flash_pasteurize:false,preservative:'None (water)',client_supplies:['cans'],fg_disposition:'pickup',expiration_date:'2027-10-20',formula_doc_id:'fd2',status:'scheduled',created_at:'2026-10-20T15:30:00Z'}
 ];
 function jiTables(){
   return {
@@ -555,7 +555,7 @@ const STORYBOARDS={
       {say:"Every production job now starts with one form: the Job Intake. It holds the full spec for the run and the formula, all in one place, so nothing gets lost in emails and texts."},
       {say:"Your canning partners fill it out from their customer portal. On your side, the jobs land in Production Runs. Click Job Intakes.", act:{type:'click',sel:'button:has-text("Job Intakes"):visible'}},
       {say:"Each job gets its own number, so everyone can refer to it the same way. You see who sent it, the end customer, and the product.", act:{type:'move',sel:'#gl-ji-rows > div:has-text("JOB #1003")'}},
-      {say:"Underneath is the whole spec: cases and cans, can size and decoration, carbonation, lid color, case tray, shrink wrap, PakTechs, and what the client is supplying.", act:{type:'move',sel:'#gl-ji-rows > div:has-text("JOB #1003") >> text=Lid color'}},
+      {say:"Underneath is the whole spec: cases and cans, can size and decoration, carbonation, lid color, case tray, shrink wrap, PakTechs, the expiration date and batch code, and what the client is supplying.", act:{type:'move',sel:'#gl-ji-rows > div:has-text("JOB #1003") >> text=Lid color'}},
       {say:"The formula is attached to every job. A job cannot be submitted without one. Click it to open the file.", act:{type:'move',sel:'#gl-ji-rows > div:has-text("JOB #1003") .gl-ji-fopen'}},
       {say:"As the job moves along, change its status: Submitted, Reviewed, Scheduled, Completed, or Cancelled. Let's mark this one Reviewed.", act:{type:'select',sel:'select.gl-ji-status[data-id="j3"]',value:'reviewed'}},
       {say:"Keep internal notes on the job. Your partner never sees these.", act:{type:'type',sel:'.gl-ji-snote[data-id="j3"]',text:'Cans arrive Nov 3'}},
@@ -573,6 +573,8 @@ const STORYBOARDS={
       {say:"A twelve or twenty four count case tray, and whether the trays get shrink wrapped.", act:{type:'select',sel:'#gl-ji-tray',value:'24'}},
       {say:"Yes, shrink wrap them.", act:{type:'select',sel:'#gl-ji-shrink',value:'yes'}},
       {say:"PakTechs: none, four pack, or six pack. Choosing one opens the PakTech color.", act:{type:'select',sel:'#gl-ji-pak',value:'4'}},
+      {say:"Next, the coding printed on the can. The expiration date is required.", act:{type:'fill',sel:'#gl-ji-exp',text:'2027-11-15'}},
+      {say:"A batch code is optional. Fill it in only if the client wants one.", act:{type:'type',sel:'#gl-ji-batch',text:'VE1115A'}},
       {say:"Now the liquid. Carbonated jobs ask for the target volumes of C O 2. Still jobs are nitrogen dosed.", act:{type:'select',sel:'#gl-ji-carb',value:'carbonated'}},
       {say:"Two point eight volumes.", act:{type:'type',sel:'#gl-ji-co2',text:'2.8'}},
       {say:"Then the formula. Upload the file, or pick one already on file for this client.", act:{type:'click',sel:'input[name="gl-ji-fsrc"][value="onfile"]'}},
@@ -614,6 +616,7 @@ const STORYBOARDS={
       {say:"Silver lids.", act:{type:'type',sel:'#gl-ji-lid',text:'Silver'}},
       {say:"Twelve count trays.", act:{type:'select',sel:'#gl-ji-tray',value:'12'}},
       {say:"Shrink wrapped.", act:{type:'select',sel:'#gl-ji-shrink',value:'yes'}},
+      {say:"The expiration date to print on the cans is required. A batch code is optional, so leave it blank if you do not need one.", act:{type:'fill',sel:'#gl-ji-exp',text:'2027-10-31'}},
       {say:"Carbonated, at three point five volumes.", act:{type:'select',sel:'#gl-ji-carb',value:'carbonated'}},
       {say:"Three point five.", act:{type:'type',sel:'#gl-ji-co2',text:'3.5'}},
       {say:"Every job needs its formula. For a repeat run, pick the one already on file. For something new, upload the file right here.", act:{type:'click',sel:'input[name="gl-ji-fsrc"][value="onfile"]'}},

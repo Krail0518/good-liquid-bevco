@@ -59,6 +59,7 @@ console.log('inbound alarms\n');
     co2_volumes: '2.80', lid_color: 'black', tray_format: '24', shrink_wrap: 'yes', paktech: '4', paktech_color: 'white',
     flash_pasteurize: 'no', preservative: 'potassium sorbate', pa_letter: 'yes', client_supplies: 'cans, lids',
     fg_disposition: 'warehouse', needed_by: '2026-11-15', formula: 'YE Mango v3.pdf', notes: 'Rush',
+    expiration_date: '2027-11-15', batch_code: 'VE1115A',
   };
   const m = jobIntakeMessage(full);
   ok('job: subject names job number, client, end customer and product', /Job #1004/.test(m.subject) && /Atlas canning/.test(m.subject) && /YE Energy/.test(m.subject) && /Mango/.test(m.subject));
@@ -66,7 +67,9 @@ console.log('inbound alarms\n');
   ok('job: body carries every requested spec field',
     /12 oz sleek/.test(m.body) && /Carbonated, 2\.80 volumes CO2/.test(m.body) && /Lid color:\s+black/.test(m.body)
     && /Case tray:\s+24 count/.test(m.body) && /Shrink wrap:\s+Yes/.test(m.body) && /4 pack PakTechs \(white\)/.test(m.body)
-    && /Formula:\s+YE Mango v3\.pdf/.test(m.body) && /9,600 cans/.test(m.body), m.body);
+    && /Formula:\s+YE Mango v3\.pdf/.test(m.body) && /9,600 cans/.test(m.body)
+    && /Expiration date:\s+2027-11-15/.test(m.body) && /Batch code:\s+VE1115A/.test(m.body), m.body);
+  ok('job: no batch code reads as none requested', /Batch code:\s+None requested/.test(jobIntakeMessage({ ...full, batch_code: '' }).body));
   const still = jobIntakeMessage({ ...full, carbonation: 'still', co2_volumes: '', paktech: 'none', paktech_color: '' });
   ok('job: still product reads as nitrogen dosed, no PakTechs', /Still \(nitrogen dosed\)/.test(still.body) && /PakTech:\s+None/.test(still.body));
   const empty = jobIntakeMessage({});
@@ -87,6 +90,7 @@ console.log('inbound alarms\n');
   ok('job: customer insert is pinned to their own client and to a formula they can read',
     /client_id = public\.current_customer_client_id\(\)\s+and submitted_by = auth\.uid\(\)/.test(sql) && /from public\.deal_documents d/.test(sql));
   ok('job: customers cannot update or delete (no customer update/delete policy)', !/customer (update|delete)/.test(sql));
+  ok('job: expiration date required, batch code optional', /expiration_date\s+date not null/.test(sql) && /batch_code\s+text check \(batch_code is null/.test(sql));
   ok('job: restrictive tenant guard present', /"gl tenant guard" on public\.job_intakes\s+as restrictive/.test(sql));
 }
 

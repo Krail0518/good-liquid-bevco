@@ -64,7 +64,10 @@ create table if not exists public.job_intakes (
   brix_target        text check (brix_target is null or char_length(brix_target) <= 40),
   client_supplies    text[] not null default '{}'
                      check (client_supplies <@ array['cans','lids','trays','paktechs','ingredients']::text[]),
-  date_code          text check (date_code is null or char_length(date_code) <= 200),
+  -- Printed on the can: the expiration (best by) date is required; a batch
+  -- code is optional, only when the client wants one.
+  expiration_date    date not null,
+  batch_code         text check (batch_code is null or char_length(batch_code) <= 60),
   cases_per_pallet   integer check (cases_per_pallet is null or cases_per_pallet between 1 and 1000),
   fg_disposition     text check (fg_disposition is null or fg_disposition in ('pickup','ship','warehouse')),
   needed_by          date,
@@ -258,7 +261,8 @@ begin
         'ph_target',       coalesce(new.ph_target, ''),
         'brix_target',     coalesce(new.brix_target, ''),
         'client_supplies', array_to_string(new.client_supplies, ', '),
-        'date_code',       coalesce(left(new.date_code, 200), ''),
+        'expiration_date', new.expiration_date::text,
+        'batch_code',      coalesce(left(new.batch_code, 60), ''),
         'cases_per_pallet',coalesce(new.cases_per_pallet::text, ''),
         'fg_disposition',  coalesce(new.fg_disposition, ''),
         'needed_by',       coalesce(new.needed_by::text, ''),

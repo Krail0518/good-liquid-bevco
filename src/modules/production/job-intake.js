@@ -108,6 +108,9 @@
           field('gl-ji-shrink', 'Shrink wrap the trays', select('gl-ji-shrink', [['yes','Yes'],['no','No']], 'Choose…'), true) +
           field('gl-ji-pak', 'PakTech', select('gl-ji-pak', [['none','None'],['4','4 pack'],['6','6 pack']]), true) +
           field('gl-ji-pakcolor', 'PakTech color', input('gl-ji-pakcolor','text','maxlength="60" disabled')) +
+          section('CODING (PRINTED ON THE CAN)') +
+          field('gl-ji-exp', 'Expiration date', input('gl-ji-exp','date',''), true) +
+          field('gl-ji-batch', 'Batch code (optional)', input('gl-ji-batch','text','maxlength="60" placeholder="Leave blank if you do not need one"')) +
           section('LIQUID') +
           field('gl-ji-carb', 'Carbonation', select('gl-ji-carb', [['carbonated','Carbonated'],['still','Still (nitrogen dosed)']], 'Choose…'), true) +
           field('gl-ji-co2', 'CO2 volumes', input('gl-ji-co2','number','min="0.1" max="5" step="0.05" placeholder="e.g. 2.8" disabled')) +
@@ -131,7 +134,6 @@
           '<div style="grid-column:1/-1"><div style="' + LBL + '">You are supplying</div><div style="display:flex;gap:14px;flex-wrap:wrap;font-size:13px">' +
             SUPPLIES.map(function(s){ return '<label><input type="checkbox" class="gl-ji-supply" value="' + s[0] + '"> ' + escHtml(s[1]) + '</label>'; }).join('') +
           '</div></div>' +
-          field('gl-ji-datecode', 'Lot / best by date code', input('gl-ji-datecode','text','maxlength="200" placeholder="Format to print on the can"')) +
           field('gl-ji-pallet', 'Cases per pallet', input('gl-ji-pallet','number','min="1" max="1000" step="1"')) +
           field('gl-ji-fg', 'Finished goods', select('gl-ji-fg', FG, 'Choose…')) +
           '<div style="grid-column:1/-1">' + field('gl-ji-notes', 'Anything else we should know', '<textarea id="gl-ji-notes" rows="4" maxlength="4000" style="' + BOX + ';resize:vertical"></textarea>') + '</div>' +
@@ -223,7 +225,8 @@
         ph_target: val('gl-ji-ph') || null,
         brix_target: val('gl-ji-brix') || null,
         client_supplies: Array.prototype.map.call(ov.querySelectorAll('.gl-ji-supply:checked'), function(c){ return c.value; }),
-        date_code: val('gl-ji-datecode') || null,
+        expiration_date: val('gl-ji-exp') || null,
+        batch_code: val('gl-ji-batch') || null,
         cases_per_pallet: val('gl-ji-pallet') ? parseInt(val('gl-ji-pallet'), 10) : null,
         fg_disposition: val('gl-ji-fg') || null,
         needed_by: val('gl-ji-needed') || null,
@@ -240,6 +243,8 @@
       if(!row.tray_format) missing.push('case tray');
       if(!val('gl-ji-shrink')) missing.push('shrink wrap');
       if(!row.carbonation) missing.push('carbonation');
+      if(!row.expiration_date) missing.push('expiration date');
+      else if(row.expiration_date <= new Date().toISOString().slice(0,10)){ say('err', 'The expiration date has to be in the future.'); return; }
       if(row.carbonation === 'carbonated' && !(row.co2_volumes > 0 && row.co2_volumes <= 5)) missing.push('CO2 volumes (0.1 to 5)');
       var src = fsrc(), file = null;
       if(src === 'upload'){
@@ -360,7 +365,8 @@
         ['PA letter on file', j.pa_letter_on_file == null ? '' : (j.pa_letter_on_file ? 'Yes' : 'No')],
         ['pH / Brix', [j.ph_target, j.brix_target].filter(Boolean).join(' / ')],
         ['Client supplies', (j.client_supplies || []).map(function(s){ return label(SUPPLIES, s); }).join(', ') || 'Nothing listed'],
-        ['Date code', j.date_code],
+        ['Expiration date', fmtDate(j.expiration_date)],
+        ['Batch code', j.batch_code || 'None requested'],
         ['Cases per pallet', j.cases_per_pallet],
         ['Finished goods', label(FG, j.fg_disposition)],
         ['Needed by', fmtDate(j.needed_by)]
