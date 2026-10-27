@@ -554,6 +554,7 @@
       '<b>(1) Client / date / invoice #</b> — client dropdown is required; date defaults to today; invoice # auto-generates.',
       '<b>(2) Add-line buttons</b> — Canning, Bottling, R&D / IP, Production Hours, Custom. Canning & Bottling auto-tier their per-unit rate from Supabase canning_rates / bottling_rates. <b>Per-client overrides win</b> — if a client has a negotiated rate in <code>client_rate_overrides</code>, the builder uses that flat rate instead of the public tier ladder (a yellow "💵 N custom rates applied" badge appears next to "NEW INVOICE" so staff can see they\'re in effect).',
       '<b>(3) Line rows</b> — change qty inline; per-case / per-unit price + totals update live. Every line type has a <b>Description (optional)</b> input — type free-form notes like "Mango flavor" or "pilot batch" and they\'re appended to the saved line with an em-dash. The ↺ arrow under a Canning/Bottling price resets it to the catalog rate. The X on the right removes a line.',
+      '<b>Case trays (12 or 24 count)</b>: every canning line has a tray picker. Choose 12 count and a case becomes 12 cans; the cans stay the same and the case count changes to match. Ticking the <b>12-count case tray</b> add on puts every canning line on 12 count at once. Prices under a cent show in full ($0.025, not $0.03).',
       '<b>(4) Discount + total</b> — enter a discount percent; subtotal and grand total recompute live.',
       '<b>(5) Save buttons</b> — 💾 Save Invoice (status=pending), 📤 <b>Save & Send</b> (saves then opens the Send Invoice composer pre-filled), 💾 Save as Quote (status=quote), 📄 Save & Export PDF (real invoice PDF), 📋 Export as Quote (PDF only with 30-day validity, no DB save).',
       '<b>Edit existing invoices</b>: open any saved invoice → click ✏️ <b>Edit</b> on the header. The builder reopens with the client / date / lines / discount / addons / notes all pre-filled. Hitting Save updates the same Supabase row (no duplicate). Status is preserved — editing a paid invoice doesn\'t flip it back to pending.',
@@ -2475,6 +2476,128 @@
       '<b>Plain-English terms</b> — <b>SLA</b>: the response-time promise you are holding yourself to (one business day). <b>Business hours</b>: elapsed time with weekends skipped. <b>Ball on them</b>: you replied last and are waiting. <b>Snooze</b>: mute automations for a week. <b>Handled</b>: mute them for good.'
     ]);
 
+  // ────────────────────────────────────────────────────────────
+  // Added 2026-10-27: written help for the features shipped Sep 27 to Oct 27.
+  // ────────────────────────────────────────────────────────────
+  function where(html){
+    return '<div style="font-size:11.5px;color:#9aa7bd;margin:4px 0 12px;padding:7px 10px;background:rgba(255,255,255,.03);border-radius:6px"><b style="color:#f5c842">Where to find it:</b> ' + html + '</div>';
+  }
+  function h4(t){ return '<h4 style="margin:18px 0 6px;font-size:12.5px;letter-spacing:1.5px;color:#f5c842">' + t + '</h4>'; }
+  function ol(items){
+    return '<ol style="margin:6px 0 10px;padding-left:22px;color:#cfd9e6;font-size:13px;line-height:1.75">' +
+      items.map(function(t){ return '<li style="margin-bottom:4px">' + t + '</li>'; }).join('') + '</ol>';
+  }
+
+  var SEC_JOB_INTAKE =
+    lead('The <b>Job Intake</b> is one form that is filled out for <b>every production job</b>. It holds the whole spec for the run and the formula, gives the job a number, and emails you the full spec the moment it is submitted. It was built so jobs from partners like Atlas Canning stop arriving in scattered emails and texts.') +
+    watch('tutorial-job-intake.mp4') +
+    moreVideos([['tutorial-job-intake-portal.mp4', '🥫 Job Intake from the Customer Portal', 'What your partner sees when they submit a job.']]) +
+    where('<b>Your side:</b> Production Runs → <b>🥫 Job Intakes</b> (header button). <b>Partner side:</b> their customer portal → <b>🥫 New production job</b> tile.') +
+    h4('WHAT THE FORM ASKS') +
+    bullets([
+      '<b>The job (required):</b> end customer or brand, product or flavor, new product or repeat run, number of cases. Optional: needed by date.',
+      '<b>Packaging (required):</b> can size (12 oz standard, 12 oz sleek, 16 oz standard), decoration (printed, shrink sleeved, brite), lid color, case tray (12 or 24 count), shrink wrap the trays (yes or no), PakTech (none, 4 pack, 6 pack). Picking a PakTech opens the PakTech color.',
+      '<b>Liquid (required):</b> carbonated or still. Carbonated asks for the target volumes of CO2 (0.1 to 5). Still means nitrogen dosed. Optional: flash pasteurize, preservative, Process Authority letter on file, pH and Brix targets.',
+      '<b>Formula (required):</b> upload the file, or pick one already on file for that client. Staff can also pick a Formula Vault record. A job cannot be saved without a formula.',
+      '<b>Materials and finished goods (optional):</b> what the client is supplying (cans, lids, trays, PakTechs, ingredients), lot or best by date code, cases per pallet, and finished goods (customer picks up, ship out, or store at the warehouse). Plus a notes box.'
+    ]) +
+    h4('WORKING THE JOBS') +
+    ol([
+      'Open Production Runs → <b>🥫 Job Intakes</b>. The list opens on open jobs (submitted, reviewed, scheduled). Use the filter for completed, cancelled, or all, and the search box for client, brand, or job number.',
+      'Each card shows <b>JOB #</b>, who sent it, when, the end customer and product, and the full spec, including the cans count (cases times tray count).',
+      'Click the purple formula button to open the formula file. A Vault formula shows its name and version instead.',
+      'Change the <b>status</b> as the job moves: Submitted → Reviewed → Scheduled → Completed (or Cancelled).',
+      'Type <b>staff notes</b> and click Save note. Staff notes are internal; the partner never sees them.',
+      'Got a job by email instead? Click <b>+ New job</b> and enter it yourself. The client picker defaults to Atlas Canning.'
+    ]) +
+    h4('GOOD TO KNOW') +
+    bullets([
+      '<b>Job numbers</b> start at 1001 and come from the database in order, so two jobs can never share a number.',
+      '<b>Email alert:</b> every new job sends you a Telegram message and an email to mike@goodliquid.com with the full spec and the formula name. If one partner submits more than 10 jobs in an hour, the extra ones stop alerting one by one (they are all still saved).',
+      '<b>Who sees what:</b> a partner sees and submits only their own jobs and cannot change a job after submitting. Formula files they upload are saved under their documents as Formula.'
+    ]);
+
+  var SEC_AGREEMENTS =
+    lead('Write <b>mutual NDAs</b> and <b>contract manufacturing agreements</b> inside the CRM and have them signed electronically. No Word files and no outside signing service. This replaced Dropbox Sign on Oct 6, 2026. Admin only.') +
+    watch('tutorial-agreements.mp4') +
+    moreVideos([['tutorial-agreement-signing.mp4', '✍️ Signing an Agreement: What Your Client Sees', 'The private signing page your client opens from the email.']]) +
+    where('Clients list → <b>📄 Agreements</b> on the client row · Pipeline → open a deal → <b>📄 Agreements (NDA / Manufacturing)</b> · Edit Client → <b>📄 Agreements</b>. Wording: AI Tools → <b>📄 Agreement Templates</b>.') +
+    h4('MAKE AND SEND ONE') +
+    ol([
+      'Click <b>📄 Agreements</b> for the client or deal.',
+      'Pick <b>🔒 Mutual NDA</b> or <b>🏭 Manufacturing Agreement</b>.',
+      'Check the fields. They fill in from the client or deal and from Good Liquid\'s details. Required fields that are still blank are outlined in yellow. A manufacturing agreement also asks for the term in years.',
+      'Click <b>Generate draft →</b>. Edit the text on the left for this one client if needed; the preview on the right updates.',
+      'Then <b>⬇ Download PDF</b>, <b>💾 Save to Documents</b>, or <b>✍️ Send for e-signature</b>. Sending needs the client signer\'s email.'
+    ]) +
+    h4('HOW SIGNING WORKS') +
+    bullets([
+      'The client gets an email with a <b>private signing link</b>. No login: the link is the key.',
+      'They read the agreement, tick the box agreeing to sign electronically (ESIGN Act and Florida UETA), type their name, and click <b>Sign agreement</b>. They can also decline and give a reason.',
+      'The client signs first, then Good Liquid countersigns. When everyone has signed, both sides get the signed copy by email.',
+      'The signed PDF files itself under the client\'s documents as <b>SIGNED …</b> and shows in their portal under Documents → Agreements & Contracts. You get an alert when an agreement is signed or declined.'
+    ]) +
+    h4('ON FILE') +
+    bullets([
+      'Every agreement for the client is listed with a status: <b>Draft</b>, <b>Sent for signature</b>, <b>Signed</b>, <b>Declined</b>, or <b>Void</b>.',
+      'Under each one: who has signed and when, whose link was opened but not signed yet, and who is waiting for the previous signer.',
+      'Buttons: <b>View</b>, <b>View signed</b>, <b>Resend link</b> (sent ones), and <b>Mark void</b> (asks you to click twice).',
+      'Templates are a starting point; have an attorney review the wording before you rely on it.'
+    ]);
+
+  var SEC_QUESTIONNAIRE =
+    lead('The <b>project questionnaire</b> collects everything you need before you quote a new brand. The emailed version (15 questions) and the web form ask the same things, and the answers live under <b>Product Intake</b> on the pipeline deal.') +
+    watch('tutorial-questionnaire.mp4') +
+    moreVideos([['tutorial-questionnaire-form.mp4', '📋 The Questionnaire: What Your Lead Sees', 'The web form your lead opens from the link.']]) +
+    where('Pipeline → open a deal → <b>📋 PRODUCT INTAKE</b> (under the AI brief). After converting, the same box is on the client\'s record.') +
+    h4('SEND IT') +
+    ol([
+      'Open the deal and click <b>🔗 Copy questionnaire link</b> in Product Intake.',
+      'Paste the link into your email to the lead. The link is private to that deal and can be reopened later to update the answers.',
+      'Or paste the full 15 question questionnaire into the email body. Answers that come back by email are entered with <b>✏️ Edit intake</b>, field for field.'
+    ]) +
+    h4('WHAT THEY ANSWER') +
+    bullets([
+      '<b>Brand & product:</b> company, name, role, email, phone, website, what the product is, category, carbonation, number of flavors, alcohol (and ABV and licenses if yes).',
+      '<b>Formula & ingredients:</b> where the formula is, key ingredients, low acid ingredients, target pH, preservative (every product must have one), allergens, Process Authority letter.',
+      '<b>Run size & packaging:</b> first run size per flavor (200 case minimum), package format, decoration, artwork status, case packing, timeline.',
+      '<b>Budget & sales:</b> budget (<b>optional</b>, never ask for it or hold a quote over it), where it will sell, storage, shelf stability, nutrition panel, certifications, anything else.'
+    ]) +
+    h4('AFTER THEY SUBMIT') +
+    bullets([
+      'You get an alert (Telegram and email), and the answers show under Product Intake marked <b>questionnaire</b>.',
+      'Build a quote only once the lead has asked for one and every required question is answered.',
+      'When you click <b>🚀 Convert to Client & Onboard</b>, the intake answers move to the new client\'s record automatically.'
+    ]);
+
+  var SEC_ALERTS =
+    lead('Alerts make sure nothing inbound slips by. Every alert reaches you two ways: a <b>Telegram</b> message and an <b>email</b> to mike@goodliquid.com. (WhatsApp alerts were retired on Oct 11, 2026.)') +
+    watch('explainer-alerts.mp4') +
+    h4('WHAT SENDS AN ALERT') +
+    bullets([
+      'A new pipeline deal (an import of 4 or more sends one summary instead).',
+      'A website quote request, with the volume and their message.',
+      'A request from a client\'s portal.',
+      'An email reply from a client or a lead, picked up by the Gmail sync.',
+      'A project questionnaire submitted or updated.',
+      'An agreement signed or declined.',
+      'A new production <b>job intake</b>, with the full spec.',
+      'Leads waiting past one business day for a first reply, and follow up drafts ready to review.'
+    ]) +
+    h4('WHEN SOMETHING FAILS') +
+    bullets([
+      'Email retries when Gmail is busy.',
+      'If neither Telegram nor email takes an alert, a warning goes straight to Telegram with the alert attached.',
+      'Early every morning a <b>health check</b> lands on Telegram: what came in over the last day, how many alerts went out, and any channel or the website quote form that has been failing.',
+      'Bursts are summarized and public forms are rate limited, so a flood cannot bury you. Everything is still saved in the CRM.'
+    ]) +
+    h4('SALES DECK, SENT AUTOMATICALLY') +
+    bullets([
+      'When a quote request comes in from the website, the sales deck is emailed to that prospect automatically, <b>once per prospect</b>.',
+      'Choose which deck goes out in AI Tools → <b>📑 Sales Decks</b> with <b>Auto-send to new quote requests</b>. Upload or replace the PDF there too.',
+      'A deck marked confidential asks you to confirm before auto send can be turned on.'
+    ]);
+
   var HELP_HTML =
     section('help-overview',        '👋 OVERVIEW',                   SEC_OVERVIEW) +
     section('help-glossary',        '📖 GLOSSARY (PLAIN-ENGLISH TERMS)', SEC_GLOSSARY) +
@@ -2482,6 +2605,9 @@
     section('help-deal-brief',      '🧠 DEAL BRIEF & NEEDS ATTENTION', SEC_DEAL_BRIEF) +
     section('help-lead-automation', '🤖 LEAD AUTOMATIONS (SLA & FOLLOW-UPS)', SEC_LEAD_AUTOMATION) +
     section('help-deal-docs',       '📎 DEAL DOCS & MEETING NOTES',  SEC_DEAL_DOCS) +
+    section('help-questionnaire',   '📋 PROJECT QUESTIONNAIRE (PRODUCT INTAKE)', SEC_QUESTIONNAIRE) +
+    section('help-agreements',      '📄 AGREEMENTS & E-SIGNATURES',  SEC_AGREEMENTS) +
+    section('help-alerts',          '🔔 ALERTS (TELEGRAM & EMAIL)',  SEC_ALERTS) +
     section('help-daily-gmp',       '🧾 DAILY GMP (LOG + FAN-OUT)',  SEC_DAILY_GMP) +
     section('help-gmp-schedule',    '🗓️ GMP SCHEDULE (DUE / OVERDUE)', SEC_GMP_SCHEDULE) +
     section('help-prp',             '🛡️ PREREQUISITE PROGRAMS',      SEC_PRP) +
@@ -2521,6 +2647,7 @@
     section('help-settings',        '⚙️ SETTINGS & INTEGRATIONS',    SEC_SETTINGS) +
     section('help-ai-hub',          '🤖 AI CHAT & AI TOOLS',         SEC_AI_HUB) +
     section('help-production-runs', '🏭 PRODUCTION RUNS',            SEC_PRODUCTION_RUNS) +
+    section('help-job-intake',      '🥫 JOB INTAKE (PRODUCTION JOBS)', SEC_JOB_INTAKE) +
     section('help-formula-vault',   '🧪 FORMULA VAULT',              SEC_FORMULA_VAULT) +
     section('help-yield-tracker',   '📈 YIELD TRACKER',              SEC_YIELD_TRACKER) +
     section('help-sample-shipments','📦 SAMPLE SHIPMENTS',           SEC_SAMPLE_SHIPMENTS) +
@@ -2545,6 +2672,7 @@
     ['help-glossary','📖 Glossary'],
     ['help-videos','🎬 Video Tutorials'],
     ['help-deal-brief','🧠 Deal Brief & Attention'],['help-lead-automation','🤖 Lead Automations'],['help-deal-docs','📎 Deal Docs & Notes'],
+    ['help-questionnaire','📋 Project Questionnaire'],['help-agreements','📄 Agreements & E-Sign'],['help-alerts','🔔 Alerts'],
     ['help-daily-gmp','🧾 Daily GMP'],['help-gmp-schedule','🗓️ GMP Schedule'],
     ['help-prp','🛡️ Prerequisite Programs'],
     ['help-trace-recall','🔗 Trace / Recall'],['help-training-gmp','🎓 Training'],
@@ -2568,6 +2696,7 @@
     ['help-users','🔑 Users'],['help-settings','⚙️ Settings'],
     ['help-ai-hub','🤖 AI Chat & Tools'],
     ['help-production-runs','🏭 Production Runs'],
+    ['help-job-intake','🥫 Job Intake'],
     ['help-formula-vault','🧪 Formula Vault'],
     ['help-yield-tracker','📈 Yield Tracker'],
     ['help-sample-shipments','📦 Sample Shipments'],
