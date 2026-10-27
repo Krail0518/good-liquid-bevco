@@ -14,6 +14,7 @@
 //   • index.html       (deal manually added in CRM)
 //   • Supabase DB trigger on deals INSERT
 //   • Supabase DB trigger on customer_requests INSERT ('portal_request')
+//   • Supabase DB trigger on job_intakes INSERT ('job_intake')
 //   • gmail-sync, for freshly imported client/lead mail
 //     ('client_email_reply', or 'client_email_replies' as one summary)
 //
@@ -56,7 +57,7 @@ import { vaultGet } from '../_shared/gmail-creds.ts';
 import { sendTelegram, setupTelegram } from '../_shared/telegram.ts';
 import { sendAlertEmail, logNotification, type EmailResult } from '../_shared/alert-delivery.ts';
 import {
-  portalRequestMessage, clientReplyMessage, clientRepliesSummary, deliveryFailureWarning,
+  portalRequestMessage, jobIntakeMessage, clientReplyMessage, clientRepliesSummary, deliveryFailureWarning,
   quoteRequestMessage, agreementSignedMessage, agreementDeclinedMessage,
 } from '../_shared/inbound-alarms.mjs';
 import { deckSendFailedMessage } from '../_shared/sales-deck.mjs';
@@ -268,6 +269,13 @@ function buildMessage(event: string, data: Record<string, string>): { chatText: 
   // (20261012010000_inbound_alarms.sql). They had no alert at all before.
   if (event === 'portal_request') {
     const m = portalRequestMessage(data);
+    return { chatText: m.short, subject: m.subject, body: m.body };
+  }
+
+  // Production job intakes — fired by the job_intakes insert trigger
+  // (20261027120000_job_intakes.sql). The email carries the full spec.
+  if (event === 'job_intake') {
+    const m = jobIntakeMessage(data);
     return { chatText: m.short, subject: m.subject, body: m.body };
   }
 

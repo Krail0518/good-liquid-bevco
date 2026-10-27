@@ -784,7 +784,7 @@
       <div id="cpg-production-runs" class="cpg">
         <div class="cph">
           <div><div class="cpt">PRODUCTION RUNS</div><div class="cps" id="prun-sub">Operations board · Discovery → Ship</div></div>
-          <button class="cbtn pri" data-gl-action="glOpenAddProductionRun">+ Add Run</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="cbtn" data-gl-action="glOpenJobIntakes">🥫 Job Intakes</button><button class="cbtn pri" data-gl-action="glOpenAddProductionRun">+ Add Run</button></div>
         </div>
         <div id="prun-board"></div>
       </div>
@@ -2040,6 +2040,7 @@
 <script src="/src/modules/invoicing/invoice-delete.js"></script>
 <script src="/src/modules/customers/portal.js"></script>
 <script src="/src/modules/production/production-runs.js"></script>
+<script src="/src/modules/production/job-intake.js"></script>
 <script src="/src/modules/production/cip-audit.js"></script>
 <script src="/src/modules/production/compliance.js"></script>
 <script src="/src/shared/help.js"></script>

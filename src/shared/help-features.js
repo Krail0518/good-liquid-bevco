@@ -764,15 +764,9 @@
       '<b>Disconnect:</b> settings modal → "Disconnect" (revokes the token, does not delete QBO data).'
     ]) +
     whereToFind('AI toolbar → Quick Actions → "💼 QuickBooks" (admin)') +
-    subhead('📝', 'E-SIGNATURES (DROPBOX SIGN)') +
-    intro('Send service agreements, NDAs, and custom contracts for e-signature via the Dropbox Sign (formerly HelloSign) API. Signed documents are stored as a URL reference on the client record.') +
-    bullets([
-      '<b>Templates:</b> upload your contract PDFs as Dropbox Sign templates, then paste the Template IDs into the E-Signatures settings.',
-      '<b>Send for signature:</b> open a Client record → "Send for signature" → pick a template → recipient email is pre-filled from the client.',
-      'Signed document URL is written back to the client record when Dropbox Sign fires the completion webhook.',
-      'Requires a Dropbox Sign API key (saved in E-Signatures settings).'
-    ]) +
-    whereToFind('AI toolbar → Quick Actions → "📝 E-Signatures" (admin)') +
+    subhead('📝', 'E-SIGNATURES') +
+    intro('NDAs and manufacturing agreements are now written and signed inside the CRM (Dropbox Sign was retired on Oct 6, 2026). See <b>📄 Agreements & E-Signatures</b> in this help.') +
+    whereToFind('Clients → 📄 Agreements · deal panel → 📄 Agreements · AI Tools → 📄 Agreement Templates') +
     subhead('📱', 'SMS NOTIFICATIONS (TWILIO)') +
     intro('Send yourself an SMS when key events happen in the CRM: a new invoice is paid, a deal is won, a customer accepts a quote, a tour request comes in via the public site, or an invoice goes overdue.') +
     bullets([
@@ -818,70 +812,53 @@
     txt(220,230,'GLQ-202507-001',10,'#9aa7bd') + txt(350,233,'SAVE',11,'#00e5c0') + txt(425,233,'PDF',11,'#9aa7bd') + txt(480,233,'SAVE + PDF',11,'#f5c842') + tag(595,231,3)
   );
 
-  var SEC_QUOTES = MOCK_QUOTES +
+  // Rewritten 2026-10-27 for the Quotes list (Oct 1), case trays and bottles
+  // per case (Oct 6 to 11), pasteurization by can size and the change over fee
+  // (Oct 24), and 7 day validity (Oct 27).
+  function video(file){
+    return '<video controls preload="none" playsinline style="width:100%;max-width:760px;border-radius:9px;border:1px solid rgba(0,229,192,.2);background:#000;display:block;margin:4px 0 14px" src="/tutorials/' + file + '"></video>';
+  }
+  var SEC_QUOTES =
+    video('tutorial-quotes.mp4') +
+    MOCK_QUOTES +
     locator(
-      '<b>New Quote button</b> &rarr; Pipeline page &rarr; click any deal &rarr; deal detail panel &rarr; <b>📋 New Quote</b> button.<br>' +
-      '<b>Quote history</b> &rarr; Clients page &rarr; click a client &rarr; Edit &rarr; <b>📋 PRODUCTION QUOTES</b> section &rarr; <b>+ New Quote</b>.<br>' +
-      '<b>Close Job button</b> &rarr; same deal detail panel &rarr; <b>✅ Close Job</b> button (right of "📋 New Quote").'
+      '<b>Quote Builder</b> &rarr; Pipeline page header &rarr; <b>📋 Quote Builder</b>, or open a deal &rarr; <b>📋 New Quote</b> (fills in the company, email, product and volume from the deal).<br>' +
+      '<b>Every saved quote</b> &rarr; Pipeline page header &rarr; <b>🗂 Quotes</b>.<br>' +
+      '<b>A client\'s quotes</b> &rarr; Clients &rarr; Edit &rarr; <b>📋 PRODUCTION QUOTES</b>.'
     ) +
-    intro('Admin-only tool for generating professional production quotes and saving them under the client record. The quote uses the current price deck with editable tier overrides, generates a PDF in the Good Liquid format, and saves to Supabase so the history is always visible.') +
-    subhead('📋', 'OPENING THE QUOTE BUILDER') +
+    intro('Admin only. Builds a production quote from the rate card, saves it with a quote number from the CRM (in order, never repeated), and makes the PDF and the email. Quotes are good for <b>7 days</b> by default.') +
+    subhead('🗂', 'THE QUOTES LIST') +
     bullets([
-      '<b>From a deal:</b> Pipeline → click the deal card → deal detail panel slides open → click <b>📋 New Quote</b>. The deal and client are pre-loaded.',
-      '<b>From a client record:</b> Clients → find the client → Edit → scroll to <b>📋 PRODUCTION QUOTES</b> → click <b>+ New Quote</b>.',
-      '<b>Admin gate:</b> both entry points are hidden for non-admin users.'
+      'Every saved quote, including ones not linked to a client or deal yet. Opens on <b>Sent</b>; filter by All, Sent, Draft, Accepted, or Declined, and search by company, email, or quote number.',
+      '<b>Status on the row:</b> switch between Draft, Sent, and Declined. <b>Accepted</b> is set only from the client\'s Production Quotes panel, because accepting can unlock services in their portal, so it shows locked here.',
+      '<b>🧾 Invoice:</b> opens the invoice builder with the quote\'s lines. If the quote has no client, it asks which client first (or add a new one).',
+      '<b>📄 PDF</b> reopens the saved quote; <b>👤 Client</b> and <b>💼 Deal</b> jump to the record.',
+      'Emailing a quote from the builder stamps it Sent with the date and address.'
     ]) +
-    subhead('⚙️', 'CONFIGURING THE QUOTE') +
+    subhead('⚙️', 'BUILDING A QUOTE') +
     steps([
-      'Choose <b>Product Type:</b> Canning, Bottling, or Keg. This sets the available formats and tier structure.',
-      '<b>Canning formats:</b> 12oz Standard, 12oz Sleek, 16oz Standard. <b>Bottling:</b> 750ml. <b>Keg:</b> Half-barrel (15.5 gal).',
-      'Set a <b>Quote Date</b> and <b>Valid for (days)</b> — defaults to today + 30 days.',
-      'Add <b>Notes</b> (optional) — these appear on the PDF footer.'
+      'Enter who it is for and their email. The quote number is assigned when you save.',
+      'Pick the product type (canning, bottling, keg) and the format (12oz Standard, 12oz Sleek, 16oz Standard, 750ml Bottle, 19.5L keg). <b>+ Add Format</b> puts several formats on one quote.',
+      '<b>Case tray:</b> 12 or 24 count. Switching keeps the cans the same and changes the case count to match.',
+      '<b>⚡ Load Standard Tiers</b> fills the standard volume tiers at deck rates, or <b>+ Add Tier</b> for your own. Typing over a price marks it as an override.',
+      'Tick the add ons. <b>Flash pasteurization</b> is priced by can size (12 oz and 16 oz have their own rates). The <b>Change Over Fee</b> is $125 per changeover. Add on rates come from 💲 Prices.',
+      '<b>Bottling:</b> choose 6 or 12 bottles per case on each tier. Bottling is priced by total bottles, so the per bottle price does not change with the case size.',
+      'Use <b>Custom Line</b> for anything not on the price deck.'
     ]) +
-    subhead('📊', 'BUILDING TIERS') +
-    intro('Each quote has one or more quantity tiers so the client can see how price drops with volume.') +
+    subhead('💾', 'SAVE, SEND, INVOICE') +
     bullets([
-      '<b>⚡ Load Standard Tiers</b> (callout 2) — one click to pre-fill the three standard canning tiers: 501, 1,000, 5,000 cases at deck rates. Start here for most quotes.',
-      '<b>+ Add Tier</b> — add a custom tier manually. Set the case quantity and $/can rate.',
-      '<b>Rate override (amber border):</b> if you type directly into a tier\'s rate cell, the border turns amber to flag that pricing is custom, not from the standard deck. Useful for giving a client a special deal — overrides are visible at a glance.',
-      '<b>Delete a tier</b> by clicking the × on the right of any tier row.',
-      '<b>Canning rates include:</b> filling, seaming, CO₂, quality checks. Add-ons are billed on top.'
+      '<b>💾 Save</b>, <b>📄 PDF</b>, <b>💾 Save + PDF</b>.',
+      '<b>📧 Save + Email Quote</b> sends the quote with the email shown in the builder. Edit the email before sending; it keeps the deal moving by email.',
+      '<b>🧾 Save + Create Invoice</b> saves and opens the invoice with the quote\'s lines.',
+      'Freight is never quoted up front; cans and materials Good Liquid buys carry the 10 percent markup and say shipping is not included.'
     ]) +
-    whereToFind('Quote builder → Tiers table (callout 1 = first tier, callout 2 = Load Standard Tiers button)') +
-    subhead('➕', 'ADD-ONS') +
-    intro('Checked add-ons are automatically included in the per-can price. Each add-on appears as a separate line item on the PDF.') +
-    bullets([
-      '<b>Nitrogen dosing:</b> $0.03/can — checked by default.',
-      '<b>Case tray (PakTech):</b> $0.03/can — checked by default.',
-      '<b>Palletizing:</b> $20/pallet — checked by default.',
-      '<b>Pasteurization:</b> $0.05/can — unchecked by default (add only if client requests it).',
-      'Uncheck any add-on to remove it from the quote. The tier totals update live.'
-    ]) +
-    subhead('💾', 'SAVING AND GENERATING THE PDF') +
-    steps([
-      '<b>Save</b> (callout 3) — saves the quote to Supabase under the client record. Assigns a quote number (e.g., GLQ-202507-001).',
-      '<b>Download PDF</b> — generates the PDF in a new window and opens the browser print dialog. Does not save to Supabase.',
-      '<b>Save + Download PDF</b> — saves first, then immediately opens the PDF. Use this for your normal workflow.',
-      'The generated PDF matches the Good Liquid quote format: company header, client info, tier pricing table, add-on line items, inclusions, and a signature block.'
-    ]) +
-    whereToFind('Quote builder modal → bottom action bar (Save / Download PDF / Save + Download PDF)') +
-    subhead('📁', 'VIEWING SAVED QUOTES') +
-    bullets([
-      'All saved quotes for a client appear in the <b>📋 PRODUCTION QUOTES</b> panel inside the Edit Client modal.',
-      'Each row shows: quote number, format, date, status badge (Draft / Sent / Accepted / Declined).',
-      '<b>Re-download PDF:</b> click the PDF button on any saved quote row to regenerate and open it. The stored HTML is used — no internet required.',
-      '<b>Status:</b> you can update the quote status (e.g., to Accepted) directly from the list row.'
-    ]) +
-    whereToFind('Clients → Edit Client → 📋 PRODUCTION QUOTES section') +
+    whereToFind('Pipeline header → 📋 Quote Builder / 🗂 Quotes · deal panel → 📋 New Quote · Edit Client → 📋 PRODUCTION QUOTES') +
     subhead('✅', 'CLOSING A JOB') +
-    intro('When a deal converts, mark it Closed Won in one click from the deal detail panel.') +
     steps([
       'Pipeline → click the deal card → deal detail panel opens.',
-      'Click <b>✅ Close Job</b> (next to the 📋 New Quote button).',
-      'Confirm the prompt: "Mark this deal as Closed Won?"',
-      'The deal stage moves to Closed Won and saves automatically. The win-loss tracker fires and records the outcome.'
-    ]) +
-    whereToFind('Pipeline → deal detail panel → ✅ Close Job button (admin only)');
+      'Click <b>✅ Close Job</b> (next to the 📋 New Quote button) and confirm.',
+      'The deal moves to Closed Won and the win and loss tracker records the outcome.'
+    ]);
 
   /* SECTION 11 — EMAIL & CORRESPONDENCE */
   var MOCK_CORR = wf(620, 250,
