@@ -14,6 +14,7 @@
  * functions run (notify-deal, gmail-sync, inbound-heartbeat):
  *
  *   portalRequestMessage / clientReplyMessage / clientRepliesSummary
+ *   jobIntakeMessage            production job intake (full spec for Mike)
  *   quoteRequestMessage         website quote request (with volume + message)
  *   agreementSignedMessage / agreementDeclinedMessage  e-signature outcomes
  *   deliveryFailureWarning      the immediate "an alert reached nobody" text
@@ -77,6 +78,73 @@ export function portalRequestMessage(data) {
     `Open the CRM to answer it.`,
   ].join('\n');
   return { short, subject: `🙋 Portal ${kind.toLowerCase()}: ${client}`, body };
+}
+
+// ── Job intakes ─────────────────────────────────────────────────────────────
+// Fired by trigger_notify_job_intake (20261027120000_job_intakes.sql) for every
+// production job submitted through the portal or by staff. The email carries
+// the whole spec so Mike can read the job without opening the CRM.
+const CAN_SIZE_LABEL = {
+  '12oz_standard': '12 oz standard', '12oz_sleek': '12 oz sleek', '16oz_standard': '16 oz standard',
+};
+const DECORATION_LABEL = { printed: 'Printed cans', sleeved: 'Shrink sleeved cans', brite: 'Brite (blank) cans' };
+const FG_LABEL = { pickup: 'Customer picks up', ship: 'Ship out', warehouse: 'Store at the warehouse' };
+
+export function jobIntakeMessage(data) {
+  const d = data || {};
+  const v = (k, n) => clip(d[k], n || 200);
+  const jobNo = v('job_no', 20) || '?';
+  const client = v('client', 120) || 'A client';
+  const endCustomer = v('end_customer') || '(not given)';
+  const product = v('product') || '(not given)';
+  const cases = Number(d.cases) || 0;
+  const tray = Number(d.tray_format) || 0;
+  const cans = cases && tray ? (cases * tray).toLocaleString('en-US') : '';
+  const carb = d.carbonation === 'carbonated'
+    ? `Carbonated, ${v('co2_volumes', 10) || '?'} volumes CO2`
+    : d.carbonation === 'still' ? 'Still (nitrogen dosed)' : (v('carbonation', 40) || '—');
+  const pak = d.paktech === '4' || d.paktech === '6'
+    ? `${d.paktech} pack PakTechs` + (v('paktech_color', 60) ? ` (${v('paktech_color', 60)})` : '')
+    : 'None';
+  const line = (label, value) => (value ? `${(label + ':').padEnd(18)}${value}` : null);
+
+  const short = `🥫 NEW JOB #${jobNo} from ${client}: ${endCustomer}, ${product}, ${cases.toLocaleString('en-US')} cases. Full spec is in your email and the CRM.`;
+  const body = [
+    `A new production job intake was submitted${d.via === 'staff' ? ' (entered by staff)' : ' through the customer portal'}.`,
+    ``,
+    line('Job number', `#${jobNo}`),
+    line('Submitted by', client),
+    line('End customer', endCustomer),
+    line('Product', product),
+    line('Job type', d.job_type === 'repeat' ? 'Repeat run' : 'New product'),
+    line('Quantity', `${cases.toLocaleString('en-US')} cases` + (cans ? ` (${cans} cans)` : '')),
+    ``,
+    line('Can size', CAN_SIZE_LABEL[d.can_size] || v('can_size', 40)),
+    line('Can decoration', DECORATION_LABEL[d.can_decoration] || v('can_decoration', 40)),
+    line('Carbonation', carb),
+    line('Lid color', v('lid_color', 60)),
+    line('Case tray', tray ? `${tray} count` : ''),
+    line('Shrink wrap', d.shrink_wrap === 'yes' ? 'Yes' : 'No'),
+    line('PakTech', pak),
+    line('Flash pasteurize', d.flash_pasteurize === 'yes' ? 'Yes' : 'No'),
+    ``,
+    line('Formula', v('formula') || '(none attached)'),
+    line('Preservative', v('preservative')),
+    line('PA letter on file', d.pa_letter === 'yes' ? 'Yes' : d.pa_letter === 'no' ? 'No' : ''),
+    line('pH target', v('ph_target', 40)),
+    line('Brix target', v('brix_target', 40)),
+    ``,
+    line('Client supplies', v('client_supplies', 120) || 'Nothing listed'),
+    line('Date code', v('date_code')),
+    line('Cases per pallet', v('cases_per_pallet', 10)),
+    line('Finished goods', FG_LABEL[d.fg_disposition] || ''),
+    line('Needed by', v('needed_by', 20)),
+    ``,
+    d.notes ? `Notes:\n${clip(d.notes, 1500)}` : null,
+    d.notes ? `` : null,
+    `Open Production Runs, then Job Intakes, in the CRM to review it and attach it to a run.`,
+  ].filter((x) => x !== null).join('\n').replace(/\n{3,}/g, '\n\n');
+  return { short, subject: `🥫 Job #${jobNo}: ${client}, ${endCustomer} ${product}`, body };
 }
 
 // ── Client / lead email replies ─────────────────────────────────────────────

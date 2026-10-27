@@ -750,6 +750,9 @@
 
           // Quick-action tiles for portal-submitted requests.
           '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:24px">' +
+            // Job intake form (src/modules/production/job-intake.js): one spec
+            // sheet plus formula for every production job.
+            (typeof window.glJobIntakeTile === 'function' ? window.glJobIntakeTile() : '') +
             requestTile('🧪', 'sample',   'Request samples',    'Ask for new product samples') +
             requestTile('📦', 'reorder',  'Place an order',     'Reorder a previous run') +
             requestTile('💬', 'quote',    'Request a quote',    'Pricing on a new project') +

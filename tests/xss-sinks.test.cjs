@@ -210,7 +210,13 @@ for (const [label, re] of FORBIDDEN) {
 // number are typed by staff but may be copied from a lead's own form entry.
 // Its loading/error/empty states use textContent, and the client panel's PDF
 // opener was folded into the same openSavedQuotePdf() rather than duplicated.
-const SINK_BUDGET = 632;
+//
+// 2026-10-27: 632 -> 639. Job intake (src/modules/production/job-intake.js):
+// the form shell, the formula pickers, the staff list shell and its rows, and
+// the loading/empty/error states. Every value a customer types (end customer,
+// product, lid color, notes, file names, client names) goes through the
+// module's escHtml(); option values are fixed lists or escaped UUIDs.
+const SINK_BUDGET = 639;
 let sinkCount = 0;
 const RAW = /\.(innerHTML|outerHTML)\s*(=|\+=)|insertAdjacentHTML\s*\(|document\.write(ln)?\s*\(/;
 for (const f of files) {
