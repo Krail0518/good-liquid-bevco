@@ -62,20 +62,46 @@ function installCommon(){
       c.eq=function(k,v){ filters.push({k:k,v:v}); return c; };
       c.maybeSingle=async function(){ let d=applyF(rows()); const f=keyF(); if(!d.length && f && single(table,f.v)) d=[single(table,f.v)]; return {data:d[0]||null,error:null}; };
       c.single=c.maybeSingle;
-      c.insert=function(r){ const a=Array.isArray(r)?r:[r]; a.forEach(function(x){ rows().push(x); }); window.__inserted.push({table:table,rows:a});
-        return { select:async function(){ return {data:a.map(function(x,i){ return Object.assign({id:'new'+i},x); }),error:null}; }, then:function(res){ return Promise.resolve({data:a,error:null}).then(res); } }; };
-      c.update=function(patch){ return { eq:function(k,v){ rows().forEach(function(r){ if(String(r[k])===String(v)) Object.assign(r,patch); }); return { then:function(res){ return Promise.resolve({data:null,error:null}).then(res); }, select:async function(){ return {data:[],error:null}; } }; } }; };
+      // Inserts: rows get an id (and any per-table defaults a storyboard sets in
+      // window.__insertDefaults, e.g. a server generated job number), and
+      // .select() answers like PostgREST, including .single().
+      c.insert=function(r){ const a=Array.isArray(r)?r:[r];
+        const def=(window.__insertDefaults||{})[table];
+        const full=a.map(function(x,i){ return Object.assign({id:'new'+i+'_'+Date.now()}, typeof def==='function'?def(x):(def||{}), x); });
+        full.forEach(function(x){ rows().push(x); }); window.__inserted.push({table:table,rows:full});
+        const sel=function(){ const p=Promise.resolve({data:full,error:null}); p.single=async function(){ return {data:full[0]||null,error:null}; }; p.maybeSingle=p.single; return p; };
+        return { select:sel, then:function(res,rej){ return Promise.resolve({data:full,error:null}).then(res,rej); } }; };
+      // Updates: filters apply, the matched rows are patched once, and .select()
+      // returns them, so code that checks for 0 rows (CLAUDE.md rule 4) sees a
+      // real save.
+      c.update=function(patch){ const uf=[]; let done=null;
+        const run=function(){ if(done) return done; done=rows().filter(function(r){ return uf.every(function(f){ return f.isNull!==undefined ? ((r[f.k]==null)===f.isNull) : String(r[f.k])===String(f.v); }); }); done.forEach(function(r){ Object.assign(r,patch); }); return done; };
+        const u={ eq:function(k,v){ uf.push({k:k,v:v}); return u; }, is:function(k,v){ uf.push({k:k,isNull:v==null}); return u; } };
+        ['in','neq','match','or','filter','not'].forEach(function(m){ u[m]=function(){ return u; }; });
+        u.select=function(){ const p=Promise.resolve().then(function(){ return {data:run(),error:null}; }); p.single=async function(){ return {data:run()[0]||null,error:null}; }; p.maybeSingle=p.single; return p; };
+        u.then=function(res,rej){ return Promise.resolve().then(function(){ run(); return {data:null,error:null}; }).then(res,rej); };
+        return u; };
       c.delete=function(){ return { eq:function(k,v){ const a=rows(); for(let i=a.length-1;i>=0;i--){ if(String(a[i][k])===String(v)) a.splice(i,1); } return { then:function(res){ return Promise.resolve({data:null,error:null}).then(res); } }; } }; };
       c.then=function(res){ let d=applyF(rows()); const f=keyF(); if(!d.length && f && single(table,f.v)) d=[single(table,f.v)]; return Promise.resolve({data:d,count:(c._count?d.length:undefined),error:null}).then(res); };
       return c;
     }
-    window.supa={from:function(t){ return chain(t); },rpc:async()=>({data:null,error:null}),
-      functions:{invoke:async()=>({data:{ok:true},error:null})},
+    // window.__rpc = { fn: args => data } lets a storyboard answer an RPC.
+    window.supa={from:function(t){ return chain(t); },rpc:async(fn,args)=>({data:(window.__rpc&&window.__rpc[fn])?window.__rpc[fn](args):null,error:null}),
+      storage:{from:function(){ return { upload:async function(p){ return {data:{path:p},error:null}; }, createSignedUrl:async function(){ return {data:{signedUrl:'about:blank'},error:null}; }, remove:async function(){ return {data:[],error:null}; } }; }},
+      functions:{invoke:async(fn,o)=>({data:(window.__fn&&window.__fn[fn])?window.__fn[fn](o):{ok:true},error:null})},
       auth:{getUser:async()=>({data:{user:{id:'u1'}},error:null}),getSession:async()=>({data:{session:null},error:null}),onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}})},
       channel:()=>({on(){return this;},subscribe(){return this;}}),removeChannel:()=>{}};
     window.currentUser={id:'u1',email:'mike@krail.us',role:'admin',name:'Mike',initials:'MK'};
   };
   window.__hud=function(){
+    // auth.js shows a red "session has expired" bar 60s in, because the real
+    // Supabase client it captured at load has no session. The demo is not a
+    // real session, so the bar is hidden rather than filmed.
+    if(!document.getElementById('gl-video-nosession')){
+      const ns=document.createElement('style'); ns.id='gl-video-nosession';
+      ns.textContent='#gl-session-expired{display:none!important}';
+      document.head.appendChild(ns);
+    }
     if(!document.getElementById('vcursor')){
       const cur=document.createElement('div'); cur.id='vcursor';
       cur.style.cssText='position:fixed;left:130px;top:130px;width:22px;height:22px;border-radius:50%;background:rgba(0,229,192,.35);border:2px solid #00e5c0;box-shadow:0 0 10px rgba(0,229,192,.7);z-index:2147483647;pointer-events:none;transition:left .55s cubic-bezier(.4,0,.2,1),top .55s cubic-bezier(.4,0,.2,1);transform:translate(-50%,-50%)';
@@ -285,7 +311,317 @@ const PORTAL_DATA={
   client_allergen_declarations:[],sample_shipments:[],formulas:[],customer_requests:[]
 };
 
+// ── Job intake (staff + portal), 2026-10-27 ──
+// Demo data only: a fictional canning partner and fictional brands.
+const JI_CLIENT={id:'cj',name:'Harbor Canning Co',contact_name:'Dev Patel',email:'dev@harborcanning.co'};
+const JI_DOCS=[
+  {id:'fd1',client_id:'cj',doc_type:'Formula',name:'Volt Energy Mango Peach v3.pdf',file_path:'cj/portal/f1.pdf',created_at:'2026-10-02T14:00:00Z',client_visible:true,project_id:null},
+  {id:'fd2',client_id:'cj',doc_type:'Formula',name:'Brightwater Lime Seltzer.pdf',file_path:'cj/portal/f2.pdf',created_at:'2026-09-18T14:00:00Z',client_visible:true,project_id:null}
+];
+const JI_ROWS=[
+  {id:'j3',job_no:1003,client_id:'cj',submitted_via:'portal',end_customer:'Volt Energy',product_name:'Mango Peach',job_type:'repeat',cases:420,can_size:'12oz_sleek',can_decoration:'printed',carbonation:'carbonated',co2_volumes:2.8,lid_color:'Black',tray_format:24,shrink_wrap:true,paktech:'4',paktech_color:'White',flash_pasteurize:true,preservative:'Potassium sorbate',pa_letter_on_file:true,client_supplies:['cans','lids'],fg_disposition:'warehouse',needed_by:'2026-11-14',notes:'Same spec as the September run.',formula_doc_id:'fd1',status:'submitted',created_at:'2026-10-27T13:05:00Z'},
+  {id:'j2',job_no:1002,client_id:'cj',submitted_via:'portal',end_customer:'Brightwater Seltzer',product_name:'Lime',job_type:'new',cases:300,can_size:'12oz_standard',can_decoration:'sleeved',carbonation:'carbonated',co2_volumes:3.5,lid_color:'Silver',tray_format:12,shrink_wrap:true,paktech:'none',flash_pasteurize:false,preservative:'None (water)',client_supplies:['cans'],fg_disposition:'pickup',formula_doc_id:'fd2',status:'scheduled',created_at:'2026-10-20T15:30:00Z'}
+];
+function jiTables(){
+  return {
+    clients:[JI_CLIENT,{id:'c1',name:'Perico Nutrition'},{id:'c2',name:'Lotus Beverages'}],
+    job_intakes:JSON.parse(JSON.stringify(JI_ROWS)),
+    deal_documents:JSON.parse(JSON.stringify(JI_DOCS)),
+    formulas:[{id:'fv1',name:'Volt Energy Original',version:2,client_id:'cj',client_name:'Harbor Canning Co'}],
+    production_runs:PROD_DATA.production_runs, production_lines:PROD_DATA.production_lines
+  };
+}
+
+// ── Quotes and invoice case trays, 2026-10-27 ──
+// Rates match the live rate card (canning_rates / pricing_settings, Oct 2026).
+const CANNING_RATES=[];
+[['12oz-standard','12oz Standard',[0.48,0.43,0.38,0.35,0.31,0.28]],['12oz-sleek','12oz Sleek',[0.48,0.43,0.38,0.35,0.31,0.28]],['16oz-standard','16oz Standard',[0.58,0.53,0.48,0.45,0.41,0.38]]]
+  .forEach(function(f){ [200,340,501,1000,2500,5000].forEach(function(m,i){ CANNING_RATES.push({format:f[0],format_label:f[1],min_cases:m,price_per_can:f[2][i]}); }); });
+const PRICING_ROWS=[
+  ['nitrogen_per_can','Canning add-ons','Nitrogen Dosing','per can',0.03,10],
+  ['pasteurization_per_can','Canning add-ons','Batch Flash Pasteurization (12 oz)','per can',0.03,20],
+  ['pasteurization_per_can_16','Canning add-ons','Batch Flash Pasteurization (16 oz)','per can',0.05,21],
+  ['change_over_fee','Canning add-ons','Change Over Fee','per changeover',125,25],
+  ['case_tray_12_per_case','Packaging','12-count Case Tray','per case',0.55,30],
+  ['case_tray_24_per_case','Packaging','24-count Case Tray','per case',0.65,31],
+  ['case_tray_shrinkwrap_per_case','Packaging','Shrink-wrap a Case Tray','per case',0.025,32],
+  ['pallet_each','Pallet','Pallet','per pallet',12,50],
+  ['pallet_wrap_each','Pallet','Pallet Shrink Wrap','per pallet',8,60],
+  ['cases_per_pallet','Pallet','Cases per Pallet','cases',80,70],
+  ['bottling_pasteurization_per_btl','Bottling add-ons','Batch Flash Pasteurization','per bottle',0.20,140]
+].map(function(r){ return {key:r[0],category:r[1],label:r[2],unit:r[3],value:r[4],sort_order:r[5]}; });
+const QUOTE_ROWS=[
+  {id:'q1',quote_number:'GLQ-202610-041',quote_date:'2026-10-21',valid_days:7,status:'sent',package_format:'12oz Sleek',client_id:'c1',client_name:'Perico Nutrition',client_email:'ana@perico.co',sent_at:'2026-10-21T15:00:00Z',sent_to:'ana@perico.co',created_at:'2026-10-21T14:50:00Z',
+   sections:[{productType:'canning',format:'12oz Sleek',tiers:[{cases:500,cans:12000,fillPerCan:0.43}],pkg:{},bpkg:{},lines:[]}],custom_lines:[]},
+  {id:'q2',quote_number:'GLQ-202610-042',quote_date:'2026-10-24',valid_days:7,status:'draft',package_format:'16oz Standard',client_id:'c2',client_name:'Lotus Beverages',client_email:'sam@lotus.co',created_at:'2026-10-24T16:10:00Z',
+   sections:[{productType:'canning',format:'16oz Standard',tiers:[{cases:1000,cans:24000,fillPerCan:0.45}],pkg:{},bpkg:{},lines:[]}],custom_lines:[]},
+  {id:'q3',quote_number:'GLQ-202610-039',quote_date:'2026-10-10',valid_days:7,status:'accepted',package_format:'12oz Standard',client_id:'c1',client_name:'Perico Nutrition',client_email:'ana@perico.co',sent_at:'2026-10-10T13:00:00Z',created_at:'2026-10-10T12:40:00Z',sections:[],custom_lines:[]},
+  {id:'q4',quote_number:'GLQ-202610-037',quote_date:'2026-10-06',valid_days:7,status:'declined',package_format:'12oz Sleek',client_id:null,client_name:'Cold Brew Collective',client_email:'dana@coldbrew.co',sent_at:'2026-10-06T13:00:00Z',created_at:'2026-10-06T12:40:00Z',sections:[],custom_lines:[]}
+];
+
+// ── Agreements and e-signatures, 2026-10-27 ──
+// Short demo templates. The real ones live in agreement_templates and are
+// edited from AI Tools, Agreement Templates.
+const AGR_TEMPLATES=[
+  {kind:'nda',title:'Mutual Nondisclosure Agreement',body:'# Mutual Nondisclosure Agreement\n\nThis Mutual Nondisclosure Agreement is made on {{effective_date}} between {{gl_legal_name}}, {{gl_address}}, and {{client_legal_name}}, {{client_address}}.\n\n## Confidential Information\n\nEach party may share formulas, pricing, and business plans. The receiving party keeps them confidential and uses them only to evaluate and perform work together.\n\n## Term\n\nThese obligations last for three years from the effective date.\n\n[[SIGNATURES]]'},
+  {kind:'manufacturing',title:'Contract Manufacturing Agreement',body:'# Contract Manufacturing Agreement\n\nThis Contract Manufacturing Agreement is made on {{effective_date}} between {{gl_legal_name}}, {{gl_address}} (the Manufacturer), and {{client_legal_name}}, {{client_address}} (the Client).\n\n## Services\n\nThe Manufacturer will batch, fill, and package the Client\'s products to the specifications in each accepted quote.\n\n## Term\n\nThis agreement runs for {{term_years}} year(s) from the effective date and renews unless either party gives notice.\n\n## Formulas and Ownership\n\nEach party keeps ownership of its own formulas, trademarks, and know how.\n\n[[SIGNATURES]]'}
+];
+const AGR_ROWS=[
+  {id:'ag1',kind:'nda',title:'Mutual Nondisclosure Agreement, Perico Nutrition LLC',status:'signed',party_name:'Perico Nutrition LLC',client_id:'c1',deal_id:null,sent_to:'ana@perico.co',sent_at:'2026-10-06T14:00:00Z',signed_at:'2026-10-07T16:20:00Z',created_at:'2026-10-06T13:55:00Z',created_by_name:'Mike',document_id:'dd1',signed_document_id:'dd2',body:''},
+  {id:'ag2',kind:'nda',title:'Mutual Nondisclosure Agreement, Perico Nutrition LLC (new flavors)',status:'sent',party_name:'Perico Nutrition LLC',client_id:'c1',sent_to:'ana@perico.co',sent_at:'2026-10-20T15:00:00Z',signed_at:null,created_at:'2026-10-20T14:58:00Z',created_by_name:'Mike',document_id:'dd3',signed_document_id:null,body:''}
+];
+const AGR_SIGNERS=[
+  {agreement_id:'ag1',role:'client',sign_order:1,name:'Ana Perez',email:'ana@perico.co',status:'signed',signed_at:'2026-10-07T15:02:00Z'},
+  {agreement_id:'ag1',role:'gl',sign_order:2,name:'Mike Krail',email:'mike@goodliquid.com',status:'signed',signed_at:'2026-10-07T16:20:00Z'},
+  {agreement_id:'ag2',role:'client',sign_order:1,name:'Ana Perez',email:'ana@perico.co',status:'viewed',viewed_at:'2026-10-21T13:10:00Z'},
+  {agreement_id:'ag2',role:'gl',sign_order:2,name:'Mike Krail',email:'mike@goodliquid.com',status:'waiting'}
+];
+const SIGN_BODY=AGR_TEMPLATES[1].body
+  .replace(/\{\{effective_date\}\}/g,'October 27, 2026').replace(/\{\{gl_legal_name\}\}/g,'Good Liquid Bev Co')
+  .replace(/\{\{gl_address\}\}/g,'2011 51st Ave E, Unit 100, Palmetto, FL 34221').replace(/\{\{client_legal_name\}\}/g,'Perico Nutrition LLC')
+  .replace(/\{\{client_address\}\}/g,'100 Main St, Tampa, FL 33602').replace(/\{\{term_years\}\}/g,'2').replace('[[SIGNATURES]]','');
+
+// ── Lead questionnaire, 2026-10-27 ──
+const QN_ANSWERS={company:'Cold Brew Collective',first_name:'Dana',last_name:'Wu',role:'Founder',email:'dana@coldbrew.co',phone:'813 555 0142',
+  product_description:'A sparkling yerba mate energy drink, lightly sweetened with cane sugar.',product_category:'Energy drink',carbonation:'Fully carbonated',flavors:'3',contains_alcohol:'No',
+  formula_status:'Finished commercial formula, ready to scale',ingredients:'Carbonated water, cane sugar, yerba mate extract, citric acid, natural flavor, potassium sorbate',low_acid:'No',ph_known:'Below 4.6 (acidic)',preservative:'Yes, potassium sorbate',allergens:['None'],process_authority:'In progress',
+  target_volume:'500 to 999 cases',format:'12oz sleek can',label_type:'Printed cans',artwork_status:'Print ready artwork',secondary_packaging:['24 count trays','4 pack carriers (PakTech)'],timeline:'1 to 3 months',
+  sales_channels:['Retail','Online'],storage_needed:'Yes',shelf_stability:'Shelf stable / ambient'};
+const QN_TOKEN='3f9a1c7e5b2d4f608a1b3c5d7e9f0a2b4c6d8e0f1a3b5c7d';
+
 const STORYBOARDS={
+  questionnaire:{
+    title:'The Project Questionnaire: Everything You Need to Quote',
+    seedCore:true,
+    async setup(pg){
+      await coreSetup(pg,'pipeline');
+      await pg.evaluate((D)=>{
+        window.__chain(D.tables);
+        window.__rpc={ gl_questionnaire_link:function(){ return D.token; } };
+      }, {token:QN_TOKEN, tables:{product_intake:[{id:'pi1',deal_id:'d1',email:'ana@perico.co',answers:Object.assign({},QN_ANSWERS,{company:'Perico Nutrition',first_name:'Ana',last_name:'Perez',email:'ana@perico.co'}),source:'questionnaire',submitted_at:'2026-10-25T14:00:00Z',updated_at:'2026-10-25T14:00:00Z'}]}});
+      await sleep(500); await pg.evaluate(()=>window.__hud());
+    },
+    steps:[
+      {say:"Before you quote a new brand, you need the same answers every time. The project questionnaire collects them, and it now lives right on the pipeline deal."},
+      {say:"Open a deal.", act:{type:'click',sel:'.kcard:has-text("Quote Request")'}},
+      {say:"Under the A I brief is Product Intake. These are the lead's answers, grouped the same way as the emailed questionnaire: brand and product, formula and ingredients, run size and packaging, and sales.", act:{type:'move',sel:'#ddp-intake'}},
+      {say:"Run size and packaging tells you the format, case packing, and timeline you need to quote.", act:{type:'move',sel:'#ddp-intake >> text=RUN SIZE & PACKAGING'}},
+      {say:"To send a lead the web version, click Copy questionnaire link, and paste it into your email.", act:{type:'click',sel:'#gl-intake-link'}},
+      {say:"The link is private to this deal. The lead can open it again later to update their answers.", act:{type:'move',sel:'#gl-intake-link-msg'}},
+      {say:"When they submit, you get an alert, and the answers land here under Intake. Answers that come back by email can be typed in with Edit intake, field for field.", act:{type:'move',sel:'#gl-intake-edit'}},
+      {say:"The budget question is optional. Never hold a quote over it.", act:{type:'move',sel:'#ddp-intake'}},
+      {say:"And when the lead becomes a client, click Convert to Client. The intake answers move to the client's record automatically, so nothing has to be asked twice.", act:{type:'move',sel:'[data-gl-action="glConvertLeadToOnboarding"]'}}
+    ]
+  },
+  'questionnaire-form':{
+    title:'The Questionnaire: What Your Lead Sees',
+    url:'/questionnaire.html?t='+QN_TOKEN,
+    mockRest:function(table,u){
+      if(/gl_questionnaire_get/.test(u)) return {ok:true,submitted:false,company:'Cold Brew Collective',contact_name:'Dana Wu',email:'dana@coldbrew.co',phone:'813 555 0142',answers:{}};
+      if(/gl_questionnaire_submit/.test(u)) return {ok:true,intake_id:'pi9'};
+      return [];
+    },
+    steps:[
+      {say:"This is the questionnaire your lead opens from the link you send. There is no login, and their name, company, email, and phone are already filled in."},
+      {say:"It is addressed to them by name.", act:{type:'move',sel:'#hi'}},
+      {say:"They describe the product in their own words.", act:{type:'type',sel:'#gi-product_description',text:'A sparkling yerba mate energy drink, lightly sweetened.'}},
+      {say:"Pick the category.", act:{type:'select',sel:'#gi-product_category',label:'Energy drink'}},
+      {say:"Carbonated or still.", act:{type:'select',sel:'#gi-carbonation',label:'Fully carbonated'}},
+      {say:"And the preservative. Every product you run must have one, and the form says so up front.", act:{type:'select',sel:'#gi-preservative',label:'Yes, potassium sorbate'}},
+      {say:"They work down the rest: formula, ingredients, Process Authority letter, run size, package format, decoration, case packing, and timeline.", act:{type:'js',fn:(A)=>{
+        Object.keys(A).forEach(function(k){
+          var e=document.getElementById('gi-'+k); if(!e) return; var v=A[k];
+          if(e.tagName==='DIV'){ (Array.isArray(v)?v:[v]).forEach(function(x){ var b=e.querySelector('input[value="'+x+'"]'); if(b && !b.checked){ b.checked=true; b.dispatchEvent(new Event('change',{bubbles:true})); } }); return; }
+          if(e.value) return;
+          e.value=v; e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true}));
+        });
+        var s=document.getElementById('gi-target_volume'); if(s) s.scrollIntoView({block:'center'});
+      }, arg:QN_ANSWERS}},
+      {say:"The budget question is optional, so it never stops them from submitting.", act:{type:'move',sel:'#gi-budget'}},
+      {say:"Then they click Submit questionnaire.", act:{type:'click',sel:'#submit-btn'}},
+      {say:"Done. Their answers go straight onto the deal in your C R M, and you get an alert. If anything changes, they open the same link and update it.", act:{type:'move',sel:'#done'}}
+    ]
+  },
+  agreements:{
+    title:'Agreements: NDAs and Manufacturing Agreements with E-Signatures',
+    seedCore:true,
+    async setup(pg){
+      await coreSetup(pg,'clients');
+      await pg.evaluate((D)=>{
+        window.__chain(D);
+        window.__fn={ 'agreement-sign':function(){ return {ok:true, sent_to:'ana@perico.co'}; } };
+        window.currentUser={id:'u1',email:'mike@goodliquid.com',role:'admin',name:'Mike Krail',initials:'MK'};
+        var c=window.clients.filter(function(x){ return x.id==='c1'; })[0];
+        if(c){ c.legalName='Perico Nutrition LLC'; c.street='100 Main St'; c.city='Tampa'; c.state='FL'; c.zip='33602'; c.contact='Ana Perez'; }
+      }, {agreement_templates:AGR_TEMPLATES, agreements:JSON.parse(JSON.stringify(AGR_ROWS)), agreement_signers:AGR_SIGNERS, deal_documents:[]});
+      await sleep(500); await pg.evaluate(()=>window.__hud());
+    },
+    steps:[
+      {say:"You can now write NDAs and manufacturing agreements right in the C R M, and have them signed electronically. No more Word files and no outside signing service."},
+      {say:"On the Clients page, click Agreements next to a client. The same button is on a pipeline deal and on the client's record.", act:{type:'click',sel:'[data-gl-action="glAgreementsForClient"][data-gl-arg1="c1"]'}},
+      {say:"On file lists every agreement for this client, and where it stands: draft, sent for signature, signed, declined, or void.", act:{type:'move',sel:'#gl-agr-modal >> text=ON FILE'}},
+      {say:"Each one shows who has signed and when, and who is still waiting. View signed opens the final copy.", act:{type:'move',sel:'#gl-agr-modal >> text=Signed'}},
+      {say:"To make a new one, pick the kind: a mutual N D A, or a manufacturing agreement.", act:{type:'click',sel:'#gl-agr-modal button:has-text("Manufacturing Agreement")'}},
+      {say:"The fields fill in from the client's record and from your own company details. Anything required that is still blank is highlighted in yellow.", act:{type:'move',sel:'input[data-agr-field="client_legal_name"]'}},
+      {say:"For a manufacturing agreement, set the term in years.", act:{type:'fill',sel:'input[data-agr-field="term_years"]',text:'2'}},
+      {say:"Click Generate draft.", act:{type:'click',sel:'#gl-agr-modal button:has-text("Generate draft")'}},
+      {say:"The draft appears with a live preview. You can edit the text for this one client without changing your template.", act:{type:'move',sel:'#gl-agr-modal >> text=DOCUMENT'}},
+      {say:"Then download the P D F, save it to the client's documents, or send it for e-signature.", act:{type:'move',sel:'#gl-agr-modal button:has-text("Send for e-signature")'}},
+      {say:"Sending emails the client a private signing link. They sign first, then you countersign, and the signed copy files itself under the client's documents and shows up in their portal."},
+      {say:"Your standard wording lives in Agreement Templates under A I Tools. Change it there once, and every new agreement uses it."}
+    ]
+  },
+  'agreement-signing':{
+    title:'Signing an Agreement: What Your Client Sees',
+    url:'/sign.html#t=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    async routes(pg){
+      const body=SIGN_BODY;
+      await pg.route('**/functions/v1/agreement-sign', async route=>{
+        const h={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'POST, OPTIONS'};
+        if(route.request().method()==='OPTIONS') return route.fulfill({status:204,headers:h,body:''});
+        let a='view'; try { a=(route.request().postDataJSON()||{}).action||'view'; } catch(e){}
+        const out = a==='sign' ? {ok:true,signed:true,complete:false}
+          : {ok:true,title:'Contract Manufacturing Agreement, Perico Nutrition LLC',body:body,
+             signer:{name:'Ana Perez',email:'ana@perico.co',title:'Owner',role:'client'},
+             parties:{good_liquid:'Good Liquid Bev Co',company:'Perico Nutrition LLC'},
+             consent_text:'I agree to use electronic records and signatures, and I intend my typed name below to be my legal signature on this agreement, with the same effect as a handwritten signature (U.S. ESIGN Act, 15 U.S.C. 7001 et seq.; Florida Uniform Electronic Transaction Act, Fla. Stat. 668.50).'};
+        return route.fulfill({status:200,headers:Object.assign({'Content-Type':'application/json'},h),body:JSON.stringify(out)});
+      });
+    },
+    steps:[
+      {say:"This is what your client sees when they open the signing link from their email. There is no login. The private link is the key."},
+      {say:"At the top: the agreement, who it is between, and who is signing.", act:{type:'move',sel:'#doc-title'}},
+      {say:"Below that, the full agreement to read.", act:{type:'move',sel:'#doc-body'}},
+      {say:"At the bottom, they agree to sign electronically.", act:{type:'check',sel:'#consent'}},
+      {say:"Their typed name becomes their signature. It is filled in for them, and they can correct it.", act:{type:'move',sel:'#typed'}},
+      {say:"Then they click Sign agreement.", act:{type:'click',sel:'#sign-btn'}},
+      {say:"Done. Good Liquid countersigns next, and once everyone has signed, both sides get the signed copy by email.", act:{type:'move',sel:'#done-title'}},
+      {say:"If they do not want to sign, they can decline and give a reason, and you see that on the agreement in the C R M."}
+    ]
+  },
+  quotes:{
+    title:'Quotes: Build, Send, and Track Every Quote',
+    seedCore:true,
+    async setup(pg){
+      await coreSetup(pg,'pipeline');
+      await pg.evaluate((D)=>{
+        window.__chain(D);
+        window.__rpc={ gl_next_quote_number:function(){ return 'GLQ-202610-043'; } };
+        window._glPricingLoaded=false;
+      }, {quotes:JSON.parse(JSON.stringify(QUOTE_ROWS)), pricing_settings:PRICING_ROWS, canning_rates:CANNING_RATES});
+      await sleep(600); await pg.evaluate(()=>window.__hud());
+    },
+    steps:[
+      {say:"Quotes live on the Pipeline page. There are two buttons at the top: Quote Builder makes a new quote, and Quotes lists every quote you have saved."},
+      {say:"Click Quotes.", act:{type:'click',sel:'#gl-pipeline-quotes-list-btn'}},
+      {say:"This is every saved quote, including ones not linked to a client or deal yet. It opens on the quotes you have sent.", act:{type:'move',sel:'#gl-ql-list'}},
+      {say:"Filter by Sent, Draft, Accepted, or Declined. Let's show them all.", act:{type:'click',sel:'button.gl-ql-f[data-f="all"]'}},
+      {say:"Search by company, email, or quote number.", act:{type:'type',sel:'#gl-ql-search',text:'Lotus'}},
+      {say:"Change a quote's status right on the row. This draft has gone out, so mark it Sent.", act:{type:'select',sel:'select.gl-ql-status[data-qid="q2"]',value:'sent'}},
+      {say:"Accepted is set from the client's record, because accepting a quote can unlock services in their portal. So here it shows locked.", act:{type:'move',sel:'#gl-ql-filters'}},
+      {say:"When a quote turns into a job, click Invoice. The invoice builder opens with the quote's lines already on it. If the quote has no client yet, it asks which client first.", act:{type:'move',sel:'button.gl-ql-inv'}},
+      {say:"Now let's build a new quote. Click New Quote.", act:{type:'click',sel:'#gl-ql-new'}},
+      {say:"Enter who it is for.", act:{type:'type',sel:'#gl-qb-client-name',text:'Brightwater Seltzer'}},
+      {say:"And their email.", act:{type:'type',sel:'#gl-qb-client-email',text:'hello@brightwater.co'}},
+      {say:"Pick the can format.", act:{type:'fill',sel:'#gl-qb-fmt',text:'12oz Sleek'}},
+      {say:"New: choose a twenty four or twelve count case tray. Switching trays keeps the number of cans the same and changes the case count to match.", act:{type:'select',sel:'#gl-qb-tray',value:'12'}},
+      {say:"Load the standard volume tiers with one click. Each tier is priced from your rate card.", act:{type:'click',sel:'#gl-qb-auto-tiers'}},
+      {say:"Add flash pasteurization. It is priced by can size: three cents a can on twelve ounce cans.", act:{type:'check',sel:'#gl-qb-pasteur-on'}},
+      {say:"Switch the format to sixteen ounce, and pasteurization moves to five cents a can on its own.", act:{type:'fill',sel:'#gl-qb-fmt',text:'16oz Standard'}},
+      {say:"The change over fee is one hundred twenty five dollars per changeover.", act:{type:'move',sel:'#gl-qb-changeover-on'}},
+      {say:"Each tier shows its run total, and you can override any price on the line.", act:{type:'move',sel:'#gl-qb-tbody'}},
+      {say:"For bottling, choose six or twelve bottles per case. Bottling is priced by total bottles, so the price per bottle does not change with the case size.", act:{type:'select',sel:'#gl-qb-type',value:'bottling'}},
+      {say:"Load the bottling tiers.", act:{type:'click',sel:'#gl-qb-auto-tiers'}},
+      {say:"Here is the bottles per case setting, on each tier.", act:{type:'move',sel:'#gl-qb-tiers [data-tier-field="perCase"]'}},
+      {say:"When it looks right, save it, email it, or save it and create the invoice. The quote number comes from the C R M in order, so numbers never repeat.", act:{type:'move',sel:'#gl-qb-send-email'}},
+      {say:"Tip: open a deal on the Pipeline and click New Quote, and the builder fills in the company, email, product, and volume from the deal for you."}
+    ]
+  },
+  'job-intake':{
+    title:'Job Intake: One Spec Sheet for Every Production Job',
+    async setup(pg){
+      await pg.evaluate(async(D)=>{
+        window.__chain(D);
+        window.__insertDefaults={ job_intakes:function(){ return { job_no:1004, status:'submitted', created_at:new Date().toISOString() }; } };
+        window.currentUser={id:'u1',email:'mike@krail.us',role:'admin',name:'Mike',initials:'MK'};
+        if(window.GL_HOOKS){ window.GL_HOOKS._navGuards=[]; }
+        document.getElementById('crm-panel').classList.add('show');
+        window.cNav('production-runs');
+        window.__hud();
+      }, jiTables());
+      await sleep(1000); await pg.evaluate(()=>window.__hud());
+    },
+    steps:[
+      {say:"Every production job now starts with one form: the Job Intake. It holds the full spec for the run and the formula, all in one place, so nothing gets lost in emails and texts."},
+      {say:"Your canning partners fill it out from their customer portal. On your side, the jobs land in Production Runs. Click Job Intakes.", act:{type:'click',sel:'button:has-text("Job Intakes"):visible'}},
+      {say:"Each job gets its own number, so everyone can refer to it the same way. You see who sent it, the end customer, and the product.", act:{type:'move',sel:'#gl-ji-rows > div:has-text("JOB #1003")'}},
+      {say:"Underneath is the whole spec: cases and cans, can size and decoration, carbonation, lid color, case tray, shrink wrap, PakTechs, and what the client is supplying.", act:{type:'move',sel:'#gl-ji-rows > div:has-text("JOB #1003") >> text=Lid color'}},
+      {say:"The formula is attached to every job. A job cannot be submitted without one. Click it to open the file.", act:{type:'move',sel:'#gl-ji-rows > div:has-text("JOB #1003") .gl-ji-fopen'}},
+      {say:"As the job moves along, change its status: Submitted, Reviewed, Scheduled, Completed, or Cancelled. Let's mark this one Reviewed.", act:{type:'select',sel:'select.gl-ji-status[data-id="j3"]',value:'reviewed'}},
+      {say:"Keep internal notes on the job. Your partner never sees these.", act:{type:'type',sel:'.gl-ji-snote[data-id="j3"]',text:'Cans arrive Nov 3'}},
+      {say:"Then save the note.", act:{type:'click',sel:'.gl-ji-snote-save[data-id="j3"]'}},
+      {say:"The list opens on open jobs. Use the filter to see completed or cancelled ones, or search by client, brand, or job number.", act:{type:'move',sel:'#gl-ji-fstatus'}},
+      {say:"If a partner sends a job by email instead, enter it yourself with New job.", act:{type:'click',sel:'#gl-ji-new'}},
+      {say:"Pick the client the job is for.", act:{type:'select',sel:'#gl-ji-client',value:'cj'}},
+      {say:"Enter the end customer, the brand the product is for.", act:{type:'type',sel:'#gl-ji-endcust',text:'Volt Energy'}},
+      {say:"Then the product or flavor.", act:{type:'type',sel:'#gl-ji-product',text:'Blue Razz'}},
+      {say:"Is it a new product, or a repeat run?", act:{type:'select',sel:'#gl-ji-jobtype',value:'new'}},
+      {say:"How many cases.", act:{type:'type',sel:'#gl-ji-cases',text:'500'}},
+      {say:"Now the packaging. The can size.", act:{type:'select',sel:'#gl-ji-can',value:'12oz_sleek'}},
+      {say:"Printed cans, shrink sleeved, or brite.", act:{type:'select',sel:'#gl-ji-deco',value:'printed'}},
+      {say:"The lid color.", act:{type:'type',sel:'#gl-ji-lid',text:'Black'}},
+      {say:"A twelve or twenty four count case tray, and whether the trays get shrink wrapped.", act:{type:'select',sel:'#gl-ji-tray',value:'24'}},
+      {say:"Yes, shrink wrap them.", act:{type:'select',sel:'#gl-ji-shrink',value:'yes'}},
+      {say:"PakTechs: none, four pack, or six pack. Choosing one opens the PakTech color.", act:{type:'select',sel:'#gl-ji-pak',value:'4'}},
+      {say:"Now the liquid. Carbonated jobs ask for the target volumes of C O 2. Still jobs are nitrogen dosed.", act:{type:'select',sel:'#gl-ji-carb',value:'carbonated'}},
+      {say:"Two point eight volumes.", act:{type:'type',sel:'#gl-ji-co2',text:'2.8'}},
+      {say:"Then the formula. Upload the file, or pick one already on file for this client.", act:{type:'click',sel:'input[name="gl-ji-fsrc"][value="onfile"]'}},
+      {say:"Here are the formulas on file. Choose the right one.", act:{type:'select',sel:'#gl-ji-fdoc',value:'fd1'}},
+      {say:"Tick what the client is supplying, so you know what to order.", act:{type:'check',sel:'.gl-ji-supply[value="cans"]'}},
+      {say:"Submit the job.", act:{type:'click',sel:'#gl-ji-send'}},
+      {say:"It gets the next job number, and the full spec is emailed to you right away. Every job, every time, in the same format."}
+    ]
+  },
+  'job-intake-portal':{
+    title:'Job Intake from the Customer Portal',
+    url:'/index.html?portal=1',
+    async setup(pg){
+      await pg.evaluate(async(D)=>{
+        window.__chain(D);
+        window.__insertDefaults={ job_intakes:function(){ return { job_no:1004, status:'submitted' }; } };
+        window.supa.auth.getSession=async()=>({data:{session:{user:{id:'cust1'}}}});
+        window.currentUser=null;
+        await window.glCheckPortal();
+      }, {
+        customer_users:[{id:'cu1',auth_user_id:'cust1',client_id:'cj',email:'dev@harborcanning.co',display_name:'Dev, Harbor Canning Co',active:true,role:'customer'}],
+        clients:[{id:'cj',name:'Harbor Canning Co',contact_name:'Dev Patel',email:'dev@harborcanning.co'}],
+        deal_documents:JSON.parse(JSON.stringify(JI_DOCS)),
+        job_intakes:[], invoices:[], production_runs:[], lot_documents:[], client_artwork:[], client_allergen_declarations:[], sample_shipments:[], formulas:[], customer_requests:[]
+      });
+      await sleep(1400);
+      await pg.evaluate(()=>window.__hud());
+    },
+    steps:[
+      {say:"This is the customer portal, as your canning partner sees it. Every production job they send you starts here."},
+      {say:"Click New production job.", act:{type:'click',sel:'[data-gl-action="glOpenJobIntakeForm"]'}},
+      {say:"The form asks for everything you need to run the job. Fields with a red star are required.", act:{type:'move',sel:'#gl-ji-form >> text=NEW PRODUCTION JOB'}},
+      {say:"The end customer.", act:{type:'type',sel:'#gl-ji-endcust',text:'Brightwater Seltzer'}},
+      {say:"The product.", act:{type:'type',sel:'#gl-ji-product',text:'Lime'}},
+      {say:"This one is a repeat run.", act:{type:'select',sel:'#gl-ji-jobtype',value:'repeat'}},
+      {say:"Three hundred cases.", act:{type:'type',sel:'#gl-ji-cases',text:'300'}},
+      {say:"Twelve ounce standard cans, shrink sleeved.", act:{type:'select',sel:'#gl-ji-can',value:'12oz_standard'}},
+      {say:"Shrink sleeved.", act:{type:'select',sel:'#gl-ji-deco',value:'sleeved'}},
+      {say:"Silver lids.", act:{type:'type',sel:'#gl-ji-lid',text:'Silver'}},
+      {say:"Twelve count trays.", act:{type:'select',sel:'#gl-ji-tray',value:'12'}},
+      {say:"Shrink wrapped.", act:{type:'select',sel:'#gl-ji-shrink',value:'yes'}},
+      {say:"Carbonated, at three point five volumes.", act:{type:'select',sel:'#gl-ji-carb',value:'carbonated'}},
+      {say:"Three point five.", act:{type:'type',sel:'#gl-ji-co2',text:'3.5'}},
+      {say:"Every job needs its formula. For a repeat run, pick the one already on file. For something new, upload the file right here.", act:{type:'click',sel:'input[name="gl-ji-fsrc"][value="onfile"]'}},
+      {say:"Choose the formula.", act:{type:'select',sel:'#gl-ji-fdoc',value:'fd2'}},
+      {say:"Add anything else the team should know in the notes, then submit.", act:{type:'click',sel:'#gl-ji-send'}},
+      {say:"The job gets its number, and Good Liquid has the full spec by email the moment it is submitted. No more chasing details."}
+    ]
+  },
   dashboard:{
     title:'Dashboard — Your Business at a Glance',
     async setup(pg){
@@ -375,28 +711,35 @@ const STORYBOARDS={
       await pg.evaluate(()=>window.__hud());
     },
     steps:[
-      {say:"This is the Customer Portal — a private page each of your brands logs into to manage their own account. They see only their own data, and nothing else in your business."},
-      {say:"It opens on their dashboard, headed with your company name and their account.", act:{type:'move',sel:'text=GOOD LIQUID BEV CO'}},
-      {say:"Your Invoices lists everything they have been billed, with the status of each and a button to download the PDF or pay online.", act:{type:'move',sel:'text=YOUR INVOICES'}},
-      {say:"Production Runs show where each of their batches is in your process — from formulation all the way through to shipping.", act:{type:'move',sel:'text=PRODUCTION RUNS'}},
-      {say:"Their COAs and lot documents are right here to download — the exact paperwork their retailers ask for.", act:{type:'move',sel:'text=COAs & DOCUMENTS'}},
-      {say:"And My Label Artwork, where they upload each SKU's design for your approval — one can, or twenty.", act:{type:'move',sel:'#gl-cp-artwork'}},
-      {say:"So the portal is self-service for your customers, and it keeps every invoice, document, and design in one organized place."}
+      {say:"This is the Customer Portal, a private page each of your brands logs into to manage their own account. They see only their own data, and nothing else in your business."},
+      {say:"It opens on their dashboard, headed with your company name and their account, with their balance at the top.", act:{type:'move',sel:'text=GOOD LIQUID BEV CO'}},
+      {say:"Quick action tiles let them send you a request: samples, a reorder, a quote, or a question. Partners who send you production jobs use New production job, which sends you the full spec and the formula for every run.", act:{type:'move',sel:'[data-gl-action="glOpenJobIntakeForm"]'}},
+      {say:"Below that, tabs organize everything. Overview shows their project and where each production run stands.", act:{type:'move',sel:'#gl-portal-tabs, [data-gl-action="glPortalTab"][data-gl-arg1="overview"]'}},
+      {say:"Production runs move from formulation all the way through to shipping, and they can follow along here.", act:{type:'move',sel:'[data-gl-portal-panel="overview"] >> text=PRODUCTION RUNS'}},
+      {say:"Billing lists every invoice, with its status, the P D F, and a button to pay online.", act:{type:'click',sel:'[data-gl-action="glPortalTab"][data-gl-arg1="billing"]'}},
+      {say:"Here are their invoices.", act:{type:'move',sel:'[data-gl-portal-panel="billing"] >> text=YOUR INVOICES'}},
+      {say:"Documents holds their C O As and lot paperwork, plus agreements, including the ones they signed electronically.", act:{type:'click',sel:'[data-gl-action="glPortalTab"][data-gl-arg1="documents"]'}},
+      {say:"Renders, Packaging and Artwork, and Market Analytics show a lock until you turn those services on for them.", act:{type:'move',sel:'[data-gl-action="glPortalTab"][data-gl-arg1="artwork"]'}},
+      {say:"So the portal is self service for your customers, and it keeps every invoice, document, and design in one organized place."}
     ]
   },
   invoices:{
     title:'Invoices — Bill Your Brands',
     seedCore:true,
-    async setup(pg){ await coreSetup(pg,'invoices'); },
+    async setup(pg){ await coreSetup(pg,'invoices'); await pg.evaluate(D=>{ window.__chain(D); }, {canning_rates:CANNING_RATES, pricing_settings:PRICING_ROWS, clients:[{id:'c1',name:'Perico Nutrition',email:'ana@perico.co'},{id:'c2',name:'Lotus Beverages',email:'sam@lotus.co'}]}); },
     steps:[
       {say:"Invoices is where you bill your brands and see exactly what has been paid and what is still outstanding."},
       {say:"Every invoice is listed with its client, service, amount, date, and a color-coded status — Draft, Pending, Paid, Overdue, or Partial payment.", act:{type:'move',sel:'#inv-body'}},
       {say:"When a client pays part of what they owe, record it with the Part button. The invoice keeps a partial payment badge and shows the balance still owing, so it never looks either fully paid or untouched.", act:{type:'move',sel:'#inv-body tr:has-text("GL-1040")'}},
       {say:"Use the pills at the top to filter. Let's show just the overdue invoices.", act:{type:'click',sel:'#inv-pills .cpill:has-text("Overdue")'}},
-      {say:"To create a new one, click New invoice.", act:{type:'click',sel:'button:has-text("New invoice"):visible'}},
-      {say:"First, pick the client the invoice is for.", act:{type:'select',sel:'#inv-client',label:'Perico Nutrition'}},
-      {say:"Then choose the service. The app auto-prices it from your rate card and builds a live preview on the right — no manual math.", act:{type:'select',sel:'#inv-svc',value:'canning'}},
-      {say:"When it looks right, Save and Send emails it straight to the client, or you can save it as a draft for later.", act:{type:'move',sel:'button:has-text("Save & Send"):visible'}},
+      {say:"To create a new one, click New invoice. The invoice builder opens.", act:{type:'move',sel:'button:has-text("New invoice"):visible'}},
+      {act:{type:'js',fn:()=>window.openNewInvoiceBuilder()}, say:"First, pick the client the invoice is for."},
+      {say:"Perico Nutrition.", act:{type:'select',sel:'#ginv-client',value:'c1'}},
+      {say:"Add a canning line. It prices itself from your rate card.", act:{type:'click',sel:'[data-gl-action="glAddLine"][data-gl-arg1="canning"]'}},
+      {say:"Each canning line has a case tray picker. Choose a twelve count tray and a case becomes twelve cans. The cans stay the same, and the case count changes to match.", act:{type:'select',sel:'#gl-inv-body select[id$="-tray"]',value:'12'}},
+      {say:"Here you can see the cans and the cans per case.", act:{type:'move',sel:'#gl-inv-body [id$="-cans"]'}},
+      {say:"Ticking the twelve count tray add on below puts every canning line on twelve count at once. Prices under a cent show in full, like two and a half cents, instead of rounding.", act:{type:'move',sel:'#gl-inv-addons'}},
+      {say:"When it looks right, Save and Send emails it straight to the client, or save it as a draft for later.", act:{type:'move',sel:'[data-gl-action="glSaveAndSend"]'}},
       {say:"That is invoicing in a nutshell: pick a client, pick a service, and the price and the preview build themselves."}
     ]
   },
@@ -590,6 +933,10 @@ async function doAct(pg,act){
   else if(act.type==='type'){ await pg.locator(act.sel).first().click({timeout:ATO}); await pg.locator(act.sel).first().pressSequentially(act.text,{delay:48,timeout:ATO}); }
   else if(act.type==='select'){ await pg.selectOption(act.sel, act.label?{label:act.label}:act.value, {timeout:ATO}); }
   else if(act.type==='fill'){ await pg.locator(act.sel).first().fill(act.text,{timeout:ATO}); }
+  else if(act.type==='check'){ await pg.locator(act.sel).first().check({timeout:ATO}); }
+  // js: run a page function after the cursor arrives (fill many fields at
+  // once, open a modal the way a nav guard would). act.fn is a function.
+  else if(act.type==='js'){ await pg.evaluate(act.fn, act.arg===undefined?null:act.arg); }
 }
 
 (async()=>{
@@ -597,10 +944,19 @@ const key=process.argv[2]||'prp';
 const sb=STORYBOARDS[key]; if(!sb){ console.error('unknown storyboard',key); process.exit(1); }
 const work=path.join(SCRATCH,'video',key); fs.mkdirSync(work,{recursive:true});
 
+// GL_DRY_RUN=1: no narration and no MP4. Each step gets a short fixed slot and
+// any act that fails is reported and fails the run, so a storyboard can be
+// checked in a minute before spending a full render on it. Screenshots of each
+// step land in <work>/dry_<i>.png.
+const DRY=!!process.env.GL_DRY_RUN;
+let actFailures=0;
 // 1) synth narration per step, compute per-step target length T_i
-console.log('synthesizing narration…');
 const T=[]; let A=0;
 const SPK=[];
+let narration=null;
+if(DRY){ sb.steps.forEach(function(){ T.push(1.6); SPK.push(1); A+=1.6; }); }
+else {
+console.log('synthesizing narration…');
 synthAll(sb.steps.map((s,i)=>[s.say, path.join(work,`raw_${i}.wav`)]), work);
 sb.steps.forEach((s,i)=>{
   const raw=path.join(work,`raw_${i}.wav`);
@@ -610,9 +966,10 @@ sb.steps.forEach((s,i)=>{
 });
 // concat segments into one narration track
 fs.writeFileSync(path.join(work,'list.txt'), sb.steps.map((_,i)=>`file 'seg_${i}.wav'`).join('\n'));
-const narration=path.join(work,'narration.wav');
+narration=path.join(work,'narration.wav');
 execSync(`ffmpeg -y -loglevel error -f concat -safe 0 -i "${path.join(work,'list.txt')}" -c copy "${narration}"`);
 console.log(`narration ${A.toFixed(1)}s across ${sb.steps.length} steps`);
+}
 
 // 2) record the video, forcing each step's wall-time to T_i
 const srv=http.createServer((q,s)=>{let p=decodeURIComponent(q.url.split('?')[0]);if(p==='/')p='/index.html';
@@ -620,15 +977,26 @@ const srv=http.createServer((q,s)=>{let p=decodeURIComponent(q.url.split('?')[0]
 await new Promise(r=>srv.listen(8941,r));
 const br=await chromium.launch({executablePath:process.env.PW_CHROMIUM||undefined,args:['--no-sandbox','--disable-setuid-sandbox']});
 const ctx=await br.newContext({viewport:{width:W,height:H},deviceScaleFactor:1,recordVideo:{dir:work,size:{width:W,height:H}}});
+try { await ctx.grantPermissions(['clipboard-read','clipboard-write'],{origin:'http://127.0.0.1:8941'}); } catch(e){}
 const pg=await ctx.newPage();
+// confirm()/alert() would stall the recording; a storyboard that shows one
+// narrates it, the browser just accepts it.
+pg.on('dialog', d=>d.accept().catch(()=>{}));
+// routes: a storyboard can answer requests a REST mock does not cover (edge
+// functions on a standalone page). Installed before the page loads.
+if(sb.routes) await sb.routes(pg);
 if(sb.mockRest){
   // page mode: intercept Supabase REST and fulfill from sb.mockRest(table, url)
   await pg.route('**/rest/v1/**', async route=>{
     const u=route.request().url();
-    if(route.request().method()==='PATCH'){ return route.fulfill({status:204,body:''}); }
+    // CORS: the page is on 127.0.0.1 and the REST host is supabase.co, so a
+    // raw fetch (questionnaire.html) is cross origin and preflighted.
+    const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'GET, POST, PATCH, OPTIONS'};
+    if(route.request().method()==='OPTIONS'){ return route.fulfill({status:204,headers:cors,body:''}); }
+    if(route.request().method()==='PATCH'){ return route.fulfill({status:204,headers:cors,body:''}); }
     const m=u.match(/\/rest\/v1\/([a-z_]+)/); const table=m?m[1]:'';
     const rows=sb.mockRest(table,u)||[];
-    return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(rows)});
+    return route.fulfill({status:200,contentType:'application/json',headers:cors,body:JSON.stringify(rows)});
   });
 }
 const startUrl = sb.url ? ('http://127.0.0.1:8941'+sb.url) : 'http://127.0.0.1:8941/index.html';
@@ -644,12 +1012,16 @@ await sleep(300);
 for(let i=0;i<sb.steps.length;i++){
   const t=Date.now();
   await pg.evaluate(({t,lead,ms})=>{ window.__vcap(t); setTimeout(function(){ window.__speak && window.__speak(ms); }, lead); }, { t: sb.steps[i].say, lead: LEAD*1000, ms: SPK[i]*1000 });
-  try { await doAct(pg, sb.steps[i].act); } catch(e){ console.error('step',i,'act failed:',e.message); }
+  // Checked BEFORE the act: a click can navigate away from its own target.
+  if(DRY && sb.steps[i].act && sb.steps[i].act.sel && !(await pg.locator(sb.steps[i].act.sel).count().catch(()=>0))){ actFailures++; console.error('step',i,'selector not found:',sb.steps[i].act.sel); }
+  try { await doAct(pg, sb.steps[i].act); } catch(e){ actFailures++; console.error('step',i,'act failed:',e.message); }
+  if(DRY){ await sleep(500); await pg.screenshot({path:path.join(work,`dry_${i}.png`)}); }
   const el=(Date.now()-t)/1000, rem=T[i]-el;
   if(rem>0) await sleep(rem*1000);
 }
 const video=pg.video();
 await ctx.close();
+if(DRY){ await br.close(); srv.close(); console.log(actFailures?('DRY RUN: '+actFailures+' failed step(s)'):'DRY RUN: every step ok', '· screenshots in', work); process.exit(actFailures?1:0); }
 const vpath=await video.path();
 const V=dur(vpath);
 console.log(`video ${V.toFixed(1)}s (audio ${A.toFixed(1)}s) → front-trim ${(V-A).toFixed(2)}s`);

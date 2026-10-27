@@ -468,7 +468,10 @@
     '<b>Audit trail</b>: every send (manual or scheduled) inserts a <code>daily_digest_sent</code> row into <code>audit_log</code> with full counts, so you can verify the morning email actually went out.'
   ]);
 
-  var SEC_INVOICES = watch('tutorial-invoices.mp4') + MOCK_INVOICES +
+  var SEC_INVOICES = watch('tutorial-invoices.mp4') +
+    moreVideos([
+      ['tutorial-quotes.mp4', '🗂 Quotes: Build, Send, and Track Every Quote', 'The Quotes list (filters, search, status on each row, Invoice from a quote), then the Quote Builder: 12 or 24 count case trays, standard tiers, flash pasteurization priced by can size, the $125 change over fee, and bottles per case for bottling.']
+    ]) + MOCK_INVOICES +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
       '<b>(1) + New invoice</b> — opens the builder modal.',
@@ -598,6 +601,10 @@
   // ────────────────────────────────────────────────────────────
   var SEC_CUSTOMER_PORTAL =
     watch('tutorial-portal.mp4') +
+    moreVideos([
+      ['tutorial-job-intake-portal.mp4', '🥫 Job Intake from the Customer Portal', 'What a canning partner sees: the New production job tile, the form, picking a formula already on file or uploading one, and submitting. You get the full spec by email.'],
+      ['tutorial-agreement-signing.mp4', '✍️ Signing an Agreement: What Your Client Sees', 'The private signing page your client opens from the email: read, agree to sign electronically, type their name, and sign. You countersign next.']
+    ]) +
     '<h4 style="margin:4px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">🌐 FULL CUSTOMER PORTAL (LOGIN)</h4>' +
     wf(620, 360,
       box(0,0,620,360,'#0a1628','rgba(255,255,255,.05)') +
@@ -1052,7 +1059,11 @@
       '<b>Role change UI</b>: drill into a user → ROLE row at the top has a dropdown (Admin / Sales / Viewer). Confirm dialog before promoting to Admin. Your own dropdown is disabled — preventing accidental self-lockout.'
     ]);
 
-  var SEC_CLIENTS = watch('tutorial-clients.mp4') + MOCK_CLIENTS +
+  var SEC_CLIENTS = watch('tutorial-clients.mp4') +
+    moreVideos([
+      ['tutorial-agreements.mp4', '📄 Agreements: NDAs and Manufacturing Agreements', 'Generating a mutual NDA or a manufacturing agreement from the client record, editing the draft, and sending it for e-signature. On file shows who has signed and who is still waiting.'],
+      ['tutorial-agreement-signing.mp4', '✍️ Signing an Agreement: What Your Client Sees', 'The private signing page your client opens from the email: read, agree to sign electronically, type their name, and sign. You countersign next.']
+    ]) + MOCK_CLIENTS +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
       '<b>(1) + Add Client</b> — header button. Opens a modal: name, contact, email, service, status (lead / active).',
@@ -1081,7 +1092,12 @@
     moreVideos([
       ['explainer-deal-brief.mp4', '🧠 Never Drop a Lead — Brief, Board &amp; Digest'],
       ['explainer-deal-docs.mp4', '📎 Deal Documents &amp; Meeting Notes'],
-      ['explainer-lead-automation.mp4', '🤖 Lead Automations — SLA, Follow-ups &amp; One-Tap Send']
+      ['explainer-lead-automation.mp4', '🤖 Lead Automations — SLA, Follow-ups &amp; One-Tap Send'],
+      ['tutorial-quotes.mp4', '🗂 Quotes: Build, Send, and Track Every Quote', 'The Quotes list (filters, search, status on each row, Invoice from a quote), then the Quote Builder: 12 or 24 count case trays, standard tiers, flash pasteurization priced by can size, the $125 change over fee, and bottles per case for bottling.'],
+      ['tutorial-questionnaire.mp4', '📋 The Project Questionnaire on a Deal', 'Product Intake on a pipeline deal: the lead’s answers by section, Copy questionnaire link, entering emailed answers, the optional budget question, and how the answers follow the lead when you convert them to a client.'],
+      ['tutorial-questionnaire-form.mp4', '📋 The Questionnaire: What Your Lead Sees', 'The web questionnaire your lead opens from the link: prefilled contact details, the questions, the optional budget, and submitting.'],
+      ['tutorial-agreements.mp4', '📄 Agreements: NDAs and Manufacturing Agreements', 'Generating a mutual NDA or a manufacturing agreement from the client record, editing the draft, and sending it for e-signature. On file shows who has signed and who is still waiting.'],
+      ['explainer-alerts.mp4', '🔔 Alerts: Never Miss an Inbound Message', 'What sends you a Telegram and email alert (leads, quote requests, portal requests, replies, questionnaires, agreements, job intakes), what happens when a channel fails, the morning health check, and the sales deck that goes out automatically.']
     ]) + MOCK_PIPELINE +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
@@ -1366,7 +1382,10 @@
       '<b>Deleting a post</b> — open the edit modal → click the red Delete button → confirm. The post is immediately removed from all dashboards.',
       '<b>Data note</b> — announcements are stored in localStorage on each device. They are visible only to users on the same browser/device and are not synced across the team via Supabase. For team-wide sync, use the Supabase <code>announcements</code> table directly.'
     ]);
-  var SEC_CUSTOMERS = watch('tutorial-portal.mp4') + MOCK_CUSTOMERS +
+  var SEC_CUSTOMERS = watch('tutorial-portal.mp4') +
+    moreVideos([
+      ['tutorial-job-intake-portal.mp4', '🥫 Job Intake from the Customer Portal', 'What a canning partner sees: the New production job tile, the form, picking a formula already on file or uploading one, and submitting. You get the full spec by email.']
+    ]) + MOCK_CUSTOMERS +
     '<div style="font-size:11px;color:#9aa7bd;margin-bottom:6px">Numbered callouts on the wireframe above:</div>' +
     bullets([
       '<b>(1) 📧 Send Onboarding Email</b> — opens the invite picker (client dropdown + email field). Behind the scenes it calls Supabase to create a real auth user, links them to the picked client, and fires a password-reset email so the customer sets their own password. Email is sent from your Gmail (the <code>gmail-send</code> Edge Function, with Mailgun as fallback), configured server-side — no per-browser API key needed.',
@@ -1440,6 +1459,10 @@
 
   var SEC_PRODUCTION_RUNS =
     watch('tutorial-production-runs.mp4') +
+    moreVideos([
+      ['tutorial-job-intake.mp4', '🥫 Job Intake: One Spec Sheet for Every Production Job', 'The Job Intakes list on Production Runs (job numbers, full spec, status, internal notes, open the formula), then entering a job yourself: end customer, cans, lid color, case tray, shrink wrap, PakTechs, carbonation, and the required formula.'],
+      ['tutorial-job-intake-portal.mp4', '🥫 Job Intake from the Customer Portal', 'What a canning partner sees: the New production job tile, the form, picking a formula already on file or uploading one, and submitting. You get the full spec by email.']
+    ]) +
     wf(620, 230,
       box(0,0,620,230,'#142238','rgba(255,255,255,.05)') +
       txt(20,22,'🏭 PRODUCTION RUNS',12,'#fff') +
@@ -2031,20 +2054,28 @@
     videoCard('tutorial-audit.mp4', '🔍 Internal Audit &amp; Management Review', 'Logging audit findings, raising an NCR from a finding, scheduling an audit, and the live management-review KPI snapshot.') +
     videoCard('tutorial-auditor.mp4', '🔒 Auditor Portal — Read-Only Records Access', 'Exactly what an outside auditor sees through their read-only token link — every register and record visible, nothing changeable.') +
     videoGroup('💼 SALES, INVOICING & CLIENTS') +
-    videoCard('tutorial-invoices.mp4', '🧾 Invoices — Bill Your Brands', 'The invoice list and status filters, then building a new invoice — pick a client and service and the price and preview build themselves from the rate card.') +
+    videoCard('tutorial-invoices.mp4', '🧾 Invoices — Bill Your Brands', 'The invoice list, status filters, and partial payments, then the invoice builder: pick a client, add a canning line priced from the rate card, and choose a 12 or 24 count case tray (cans stay the same, cases change to match).') +
     videoCard('tutorial-pipeline.mp4', '📊 Pipeline — Your Sales Board', 'How deals move through Prospecting, Proposal, Negotiation and Closed — logging outreach on a card and opening the full deal.') +
     videoCard('tutorial-clients.mp4', '👥 Clients — Every Brand in One Place', 'The client list and what each row shows, then opening a brand’s complete, editable record in one click.') +
     videoCard('tutorial-portal.mp4', '🌐 Customer Portal — Your Clients’ Private Login', 'What a brand sees when they log into their own portal — invoices, production runs, COAs &amp; documents, and their label artwork.') +
+    videoCard('tutorial-quotes.mp4', '🗂 Quotes: Build, Send, and Track Every Quote', 'The Quotes list (filters, search, status on each row, Invoice from a quote), then the Quote Builder: 12 or 24 count case trays, standard tiers, flash pasteurization priced by can size, the $125 change over fee, and bottles per case for bottling.') +
+    videoCard('tutorial-agreements.mp4', '📄 Agreements: NDAs and Manufacturing Agreements', 'Generating a mutual NDA or a manufacturing agreement from the client record, editing the draft, and sending it for e-signature. On file shows who has signed and who is still waiting.') +
+    videoCard('tutorial-agreement-signing.mp4', '✍️ Signing an Agreement: What Your Client Sees', 'The private signing page your client opens from the email: read, agree to sign electronically, type their name, and sign. You countersign next.') +
+    videoCard('tutorial-questionnaire.mp4', '📋 The Project Questionnaire on a Deal', 'Product Intake on a pipeline deal: the lead’s answers by section, Copy questionnaire link, entering emailed answers, the optional budget question, and how the answers follow the lead when you convert them to a client.') +
+    videoCard('tutorial-questionnaire-form.mp4', '📋 The Questionnaire: What Your Lead Sees', 'The web questionnaire your lead opens from the link: prefilled contact details, the questions, the optional budget, and submitting.') +
     videoGroup('🚀 STAYING ON TOP OF LEADS') +
     videoCard('explainer-deal-brief.mp4', '🧠 Never Drop a Lead — Brief, Board &amp; Digest', 'How the AI Deal Brief, the 🔥 Needs Attention board, the morning Telegram/email digest, and ⏰ Bulk Nudge work together so no lead slips through the cracks.') +
     videoCard('explainer-deal-docs.mp4', '📎 Deal Documents &amp; Meeting Notes', 'Storing NDAs, Process Authority letters, formulas &amp; labels on a deal, how they carry over automatically when you convert to a client, and the meeting-notes card that feeds the brief.') +
     videoCard('explainer-lead-automation.mp4', '🤖 Lead Automations — SLA, Follow-ups &amp; One-Tap Send', 'The safety net: the first-reply watchdog that pings you when a lead waits too long, AI-drafted follow-ups you send with one tap (from the desk or your phone), snooze/handled controls, and returning-lead merging.') +
+    videoCard('explainer-alerts.mp4', '🔔 Alerts: Never Miss an Inbound Message', 'What sends you a Telegram and email alert (leads, quote requests, portal requests, replies, questionnaires, agreements, job intakes), what happens when a channel fails, the morning health check, and the sales deck that goes out automatically.') +
     videoGroup('🏬 WAREHOUSE STORAGE (CONRI)') +
     videoCard('tutorial-warehouse.mp4', '🏬 Warehouse Storage — Staff Training (28 min)', 'The whole system in 12 parts, narrated by Sofia with captions on screen: the dashboard and daily check, a client\'s pallet coming in with notes, sending items to CONRI, scheduling with Paul, completing, <b>Paul\'s CONRI pallet numbers</b> (Part 6: upload his receipt, ✂ Split), lots and QA release, <b>packaging and who owns it</b> (Part 8: pick the owner, fix a wrong one), shipping out by LTL (Part 9: the email asks Paul for his CONRI #), bringing pallets back, the other tabs, and <b>💵 Billing</b> (Part 8: packaging and who owns it; Part 12: $30 per pallet per month, $15 per pull, Create invoice, Mark billed). Demo data.') +
     videoGroup('⚙️ RUNNING THE BUSINESS') +
     videoCard('tutorial-dashboard.mp4', '📊 Dashboard — Your Business at a Glance', 'The home screen: the FDA audit-readiness scorecard, your key financials, a pipeline snapshot, and the live activity feed.') +
     videoCard('tutorial-formula-vault.mp4', '🧪 Formula Vault — Every Recipe, Versioned', 'Where product recipes live — name, version, and status — with version control so you can approve and clone without losing history.') +
     videoCard('tutorial-production-runs.mp4', '🏭 Production Runs — Your Production Schedule', 'The stage board (Discovery → Ship): each run’s brand, format, cases, and date, with line-conflict warnings when you schedule.') +
+    videoCard('tutorial-job-intake.mp4', '🥫 Job Intake: One Spec Sheet for Every Production Job', 'The Job Intakes list on Production Runs (job numbers, full spec, status, internal notes, open the formula), then entering a job yourself: end customer, cans, lid color, case tray, shrink wrap, PakTechs, carbonation, and the required formula.') +
+    videoCard('tutorial-job-intake-portal.mp4', '🥫 Job Intake from the Customer Portal', 'What a canning partner sees: the New production job tile, the form, picking a formula already on file or uploading one, and submitting. You get the full spec by email.') +
     videoGroup('🎓 LEARN THE CONCEPTS (EDUCATIONAL)') +
     lead('These aren’t how-to walkthroughs of the app — they explain the food-safety <i>ideas</i> behind it, in plain English. Great for onboarding new staff.') +
     videoCard('explainer-gmp-haccp-pcqi.mp4', '📚 Food Safety 101 — GMP · HACCP · PCQI', 'The three layers of compliance explained from the ground up: what GMP, HACCP (incl. the 7 principles), and the PCQI each are, and how they fit together.') +
