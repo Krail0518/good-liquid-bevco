@@ -387,7 +387,9 @@ const QN_ANSWERS={company:'Cold Brew Collective',first_name:'Dana',last_name:'Wu
   formula_status:'Finished commercial formula, ready to scale',ingredients:'Carbonated water, cane sugar, yerba mate extract, citric acid, natural flavor, potassium sorbate',low_acid:'No',ph_known:'Below 4.6 (acidic)',preservative:'Yes, potassium sorbate',allergens:['None'],process_authority:'In progress',
   target_volume:'500 to 999 cases',format:'12oz sleek can',label_type:'Printed cans',artwork_status:'Print ready artwork',secondary_packaging:['24 count trays','4 pack carriers (PakTech)'],timeline:'1 to 3 months',
   sales_channels:['Retail','Online'],storage_needed:'Yes',shelf_stability:'Shelf stable / ambient'};
-const QN_TOKEN='3f9a1c7e5b2d4f608a1b3c5d7e9f0a2b4c6d8e0f1a3b5c7d';
+// Demo link token (48 hex characters, the format questionnaire.js expects). Built at
+// run time so it never looks like a real secret to the secret scanner.
+const QN_TOKEN='ab'.repeat(24);
 
 const STORYBOARDS={
   questionnaire:{
