@@ -109,7 +109,7 @@
           field('gl-ji-pak', 'PakTech', select('gl-ji-pak', [['none','None'],['4','4 pack'],['6','6 pack']]), true) +
           field('gl-ji-pakcolor', 'PakTech color', input('gl-ji-pakcolor','text','maxlength="60" disabled')) +
           section('CODING (PRINTED ON THE CAN)') +
-          field('gl-ji-exp', 'Expiration date', input('gl-ji-exp','date',''), true) +
+          field('gl-ji-exp', 'Best by / expiration date', input('gl-ji-exp','date',''), true) +
           field('gl-ji-batch', 'Batch code (optional)', input('gl-ji-batch','text','maxlength="60" placeholder="Leave blank if you do not need one"')) +
           section('LIQUID') +
           field('gl-ji-carb', 'Carbonation', select('gl-ji-carb', [['carbonated','Carbonated'],['still','Still (nitrogen dosed)']], 'Choose…'), true) +
@@ -243,8 +243,8 @@
       if(!row.tray_format) missing.push('case tray');
       if(!val('gl-ji-shrink')) missing.push('shrink wrap');
       if(!row.carbonation) missing.push('carbonation');
-      if(!row.expiration_date) missing.push('expiration date');
-      else if(row.expiration_date <= new Date().toISOString().slice(0,10)){ say('err', 'The expiration date has to be in the future.'); return; }
+      if(!row.expiration_date) missing.push('best by / expiration date');
+      else if(row.expiration_date <= new Date().toISOString().slice(0,10)){ say('err', 'The best by / expiration date has to be in the future.'); return; }
       if(row.carbonation === 'carbonated' && !(row.co2_volumes > 0 && row.co2_volumes <= 5)) missing.push('CO2 volumes (0.1 to 5)');
       var src = fsrc(), file = null;
       if(src === 'upload'){
@@ -365,7 +365,7 @@
         ['PA letter on file', j.pa_letter_on_file == null ? '' : (j.pa_letter_on_file ? 'Yes' : 'No')],
         ['pH / Brix', [j.ph_target, j.brix_target].filter(Boolean).join(' / ')],
         ['Client supplies', (j.client_supplies || []).map(function(s){ return label(SUPPLIES, s); }).join(', ') || 'Nothing listed'],
-        ['Expiration date', fmtDate(j.expiration_date)],
+        ['Best by / expiration date', fmtDate(j.expiration_date)],
         ['Batch code', j.batch_code || 'None requested'],
         ['Cases per pallet', j.cases_per_pallet],
         ['Finished goods', label(FG, j.fg_disposition)],

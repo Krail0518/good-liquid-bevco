@@ -106,7 +106,7 @@ export function jobIntakeMessage(data) {
   const pak = d.paktech === '4' || d.paktech === '6'
     ? `${d.paktech} pack PakTechs` + (v('paktech_color', 60) ? ` (${v('paktech_color', 60)})` : '')
     : 'None';
-  const line = (label, value) => (value ? `${(label + ':').padEnd(18)}${value}` : null);
+  const line = (label, value) => (value ? `${(label + ':').padEnd(Math.max(18, label.length + 2))}${value}` : null);
 
   const short = `🥫 NEW JOB #${jobNo} from ${client}: ${endCustomer}, ${product}, ${cases.toLocaleString('en-US')} cases. Full spec is in your email and the CRM.`;
   const body = [
@@ -135,7 +135,7 @@ export function jobIntakeMessage(data) {
     line('Brix target', v('brix_target', 40)),
     ``,
     line('Client supplies', v('client_supplies', 120) || 'Nothing listed'),
-    line('Expiration date', v('expiration_date', 20) || '(not given)'),
+    line('Best by / exp. date', v('expiration_date', 20) || '(not given)'),
     line('Batch code', v('batch_code', 60) || 'None requested'),
     line('Cases per pallet', v('cases_per_pallet', 10)),
     line('Finished goods', FG_LABEL[d.fg_disposition] || ''),

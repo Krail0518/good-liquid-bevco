@@ -64,7 +64,7 @@ create table if not exists public.job_intakes (
   brix_target        text check (brix_target is null or char_length(brix_target) <= 40),
   client_supplies    text[] not null default '{}'
                      check (client_supplies <@ array['cans','lids','trays','paktechs','ingredients']::text[]),
-  -- Printed on the can: the expiration (best by) date is required; a batch
+  -- Printed on the can: the best by / expiration date is required; a batch
   -- code is optional, only when the client wants one.
   expiration_date    date not null,
   batch_code         text check (batch_code is null or char_length(batch_code) <= 60),

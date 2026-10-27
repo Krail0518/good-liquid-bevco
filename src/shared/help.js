@@ -2497,7 +2497,7 @@
     bullets([
       '<b>The job (required):</b> end customer or brand, product or flavor, new product or repeat run, number of cases. Optional: needed by date.',
       '<b>Packaging (required):</b> can size (12 oz standard, 12 oz sleek, 16 oz standard), decoration (printed, shrink sleeved, brite), lid color, case tray (12 or 24 count), shrink wrap the trays (yes or no), PakTech (none, 4 pack, 6 pack). Picking a PakTech opens the PakTech color.',
-      '<b>Coding (printed on the can):</b> the <b>expiration date</b> is required and must be in the future. A <b>batch code</b> is optional, only if the client wants one; leave it blank otherwise.',
+      '<b>Coding (printed on the can):</b> the <b>best by / expiration date</b> is required and must be in the future. A <b>batch code</b> is optional, only if the client wants one; leave it blank otherwise.',
       '<b>Liquid (required):</b> carbonated or still. Carbonated asks for the target volumes of CO2 (0.1 to 5). Still means nitrogen dosed. Optional: flash pasteurize, preservative, Process Authority letter on file, pH and Brix targets.',
       '<b>Formula (required):</b> upload the file, or pick one already on file for that client. Staff can also pick a Formula Vault record. A job cannot be saved without a formula.',
       '<b>Materials and finished goods (optional):</b> what the client is supplying (cans, lids, trays, PakTechs, ingredients), cases per pallet, and finished goods (customer picks up, ship out, or store at the warehouse). Plus a notes box.'

@@ -68,7 +68,7 @@ console.log('inbound alarms\n');
     /12 oz sleek/.test(m.body) && /Carbonated, 2\.80 volumes CO2/.test(m.body) && /Lid color:\s+black/.test(m.body)
     && /Case tray:\s+24 count/.test(m.body) && /Shrink wrap:\s+Yes/.test(m.body) && /4 pack PakTechs \(white\)/.test(m.body)
     && /Formula:\s+YE Mango v3\.pdf/.test(m.body) && /9,600 cans/.test(m.body)
-    && /Expiration date:\s+2027-11-15/.test(m.body) && /Batch code:\s+VE1115A/.test(m.body), m.body);
+    && /Best by \/ exp\. date:\s+2027-11-15/.test(m.body) && /Batch code:\s+VE1115A/.test(m.body), m.body);
   ok('job: no batch code reads as none requested', /Batch code:\s+None requested/.test(jobIntakeMessage({ ...full, batch_code: '' }).body));
   const still = jobIntakeMessage({ ...full, carbonation: 'still', co2_volumes: '', paktech: 'none', paktech_color: '' });
   ok('job: still product reads as nitrogen dosed, no PakTechs', /Still \(nitrogen dosed\)/.test(still.body) && /PakTech:\s+None/.test(still.body));
