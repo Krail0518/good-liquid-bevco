@@ -549,7 +549,7 @@ function cNav(page,el){
   // Trigger section-specific renders so data appears immediately on navigation
   if(page==='activity' && typeof renderActivity==='function') renderActivity();
   if(page==='pipeline' && typeof renderKanban==='function') renderKanban();
-  if(page==='invoices' && typeof renderInvoices==='function') renderInvoices();
+  if(page==='invoices' && typeof renderInvoices==='function'){ renderInvoices(); if(typeof glRefreshInvoices==='function') glRefreshInvoices(); }
   if(page==='clients' && typeof renderClients==='function') renderClients();
   if(page==='referrals' && typeof renderReferrals==='function') renderReferrals();
   // Run registered nav hooks
@@ -1243,13 +1243,95 @@ Good Liquid Accounting
 }
 window.bulkSendInvoices = bulkSendInvoices;
 
+// An invoice must never be invisible without the screen saying so. Search
+// ignores spaces and punctuation, so "GL1045", "gl 1045" and "1045" all find
+// GL-1045, and it also covers service text and the amount.
+function glInvSearchKey(v){ return String(v==null?'':v).toLowerCase().replace(/[^a-z0-9]/g,''); }
+function glInvMatchesSearch(i, q){
+  const needle=glInvSearchKey(q);
+  if(!needle) return true;
+  return [i.id,i.clientName,i.svc,i.notes,i.amount,i.date].some(v=>glInvSearchKey(v).includes(needle));
+}
+// Newest number first, whatever order rows arrived in. Realtime and saves add
+// to the end of the array, which used to bury a new invoice at the bottom.
+function glInvNumber(i){ const m=String(i&&i.id||'').match(/(\d+)/); return m?Number(m[1]):-1; }
+function glSortInvoices(list){
+  return list.slice().sort((a,b)=>glInvNumber(b)-glInvNumber(a)||String(b.date).localeCompare(String(a.date)));
+}
+function glClearInvFilters(){
+  invFilter='all'; invSearch='';
+  const box=document.querySelector('#cpg-invoices .csrow input'); if(box) box.value='';
+  document.querySelectorAll('#inv-pills .cpill').forEach(p=>p.classList.toggle('act',p.getAttribute('data-gl-arg1')==='all'));
+  renderInvoices();
+}
+window.glClearInvFilters=glClearInvFilters;
+// Re-reads the whole table, so a tab left open never shows an old list. Every
+// page is fetched; a failed read keeps the list on screen and says so.
+async function glFetchAllInvoices(){
+  const rows=[]; const size=500; let total=null;
+  for(let from=0;;from+=size){
+    const r=await supa.from('invoices').select('*',{count:'exact'}).order('created_at',{ascending:false}).range(from,from+size-1);
+    if(r.error) throw r.error;
+    if(total===null) total=r.count;
+    rows.push(...(r.data||[]));
+    if(!r.data||r.data.length<size) break;
+  }
+  if(total!=null&&rows.length!==total) throw new Error('loaded '+rows.length+' of '+total+' invoices');
+  return rows;
+}
+function glMapInvoiceRow(i){
+  return {
+    id:i.invoice_number||i.id, supaId:i.id, client:i.client_id||'', clientName:i.client_name||'',
+    svc:i.service||'', amount:i.amount||0, date:i.invoice_date||'', status:i.status||'draft', notes:i.notes||'',
+    paymentTerms: i.payment_terms || '',
+    dueDate: i.due_date || '',
+    // GL-126: without this the browser cannot tell a part-paid invoice from
+    // an untouched one. Kept current by the gl_derive_invoice_paid_state
+    // trigger, so it always matches the ledger.
+    paidAmount: Number(i.paid_amount) || 0,
+    // Also hydrate line items so the dashboard chart can categorize per-line.
+    lines: Array.isArray(i.line_items) ? i.line_items : [],
+    // Per-invoice card-surcharge waiver (was gl_waive_surcharge_* localStorage).
+    waiveCardSurcharge: !!i.waive_card_surcharge
+  };
+}
+window.glInvLoadError='';
+async function glRefreshInvoices(){
+  try{
+    const rows=await glFetchAllInvoices();
+    invoices.length=0;
+    rows.forEach(r=>invoices.push(glMapInvoiceRow(r)));
+    window.glInvLoadError='';
+  }catch(e){
+    console.warn('[GL] invoice reload failed',e);
+    window.glInvLoadError='The invoice list could not be fully loaded ('+((e&&e.message)||'unknown error')+'). What you see may be incomplete. Reload the page before relying on it.';
+  }
+  renderInvoices();
+}
+window.glRefreshInvoices=glRefreshInvoices;
+function glRenderInvNotice(shown){
+  const page=document.getElementById('cpg-invoices'); const table=page&&page.querySelector('table.ctbl');
+  if(!table) return;
+  let box=document.getElementById('inv-hidden-notice');
+  if(!box){ box=document.createElement('div'); box.id='inv-hidden-notice'; box.style.cssText='display:none;margin-bottom:10px;padding:9px 13px;border-radius:9px;font-size:12px;font-weight:600;background:rgba(245,200,66,.12);border:1px solid rgba(245,200,66,.4);color:#f5c842'; table.parentNode.insertBefore(box,table); }
+  const hidden=invoices.length-shown;
+  if(window.glInvLoadError){
+    box.textContent=window.glInvLoadError; box.style.display='block';
+  } else if(hidden>0){
+    box.textContent=hidden+' of '+invoices.length+' invoices hidden by the current filter or search. ';
+    const clear=document.createElement('button'); clear.className='cbtn'; clear.style.cssText='font-size:10px;padding:3px 8px;margin-left:6px'; clear.textContent='Show all';
+    clear.setAttribute('data-gl-action','glClearInvFilters');
+    box.appendChild(clear); box.style.display='block';
+  } else { box.textContent=''; box.style.display='none'; }
+}
 function renderInvoices(){
-  let list=invoices.filter(i=>{
-    const mf=invFilter==='all'||i.status===invFilter;
-    const ms=!invSearch||i.clientName.toLowerCase().includes(invSearch)||i.id.toLowerCase().includes(invSearch);
-    return mf&&ms;
-  });
-  document.getElementById('inv-sub').textContent=list.length+' invoices';
+  let list=glSortInvoices(invoices.filter(i=>{
+    // The list shows effectiveInvoiceStatus, so the pills must filter on it too.
+    const mf=invFilter==='all'||effectiveInvoiceStatus(i)===invFilter;
+    return mf&&glInvMatchesSearch(i,invSearch);
+  }));
+  document.getElementById('inv-sub').textContent=list.length===invoices.length?list.length+' invoices':list.length+' of '+invoices.length+' invoices';
+  glRenderInvNotice(list.length);
   document.getElementById('inv-body').innerHTML=list.map(i=>`<tr style="cursor:pointer" data-gl-action="viewInvoice" data-gl-arg1="${esc(i.id)}">
     <td data-gl-action="glSwallowClick" style="text-align:center"><input type="checkbox" class="inv-row-cb" data-id="${i.id}" ${window.invSelected.has(i.id)?'checked':''} data-gl-action="toggleInvoiceRow" data-gl-on="change" data-gl-arg1="${esc(i.id)}" data-gl-el-prop="checked"></td>
     <td style="font-weight:600;color:var(--teal)">${esc(i.id)}</td>
@@ -1283,7 +1365,7 @@ function renderInvoices(){
   if(typeof window.glSyncOverdueControls === 'function') window.glSyncOverdueControls();
 }
 function setInvFilter(el,f){document.querySelectorAll('#inv-pills .cpill').forEach(p=>p.classList.remove('act'));el.classList.add('act');invFilter=f;renderInvoices()}
-function filterInvoices(q){invSearch=q.toLowerCase();renderInvoices()}
+function filterInvoices(q){invSearch=String(q||'');renderInvoices()}
 /* Apply a status patch to one invoice and report whether the DATABASE agreed.
    Returns {ok:true} or {ok:false, reason}.
 
@@ -1833,23 +1915,14 @@ async function loadSupabaseData(){
       formulationPct: c.formulation_pct==null?null:parseFloat(c.formulation_pct)
     }));
   }
-  if(iR.data && iR.data.length>0){
+  // Never trust a single capped page for money: anything other than a clean,
+  // complete read goes through glRefreshInvoices, which reports a failure.
+  if(!iR.error && iR.data && iR.count===iR.data.length){
     invoices.length=0;
-    iR.data.forEach(i=>invoices.push({
-      id:i.invoice_number||i.id, supaId:i.id, client:i.client_id||'', clientName:i.client_name||'',
-      svc:i.service||'', amount:i.amount||0, date:i.invoice_date||'', status:i.status||'draft', notes:i.notes||'',
-      paymentTerms: i.payment_terms || '',
-      dueDate: i.due_date || '',
-      // GL-126: without this the browser cannot tell a part-paid invoice from
-      // an untouched one — every "outstanding" figure in the CRM and the
-      // portal counted the FULL amount. Kept current by the
-      // gl_derive_invoice_paid_state trigger, so it always matches the ledger.
-      paidAmount: Number(i.paid_amount) || 0,
-      // Also hydrate line items so the dashboard chart can categorize per-line.
-      lines: Array.isArray(i.line_items) ? i.line_items : [],
-      // Per-invoice card-surcharge waiver (was gl_waive_surcharge_* localStorage).
-      waiveCardSurcharge: !!i.waive_card_surcharge
-    }));
+    iR.data.forEach(i=>invoices.push(glMapInvoiceRow(i)));
+    window.glInvLoadError='';
+  } else {
+    await glRefreshInvoices();
   }
   if(rrR.data && rrR.data.length>0){
     referrers.length=0;
