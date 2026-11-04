@@ -149,6 +149,25 @@ console.log('inbound alert gaps\n');
     /event === 'agreement_signed'[\s\S]{0,80}agreementSignedMessage\(data\)/.test(nd) &&
     /event === 'agreement_declined'[\s\S]{0,80}agreementDeclinedMessage\(data\)/.test(nd));
 
+  // Client and lead replies already arrive in Mike's inbox, so the "Reply
+  // from" alert email was a duplicate. Telegram alone carries those two
+  // events, but only while Telegram works; every other event keeps email.
+  const only = nd.match(/const TELEGRAM_ONLY_EVENTS = new Set\(\[([^\]]*)\]\)/);
+  const onlyList = only ? [...only[1].matchAll(/'([^']+)'/g)].map((m) => m[1]).sort() : [];
+  ok('notify-deal: only client reply events skip email',
+    JSON.stringify(onlyList) === JSON.stringify(['client_email_replies', 'client_email_reply']), JSON.stringify(onlyList));
+  ok('notify-deal: email skipped only when Telegram delivered',
+    /const emailSkipped = TELEGRAM_ONLY_EVENTS\.has\(event\) && tg\.ok;/.test(nd));
+  ok('notify-deal: otherwise email is still sent',
+    /emailSkipped\s*\?\s*\{[^}]*attempts: 0 \}\s*:\s*await sendEmail\(subject, body\)/.test(nd));
+  ok('notify-deal: skipped email logged as null (not attempted), not a failure',
+    /email_ok: emailSkipped \? null : emailSent/.test(nd) &&
+    /emailSent \|\| emailSkipped \? '' : `email: \$\{mail\.detail\}`/.test(nd) &&
+    /email_skipped: emailSkipped/.test(nd));
+  const hb = read('supabase/migrations/20261012010000_inbound_alarms.sql');
+  ok('heartbeat stats: null channel result is not counted as an attempt',
+    /\('email',\s+nl\.email_ok\)[\s\S]{0,200}where x\.v is not null/.test(hb));
+
   const notify = read('supabase/functions/_shared/notify.ts');
   ok('notify helper: Vault secret first (matches notify-deal)', /\(await vaultGet\('gl_notify_secret'\)\) \|\| Deno\.env\.get\('GL_NOTIFY_SECRET'\)/.test(notify));
   ok('notify helper: awaits the call with a timeout', /await fetch\([\s\S]{0,300}AbortSignal\.timeout/.test(notify));
