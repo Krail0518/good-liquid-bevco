@@ -19,7 +19,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  portalRequestMessage, clientReplyMessage, clientRepliesSummary, deliveryFailureWarning,
+  portalRequestMessage, jobIntakeMessage, clientReplyMessage, clientRepliesSummary, deliveryFailureWarning,
   selectReplyAlerts, isRetryableStatus, withRetry, heartbeatProblems, buildHeartbeat,
 } from '../supabase/functions/_shared/inbound-alarms.mjs';
 
@@ -49,6 +49,49 @@ console.log('inbound alarms\n');
   ok('portal: 4+ in one insert is one summary with the count', /7 PORTAL REQUESTS/.test(s.short) && /Acme, Bolt/.test(s.short));
   const e = portalRequestMessage({});
   ok('portal: empty data still produces a sensible alert', /A portal customer/.test(e.short) && /\(no subject\)/.test(e.short));
+}
+
+// ── Job intake messages ────────────────────────────────────────────────────
+{
+  const full = {
+    job_no: '1004', client: 'Atlas canning', via: 'portal', end_customer: 'YE Energy', product: 'Mango',
+    job_type: 'repeat', cases: '400', can_size: '12oz_sleek', can_decoration: 'printed', carbonation: 'carbonated',
+    co2_volumes: '2.80', lid_color: 'black', tray_format: '24', shrink_wrap: 'yes', paktech: '4', paktech_color: 'white',
+    flash_pasteurize: 'no', preservative: 'potassium sorbate', pa_letter: 'yes', client_supplies: 'cans, lids',
+    fg_disposition: 'warehouse', needed_by: '2026-11-15', formula: 'YE Mango v3.pdf', notes: 'Rush',
+    expiration_date: '2027-11-15', batch_code: 'VE1115A',
+  };
+  const m = jobIntakeMessage(full);
+  ok('job: subject names job number, client, end customer and product', /Job #1004/.test(m.subject) && /Atlas canning/.test(m.subject) && /YE Energy/.test(m.subject) && /Mango/.test(m.subject));
+  ok('job: short alert names job and cases', /NEW JOB #1004/.test(m.short) && /400 cases/.test(m.short));
+  ok('job: body carries every requested spec field',
+    /12 oz sleek/.test(m.body) && /Carbonated, 2\.80 volumes CO2/.test(m.body) && /Lid color:\s+black/.test(m.body)
+    && /Case tray:\s+24 count/.test(m.body) && /Shrink wrap:\s+Yes/.test(m.body) && /4 pack PakTechs \(white\)/.test(m.body)
+    && /Formula:\s+YE Mango v3\.pdf/.test(m.body) && /9,600 cans/.test(m.body)
+    && /Best by \/ exp\. date:\s+2027-11-15/.test(m.body) && /Batch code:\s+VE1115A/.test(m.body), m.body);
+  ok('job: no batch code reads as none requested', /Batch code:\s+None requested/.test(jobIntakeMessage({ ...full, batch_code: '' }).body));
+  const still = jobIntakeMessage({ ...full, carbonation: 'still', co2_volumes: '', paktech: 'none', paktech_color: '' });
+  ok('job: still product reads as nitrogen dosed, no PakTechs', /Still \(nitrogen dosed\)/.test(still.body) && /PakTech:\s+None/.test(still.body));
+  const empty = jobIntakeMessage({});
+  ok('job: empty data still produces a sensible alert', /A client/.test(empty.short) && /\(none attached\)/.test(empty.body));
+  ok('job: no run of blank lines', !/\n\n\n/.test(m.body) && !/\n\n\n/.test(empty.body));
+  ok('job: notes are clipped', jobIntakeMessage({ ...full, notes: 'y'.repeat(5000) }).body.length < 3500);
+}
+
+// ── Job intake wiring ──────────────────────────────────────────────────────
+{
+  const fn = read('supabase/functions/notify-deal/index.ts');
+  ok('job: notify-deal handles job_intake with the shared message', /event === 'job_intake'/.test(fn) && /jobIntakeMessage\(data\)/.test(fn));
+  const sql = read('supabase/migrations/20261027120000_job_intakes.sql');
+  ok('job: migration fires job_intake on insert', /'event',\s+'job_intake'/.test(sql) && /after insert on public\.job_intakes/.test(sql));
+  ok('job: migration rate limits alerts per client per hour', /interval '1 hour'/.test(sql) && /v_recent > 10/.test(sql));
+  ok('job: no permissive USING (true) policy', !/using\s*\(\s*true\s*\)/i.test(sql));
+  ok('job: anon gets nothing', /revoke all on table public\.job_intakes from public, anon, authenticated/.test(sql) && !/grant[^;]*to anon/i.test(sql));
+  ok('job: customer insert is pinned to their own client and to a formula they can read',
+    /client_id = public\.current_customer_client_id\(\)\s+and submitted_by = auth\.uid\(\)/.test(sql) && /from public\.deal_documents d/.test(sql));
+  ok('job: customers cannot update or delete (no customer update/delete policy)', !/customer (update|delete)/.test(sql));
+  ok('job: expiration date required, batch code optional', /expiration_date\s+date not null/.test(sql) && /batch_code\s+text check \(batch_code is null/.test(sql));
+  ok('job: restrictive tenant guard present', /"gl tenant guard" on public\.job_intakes\s+as restrictive/.test(sql));
 }
 
 // ── Reply messages ─────────────────────────────────────────────────────────

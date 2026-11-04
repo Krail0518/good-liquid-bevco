@@ -171,6 +171,8 @@
     'glOpenGMPDocuments',
     'glOpenGMPRegister',
     'glOpenInvitePickerBtn',
+    'glOpenJobIntakeForm',
+    'glOpenJobIntakes',
     'glOpenLogYield',
     'glOpenOnboardPickerBtn',
     'glOpenPermDefaults',

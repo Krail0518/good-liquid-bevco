@@ -33,6 +33,31 @@ node gen-video.cjs <storyboard>      # daily | prp | schedule | trace | training
 
 The MP4 lands in the scratchpad; copy it to `/tutorials/tutorial-<key>.mp4`.
 
+### Check a storyboard first (dry run)
+
+```
+GL_DRY_RUN=1 node gen-video.cjs <storyboard>
+```
+
+No narration and no MP4: each step gets a short slot, a screenshot of every
+step lands in `<out>/video/<key>/dry_<n>.png`, and any step whose selector is
+missing or whose act throws fails the run. A full render takes as long as the
+narration, so check here first.
+
+### What the stub can do
+
+`window.__chain(tables)` stubs Supabase with in memory rows. Inserts get an
+id plus any `window.__insertDefaults[table]` values (a server generated job
+number, say), and `.select()` / `.single()` answer like PostgREST. Updates
+patch the matching rows and return them, so code that treats 0 rows as a
+failure sees a real save. `window.__rpc[fn]` answers an RPC,
+`window.__fn[name]` an edge function, and `supa.storage` accepts uploads. A
+storyboard can also define `routes(pg)` to answer requests made outside
+supabase-js (the signing page calls its edge function with plain fetch); it is
+installed before the page loads. `confirm()` and `alert()` are accepted
+automatically. Act types: `move | click | type | select | fill | check | js`
+(`js` runs `act.fn(act.arg)` in the page).
+
 ## Add a new tutorial (expandable)
 
 1. Add a storyboard object to `STORYBOARDS` in `gen-video.cjs`:

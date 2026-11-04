@@ -361,7 +361,7 @@
             '<input id="gl-qb-date" type="date" style="'+INP+'" value="'+todayDate+'">' +
           '</div>' +
           '<div><div style="'+LBL+'">VALID (DAYS)</div>' +
-            '<input id="gl-qb-valid" type="number" style="'+INP+'" value="30" min="1" max="180">' +
+            '<input id="gl-qb-valid" type="number" style="'+INP+'" value="7" min="1" max="180">' +
           '</div>' +
         '</div>' +
 
@@ -487,9 +487,11 @@
         'Hi ' + greetName + ',\n\n' +
         'Thank you for reaching out to Good Liquid Beverage Co. ' + requestLine + notesAck + '\n\n' +
         'Please find your production quote attached. A detailed pricing summary is included at the bottom of this email for quick reference.\n\n' +
-        'We\'d love to schedule a call to walk you through the details and discuss your project further. Just reply here with a few times that work for you and we\'ll make it happen.\n\n' +
+        // Owner rule (Oct 2026): client emails keep the deal moving by email and
+        // never offer or ask for a call.
+        'If you\'d like to move forward, reply here with any changes to volumes, formats, or add-ons and I\'ll send the next steps by email.\n\n' +
         'Looking forward to working together!\n\n' +
-        'Best,\nMike Krail\nGood Liquid Beverage Co.\nmike@goodliquidbevco.com';
+        'Best,\nMike Krail\nGood Liquid Beverage Co.\nmike@goodliquid.com';
     }
 
     /* ── Local state ──
@@ -1254,7 +1256,7 @@
       var packageFormat = ov.querySelector('#gl-qb-fmt').value;
       var quoteNumber  = ov.querySelector('#gl-qb-num').value.trim();
       var quoteDate    = ov.querySelector('#gl-qb-date').value;
-      var validDays    = parseInt(ov.querySelector('#gl-qb-valid').value)||30;
+      var validDays    = parseInt(ov.querySelector('#gl-qb-valid').value)||7;   // quotes are good for 7 days
       var notes        = ov.querySelector('#gl-qb-notes').value.trim();
 
       // Collect add-ons

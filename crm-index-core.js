@@ -105,6 +105,7 @@
  *   /src/modules/production/compliance.js
  *   /src/modules/production/gmp-schedule.js
  *   /src/modules/production/gmp.js
+ *   /src/modules/production/job-intake.js
  *   /src/modules/production/production-runs.js
  *   /src/modules/production/quality.js
  *   /src/modules/production/time-report.js
