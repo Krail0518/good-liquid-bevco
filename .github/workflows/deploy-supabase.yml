@@ -31,12 +31,15 @@ jobs:
 
       - name: Deploy edge functions
         if: ${{ inputs.deploy_functions }}
-        run: supabase functions deploy --project-ref "$PROJECT_REF"
+        # --yes: Supabase CLI v3 (2026-11-04) refuses to deploy without an
+        # interactive confirmation, and a CI run has no terminal to answer it.
+        # Without the flag the job fails and nothing is deployed.
+        run: supabase functions deploy --project-ref "$PROJECT_REF" --yes
 
       - name: Apply database migrations
         if: ${{ inputs.push_migrations }}
         run: |
           supabase link --project-ref "$PROJECT_REF" -p "$SUPABASE_DB_PASSWORD"
-          supabase db push -p "$SUPABASE_DB_PASSWORD"
+          supabase db push -p "$SUPABASE_DB_PASSWORD" --yes
         env:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
