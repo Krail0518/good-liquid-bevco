@@ -86,6 +86,9 @@ const EMOJI_MAP: Record<string, string> = {
   deck_send_failed:   '⚠️',
 };
 
+// Events that alert by Telegram only while Telegram is working.
+const TELEGRAM_ONLY_EVENTS = new Set(['client_email_reply', 'client_email_replies']);
+
 // gmail-send with a retry on 429 / 5xx (see _shared/alert-delivery.ts). The
 // first version gave up on the first 429, so a burst of alerts lost emails.
 function sendEmail(subject: string, text: string): Promise<EmailResult> {
@@ -387,7 +390,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const tg = await sendTelegram('notify-deal', chatText);
   let   telegramSent = tg.ok;
-  const mail         = await sendEmail(subject, body);
+  // Client and lead replies already sit in Mike's inbox as the original email,
+  // so the alert email is a duplicate. Telegram carries these alone; the email
+  // still goes out if Telegram refused, so a reply can never go unannounced.
+  const emailSkipped = TELEGRAM_ONLY_EVENTS.has(event) && tg.ok;
+  const mail: EmailResult = emailSkipped
+    ? { ok: false, status: 0, detail: 'skipped: telegram only event', attempts: 0 }
+    : await sendEmail(subject, body);
   const emailSent    = mail.ok;
   console.log('[notify-deal]', event, '→ telegram:', telegramSent, 'email:', emailSent);
 
@@ -406,14 +415,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const errors = [
     tg.ok ? '' : `telegram: ${tg.reply}`,
-    emailSent ? '' : `email: ${mail.detail}`,
+    emailSent || emailSkipped ? '' : `email: ${mail.detail}`,
   ].filter(Boolean).join(' | ');
   await logNotification({
     source: 'notify-deal', event,
     ok: telegramSent || emailSent,
-    telegram_ok: tg.ok, email_ok: emailSent,
+    telegram_ok: tg.ok, email_ok: emailSkipped ? null : emailSent,
     error: errors || null,
-    detail: { email_attempts: mail.attempts, failure_warning_sent: warned },
+    detail: { email_attempts: mail.attempts, failure_warning_sent: warned, email_skipped: emailSkipped },
   });
 
   return jsonResponse({ ok: true, telegramSent, emailSent });

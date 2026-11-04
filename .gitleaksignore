@@ -1,0 +1,8 @@
+# Verified false positives, one per line as gitleaks fingerprints
+# (commit:file:rule:line). Add a line here only after confirming the value is
+# not a credential; anything that is a real secret gets rotated instead.
+#
+# 2026-10-27: a made up 48 character hex link token used as demo data in the
+# questionnaire video storyboard. Never a real token. Replaced in the next
+# commit by 'ab'.repeat(24); this entry covers the one historical commit.
+91bc7c6577d32547f40a5c3886c557d7fedade97:tools/tutorial-videos/gen-video.cjs:generic-api-key:390
