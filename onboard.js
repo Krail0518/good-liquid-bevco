@@ -124,8 +124,12 @@
     if(pwProb){ msg.className='msg err'; msg.textContent='Password: ' + pwProb + ' (at least 8 chars, an uppercase letter, a number, and a special character.)'; pwEl.focus(); return; }
     if(pw !== pw2){ msg.className='msg err'; msg.textContent='The two passwords don\'t match.'; pw2El.focus(); return; }
 
+    if(!el('terms-agreed').checked){ msg.className='msg err'; msg.textContent='Please agree to the terms and conditions before submitting.'; el('terms-agreed').focus(); return; }
+
     // Mirror company address into billing/shipping when "same" is ticked.
     var data = {
+      // Stored in onboarding.data with the existing server-generated submitted_at.
+      terms_acceptance: { accepted:true, version:'2026-11-04-v1.0', document_sha256:'d89c1d8f659d71f7163a158edb2995acc4538e47c5272230b229fab110163fc3', url:'/terms-and-conditions.html', statement:'I agree to the terms and conditions.' },
       legal_name:g('legal_name'), ein:g('ein'), website:g('website'),
       contact_name:g('contact_name'), phone:g('phone'),
       street:g('street'), city:g('city'), state:g('state'), zip:g('zip'),
