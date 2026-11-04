@@ -211,6 +211,8 @@
       out += window.glClientOnboardingSection(c);
     }
 
+    out += '<p><a href="/terms-and-conditions.html" target="_blank" rel="noopener noreferrer" style="color:'+TEAL+'">Terms and Conditions</a></p>';
+
     return out;
   };
 

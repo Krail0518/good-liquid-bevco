@@ -367,7 +367,8 @@
       { id:'renders',   label:'Renders',            service:'renders' },
       { id:'artwork',   label:'Packaging & Artwork', service:'packaging_artwork' },
       { id:'analytics', label:'Market Analytics',   service:'market_analytics' },
-      { id:'billing',   label:'Billing' }
+      { id:'billing',   label:'Billing' },
+      { id:'terms',     label:'Terms and Conditions' }
     ].map(function(t){
       t.locked = !!(t.service && !activeEnt[t.service]);
       return t;
@@ -802,6 +803,12 @@
             cardBlock('#00e5c0', 'YOUR INVOICES', invRowsHtml)
           ) +
 
+          // Complete public terms, available for review without acceptance.
+          panel('terms',
+            '<p><a href="/terms-and-conditions.html" target="_blank" rel="noopener noreferrer" style="color:#00e5c0">Open Terms and Conditions in a new tab</a></p>' +
+            '<iframe title="Good Liquid Bev Co Terms and Conditions" src="/terms-and-conditions.html" style="width:100%;height:75vh;min-height:480px;border:0;border-radius:12px;background:white"></iframe>'
+          ) +
+
           // ── RENDERS / ANALYTICS (entitlement-gated) ─────────────────────
           panel('renders',
             lockedOr(tabById('renders'),
@@ -1002,6 +1009,7 @@
         fld('acct-new-pw',     'New password',     '', 'password', 'Min 6 characters') +
         fld('acct-confirm-pw', 'Confirm password', '', 'password', '') +
 
+        '<p style="margin-top:18px"><a href="/terms-and-conditions.html" target="_blank" rel="noopener noreferrer" style="color:#00e5c0">Terms and Conditions</a></p>' +
         '<div id="acct-msg" style="display:none;margin:14px 0;padding:10px 12px;border-radius:6px;font-size:12px"></div>' +
         '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;padding-top:18px;border-top:1px solid rgba(255,255,255,.08)">' +
           '<button id="acct-cancel" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#eef4ff;padding:10px 18px;border-radius:6px;font-size:13px;cursor:pointer">Cancel</button>' +

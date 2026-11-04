@@ -86,3 +86,7 @@ verify_jwt = false
 # The staff send/resend actions call requireStaff({role:'admin'}) themselves.
 [functions.agreement-sign]
 verify_jwt = false
+
+# Public review-only customer terms; no customer identity is required.
+[functions.terms-and-conditions]
+verify_jwt = false
