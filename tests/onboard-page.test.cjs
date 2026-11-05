@@ -120,6 +120,24 @@ async function run(scenario, token){
   });
   rec('mismatched passwords are blocked', !mism.setpwCalled && /match/i.test(mism.msg||''), mism.msg);
 
+  // Agreement starts unchecked, remains readable, and gates all submission calls.
+  const agreement=pg.locator('#terms-agreed');
+  rec('terms agreement is required and starts unchecked', await agreement.getAttribute('required')!==null && !(await agreement.isChecked()));
+  const [termsPage]=await Promise.all([pg.waitForEvent('popup'),pg.locator('label[for="terms-agreed"] a').click()]);
+  await termsPage.waitForLoadState('domcontentloaded');
+  rec('agreement link opens all 19 terms sections', await termsPage.locator('main section').count()===19);
+  await termsPage.close();
+  rec('reading terms does not check agreement', !(await agreement.isChecked()));
+  const noAgreement=await pg.evaluate(async()=>{
+    document.getElementById('f-password').value='Str0ng!pass';
+    document.getElementById('f-password2').value='Str0ng!pass';
+    document.getElementById('form').dispatchEvent(new Event('submit',{cancelable:true}));
+    await new Promise(r=>setTimeout(r,150));
+    return {setpw:!!window.__setpwBody,submit:!!window.__submitBody,msg:document.getElementById('msg').textContent};
+  });
+  rec('unchecked agreement blocks login creation and intake submission', !noAgreement.setpw && !noAgreement.submit && /agree.*terms/i.test(noAgreement.msg));
+  await agreement.check();
+
   // 5c) A strong, matching password → set-password called BEFORE submit, then done.
   const sub=await pg.evaluate(async()=>{
     document.getElementById('f-password').value='Str0ng!pass';
@@ -136,6 +154,7 @@ async function run(scenario, token){
   rec('login is created BEFORE the intake is finalized', sub.orderOk===true);
   rec('submit sends legal_name in the payload', sub.body && sub.body.p_data && sub.body.p_data.legal_name==='Onb Co LLC', JSON.stringify(sub.body&&sub.body.p_data||{}).slice(0,120));
   rec('submit mirrors company address into billing (same ticked)', sub.body && sub.body.p_data && sub.body.p_data.billing_city==='Palmetto', String(sub.body&&sub.body.p_data&&sub.body.p_data.billing_city));
+  rec('submit records agreement and the exact terms version', !!(sub.body && sub.body.p_data && sub.body.p_data.terms_acceptance && sub.body.p_data.terms_acceptance.accepted===true && sub.body.p_data.terms_acceptance.version==='2026-11-04-v1.0' && /^[a-f0-9]{64}$/.test(sub.body.p_data.terms_acceptance.document_sha256)));
   rec('submit passes the token', sub.body && sub.body.p_token==='abcdef0123456789abcdef0123456789abcdef01');
   rec('submit shows the thank-you screen', sub.doneShown && sub.formHidden);
   await pg.close();
