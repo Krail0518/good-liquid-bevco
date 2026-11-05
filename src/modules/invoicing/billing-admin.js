@@ -2,7 +2,7 @@
    BILLING QUICK WINS — five small features
      - Schedule queue viewer (open / cancel pending sends)
      - AR Collection snooze (skip a single overdue invoice for N days)
-     - Quote expiration auto-archive (>30 days old → status=expired)
+     - Quote expiration auto-archive (>7 days old → status=expired)
      - PWA install nudge (top-bar banner when beforeinstallprompt fires)
      - Header button on Invoices toolbar to open the schedule queue
    ============================================================ */
@@ -121,16 +121,16 @@
   })();
 
   // ────────────────────────────────────────────────────────────
-  // QUOTE EXPIRATION — auto-flip quotes >30d old to status=expired
+  // QUOTE EXPIRATION — auto-flip quotes >7d old to status=expired
   // ────────────────────────────────────────────────────────────
   async function expireOldQuotes(){
     var sb = getSB(); if(!sb) return;
-    var cutoff = new Date(Date.now() - 30*86400000).toISOString().slice(0,10);
+    var cutoff = new Date(Date.now() - 7*86400000).toISOString().slice(0,10);
     try {
       var r = await sb.from('invoices').update({ status: 'expired' })
         .eq('status', 'quote').lt('invoice_date', cutoff).select('invoice_number');
       if(r.data && r.data.length){
-        console.log('[GL] Auto-expired ' + r.data.length + ' quote(s) >30d old:', r.data.map(function(x){return x.invoice_number;}).join(', '));
+        console.log('[GL] Auto-expired ' + r.data.length + ' quote(s) >7d old:', r.data.map(function(x){return x.invoice_number;}).join(', '));
       }
     } catch(e){ console.warn('[GL] expireOldQuotes threw', e); }
   }

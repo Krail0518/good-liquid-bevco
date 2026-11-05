@@ -361,7 +361,7 @@
             '<input id="gl-qb-date" type="date" style="'+INP+'" value="'+todayDate+'">' +
           '</div>' +
           '<div><div style="'+LBL+'">VALID (DAYS)</div>' +
-            '<input id="gl-qb-valid" type="number" style="'+INP+'" value="30" min="1" max="180">' +
+            '<input id="gl-qb-valid" type="number" style="'+INP+'" value="7" min="1" max="7">' +
           '</div>' +
         '</div>' +
 
@@ -1254,7 +1254,8 @@
       var packageFormat = ov.querySelector('#gl-qb-fmt').value;
       var quoteNumber  = ov.querySelector('#gl-qb-num').value.trim();
       var quoteDate    = ov.querySelector('#gl-qb-date').value;
-      var validDays    = parseInt(ov.querySelector('#gl-qb-valid').value)||30;
+      var validDays    = parseInt(ov.querySelector('#gl-qb-valid').value)||7;
+      validDays = Math.min(validDays, 7);
       var notes        = ov.querySelector('#gl-qb-notes').value.trim();
 
       // Collect add-ons
@@ -2528,7 +2529,7 @@
       listEl.innerHTML = shown.map(function(q){
         var who = qlRecipient(q);
         var sColor = QL_STATUS_COLOR[q.status] || '#9aa7bd';
-        var validUntil = q.quote_date ? addDays(q.quote_date, q.valid_days || 30) : '';
+        var validUntil = q.quote_date ? addDays(q.quote_date, q.valid_days || 7) : '';
         var expired = q.status === 'sent' && validUntil && validUntil < todayIso;
         var sentLine = q.sent_at
           ? 'Sent ' + esc(qlFmtDateTime(q.sent_at)) + (q.sent_to ? ' to ' + esc(q.sent_to) : '')

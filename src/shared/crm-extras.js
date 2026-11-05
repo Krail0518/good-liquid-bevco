@@ -84,7 +84,7 @@
         '<h2 style="font-size:22px;margin:0 0 4px;color:#1a6fff">QUOTE</h2>' +
         '<div><b>Quote #:</b> '+quoteId+'</div>' +
         '<div><b>Date:</b> '+date+'</div>' +
-        '<div><b>Valid until:</b> '+(validUntil||'30 days from date')+'</div>' +
+        '<div><b>Valid until:</b> '+(validUntil||'7 days from date')+'</div>' +
         '<div style="margin-top:6px"><span class="qbadge">ESTIMATE — NOT AN INVOICE</span></div>' +
       '</div></div>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:32px"><div>' +
@@ -101,7 +101,7 @@
       '<tr style="background:#eef3ff"><td colspan="4" style="text-align:right;font-size:15px;font-weight:700">ESTIMATED TOTAL</td><td style="text-align:right"><span class="grand">'+fmt(amount)+'</span></td></tr>' +
       '</tbody></table>' +
       '<div class="terms"><b>Quote terms</b>' +
-        '<ul style="margin:6px 0 0 18px;padding:0;font-size:12px;color:#1a2240"><li>Pricing valid for 30 days from quote date</li>' +
+        '<ul style="margin:6px 0 0 18px;padding:0;font-size:12px;color:#1a2240"><li>Pricing valid for 7 days from quote date</li>' +
         '<li>Minimum order: 200 cases (canning) / 220 cases (bottling)</li>' +
         '<li>50% deposit on accepted quote; balance due on completion</li>' +
         '<li>Lead time: ~8 weeks from artwork & ingredient approval</li>' +
