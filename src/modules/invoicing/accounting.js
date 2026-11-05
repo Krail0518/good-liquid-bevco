@@ -4,7 +4,7 @@
    14 features injected into the invoices section:
     1. PO Number field in invoice builder
     2. Void Invoice button
-    3. Quote auto-expiry (30 days)
+    3. Quote auto-expiry (7 days)
     4. Late fee prompt (1.5%/month after due date)
     5. Payment receipt email
     6. Credit limit warning
@@ -141,8 +141,8 @@
     btnRow.appendChild(btn);
   }
 
-  // ── FEATURE 3: Quote Auto-Expiry (30 days) ────────────────
-  var QUOTE_EXPIRY_DAYS = 30;
+  // ── FEATURE 3: Quote Auto-Expiry (7 days) ────────────────
+  var QUOTE_EXPIRY_DAYS = 7;
   function patchExpiredQuoteBadges() {
     var today = Date.now();
     document.querySelectorAll('[data-status="quote"], .status-quote').forEach(function(el) {

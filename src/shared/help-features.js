@@ -691,9 +691,9 @@
     ]) +
     whereToFind('AI toolbar → AR Collection → "⏰ Snooze 5d" button on any invoice row') +
     subhead('📋', 'QUOTE AUTO-EXPIRY') +
-    intro('Quotes more than 30 days old automatically flip to status=expired. No action needed — it runs on every CRM load and once per hour while you\'re logged in.') +
+    intro('Quotes more than 7 days old automatically flip to status=expired. No action needed — it runs on every CRM load and once per hour while you\'re logged in.') +
     bullets([
-      'Affects invoices with status="quote" whose invoice_date is >30 days ago.',
+      'Affects invoices with status="quote" whose invoice_date is >7 days ago.',
       'Expired quotes drop out of the active Invoices view.'
     ]) +
     whereToFind('Automatic — no UI required') +
@@ -835,7 +835,7 @@
     steps([
       'Choose <b>Product Type:</b> Canning, Bottling, or Keg. This sets the available formats and tier structure.',
       '<b>Canning formats:</b> 12oz Standard, 12oz Sleek, 16oz Standard. <b>Bottling:</b> 750ml. <b>Keg:</b> Half-barrel (15.5 gal).',
-      'Set a <b>Quote Date</b> and <b>Valid for (days)</b> — defaults to today + 30 days.',
+      'Set a <b>Quote Date</b> and <b>Valid for (days)</b> — defaults to today + 7 days (7 is the maximum).',
       'Add <b>Notes</b> (optional) — these appear on the PDF footer.'
     ]) +
     subhead('📊', 'BUILDING TIERS') +
