@@ -78,6 +78,7 @@
  *   /src/modules/invoicing/invoice-builder.js
  *   /src/modules/invoicing/invoice-delete.js
  *   /src/modules/invoicing/invoice-patches.js
+ *   /src/modules/invoicing/launch-packages.js
  *   /src/modules/invoicing/pay-link.js
  *   /src/modules/invoicing/pricing-settings.js
  *

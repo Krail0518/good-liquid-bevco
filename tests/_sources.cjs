@@ -104,6 +104,7 @@ const CORE_FILES = [
   'src/modules/customers/client-email.js',
   'src/modules/quotes/quote-builder.js',
   'src/modules/invoicing/invoice-addons.js',
+  'src/modules/invoicing/launch-packages.js',
   'src/modules/customers/onboarding.js',
   'src/modules/production/gmp.js',
   'src/modules/customers/client-detail.js',
