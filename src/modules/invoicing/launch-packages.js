@@ -26,19 +26,22 @@
     return typeof window.glPrice === 'function' ? window.glPrice(key, fallback) : fallback;
   }
 
+  // hidden: not offered yet. The Launch Toolkit and Founder Membership are on
+  // hold until their content is built; flip hidden off to sell them again.
+  // Their prices stay in pricing_settings meanwhile.
   // discount: Core and Full price the first production run(s) two volume
   // tiers lower. The quote builder offers that as its own box when one of
   // them is ticked.
   var PACKAGES = [
-    { key: 'launch_toolkit',      label: 'Formula to Shelf: Launch Toolkit',          unit: 'each',  per: 'one time',  priceKey: 'launch_toolkit',              fallback: 147 },
+    { key: 'launch_toolkit',      label: 'Formula to Shelf: Launch Toolkit',          unit: 'each',  per: 'one time',  priceKey: 'launch_toolkit',              fallback: 147, hidden: true },
     { key: 'launch_core',         label: 'Formula to Shelf: Core Launch',             unit: 'SKU',   per: 'per SKU',   priceKey: 'launch_core_per_sku',         fallback: 4250, discount: true },
     { key: 'launch_full',         label: 'Formula to Shelf: Full Launch',             unit: 'SKU',   per: 'per SKU',   priceKey: 'launch_full_per_sku',         fallback: 7500, discount: true },
-    { key: 'launch_membership',   label: 'Formula to Shelf: Founder Membership',      unit: 'month', per: 'per month', priceKey: 'launch_membership_per_month', fallback: 199 },
+    { key: 'launch_membership',   label: 'Formula to Shelf: Founder Membership',      unit: 'month', per: 'per month', priceKey: 'launch_membership_per_month', fallback: 199, hidden: true },
     { key: 'launch_sample_round', label: 'Formula to Shelf: Additional Sample Round', unit: 'round', per: 'per round', priceKey: 'launch_extra_sample_round',   fallback: 475 }
   ];
 
   window.glLaunchPackages = function(){
-    return PACKAGES.map(function(p){
+    return PACKAGES.filter(function(p){ return !p.hidden; }).map(function(p){
       return { key: p.key, label: p.label, unit: p.unit, per: p.per, rate: px(p.priceKey, p.fallback), discount: !!p.discount };
     });
   };
