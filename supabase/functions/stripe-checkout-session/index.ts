@@ -194,6 +194,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
     form.set('payment_method_types[1]', 'us_bank_account');
   }
 
+  // Visa, Mastercard and Stripe permit a U.S. surcharge on credit cards only.
+  // Checkout adds the fee before it knows the card, so a session carrying a fee
+  // has to refuse every other funding type. A waived or zero fee leaves debit
+  // alone, and those customers can always pay by ACH with no fee.
+  const creditOnly = feeCents > 0;
+  if (creditOnly) {
+    form.set('payment_method_options[card][restrictions][funding_types_blocked][0]', 'debit');
+    form.set('payment_method_options[card][restrictions][funding_types_blocked][1]', 'prepaid');
+  }
+
   if (client_email) form.set('customer_email', String(client_email));
 
   // Line item 1: the invoice itself.
@@ -235,6 +245,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
     headers: {
       'Authorization': `Bearer ${key}`,
       'Content-Type': 'application/x-www-form-urlencoded',
+      // funding_types_blocked exists from this API version. Pinned only where
+      // it is used, so no-fee sessions keep the account's default version.
+      ...(creditOnly ? { 'Stripe-Version': '2026-08-26.dahlia' } : {}),
     },
     body: form.toString(),
   });
