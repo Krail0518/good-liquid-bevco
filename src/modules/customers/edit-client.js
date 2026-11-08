@@ -250,6 +250,7 @@
       ['',''], ['google','Google search'], ['instagram','Instagram'], ['linkedin','LinkedIn'],
       ['trade_show','Trade show'], ['industry_pub','Industry publication'],
       ['customer_referral','Customer referral'], ['word_of_mouth','Word of mouth'],
+      ['formula_to_shelf','Formula to Shelf'],
       ['cold_outreach','Cold outreach (they reached us)'], ['returning','Returning customer'],
       ['other','Other']
     ].map(function(o){

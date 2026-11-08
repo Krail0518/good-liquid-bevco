@@ -107,7 +107,7 @@
 
   var CONTACT_TYPE = {owner:'Owner',executive:'Executive',purchasing:'Purchasing',freight:'Freight / Logistics',sales:'Sales',other:'Other'};
   var PAY_METHOD   = {ach:'ACH',wire:'Wire',credit_card:'Credit card (3% fee)',check:'Check'};
-  var LEAD_SRC     = {google:'Google search',instagram:'Instagram',linkedin:'LinkedIn',trade_show:'Trade show',industry_pub:'Industry publication',customer_referral:'Customer referral',word_of_mouth:'Word of mouth',cold_outreach:'Cold outreach',returning:'Returning customer',other:'Other'};
+  var LEAD_SRC     = {google:'Google search',instagram:'Instagram',linkedin:'LinkedIn',trade_show:'Trade show',industry_pub:'Industry publication',customer_referral:'Customer referral',word_of_mouth:'Word of mouth',formula_to_shelf:'Formula to Shelf',cold_outreach:'Cold outreach',returning:'Returning customer',other:'Other'};
   var COMM_PREF    = {email:'✉️ Email', sms:'📱 SMS', whatsapp:'🟢 WhatsApp', wechat:'💬 WeChat'};
   var PRODUCT      = {seltzer:'🥤 Seltzer', soda:'🥤 Soda', kombucha:'🍵 Kombucha', coldbrew:'☕ Cold Brew', juice:'🧃 Juice', rtd:'🍸 RTD Cocktail', energy:'⚡ Energy', mocktail:'🍹 Mocktail', sparkling:'💧 Sparkling Water', sports:'🏃 Sport Drinks', other:'📦 Other'};
   var DOCK         = {mon:'Mon',tue:'Tue',wed:'Wed',thu:'Thu',fri:'Fri',sat:'Sat',sun:'Sun'};
