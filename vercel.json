@@ -1,4 +1,7 @@
 {
+  "rewrites": [
+    { "source": "/launch", "destination": "/launch.html" }
+  ],
   "redirects": [
     { "source": "/book", "destination": "/", "permanent": false },
     { "source": "/book.html", "destination": "/", "permanent": false }

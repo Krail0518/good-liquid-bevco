@@ -390,6 +390,14 @@ jobs:
           REPO_ROOT: ${{ github.workspace }}
         run: node tests/quote-case-size.test.cjs
 
+      # Formula to Shelf packages: checkboxes in the quote builder (with the
+      # two-tiers-lower launch rate) and the invoice builder.
+      - name: Run launch packages test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/launch-packages.test.cjs
+
       # Public price estimator: 24 or 12 cans per case.
       - name: Run estimator case-size test
         env:

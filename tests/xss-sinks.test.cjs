@@ -210,7 +210,11 @@ for (const [label, re] of FORBIDDEN) {
 // number are typed by staff but may be copied from a lead's own form entry.
 // Its loading/error/empty states use textContent, and the client panel's PDF
 // opener was folded into the same openSavedQuotePdf() rather than duplicated.
-const SINK_BUDGET = 632;
+// 2026-11-08: 632 -> 633. The quote builder's Formula to Shelf package panel
+// (renderLaunch in quote-builder.js). Its only inputs are the package list
+// from launch-packages.js and numbers typed by staff; every value goes
+// through esc().
+const SINK_BUDGET = 633;
 let sinkCount = 0;
 const RAW = /\.(innerHTML|outerHTML)\s*(=|\+=)|insertAdjacentHTML\s*\(|document\.write(ln)?\s*\(/;
 for (const f of files) {

@@ -74,12 +74,15 @@
     }
   };
 
-  function getDeckRate(productType, format, qty){
+  // shift: price this many volume tiers lower (further down the ladder), never
+  // past the last tier. Formula to Shelf Core and Full launch packages price
+  // the first production run two tiers lower.
+  function getDeckRate(productType, format, qty, shift){
     var tiers = (DECK[productType]||{tiers:{}})[format] ||
                 ((DECK[productType]||{}).tiers||{})[format];
     if(!tiers) return 0;
     for(var i=0;i<tiers.length;i++){
-      if(qty >= tiers[i][0] && qty <= tiers[i][1]) return tiers[i][2];
+      if(qty >= tiers[i][0] && qty <= tiers[i][1]) return tiers[Math.min(i + (shift||0), tiers.length - 1)][2];
     }
     return 0;
   }
@@ -420,6 +423,8 @@
            to be written by hand outside the system. These are free text with a
            quantity and a price, like the invoice builder's custom line.
            Section lines price one format; quote lines price the whole job. */
+        /* ── Formula to Shelf packages ── (launch-packages.js holds the list) */
+        '<div id="gl-qb-launch" style="margin-bottom:18px"></div>' +
         '<div id="gl-qb-lines" style="margin-bottom:18px"></div>' +
         '<div id="gl-qb-qlines" style="margin-bottom:18px"></div>' +
 
@@ -519,6 +524,7 @@
       sections: [newSection()],
       activeIdx: 0,
       quoteLines: [],      // custom lines that apply to the whole quote
+      launchLines: [],     // Formula to Shelf packages, merged into quoteLines on save
       savedId: null
     };
     function cur(){ return state.sections[state.activeIdx] || state.sections[0]; }
@@ -910,6 +916,7 @@
         '<div style="font-size:11px;color:#6b87ad;margin:-4px 0 8px">One-off charges that span the job, whatever formats are on it.</div>' +
         customLineRows(state.quoteLines, 'quote') +
         '<button id="gl-qb-add-qline" class="cbtn" style="font-size:12px;padding:6px 14px;margin-top:8px">+ Quote-wide Line</button>';
+      renderLaunch();
 
       function listFor(scope){ return scope === 'quote' ? state.quoteLines : cur().lines; }
 
@@ -952,6 +959,97 @@
       });
     }
 
+    /* ── Formula to Shelf packages ──
+       Tick a package and it is added to the quote as a whole-job line, priced
+       from the Prices settings. Ticking Core or Full Launch also offers the
+       package's production discount: canning fill priced two volume tiers
+       lower. The discount is on by default and can be unticked; tiers with a
+       typed fill rate keep it. */
+    function launchShift(){
+      return state.launchDiscount && (state.launchLines || []).some(function(l){ return l.discount; }) ? 2 : 0;
+    }
+    function repriceCanningForLaunch(){
+      var shift = launchShift();
+      state.sections.forEach(function(sec){
+        if(sec.productType !== 'canning') return;
+        (sec.tiers || []).forEach(function(t){
+          if(t._fillOverride) return;
+          t.fillPerCan = getDeckRate('canning', sec.format, Math.floor((t.cases||0) * cansPerCase(sec.pkg) / CANS_PER_CASE), shift);
+        });
+      });
+      renderTiers();
+    }
+    function renderLaunch(){
+      var host = ov.querySelector('#gl-qb-launch');
+      if(!host) return;
+      var catalog = typeof window.glLaunchPackages === 'function' ? window.glLaunchPackages() : [];
+      if(!catalog.length){ host.textContent = ''; return; }
+      state.launchLines = state.launchLines || [];
+      if(state.launchDiscount == null) state.launchDiscount = true;
+      function lineFor(key){ return state.launchLines.find(function(l){ return l.launch === key; }); }
+      var anyDiscount = state.launchLines.some(function(l){ return l.discount; });
+      host.innerHTML =
+        '<div style="'+LBL+'">FORMULA TO SHELF PACKAGES</div>' +
+        '<div style="font-size:11px;color:#6b87ad;margin:-4px 0 8px">Tick each launch package on this quote. Each is added as a whole-job line, priced from the “💲 Prices” settings.</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:10px">' +
+        catalog.map(function(p){
+          var l = lineFor(p.key);
+          return '<div style="background:rgba(255,255,255,.03);border:1px solid '+(l?'rgba(0,229,192,.45)':'rgba(255,255,255,.08)')+';border-radius:8px;padding:10px 14px;min-width:200px;flex:1">' +
+            '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#fff">' +
+              '<input type="checkbox" data-launch="'+esc(p.key)+'"'+(l?' checked':'')+' style="width:15px;height:15px;cursor:pointer"> ' +
+              esc(p.label.replace('Formula to Shelf: ', '')) +
+            '</label>' +
+            '<div style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:var(--muted)">' +
+              '<input data-launch-qty="'+esc(p.key)+'" type="number" min="1" step="1" value="'+esc(l ? l.qty : 1)+'" aria-label="'+esc(p.label)+' quantity" style="width:52px;padding:5px 6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:4px;color:#fff;font-size:12px">' +
+              '<span>× $</span>' +
+              '<input data-launch-rate="'+esc(p.key)+'" type="number" min="0" step="0.01" value="'+esc(l ? l.rate : p.rate)+'" aria-label="'+esc(p.label)+' price" style="width:80px;padding:5px 8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:4px;color:#fff;font-size:12px">' +
+              '<span>'+esc(p.per)+'</span>' +
+            '</div>' +
+          '</div>';
+        }).join('') +
+        '</div>' +
+        (anyDiscount
+          ? '<label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px;color:#f5c842;cursor:pointer">' +
+              '<input type="checkbox" id="gl-qb-launch-discount"'+(state.launchDiscount?' checked':'')+' style="width:15px;height:15px;cursor:pointer">' +
+              'Launch package rate: price canning fill two volume tiers lower (first run with Core, first two runs with Full)' +
+            '</label>'
+          : '');
+
+      host.querySelectorAll('input[data-launch]').forEach(function(cb){
+        cb.addEventListener('change', function(){
+          var key = cb.getAttribute('data-launch');
+          var p = catalog.find(function(x){ return x.key === key; });
+          var had = !!lineFor(key);
+          state.launchLines = state.launchLines.filter(function(l){ return l.launch !== key; });
+          if(cb.checked && p){
+            var q = host.querySelector('input[data-launch-qty="'+key+'"]'), r = host.querySelector('input[data-launch-rate="'+key+'"]');
+            state.launchLines.push({ desc: p.label, qty: Math.max(1, parseInt(q && q.value, 10) || 1), unit: p.unit,
+              rate: r && r.value !== '' ? (parseFloat(r.value) || 0) : p.rate, launch: key, discount: p.discount });
+            // Keep the boxes' order on the quote, whatever order they were ticked.
+            state.launchLines.sort(function(a, b){
+              return catalog.findIndex(function(x){ return x.key === a.launch; }) - catalog.findIndex(function(x){ return x.key === b.launch; });
+            });
+          }
+          if(p && p.discount && had !== cb.checked) repriceCanningForLaunch();
+          renderLaunch();
+        });
+      });
+      host.querySelectorAll('input[data-launch-qty], input[data-launch-rate]').forEach(function(inp){
+        inp.addEventListener('input', function(){
+          var isQty = inp.hasAttribute('data-launch-qty');
+          var l = lineFor(inp.getAttribute(isQty ? 'data-launch-qty' : 'data-launch-rate'));
+          if(!l) return;
+          if(isQty) l.qty = Math.max(1, parseInt(inp.value, 10) || 1);
+          else l.rate = parseFloat(inp.value) || 0;
+        });
+      });
+      var disc = host.querySelector('#gl-qb-launch-discount');
+      if(disc) disc.addEventListener('change', function(){
+        state.launchDiscount = disc.checked;
+        repriceCanningForLaunch();
+      });
+    }
+
     function addonToggle(id, label, defaultRate, unit){
       return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:10px 14px;min-width:180px;flex:1">' +
         '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#fff">' +
@@ -974,7 +1072,7 @@
       });
     }
     function autoRate(cases){
-      return getDeckRate(state.productType, state.format, cases);
+      return getDeckRate(state.productType, state.format, cases, state.productType === 'canning' ? launchShift() : 0);
     }
     // Canning fill rate. The deck's volume breaks are in 24-can cases, so a
     // run of 12-can cases is looked up by its 24-can equivalent.
@@ -1248,6 +1346,9 @@
       renderTiers();
     });
 
+    // What Save would store, for tests that drive the builder in a browser.
+    ov.glQuoteData = function(){ return buildQuoteData(); };
+
     /* ── Build quote data from current form state ── */
     function buildQuoteData(){
       var productType  = ov.querySelector('#gl-qb-type').value;
@@ -1284,7 +1385,9 @@
           inclusions:  inclusionsForType(s.productType)
         };
       });
-      var quoteLines = (state.quoteLines || []).filter(function(l){ return String(l.desc||'').trim(); });
+      var quoteLines = (state.launchLines || []).map(function(l){
+        return { desc: l.desc, qty: l.qty, unit: l.unit, rate: l.rate, launch: l.launch };
+      }).concat((state.quoteLines || []).filter(function(l){ return String(l.desc||'').trim(); }));
 
       return {
         sections:      sections,
