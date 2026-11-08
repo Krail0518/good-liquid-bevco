@@ -118,5 +118,18 @@ check('the request body amount is not destructured at all',
   'reading it implies it is used; a reviewer cannot tell the difference ' +
   'without following it through the whole function');
 
+// Card network rules and Stripe allow a U.S. surcharge on credit cards only.
+// The fee is added before Checkout knows the card, so the session itself must
+// refuse debit and prepaid whenever it carries a fee.
+check('a session with a fee blocks debit and prepaid cards',
+  /const creditOnly = feeCents > 0;/.test(fnCode) &&
+  /if \(creditOnly\) \{[^}]*funding_types_blocked\]\[0\]', 'debit'\);[^}]*funding_types_blocked\]\[1\]', 'prepaid'\);/.test(fnCode),
+  'without this a debit card pays the 3% fee, which the networks prohibit');
+check('the Stripe API version that has the block is sent with it',
+  /creditOnly \? \{ 'Stripe-Version': '2026-08-26\.dahlia' \}/.test(fnCode),
+  'older API versions reject funding_types_blocked, which would break every card checkout');
+check('the customer is told the card option is credit only and carries the fee',
+  /Pay with Credit Card \(\+3% fee\)/.test(publicCall) && /Debit and prepaid cards can\\'t be used/.test(publicCall));
+
 console.log('\n' + (failures === 0 ? 'ALL PASSED' : failures + ' CHECK(S) FAILED'));
 process.exit(failures === 0 ? 0 : 1);

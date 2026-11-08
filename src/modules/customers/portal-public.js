@@ -126,9 +126,10 @@
           (inv.status === 'paid'
             ? '<div style="margin:0 28px 24px;padding:14px;background:#d1fae5;border-radius:8px;text-align:center;font-weight:700;color:#065f46">✓ Paid in full · Thank you</div>'
             : '<div style="display:flex;gap:10px;justify-content:center;padding:0 28px 8px;flex-wrap:wrap">' +
-                '<button id="gl-pub-pay-card" style="background:#635bff;color:#fff;border:0;padding:13px 28px;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer">💳 Pay with Card</button>' +
+                '<button id="gl-pub-pay-card" style="background:#635bff;color:#fff;border:0;padding:13px 28px;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer">💳 Pay with Credit Card (+3% fee)</button>' +
                 '<button id="gl-pub-pay-ach" style="background:#0F6E56;color:#fff;border:0;padding:13px 28px;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer">🏦 Pay with ACH</button>' +
               '</div>' +
+              '<div style="text-align:center;padding:2px 28px 0;font-size:12px;color:#666">Debit and prepaid cards can\'t be used with the credit card option. ACH has no fee.</div>' +
               '<div id="gl-pub-pay-status" style="text-align:center;padding:6px 28px;font-size:12px;color:#666;min-height:18px"></div>'
           ) +
           '<div style="display:flex;gap:10px;justify-content:center;padding:0 28px 28px;flex-wrap:wrap">' +

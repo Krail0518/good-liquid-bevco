@@ -635,7 +635,7 @@
     bullets([
       '<b>What it is</b>: a public, read-only page that renders a <i>single</i> invoice for a one-off send. URL format: <code>https://goodliquidbevco.com/?invoice_view=&lt;token&gt;</code>. No login required. Useful for first-time clients who don\'t have a portal account yet.',
       '<b>How a token is generated</b>: clicking 📧 <b>Send Invoice</b> auto-generates a token on the first send. Also accessible via the <b>🔗 Get public link</b> button in the composer.',
-      '<b>What the customer sees</b>: the styled invoice + two payment buttons: 💳 Pay with Card (purple, 3% surcharge) and 🏦 Pay with ACH (teal, 0% surcharge). Each opens Stripe Checkout.',
+      '<b>What the customer sees</b>: the styled invoice + two payment buttons: 💳 Pay with Credit Card (purple, 3% surcharge, credit cards only) and 🏦 Pay with ACH (teal, 0% surcharge). Each opens Stripe Checkout.',
       '<b>Save as PDF</b> — button on the page opens the browser print dialog.',
       '<b>Paid state</b> — once status flips to paid (auto via Stripe webhook OR manually via bulk-paid), the Pay buttons disappear and a "✓ Paid in full · Thank you" banner appears.',
       '<b>Revoking access</b> — clear the <code>share_token</code> column on the invoice row in Supabase. Anyone hitting the old URL sees "Invoice not found or revoked."'
@@ -745,7 +745,7 @@
       txt(310,26,'INVOICE GL-1004  ·  $3,125.00',13,'#fff','middle') +
       txt(310,44,'Good Liquid Bev Co  →  Lotus Nutra',10,'#9aa7bd','middle') +
       box(60,60,220,100,'#1a2c48','rgba(107,159,255,.25)') +
-      txt(170,88,'💳 Pay with Card',13,'#6b9fff','middle') +
+      txt(170,88,'💳 Pay with Credit Card',13,'#6b9fff','middle') +
       txt(170,108,'$3,218.75 (incl. 3% surcharge)',9,'#9aa7bd','middle') +
       txt(170,128,'Visa / Mastercard / Amex',9,'#9aa7bd','middle') +
       box(340,60,220,100,'#1a2c48','rgba(0,229,192,.25)') +
