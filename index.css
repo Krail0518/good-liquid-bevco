@@ -71,6 +71,8 @@ h1.ht{font-family:var(--ff-disp);line-height:.88;letter-spacing:3px;margin-botto
 
 /* SECTIONS */
 section{padding:96px 52px}
+/* Reached from another page by /#about etc.: clear the fixed menu. */
+section[id]{scroll-margin-top:70px}
 .sec-tag{font-family:var(--ff-mono);font-size:11px;letter-spacing:3px;color:var(--teal);text-transform:uppercase;margin-bottom:14px}
 .sec-h{font-family:var(--ff-disp);font-size:clamp(42px,5.5vw,70px);letter-spacing:2px;line-height:.92;color:var(--white)}
 .sec-h em{font-style:normal;background:linear-gradient(90deg,var(--teal),var(--blue));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
