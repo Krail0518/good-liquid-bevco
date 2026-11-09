@@ -15,18 +15,30 @@ body{background:var(--ink);color:var(--white);font-family:var(--ff-body);line-he
 a{color:inherit;text-decoration:none}
 .wrap{max-width:1200px;margin:0 auto;padding:0 28px}
 
-/* NAV */
+/* NAV: the main site's menu, so visitors can get back to the homepage */
 .ln-nav{position:sticky;top:0;z-index:50;background:rgba(6,13,26,.93);backdrop-filter:blur(16px);border-bottom:1px solid rgba(0,229,192,.1)}
-.ln-nav .wrap{display:flex;align-items:center;justify-content:space-between;gap:20px;height:70px}
+.ln-nav .wrap{display:flex;align-items:center;justify-content:space-between;gap:20px;height:70px;position:relative}
+.logo-wrap{display:flex;align-items:center;gap:13px}
+.logo-mark{width:48px;height:48px;border-radius:50%;overflow:hidden;background:#000;flex:none}
+.logo-mark img{width:100%;height:100%;object-fit:cover;display:block}
 .brand{display:flex;flex-direction:column;line-height:1}
 .brand .l1{font-family:var(--ff-disp);font-size:19px;letter-spacing:3px}
 .brand .l2{font-size:9px;letter-spacing:3px;text-transform:uppercase;color:var(--teal);margin-top:4px}
 .ln-links{display:flex;align-items:center;gap:26px;font-size:13px;font-weight:500}
 .ln-links a{color:var(--muted);transition:color .25s}
-.ln-links a:hover{color:var(--white)}
+.ln-links a:hover,.ln-links a.active{color:var(--white)}
+.ln-links a.active{border-bottom:1px solid var(--teal);padding-bottom:3px}
 .ln-links a.cta{padding:9px 22px;border:1.5px solid var(--teal);color:var(--teal);border-radius:6px;font-weight:600}
 .ln-links a.cta:hover{background:var(--teal);color:var(--ink)}
-@media(max-width:760px){.ln-links a:not(.cta){display:none}}
+.menu-btn{display:none;background:none;border:1px solid rgba(255,255,255,.2);color:var(--white);font-size:20px;border-radius:6px;width:44px;height:40px;cursor:pointer}
+@media(max-width:1000px){
+  .menu-btn{display:block}
+  .ln-links{display:none;position:absolute;top:70px;left:0;right:0;flex-direction:column;align-items:flex-start;gap:0;background:var(--ink2);border-bottom:1px solid rgba(0,229,192,.15);padding:8px 28px 18px}
+  .ln-links.open{display:flex}
+  .ln-links a{padding:12px 0;width:100%;font-size:15px}
+  .ln-links a.active{border-bottom:none}
+  .ln-links a.cta{margin-top:8px;width:auto}
+}
 
 /* TYPE */
 .tag{font-family:var(--ff-mono);font-size:11px;letter-spacing:3px;color:var(--teal);text-transform:uppercase;margin-bottom:14px}

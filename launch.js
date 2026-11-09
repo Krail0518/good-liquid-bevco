@@ -19,6 +19,19 @@
   var ANON_KEY = 'sb_publishable_-37mkPw8uLzEJM21T9jJOA_YQRQ7ikB';
 
   function el(id){ return document.getElementById(id); }
+
+  // Phone menu: the same links as the main site, behind a button.
+  var menuBtn = el('ln-menu-btn'), links = el('ln-links');
+  if(menuBtn && links){
+    menuBtn.addEventListener('click', function(){
+      var open = links.classList.toggle('open');
+      menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    links.addEventListener('click', function(ev){
+      if(ev.target.closest('a')){ links.classList.remove('open'); menuBtn.setAttribute('aria-expanded', 'false'); }
+    });
+  }
+
   var form = el('launch-form');
   if(!form) return;
 
