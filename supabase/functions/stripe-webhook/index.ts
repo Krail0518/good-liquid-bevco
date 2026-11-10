@@ -25,12 +25,15 @@
 //     function sets to the human-readable invoice_number (e.g. GL-1042).
 //   * Every ledger write is idempotent in the database: a payment is keyed on
 //     its checkout SESSION; a refund on its event, under the invoice row lock.
+//   * The client gets a payment email (ACH "processing", then "paid"; card
+//     "paid") built in ./receipt.mjs; see sendClientPaymentEmail below.
 //   * What each event MEANS is decided in ./settlement.mjs, which Node imports
 //     in tests/stripe-webhook-behavior.test.cjs, so the tested code is this code.
 
 import { corsHeaders } from '../_shared/cors.ts';
 import { notifyDeal } from '../_shared/notify.ts';
 import { decideCheckout, refundArgs, verdictOutcome } from './settlement.mjs';
+import { buildPaymentEmail, paymentReference, greetingName, recipientEmail, emailMethod } from './receipt.mjs';
 
 const WEBHOOK_SECRET = Deno.env.get('STRIPE_WEBHOOK_SECRET') || '';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
@@ -106,6 +109,110 @@ async function rpc(name: string, body: Record<string, unknown>): Promise<{ ok: b
   return { ok: r.ok, status: r.status, text, verdict };
 }
 
+/* ── Client payment confirmation email (receipt.mjs has the why) ──────────────
+   Best effort by design: the ledger write is the source of truth and has
+   already happened (or, for "processing", nothing is recorded at all). A
+   failed lookup or send is logged and never changes the answer to Stripe,
+   because a 5xx would make Stripe redeliver an event that was handled.
+
+   Sent at most once per (invoice, kind, Stripe reference): email_log is
+   checked first. Stripe can redeliver an event; the "paid" email is also
+   gated on the ledger verdict being 'applied', which a redelivery never gets. */
+async function restGet(path: string): Promise<any[] | null> {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+      headers: { 'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}` },
+    });
+    if (!r.ok) { console.error('[stripe-webhook] lookup failed:', path.split('?')[0], r.status); return null; }
+    const j = await r.json();
+    return Array.isArray(j) ? j : null;
+  } catch (e) {
+    console.error('[stripe-webhook] lookup threw:', path.split('?')[0], String(e));
+    return null;
+  }
+}
+
+async function sendClientPaymentEmail(kind: 'processing' | 'paid', ctx: {
+  type: string; invoiceNumber?: string | null; session: any;
+  appliedCents?: number | null; chargedCents?: number | null; method?: string | null;
+  paidInFull: boolean | null;
+}): Promise<void> {
+  const template = kind === 'processing' ? 'stripe_payment_processing' : 'stripe_payment_confirmation';
+  try {
+    const reference = paymentReference(ctx.session);
+    if (!ctx.invoiceNumber || !reference || !(Number(ctx.appliedCents) > 0)) {
+      console.warn('[stripe-webhook]', template, 'skipped: missing invoice, reference or amount', ctx.invoiceNumber);
+      return;
+    }
+    const invoiceNumber = String(ctx.invoiceNumber);
+    const invRows = await restGet(`invoices?invoice_number=eq.${encodeURIComponent(invoiceNumber)}&select=id,client_id&limit=1`);
+    const inv = invRows && invRows[0];
+    if (!inv) { console.warn('[stripe-webhook]', template, 'skipped: invoice not found', ctx.invoiceNumber); return; }
+
+    const cliRows = inv.client_id
+      ? await restGet(`clients?id=eq.${encodeURIComponent(inv.client_id)}&select=email,contact_name&limit=1`)
+      : [];
+    const cli = (cliRows && cliRows[0]) || {};
+    const to = recipientEmail(cli.email, ctx.session);
+    if (!to) { console.warn('[stripe-webhook]', template, 'skipped: no client email on file or in Stripe', ctx.invoiceNumber); return; }
+
+    // Already sent for this payment? (redelivered event)
+    const prior = await restGet(`email_log?invoice_number=eq.${encodeURIComponent(invoiceNumber)}` +
+      `&template_name=eq.${template}&body_preview=like.${encodeURIComponent('*' + reference + '*')}&select=id&limit=1`);
+    if (prior === null) { console.error('[stripe-webhook]', template, 'not sent: could not check for a prior send', ctx.invoiceNumber); return; }
+    if (prior.length) { console.log('[stripe-webhook]', template, 'already sent for', reference); return; }
+
+    const email = buildPaymentEmail({
+      kind, invoiceNumber,
+      name: greetingName(cli.contact_name, ctx.session),
+      method: emailMethod(ctx.type, kind, ctx.method),
+      reference,
+      appliedCents: ctx.appliedCents,
+      chargedCents: ctx.chargedCents ?? ctx.appliedCents,
+      paidInFull: ctx.paidInFull,
+      at: new Date(),
+    });
+
+    // Through the CRM's connected Gmail, like every other client email
+    // (agreement-sign does the same). gmail-send accepts the service-role
+    // bearer as an internal call.
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/gmail-send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SERVICE_KEY}`, 'apikey': SERVICE_KEY },
+      body: JSON.stringify({ to, subject: email.subject, text: email.text, html: email.html }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const j = await r.json().catch(() => ({})) as Record<string, unknown>;
+    if (!r.ok || j.ok !== true) {
+      console.error('[stripe-webhook]', template, 'gmail-send failed:', r.status, j && j.error);
+      return;
+    }
+
+    // Log it so it shows in the client's email activity, and so a redelivery
+    // finds it above. Rule 4: an insert that returns no row did not happen.
+    const ins = await fetch(`${SUPABASE_URL}/rest/v1/email_log`, {
+      method: 'POST',
+      headers: {
+        'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}`,
+        'Content-Type': 'application/json', 'Prefer': 'return=representation',
+      },
+      body: JSON.stringify([{
+        mailgun_id: (j.id as string) || null, to_email: to, subject: email.subject,
+        body_preview: email.text.slice(0, 4000), template_name: template,
+        invoice_id: inv.id, invoice_number: invoiceNumber, client_id: inv.client_id || null,
+        direction: 'outbound', status: 'sent', sent_at: new Date().toISOString(),
+      }]),
+    });
+    const rows = await ins.json().catch(() => null);
+    if (!ins.ok || !Array.isArray(rows) || !rows.length) {
+      console.error('[stripe-webhook]', template, 'sent but email_log insert failed:', ins.status);
+    }
+    console.log('[stripe-webhook]', template, 'sent:', ctx.invoiceNumber, reference);
+  } catch (e) {
+    console.error('[stripe-webhook]', template, 'threw:', String(e));
+  }
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -150,6 +257,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // unpaid ACH invoices paid. async_payment_succeeded will settle it.
     console.log('[stripe-webhook] checkout completed but not yet paid; waiting for settlement:',
       d.invoiceNumber, d.sessionId, 'payment_status=' + d.paymentStatus);
+    // Tell the client we have it. Only for the bank debit case: 'unpaid' on a
+    // completed session means the debit is in flight.
+    if (type === 'checkout.session.completed' && d.paymentStatus === 'unpaid') {
+      await sendClientPaymentEmail('processing', {
+        type, invoiceNumber: d.invoiceNumber, session: obj,
+        appliedCents: d.settleCents, chargedCents: d.totalCents, method: d.method, paidInFull: null,
+      });
+    }
     return json({ ok: true, note: 'payment not settled yet; nothing recorded', payment_status: d.paymentStatus });
   }
 
@@ -222,6 +337,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // never fails the webhook (the payment is already recorded).
     await notifyDeal('stripe-webhook', 'invoice_paid_stripe',
       { invoice_number: String(d.invoiceNumber ?? ''), amount: String(d.amount ?? ''), paid_method: d.method || 'card' });
+    // Confirmation to the client. Only here, on 'applied': a duplicate
+    // returned above and never reaches this line.
+    const status = applied.verdict && applied.verdict.status;
+    await sendClientPaymentEmail('paid', {
+      type: String(type), invoiceNumber: d.invoiceNumber, session: obj,
+      appliedCents: d.settleCents, chargedCents: d.totalCents, method: d.method,
+      paidInFull: status === 'paid' ? true : (status ? false : null),
+    });
     return json({ ok: true, invoice: d.invoiceNumber, amount: d.amount });
   }
 

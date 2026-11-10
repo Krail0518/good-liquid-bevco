@@ -481,6 +481,12 @@ jobs:
       # No database needed.
       - name: Run Stripe webhook behaviour tests
         run: node tests/stripe-webhook-behavior.test.cjs
+      # A client paid by ACH and got no confirmation. The webhook now emails a
+      # "processing" notice and a "paid" confirmation with the Stripe reference;
+      # this checks the content, the send conditions, and that a send can never
+      # fail the webhook or repeat on a redelivery. No database needed.
+      - name: Run Stripe payment email tests
+        run: node tests/stripe-payment-email.test.cjs
 
       # The four Edge Functions that call a paid vendor used to fail OPEN,
       # unboundedly, when the usage counter was unreachable. "Fails open" and

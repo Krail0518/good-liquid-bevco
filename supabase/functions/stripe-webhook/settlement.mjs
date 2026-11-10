@@ -31,6 +31,20 @@ export function sessionLedgerKey(sessionId) {
   return 'checkout_session:' + String(sessionId || '');
 }
 
+// GL-101: amount_total includes the card surcharge line; the invoice is
+// settled by the base. base_amount_cents is written server-side by our own
+// checkout function and arrives inside a signature-verified event.
+export function sessionAmounts(session) {
+  const s = session || {};
+  const totalCents = typeof s.amount_total === 'number' ? s.amount_total : null;
+  const baseMeta = Number(s.metadata && s.metadata.base_amount_cents);
+  const settleCents = totalCents === null ? null
+    : (Number.isInteger(baseMeta) && baseMeta > 0 && baseMeta <= totalCents ? baseMeta : totalCents);
+  const method = Array.isArray(s.payment_method_types) && s.payment_method_types.length
+    ? String(s.payment_method_types[0]) : null;
+  return { totalCents, settleCents, method };
+}
+
 export function decideCheckout(type, session) {
   const s = session || {};
   const invoiceNumber = String(s.client_reference_id || (s.metadata && s.metadata.invoice_id) || '').trim();
@@ -44,23 +58,23 @@ export function decideCheckout(type, session) {
   if (!invoiceNumber) return { action: 'ignore', reason: 'no invoice id on session', sessionId };
   if (!sessionId) return { action: 'ignore', reason: 'session has no id; cannot settle idempotently', invoiceNumber };
 
+  const { totalCents, settleCents, method } = sessionAmounts(s);
+
   if (s.payment_status !== 'paid') {
     // 'unpaid' = an ACH debit still processing. 'no_payment_required' never
-    // applies to an invoice checkout. Neither is money received.
-    return { action: 'pending', invoiceNumber, sessionId, paymentStatus: s.payment_status == null ? null : String(s.payment_status) };
+    // applies to an invoice checkout. Neither is money received. The amounts
+    // ride along only so the client's "processing" email can state them;
+    // nothing here is recorded.
+    return {
+      action: 'pending', invoiceNumber, sessionId,
+      paymentStatus: s.payment_status == null ? null : String(s.payment_status),
+      totalCents, settleCents, method,
+    };
   }
 
-  // GL-101: amount_total includes the card surcharge line; the invoice is
-  // settled by the base. base_amount_cents is written server-side by our own
-  // checkout function and arrives inside a signature-verified event.
-  const totalCents = typeof s.amount_total === 'number' ? s.amount_total : null;
   if (totalCents === null || !(totalCents > 0)) {
     return { action: 'ignore', reason: 'session carries no amount_total', invoiceNumber, sessionId };
   }
-  const baseMeta = Number(s.metadata && s.metadata.base_amount_cents);
-  const settleCents = Number.isInteger(baseMeta) && baseMeta > 0 && baseMeta <= totalCents ? baseMeta : totalCents;
-  const method = Array.isArray(s.payment_method_types) && s.payment_method_types.length
-    ? String(s.payment_method_types[0]) : null;
 
   return {
     action: 'settle',
