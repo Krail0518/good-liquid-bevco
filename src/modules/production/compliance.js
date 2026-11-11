@@ -513,7 +513,9 @@
   // task completion and notification as every form in this file.
   window.glComplianceForms = {
     modalShell: modalShell, field: field, getVal: getVal,
-    formFooter: formFooter, saveRecord: saveRecord
+    formFooter: formFooter, saveRecord: saveRecord,
+    // The CIP equipment list (cip_equipment), so every form picks from the same list.
+    loadEquipment: loadCipEquip, loadEquipmentCache: loadCipEquipCache
   };
 
   // ── Form: GMP-INSP-001 Daily Pre-Op Sanitation Inspection ──
@@ -894,6 +896,8 @@
       }
       saveCipEquipCache(newList);
       ov.remove();
+      // Other open forms with an equipment dropdown (ATP swabs) rebuild from this.
+      try { window.dispatchEvent(new CustomEvent('gl-cip-equipment-changed')); } catch(e){}
       // If the CIP form is open, refresh its dropdown
       var sel = document.getElementById('gl-cf-equip');
       if(sel){
@@ -2308,8 +2312,6 @@
     paa_ppm_max: 300,
     final_pH_fermented: 4.6,
     cip_temp_f: 160,
-    atp_pass_max: 150,     // RLU at or below = PASS
-    atp_fail_above: 300,   // RLU above = FAIL; between the two = CAUTION
     cip_pbw_min: 30,
     cip_caustic_min: 30,
     cip_acid_min: 30,
@@ -2336,9 +2338,7 @@
       { k:'cip_pbw_min',       label:'CIP PBW duration target (min)', step:'1' },
       { k:'cip_caustic_min',   label:'CIP caustic duration target (min)', step:'1' },
       { k:'cip_acid_min',      label:'CIP acid duration target (min)', step:'1' },
-      { k:'cip_paa_min',       label:'CIP PAA sanitize duration target (min)', step:'1' },
-      { k:'atp_pass_max',      label:'ATP swab PASS at or below (RLU)', step:'1' },
-      { k:'atp_fail_above',    label:'ATP swab FAIL above (RLU) — between = CAUTION', step:'1' }
+      { k:'cip_paa_min',       label:'CIP PAA sanitize duration target (min)', step:'1' }
     ];
     var body = fields.map(function(f){
       return '<div style="margin-bottom:11px"><div style="font-size:11px;color:#9aa7bd;margin-bottom:4px">' + esc(f.label) + '</div>' +

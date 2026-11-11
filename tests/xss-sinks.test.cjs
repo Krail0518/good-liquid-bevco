@@ -214,12 +214,12 @@ for (const [label, re] of FORBIDDEN) {
 // (renderLaunch in quote-builder.js). Its only inputs are the package list
 // from launch-packages.js and numbers typed by staff; every value goes
 // through esc().
-// 2026-11-11: 633 -> 639. ATP swab log + customer report
-// (src/modules/production/atp-swabs.js): the swab-point row, its result cell,
-// the tab, the report-builder preview and the report popup. Every value
-// interpolated into them goes through esc(); the report is read by a client,
-// so the run labels come from that client's own runs, never record text.
-const SINK_BUDGET = 639;
+// 2026-11-11: 633 -> 640. ATP testing module + customer PDF report
+// (src/modules/production/atp-swabs.js): test rows, the equipment dropdown
+// rebuild, the live limit/result cell, the limits editor rows, the tab and
+// the report-builder preview. Every value interpolated into them goes through
+// esc(). The customer report itself is a jsPDF document, not HTML.
+const SINK_BUDGET = 640;
 let sinkCount = 0;
 const RAW = /\.(innerHTML|outerHTML)\s*(=|\+=)|insertAdjacentHTML\s*\(|document\.write(ln)?\s*\(/;
 for (const f of files) {
