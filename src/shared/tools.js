@@ -739,7 +739,7 @@
   // case, and twice the cases for the same minimum. Bottling: chosen in
   // #qc-btlcase (6 or 12).
   var RATE_CANS_PER_CASE = 24;
-  var MIN_CASES = { canning: 200, bottling: 220 };
+  var MIN_CASES = { canning: 300, bottling: 220 };
 
   // Count-up so the headline number rolls to its new value instead of snapping.
   var _reduce = false;
@@ -804,7 +804,7 @@
       rangeEl.value = Math.min(cases, parseInt(rangeEl.max, 10) || 5000);
     }
     if(rangeEl){
-      var lo = parseInt(rangeEl.min, 10) || 200, hi = parseInt(rangeEl.max, 10) || 5000;
+      var lo = parseInt(rangeEl.min, 10) || 300, hi = parseInt(rangeEl.max, 10) || 5000;
       var pct = Math.max(0, Math.min(100, (Math.min(cases, hi) - lo) / (hi - lo) * 100));
       rangeEl.style.setProperty('--pct', pct.toFixed(1) + '%');
     }
@@ -886,8 +886,8 @@
         compute();
       });
     }
-    // Switching cans per case keeps the run's cans: 200 cases of 24 become
-    // 400 cases of 12 (4,800 cans either way), so the estimate holds steady.
+    // Switching cans per case keeps the run's cans: 300 cases of 24 become
+    // 600 cases of 12 (7,200 cans either way), so the estimate holds steady.
     var canCase = document.getElementById('qc-cancase');
     if(canCase){
       var prevCpc = parseInt(canCase.value, 10) || 24;
