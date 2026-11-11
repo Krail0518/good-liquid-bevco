@@ -77,6 +77,8 @@
       desc:'Full batch ingredients + process + QC checks', frequency:'Every production batch' },
     { code:'FSP-SAN-001', name:'Environmental Monitoring — Listeria', icon:'🧬', built:true,
       desc:'Zone 1-4 swabs for Listeria species', frequency:'Monthly minimum' },
+    { code:'GMP-ATP-001', name:'ATP Swab Verification', icon:'🔬', built:true,
+      desc:'ATP bioluminescence (RLU) on product-contact surfaces after sanitation', frequency:'Pre-op / post-CIP before each run' },
     { code:'FSP-SC-001', name:'Approved Supplier List', icon:'✅', built:false,
       desc:'Lives in the existing Vendor Directory (sidebar → Quality & Supply → Vendors)', frequency:'Updated upon each approval/removal' },
     { code:'FSP-SC-002', name:'Supplier COA Review Log', icon:'📋', built:true,
@@ -437,6 +439,10 @@
       signature_name: opts.signed ? pcqiName() : null,
       signature_meaning: opts.signed ? 'PCQI sign-off — record reviewed and approved' : null,
       run_id: opts.run_id || null,
+      // Which client's run this record belongs to, when it belongs to one.
+      // The ATP customer report filters on it, so a swab linked to one
+      // client's run can never appear in another client's report.
+      client_id: opts.client_id || null,
       has_deviation: !!opts.has_deviation,
       deviation_notes: opts.deviation_notes || null,
       corrective_action: opts.corrective_action || null
@@ -500,6 +506,15 @@
     }
     return saved;
   }
+
+  // Shared form plumbing for modules that live in their own file
+  // (src/modules/production/atp-swabs.js). Same modal, same save path, so a
+  // record from another module gets the same local-fallback, audit entry,
+  // task completion and notification as every form in this file.
+  window.glComplianceForms = {
+    modalShell: modalShell, field: field, getVal: getVal,
+    formFooter: formFooter, saveRecord: saveRecord
+  };
 
   // ── Form: GMP-INSP-001 Daily Pre-Op Sanitation Inspection ──
   // Was a single expression in an onclick that queried the same child twice
@@ -1609,7 +1624,8 @@
       illness:           getForm('GMP-HR-001'),
       supplier_coa:      getForm('FSP-SC-002'),
       batch_record:      getForm('QC-BR-001'),
-      annual_fsp:        getForm('FSP-VER-002')
+      annual_fsp:        getForm('FSP-VER-002'),
+      atp_swab:          getForm('GMP-ATP-001')
     };
     return map[task_type] || { icon:'📋', code:task_type };
   }
@@ -1633,6 +1649,7 @@
     if(task_type === 'supplier_coa')     return window.glOpenSupplierCoaForm(task);
     if(task_type === 'batch_record')     return window.glOpenBatchRecordForm(task);
     if(task_type === 'annual_fsp')       return window.glOpenAnnualFspForm(task);
+    if(task_type === 'atp_swab' && window.glOpenAtpSwabForm) return window.glOpenAtpSwabForm(task);
     alert('Unknown task type: ' + task_type);
   }
 
@@ -1675,6 +1692,7 @@
     if(code === 'FSP-SC-002')   return window.glOpenSupplierCoaForm({});
     if(code === 'QC-BR-001')    return window.glOpenBatchRecordForm({});
     if(code === 'FSP-VER-002')  return window.glOpenAnnualFspForm({});
+    if(code === 'GMP-ATP-001' && window.glOpenAtpSwabForm) return window.glOpenAtpSwabForm({});
     alert('Form ' + code + ' not built yet.');
   }
 
@@ -2290,6 +2308,8 @@
     paa_ppm_max: 300,
     final_pH_fermented: 4.6,
     cip_temp_f: 160,
+    atp_pass_max: 150,     // RLU at or below = PASS
+    atp_fail_above: 300,   // RLU above = FAIL; between the two = CAUTION
     cip_pbw_min: 30,
     cip_caustic_min: 30,
     cip_acid_min: 30,
@@ -2316,7 +2336,9 @@
       { k:'cip_pbw_min',       label:'CIP PBW duration target (min)', step:'1' },
       { k:'cip_caustic_min',   label:'CIP caustic duration target (min)', step:'1' },
       { k:'cip_acid_min',      label:'CIP acid duration target (min)', step:'1' },
-      { k:'cip_paa_min',       label:'CIP PAA sanitize duration target (min)', step:'1' }
+      { k:'cip_paa_min',       label:'CIP PAA sanitize duration target (min)', step:'1' },
+      { k:'atp_pass_max',      label:'ATP swab PASS at or below (RLU)', step:'1' },
+      { k:'atp_fail_above',    label:'ATP swab FAIL above (RLU) — between = CAUTION', step:'1' }
     ];
     var body = fields.map(function(f){
       return '<div style="margin-bottom:11px"><div style="font-size:11px;color:#9aa7bd;margin-bottom:4px">' + esc(f.label) + '</div>' +
@@ -2494,6 +2516,7 @@
     bar.insertBefore(tabBtn('history', '📚 History'), spacer);
     bar.insertBefore(tabBtn('weekly', '✓ Weekly Review'), spacer);
     bar.insertBefore(tabBtn('trace', '🔍 Trace Lot'), spacer);
+    bar.insertBefore(tabBtn('atp', '🔬 ATP Swabs'), spacer);
     // Also add a ⚙️ Limits button on the right side
     var limitsBtn = document.createElement('button');
     limitsBtn.className = 'cbtn gl-comp-limits';
@@ -2524,6 +2547,7 @@
     if(key === 'history') renderHistory(body);
     if(key === 'weekly')  renderWeeklyReview(body);
     if(key === 'trace')   renderLotTracer(body);
+    if(key === 'atp' && window.glRenderAtpTab) window.glRenderAtpTab(body);
   }
 
   async function renderHistory(host){

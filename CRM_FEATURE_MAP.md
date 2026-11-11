@@ -62,6 +62,11 @@
 | Page ID | Sidebar ID | Title | Role | Header Buttons |
 |---------|-----------|-------|------|----------------|
 | `cpg-compliance` | `nav-compliance` | COMPLIANCE | Admin/Sales | (none) |
+
+**Compliance tabs:** Today's Tasks · Open Logs · Forms Library (compliance.js) · History · Weekly Review · Trace Lot · 🔬 ATP Swabs (injected by `ensureExtraTabs()` in compliance.js).
+The ATP Swabs tab and its customer report live in `src/modules/production/atp-swabs.js` (form `GMP-ATP-001`, stored in `compliance_records`).
+The report is a staff-generated print/PDF that is **sent to a client**: `selectForClient()` must only ever include that client's runs. See the file header and `tests/atp-swab-report.test.cjs`.
+ATP RLU limits are set in ⚙️ CCP Limits (`atp_pass_max`, `atp_fail_above`).
 | `cpg-cip` | `nav-cip` | CIP / SANITATION LOG | Admin/Sales | `+ Log Cycle` (primary) |
 | `cpg-holds` | `nav-holds` | HOLD TAGS | Admin/Sales | `+ New Hold Tag` (primary) |
 | `cpg-audit` | `nav-audit` | AUDIT LOG | **Admin only** (hidden) | Filter input |

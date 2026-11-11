@@ -100,6 +100,7 @@
  *   /src/modules/pipeline/stale-deals.js
  *
  *   /src/modules/production/ai-optimizer.js
+ *   /src/modules/production/atp-swabs.js
  *   /src/modules/production/audit-review.js
  *   /src/modules/production/cip-audit.js
  *   /src/modules/production/compliance-ext.js

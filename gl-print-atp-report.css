@@ -1,0 +1,39 @@
+/* gl-print-atp-report.css — the customer-facing ATP Swab Verification Report
+   (src/modules/production/atp-swabs.js). A window.open('') popup inherits the
+   opener's CSP, so styles live in a linked file, not a <style> element. */
+body{font-family:Helvetica,Arial,sans-serif;color:#0a1628;margin:28px;font-size:11px;line-height:1.45}
+.muted{color:#667085}
+.bar{margin-bottom:16px;padding:10px 12px;background:#f2f5f8;border-radius:6px}
+.bar button{padding:7px 14px;border:1px solid #ccd;border-radius:4px;background:#fff;cursor:pointer;font-weight:600}
+.bar .pbtn{background:#0a8;color:#fff;border-color:#0a8}
+header{display:flex;align-items:center;gap:14px;border-bottom:3px solid #0a8;padding-bottom:12px;margin-bottom:14px}
+header .logo{height:46px;width:auto}
+header .co{font-size:15px;font-weight:700;letter-spacing:.5px}
+header .title{margin-left:auto;text-align:right}
+h1{font-size:19px;margin:0 0 2px;letter-spacing:.5px}
+h2{font-size:13px;margin:20px 0 4px;padding-bottom:3px;border-bottom:1px solid #cfd8e0}
+.sub{margin-bottom:6px}
+p,ul{margin:6px 0}
+table{width:100%;border-collapse:collapse}
+table.meta td{padding:4px 8px;border:1px solid #e3e8ee}
+table.meta td:nth-child(odd){background:#f6f8fa;color:#556;width:16%;white-space:nowrap}
+.kpis{display:flex;gap:8px;margin:14px 0 4px}
+.kpis div{flex:1;background:#f4f7f9;border-radius:6px;padding:8px 10px;color:#556;font-size:10px}
+.kpis b{display:block;font-size:18px;color:#0a1628}
+table.pts{font-size:10px;margin-top:4px}
+table.pts th{background:#0a1628;color:#fff;text-align:left;padding:5px 6px;font-weight:600}
+table.pts td{padding:4px 6px;border-bottom:1px solid #e6eaee;vertical-align:top}
+table.pts tr.first td{border-top:1.5px solid #b9c4cf}
+table.pts td.n{text-align:right;white-space:nowrap}
+table.pts td.c{text-align:center}
+tr.note td{background:#fafbfc;font-style:italic}
+.r-pass{color:#087a4f;font-weight:700}
+.r-caution{color:#a66b00;font-weight:700}
+.r-fail{color:#c0262d;font-weight:700}
+section{page-break-inside:auto}
+table.pts tr{page-break-inside:avoid}
+.sign{display:flex;gap:40px;margin-top:30px}
+.sign>div{flex:1;font-size:10px;color:#556}
+.sign .line{border-bottom:1px solid #0a1628;height:26px;margin-bottom:4px}
+footer{margin-top:26px;padding-top:8px;border-top:1px solid #e3e8ee;font-size:9px;color:#889}
+@media print{.no-print{display:none}body{margin:12mm}@page{size:letter landscape;margin:10mm}}
