@@ -319,7 +319,7 @@
   window.glUpdateCan=function(uid){
     var ce=document.getElementById(uid+'-cases'),fe=document.getElementById(uid+'-format');
     if(!ce||!fe)return;
-    var cases=Math.max(1,parseInt(ce.value)||200),fmt=fe.value;
+    var cases=Math.max(1,parseInt(ce.value)||300),fmt=fe.value;
     var pc=window.glGetCanRate(cases,fmt),pcase=pc*CPC,total=pcase*cases;
     function set(id,v){var e=document.getElementById(id);if(e)e.textContent=v;}
     set(uid+'-pcase',window.glUsd(pcase)+'/case');
@@ -509,7 +509,7 @@
   window.glUpdateCan=function(uid){
     var ce=document.getElementById(uid+'-cases'),fe=document.getElementById(uid+'-format'),pe=document.getElementById(uid+'-pcase');
     if(!ce||!fe)return;
-    var cases=Math.max(1,parseInt(ce.value)||200),fmt=fe.value;
+    var cases=Math.max(1,parseInt(ce.value)||300),fmt=fe.value;
     var row=document.getElementById(uid);
     var cpc=window.glCanRowCpc(row);
     var override = row && row.getAttribute('data-pu-override')==='1';

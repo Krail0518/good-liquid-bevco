@@ -39,7 +39,7 @@ async function sendChatMsg(){
     Key facts:
     - We are a veteran-owned, family-run beverage co-packer in Palmetto, FL (Est. 2017)
     - Services: Small-batch canning (12oz & 16oz), Bottle filling (750ml), Beverage R&D/formulation, Consulting
-    - Minimum order: 200 cases (4,800 units)
+    - Minimum order: 300 cases (7,200 units)
     - R&D starting at $2,500/SKU (3 iterations)
     - Canning from $0.28/can at volume
     - Specialty services (sold on their own): In-Depth Marketing Analysis $1,200; Design Help & 3D Mockups $1,000; Basic Marketing Analysis $750; Regulatory Review (container design and label verbiage) $500 to $750 per SKU; Commercial Beverage Consulting $250 per hour. Digital print can samples $250 per SKU. Rush project fee adds 25%. Travel is billed as expenses plus consulting fees.

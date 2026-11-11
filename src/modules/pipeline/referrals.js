@@ -215,7 +215,7 @@ function svcChange(){
     html=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
       <div class="frow"><div class="flbl">Can format</div><select class="fsel" id="can-fmt" data-gl-action="updatePreview" data-gl-on="change"><option value="12std">12oz Standard</option><option value="12slk">12oz Sleek</option><option value="16std">16oz Standard</option></select></div>
       <div class="frow"><div class="flbl">Cases</div><input type="number" class="finp" id="can-cases" value="500" min="200" data-gl-action="updatePreview" data-gl-on="input"></div>
-    </div><div style="font-size:10px;color:var(--muted);margin-bottom:12px">Min 200 cases · 24 cans/case</div>`;
+    </div><div style="font-size:10px;color:var(--muted);margin-bottom:12px">Min 300 cases · 24 cans/case</div>`;
     if(svc==='copacking')html+=`<div class="frow"><div class="flbl">Benchtop verification</div><select class="fsel" id="verif" data-gl-action="updatePreview" data-gl-on="change"><option value="1">Yes — $500/SKU</option><option value="0">No (PAL provided)</option></select></div>`;
   }else if(svc==='bottling'){
     html=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">

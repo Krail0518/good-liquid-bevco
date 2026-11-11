@@ -498,7 +498,7 @@
     { id:'seed_launch', name:'Brand Launch Bundle', tagline:'Recipe to retail in one engagement', price:8500,
       items:['R&D formulation (1 SKU, 3 iterations)','Benchtop verification + COA','First production run (up to 500 cases)','Brand strategy call (90 min)','PakTech handles + custom lid color'] },
     { id:'seed_rd_run', name:'R&D + First Run', tagline:'Lower-commit on-ramp for new brands', price:4500,
-      items:['R&D formulation (1 SKU)','Benchtop verification','Pilot canning run (200 cases minimum)'] },
+      items:['R&D formulation (1 SKU)','Benchtop verification','Pilot canning run (300 cases minimum)'] },
     { id:'seed_quarterly', name:'Quarterly Co-pack Plan', tagline:'Locked-in capacity for growing brands', price:0,
       items:['4 production runs reserved per year','5% discount vs. ad-hoc rate card','Priority scheduling on dock days','Quarterly business review'] }
   ];
@@ -1213,7 +1213,7 @@
 
   var DEMO = [
     { title:'How to launch a hard kombucha brand', tag:'Brand launch', excerpt:'From recipe to retail in 5 milestones. What to expect on cost, timeline, and the FDA paperwork no one warns you about.', read_time_min:6, url:'resources/launch-hard-kombucha-brand.html' },
-    { title:'Canning MOQs explained', tag:'Operations', excerpt:'Why 200 cases is our floor and what economic ladder kicks in at 500 / 1k / 5k. Read this before you ask for a quote.', read_time_min:4, url:'resources/canning-moqs-explained.html' },
+    { title:'Canning MOQs explained', tag:'Operations', excerpt:'Why 300 cases is our floor and what economic ladder kicks in at 500 / 1k / 5k. Read this before you ask for a quote.', read_time_min:4, url:'resources/canning-moqs-explained.html' },
     { title:'Flash vs. tunnel pasteurization for botanical beverages', tag:'R&D', excerpt:'Why batch flash pasteurization protects thermolabile botanicals that tunnel systems destroy. The science, the temperature data, and the real numbers.', read_time_min:7, url:'resources/flash-vs-tunnel-pasteurization-botanicals.html' },
     { title:'Pasteurization vs cold-fill — pick one', tag:'R&D', excerpt:'A practical decision tree based on pH, sugar, and where you plan to distribute. We make the call on every formulation we run.', read_time_min:5, url:'resources/pasteurization-vs-cold-fill.html' },
     { title:'PakTech handles + custom lid colors — what they cost', tag:'Packaging', excerpt:'Two upgrades brands always ask about. Real numbers on the per-can adder and when they pay off in shelf appeal.', read_time_min:3, url:'resources/paktech-custom-lid-colors.html' }
