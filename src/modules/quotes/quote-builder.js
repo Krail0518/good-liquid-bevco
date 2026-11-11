@@ -2073,7 +2073,7 @@
 
     /* "minimum run", "smallest batch", "get started", "first run" → use minimum */
     if(!suggestCasesList.length && /minimum|smallest|starter|get\s*started|first\s*run|start\s*small/i.test((volume||'')+' '+(dealNotes||''))){
-      suggestCasesList = [ productType === 'bottling' ? BTL_MIN_CASES : productType === 'keg' ? 50 : 200 ];
+      suggestCasesList = [ productType === 'bottling' ? BTL_MIN_CASES : productType === 'keg' ? 50 : 300 ];
     }
 
     var suggestCases = suggestCasesList.length ? suggestCasesList[0] : null;

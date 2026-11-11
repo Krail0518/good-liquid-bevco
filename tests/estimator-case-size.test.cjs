@@ -69,7 +69,7 @@ async function main() {
       const c24 = read();
       set('qc-cancase', '12');
       const c12 = read();
-      set('qc-cases', '200');
+      set('qc-cases', '300');
       const min12 = read();
       return { c24, c12, min12 };
     });
@@ -81,7 +81,7 @@ async function main() {
       // Switching keeps the cans: 1,000 × 24 → 2,000 × 12, same $9,120.
       check('12-can: switching keeps 24,000 cans as 2,000 cases, same $9,120', r.c12.cases === 2000 && /24,000 cans/.test(r.c12.cans) && r.c12.total === '$9,120', JSON.stringify(r.c12));
       check('12-can: breakdown shows $4.20 per 12-can case', /cases of 12 @ \$4\.20\/case/.test(r.c12.bd), r.c12.bd);
-      check('12-can: minimum run is 400 cases (same 4,800 cans as 200 × 24)', r.min12.cases === 400, JSON.stringify(r.min12));
+      check('12-can: minimum run is 600 cases (same 7,200 cans as 300 × 24)', r.min12.cases === 600, JSON.stringify(r.min12));
     }
   } finally {
     await browser.close();
