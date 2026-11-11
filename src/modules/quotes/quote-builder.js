@@ -724,7 +724,7 @@
       /* Opening from a deal but no specific volume — load standard tiers so quote isn't blank */
       if(t2==='canning'){
         state.tiers = [
-          canTier(200), canTier(501), canTier(1000)
+          canTier(300), canTier(501), canTier(1000)
         ];
       } else if(t2==='bottling'){
         state.tiers = btlStdTiers();

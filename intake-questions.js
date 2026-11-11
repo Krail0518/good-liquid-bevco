@@ -63,8 +63,8 @@
         options:['I have a PA letter','In progress','Don’t have one / need guidance','Not sure what that is'] }
     ]},
     { key:'run', title:'Run size & packaging', fields:[
-      { key:'target_volume', label:'First run size per flavor (minimum 200 cases, 4,800 cans)', type:'select', required:true,
-        options:['200 to 499 cases','500 to 999 cases','1,000 to 2,499 cases','2,500 cases or more'] },
+      { key:'target_volume', label:'First run size per flavor (minimum 300 cases, 7,200 cans)', type:'select', required:true,
+        options:['300 to 499 cases','500 to 999 cases','1,000 to 2,499 cases','2,500 cases or more'] },
       { key:'format', label:'Package format', type:'select', required:true,
         options:['12oz standard can','12oz sleek can','16oz standard can','750ml bottle','Not sure yet'] },
       { key:'label_type', label:'Decoration', type:'select', required:true,

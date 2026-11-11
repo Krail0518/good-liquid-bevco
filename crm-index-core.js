@@ -301,7 +301,7 @@ function saveActivities(){
 
 const PRICING={
   canning:{tiers:[
-    {min:200,max:339,'12std':.48,'12slk':.48,'16std':.58},
+    {min:300,max:339,'12std':.48,'12slk':.48,'16std':.58},
     {min:340,max:500,'12std':.43,'12slk':.43,'16std':.53},
     {min:501,max:999,'12std':.38,'12slk':.38,'16std':.48},
     {min:1000,max:2499,'12std':.35,'12slk':.35,'16std':.45},
@@ -4105,7 +4105,7 @@ async function aiEstimateQuote() {
   showAIModal('Quote Estimator', '', true);
   const text = await callAI(
     `You are a pricing expert for Good Liquid Bev Co. Use these rates:
-    CANNING — manufacturing labor per can (24 cans = 1 case; 200-case minimum). 12oz Standard & 12oz Sleek: 200-339 cases=$0.48/can, 340-500=$0.43, 501-999=$0.38, 1,000-2,499=$0.35, 2,500-4,999=$0.31, 5,000+=$0.28. 16oz Standard: 200-339=$0.58, 340-500=$0.53, 501-999=$0.48, 1,000-2,499=$0.45, 2,500-4,999=$0.41, 5,000+=$0.38. The client buys their own cans from a print vendor ($0.29-0.35/can) and packaging — trays + PakTechs — runs $0.05-0.06/can; quote those separately, they are NOT our labor.
+    CANNING — manufacturing labor per can (24 cans = 1 case; 300-case minimum). 12oz Standard & 12oz Sleek: 300-339 cases=$0.48/can, 340-500=$0.43, 501-999=$0.38, 1,000-2,499=$0.35, 2,500-4,999=$0.31, 5,000+=$0.28. 16oz Standard: 300-339=$0.58, 340-500=$0.53, 501-999=$0.48, 1,000-2,499=$0.45, 2,500-4,999=$0.41, 5,000+=$0.38. The client buys their own cans from a print vendor ($0.29-0.35/can) and packaging — trays + PakTechs — runs $0.05-0.06/can; quote those separately, they are NOT our labor.
     BOTTLING — 750ml, per bottle, tiered by TOTAL BOTTLES (6 or 12 bottles per case; 220-case minimum): 1,320-3,959 bottles=$2.16, 3,960-7,919=$1.91, 7,920-15,839=$1.58, 15,840-31,679=$1.41, 31,680+=$1.12.
     R&D: From $2,500 (includes 3 iterations). If the client already has a formula there is NO R&D fee — just a $500 test batch + a Process Authority Letter. IP License=$6,000/yr. Full IP buyout=$15,000.
     ADD-ONS: Flash Pasteurization=$0.05/can or $0.20/bottle. Nitrogen Dosing=$0.03/can.
@@ -4125,7 +4125,7 @@ async function aiDraftInvoice() {
   showAIModal('Invoice Drafter', '', true);
   const text = await callAI(
     `You are a billing specialist for Good Liquid Bev Co. Create clear invoice line items based on job descriptions.
-    Rates (per can; 24 cans = 1 case; 200-case minimum): 12oz canning labor by volume — 200-339 cases=$0.48/can, 340-500=$0.43, 501-999=$0.38, 1,000-2,499=$0.35, 2,500-4,999=$0.31, 5,000+=$0.28; 16oz runs $0.38-0.58/can. Bottling (750ml) $1.12-2.16/bottle by volume. R&D from $2,500 (existing formula: no R&D fee, $500 test batch instead). Flash Pasteurization +$0.05/can or +$0.20/bottle. Nitrogen Dosing +$0.03/can. Convert can counts to cases (÷24) before picking a tier.
+    Rates (per can; 24 cans = 1 case; 300-case minimum): 12oz canning labor by volume — 300-339 cases=$0.48/can, 340-500=$0.43, 501-999=$0.38, 1,000-2,499=$0.35, 2,500-4,999=$0.31, 5,000+=$0.28; 16oz runs $0.38-0.58/can. Bottling (750ml) $1.12-2.16/bottle by volume. R&D from $2,500 (existing formula: no R&D fee, $500 test batch instead). Flash Pasteurization +$0.05/can or +$0.20/bottle. Nitrogen Dosing +$0.03/can. Convert can counts to cases (÷24) before picking a tier.
     Specialty services (sold on their own): In-Depth Marketing Analysis $1,200; Design Help & 3D Mockups $1,000; Basic Marketing Analysis $750; Regulatory Review (container design and label verbiage) $500 to $750 per SKU; Commercial Beverage Consulting $250 per hour. Digital print can samples $250 per SKU. Rush project fee adds 25%. Travel is billed as expenses plus consulting fees.`,
     `Create invoice line items for: ${desc}
     
