@@ -349,6 +349,11 @@ const STORYBOARDS={
       await pg.evaluate(async(demo)=>{
         window.__atpDemo=demo;
         window.__overlays('gl-atp-host');
+        // The recording has no real login, so the CRM's session watcher
+        // (auth.js) raises "session expired" after a minute and its banner
+        // covers the buttons. Hide it in the recording only.
+        var st=document.createElement('style'); st.textContent='#gl-session-expired{display:none!important}';
+        document.head.appendChild(st);
       }, ATP_DEMO);
       await pg.evaluate(atpStub);
       await pg.evaluate(async()=>{ await window.glRenderAtpTab(document.getElementById('gl-atp-host')); });
