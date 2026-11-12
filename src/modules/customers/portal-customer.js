@@ -272,7 +272,10 @@
     // GL-126: paid_amount is what makes a partial payment legible here — without
     // it the portal shows the full invoice as still owing after the client has
     // already paid part of it.
-    var invs = rowsOf('invoices', await sb.from('invoices').select('id, invoice_number, amount, paid_amount, status, invoice_date, due_date, line_items, share_token').eq('client_id', customer.client_id).order('invoice_date', { ascending: false }));
+    // Drafts are staff working copies, never shown to the brand. The database
+    // enforces this too (policy "gl customer no draft invoices"); filtering
+    // here keeps the page right even before that migration reaches a database.
+    var invs = rowsOf('invoices', await sb.from('invoices').select('id, invoice_number, amount, paid_amount, status, invoice_date, due_date, line_items, share_token').eq('client_id', customer.client_id).neq('status', 'draft').order('invoice_date', { ascending: false }));
     var algs = rowsOf('allergen declarations', await sb.from('client_allergen_declarations').select('id, product_name, allergens, declared_at, share_token').eq('client_id', customer.client_id).order('declared_at', { ascending: false }));
     var prs = rowsOf('production runs', await sb.from('production_runs').select('id, run_name, format, cases, stage, scheduled_date, scheduled_start_date, scheduled_end_date, lot_number, updated_at').eq('client_id', customer.client_id).order('scheduled_start_date', { ascending: false, nullsFirst: false }));
     // Note: updated_at omitted because some prod schemas have drifted and

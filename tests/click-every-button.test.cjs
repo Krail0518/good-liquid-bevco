@@ -84,8 +84,7 @@ function isBackendNoise(msg) {
 // ─────────────────────────────────────────────────────────────────────────────
 const KNOWN_FAILURES = [
   // Fixed in #490 and now asserted: inventory +/-10, delete-client confirm, invoice-detail unit price, digest "check secrets", email-activity direction, auto-login staff check.
-  { suite: 'features', match: /billing hides DRAFT invoices from the customer/,
-    why: 'src/modules/customers/portal-customer.js:275 selects every invoice for the client with no status filter, and policy "invoices customer self" (20260518000004) allows it, so unsent draft invoices are listed in the customer portal with PDF/View. Needs a product decision; if drafts should be private, filter here AND in the policy.' },
+  // Fixed: billing hides DRAFT invoices (portal filter + policy "gl customer no draft invoices", 20261112200000).
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
