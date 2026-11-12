@@ -100,6 +100,8 @@ const RECORDS = [
   rec('xss', null, '2026-11-01', 'draft', [T('Evil ' + XSS, 'Loc ' + XSS, 1, 'pass', { corrective_action: 'CA ' + XSS })]),
 ];
 RECORDS[0].data.notes = 'Ran right after RivalCo Secret Cola';
+RECORDS.push(rec('acme-direct', null, '2026-10-26', 'signed', [T('Can', 'Can interior', 5, 'pass', { tested_on: '2026-10-26', limits: { instrument: true, pass_max: null, fail_above: null, unit: 'RLU', basis: 'UltraSnap · pass/fail as judged by the instrument\'s programmed limits' } })], { client_id: ACME }));
+RECORDS.push(rec('rival-direct', null, '2026-10-26', 'signed', [T('Can', 'RivalCo direct can', 5, 'pass')], { client_id: RIVAL }));
 
 const PAGE = `<!doctype html><meta charset="utf-8"><body>
 <div id="cpg-compliance" class="cpg act"><div id="comp-body"></div></div>
@@ -199,7 +201,7 @@ const server = http.createServer((req, res) => {
       types: window.glAtpTestTypes.map((t) => t.name),
     };
   }, RULES);
-  check('every EnSURE test type is offered', JSON.stringify(lim.types) === '["UltraSnap","SuperSnap","AquaSnap Total","AquaSnap Free","MicroSnap Total","MicroSnap EB","MicroSnap Coliform","MicroSnap E. coli","ZymoSnap ALP","CrossCheck"]', JSON.stringify(lim.types));
+  check('every EnSURE test type is offered', JSON.stringify(lim.types) === '["UltraSnap","SuperSnap","AquaSnap Total","AquaSnap Free","MicroSnap Total","MicroSnap EB","MicroSnap Coliform","MicroSnap E. coli","MicroSnap (type not recorded)","ZymoSnap ALP","CrossCheck"]', JSON.stringify(lim.types));
   check('no rules → no limit (nothing assumed)', lim.none === null && lim.noLim === null);
   check('equipment + location rule beats the rest', lim.both === '3/10', lim.both);
   check('location rule beats equipment rule; location ignores case', lim.locOnly === '5/15', lim.locOnly);
@@ -222,7 +224,7 @@ const server = http.createServer((req, res) => {
   check('a reading with no limit shows NO LIMIT', /No limit set/.test(nl) && /NO LIMIT/.test(nl), nl);
   await page.click('.gl-cf-sign');
   const e0 = await page.$eval('#gl-atp-err', (e) => e.innerText);
-  check('signing without a limit is refused', /no ATP limit is set/.test(e0), e0);
+  check('signing without a limit (and no instrument result) is refused', /no limit is set for UltraSnap/.test(e0), e0);
   await page.evaluate(() => document.getElementById('gl-comp-modal').remove());
 
   // ── limits editor ──
@@ -266,7 +268,7 @@ const server = http.createServer((req, res) => {
   await page.waitForSelector('#gl-atp-tests .gl-atp-row');
   const typeOpts = await page.$$eval('.gl-atp-type option', (o) => o.map((x) => x.textContent));
   const groups = await page.$$eval('.gl-atp-type optgroup', (o) => o.map((x) => x.label));
-  check('the test-type dropdown lists every EnSURE test', JSON.stringify(typeOpts) === '["UltraSnap","SuperSnap","AquaSnap Total","AquaSnap Free","MicroSnap Total","MicroSnap EB","MicroSnap Coliform","MicroSnap E. coli","ZymoSnap ALP","CrossCheck"]', JSON.stringify(typeOpts));
+  check('the test-type dropdown lists every EnSURE test', JSON.stringify(typeOpts) === '["UltraSnap","SuperSnap","AquaSnap Total","AquaSnap Free","MicroSnap Total","MicroSnap EB","MicroSnap Coliform","MicroSnap E. coli","MicroSnap (type not recorded)","ZymoSnap ALP","CrossCheck"]', JSON.stringify(typeOpts));
   check('test types are grouped ATP / MicroSnap / enzyme', groups.length === 3 && /ATP/.test(groups[0]) && /MicroSnap/.test(groups[1]) && /Enzyme/.test(groups[2]), JSON.stringify(groups));
   const inst = await page.evaluate(() => [document.getElementById('gl-cf-atp-lum').value, document.getElementById('gl-cf-atp-serial').value]);
   check("the instrument defaults to the facility's EnSURE V.2 #091688", inst[0] === 'EnSURE V.2' && inst[1] === '091688', JSON.stringify(inst));
@@ -422,7 +424,7 @@ const server = http.createServer((req, res) => {
   await page.selectOption('#gl-cf-atpr-client', ACME);
   await page.waitForFunction(() => /testing session/.test(document.getElementById('atpr-preview').innerText), null, { timeout: 5000 });
   const prev = await page.evaluate(() => document.getElementById('atpr-preview').innerText);
-  check('the builder previews the content and flags the unsigned record', /3 testing sessions/.test(prev) && /1 matching record is not PCQI-signed/.test(prev), prev);
+  check('the builder previews the content and flags the unsigned record', /4 testing sessions/.test(prev) && /1 matching record is not PCQI-signed/.test(prev), prev);
   await page.click('#atpr-go');
   await page.waitForFunction(() => !!window.__savedPdf, null, { timeout: 10000 });
   const pdf = await page.evaluate(() => ({ name: window.__savedName, raw: window.__savedPdf }));
@@ -515,6 +517,51 @@ const server = http.createServer((req, res) => {
   const leak = await page.evaluate(async (r) => { try { await window.glAtpDownloadJobPdf(r); return 'exported'; } catch (e) { return e.message; } },
     { id: 'mm', form_code: 'GMP-ATP-001', status: 'signed', run_id: 'run-a1', client_id: RIVAL, record_date: '2026-10-07', data: { tests: [] } });
   check("a job stamped with another client's id is refused, not exported", /does not belong/.test(leak), leak);
+
+  // ── PDF parity: instrument verdict, per-row date, job linked straight to a client ──
+  const dsel = await page.evaluate(({ RECORDS, RUNS, ACME }) => {
+    const acmeRuns = RUNS.filter((r) => r.client_id === ACME);
+    const s = window.glAtpSelectForClient(RECORDS, ACME, acmeRuns, { includeFacility: true, signedOnly: true });
+    return { direct: s.direct.map((r) => r.id), facility: s.facility.map((r) => r.id), linked: s.linked.map((r) => r.id) };
+  }, { RECORDS, RUNS, ACME });
+  check('a job linked straight to this client (no run) is included', JSON.stringify(dsel.direct) === '["acme-direct"]', JSON.stringify(dsel));
+  check("a job linked straight to ANOTHER client never is, and is not treated as facility-wide", dsel.direct.indexOf('rival-direct') < 0 && dsel.facility.indexOf('rival-direct') < 0, JSON.stringify(dsel));
+
+  await page.evaluate(() => { window.GL_APP_SETTINGS.atp_limits = { rules: [] }; });
+  await page.evaluate(() => window.glOpenAtpSwabForm({}));
+  await page.waitForSelector('#gl-atp-tests .gl-atp-row');
+  const cw = await page.evaluate(() => getComputedStyle(document.getElementById('gl-atp-clientwrap')).display);
+  check('with no run picked, the form offers a client for the job', cw !== 'none', cw);
+  await page.selectOption('#gl-cf-atp-client', ACME);
+  const planRows = await page.$$eval('#gl-atp-tests .gl-atp-row', (r) => r.length);
+  check("picking the client (no run) loads that client's test plan too", planRows === 5, String(planRows));
+  // Keep only the first plan row for this check.
+  await page.evaluate(() => { [...document.querySelectorAll('#gl-atp-tests .gl-atp-row')].slice(1).forEach((r) => r.querySelector('.gl-atp-del').click()); });
+  const ir = (await page.$$('#gl-atp-tests .gl-atp-row'))[0];
+  await (await ir.$('.gl-atp-equip')).selectOption('Filler 1');
+  await (await ir.$('.gl-atp-loc')).fill('Fill head 1');
+  await (await ir.$('.gl-atp-rlu')).fill('5');
+  await (await ir.$('.gl-atp-date')).fill('2026-10-26');
+  const instShown = await ir.$eval('.gl-atp-instrow', (e) => getComputedStyle(e).display !== 'none');
+  check('with no limit rule, the row asks for the result the instrument showed', instShown);
+  await (await ir.$('.gl-atp-inst')).selectOption('pass');
+  const nI = await page.evaluate(() => window.__inserts.filter((i) => i[0] === 'compliance_records').length);
+  await page.click('.gl-cf-sign');
+  await page.waitForTimeout(400);
+  await page.waitForFunction((n) => window.__inserts.filter((i) => i[0] === 'compliance_records').length > n, nI, { timeout: 5000 });
+  const ij = await page.evaluate(() => window.__inserts.filter((i) => i[0] === 'compliance_records').pop()[1]);
+  const it = ij.data.tests[0];
+  check('saved with the instrument verdict, flagged as instrument limits, with its own test date',
+    it.result === 'pass' && it.limits && it.limits.instrument === true && it.tested_on === '2026-10-26' && ij.client_id === ACME && !ij.run_id, JSON.stringify({ it, client: ij.client_id, run: ij.run_id }));
+
+  await page.evaluate(() => { window.__savedPdf = null; window.__savedName = null; });
+  await page.evaluate((r) => window.glAtpDownloadJobPdf(Object.assign({}, r, { status: 'signed' })), ij);
+  const dj = await page.evaluate(() => ({ name: window.__savedName, raw: window.__savedPdf || '' }));
+  check('a client-linked job (no run) downloads as one PDF with its test date and "Instrument limits"',
+    /^ATP-Job_Acme-Soda-Co_\d{4}-\d\d-\d\d\.pdf$/.test(dj.name || '') && /Oct 26, 2026/.test(dj.raw) && /Instrument/.test(dj.raw) && /judged by the instrument/.test(dj.raw) && !/RivalCo/.test(dj.raw), dj.name);
+  const rivalTry = await page.evaluate(async (r) => { try { await window.glAtpDownloadJobPdf(r); return window.__savedName; } catch (e) { return 'refused: ' + e.message; } },
+    { id: 'rd', form_code: 'GMP-ATP-001', status: 'signed', run_id: null, client_id: RIVAL, record_date: '2026-10-26', data: { tests: [{ location: 'x', rlu: 1 }] } });
+  check("a Rival job's PDF is addressed to Rival, never to Acme", /RivalCo/.test(rivalTry || '') || /refused/.test(rivalTry || ''), rivalTry);
 
   check('no page errors', errors.length === 0, JSON.stringify(errors));
   await browser.close(); server.close();
