@@ -285,7 +285,97 @@ const PORTAL_DATA={
   client_allergen_declarations:[],sample_shipments:[],formulas:[],customer_requests:[]
 };
 
+// ── ATP & Hygiena testing (Compliance → 🔬 ATP Swabs) — demo data only ──
+const ATP_DEMO={
+  equipment:['BT  1','Filling Line 1'],
+  clients:[{id:'c1',name:'Perico Nutrition'},{id:'c2',name:'Lotus Beverages'}],
+  settings:{
+    atp_limits:{rules:[{test_type:'ultrasnap',equipment:null,location:null,unit:'RLU',pass_max:10,fail_above:30}]},
+    atp_plans:{plans:[{name:'Perico Nutrition job',client_name:'Perico Nutrition',rows:[
+      {equipment:'BT  1',location:'Tank interior',test_type:'ultrasnap'},
+      {equipment:'Filling Line 1',location:'Can interior',test_type:'ultrasnap'},
+      {equipment:'Filling Line 1',location:'Fill head 1',test_type:'ultrasnap'},
+      {equipment:'Filling Line 1',location:'Fill head 2',test_type:'ultrasnap'},
+      {equipment:'Filling Line 1',location:'Filler valve seat',test_type:'supersnap'}
+    ]}]}
+  }
+};
+// A small in-page stand-in for Supabase that supports what the ATP module
+// does: filtered/ordered selects, insert().select().single(), and the checked
+// update().eq().eq().select() used when a job is continued.
+function atpStub(){
+  var DB={compliance_records:[],compliance_tasks:[],hold_tags:[],cip_equipment:window.__atpDemo.equipment.map(function(n,i){ return {name:n,active:true,sort_order:i}; }),clients:window.__atpDemo.clients,production_runs:[]};
+  function Q(t){ this.t=t; this.f=[]; this.op='select'; this.row=null; this.one=false; this.ord=null; }
+  ['select','limit','range'].forEach(function(m){ Q.prototype[m]=function(){ return this; }; });
+  Q.prototype.order=function(k,o){ (this.ord=this.ord||[]).push([k,!(o&&o.ascending===false)]); return this; };
+  Q.prototype.eq=function(k,v){ this.f.push(function(r){ return r[k]===v; }); return this; };
+  Q.prototype.neq=function(k,v){ this.f.push(function(r){ return r[k]!==v; }); return this; };
+  Q.prototype.gte=function(k,v){ this.f.push(function(r){ return r[k]>=v; }); return this; };
+  Q.prototype.lte=function(k,v){ this.f.push(function(r){ return r[k]<=v; }); return this; };
+  Q.prototype.in=function(k,v){ this.f.push(function(r){ return v.indexOf(r[k])>=0; }); return this; };
+  Q.prototype.is=function(k,v){ this.f.push(function(r){ return (r[k]==null)===(v===null); }); return this; };
+  Q.prototype.insert=function(rows){ this.op='insert'; this.row=Array.isArray(rows)?rows[0]:rows; return this; };
+  Q.prototype.upsert=function(row){ this.op='insert'; this.row=row; return this; };
+  Q.prototype.update=function(p){ this.op='update'; this.row=p; return this; };
+  Q.prototype.single=function(){ this.one=true; return this; };
+  Q.prototype.maybeSingle=Q.prototype.single;
+  Q.prototype.then=function(res,rej){
+    var self=this, tbl=DB[self.t]=DB[self.t]||[], out;
+    if(self.op==='insert'){ var r=Object.assign({id:'rec'+(tbl.length+1)},self.row); tbl.push(r); out=self.one?r:[r]; }
+    else {
+      var rows=tbl.filter(function(r){ return self.f.every(function(f){ return f(r); }); });
+      if(self.ord) rows=rows.slice().sort(function(a,b){ for(var i=0;i<self.ord.length;i++){ var k=self.ord[i][0],asc=self.ord[i][1],x=String(a[k]==null?'':a[k]),y=String(b[k]==null?'':b[k]); if(x<y) return asc?-1:1; if(x>y) return asc?1:-1; } return 0; });
+      if(self.op==='update') rows.forEach(function(r){ Object.assign(r,self.row); });
+      out=self.one?(rows[0]||null):rows;
+    }
+    return Promise.resolve({data:out,error:null}).then(res,rej);
+  };
+  window.supa={from:function(t){ return new Q(t); },rpc:async()=>({data:null,error:null}),functions:{invoke:async()=>({data:{ok:true},error:null})},
+    auth:{getUser:async()=>({data:{user:{id:'u1'}},error:null}),getSession:async()=>({data:{session:null},error:null}),onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}})},
+    channel:()=>({on(){return this;},subscribe(){return this;}}),removeChannel:()=>{}};
+  window.currentUser={id:'u1',email:'qa@example.com',role:'admin',name:'Mike',initials:'MK'};
+  window.GL_APP_SETTINGS=JSON.parse(JSON.stringify(window.__atpDemo.settings));
+  window.clients=window.__atpDemo.clients.slice();
+  window.glProductionRuns=[];
+  window.addNotification=function(){};
+  try{ localStorage.setItem('gl_cip_equipment', JSON.stringify(window.__atpDemo.equipment)); }catch(e){}
+}
+const ROW=n=>`#gl-atp-tests .gl-atp-row:nth-child(${n})`;
+
 const STORYBOARDS={
+  atp:{
+    title:'ATP Swabs — Log a Job, Sign It, Send the PDF',
+    async setup(pg){
+      await pg.evaluate(async(demo)=>{
+        window.__atpDemo=demo;
+        window.__overlays('gl-atp-host');
+      }, ATP_DEMO);
+      await pg.evaluate(atpStub);
+      await pg.evaluate(async()=>{ await window.glRenderAtpTab(document.getElementById('gl-atp-host')); });
+    },
+    steps:[
+      {say:"This is the A T P Swabs tab, on the Compliance page. It records every Hygiena swab you read on the EnSURE, and turns each job into one signed record, and one P D F for the client."},
+      {say:"Start with Test plans. A test plan is the list of spots you swab on a job: the tanks, the can, and every fill head.", act:{type:'click',sel:'#gl-atp-plans-btn'}},
+      {say:"This plan belongs to Perico Nutrition, so it loads by itself whenever you start a job for them. Set it up once and you never type those rows again.", act:{type:'move',sel:'#gl-atpp-edit'}},
+      {say:"Close it, and click Log A T P tests to start a job.", act:{type:'click',sel:'.gl-cf-cancel'}},
+      {say:"Log A T P tests.", act:{type:'click',sel:'#gl-atp-log-btn'}},
+      {say:"Pick the production run. This job has no run in the CRM, so pick the client instead. Watch every row of the plan fill in.", act:{type:'select',sel:'#gl-cf-atp-client',value:'c1'}},
+      {say:"Swab the tank, read it on the EnSURE, and type the number. Your limit for UltraSnap is ten, so a four is a pass, worked out for you.", act:{type:'type',sel:ROW(1)+' .gl-atp-rlu',text:'4'}},
+      {say:"Then the inside of the can.", act:{type:'type',sel:ROW(2)+' .gl-atp-rlu',text:'5'}},
+      {say:"Not finished yet? Click Save draft. The readings you have not taken stay blank, and the job waits for you.", act:{type:'click',sel:'.gl-cf-draft'}},
+      {say:"Here is the job, with its readings still pending. Click Continue. The same job opens again, so one job never turns into two reports.", act:{type:'click',sel:'.gl-atp-cont'}},
+      {say:"Finish the fill heads.", act:{type:'type',sel:ROW(3)+' .gl-atp-rlu',text:'5'}},
+      {say:"And the second fill head.", act:{type:'type',sel:ROW(4)+' .gl-atp-rlu',text:'6'}},
+      {say:"The last row is a SuperSnap, and there is no limit set for it yet. So the form asks what the EnSURE itself showed. Type the reading.", act:{type:'type',sel:ROW(5)+' .gl-atp-rlu',text:'3'}},
+      {say:"And choose the result on the instrument's screen: pass. The report will say it was judged by the instrument's own limits.", act:{type:'select',sel:ROW(5)+' .gl-atp-inst',value:'pass'}},
+      {say:"Every reading is in. Click Save and sign as P C Q I. Your name and the real time are locked into the record, and a signed job cannot be changed.", act:{type:'click',sel:'.gl-cf-sign'}},
+      {say:"Now the job is signed. Job P D F downloads one report for this job, ready to email to the client.", act:{type:'move',sel:'.gl-atp-jobpdf'}},
+      {say:"Customer P D F report builds one report for a client over any date range, like last month or year to date.", act:{type:'click',sel:'#gl-atp-report-btn'}},
+      {say:"Pick the client, and it shows what will be in the report before you download it.", act:{type:'select',sel:'#gl-cf-atpr-client',value:'c1'}},
+      {say:"A client only ever sees their own jobs. Another brand's runs, swabs, and name never appear.", act:{type:'move',sel:'#atpr-preview'}},
+      {say:"One last thing. A T P shows how clean a surface is. It does not find a specific germ, and it does not prove allergens are gone. The report says that for you. That is the whole job: plan, swab, sign, and send."}
+    ]
+  },
   dashboard:{
     title:'Dashboard — Your Business at a Glance',
     async setup(pg){

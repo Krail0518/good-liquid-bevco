@@ -775,7 +775,8 @@
       ['explainer-lacf.mp4', '🥫 LACF &amp; Acidified Foods — The FDA Rules'],
       ['explainer-sqf.mp4', '🏅 SQF Certification — What It Is &amp; How to Get There'],
       ['explainer-allergen.mp4', '🥜 Allergen Control'],
-      ['explainer-envmon.mp4', '🧫 Environmental Monitoring']
+      ['explainer-envmon.mp4', '🧫 Environmental Monitoring'],
+      ['tutorial-atp.mp4', '🔬 ATP Swabs — Log a Job, Sign It, Send the PDF']
     ]) +
     wf(620, 244,
       box(0,0,620,244,'#0a1628','rgba(0,0,0,0)') +
@@ -2026,6 +2027,7 @@
     videoCard('tutorial-daily.mp4', '🧾 Daily GMP — Log Today’s Checks', 'The “type once, fan out” daily routine: shared header, filling Pre-Op and Hygiene forms, and one Sign &amp; save that records every form at once.') +
     videoCard('tutorial-prp.mp4', '🛡️ Prerequisite Programs — Log a Calibration Check', 'How the periodic foundation programs work, using a calibration check end to end — including how a failing check flags a deviation.') +
     videoCard('tutorial-schedule.mp4', '🗓️ GMP Schedule — What’s Due Today', 'Generating the day’s tasks and working the Overdue / Due Today / Done Today board so nothing slips.') +
+    videoCard('tutorial-atp.mp4', '🔬 ATP Swabs — Log a Job, Sign It, Send the PDF', 'One job, one record: load the client\'s test plan, type each EnSURE reading (tanks, can, fill heads), save a draft and continue it later, sign as PCQI, and download one PDF for the client. Also covers ATP limits and what the tests do not prove.') +
     videoCard('tutorial-trace.mp4', '🔗 Trace &amp; Mock Recall — Account for Any Lot', 'Tracing a run backward to its inputs and forward to its shipments, then running a timed mock recall with a pass/fail result.') +
     videoCard('tutorial-training.mp4', '🎓 Training &amp; Competency — Keep Certifications Current', 'Reading the competency matrix and expiry badges, and adding a new training record that the system then tracks for renewal.') +
     videoCard('tutorial-audit.mp4', '🔍 Internal Audit &amp; Management Review', 'Logging audit findings, raising an NCR from a finding, scheduling an audit, and the live management-review KPI snapshot.') +
@@ -2444,6 +2446,38 @@
       '<b>Plain-English terms</b> — <b>SLA</b>: the response-time promise you are holding yourself to (one business day). <b>Business hours</b>: elapsed time with weekends skipped. <b>Ball on them</b>: you replied last and are waiting. <b>Snooze</b>: mute automations for a week. <b>Handled</b>: mute them for good.'
     ]);
 
+  // ── ATP & Hygiena testing (Compliance → 🔬 ATP Swabs) ──
+  var SEC_ATP =
+    watch('tutorial-atp.mp4') +
+    lead('The <b>🔬 ATP Swabs</b> tab (Compliance Tasks page) records every Hygiena swab you read on the <b>EnSURE V.2</b>, and turns a job into one signed record and one PDF you can send the client. <b>One job = one record</b>: the tanks, the can and every fill head for that job live together, never as ten separate reports.') +
+    '<h4 style="margin:16px 0 6px;font-size:12.5px;letter-spacing:1px;color:#00e5c0">THE TESTS IN THE DROPDOWN</h4>' +
+    bullets([
+      '<b>ATP (cleaning check, RLU):</b> <b>UltraSnap</b> for surfaces like tanks, fill heads and the inside of a can; <b>SuperSnap</b> when you want a stricter, more sensitive surface check; <b>AquaSnap Total / Free</b> for liquids such as the CIP final rinse or process water.',
+      '<b>MicroSnap (indicator organisms):</b> Total, EB, Coliform, E. coli. The device is incubated before it is read, so the row asks for the incubation start, temperature and hours.',
+      '<b>Enzyme tests:</b> ZymoSnap ALP (milk pasteurization) and CrossCheck (raw meat residue).',
+      '<b>MicroSnap (type not recorded)</b> is only for results copied from an old record that did not say which MicroSnap was used. Pick the real type for anything new.'
+    ]) +
+    '<h4 style="margin:16px 0 6px;font-size:12.5px;letter-spacing:1px;color:#00e5c0">SET UP ONCE</h4>' +
+    bullets([
+      '<b>📋 Test plans</b> — save the list of spots you swab for a job (for example BT 6, BT 7, BT 8, the can, fill heads 1 to 6). Put the client\'s name on the plan and it loads by itself whenever you start a job for that client.',
+      '<b>⚙️ ATP limits</b> — your pass and fail numbers, by test type and, if you want, by equipment or location. The most specific rule wins. Nothing is assumed: until a rule exists you record the result the EnSURE showed (PASS / CAUTION / FAIL), and the report says "Instrument limits".'
+    ]) +
+    '<h4 style="margin:16px 0 6px;font-size:12.5px;letter-spacing:1px;color:#00e5c0">LOG A JOB</h4>' +
+    bullets([
+      '<b>1.</b> Click <b>+ Log ATP tests</b>. Pick the production run, or, if the job has no run in the CRM, pick the <b>client</b>. The client\'s test plan fills in the rows.',
+      '<b>2.</b> Swab each spot, read it on the EnSURE and type the number into <b>Reading</b>. If a spot was swabbed on a different day from the rest, set its <b>Tested on</b> date.',
+      '<b>3.</b> Not done yet? Click <b>Save draft</b>. The readings you have not taken stay blank. Come back with <b>✎ Continue</b> on the tab and the same job opens again. Starting the same run again offers to continue it, so a job never splits into two records.',
+      '<b>4.</b> A <b>FAIL</b> needs a <b>corrective action</b>. Re-clean, retest, and type the retest reading. Do not start the run until the retest passes. A fail that is never fixed is recorded as a deviation.',
+      '<b>5.</b> When every reading is in, click <b>✓ Save &amp; sign as PCQI</b>. Your name and the real time are locked into the record; a signed job cannot be edited.'
+    ]) +
+    '<h4 style="margin:16px 0 6px;font-size:12.5px;letter-spacing:1px;color:#00e5c0">SEND THE CLIENT A REPORT</h4>' +
+    bullets([
+      '<b>⬇ Job PDF</b> on a signed job downloads one PDF for that job, ready to email.',
+      '<b>📄 Customer PDF report</b> builds one PDF for a client over any date range (last month, year to date and so on). It shows a preview count first, and leaves out unsigned records unless you untick "signed only".',
+      '<b>Privacy:</b> a client\'s report only ever contains that client\'s jobs. Another brand\'s runs, swabs and name never appear. Operator notes are left out unless you tick the box.'
+    ]) +
+    '<div style="margin:12px 0 4px;padding:10px 12px;background:rgba(245,200,66,.08);border-left:3px solid #f5c842;border-radius:0 6px 6px 0;font-size:12.5px;line-height:1.6;color:#cfd9e6"><b>What these tests do not prove:</b> ATP measures how clean a surface is. MicroSnap counts indicator organisms. Neither identifies a specific pathogen (Salmonella, Listeria, E. coli O157:H7) or confirms that allergens are absent. The report says this for you.</div>';
+
   var HELP_HTML =
     section('help-overview',        '👋 OVERVIEW',                   SEC_OVERVIEW) +
     section('help-glossary',        '📖 GLOSSARY (PLAIN-ENGLISH TERMS)', SEC_GLOSSARY) +
@@ -2474,6 +2508,7 @@
     section('help-email-activity',  '📊 EMAIL ACTIVITY (TRACKING)',  SEC_EMAIL_ACTIVITY) +
     section('help-stripe-pay',      '💳 STRIPE PAYMENTS',            SEC_STRIPE_PAY) +
     section('help-compliance',      '📋 COMPLIANCE (FDA / GMP)',     SEC_COMPLIANCE) +
+    section('help-atp',             '🔬 ATP & HYGIENA TESTING',      SEC_ATP) +
     section('help-referrals',       '🤝 REFERRALS',                  SEC_REFERRALS) +
     section('help-referrers',       '👤 REFERRERS',                  SEC_REFERRERS) +
     section('help-activity',        '📡 ACTIVITY FEED',              SEC_ACTIVITY) +
@@ -2528,6 +2563,7 @@
     ['help-email-templates','📝 Email Templates'],['help-email-schedule','📅 Scheduled Follow-ups'],
     ['help-email-activity','📊 Email Activity'],['help-stripe-pay','💳 Stripe Payments'],
     ['help-compliance','📋 Compliance'],
+    ['help-atp','🔬 ATP & Hygiena Testing'],
     ['help-referrals','🤝 Referrals'],['help-referrers','👤 Referrers'],
     ['help-activity','📡 Activity'],['help-calendar','📅 Calendar'],
     ['help-production','🏭 Production'],['help-tasks','✅ Tasks'],
