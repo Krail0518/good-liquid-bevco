@@ -81,7 +81,8 @@
     { id:'microsnap_ecoli',name:'MicroSnap E. coli', cat:'micro', sample:'either', units:['RLU','CFU'], incubate:true, desc:'Generic E. coli indicator test. Incubated in the device, then read on the luminometer.' },
     // For results entered from a paper record where the MicroSnap kind was
     // not written down. The report says so rather than guessing a kind.
-    { id:'microsnap_unspecified', name:'MicroSnap (type not recorded)', cat:'micro', sample:'either', units:['RLU','CFU'], incubate:false, desc:'Only for results copied from a record that did not say which MicroSnap was used. Pick the actual type for new tests.' },
+    { id:'microsnap_unspecified', name:'MicroSnap (type not recorded)', cat:'micro', sample:'either', units:['RLU','CFU'], incubate:false, desc:'Only for results copied from a record that did not say which MicroSnap was used. Pick the actual type for new tests.',
+      reportDesc:'MicroSnap indicator-organism test; the specific MicroSnap type was not recorded.' },
     { id:'zymosnap_alp',   name:'ZymoSnap ALP',   cat:'enzyme', sample:'product', units:['mU/L','RLU'], desc:'Alkaline phosphatase test for verifying pasteurization of milk and dairy ingredients.' },
     { id:'crosscheck',     name:'CrossCheck',     cat:'enzyme', sample:'either',  units:['RLU'], desc:'Acid phosphatase test: raw meat residue on surfaces and cooking-efficiency checks on product.' }
   ];
@@ -1391,7 +1392,7 @@
       [judged ? Math.round(100 * s.firstPass / judged) + '%' : '—', 'Passed first test'],
       [String(s.corrected), 'Re-cleaned & passed retest'],
       [String(s.unresolved), 'Unresolved failures'],
-      [String(runCount), 'Production runs covered']
+      [String(runCount), sel.direct.length ? 'Jobs covered' : 'Production runs covered']
     ];
     var kw = (R - L - 4 * 8) / 5;
     kpis.forEach(function(k, i){
@@ -1418,12 +1419,13 @@
     });
     para('Samples are tested with Hygiena tests read on a Hygiena luminometer' +
       (Object.keys(lums).length ? ' (' + Object.keys(lums).join(' / ') + ')' : '') + '. Readings are in Relative Light Units (RLU) unless another unit is shown; lower is cleaner. ' +
-      (catsIn.micro ? 'MicroSnap indicator-organism tests are incubated before reading; incubation time and temperature are shown with each result. ' : '') +
+      (all.some(function(r){ return ((r.data && r.data.tests) || []).some(function(p){ return p.incubation; }); })
+        ? 'MicroSnap indicator-organism tests are incubated before reading; incubation time and temperature are shown with each result. ' : '') +
       'Limits are set by test type and testing location. PASS = at or below the pass limit; CAUTION = between the limits (re-clean recommended); ' +
       'FAIL = above the fail limit (re-clean and retest; production does not start until the retest passes).', 9, 40, 6);
     Object.keys(types).forEach(function(t){
       var tt = testType(t);
-      if(tt) para(tt.name + ': ' + tt.desc, 8.5, 70, 1);
+      if(tt) para(tt.name + ': ' + (tt.reportDesc || tt.desc), 8.5, 70, 1);
     });
     y += 4;
     var lim = Object.keys(limits).map(function(k){ return limits[k]; });
