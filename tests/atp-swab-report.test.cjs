@@ -21,6 +21,9 @@
  *   - signing from Open Logs enforces the same rules, judging old drafts
  *     against the current limits
  *   - a daily pre-op ATP task is generated on production days
+ *   - ONE JOB = ONE RECORD: a test plan fills the job's rows, a draft keeps
+ *     blank readings, re-opening the job continues the same record, signing
+ *     updates it in place, and the job downloads as one PDF
  *   - each test saves equipment, location, type, RLU, the limits that applied,
  *     result, corrective action and retest; a retest without a corrective
  *     action, or a FAIL without one on signing, is refused
@@ -118,10 +121,11 @@ window.glProductionRuns = ${JSON.stringify(RUNS)}.map(function(r){
 window.addNotification = function(){};
 window.glAudit = function(a, t, d){ (window.__audit = window.__audit || []).push([a, t, d]); };
 var DB = { production_runs: ${JSON.stringify(RUNS)}, compliance_records: ${JSON.stringify(RECORDS)}, clients: ${JSON.stringify(CLIENTS)},
-  compliance_tasks: [], hold_tags: [], cip_equipment: [{ name:'Filler 1', active:true }, { name:'Brite Tank 3', active:true }] };
+  compliance_tasks: [], hold_tags: [], cip_equipment: [{ name:'Filler 1', active:true, sort_order:10 }, { name:'Brite Tank 3', active:true, sort_order:20 }] };
 window.__inserts = [];
 function Q(t){ this.t = t; this.f = []; this.op = 'select'; this.row = null; this.one = false; }
-['select','order','limit'].forEach(function(m){ Q.prototype[m] = function(){ return this; }; });
+['select','limit'].forEach(function(m){ Q.prototype[m] = function(){ return this; }; });
+Q.prototype.order = function(k, o){ (this.ord = this.ord || []).push([k, !(o && o.ascending === false)]); return this; };
 Q.prototype.eq  = function(k,v){ this.f.push(function(r){ return r[k] === v; }); return this; };
 Q.prototype.neq = function(k,v){ this.f.push(function(r){ return r[k] !== v; }); return this; };
 Q.prototype.gte = function(k,v){ this.f.push(function(r){ return r[k] >= v; }); return this; };
@@ -140,6 +144,13 @@ Q.prototype.then = function(res, rej){
     tbl.push(r); window.__inserts.push([self.t, r]); out = self.one ? r : [r];
   } else {
     var rows = tbl.filter(function(r){ return self.f.every(function(f){ return f(r); }); });
+    if(self.ord){ rows = rows.slice().sort(function(a, b){
+      for(var i = 0; i < self.ord.length; i++){
+        var k = self.ord[i][0], asc = self.ord[i][1], x = a[k], y = b[k];
+        if(typeof x !== 'number' || typeof y !== 'number'){ x = String(x == null ? '' : x); y = String(y == null ? '' : y); }
+        if(x < y) return asc ? -1 : 1; if(x > y) return asc ? 1 : -1;
+      }
+      return 0; }); }
     if(self.op === 'update') rows.forEach(function(r){ Object.assign(r, self.row); });
     out = self.one ? rows[0] || null : rows;
   }
@@ -434,6 +445,76 @@ const server = http.createServer((req, res) => {
   const pdf2 = await page.evaluate(() => window.__savedPdf);
   check('operator notes appear only when asked for', /Ran right after/.test(pdf2));
   if (process.env.ATP_PDF_OUT) fs.writeFileSync(process.env.ATP_PDF_OUT, Buffer.from(pdf.raw, 'binary'));
+
+  // ── One job = one record: test plan → draft with blank readings → continue → sign ──
+  await page.evaluate(() => { const m = document.getElementById('gl-comp-modal'); if (m) m.remove(); });
+  await page.evaluate(() => window.glOpenAtpPlans());
+  await page.waitForSelector('#gl-atpp-new');
+  await page.click('#gl-atpp-new');
+  await page.fill('#gl-atpp-name', 'Acme job');
+  await page.fill('#gl-atpp-client', 'Acme Soda Co');
+  const PLAN = [['Filler 1', 'Tank interior'], ['Brite Tank 3', 'Tank interior'], ['Filler 1', 'Can interior'], ['Filler 1', 'Fill head 1'], ['Filler 1', 'Fill head 2']];
+  for (let i = 0; i < PLAN.length; i++) {
+    await page.click('#gl-atpp-edit button.cbtn');
+    const r = (await page.$$('.gl-atpp-row'))[i];
+    await (await r.$('.gl-atpp-eq')).selectOption(PLAN[i][0]);
+    await (await r.$('.gl-atpp-loc')).fill(PLAN[i][1]);
+  }
+  await page.click('#gl-atpp-save');
+  await page.waitForFunction(() => !document.getElementById('gl-comp-modal'), null, { timeout: 5000 });
+  const plans = await page.evaluate(() => window.GL_APP_SETTINGS.atp_plans);
+  check('a test plan is saved org-wide with its client and rows',
+    plans && plans.plans.length === 1 && plans.plans[0].client_name === 'Acme Soda Co' && plans.plans[0].rows.length === 5 && plans.plans[0].rows[4].location === 'Fill head 2', JSON.stringify(plans));
+
+  const nRec0 = await page.evaluate(() => window.__inserts.filter((i) => i[0] === 'compliance_records').length);
+  await page.evaluate(() => window.glOpenAtpSwabForm({}));
+  await page.waitForSelector('#gl-atp-tests .gl-atp-row');
+  await page.selectOption('#gl-cf-atp-run', 'run-a1');
+  await page.waitForFunction(() => document.querySelectorAll('#gl-atp-tests .gl-atp-row').length === 5, null, { timeout: 5000 });
+  const locs = await page.$$eval('.gl-atp-loc', (e) => e.map((x) => x.value));
+  check("picking the client's run loads its plan: all rows in one job", JSON.stringify(locs) === JSON.stringify(PLAN.map((p) => p[1])), JSON.stringify(locs));
+  await page.click('.gl-cf-sign');
+  const errBlank = await page.$eval('#gl-atp-err', (e) => e.innerText);
+  check('a job with blank readings cannot be signed', /enter the reading before signing/.test(errBlank), errBlank);
+  await page.click('.gl-cf-draft');
+  await page.waitForFunction((n) => window.__inserts.filter((i) => i[0] === 'compliance_records').length > n, nRec0, { timeout: 5000 });
+  const job = await page.evaluate(() => window.__inserts.filter((i) => i[0] === 'compliance_records').pop()[1]);
+  check('the draft is ONE record holding all rows, readings pending',
+    job.status === 'draft' && job.run_id === 'run-a1' && job.data.tests.length === 5 && job.data.tests.every((t) => t.rlu === null), JSON.stringify(job).slice(0, 300));
+  const prepPending = await page.evaluate((j) => window.glAtpPrepareSign(j), job);
+  check('Open Logs refuses to sign a job with readings still pending', /no reading entered yet/.test(prepPending.error || ''), JSON.stringify(prepPending));
+
+  // Starting the same job again points at the existing record instead of making a second one.
+  await page.evaluate(() => window.glOpenAtpSwabForm({}));
+  await page.waitForSelector('#gl-cf-atp-run');
+  await page.selectOption('#gl-cf-atp-run', 'run-a1');
+  await page.waitForSelector('#gl-atp-cont', { timeout: 5000 });
+  await page.click('#gl-atp-cont');
+  await page.waitForFunction(() => /Continue job/.test((document.getElementById('gl-comp-modal') || {}).innerText || ''), null, { timeout: 5000 });
+  const cont = await page.evaluate(() => ({ rows: document.querySelectorAll('#gl-atp-tests .gl-atp-row').length, locs: [...document.querySelectorAll('.gl-atp-loc')].map((x) => x.value) }));
+  check('re-opening the job continues the same record with its rows', cont.rows === 5 && cont.locs[4] === 'Fill head 2', JSON.stringify(cont));
+  await page.click('#gl-atp-add');
+  const all = await page.$$('#gl-atp-tests .gl-atp-row');
+  await (await all[5].$('.gl-atp-loc')).fill('Fill head 3');
+  for (let i = 0; i < all.length; i++) await (await all[i].$('.gl-atp-rlu')).fill(String(i + 1));
+  const nRec1 = await page.evaluate(() => window.__inserts.filter((i) => i[0] === 'compliance_records').length);
+  await page.click('.gl-cf-sign');
+  await page.waitForFunction(() => !document.getElementById('gl-comp-modal'), null, { timeout: 5000 });
+  const after = await page.evaluate((id) => ({ rec: DB.compliance_records.find((r) => r.id === id), n: window.__inserts.filter((i) => i[0] === 'compliance_records').length }), job.id);
+  check('signing the continued job updates the SAME record (no second report)', after.n === nRec1 && after.rec.status === 'signed' && after.rec.data.tests.length === 6, JSON.stringify({ n: after.n, nRec1, status: after.rec.status, tests: after.rec.data.tests.length }));
+  check('readings and the added row are saved on that record',
+    after.rec.data.tests[5].location === 'Fill head 3' && after.rec.data.tests.every((t, i) => t.rlu === i + 1) && after.rec.signature_name === 'Sam Staff', JSON.stringify(after.rec.data.tests.map((t) => [t.location, t.rlu])));
+  const relock = await page.evaluate((r) => { const msgs = []; const a = window.alert; window.alert = (m) => msgs.push(m); window.glOpenAtpSwabForm({}, r); window.alert = a; return msgs; }, after.rec);
+  check('a signed job cannot be reopened', relock.some((m) => /signed and locked/.test(m)), JSON.stringify(relock));
+
+  // One PDF for the job, through the same isolation path.
+  await page.evaluate(() => { window.__savedPdf = null; window.__savedName = null; });
+  await page.evaluate((r) => window.glAtpDownloadJobPdf(r), after.rec);
+  const jp = await page.evaluate(() => ({ name: window.__savedName, raw: window.__savedPdf }));
+  check('a signed job downloads as ONE PDF named for the client and run', /^ATP-Job_Acme-Soda-Co_Acme-Lime-Seltzer_\d{4}-\d\d-\d\d\.pdf$/.test(jp.name || '') && /Fill head 3/.test(jp.raw || '') && !/RivalCo/.test(jp.raw || ''), jp.name);
+  const leak = await page.evaluate(async (r) => { try { await window.glAtpDownloadJobPdf(r); return 'exported'; } catch (e) { return e.message; } },
+    { id: 'mm', form_code: 'GMP-ATP-001', status: 'signed', run_id: 'run-a1', client_id: RIVAL, record_date: '2026-10-07', data: { tests: [] } });
+  check("a job stamped with another client's id is refused, not exported", /does not belong/.test(leak), leak);
 
   check('no page errors', errors.length === 0, JSON.stringify(errors));
   await browser.close(); server.close();

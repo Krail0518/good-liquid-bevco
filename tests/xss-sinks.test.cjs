@@ -219,7 +219,10 @@ for (const [label, re] of FORBIDDEN) {
 // rebuild, the live limit/result cell, the limits editor rows, the tab and
 // the report-builder preview. Every value interpolated into them goes through
 // esc(). The customer report itself is a jsPDF document, not HTML.
-const SINK_BUDGET = 640;
+// 2026-11-12: 640 -> 642. ATP test plans editor (atp-swabs.js): the plan
+// header and each plan row. Values reach them only through esc() or are set
+// with .value / textContent after the markup is built.
+const SINK_BUDGET = 642;
 let sinkCount = 0;
 const RAW = /\.(innerHTML|outerHTML)\s*(=|\+=)|insertAdjacentHTML\s*\(|document\.write(ln)?\s*\(/;
 for (const f of files) {
