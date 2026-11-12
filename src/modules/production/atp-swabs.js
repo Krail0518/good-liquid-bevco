@@ -79,6 +79,9 @@
     { id:'microsnap_eb',   name:'MicroSnap EB',   cat:'micro',  sample:'either',  units:['RLU','CFU'], incubate:true, desc:'Enterobacteriaceae indicator test. Incubated in the device, then read on the luminometer.' },
     { id:'microsnap_coliform', name:'MicroSnap Coliform', cat:'micro', sample:'either', units:['RLU','CFU'], incubate:true, desc:'Coliform indicator test. Incubated in the device, then read on the luminometer.' },
     { id:'microsnap_ecoli',name:'MicroSnap E. coli', cat:'micro', sample:'either', units:['RLU','CFU'], incubate:true, desc:'Generic E. coli indicator test. Incubated in the device, then read on the luminometer.' },
+    // For results entered from a paper record where the MicroSnap kind was
+    // not written down. The report says so rather than guessing a kind.
+    { id:'microsnap_unspecified', name:'MicroSnap (type not recorded)', cat:'micro', sample:'either', units:['RLU','CFU'], incubate:false, desc:'Only for results copied from a record that did not say which MicroSnap was used. Pick the actual type for new tests.' },
     { id:'zymosnap_alp',   name:'ZymoSnap ALP',   cat:'enzyme', sample:'product', units:['mU/L','RLU'], desc:'Alkaline phosphatase test for verifying pasteurization of milk and dairy ingredients.' },
     { id:'crosscheck',     name:'CrossCheck',     cat:'enzyme', sample:'either',  units:['RLU'], desc:'Acid phosphatase test: raw meat residue on surfaces and cooking-efficiency checks on product.' }
   ];
@@ -123,6 +126,21 @@
     var v = window.GL_APP_SETTINGS && window.GL_APP_SETTINGS[SETTINGS_KEY];
     return (v && Array.isArray(v.rules)) ? v.rules : [];
   }
+  // Test plans: a named list of rows (equipment, location, test type) that
+  // fills one job's form in one click. Optionally tied to a client by name;
+  // the plan then loads by itself when a run for that client is picked.
+  // Stored in app_settings.atp_plans (staff read, admin write).
+  var PLANS_KEY = 'atp_plans';
+  function readPlans(){
+    var v = window.GL_APP_SETTINGS && window.GL_APP_SETTINGS[PLANS_KEY];
+    return (v && Array.isArray(v.plans)) ? v.plans : [];
+  }
+  function planForClient(plans, clientName){
+    var n = norm(clientName);
+    if(!n) return null;
+    return (plans || []).find(function(p){ return p && norm(p.client_name) === n; }) || null;
+  }
+
   // Most specific rule wins: location+equipment > location > equipment > test type only.
   function limitFor(rules, test_type, equipment, location){
     var best = null, bestScore = -1;
@@ -192,7 +210,7 @@
       runById[r.id] = r;
       runDays(r).forEach(function(d){ days[d] = true; });
     });
-    var linked = [], facility = [], unsigned = 0;
+    var linked = [], direct = [], facility = [], unsigned = 0;
     (records || []).forEach(function(rec){
       if(!rec || rec.form_code !== FORM_CODE || rec.status === 'voided') return;
       if(rec.client_id && rec.client_id !== clientId) return;
@@ -200,7 +218,11 @@
       var bucket = null;
       if(runId){
         if(runById[runId]) bucket = linked;
-      } else if(opts.includeFacility && days[rec.record_date]){
+      } else if(rec.client_id && rec.client_id === clientId){
+        // A job for this client that has no production run in the CRM. Only
+        // an exact client_id match qualifies: never a name, never a guess.
+        bucket = direct;
+      } else if(!rec.client_id && opts.includeFacility && days[rec.record_date]){
         bucket = facility;
       }
       if(!bucket) return;
@@ -210,13 +232,14 @@
       }
       bucket.push(rec);
     });
-    return { linked: linked, facility: facility, unsignedMatching: unsigned, runById: runById, productionDays: Object.keys(days).sort() };
+    return { linked: linked, direct: direct, facility: facility, unsignedMatching: unsigned, runById: runById, productionDays: Object.keys(days).sort() };
   }
 
   function summarize(recs){
-    var s = { tests: 0, firstPass: 0, caution: 0, failed: 0, corrected: 0, unresolved: 0, noLimit: 0 };
+    var s = { tests: 0, firstPass: 0, caution: 0, failed: 0, corrected: 0, unresolved: 0, noLimit: 0, pending: 0 };
     recs.forEach(function(r){
       ((r.data && r.data.tests) || []).forEach(function(p){
+        if(p.rlu == null){ s.pending++; return; }   // reading not entered yet (draft)
         s.tests++;
         if(!p.result){ s.noLimit++; return; }
         if(p.result === 'pass') s.firstPass++;
@@ -241,6 +264,7 @@
     if(!tests.length) problems.push('It has no tests.');
     tests.forEach(function(p, i){
       var n = 'Test ' + (i + 1) + ' (' + testName(p.test_type) + ' · ' + (p.location || '?') + '): ';
+      if(p.rlu == null){ problems.push(n + 'no reading entered yet. Open the job with Continue and fill it in.'); return; }
       if(!p.limits){
         var lim = limitFor(rules, p.test_type, p.equipment, p.location);
         if(lim){
@@ -304,7 +328,18 @@
     var t = (inc.hours ? inc.hours + ' h' : '') + (inc.temp_c != null ? ' @ ' + inc.temp_c + '°C' : '');
     return html ? '<br><span style="color:#9aa7bd">inc. ' + esc(t) + '</span>' : 'Inc. ' + t;
   }
-  function limitText(l){ return l ? 'Pass <= ' + l.pass_max + ' / Fail > ' + l.fail_above + ' ' + (l.unit || 'RLU') : 'No limit set'; }
+  function limitText(l){
+    if(!l) return 'No limit set';
+    if(l.instrument) return 'Instrument limits';
+    return 'Pass <= ' + l.pass_max + ' / Fail > ' + l.fail_above + ' ' + (l.unit || 'RLU');
+  }
+  // When no limit rule applies, the operator can record the PASS / CAUTION /
+  // FAIL the luminometer itself showed (it judges against its own programmed
+  // limits). The record says that is where the verdict came from.
+  function instrumentLimit(test_type, unit){
+    return { instrument: true, pass_max: null, fail_above: null, unit: unit || unitOf(null, test_type),
+             basis: testName(test_type) + ' · pass/fail as judged by the instrument\'s programmed limits' };
+  }
   function badge(result, noLimit){
     if(!result) return noLimit ? '<span style="font-size:10px;font-weight:700;color:#c4a4f8">NO LIMIT</span>' : '<span style="color:#9aa7bd">—</span>';
     var c = result === 'pass' ? ['#5fcf9e','rgba(95,207,158,.12)'] : result === 'caution' ? ['#f5c842','rgba(245,200,66,.12)'] : ['#ff8579','rgba(231,76,60,.14)'];
@@ -349,8 +384,46 @@
   var LBL = 'font-size:10px;color:#9aa7bd;letter-spacing:.5px;margin-bottom:3px';
 
   // ── Log form ─────────────────────────────────────────────────
-  window.glOpenAtpSwabForm = function(task){
+  // Save a continued job back to its own record. CLAUDE.md rule 4: RLS
+  // rejects silently, so both an error and zero returned rows are failure.
+  // `.eq('status','draft')` means a record signed in the meantime is never
+  // overwritten. Throws on failure; the form keeps the operator's entries.
+  async function updateJob(existing, data, signed, hasDev, unresolved, clientId){
+    if(!window.supa) throw new Error('Not connected to the database');
+    var user = window.currentUser || {};
+    var run = data.run_id ? (window.glProductionRuns || []).find(function(r){ return r.id === data.run_id; }) : null;
+    var now = new Date().toISOString();
+    var patch = {
+      data: data,
+      record_date: localDate(new Date(data.tested_at)),
+      run_id: data.run_id || null,
+      client_id: run ? (run.client_id || null) : (clientId || null),
+      has_deviation: hasDev,
+      deviation_notes: hasDev ? 'Hygiena test FAIL not resolved: ' + unresolved.map(function(p){ return p.test_name + ' ' + p.equipment + ' / ' + p.location + ' ' + (p.retest_rlu != null ? p.retest_rlu : p.rlu) + ' ' + p.unit; }).join(', ') : null,
+      corrective_action: unresolved.map(function(p){ return p.corrective_action; }).filter(Boolean).join(' · ') || null,
+      status: signed ? 'signed' : 'draft'
+    };
+    if(signed){
+      patch.completed_by = user.id || null; patch.completed_at = now;
+      patch.signed_by = user.id || null; patch.signed_at = now;
+      patch.signature_name = user.name || user.email || 'PCQI';
+      patch.signature_meaning = 'PCQI sign-off — record reviewed and approved';
+    }
+    var r = await window.supa.from('compliance_records').update(patch)
+      .eq('id', existing.id).eq('status', 'draft').select('id');
+    if(r.error) throw new Error(r.error.message || String(r.error));
+    if(!Array.isArray(r.data) || !r.data.length) throw new Error('the database did not change the record (it may already be signed, or you may not have permission)');
+    if(typeof window.glAudit === 'function') window.glAudit(signed ? 'compliance_record_signed' : 'compliance_record_updated', existing.id, { form_code: FORM_CODE, tests: data.tests.length });
+    if(typeof window.addNotification === 'function') window.addNotification((signed ? '✓ Signed: ' : '💾 Job updated: ') + FORM_CODE, data.tests.length + ' tests in one record', 'success');
+  }
+
+  // existing: a DRAFT GMP-ATP-001 record to continue. One job is one record:
+  // continuing it adds rows / readings to that same record instead of
+  // starting a second one. Signed records are locked and never reopened.
+  window.glOpenAtpSwabForm = function(task, existing){
     task = task || {};
+    if(existing && existing.status !== 'draft'){ alert('This job is signed and locked. Signed records cannot be changed.'); return; }
+    var ex = existing ? (existing.data || {}) : null;
     var F = window.glComplianceForms;
     if(!F){ alert('The compliance module has not loaded yet. Refresh and try again.'); return; }
     var rules = readRules();
@@ -358,9 +431,10 @@
     var now = new Date();
     var runs = (window.glProductionRuns || []).filter(function(r){
       var d = r.scheduled_start_date || r.scheduled_date;
-      if(!d) return r.id === task.run_id;
+      var keep = r.id === task.run_id || (existing && r.id === existing.run_id);
+      if(!d) return keep;
       var days = (new Date(String(d).slice(0,10) + 'T12:00:00') - now) / 86400000;
-      return (days > -21 && days < 14) || r.id === task.run_id;
+      return (days > -21 && days < 14) || keep;
     }).sort(function(a,b){
       return String(b.scheduled_start_date || b.scheduled_date || '').localeCompare(String(a.scheduled_start_date || a.scheduled_date || ''));
     });
@@ -369,32 +443,43 @@
       return [r.id, cn + ' — ' + runLabel(r)];
     }));
 
+    var plans = readPlans();
+    var exAt = ex && ex.tested_at ? new Date(ex.tested_at) : null;
     var body =
+      (existing ? '<div style="font-size:12px;color:#7fc6f5;background:rgba(127,198,245,.08);border:1px solid rgba(127,198,245,.3);border-radius:8px;padding:8px 12px;margin-bottom:12px">Continuing this job\'s draft record. Add readings or more rows, then save again: it stays one record.</div>' : '') +
       (rules.length ? '' : '<div style="font-size:12px;color:#c4a4f8;background:rgba(196,164,248,.1);border:1px solid rgba(196,164,248,.3);border-radius:8px;padding:8px 12px;margin-bottom:12px">No ATP limits are set up yet, so results cannot be judged and the record can only be saved as a draft. Set them in <b>⚙️ ATP limits</b> on the ATP Swabs tab.</div>') +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
-        F.field('Date / time tested', 'atp-at', 'datetime-local', { value: localDateTimeInput(now), required: true }) +
-        F.field('When in the process', 'atp-timing', 'select', { options: TIMINGS, value: 'preop', required: true }) +
+        F.field('Date / time tested', 'atp-at', 'datetime-local', { value: localDateTimeInput(exAt && !isNaN(exAt.getTime()) ? exAt : now), required: true }) +
+        F.field('When in the process', 'atp-timing', 'select', { options: TIMINGS, value: (ex && ex.timing) || 'preop', required: true }) +
       '</div>' +
-      F.field('Production run (links the tests to that client\'s report)', 'atp-run', 'select', { options: runOpts, value: task.run_id || '' }) +
+      F.field('Production run / job (links the tests to that client\'s report)', 'atp-run', 'select', { options: runOpts, value: (existing && existing.run_id) || task.run_id || '' }) +
+      '<div id="gl-atp-clientwrap">' + F.field('Client (only when this job has no production run in the CRM)', 'atp-client', 'select', {
+        options: [['', '— None: facility-wide —']].concat((window.clients || []).filter(function(c){ return c && c.id && c.name; })
+          .slice().sort(function(a, b){ return String(a.name).localeCompare(String(b.name)); }).map(function(c){ return [c.id, c.name]; })),
+        value: (existing && !existing.run_id && existing.client_id) || '' }) + '</div>' +
+      '<div id="gl-atp-jobnote" style="display:none;font-size:12px;color:#f5c842;background:rgba(245,200,66,.08);border:1px solid rgba(245,200,66,.3);border-radius:8px;padding:8px 12px;margin:-4px 0 10px"></div>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">' +
-        F.field('Operator', 'atp-operator', 'text', { value: (window.currentUser && (window.currentUser.name || window.currentUser.email)) || '', required: true }) +
-        F.field('Luminometer', 'atp-lum', 'select', { options: LUMINOMETERS, value: inst.model }) +
-        F.field('Luminometer serial #', 'atp-serial', 'text', { value: inst.serial || '' }) +
-        F.field('Test lot #(s)', 'atp-lot', 'text') +
+        F.field('Operator', 'atp-operator', 'text', { value: (ex && ex.operator) || (window.currentUser && (window.currentUser.name || window.currentUser.email)) || '', required: true }) +
+        F.field('Luminometer', 'atp-lum', 'select', { options: LUMINOMETERS, value: (ex && ex.luminometer) || inst.model }) +
+        F.field('Luminometer serial #', 'atp-serial', 'text', { value: ex ? (ex.luminometer_serial || '') : (inst.serial || '') }) +
+        F.field('Test lot #(s)', 'atp-lot', 'text', { value: (ex && ex.test_lot) || '' }) +
       '</div>' +
-      '<div style="font-size:11px;color:#9aa7bd;margin:4px 0 6px;font-weight:500">Tests <span style="color:#ff8579">*</span></div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:4px 0 6px;flex-wrap:wrap">' +
+        '<div style="font-size:11px;color:#9aa7bd;font-weight:500">Tests for this job <span style="color:#ff8579">*</span> <span style="font-weight:400">· readings can be left blank in a draft and filled in later</span></div>' +
+        (plans.length ? '<select id="gl-atp-plan" style="' + INP + ';width:auto;max-width:260px">' + optionsHtml([['', '📋 Load a test plan…']].concat(plans.map(function(pl, i){ return [String(i), pl.name + ' (' + (pl.rows || []).length + ' rows)']; })), '') + '</select>' : '') +
+      '</div>' +
       '<datalist id="gl-atp-locs-surface">' + LOCATIONS.surface.map(function(l){ return '<option value="' + esc(l) + '">'; }).join('') + '</datalist>' +
       '<datalist id="gl-atp-locs-liquid">' + LOCATIONS.liquid.map(function(l){ return '<option value="' + esc(l) + '">'; }).join('') + '</datalist>' +
       '<datalist id="gl-atp-locs-product">' + LOCATIONS.product.map(function(l){ return '<option value="' + esc(l) + '">'; }).join('') + '</datalist>' +
       '<datalist id="gl-atp-locs-either">' + LOCATIONS.either.map(function(l){ return '<option value="' + esc(l) + '">'; }).join('') + '</datalist>' +
       '<div id="gl-atp-tests"></div>' +
       '<button type="button" id="gl-atp-add" class="cbtn" style="font-size:11px;padding:5px 11px;margin:2px 0 12px">+ Add test</button>' +
-      F.field('Notes (internal — left out of customer reports unless you choose to include them)', 'atp-notes', 'textarea') +
+      F.field('Notes (internal — left out of customer reports unless you choose to include them)', 'atp-notes', 'textarea', { value: (ex && ex.notes) || '' }) +
       '<div id="gl-atp-err" style="display:none;color:#ff8579;background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.35);border-radius:8px;padding:8px 14px;font-size:12px;margin-top:8px"></div>' +
       '<div style="font-size:11px;color:#f5c842;background:rgba(245,200,66,.08);padding:8px 12px;border-radius:6px;margin-top:8px">FAIL: re-clean, retest, and do NOT start the run until the retest passes. A failure left unresolved is recorded as a deviation.</div>' +
       '<div id="gl-atp-disclaim" style="font-size:11px;color:#9aa7bd;margin-top:6px"></div>';
 
-    var modal = F.modalShell('GMP-ATP-001 · ATP & Hygiena Testing', 'Record each reading as you take it — never reconstruct from memory', body, F.formFooter());
+    var modal = F.modalShell(existing ? 'GMP-ATP-001 · Continue job' : 'GMP-ATP-001 · ATP & Hygiena Testing', 'One job = one record · record each reading as you take it', body, F.formFooter());
     var card = modal.firstChild;
     if(card && card.style) card.style.maxWidth = '900px';
     var list = modal.querySelector('#gl-atp-tests');
@@ -413,10 +498,11 @@
       row.setAttribute('style', 'position:relative;padding:10px 34px 10px 12px;margin-bottom:8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px');
       var tt = prev.test_type || 'ultrasnap';
       row.innerHTML =
-        '<div style="display:grid;grid-template-columns:1.2fr 1.2fr 1fr;gap:8px">' +
+        '<div style="display:grid;grid-template-columns:1.2fr 1.2fr 1fr .9fr;gap:8px">' +
           '<div><div style="' + LBL + '">EQUIPMENT ID</div><select class="gl-atp-equip" style="' + INP + '">' + equipOptions(prev.equipment) + '</select></div>' +
           '<div><div style="' + LBL + '">TESTING LOCATION</div><input class="gl-atp-loc" placeholder="Point tested" style="' + INP + '"></div>' +
           '<div><div style="' + LBL + '">TEST TYPE</div><select class="gl-atp-type" style="' + INP + '">' + typeOptionsHtml(tt) + '</select></div>' +
+          '<div><div style="' + LBL + '">TESTED ON <span style="font-weight:400">(if not the job date)</span></div><input class="gl-atp-date" type="date" style="' + INP + '"></div>' +
         '</div>' +
         '<div style="display:grid;grid-template-columns:.7fr 1.3fr 1.6fr .8fr;gap:8px;margin-top:8px;align-items:end">' +
           '<div><div style="' + LBL + '">READING <span class="gl-atp-unit"></span></div><input class="gl-atp-rlu" type="number" min="0" step="any" style="' + INP + '"></div>' +
@@ -429,10 +515,27 @@
           '<div><div style="' + LBL + '">INCUBATION TEMP (°C)</div><input class="gl-atp-inctemp" type="number" step="0.1" style="' + INP + '"></div>' +
           '<div><div style="' + LBL + '">HOURS INCUBATED</div><input class="gl-atp-inchrs" type="number" min="0" step="0.5" style="' + INP + '"></div>' +
         '</div>' +
+        '<div class="gl-atp-instrow" style="display:none;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">' +
+          '<div><div style="' + LBL + '">RESULT SHOWN ON THE INSTRUMENT</div><select class="gl-atp-inst" style="' + INP + '">' + optionsHtml([['', '— no limit set: choose what the EnSURE showed —'], ['pass','PASS'], ['caution','CAUTION'], ['fail','FAIL']], '') + '</select></div>' +
+          '<div class="gl-atp-reinstwrap"><div style="' + LBL + '">RETEST RESULT SHOWN ON THE INSTRUMENT</div><select class="gl-atp-reinst" style="' + INP + '">' + optionsHtml([['', '—'], ['pass','PASS'], ['caution','CAUTION'], ['fail','FAIL']], '') + '</select></div>' +
+        '</div>' +
         '<div class="gl-atp-typedesc" style="font-size:10px;color:#9aa7bd;margin-top:6px"></div>' +
         '<button type="button" class="gl-atp-del" title="Remove" style="position:absolute;top:6px;right:8px;background:none;border:none;color:rgba(231,76,60,.7);cursor:pointer;font-size:18px;line-height:1">&times;</button>';
       list.appendChild(row);
       row.querySelector('.gl-atp-loc').value = prev.location || '';
+      if(prev.rlu != null) row.querySelector('.gl-atp-rlu').value = prev.rlu;
+      if(prev.retest_rlu != null) row.querySelector('.gl-atp-rerlu').value = prev.retest_rlu;
+      if(prev.corrective_action) row.querySelector('.gl-atp-ca').value = prev.corrective_action;
+      if(prev.tested_on) row.querySelector('.gl-atp-date').value = prev.tested_on;
+      if(prev.limits && prev.limits.instrument){
+        if(prev.result) row.querySelector('.gl-atp-inst').value = prev.result;
+        if(prev.retest_result) row.querySelector('.gl-atp-reinst').value = prev.retest_result;
+      }
+      if(prev.incubation){
+        if(prev.incubation.started_at) row.querySelector('.gl-atp-incstart').value = localDateTimeInput(new Date(prev.incubation.started_at));
+        if(prev.incubation.temp_c != null) row.querySelector('.gl-atp-inctemp').value = prev.incubation.temp_c;
+        if(prev.incubation.hours != null) row.querySelector('.gl-atp-inchrs').value = prev.incubation.hours;
+      }
       var sel = row.querySelector('.gl-atp-equip');
       sel.dataset.prev = sel.value;
       sel.addEventListener('change', async function(){
@@ -457,12 +560,20 @@
         var r1 = classify(row.querySelector('.gl-atp-rlu').value, lim);
         var r2 = classify(row.querySelector('.gl-atp-rerlu').value, lim);
         var hasRlu = row.querySelector('.gl-atp-rlu').value !== '';
+        // No rule: let the operator record the instrument's own verdict.
+        var instRow = row.querySelector('.gl-atp-instrow');
+        instRow.style.display = lim ? 'none' : 'grid';
+        row.querySelector('.gl-atp-reinstwrap').style.visibility = row.querySelector('.gl-atp-rerlu').value !== '' ? 'visible' : 'hidden';
+        if(!lim){
+          var iv = row.querySelector('.gl-atp-inst').value, rv = row.querySelector('.gl-atp-reinst').value;
+          if(iv){ lim = instrumentLimit(row.querySelector('.gl-atp-type').value); r1 = iv; r2 = row.querySelector('.gl-atp-rerlu').value !== '' ? (rv || null) : null; }
+        }
         var u = '(' + unitOf(lim, row.querySelector('.gl-atp-type').value) + ')';
         row.querySelectorAll('.gl-atp-unit').forEach(function(el){ el.textContent = u; });
         updateDisclaimer();
         row.querySelector('.gl-atp-res').innerHTML = esc(limitText(lim)) + '<br>' + badge(r1, hasRlu && !lim) + (r2 ? ' → retest ' + badge(r2) : '');
       }
-      ['.gl-atp-type', '.gl-atp-loc', '.gl-atp-rlu', '.gl-atp-rerlu'].forEach(function(c){
+      ['.gl-atp-type', '.gl-atp-loc', '.gl-atp-rlu', '.gl-atp-rerlu', '.gl-atp-inst', '.gl-atp-reinst'].forEach(function(c){
         row.querySelector(c).addEventListener('input', update);
         row.querySelector(c).addEventListener('change', update);
       });
@@ -490,7 +601,76 @@
     }
     window.addEventListener('gl-cip-equipment-changed', onEquipChanged);
 
-    addRow();
+    function isUntouched(row){
+      return !row.querySelector('.gl-atp-loc').value.trim() && !row.querySelector('.gl-atp-rlu').value &&
+             !row.querySelector('.gl-atp-rerlu').value && !row.querySelector('.gl-atp-ca').value.trim();
+    }
+    // Load a plan's rows into this job. Untouched blank rows are replaced,
+    // rows already filled in are kept.
+    function loadPlan(pl){
+      if(!pl) return;
+      Array.prototype.forEach.call(list.querySelectorAll('.gl-atp-row'), function(r){ if(isUntouched(r)) r.remove(); });
+      (pl.rows || []).forEach(function(r){ addRow({ equipment: r.equipment, location: r.location, test_type: r.test_type || 'ultrasnap' }); });
+      updateDisclaimer();
+    }
+    if(ex && Array.isArray(ex.tests) && ex.tests.length) ex.tests.forEach(function(t){ addRow(t); });
+    else addRow();
+    var planSel = modal.querySelector('#gl-atp-plan');
+    if(planSel) planSel.addEventListener('change', function(){
+      var pl = plans[Number(planSel.value)];
+      planSel.value = '';
+      loadPlan(pl);
+    });
+
+    // Picking a run: (1) if that job already has a draft record, say so and
+    // offer to continue it, so one job never turns into several records;
+    // (2) if the client has a test plan and nothing is filled in yet, load it.
+    var runSel = modal.querySelector('#gl-cf-atp-run');
+    var jobNote = modal.querySelector('#gl-atp-jobnote');
+    var clientWrap = modal.querySelector('#gl-atp-clientwrap');
+    var clientSel = modal.querySelector('#gl-cf-atp-client');
+    clientSel.addEventListener('change', function(){
+      var allBlank = Array.prototype.every.call(list.querySelectorAll('.gl-atp-row'), isUntouched);
+      if(!existing && allBlank && clientSel.value){
+        var pl = planForClient(readPlans(), clientNameOf(clientSel.value));
+        if(pl) loadPlan(pl);
+      }
+    });
+    async function onRunChange(){
+      jobNote.style.display = 'none';
+      var runId = runSel.value;
+      clientWrap.style.display = runId ? 'none' : 'block';
+      if(!runId) return;
+      var run = (window.glProductionRuns || []).find(function(r){ return r.id === runId; });
+      var allBlank = Array.prototype.every.call(list.querySelectorAll('.gl-atp-row'), isUntouched);
+      if(!existing && allBlank && run){
+        var pl = planForClient(readPlans(), run.client_name || clientNameOf(run.client_id));
+        if(pl) loadPlan(pl);
+      }
+      if(existing || !window.supa) return;
+      var q = await window.supa.from('compliance_records').select('*')
+        .eq('form_code', FORM_CODE).eq('run_id', runId).eq('status', 'draft')
+        .order('recorded_at', { ascending: false }).limit(1);
+      if(q.error || !q.data || !q.data.length || runSel.value !== runId) return;
+      var draft = q.data[0];
+      while(jobNote.firstChild) jobNote.removeChild(jobNote.firstChild);
+      jobNote.appendChild(document.createTextNode('This job already has a draft record (' + ((draft.data && draft.data.tests) || []).length + ' tests). '));
+      var contBtn = document.createElement('button');
+      contBtn.type = 'button'; contBtn.className = 'cbtn'; contBtn.id = 'gl-atp-cont';
+      contBtn.textContent = 'Continue that record';
+      contBtn.setAttribute('style', 'font-size:11px;padding:3px 9px;margin-left:6px');
+      jobNote.appendChild(contBtn);
+      jobNote.style.display = 'block';
+      contBtn.addEventListener('click', function(){
+        window.removeEventListener('gl-cip-equipment-changed', onEquipChanged);
+        modal.remove();
+        window.glOpenAtpSwabForm(task, draft);
+      });
+    }
+    runSel.addEventListener('change', onRunChange);
+    clientWrap.style.display = runSel.value ? 'none' : 'block';
+    if(runSel.value && !existing) onRunChange();
+
     modal.querySelector('#gl-atp-add').addEventListener('click', function(){
       // New rows start from the previous row's equipment and test type.
       var rows = list.querySelectorAll('.gl-atp-row'), last = rows[rows.length - 1];
@@ -522,7 +702,8 @@
         var n = 'Test ' + (i + 1) + ': ';
         if(!equip) problems.push(n + 'choose the equipment.');
         if(!loc) problems.push(n + 'enter the testing location.');
-        if(rluRaw === '' || !(Number(rluRaw) >= 0)) problems.push(n + 'enter the reading (0 or more).');
+        if(rluRaw === ''){ if(signed) problems.push(n + 'enter the reading before signing.'); }
+        else if(!(Number(rluRaw) >= 0)) problems.push(n + 'the reading must be 0 or more.');
         if(reRaw !== '' && !(Number(reRaw) >= 0)) problems.push(n + 'the retest reading must be 0 or more.');
         var tdef = testType(type);
         var inc = null;
@@ -538,14 +719,19 @@
           if(signed && (!inc.started_at || inc.temp_c === null || !(inc.hours > 0))) problems.push(n + testName(type) + ' needs the incubation start, temperature and hours before signing.');
         }
         var lim = limitFor(rulesNow, type, equip, loc);
-        var result = classify(rluRaw, lim);
+        var instV = row.querySelector('.gl-atp-inst').value, reInstV = row.querySelector('.gl-atp-reinst').value;
+        var instrumentMode = !lim && !!instV;
+        if(instrumentMode) lim = instrumentLimit(type);
+        var result = instrumentMode ? (rluRaw === '' ? null : instV) : classify(rluRaw, lim);
         var retest = reRaw === '' ? null : Number(reRaw);
-        var reResult = retest === null ? null : classify(retest, lim);
+        var reResult = retest === null ? null : (instrumentMode ? (reInstV || null) : classify(retest, lim));
+        if(instrumentMode && retest !== null && !reInstV && signed) problems.push(n + 'choose the retest result the instrument showed.');
         if(retest !== null && !ca) problems.push(n + 'record the corrective action taken before the retest.');
-        if(signed && !lim && rluRaw !== '') problems.push(n + 'no ATP limit is set for ' + testName(type) + ' at this equipment/location, so it cannot be signed. Save as draft, or add the limit in ⚙️ ATP limits.');
+        if(signed && !lim && rluRaw !== '') problems.push(n + 'no limit is set for ' + testName(type) + ' here. Choose the result the instrument showed, or add a limit in ⚙️ ATP limits.');
         if(signed && result === 'fail' && !ca) problems.push(n + 'a FAIL needs a corrective action before signing.');
         tests.push({
           equipment: equip, location: loc, test_type: type, test_name: testName(type),
+          tested_on: row.querySelector('.gl-atp-date').value || null,
           category: testCat(type), unit: unitOf(lim, type), incubation: inc,
           rlu: rluRaw === '' ? null : Number(rluRaw),
           limits: lim, result: result,
@@ -558,11 +744,12 @@
       var at = F.getVal(modal, 'atp-at');
       if(!operator) problems.unshift('Operator name is required.');
       if(!at) problems.unshift('Enter the date and time tested.');
-      if(!tests.length) problems.push('Add at least one test with its reading.');
+      if(!tests.length) problems.push('Add at least one test.');
       if(problems.length){ showErr(problems.join(' ')); return; }
 
       var runId = F.getVal(modal, 'atp-run') || null;
       var run = runId ? (window.glProductionRuns || []).find(function(r){ return r.id === runId; }) : null;
+      var jobClientId = run ? (run.client_id || null) : (F.getVal(modal, 'atp-client') || null);
       var unresolved = tests.filter(function(p){ return p.final_result === 'fail'; });
       var hasDev = unresolved.length > 0;
       var timing = F.getVal(modal, 'atp-timing');
@@ -580,15 +767,19 @@
       };
       var worst = tests.some(function(p){ return p.final_result === 'fail'; }) ? 'FAIL'
                 : tests.some(function(p){ return p.final_result === 'caution'; }) ? 'CAUTION'
+                : tests.some(function(p){ return p.rlu == null; }) ? 'READINGS PENDING'
                 : tests.some(function(p){ return !p.final_result; }) ? 'NO LIMIT' : 'PASS';
       saving = true;
       modal.querySelectorAll('.gl-cf-draft, .gl-cf-sign').forEach(function(b){ b.disabled = true; });
       try {
+        if(existing){
+          await updateJob(existing, data, signed, hasDev, unresolved, jobClientId);
+        } else
         await F.saveRecord(FORM_CODE, data, {
           signed: signed, complete: signed,
           record_date: localDate(testedAt),
           task_id: task.id, run_id: runId,
-          client_id: run && run.client_id ? run.client_id : null,
+          client_id: jobClientId,
           has_deviation: hasDev,
           deviation_notes: hasDev ? 'Hygiena test FAIL not resolved: ' + unresolved.map(function(p){ return p.test_name + ' ' + p.equipment + ' / ' + p.location + ' ' + (p.retest_rlu != null ? p.retest_rlu : p.rlu) + ' ' + p.unit; }).join(', ') : null,
           corrective_action: unresolved.map(function(p){ return p.corrective_action; }).filter(Boolean).join(' · ') || null,
@@ -709,6 +900,147 @@
     });
   };
 
+  // ── Test plans editor ────────────────────────────────────────
+  window.glOpenAtpPlans = function(){
+    var F = window.glComplianceForms;
+    if(!F){ alert('The compliance module has not loaded yet. Refresh and try again.'); return; }
+    var plans = JSON.parse(JSON.stringify(readPlans()));
+    var equip = equipmentList();
+    var clientNames = (window.clients || []).map(function(c){ return c.name; }).filter(Boolean).sort();
+    var body =
+      '<div style="font-size:12px;color:#cfd9e6;line-height:1.6;margin-bottom:10px">A test plan is the list of rows you swab on a job. Load it in the ATP form and every row appears in that one job record, ready for readings. ' +
+        'Give it a client name and it loads by itself when you pick a run for that client.</div>' +
+      '<div style="display:grid;grid-template-columns:1.2fr 1.2fr;gap:10px">' +
+        '<div><div style="' + LBL + '">PLAN</div><select id="gl-atpp-pick" style="' + INP + '"></select></div>' +
+        '<div style="display:flex;align-items:end;gap:6px"><button type="button" class="cbtn" id="gl-atpp-new" style="font-size:11px;padding:6px 10px">+ New plan</button>' +
+          '<button type="button" class="cbtn" id="gl-atpp-del" style="font-size:11px;padding:6px 10px;color:#ff8579">Delete plan</button></div>' +
+      '</div>' +
+      '<div id="gl-atpp-edit" style="margin-top:12px"></div>' +
+      '<datalist id="gl-atpp-clients">' + clientNames.map(function(n){ return '<option value="' + esc(n) + '">'; }).join('') + '</datalist>' +
+      '<datalist id="gl-atpp-locs">' + LOCATIONS.either.concat(LOCATIONS.product).map(function(l){ return '<option value="' + esc(l) + '">'; }).join('') + '</datalist>' +
+      '<div id="gl-atpp-err" style="display:none;color:#ff8579;background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.35);border-radius:8px;padding:8px 14px;font-size:12px;margin-top:10px"></div>';
+    var footer = '<button type="button" class="cbtn gl-cf-cancel">Close</button><button type="button" class="cbtn pri" id="gl-atpp-save">💾 Save plans</button>';
+    var modal = F.modalShell('📋 ATP test plans', 'Saved for everyone · one plan fills one job', body, footer);
+    var card = modal.firstChild;
+    if(card && card.style) card.style.maxWidth = '860px';
+    var pick = modal.querySelector('#gl-atpp-pick'), edit = modal.querySelector('#gl-atpp-edit');
+    var cur = plans.length ? 0 : -1;
+
+    function readEdit(){
+      if(cur < 0 || !plans[cur]) return;
+      var pl = plans[cur];
+      pl.name = modal.querySelector('#gl-atpp-name').value.trim();
+      pl.client_name = modal.querySelector('#gl-atpp-client').value.trim() || null;
+      pl.rows = Array.prototype.map.call(edit.querySelectorAll('.gl-atpp-row'), function(r){
+        return { equipment: r.querySelector('.gl-atpp-eq').value, location: r.querySelector('.gl-atpp-loc').value.trim(), test_type: r.querySelector('.gl-atpp-type').value };
+      }).filter(function(r){ return r.equipment || r.location; });
+    }
+    function rowEl(r){
+      r = r || { test_type: 'ultrasnap' };
+      var el = document.createElement('div');
+      el.className = 'gl-atpp-row';
+      el.setAttribute('style', 'display:grid;grid-template-columns:1fr 1.2fr 1fr 26px;gap:6px;margin-bottom:6px');
+      var eqOpts = [['', '— Equipment —']].concat(equip);
+      if(r.equipment && equip.indexOf(r.equipment) < 0) eqOpts.push(r.equipment);
+      el.innerHTML = '<select class="gl-atpp-eq" style="' + INP + '">' + optionsHtml(eqOpts, r.equipment || '') + '</select>' +
+        '<input class="gl-atpp-loc" list="gl-atpp-locs" placeholder="Testing location" style="' + INP + '">' +
+        '<select class="gl-atpp-type" style="' + INP + '">' + typeOptionsHtml(r.test_type || 'ultrasnap') + '</select>' +
+        '<button type="button" class="gl-atpp-x" title="Remove" style="background:none;border:none;color:rgba(231,76,60,.7);cursor:pointer;font-size:18px">&times;</button>';
+      el.querySelector('.gl-atpp-loc').value = r.location || '';
+      el.querySelector('.gl-atpp-x').addEventListener('click', function(){ el.remove(); });
+      return el;
+    }
+    function render(){
+      while(pick.firstChild) pick.removeChild(pick.firstChild);
+      if(!plans.length) pick.appendChild(new Option('No plans yet — click + New plan', '-1'));
+      plans.forEach(function(pl, i){ pick.appendChild(new Option((pl.name || 'Untitled plan') + ' (' + (pl.rows || []).length + ' rows)', String(i), false, i === cur)); });
+      while(edit.firstChild) edit.removeChild(edit.firstChild);
+      if(cur < 0) return;
+      var pl = plans[cur];
+      var head = document.createElement('div');
+      head.setAttribute('style', 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px');
+      head.innerHTML = '<div><div style="' + LBL + '">PLAN NAME</div><input id="gl-atpp-name" style="' + INP + '"></div>' +
+        '<div><div style="' + LBL + '">CLIENT (optional — loads automatically for this client\'s runs)</div><input id="gl-atpp-client" list="gl-atpp-clients" style="' + INP + '"></div>';
+      edit.appendChild(head);
+      head.querySelector('#gl-atpp-name').value = pl.name || '';
+      head.querySelector('#gl-atpp-client').value = pl.client_name || '';
+      var rowsBox = document.createElement('div');
+      (pl.rows || []).forEach(function(r){ rowsBox.appendChild(rowEl(r)); });
+      edit.appendChild(rowsBox);
+      var add = document.createElement('button');
+      add.type = 'button'; add.className = 'cbtn'; add.textContent = '+ Add row';
+      add.setAttribute('style', 'font-size:11px;padding:5px 11px');
+      add.addEventListener('click', function(){
+        var rs = rowsBox.querySelectorAll('.gl-atpp-row'), last = rs[rs.length - 1];
+        rowsBox.appendChild(rowEl(last ? { equipment: last.querySelector('.gl-atpp-eq').value, test_type: last.querySelector('.gl-atpp-type').value } : null));
+      });
+      edit.appendChild(add);
+    }
+    pick.addEventListener('change', function(){ readEdit(); cur = Number(pick.value); render(); });
+    modal.querySelector('#gl-atpp-new').addEventListener('click', function(){ readEdit(); plans.push({ name: '', client_name: null, rows: [] }); cur = plans.length - 1; render(); });
+    modal.querySelector('#gl-atpp-del').addEventListener('click', function(){
+      if(cur < 0) return;
+      if(!confirm('Delete the plan "' + (plans[cur].name || 'Untitled') + '"? Saved job records are not affected.')) return;
+      plans.splice(cur, 1); cur = plans.length ? 0 : -1; render();
+    });
+    modal.querySelector('.gl-cf-cancel').addEventListener('click', function(){ modal.remove(); });
+    modal.querySelector('#gl-atpp-save').addEventListener('click', async function(){
+      readEdit();
+      var errEl = modal.querySelector('#gl-atpp-err'), errs = [], names = {};
+      plans.forEach(function(pl, i){
+        var n = 'Plan ' + (i + 1) + ': ';
+        if(!pl.name) errs.push(n + 'give it a name.');
+        else if(names[norm(pl.name)]) errs.push(n + 'another plan is already called "' + pl.name + '".');
+        names[norm(pl.name)] = 1;
+        if(!pl.rows.length) errs.push(n + 'add at least one row.');
+        pl.rows.forEach(function(r, j){
+          if(!r.equipment || !r.location) errs.push(n + 'row ' + (j + 1) + ' needs equipment and a location.');
+          if(!testType(r.test_type)) errs.push(n + 'row ' + (j + 1) + ' needs a test type.');
+        });
+      });
+      if(errs.length){ errEl.textContent = errs.join(' '); errEl.style.display = 'block'; return; }
+      var btn = this; btn.disabled = true; btn.textContent = 'Saving…';
+      var ok = false;
+      try { ok = typeof window.glSaveAppSetting === 'function' && await window.glSaveAppSetting(PLANS_KEY, { plans: plans, updated_at: new Date().toISOString() }); }
+      catch(e){ ok = false; }
+      btn.disabled = false; btn.textContent = '💾 Save plans';
+      if(!ok){ errEl.textContent = 'The plans were NOT saved — the server rejected the change (saving needs an admin login). Nothing changed. Try again.'; errEl.style.display = 'block'; return; }
+      if(typeof window.glAudit === 'function') window.glAudit('atp_plans_changed', '', { plans: plans.map(function(p){ return p.name; }) });
+      if(typeof window.addNotification === 'function') window.addNotification('📋 Test plans saved', plans.length + ' plan' + (plans.length === 1 ? '' : 's'), 'success');
+      modal.remove();
+      var host = document.getElementById('gl-atp-tab');
+      if(host && host.parentNode) window.glRenderAtpTab(host.parentNode);
+    });
+    render();
+  };
+
+  // ── One job's PDF ────────────────────────────────────────────
+  // Same isolation path as the period report: the record goes through
+  // selectForClient() with that client's own runs, so the PDF can only ever
+  // contain this client's job. Signed jobs only.
+  async function downloadJobPdf(rec){
+    if(!rec || rec.status !== 'signed') throw new Error('Only signed jobs can be sent to a customer.');
+    var runId = rec.run_id || (rec.data && rec.data.run_id) || null;
+    var run = runId ? (window.glProductionRuns || []).find(function(r){ return r.id === runId; }) : null;
+    var jobClientId = run ? run.client_id : (runId ? null : rec.client_id);
+    if(!jobClientId) throw new Error('This job is not linked to a client.');
+    var clients = await loadClients();
+    var client = clients.find(function(c){ return c.id === jobClientId; });
+    if(!client) throw new Error('The client for this run could not be found.');
+    var runsRes = await loadClientRuns(client);
+    if(runsRes.error) throw new Error('Could not load production runs: ' + runsRes.error);
+    var o = { from: rec.record_date, to: rec.record_date, signedOnly: true, includeFacility: false, includeNotes: false };
+    var sel = selectForClient([rec], client.id, runsRes.runs, o);
+    if(!sel.linked.length && !sel.direct.length) throw new Error('This job does not belong to ' + client.name + '\'s runs, so it was not exported.');
+    if(typeof window.ensureJsPdf !== 'function') throw new Error('PDF engine not available on this page.');
+    var jsPDF = await window.ensureJsPdf();
+    var doc = buildReportPdf(jsPDF, client, o, sel, await loadLogo());
+    var nm = function(x){ return String(x || '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40); };
+    doc.save('ATP-Job_' + (nm(client.name) || 'client') + '_' + (run ? (nm(run.run_name) || 'run') + '_' : '') + rec.record_date + '.pdf');
+    if(typeof window.glAudit === 'function') window.glAudit('atp_job_pdf_generated', client.id, { record_id: rec.id, run_id: run ? run.id : null });
+  }
+  window.glAtpDownloadJobPdf = downloadJobPdf;
+
   // ── Tab ──────────────────────────────────────────────────────
   async function loadRecent(){
     if(!window.supa) return { rows: [], error: 'Not connected to the database.' };
@@ -739,6 +1071,7 @@
       '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">' +
         '<div style="font-size:11px;color:#9aa7bd;letter-spacing:1px;text-transform:uppercase">Hygiena ATP · last 90 days</div>' +
         '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+          '<button class="cbtn" id="gl-atp-plans-btn" style="font-size:11px;padding:6px 12px">📋 Test plans (' + readPlans().length + ')</button>' +
           '<button class="cbtn" id="gl-atp-limits-btn" style="font-size:11px;padding:6px 12px">⚙️ ATP limits (' + nRules + ')</button>' +
           '<button class="cbtn" id="gl-atp-report-btn" style="font-size:11px;padding:6px 12px">📄 Customer PDF report</button>' +
           '<button class="cbtn pri" id="gl-atp-log-btn" style="font-size:11px;padding:6px 12px">+ Log ATP tests</button>' +
@@ -765,23 +1098,30 @@
     html += rows.map(function(r){
       var d = r.data || {};
       var tests = d.tests || [];
+      var pending = tests.filter(function(p){ return p.rlu == null; }).length;
       var worst = tests.some(function(p){ return finalOf(p) === 'fail'; }) ? 'fail' : tests.some(function(p){ return finalOf(p) === 'caution'; }) ? 'caution' : (tests.length && tests.every(function(p){ return finalOf(p); }) ? 'pass' : null);
       var runId = r.run_id || d.run_id;
       var run = runId ? runs.find(function(x){ return x.id === runId; }) : null;
-      var who = run ? ((run.client_name || clientNameOf(run.client_id) || '') + ' — ' + (run.run_name || 'run')) : 'Facility-wide';
+      var who = run ? ((run.client_name || clientNameOf(run.client_id) || '') + ' — ' + (run.run_name || 'run'))
+              : r.client_id ? (clientNameOf(r.client_id) || 'Client') + ' — job with no production run' : 'Facility-wide';
       var st = r.status === 'signed' ? '<span style="color:#5fcf9e">✓ signed ' + esc(r.signature_name || '') + '</span>' : '<span style="color:#f5c842">' + esc(r.status) + '</span>';
       var th = 'padding:4px;font-weight:500';
       return '<div class="gl-atp-rec" style="padding:11px 14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;margin-bottom:7px;cursor:pointer">' +
         '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">' +
           '<div style="min-width:0"><div style="font-size:13px;color:#fff;font-weight:600">' + esc(fmtTs(d.tested_at || r.recorded_at)) + ' · ' + esc(TIMING_SHORT[d.timing] || d.timing || '') + ' · ' + tests.length + ' test' + (tests.length === 1 ? '' : 's') + '</div>' +
           '<div style="font-size:11px;color:#9aa7bd;margin-top:2px">' + esc(who) + ' · ' + st + '</div></div>' +
-          '<div>' + badge(worst, !worst && tests.length) + '</div>' +
+          '<div style="display:flex;gap:6px;align-items:center">' +
+            (pending ? '<span style="font-size:10px;color:#f5c842">' + pending + ' reading' + (pending === 1 ? '' : 's') + ' pending</span>' : '') +
+            (r.status === 'draft' ? '<button class="cbtn gl-atp-cont" data-id="' + esc(r.id) + '" style="font-size:11px;padding:4px 10px">✎ Continue</button>' : '') +
+            (r.status === 'signed' && ((run && run.client_id) || (!run && r.client_id)) ? '<button class="cbtn gl-atp-jobpdf" data-id="' + esc(r.id) + '" style="font-size:11px;padding:4px 10px">⬇ Job PDF</button>' : '') +
+            badge(worst, !worst && tests.length && !pending) +
+          '</div>' +
         '</div>' +
         '<div class="gl-atp-detail" style="display:none;margin-top:10px;overflow-x:auto">' +
           '<table style="width:100%;border-collapse:collapse;font-size:11px;min-width:680px">' +
           '<tr style="color:#9aa7bd;text-align:left"><th style="' + th + '">Equipment</th><th style="' + th + '">Location</th><th style="' + th + '">Test</th><th style="' + th + '">Reading</th><th style="' + th + '">Limits</th><th style="' + th + '">Result</th><th style="' + th + '">Corrective action</th><th style="' + th + '">Retest</th></tr>' +
           tests.map(function(p){
-            return '<tr style="border-top:1px solid rgba(255,255,255,.05)"><td style="padding:4px">' + esc(p.equipment) + '</td><td style="padding:4px">' + esc(p.location) + '</td><td style="padding:4px">' + esc(testName(p.test_type)) + '</td><td style="padding:4px">' + esc(p.rlu) + ' ' + esc(unitOf(p.limits, p.test_type)) + incText(p.incubation, true) + '</td>' +
+            return '<tr style="border-top:1px solid rgba(255,255,255,.05)"><td style="padding:4px">' + esc(p.equipment) + (p.tested_on ? '<br><span style="color:#9aa7bd">' + esc(fmtDate(p.tested_on)) + '</span>' : '') + '</td><td style="padding:4px">' + esc(p.location) + '</td><td style="padding:4px">' + esc(testName(p.test_type)) + '</td><td style="padding:4px">' + (p.rlu == null ? '<span style="color:#f5c842">pending</span>' : esc(p.rlu) + ' ' + esc(unitOf(p.limits, p.test_type))) + incText(p.incubation, true) + '</td>' +
               '<td style="padding:4px;color:#9aa7bd">' + esc(limitText(p.limits)) + '</td><td style="padding:4px">' + badge(p.result, !p.limits) + '</td><td style="padding:4px">' + esc(p.corrective_action || '') + '</td>' +
               '<td style="padding:4px">' + (p.retest_rlu != null ? esc(p.retest_rlu) + ' ' + badge(p.retest_result, !p.limits) : '—') + '</td></tr>';
           }).join('') + '</table>' +
@@ -794,6 +1134,24 @@
     host.querySelector('#gl-atp-log-btn').addEventListener('click', function(){ window.glOpenAtpSwabForm({}); });
     host.querySelector('#gl-atp-report-btn').addEventListener('click', function(){ window.glOpenAtpReport(); });
     host.querySelector('#gl-atp-limits-btn').addEventListener('click', function(){ window.glOpenAtpLimits(); });
+    host.querySelector('#gl-atp-plans-btn').addEventListener('click', function(){ window.glOpenAtpPlans(); });
+    host.querySelectorAll('.gl-atp-cont').forEach(function(b){
+      b.addEventListener('click', function(e){
+        e.stopPropagation();
+        var rec = rows.find(function(r){ return r.id === b.getAttribute('data-id'); });
+        if(rec) window.glOpenAtpSwabForm({}, rec);
+      });
+    });
+    host.querySelectorAll('.gl-atp-jobpdf').forEach(function(b){
+      b.addEventListener('click', async function(e){
+        e.stopPropagation();
+        var rec = rows.find(function(r){ return r.id === b.getAttribute('data-id'); });
+        b.disabled = true;
+        try { await downloadJobPdf(rec); }
+        catch(err){ alert('Could not build the PDF: ' + ((err && err.message) || err)); }
+        finally { b.disabled = false; }
+      });
+    });
     host.querySelectorAll('.gl-atp-rec').forEach(function(el){
       el.addEventListener('click', function(){
         var d = el.querySelector('.gl-atp-detail');
@@ -893,11 +1251,11 @@
       if(b.error){
         msg = '<span style="color:#ff8579">' + esc(b.error) + '</span>';
       } else {
-        var n = b.sel.linked.length + b.sel.facility.length;
-        var s = summarize(b.sel.linked.concat(b.sel.facility));
+        var n = b.sel.linked.length + b.sel.direct.length + b.sel.facility.length;
+        var s = summarize(b.sel.linked.concat(b.sel.direct, b.sel.facility));
         var skipped = b.o.signedOnly ? b.sel.unsignedMatching : 0;
         msg = n
-          ? '<b style="color:#fff">' + n + ' testing session' + (n === 1 ? '' : 's') + ' · ' + s.tests + ' tests</b> (' + b.sel.linked.length + ' on ' + esc(b.client.name) + '\'s runs, ' + b.sel.facility.length + ' facility-wide).' +
+          ? '<b style="color:#fff">' + n + ' testing session' + (n === 1 ? '' : 's') + ' · ' + s.tests + ' tests</b> (' + (b.sel.linked.length + b.sel.direct.length) + ' on ' + esc(b.client.name) + '\'s jobs, ' + b.sel.facility.length + ' facility-wide).' +
             (s.unresolved ? '<br><span style="color:#ff8579">' + s.unresolved + ' unresolved FAIL will show on the report.</span>' : '')
           : 'No ATP tests match for ' + esc(b.client.name) + ' in this period.';
         if(skipped) msg += '<br><span style="color:#f5c842">' + skipped + ' matching record' + (skipped === 1 ? ' is' : 's are') + ' not PCQI-signed and left out. Sign them in Open Logs, or untick "signed only".</span>';
@@ -925,7 +1283,7 @@
         var b = await build();
         if(b.stale) return;
         if(b.empty || b.error){ alert(b.empty || b.error); return; }
-        if(!b.sel.linked.length && !b.sel.facility.length){
+        if(!b.sel.linked.length && !b.sel.direct.length && !b.sel.facility.length){
           alert('No ATP tests match for ' + b.client.name + ' in this period' + (b.o.signedOnly && b.sel.unsignedMatching ? ' (' + b.sel.unsignedMatching + ' unsigned record(s) were left out)' : '') + '.');
           return;
         }
@@ -935,7 +1293,7 @@
         var doc = buildReportPdf(jsPDF, b.client, b.o, b.sel, logo);
         doc.save(reportFileName(b.client, b.o));
         if(typeof window.glAudit === 'function'){
-          window.glAudit('atp_report_generated', b.client.id, { from: b.o.from, to: b.o.to, records: b.sel.linked.length + b.sel.facility.length, signed_only: b.o.signedOnly, notes: b.o.includeNotes });
+          window.glAudit('atp_report_generated', b.client.id, { from: b.o.from, to: b.o.to, records: b.sel.linked.length + b.sel.direct.length + b.sel.facility.length, signed_only: b.o.signedOnly, notes: b.o.includeNotes });
         }
       } catch(e){
         alert('Could not build the PDF: ' + ((e && e.message) || e));
@@ -970,7 +1328,8 @@
   function buildReportPdf(jsPDF, client, o, sel, logo){
     var doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
     var W = 792, H = 612, L = 36, R = W - 36, BOTTOM = H - 40;
-    var all = sel.linked.concat(sel.facility);
+    sel.direct = sel.direct || [];
+    var all = sel.linked.concat(sel.direct, sel.facility);
     var s = summarize(all);
     var user = window.currentUser || {};
     var catsIn = {};
@@ -1026,7 +1385,7 @@
 
     // KPIs
     var judged = s.tests - s.noLimit;
-    var runCount = Object.keys(sel.linked.reduce(function(m, r){ m[r.run_id || (r.data && r.data.run_id)] = 1; return m; }, {})).length;
+    var runCount = Object.keys(sel.linked.reduce(function(m, r){ m[r.run_id || (r.data && r.data.run_id)] = 1; return m; }, {})).length + sel.direct.length;
     var kpis = [
       [String(s.tests), onlyAtp ? 'ATP tests' : 'Tests'],
       [judged ? Math.round(100 * s.firstPass / judged) + '%' : '—', 'Passed first test'],
@@ -1054,7 +1413,7 @@
       if(d.luminometer) lums[d.luminometer] = 1;
       (d.tests || []).forEach(function(p){
         types[p.test_type] = 1;
-        if(p.limits) limits[p.limits.basis + '|' + p.limits.pass_max + '|' + p.limits.fail_above + '|' + p.limits.unit] = p.limits;
+        if(p.limits) limits[p.limits.basis + '|' + p.limits.pass_max + '|' + p.limits.fail_above + '|' + p.limits.unit + '|' + !!p.limits.instrument] = p.limits;
       });
     });
     para('Samples are tested with Hygiena tests read on a Hygiena luminometer' +
@@ -1071,7 +1430,10 @@
     if(lim.length){
       ensure(14);
       doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(70); text('Limits applied in this report:', L, y); y += 12;
-      lim.forEach(function(l){ var u = l.unit || 'RLU'; para('-  ' + l.basis + ':  Pass <= ' + l.pass_max + ' ' + u + ',  Fail > ' + l.fail_above + ' ' + u, 8.5, 70, 0); });
+      lim.forEach(function(l){
+        if(l.instrument){ para('-  ' + l.basis, 8.5, 70, 0); return; }
+        var u = l.unit || 'RLU'; para('-  ' + l.basis + ':  Pass <= ' + l.pass_max + ' ' + u + ',  Fail > ' + l.fail_above + ' ' + u, 8.5, 70, 0);
+      });
     }
     y += 4;
     Object.keys(CATEGORIES).forEach(function(c){ if(catsIn[c]) para(DISCLAIMERS[c], 8.5, 110, 2); });
@@ -1112,11 +1474,12 @@
         var ver = r.status === 'signed' ? (r.signature_name || 'PCQI') + '\n' + fmtDate(r.signed_at) : 'Not yet signed';
         (d.tests || []).forEach(function(p, i){
           var cells = {
-            when: i === 0 ? fmtTs(d.tested_at || r.recorded_at) + '\n' + (TIMING_SHORT[d.timing] || d.timing || '') : '',
+            when: p.tested_on ? fmtDate(p.tested_on) + (i === 0 ? '\n' + (TIMING_SHORT[d.timing] || d.timing || '') : '')
+                : (i === 0 ? fmtTs(d.tested_at || r.recorded_at) + '\n' + (TIMING_SHORT[d.timing] || d.timing || '') : ''),
             equip: p.equipment, loc: p.location,
             type: testName(p.test_type) + (p.incubation ? '\n' + incText(p.incubation, false) : ''),
             rlu: p.rlu + '\n' + unitOf(p.limits, p.test_type),
-            lim: p.limits ? 'Pass <= ' + p.limits.pass_max + '\nFail > ' + p.limits.fail_above : 'No limit set',
+            lim: p.limits ? (p.limits.instrument ? 'Instrument\nlimits' : 'Pass <= ' + p.limits.pass_max + '\nFail > ' + p.limits.fail_above) : 'No limit set',
             res: p.result ? RESULT_LABEL[p.result] : 'n/a',
             ca: p.corrective_action || '',
             retest: p.retest_rlu != null ? p.retest_rlu + ' ' + unitOf(p.limits, p.test_type) + '\n' + (p.retest_result ? RESULT_LABEL[p.retest_result] : 'n/a') : '—',
@@ -1172,6 +1535,14 @@
       text(fmtDate(start) + end + (run.format ? ' · ' + run.format : '') + (run.lot_number ? ' · Lot ' + run.lot_number : ''), L, y - 2);
       y += 14;
       rows(byRun[id]);
+    });
+    // Jobs for this client with no production run in the CRM. The heading is
+    // built from the test dates only, never from text on the record.
+    sel.direct.slice().sort(function(a, b){ return String(a.record_date).localeCompare(String(b.record_date)); }).forEach(function(r){
+      var ds = ((r.data && r.data.tests) || []).map(function(p){ return p.tested_on || r.record_date; }).filter(Boolean).sort();
+      var span = ds.length ? fmtDate(ds[0]) + (ds[ds.length - 1] !== ds[0] ? ' – ' + fmtDate(ds[ds.length - 1]) : '') : fmtDate(r.record_date);
+      heading('Sanitation verification job · ' + span);
+      rows([r]);
     });
     if(sel.facility.length){
       heading('Facility sanitation verification on your production days');
