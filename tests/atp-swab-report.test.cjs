@@ -16,7 +16,11 @@
  *   LOG FORM
  *   - equipment is picked from the same cip_equipment list as the CIP log,
  *     including "+ Add new equipment…"
- *   - the four Hygiena test types are offered
+ *   - every test the EnSURE reads is offered, grouped ATP / MicroSnap / enzyme
+ *   - MicroSnap records incubation; units follow the limit rule (RLU, CFU, mU/L)
+ *   - signing from Open Logs enforces the same rules, judging old drafts
+ *     against the current limits
+ *   - a daily pre-op ATP task is generated on production days
  *   - each test saves equipment, location, type, RLU, the limits that applied,
  *     result, corrective action and retest; a retest without a corrective
  *     action, or a FAIL without one on signing, is refused
@@ -86,7 +90,10 @@ const RECORDS = [
   rec('fac-proday', null, '2026-10-07', 'signed', [T('Brite Tank 3', 'Tank interior wall', 22, 'caution')]),
   rec('fac-otherday', null, '2026-10-12', 'signed', [T('Brite Tank 3', 'Other-day test', 3, 'pass')]),
   rec('a-unsigned', 'run-a1', '2026-10-07', 'draft', [T('Filler 1', 'Unsigned point', 2, 'pass')]),
-  rec('a-legacy', 'run-legacy', '2026-10-20', 'signed', [T('Filler 1', 'Legacy surface', 9, 'pass')]),
+  rec('a-legacy', 'run-legacy', '2026-10-20', 'signed', [T('Filler 1', 'Legacy surface', 9, 'pass'),
+    T('Filler 1', 'Filler valves', 4, 'pass', { test_type: 'microsnap_eb', test_name: 'MicroSnap EB', category: 'micro', unit: 'CFU',
+      limits: { pass_max: 10, fail_above: 100, unit: 'CFU', basis: 'MicroSnap EB · any equipment · any location' },
+      incubation: { started_at: '2026-10-20T06:00:00Z', temp_c: 37, hours: 6 } })]),
   rec('xss', null, '2026-11-01', 'draft', [T('Evil ' + XSS, 'Loc ' + XSS, 1, 'pass', { corrective_action: 'CA ' + XSS })]),
 ];
 RECORDS[0].data.notes = 'Ran right after RivalCo Secret Cola';
@@ -106,7 +113,7 @@ window.GL_APP_SETTINGS = {};
 window.__saveOk = true;
 window.glSaveAppSetting = async function(k, v){ if(!window.__saveOk) return false; window.GL_APP_SETTINGS[k] = v; return true; };
 window.glProductionRuns = ${JSON.stringify(RUNS)}.map(function(r){
-  return r.id === 'run-a1' ? Object.assign({}, r, { scheduled_start_date: new Date().toISOString().slice(0,10) }) : r;
+  return r.id === 'run-a1' ? Object.assign({}, r, { scheduled_start_date: new Date().toISOString().slice(0,10), scheduled_date: new Date().toISOString().slice(0,10) }) : r;
 });
 window.addNotification = function(){};
 window.glAudit = function(a, t, d){ (window.__audit = window.__audit || []).push([a, t, d]); };
@@ -181,7 +188,7 @@ const server = http.createServer((req, res) => {
       types: window.glAtpTestTypes.map((t) => t.name),
     };
   }, RULES);
-  check('the four Hygiena test types', JSON.stringify(lim.types) === '["UltraSnap","SuperSnap","AquaSnap Total","AquaSnap Free"]', JSON.stringify(lim.types));
+  check('every EnSURE test type is offered', JSON.stringify(lim.types) === '["UltraSnap","SuperSnap","AquaSnap Total","AquaSnap Free","MicroSnap Total","MicroSnap EB","MicroSnap Coliform","MicroSnap E. coli","ZymoSnap ALP","CrossCheck"]', JSON.stringify(lim.types));
   check('no rules → no limit (nothing assumed)', lim.none === null && lim.noLim === null);
   check('equipment + location rule beats the rest', lim.both === '3/10', lim.both);
   check('location rule beats equipment rule; location ignores case', lim.locOnly === '5/15', lim.locOnly);
@@ -241,13 +248,17 @@ const server = http.createServer((req, res) => {
   await page.click('#gl-atpl-save');
   await page.waitForFunction(() => !document.getElementById('gl-comp-modal'), null, { timeout: 5000 });
   const saved = await page.evaluate(() => window.GL_APP_SETTINGS.atp_limits);
-  check('limits saved org-wide as 3 rules', saved && saved.rules.length === 3 && saved.rules[1].equipment === 'Filler 1' && saved.rules[1].location === 'Filler nozzles', JSON.stringify(saved));
+  check('limits saved org-wide as 3 rules, each with its unit', saved && saved.rules.length === 3 && saved.rules.every((r) => r.unit === 'RLU') && saved.rules[1].equipment === 'Filler 1' && saved.rules[1].location === 'Filler nozzles', JSON.stringify(saved));
 
   // ── log form with limits ──
   await page.evaluate(() => window.glOpenAtpSwabForm({}));
   await page.waitForSelector('#gl-atp-tests .gl-atp-row');
   const typeOpts = await page.$$eval('.gl-atp-type option', (o) => o.map((x) => x.textContent));
-  check('the test-type dropdown lists the Hygiena tests', JSON.stringify(typeOpts) === '["UltraSnap","SuperSnap","AquaSnap Total","AquaSnap Free"]', JSON.stringify(typeOpts));
+  const groups = await page.$$eval('.gl-atp-type optgroup', (o) => o.map((x) => x.label));
+  check('the test-type dropdown lists every EnSURE test', JSON.stringify(typeOpts) === '["UltraSnap","SuperSnap","AquaSnap Total","AquaSnap Free","MicroSnap Total","MicroSnap EB","MicroSnap Coliform","MicroSnap E. coli","ZymoSnap ALP","CrossCheck"]', JSON.stringify(typeOpts));
+  check('test types are grouped ATP / MicroSnap / enzyme', groups.length === 3 && /ATP/.test(groups[0]) && /MicroSnap/.test(groups[1]) && /Enzyme/.test(groups[2]), JSON.stringify(groups));
+  const inst = await page.evaluate(() => [document.getElementById('gl-cf-atp-lum').value, document.getElementById('gl-cf-atp-serial').value]);
+  check("the instrument defaults to the facility's EnSURE V.2 #091688", inst[0] === 'EnSURE V.2' && inst[1] === '091688', JSON.stringify(inst));
   const eqForm = await page.$$eval('.gl-atp-equip option', (o) => o.map((x) => x.value));
   check('equipment dropdown = CIP list + add/edit, like the CIP log', JSON.stringify(eqForm) === '["","Filler 1","Brite Tank 3","__add__","__edit__"]', JSON.stringify(eqForm));
   await page.selectOption('#gl-cf-atp-run', 'run-a1');
@@ -284,13 +295,90 @@ const server = http.createServer((req, res) => {
   const sv = await page.evaluate(() => window.__inserts.find((i) => i[0] === 'compliance_records')[1]);
   const t0 = sv.data.tests[0], t1 = sv.data.tests[1];
   check('saved signed GMP-ATP-001 with the run and its client_id', sv.form_code === 'GMP-ATP-001' && sv.status === 'signed' && sv.run_id === 'run-a1' && sv.client_id === ACME, JSON.stringify(sv).slice(0, 200));
-  check('session records operator, luminometer and date/time', sv.data.operator === 'Sam Staff' && sv.data.luminometer === 'EnSURE Touch' && !!sv.data.tested_at, JSON.stringify(sv.data).slice(0, 300));
+  check('session records operator, luminometer and date/time', sv.data.operator === 'Sam Staff' && sv.data.luminometer === 'EnSURE V.2' && sv.data.luminometer_serial === '091688' && !!sv.data.tested_at, JSON.stringify(sv.data).slice(0, 300));
   check('test 1: equipment, location, type, RLU, limits, result, CA, retest',
     t0.equipment === 'Filler 1' && t0.location === 'Filler nozzles' && t0.test_type === 'ultrasnap' && t0.rlu === 12 &&
     t0.limits.pass_max === 3 && t0.limits.fail_above === 10 && t0.result === 'fail' && t0.corrective_action === 'Re-cleaned nozzles' &&
     t0.retest_rlu === 2 && t0.retest_result === 'pass' && t0.final_result === 'pass', JSON.stringify(t0));
   check('test 2: AquaSnap Total judged against its own location limit', t1.test_type === 'aquasnap_total' && t1.limits.pass_max === 50 && t1.result === 'fail', JSON.stringify(t1));
   check('the unresolved FAIL is a deviation; the corrected one is not', sv.has_deviation === true && /Brite Tank 3 \/ CIP final rinse 140 RLU/.test(sv.deviation_notes) && !/Filler nozzles/.test(sv.deviation_notes), sv.deviation_notes);
+
+  // ── MicroSnap incubation + units ──
+  await page.evaluate(() => { window.GL_APP_SETTINGS.atp_limits.rules.push(
+    { test_type: 'microsnap_eb', equipment: null, location: null, unit: 'CFU', pass_max: 10, fail_above: 100 },
+    { test_type: 'zymosnap_alp', equipment: null, location: null, unit: 'mU/L', pass_max: 100, fail_above: 350 }); });
+  const badUnit = await page.evaluate(() => window.glAtpValidateRules([{ test_type: 'ultrasnap', unit: 'CFU', pass_max: 1, fail_above: 2 }]));
+  check('a unit the test cannot read in is refused', badUnit.length === 1 && /not read in CFU/.test(badUnit[0]), JSON.stringify(badUnit));
+  await page.evaluate(() => window.glOpenAtpLimits());
+  await page.waitForSelector('.gl-atpl-row');
+  const zrow = (await page.$$('.gl-atpl-row'))[4];
+  const zinfo = await zrow.evaluate((r) => ({ units: [...r.querySelectorAll('.gl-atpl-unit option')].map((o) => o.value), unit: r.querySelector('.gl-atpl-unit').value, hint: r.querySelector('.gl-atpl-hint').textContent }));
+  check('ZymoSnap rule offers mU/L and shows the Hygiena reference as a hint', JSON.stringify(zinfo.units) === '["mU/L","RLU"]' && zinfo.unit === 'mU/L' && /350 mU\/L/.test(zinfo.hint), JSON.stringify(zinfo));
+  await page.click('.gl-cf-cancel');
+  await page.evaluate(() => window.glOpenAtpSwabForm({}));
+  await page.waitForSelector('#gl-atp-tests .gl-atp-row');
+  const mrow = (await page.$$('#gl-atp-tests .gl-atp-row'))[0];
+  const incHidden = await mrow.$eval('.gl-atp-inc', (e) => getComputedStyle(e).display === 'none');
+  await (await mrow.$('.gl-atp-type')).selectOption('microsnap_eb');
+  const incShown = await mrow.$eval('.gl-atp-inc', (e) => getComputedStyle(e).display !== 'none');
+  check('incubation fields appear only for MicroSnap', incHidden && incShown);
+  await (await mrow.$('.gl-atp-equip')).selectOption('Filler 1');
+  await (await mrow.$('.gl-atp-loc')).fill('Filler valves');
+  await (await mrow.$('.gl-atp-rlu')).fill('4');
+  const mres = await mrow.$eval('.gl-atp-res', (e) => e.innerText);
+  const munit = await mrow.$eval('.gl-atp-unit', (e) => e.textContent);
+  check('MicroSnap EB judged in CFU against its own rule', /Fail > 100 CFU/.test(mres) && /PASS/.test(mres) && munit === '(CFU)', mres + ' ' + munit);
+  const disc = await page.$eval('#gl-atp-disclaim', (e) => e.textContent);
+  check('the form shows the indicator-organism statement for MicroSnap', /Salmonella, Listeria/.test(disc) && !/adenosine/.test(disc), disc);
+  await page.click('.gl-cf-sign');
+  const merr = await page.$eval('#gl-atp-err', (e) => e.innerText);
+  check('MicroSnap cannot be signed without incubation start, temperature and hours', /incubation start, temperature and hours/.test(merr), merr);
+  await (await mrow.$('.gl-atp-incstart')).fill('2026-11-12T06:00');
+  await (await mrow.$('.gl-atp-inctemp')).fill('37');
+  await (await mrow.$('.gl-atp-inchrs')).fill('6');
+  const nBefore = await page.evaluate(() => window.__inserts.filter((i) => i[0] === 'compliance_records').length);
+  await page.click('.gl-cf-sign');
+  await page.waitForFunction((n) => window.__inserts.filter((i) => i[0] === 'compliance_records').length > n, nBefore, { timeout: 5000 });
+  const ms = await page.evaluate(() => window.__inserts.filter((i) => i[0] === 'compliance_records').pop()[1].data.tests[0]);
+  check('MicroSnap saved with category, unit and incubation', ms.category === 'micro' && ms.unit === 'CFU' && ms.incubation.temp_c === 37 && ms.incubation.hours === 6 && !!ms.incubation.started_at, JSON.stringify(ms));
+
+  // ── signing a draft from Open Logs ──
+  const prep = await page.evaluate(() => {
+    const draft = { form_code: 'GMP-ATP-001', status: 'draft', data: { tests: [
+      { test_type: 'ultrasnap', equipment: 'Filler 1', location: 'Filler nozzles', rlu: 12, limits: null, result: null, retest_rlu: null, final_result: null, corrective_action: null }] } };
+    const ok = window.glAtpPrepareSign(draft);
+    const noLim = window.glAtpPrepareSign({ data: { tests: [{ test_type: 'supersnap', equipment: 'Filler 1', location: 'X', rlu: 1, limits: null }] } });
+    const micro = window.glAtpPrepareSign({ data: { tests: [{ test_type: 'microsnap_eb', equipment: 'Filler 1', location: 'X', rlu: 1, limits: { pass_max: 10, fail_above: 100, unit: 'CFU' }, result: 'pass', final_result: 'pass' }] } });
+    return { ok, noLim, micro };
+  });
+  check('a draft saved before limits existed is judged on sign-off and says so',
+    prep.ok.error && /FAIL needs a corrective action/.test(prep.ok.error), JSON.stringify(prep.ok));
+  check('sign-off refuses a test with no limit', /no limit is set/.test(prep.noLim.error || ''), JSON.stringify(prep.noLim));
+  check('sign-off refuses MicroSnap without incubation', /incubation/.test(prep.micro.error || ''), JSON.stringify(prep.micro));
+  const prep2 = await page.evaluate(() => window.glAtpPrepareSign({ form_code: 'GMP-ATP-001', data: { tests: [
+    { test_type: 'ultrasnap', equipment: 'Filler 1', location: 'Filler nozzles', rlu: 12, limits: null, retest_rlu: 2, corrective_action: 'Re-cleaned' }] } }));
+  const pt = prep2.patch && prep2.patch.data.tests[0];
+  check('sign-off applies the current limit (3/10) and records that it did', pt && pt.limits.pass_max === 3 && pt.result === 'fail' && pt.final_result === 'pass' && pt.limits_applied_at_sign === true && prep2.patch.has_deviation === false, JSON.stringify(prep2));
+
+  // Through the real Open Logs button.
+  await page.evaluate(() => { const m = document.getElementById('gl-comp-modal'); if (m) m.remove(); DB.compliance_records.push(
+    { id: 'nolimit-draft', form_code: 'GMP-ATP-001', status: 'draft', record_date: '2026-11-12', recorded_at: '2026-11-12T10:00:00Z',
+      data: { tests: [{ test_type: 'supersnap', equipment: 'Filler 1', location: 'Bowl', rlu: 3, limits: null }] } }); });
+  const dialogs = [];
+  page.removeAllListeners('dialog');
+  page.on('dialog', (d) => { dialogs.push(d.message()); d.accept(); });
+  await page.evaluate(() => window.refreshComplianceMaster());
+  await page.waitForSelector('.gl-comp-tab[data-tab="open"]');
+  const tasks = await page.evaluate(() => window.__inserts.filter((i) => i[0] === 'compliance_tasks').map((i) => i[1].task_type));
+  check('a daily pre-op ATP task is generated on a production day', tasks.indexOf('atp_swab') >= 0, JSON.stringify(tasks));
+  await page.click('.gl-comp-tab[data-tab="open"]');
+  await page.waitForSelector('.gl-comp-sign[data-id="nolimit-draft"]');
+  await page.click('.gl-comp-sign[data-id="nolimit-draft"]');
+  await page.waitForTimeout(300);
+  const nl2 = await page.evaluate(() => DB.compliance_records.find((r) => r.id === 'nolimit-draft').status);
+  check('Open Logs refuses to sign an ATP draft that breaks the rules', nl2 === 'draft' && dialogs.some((m) => /cannot be signed yet/.test(m)), JSON.stringify(dialogs));
+  page.removeAllListeners('dialog');
+  page.on('dialog', (d) => d.type() === 'prompt' ? d.accept('Seamer 2') : d.accept());
 
   // ── isolation filter ──
   const sel = await page.evaluate(({ RECORDS, RUNS, ACME }) => {
@@ -312,7 +400,7 @@ const server = http.createServer((req, res) => {
   // ── tab ──
   await page.evaluate(async () => { await window.glRenderAtpTab(document.getElementById('comp-body')); });
   const tab = await page.evaluate(() => ({ text: document.getElementById('comp-body').innerText, xss: window.__xss === 1 || !!document.querySelector('#comp-body img') }));
-  check('the tab offers log, limits and PDF report', /Log ATP tests/.test(tab.text) && /ATP limits \(3\)/.test(tab.text) && /Customer PDF report/.test(tab.text), tab.text.slice(0, 300));
+  check('the tab offers log, limits and PDF report', /Log ATP tests/.test(tab.text) && /ATP limits \(5\)/.test(tab.text) && /Customer PDF report/.test(tab.text), tab.text.slice(0, 300));
   check('script in stored equipment/location/CA does not run in the tab', !tab.xss);
 
   // ── PDF report ──
@@ -335,6 +423,8 @@ const server = http.createServer((req, res) => {
   check('limits applied, test-type descriptions and the ATP disclaimer are stated',
     /Pass <= 10 RLU/.test(pdf.raw) && /UltraSnap: Standard surface ATP test/.test(pdf.raw) && /specific pathogens/.test(pdf.raw) && /absence of allergens/.test(pdf.raw));
   check('operator notes are left out by default', !/Ran right after/.test(pdf.raw));
+  check('a report with MicroSnap results is titled and qualified accordingly',
+    /Hygiene Monitoring Report/.test(pdf.raw) && /Inc\. 6 h @ 37/.test(pdf.raw) && /Pass <= 10 CFU/.test(pdf.raw) && /Salmonella, Listeria/.test(pdf.raw));
   const aud = await page.evaluate(() => (window.__audit || []).find((a) => a[0] === 'atp_report_generated'));
   check('generating a report is audited', !!aud && aud[1] === ACME, JSON.stringify(aud));
   await page.evaluate(() => { window.__savedPdf = null; });

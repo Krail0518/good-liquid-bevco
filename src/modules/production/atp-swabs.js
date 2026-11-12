@@ -3,12 +3,16 @@
    ============================================================
    Compliance → 🔬 ATP Swabs tab.
 
-   Hygiena system: a luminometer (EnSURE Touch / EnSURE / SystemSURE Plus)
-   reads single-use tests and reports Relative Light Units (RLU):
-     UltraSnap        standard surface test
-     SuperSnap        high-sensitivity surface test
-     AquaSnap Total   liquid, total ATP (microbial + free)
-     AquaSnap Free    liquid, free ATP
+   Hygiena system: a luminometer (the facility's is an EnSURE V.2, serial
+   091688) reads single-use Hygiena tests. Every test it reads is offered,
+   grouped by what it measures:
+     ATP            UltraSnap, SuperSnap (surface); AquaSnap Total, AquaSnap
+                    Free (liquid). Cleaning indicator, RLU.
+     MicroSnap      Total, EB, Coliform, E. coli. Indicator organisms; the
+                    device is incubated before reading, so incubation start,
+                    temperature and hours are recorded.
+     Enzyme         ZymoSnap ALP (pasteurization, can read in mU/L) and
+                    CrossCheck (acid phosphatase, raw meat residue).
 
    1. Log form. One record = one testing session. Each test row records
       equipment (the same cip_equipment list as the CIP log), testing
@@ -55,16 +59,41 @@
   var FORM_CODE = 'GMP-ATP-001';
   var SETTINGS_KEY = 'atp_limits';
 
+  // Every test the Hygiena EnSURE reads (the facility's instrument is an
+  // EnSURE V.2). Grouped by what they measure, because the groups mean
+  // different things: ATP is a cleaning indicator, MicroSnap counts
+  // indicator organisms after incubation, ZymoSnap and CrossCheck measure
+  // enzymes. `units` lists what the reading can be expressed in; the first
+  // is the default, and a limit rule picks one.
+  var CATEGORIES = {
+    atp:   { name:'ATP (cleaning verification)', short:'ATP' },
+    micro: { name:'Indicator organisms (MicroSnap)', short:'Indicator organisms' },
+    enzyme:{ name:'Enzyme tests', short:'Enzyme' }
+  };
   var TEST_TYPES = [
-    { id:'ultrasnap',      name:'UltraSnap',      kind:'surface', desc:'Standard surface ATP test. Sanitation verification of tanks, fillers, valves, piping, conveyors and other food-contact surfaces.' },
-    { id:'supersnap',      name:'SuperSnap',      kind:'surface', desc:'High-sensitivity surface ATP test. Stringent sanitation verification and low-level residue detection.' },
-    { id:'aquasnap_total', name:'AquaSnap Total', kind:'liquid',  desc:'Liquid ATP test measuring total ATP, including microbial and free ATP. Process water and CIP final rinse samples.' },
-    { id:'aquasnap_free',  name:'AquaSnap Free',  kind:'liquid',  desc:'Liquid ATP test measuring free ATP in water samples.' }
+    { id:'ultrasnap',      name:'UltraSnap',      cat:'atp',    sample:'surface', units:['RLU'], desc:'Standard surface ATP test. Sanitation verification of tanks, fillers, valves, piping, conveyors and other food-contact surfaces.' },
+    { id:'supersnap',      name:'SuperSnap',      cat:'atp',    sample:'surface', units:['RLU'], desc:'High-sensitivity surface ATP test. Stringent sanitation verification and low-level residue detection.' },
+    { id:'aquasnap_total', name:'AquaSnap Total', cat:'atp',    sample:'liquid',  units:['RLU'], desc:'Liquid ATP test measuring total ATP, including microbial and free ATP. Process water and CIP final rinse samples.' },
+    { id:'aquasnap_free',  name:'AquaSnap Free',  cat:'atp',    sample:'liquid',  units:['RLU'], desc:'Liquid ATP test measuring free ATP in water samples.' },
+    { id:'microsnap_total',name:'MicroSnap Total',cat:'micro',  sample:'either',  units:['RLU','CFU'], incubate:true, desc:'Total viable count (aerobic bacteria) indicator test. The swab or sample is incubated in the device, then read on the luminometer.' },
+    { id:'microsnap_eb',   name:'MicroSnap EB',   cat:'micro',  sample:'either',  units:['RLU','CFU'], incubate:true, desc:'Enterobacteriaceae indicator test. Incubated in the device, then read on the luminometer.' },
+    { id:'microsnap_coliform', name:'MicroSnap Coliform', cat:'micro', sample:'either', units:['RLU','CFU'], incubate:true, desc:'Coliform indicator test. Incubated in the device, then read on the luminometer.' },
+    { id:'microsnap_ecoli',name:'MicroSnap E. coli', cat:'micro', sample:'either', units:['RLU','CFU'], incubate:true, desc:'Generic E. coli indicator test. Incubated in the device, then read on the luminometer.' },
+    { id:'zymosnap_alp',   name:'ZymoSnap ALP',   cat:'enzyme', sample:'product', units:['mU/L','RLU'], desc:'Alkaline phosphatase test for verifying pasteurization of milk and dairy ingredients.' },
+    { id:'crosscheck',     name:'CrossCheck',     cat:'enzyme', sample:'either',  units:['RLU'], desc:'Acid phosphatase test: raw meat residue on surfaces and cooking-efficiency checks on product.' }
   ];
+  // Hygiena-published reference points, shown as a hint only (never applied).
+  var REFERENCE = {
+    zymosnap_alp: 'Hygiena reference: pass below 100 mU/L, fail above 350 mU/L (the regulatory ALP threshold for pasteurized milk).'
+  };
   function testType(id){ return TEST_TYPES.find(function(t){ return t.id === id; }) || null; }
   function testName(id){ var t = testType(id); return t ? t.name : (id || ''); }
+  function testCat(id){ var t = testType(id); return t ? t.cat : 'atp'; }
 
-  var LUMINOMETERS = ['EnSURE Touch','EnSURE','SystemSURE Plus','Other'];
+  var LUMINOMETERS = ['EnSURE V.2','EnSURE Touch','SystemSURE Plus','Other'];
+  var DEFAULT_LUMINOMETER = 'EnSURE V.2';
+  var DEFAULT_SERIAL = '091688';          // the facility's EnSURE V.2
+  var LAST_INSTRUMENT_KEY = 'gl_atp_last_instrument';
   var TIMINGS = [
     ['preop',      'Pre-op (after sanitation, before run)'],
     ['post_cip',   'Post-CIP verification'],
@@ -76,10 +105,17 @@
   var LOCATIONS = {
     surface: ['Filler nozzles','Filler bowl','Filler valves','Seamer chucks / turret','Can rinser / twister','Tank interior wall',
               'Tank outlet valve','Transfer hose interior','Piping / sample port','Heat exchanger plates','Product conveyor','Capper chucks'],
-    liquid:  ['CIP final rinse','Process water','Filler rinse water','Can rinser water','Product water (post-UV)']
+    liquid:  ['CIP final rinse','Process water','Filler rinse water','Can rinser water','Product water (post-UV)'],
+    product: ['Pasteurized milk sample','Dairy ingredient sample','Finished product sample']
   };
+  LOCATIONS.either = LOCATIONS.surface.concat(LOCATIONS.liquid);
   var RESULT_LABEL = { pass:'PASS', caution:'CAUTION', fail:'FAIL' };
-  var DISCLAIMER = 'ATP testing measures adenosine triphosphate (ATP) as an indicator of cleaning effectiveness. It does not identify specific pathogens and does not confirm the absence of allergens.';
+  var DISCLAIMERS = {
+    atp:   'ATP testing measures adenosine triphosphate (ATP) as an indicator of cleaning effectiveness. It does not identify specific pathogens and does not confirm the absence of allergens.',
+    micro: 'MicroSnap tests are rapid indicator-organism tests (total viable count, Enterobacteriaceae, coliforms, generic E. coli). They indicate hygiene; they do not identify or rule out specific pathogens such as Salmonella, Listeria or E. coli O157:H7, and do not confirm the absence of allergens.',
+    enzyme:'ZymoSnap ALP measures alkaline phosphatase to verify pasteurization of dairy; CrossCheck measures acid phosphatase as an indicator of raw meat residue or undercooking. Neither identifies pathogens or confirms the absence of allergens.'
+  };
+  var DISCLAIMER = DISCLAIMERS.atp;
 
   // ── Limits (pure, exported for tests) ─────────────────────────
   function norm(s){ return String(s == null ? '' : s).trim().toLowerCase(); }
@@ -98,8 +134,10 @@
       if(score > bestScore){ best = r; bestScore = score; }
     });
     if(!best) return null;
+    var tt = testType(best.test_type);
     return {
       pass_max: Number(best.pass_max), fail_above: Number(best.fail_above),
+      unit: best.unit || (tt ? tt.units[0] : 'RLU'),
       basis: [testName(best.test_type), best.equipment || 'any equipment', best.location || 'any location'].join(' · ')
     };
   }
@@ -114,7 +152,9 @@
     var errs = [], seen = {};
     rules.forEach(function(r, i){
       var n = 'Rule ' + (i + 1) + ': ';
-      if(!testType(r.test_type)) errs.push(n + 'choose a test type.');
+      var tt = testType(r.test_type);
+      if(!tt) errs.push(n + 'choose a test type.');
+      else if(r.unit && tt.units.indexOf(r.unit) < 0) errs.push(n + testName(r.test_type) + ' is not read in ' + r.unit + '.');
       if(!(r.pass_max >= 0)) errs.push(n + 'the pass limit must be 0 or more.');
       if(!(r.fail_above >= r.pass_max)) errs.push(n + 'the fail limit must be at or above the pass limit.');
       var k = r.test_type + '|' + norm(r.equipment) + '|' + norm(r.location);
@@ -190,7 +230,48 @@
     return s;
   }
 
+  // Signing a saved draft (Compliance → Open Logs). Same rules as the form's
+  // Sign button. A test saved before a limit existed is judged now against
+  // the current rules, and the record says so (limits_applied_at_sign).
+  // Returns { error } or { patch } for compliance_records.
+  function prepareSign(rec, rules){
+    rules = rules || readRules();
+    var d = JSON.parse(JSON.stringify((rec && rec.data) || {}));
+    var tests = d.tests || [], problems = [];
+    if(!tests.length) problems.push('It has no tests.');
+    tests.forEach(function(p, i){
+      var n = 'Test ' + (i + 1) + ' (' + testName(p.test_type) + ' · ' + (p.location || '?') + '): ';
+      if(!p.limits){
+        var lim = limitFor(rules, p.test_type, p.equipment, p.location);
+        if(lim){
+          p.limits = lim; p.unit = lim.unit; p.limits_applied_at_sign = true;
+          p.result = classify(p.rlu, lim);
+          p.retest_result = p.retest_rlu != null ? classify(p.retest_rlu, lim) : null;
+          p.final_result = p.retest_result || p.result;
+        } else {
+          problems.push(n + 'no limit is set for this test type and location. Add one in ⚙️ ATP limits.');
+          return;
+        }
+      }
+      if(p.result === 'fail' && !p.corrective_action) problems.push(n + 'a FAIL needs a corrective action.');
+      var t = testType(p.test_type);
+      if(t && t.incubate){
+        var inc = p.incubation || {};
+        if(!inc.started_at || inc.temp_c == null || !(inc.hours > 0)) problems.push(n + 'incubation start, temperature and hours are missing.');
+      }
+    });
+    if(problems.length) return { error: problems.join('\n') };
+    var unresolved = tests.filter(function(p){ return p.final_result === 'fail'; });
+    return { patch: {
+      data: d,
+      has_deviation: unresolved.length > 0,
+      deviation_notes: unresolved.length ? 'Hygiena test FAIL not resolved: ' + unresolved.map(function(p){ return testName(p.test_type) + ' ' + p.equipment + ' / ' + p.location + ' ' + (p.retest_rlu != null ? p.retest_rlu : p.rlu) + ' ' + unitOf(p.limits, p.test_type); }).join(', ') : null
+    } };
+  }
+  window.glAtpPrepareSign = function(rec){ return prepareSign(rec); };
+
   window.glAtpTestTypes       = TEST_TYPES;
+  window.glAtpDisclaimers     = DISCLAIMERS;
   window.glAtpLimitFor        = limitFor;
   window.glAtpClassify        = classify;
   window.glAtpValidateRules   = validateRules;
@@ -217,7 +298,13 @@
     var x = d || new Date();
     return localDate(x) + 'T' + String(x.getHours()).padStart(2,'0') + ':' + String(x.getMinutes()).padStart(2,'0');
   }
-  function limitText(l){ return l ? 'Pass <= ' + l.pass_max + ' / Fail > ' + l.fail_above : 'No limit set'; }
+  function unitOf(l, test_type){ var t = testType(test_type); return (l && l.unit) || (t ? t.units[0] : 'RLU'); }
+  function incText(inc, html){
+    if(!inc || (!inc.hours && inc.temp_c == null)) return '';
+    var t = (inc.hours ? inc.hours + ' h' : '') + (inc.temp_c != null ? ' @ ' + inc.temp_c + '°C' : '');
+    return html ? '<br><span style="color:#9aa7bd">inc. ' + esc(t) + '</span>' : 'Inc. ' + t;
+  }
+  function limitText(l){ return l ? 'Pass <= ' + l.pass_max + ' / Fail > ' + l.fail_above + ' ' + (l.unit || 'RLU') : 'No limit set'; }
   function badge(result, noLimit){
     if(!result) return noLimit ? '<span style="font-size:10px;font-weight:700;color:#c4a4f8">NO LIMIT</span>' : '<span style="color:#9aa7bd">—</span>';
     var c = result === 'pass' ? ['#5fcf9e','rgba(95,207,158,.12)'] : result === 'caution' ? ['#f5c842','rgba(245,200,66,.12)'] : ['#ff8579','rgba(231,76,60,.14)'];
@@ -242,6 +329,22 @@
       return '<option value="' + esc(v) + '"' + (v === value ? ' selected' : '') + '>' + esc(l) + '</option>';
     }).join('');
   }
+  function typeOptionsHtml(value){
+    return Object.keys(CATEGORIES).map(function(c){
+      return '<optgroup label="' + esc(CATEGORIES[c].name) + '">' +
+        optionsHtml(TEST_TYPES.filter(function(t){ return t.cat === c; }).map(function(t){ return [t.id, t.name]; }), value) + '</optgroup>';
+    }).join('');
+  }
+  function lastInstrument(){
+    try {
+      var v = JSON.parse(localStorage.getItem(LAST_INSTRUMENT_KEY) || 'null');
+      if(v && v.model) return v;
+    } catch(e){}
+    return { model: DEFAULT_LUMINOMETER, serial: DEFAULT_SERIAL };
+  }
+  function rememberInstrument(model, serial){
+    try { localStorage.setItem(LAST_INSTRUMENT_KEY, JSON.stringify({ model: model, serial: serial })); } catch(e){}
+  }
   var INP = 'padding:6px 8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#fff;font-size:12px;box-sizing:border-box;width:100%';
   var LBL = 'font-size:10px;color:#9aa7bd;letter-spacing:.5px;margin-bottom:3px';
 
@@ -251,6 +354,7 @@
     var F = window.glComplianceForms;
     if(!F){ alert('The compliance module has not loaded yet. Refresh and try again.'); return; }
     var rules = readRules();
+    var inst = lastInstrument();
     var now = new Date();
     var runs = (window.glProductionRuns || []).filter(function(r){
       var d = r.scheduled_start_date || r.scheduled_date;
@@ -274,21 +378,23 @@
       F.field('Production run (links the tests to that client\'s report)', 'atp-run', 'select', { options: runOpts, value: task.run_id || '' }) +
       '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">' +
         F.field('Operator', 'atp-operator', 'text', { value: (window.currentUser && (window.currentUser.name || window.currentUser.email)) || '', required: true }) +
-        F.field('Luminometer', 'atp-lum', 'select', { options: LUMINOMETERS, value: 'EnSURE Touch' }) +
-        F.field('Luminometer serial #', 'atp-serial', 'text') +
+        F.field('Luminometer', 'atp-lum', 'select', { options: LUMINOMETERS, value: inst.model }) +
+        F.field('Luminometer serial #', 'atp-serial', 'text', { value: inst.serial || '' }) +
         F.field('Test lot #(s)', 'atp-lot', 'text') +
       '</div>' +
       '<div style="font-size:11px;color:#9aa7bd;margin:4px 0 6px;font-weight:500">Tests <span style="color:#ff8579">*</span></div>' +
       '<datalist id="gl-atp-locs-surface">' + LOCATIONS.surface.map(function(l){ return '<option value="' + esc(l) + '">'; }).join('') + '</datalist>' +
       '<datalist id="gl-atp-locs-liquid">' + LOCATIONS.liquid.map(function(l){ return '<option value="' + esc(l) + '">'; }).join('') + '</datalist>' +
+      '<datalist id="gl-atp-locs-product">' + LOCATIONS.product.map(function(l){ return '<option value="' + esc(l) + '">'; }).join('') + '</datalist>' +
+      '<datalist id="gl-atp-locs-either">' + LOCATIONS.either.map(function(l){ return '<option value="' + esc(l) + '">'; }).join('') + '</datalist>' +
       '<div id="gl-atp-tests"></div>' +
       '<button type="button" id="gl-atp-add" class="cbtn" style="font-size:11px;padding:5px 11px;margin:2px 0 12px">+ Add test</button>' +
       F.field('Notes (internal — left out of customer reports unless you choose to include them)', 'atp-notes', 'textarea') +
       '<div id="gl-atp-err" style="display:none;color:#ff8579;background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.35);border-radius:8px;padding:8px 14px;font-size:12px;margin-top:8px"></div>' +
       '<div style="font-size:11px;color:#f5c842;background:rgba(245,200,66,.08);padding:8px 12px;border-radius:6px;margin-top:8px">FAIL: re-clean, retest, and do NOT start the run until the retest passes. A failure left unresolved is recorded as a deviation.</div>' +
-      '<div style="font-size:11px;color:#9aa7bd;margin-top:6px">' + esc(DISCLAIMER) + '</div>';
+      '<div id="gl-atp-disclaim" style="font-size:11px;color:#9aa7bd;margin-top:6px"></div>';
 
-    var modal = F.modalShell('GMP-ATP-001 · ATP Testing', 'Record each reading as you take it — never reconstruct from memory', body, F.formFooter());
+    var modal = F.modalShell('GMP-ATP-001 · ATP & Hygiena Testing', 'Record each reading as you take it — never reconstruct from memory', body, F.formFooter());
     var card = modal.firstChild;
     if(card && card.style) card.style.maxWidth = '900px';
     var list = modal.querySelector('#gl-atp-tests');
@@ -310,13 +416,18 @@
         '<div style="display:grid;grid-template-columns:1.2fr 1.2fr 1fr;gap:8px">' +
           '<div><div style="' + LBL + '">EQUIPMENT ID</div><select class="gl-atp-equip" style="' + INP + '">' + equipOptions(prev.equipment) + '</select></div>' +
           '<div><div style="' + LBL + '">TESTING LOCATION</div><input class="gl-atp-loc" placeholder="Point tested" style="' + INP + '"></div>' +
-          '<div><div style="' + LBL + '">TEST TYPE</div><select class="gl-atp-type" style="' + INP + '">' + optionsHtml(TEST_TYPES.map(function(t){ return [t.id, t.name]; }), tt) + '</select></div>' +
+          '<div><div style="' + LBL + '">TEST TYPE</div><select class="gl-atp-type" style="' + INP + '">' + typeOptionsHtml(tt) + '</select></div>' +
         '</div>' +
         '<div style="display:grid;grid-template-columns:.7fr 1.3fr 1.6fr .8fr;gap:8px;margin-top:8px;align-items:end">' +
-          '<div><div style="' + LBL + '">RLU</div><input class="gl-atp-rlu" type="number" min="0" step="1" style="' + INP + '"></div>' +
+          '<div><div style="' + LBL + '">READING <span class="gl-atp-unit"></span></div><input class="gl-atp-rlu" type="number" min="0" step="any" style="' + INP + '"></div>' +
           '<div><div style="' + LBL + '">LIMITS · RESULT</div><div class="gl-atp-res" style="font-size:11px;padding:6px 0;color:#cfd9e6"></div></div>' +
           '<div><div style="' + LBL + '">CORRECTIVE ACTION</div><input class="gl-atp-ca" placeholder="Required on a FAIL or before a retest" style="' + INP + '"></div>' +
-          '<div><div style="' + LBL + '">RETEST RLU</div><input class="gl-atp-rerlu" type="number" min="0" step="1" style="' + INP + '"></div>' +
+          '<div><div style="' + LBL + '">RETEST <span class="gl-atp-unit"></span></div><input class="gl-atp-rerlu" type="number" min="0" step="any" style="' + INP + '"></div>' +
+        '</div>' +
+        '<div class="gl-atp-inc" style="display:none;grid-template-columns:1.4fr .8fr .8fr;gap:8px;margin-top:8px">' +
+          '<div><div style="' + LBL + '">INCUBATION STARTED</div><input class="gl-atp-incstart" type="datetime-local" style="' + INP + '"></div>' +
+          '<div><div style="' + LBL + '">INCUBATION TEMP (°C)</div><input class="gl-atp-inctemp" type="number" step="0.1" style="' + INP + '"></div>' +
+          '<div><div style="' + LBL + '">HOURS INCUBATED</div><input class="gl-atp-inchrs" type="number" min="0" step="0.5" style="' + INP + '"></div>' +
         '</div>' +
         '<div class="gl-atp-typedesc" style="font-size:10px;color:#9aa7bd;margin-top:6px"></div>' +
         '<button type="button" class="gl-atp-del" title="Remove" style="position:absolute;top:6px;right:8px;background:none;border:none;color:rgba(231,76,60,.7);cursor:pointer;font-size:18px;line-height:1">&times;</button>';
@@ -339,21 +450,31 @@
       });
       function update(){
         var t = testType(row.querySelector('.gl-atp-type').value);
-        row.querySelector('.gl-atp-loc').setAttribute('list', 'gl-atp-locs-' + (t ? t.kind : 'surface'));
+        row.querySelector('.gl-atp-loc').setAttribute('list', 'gl-atp-locs-' + (t ? t.sample : 'surface'));
         row.querySelector('.gl-atp-typedesc').textContent = t ? t.desc : '';
+        row.querySelector('.gl-atp-inc').style.display = (t && t.incubate) ? 'grid' : 'none';
         var lim = limitFor(readRules(), row.querySelector('.gl-atp-type').value, sel.value, row.querySelector('.gl-atp-loc').value);
         var r1 = classify(row.querySelector('.gl-atp-rlu').value, lim);
         var r2 = classify(row.querySelector('.gl-atp-rerlu').value, lim);
         var hasRlu = row.querySelector('.gl-atp-rlu').value !== '';
+        var u = '(' + unitOf(lim, row.querySelector('.gl-atp-type').value) + ')';
+        row.querySelectorAll('.gl-atp-unit').forEach(function(el){ el.textContent = u; });
+        updateDisclaimer();
         row.querySelector('.gl-atp-res').innerHTML = esc(limitText(lim)) + '<br>' + badge(r1, hasRlu && !lim) + (r2 ? ' → retest ' + badge(r2) : '');
       }
       ['.gl-atp-type', '.gl-atp-loc', '.gl-atp-rlu', '.gl-atp-rerlu'].forEach(function(c){
         row.querySelector(c).addEventListener('input', update);
         row.querySelector(c).addEventListener('change', update);
       });
-      row.querySelector('.gl-atp-del').addEventListener('click', function(){ row.remove(); });
+      row.querySelector('.gl-atp-del').addEventListener('click', function(){ row.remove(); updateDisclaimer(); });
       update();
       return row;
+    }
+    function updateDisclaimer(){
+      var cats = {};
+      modal.querySelectorAll('.gl-atp-type').forEach(function(sel){ cats[testCat(sel.value)] = 1; });
+      var el = modal.querySelector('#gl-atp-disclaim');
+      if(el) el.textContent = Object.keys(CATEGORIES).filter(function(c){ return cats[c]; }).map(function(c){ return DISCLAIMERS[c]; }).join(' ');
     }
     function rebuildEquip(){
       modal.querySelectorAll('.gl-atp-equip').forEach(function(sel){
@@ -401,8 +522,21 @@
         var n = 'Test ' + (i + 1) + ': ';
         if(!equip) problems.push(n + 'choose the equipment.');
         if(!loc) problems.push(n + 'enter the testing location.');
-        if(rluRaw === '' || !(Number(rluRaw) >= 0)) problems.push(n + 'enter the RLU reading (0 or more).');
-        if(reRaw !== '' && !(Number(reRaw) >= 0)) problems.push(n + 'the retest RLU must be 0 or more.');
+        if(rluRaw === '' || !(Number(rluRaw) >= 0)) problems.push(n + 'enter the reading (0 or more).');
+        if(reRaw !== '' && !(Number(reRaw) >= 0)) problems.push(n + 'the retest reading must be 0 or more.');
+        var tdef = testType(type);
+        var inc = null;
+        if(tdef && tdef.incubate){
+          var incStart = row.querySelector('.gl-atp-incstart').value;
+          var incTemp = row.querySelector('.gl-atp-inctemp').value.trim();
+          var incHrs = row.querySelector('.gl-atp-inchrs').value.trim();
+          inc = {
+            started_at: incStart ? new Date(incStart).toISOString() : null,
+            temp_c: incTemp === '' ? null : Number(incTemp),
+            hours: incHrs === '' ? null : Number(incHrs)
+          };
+          if(signed && (!inc.started_at || inc.temp_c === null || !(inc.hours > 0))) problems.push(n + testName(type) + ' needs the incubation start, temperature and hours before signing.');
+        }
         var lim = limitFor(rulesNow, type, equip, loc);
         var result = classify(rluRaw, lim);
         var retest = reRaw === '' ? null : Number(reRaw);
@@ -412,6 +546,7 @@
         if(signed && result === 'fail' && !ca) problems.push(n + 'a FAIL needs a corrective action before signing.');
         tests.push({
           equipment: equip, location: loc, test_type: type, test_name: testName(type),
+          category: testCat(type), unit: unitOf(lim, type), incubation: inc,
           rlu: rluRaw === '' ? null : Number(rluRaw),
           limits: lim, result: result,
           corrective_action: ca || null,
@@ -423,7 +558,7 @@
       var at = F.getVal(modal, 'atp-at');
       if(!operator) problems.unshift('Operator name is required.');
       if(!at) problems.unshift('Enter the date and time tested.');
-      if(!tests.length) problems.push('Add at least one test with its RLU reading.');
+      if(!tests.length) problems.push('Add at least one test with its reading.');
       if(problems.length){ showErr(problems.join(' ')); return; }
 
       var runId = F.getVal(modal, 'atp-run') || null;
@@ -455,7 +590,7 @@
           task_id: task.id, run_id: runId,
           client_id: run && run.client_id ? run.client_id : null,
           has_deviation: hasDev,
-          deviation_notes: hasDev ? 'ATP FAIL not resolved: ' + unresolved.map(function(p){ return p.equipment + ' / ' + p.location + ' ' + (p.retest_rlu != null ? p.retest_rlu : p.rlu) + ' RLU'; }).join(', ') : null,
+          deviation_notes: hasDev ? 'Hygiena test FAIL not resolved: ' + unresolved.map(function(p){ return p.test_name + ' ' + p.equipment + ' / ' + p.location + ' ' + (p.retest_rlu != null ? p.retest_rlu : p.rlu) + ' ' + p.unit; }).join(', ') : null,
           corrective_action: unresolved.map(function(p){ return p.corrective_action; }).filter(Boolean).join(' · ') || null,
           spawn_hold: false,
           summary: (TIMING_SHORT[timing] || timing) + ' · ' + tests.length + ' test' + (tests.length === 1 ? '' : 's') + ' · ' + worst
@@ -466,6 +601,7 @@
         showErr('Could not save: ' + ((e && e.message) || e) + '. Nothing was lost — your entries are still here.');
         return;
       }
+      rememberInstrument(data.luminometer, data.luminometer_serial);
       window.removeEventListener('gl-cip-equipment-changed', onEquipChanged);
       modal.remove();
       if(typeof window.refreshComplianceMaster === 'function') window.refreshComplianceMaster();
@@ -484,17 +620,17 @@
       '<div style="font-size:12px;color:#cfd9e6;line-height:1.6;margin-bottom:10px">Set limits from your own validation data and Hygiena\'s guidance for your instrument. ' +
         'A rule applies to a test type, and optionally to one piece of equipment and/or one testing location. The most specific matching rule wins ' +
         '(equipment + location, then location, then equipment, then the test type alone). A test with no matching rule is recorded as "no limit set" and cannot be signed.</div>' +
-      '<div style="font-size:11px;color:#9aa7bd;margin-bottom:8px">Pass = RLU at or below the pass limit · Caution = between · Fail = above the fail limit. Set both to the same number for pass/fail with no caution band.</div>' +
-      '<div style="display:grid;grid-template-columns:1fr 1.1fr 1.2fr .6fr .6fr 26px;gap:6px;font-size:10px;color:#9aa7bd;letter-spacing:.5px;padding:0 2px 4px">' +
-        '<div>TEST TYPE</div><div>EQUIPMENT</div><div>TESTING LOCATION</div><div>PASS ≤</div><div>FAIL &gt;</div><div></div></div>' +
-      '<datalist id="gl-atpl-locs">' + LOCATIONS.surface.concat(LOCATIONS.liquid).map(function(l){ return '<option value="' + esc(l) + '">'; }).join('') + '</datalist>' +
+      '<div style="font-size:11px;color:#9aa7bd;margin-bottom:8px">Pass = reading at or below the pass limit · Caution = between · Fail = above the fail limit. Set both to the same number for pass/fail with no caution band.</div>' +
+      '<div style="display:grid;grid-template-columns:1.1fr 1fr 1.1fr .55fr .55fr .6fr 26px;gap:6px;font-size:10px;color:#9aa7bd;letter-spacing:.5px;padding:0 2px 4px">' +
+        '<div>TEST TYPE</div><div>EQUIPMENT</div><div>TESTING LOCATION</div><div>PASS ≤</div><div>FAIL &gt;</div><div>UNIT</div><div></div></div>' +
+      '<datalist id="gl-atpl-locs">' + LOCATIONS.either.concat(LOCATIONS.product).map(function(l){ return '<option value="' + esc(l) + '">'; }).join('') + '</datalist>' +
       '<div id="gl-atpl-rows"></div>' +
       '<button type="button" id="gl-atpl-add" class="cbtn" style="font-size:11px;padding:5px 11px;margin-top:6px">+ Add rule</button>' +
       '<div id="gl-atpl-err" style="display:none;color:#ff8579;background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.35);border-radius:8px;padding:8px 14px;font-size:12px;margin-top:10px"></div>';
     var footer = '<button type="button" class="cbtn gl-cf-cancel">Cancel</button><button type="button" class="cbtn pri" id="gl-atpl-save">💾 Save limits</button>';
-    var modal = F.modalShell('⚙️ ATP limits — by test type and location', 'Applies to every device once saved', body, footer);
+    var modal = F.modalShell('⚙️ Hygiena test limits — by test type and location', 'Applies to every device once saved', body, footer);
     var card = modal.firstChild;
-    if(card && card.style) card.style.maxWidth = '820px';
+    if(card && card.style) card.style.maxWidth = '900px';
     var rowsEl = modal.querySelector('#gl-atpl-rows');
     var equip = equipmentList();
 
@@ -502,19 +638,35 @@
       r = r || { test_type: 'ultrasnap' };
       var row = document.createElement('div');
       row.className = 'gl-atpl-row';
-      row.setAttribute('style', 'display:grid;grid-template-columns:1fr 1.1fr 1.2fr .6fr .6fr 26px;gap:6px;margin-bottom:6px;align-items:center');
+      row.setAttribute('style', 'display:grid;grid-template-columns:1.1fr 1fr 1.1fr .55fr .55fr .6fr 26px;gap:6px;margin-bottom:6px;align-items:center');
       var eqOpts = [['', 'Any equipment']].concat(equip);
       if(r.equipment && equip.indexOf(r.equipment) < 0) eqOpts.push(r.equipment);
       row.innerHTML =
-        '<select class="gl-atpl-type" style="' + INP + '">' + optionsHtml(TEST_TYPES.map(function(t){ return [t.id, t.name]; }), r.test_type) + '</select>' +
+        '<select class="gl-atpl-type" style="' + INP + '">' + typeOptionsHtml(r.test_type) + '</select>' +
         '<select class="gl-atpl-equip" style="' + INP + '">' + optionsHtml(eqOpts, r.equipment || '') + '</select>' +
         '<input class="gl-atpl-loc" list="gl-atpl-locs" placeholder="Any location" style="' + INP + '">' +
-        '<input class="gl-atpl-pass" type="number" min="0" step="1" style="' + INP + '">' +
-        '<input class="gl-atpl-fail" type="number" min="0" step="1" style="' + INP + '">' +
+        '<input class="gl-atpl-pass" type="number" min="0" step="any" style="' + INP + '">' +
+        '<input class="gl-atpl-fail" type="number" min="0" step="any" style="' + INP + '">' +
+        '<select class="gl-atpl-unit" style="' + INP + '"></select>' +
         '<button type="button" class="gl-atpl-del" title="Remove" style="background:none;border:none;color:rgba(231,76,60,.7);cursor:pointer;font-size:18px">&times;</button>';
       row.querySelector('.gl-atpl-loc').value = r.location || '';
       row.querySelector('.gl-atpl-pass').value = r.pass_max != null ? r.pass_max : '';
       row.querySelector('.gl-atpl-fail').value = r.fail_above != null ? r.fail_above : '';
+      var hint = document.createElement('div');
+      hint.className = 'gl-atpl-hint';
+      hint.setAttribute('style', 'grid-column:1 / -1;font-size:10px;color:#9aa7bd;margin-top:-2px');
+      row.appendChild(hint);
+      var typeSel = row.querySelector('.gl-atpl-type'), unitSel = row.querySelector('.gl-atpl-unit');
+      function syncType(){
+        var t = testType(typeSel.value), cur = unitSel.value || r.unit;
+        while(unitSel.firstChild) unitSel.removeChild(unitSel.firstChild);
+        (t ? t.units : ['RLU']).forEach(function(u){ unitSel.appendChild(new Option(u, u, false, u === cur)); });
+        if(t && t.units.indexOf(cur) < 0) unitSel.value = t.units[0];
+        hint.textContent = REFERENCE[typeSel.value] || '';
+        hint.style.display = hint.textContent ? 'block' : 'none';
+      }
+      typeSel.addEventListener('change', syncType);
+      syncType();
       row.querySelector('.gl-atpl-del').addEventListener('click', function(){ row.remove(); });
       rowsEl.appendChild(row);
     }
@@ -532,6 +684,7 @@
         rules.push({
           test_type: row.querySelector('.gl-atpl-type').value,
           equipment: eq || null, location: loc || null,
+          unit: row.querySelector('.gl-atpl-unit').value || null,
           pass_max: p === '' ? NaN : Number(p), fail_above: f === '' ? NaN : Number(f)
         });
       });
@@ -626,9 +779,9 @@
         '</div>' +
         '<div class="gl-atp-detail" style="display:none;margin-top:10px;overflow-x:auto">' +
           '<table style="width:100%;border-collapse:collapse;font-size:11px;min-width:680px">' +
-          '<tr style="color:#9aa7bd;text-align:left"><th style="' + th + '">Equipment</th><th style="' + th + '">Location</th><th style="' + th + '">Test</th><th style="' + th + '">RLU</th><th style="' + th + '">Limits</th><th style="' + th + '">Result</th><th style="' + th + '">Corrective action</th><th style="' + th + '">Retest</th></tr>' +
+          '<tr style="color:#9aa7bd;text-align:left"><th style="' + th + '">Equipment</th><th style="' + th + '">Location</th><th style="' + th + '">Test</th><th style="' + th + '">Reading</th><th style="' + th + '">Limits</th><th style="' + th + '">Result</th><th style="' + th + '">Corrective action</th><th style="' + th + '">Retest</th></tr>' +
           tests.map(function(p){
-            return '<tr style="border-top:1px solid rgba(255,255,255,.05)"><td style="padding:4px">' + esc(p.equipment) + '</td><td style="padding:4px">' + esc(p.location) + '</td><td style="padding:4px">' + esc(testName(p.test_type)) + '</td><td style="padding:4px">' + esc(p.rlu) + '</td>' +
+            return '<tr style="border-top:1px solid rgba(255,255,255,.05)"><td style="padding:4px">' + esc(p.equipment) + '</td><td style="padding:4px">' + esc(p.location) + '</td><td style="padding:4px">' + esc(testName(p.test_type)) + '</td><td style="padding:4px">' + esc(p.rlu) + ' ' + esc(unitOf(p.limits, p.test_type)) + incText(p.incubation, true) + '</td>' +
               '<td style="padding:4px;color:#9aa7bd">' + esc(limitText(p.limits)) + '</td><td style="padding:4px">' + badge(p.result, !p.limits) + '</td><td style="padding:4px">' + esc(p.corrective_action || '') + '</td>' +
               '<td style="padding:4px">' + (p.retest_rlu != null ? esc(p.retest_rlu) + ' ' + badge(p.retest_result, !p.limits) : '—') + '</td></tr>';
           }).join('') + '</table>' +
@@ -820,6 +973,10 @@
     var all = sel.linked.concat(sel.facility);
     var s = summarize(all);
     var user = window.currentUser || {};
+    var catsIn = {};
+    all.forEach(function(r){ ((r.data && r.data.tests) || []).forEach(function(p){ catsIn[testCat(p.test_type)] = 1; }); });
+    var onlyAtp = Object.keys(catsIn).every(function(c){ return c === 'atp'; });
+    var TITLE = onlyAtp ? 'ATP Verification Report' : 'Hygiene Monitoring Report';
     var y;
 
     function text(str, x, yy, opt){ doc.text(String(str == null ? '' : str), x, yy, opt); }
@@ -831,7 +988,7 @@
       doc.text(lines, L, y); y += lines.length * (size + 3) + (gap || 0);
     }
     function heading(str){
-      ensure(60);
+      ensure(110);   // heading + subtitle + table header + a row stay together
       y += 8;
       doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(10, 22, 40);
       text(str, L, y); y += 5;
@@ -846,9 +1003,9 @@
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(100);
     text('2011 51st Ave E, Palmetto, FL 34221', hx, 58);
     doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.setTextColor(10, 22, 40);
-    text('ATP Verification Report', R, 44, { align: 'right' });
+    text(TITLE, R, 44, { align: 'right' });
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(100);
-    text('Sanitation verification · Hygiena ATP testing', R, 58, { align: 'right' });
+    text(onlyAtp ? 'Sanitation verification · Hygiena ATP testing' : 'Sanitation verification · Hygiena ATP, indicator-organism and enzyme tests', R, 58, { align: 'right' });
     doc.setDrawColor(0, 170, 136); doc.setLineWidth(2); doc.line(L, 80, R, 80);
 
     // Meta
@@ -871,7 +1028,7 @@
     var judged = s.tests - s.noLimit;
     var runCount = Object.keys(sel.linked.reduce(function(m, r){ m[r.run_id || (r.data && r.data.run_id)] = 1; return m; }, {})).length;
     var kpis = [
-      [String(s.tests), 'ATP tests'],
+      [String(s.tests), onlyAtp ? 'ATP tests' : 'Tests'],
       [judged ? Math.round(100 * s.firstPass / judged) + '%' : '—', 'Passed first test'],
       [String(s.corrected), 'Re-cleaned & passed retest'],
       [String(s.unresolved), 'Unresolved failures'],
@@ -897,11 +1054,12 @@
       if(d.luminometer) lums[d.luminometer] = 1;
       (d.tests || []).forEach(function(p){
         types[p.test_type] = 1;
-        if(p.limits) limits[p.limits.basis + '|' + p.limits.pass_max + '|' + p.limits.fail_above] = p.limits;
+        if(p.limits) limits[p.limits.basis + '|' + p.limits.pass_max + '|' + p.limits.fail_above + '|' + p.limits.unit] = p.limits;
       });
     });
-    para('Surfaces and liquid samples are tested after cleaning and sanitation with Hygiena ATP tests read on a Hygiena luminometer' +
-      (Object.keys(lums).length ? ' (' + Object.keys(lums).join(' / ') + ')' : '') + '. Results are in Relative Light Units (RLU); lower is cleaner. ' +
+    para('Samples are tested with Hygiena tests read on a Hygiena luminometer' +
+      (Object.keys(lums).length ? ' (' + Object.keys(lums).join(' / ') + ')' : '') + '. Readings are in Relative Light Units (RLU) unless another unit is shown; lower is cleaner. ' +
+      (catsIn.micro ? 'MicroSnap indicator-organism tests are incubated before reading; incubation time and temperature are shown with each result. ' : '') +
       'Limits are set by test type and testing location. PASS = at or below the pass limit; CAUTION = between the limits (re-clean recommended); ' +
       'FAIL = above the fail limit (re-clean and retest; production does not start until the retest passes).', 9, 40, 6);
     Object.keys(types).forEach(function(t){
@@ -913,26 +1071,26 @@
     if(lim.length){
       ensure(14);
       doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(70); text('Limits applied in this report:', L, y); y += 12;
-      lim.forEach(function(l){ para('-  ' + l.basis + ':  Pass <= ' + l.pass_max + ' RLU,  Fail > ' + l.fail_above + ' RLU', 8.5, 70, 0); });
+      lim.forEach(function(l){ var u = l.unit || 'RLU'; para('-  ' + l.basis + ':  Pass <= ' + l.pass_max + ' ' + u + ',  Fail > ' + l.fail_above + ' ' + u, 8.5, 70, 0); });
     }
     y += 4;
-    para(DISCLAIMER, 8.5, 110, 2);
+    Object.keys(CATEGORIES).forEach(function(c){ if(catsIn[c]) para(DISCLAIMERS[c], 8.5, 110, 2); });
 
     // Tables
     var COLS = [
       { k:'when',   t:'Date / time',       w:92 },
-      { k:'equip',  t:'Equipment ID',      w:84 },
-      { k:'loc',    t:'Testing location',  w:92 },
-      { k:'type',   t:'Test type',         w:62 },
-      { k:'rlu',    t:'RLU',               w:38, right:true },
-      { k:'lim',    t:'Limits (RLU)',      w:70 },
+      { k:'equip',  t:'Equipment ID',      w:76 },
+      { k:'loc',    t:'Testing location',  w:84 },
+      { k:'type',   t:'Test type',         w:78 },
+      { k:'rlu',    t:'Reading',           w:44, right:true },
+      { k:'lim',    t:'Limits',            w:70 },
       { k:'res',    t:'Result',            w:48 },
-      { k:'ca',     t:'Corrective action', w:100 },
+      { k:'ca',     t:'Corrective action', w:94 },
       { k:'retest', t:'Retest',            w:60 },
       { k:'ver',    t:'Verified by',       w:74 }
     ];
     function tableHeader(){
-      ensure(22);
+      ensure(50);    // never leave a header alone at the foot of a page
       doc.setFillColor(10, 22, 40); doc.rect(L, y - 11, R - L, 16, 'F');
       doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(255);
       var x = L;
@@ -955,11 +1113,13 @@
         (d.tests || []).forEach(function(p, i){
           var cells = {
             when: i === 0 ? fmtTs(d.tested_at || r.recorded_at) + '\n' + (TIMING_SHORT[d.timing] || d.timing || '') : '',
-            equip: p.equipment, loc: p.location, type: testName(p.test_type),
-            rlu: p.rlu, lim: p.limits ? 'Pass <= ' + p.limits.pass_max + '\nFail > ' + p.limits.fail_above : 'No limit set',
+            equip: p.equipment, loc: p.location,
+            type: testName(p.test_type) + (p.incubation ? '\n' + incText(p.incubation, false) : ''),
+            rlu: p.rlu + '\n' + unitOf(p.limits, p.test_type),
+            lim: p.limits ? 'Pass <= ' + p.limits.pass_max + '\nFail > ' + p.limits.fail_above : 'No limit set',
             res: p.result ? RESULT_LABEL[p.result] : 'n/a',
             ca: p.corrective_action || '',
-            retest: p.retest_rlu != null ? p.retest_rlu + ' RLU\n' + (p.retest_result ? RESULT_LABEL[p.retest_result] : 'n/a') : '—',
+            retest: p.retest_rlu != null ? p.retest_rlu + ' ' + unitOf(p.limits, p.test_type) + '\n' + (p.retest_result ? RESULT_LABEL[p.retest_result] : 'n/a') : '—',
             ver: i === 0 ? ver : ''
           };
           doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
@@ -1035,7 +1195,7 @@
     for(var pg = 1; pg <= pages; pg++){
       doc.setPage(pg);
       doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(140);
-      text('Good Liquid Bev Co · ATP Verification Report · ' + client.name + ' · ' + o.from + ' to ' + o.to + ' · Confidential — prepared for the named client only', L, H - 20);
+      text('Good Liquid Bev Co · ' + TITLE + ' · ' + client.name + ' · ' + o.from + ' to ' + o.to + ' · Confidential — prepared for the named client only', L, H - 20);
       text('Page ' + pg + ' of ' + pages, R, H - 20, { align: 'right' });
     }
     return doc;

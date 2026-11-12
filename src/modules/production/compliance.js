@@ -77,8 +77,8 @@
       desc:'Full batch ingredients + process + QC checks', frequency:'Every production batch' },
     { code:'FSP-SAN-001', name:'Environmental Monitoring — Listeria', icon:'🧬', built:true,
       desc:'Zone 1-4 swabs for Listeria species', frequency:'Monthly minimum' },
-    { code:'GMP-ATP-001', name:'ATP Swab Verification', icon:'🔬', built:true,
-      desc:'ATP bioluminescence (RLU) on product-contact surfaces after sanitation', frequency:'Pre-op / post-CIP before each run' },
+    { code:'GMP-ATP-001', name:'ATP & Hygiena Testing', icon:'🔬', built:true,
+      desc:'Hygiena EnSURE: ATP (UltraSnap, SuperSnap, AquaSnap), MicroSnap indicator organisms, ZymoSnap ALP, CrossCheck', frequency:'Daily pre-op before the first run + per your sampling plan' },
     { code:'FSP-SC-001', name:'Approved Supplier List', icon:'✅', built:false,
       desc:'Lives in the existing Vendor Directory (sidebar → Quality & Supply → Vendors)', frequency:'Updated upon each approval/removal' },
     { code:'FSP-SC-002', name:'Supplier COA Review Log', icon:'📋', built:true,
@@ -225,6 +225,20 @@
         candidates.push({ due_date: todayDate, task_type: 'batch_record', title: 'Batch record — ' + (run.run_name || run.id), description: 'Master production record (QC-BR-001)', source: 'auto', run_id: run.id, dedupe_key: dedupeKey(['batch', run.id]) });
       }
     });
+
+    // ATP verification — once per production day, after sanitation and before
+    // the first run (GMP-ATP-001). Facility-wide; tests can be tied to a run
+    // in the form so they reach that client's report.
+    if(runs.length){
+      candidates.push({
+        due_date: todayDate,
+        task_type: 'atp_swab',
+        title: 'ATP swabs — pre-op sanitation verification',
+        description: 'Hygiena swabs on product-contact equipment before the first run (' + runs.length + ' run' + (runs.length>1?'s':'') + ' today)',
+        source: 'auto',
+        dedupe_key: dedupeKey(['atp', todayDate])
+      });
+    }
 
     // Allergen swab — if any run today has allergens AND any earlier run today does not (or vice versa)
     if(runs.length >= 2){
@@ -1723,15 +1737,24 @@
     host.querySelectorAll('.gl-comp-sign').forEach(function(btn){
       btn.addEventListener('click', async function(){
         var id = btn.getAttribute('data-id');
+        var rec = records.find(function(r){ return r.id === id; }) || {};
+        // Forms with their own signing rules (ATP: limits, corrective action,
+        // incubation) get the same checks here as on their own Sign button.
+        var extra = {};
+        if(rec.form_code === 'GMP-ATP-001' && typeof window.glAtpPrepareSign === 'function'){
+          var prep = window.glAtpPrepareSign(rec);
+          if(prep.error){ alert('This record cannot be signed yet.\n\n' + prep.error); return; }
+          extra = prep.patch || {};
+        }
         if(!confirm('Sign this record as PCQI? Your name and timestamp will be locked into the record.')) return;
         var user = window.currentUser || {};
-        await dbUpdate('compliance_records', id, {
+        await dbUpdate('compliance_records', id, Object.assign({}, extra, {
           status: 'signed',
           signed_by: user.id || null,
           signed_at: nowISO(),
           signature_name: pcqiName(),
           signature_meaning: 'PCQI sign-off — record reviewed and approved'
-        });
+        }));
         if(typeof window.glAudit === 'function') window.glAudit('compliance_record_signed', id, {});
         refreshMaster();
       });
