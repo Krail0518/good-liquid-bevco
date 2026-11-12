@@ -436,6 +436,15 @@ jobs:
           REPO_ROOT: ${{ github.workspace }}
         run: node tests/cip-history-search.test.cjs
 
+      # ATP swab log + customer report: a client's report never contains
+      # another client's runs, swabs or name; RLU is classified against the
+      # configured limits; stored text cannot run script in the report.
+      - name: Run ATP swab report test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/atp-swab-report.test.cjs
+
       # Users & Permissions: an unticked page must lose its sidebar link. The
       # gating read only onclick= links and went dark when every link moved to
       # data-gl-action; this drives the real login and permission load.

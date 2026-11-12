@@ -84,6 +84,7 @@ const CORE_FILES = [
   'src/modules/production/compliance.js',
   'src/shared/help.js',
   'src/modules/production/compliance-ext.js',
+  'src/modules/production/atp-swabs.js',
   'src/modules/customers/portal-public.js',
   'src/services/email.js',
   'src/modules/invoicing/billing-admin.js',

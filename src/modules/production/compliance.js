@@ -77,6 +77,8 @@
       desc:'Full batch ingredients + process + QC checks', frequency:'Every production batch' },
     { code:'FSP-SAN-001', name:'Environmental Monitoring — Listeria', icon:'🧬', built:true,
       desc:'Zone 1-4 swabs for Listeria species', frequency:'Monthly minimum' },
+    { code:'GMP-ATP-001', name:'ATP & Hygiena Testing', icon:'🔬', built:true,
+      desc:'Hygiena EnSURE: ATP (UltraSnap, SuperSnap, AquaSnap), MicroSnap indicator organisms, ZymoSnap ALP, CrossCheck', frequency:'Daily pre-op before the first run + per your sampling plan' },
     { code:'FSP-SC-001', name:'Approved Supplier List', icon:'✅', built:false,
       desc:'Lives in the existing Vendor Directory (sidebar → Quality & Supply → Vendors)', frequency:'Updated upon each approval/removal' },
     { code:'FSP-SC-002', name:'Supplier COA Review Log', icon:'📋', built:true,
@@ -223,6 +225,20 @@
         candidates.push({ due_date: todayDate, task_type: 'batch_record', title: 'Batch record — ' + (run.run_name || run.id), description: 'Master production record (QC-BR-001)', source: 'auto', run_id: run.id, dedupe_key: dedupeKey(['batch', run.id]) });
       }
     });
+
+    // ATP verification — once per production day, after sanitation and before
+    // the first run (GMP-ATP-001). Facility-wide; tests can be tied to a run
+    // in the form so they reach that client's report.
+    if(runs.length){
+      candidates.push({
+        due_date: todayDate,
+        task_type: 'atp_swab',
+        title: 'ATP swabs — pre-op sanitation verification',
+        description: 'Hygiena swabs on product-contact equipment before the first run (' + runs.length + ' run' + (runs.length>1?'s':'') + ' today)',
+        source: 'auto',
+        dedupe_key: dedupeKey(['atp', todayDate])
+      });
+    }
 
     // Allergen swab — if any run today has allergens AND any earlier run today does not (or vice versa)
     if(runs.length >= 2){
@@ -437,6 +453,10 @@
       signature_name: opts.signed ? pcqiName() : null,
       signature_meaning: opts.signed ? 'PCQI sign-off — record reviewed and approved' : null,
       run_id: opts.run_id || null,
+      // Which client's run this record belongs to, when it belongs to one.
+      // The ATP customer report filters on it, so a swab linked to one
+      // client's run can never appear in another client's report.
+      client_id: opts.client_id || null,
       has_deviation: !!opts.has_deviation,
       deviation_notes: opts.deviation_notes || null,
       corrective_action: opts.corrective_action || null
@@ -500,6 +520,17 @@
     }
     return saved;
   }
+
+  // Shared form plumbing for modules that live in their own file
+  // (src/modules/production/atp-swabs.js). Same modal, same save path, so a
+  // record from another module gets the same local-fallback, audit entry,
+  // task completion and notification as every form in this file.
+  window.glComplianceForms = {
+    modalShell: modalShell, field: field, getVal: getVal,
+    formFooter: formFooter, saveRecord: saveRecord,
+    // The CIP equipment list (cip_equipment), so every form picks from the same list.
+    loadEquipment: loadCipEquip, loadEquipmentCache: loadCipEquipCache
+  };
 
   // ── Form: GMP-INSP-001 Daily Pre-Op Sanitation Inspection ──
   // Was a single expression in an onclick that queried the same child twice
@@ -879,6 +910,8 @@
       }
       saveCipEquipCache(newList);
       ov.remove();
+      // Other open forms with an equipment dropdown (ATP swabs) rebuild from this.
+      try { window.dispatchEvent(new CustomEvent('gl-cip-equipment-changed')); } catch(e){}
       // If the CIP form is open, refresh its dropdown
       var sel = document.getElementById('gl-cf-equip');
       if(sel){
@@ -1609,7 +1642,8 @@
       illness:           getForm('GMP-HR-001'),
       supplier_coa:      getForm('FSP-SC-002'),
       batch_record:      getForm('QC-BR-001'),
-      annual_fsp:        getForm('FSP-VER-002')
+      annual_fsp:        getForm('FSP-VER-002'),
+      atp_swab:          getForm('GMP-ATP-001')
     };
     return map[task_type] || { icon:'📋', code:task_type };
   }
@@ -1633,6 +1667,7 @@
     if(task_type === 'supplier_coa')     return window.glOpenSupplierCoaForm(task);
     if(task_type === 'batch_record')     return window.glOpenBatchRecordForm(task);
     if(task_type === 'annual_fsp')       return window.glOpenAnnualFspForm(task);
+    if(task_type === 'atp_swab' && window.glOpenAtpSwabForm) return window.glOpenAtpSwabForm(task);
     alert('Unknown task type: ' + task_type);
   }
 
@@ -1675,6 +1710,7 @@
     if(code === 'FSP-SC-002')   return window.glOpenSupplierCoaForm({});
     if(code === 'QC-BR-001')    return window.glOpenBatchRecordForm({});
     if(code === 'FSP-VER-002')  return window.glOpenAnnualFspForm({});
+    if(code === 'GMP-ATP-001' && window.glOpenAtpSwabForm) return window.glOpenAtpSwabForm({});
     alert('Form ' + code + ' not built yet.');
   }
 
@@ -1701,15 +1737,24 @@
     host.querySelectorAll('.gl-comp-sign').forEach(function(btn){
       btn.addEventListener('click', async function(){
         var id = btn.getAttribute('data-id');
+        var rec = records.find(function(r){ return r.id === id; }) || {};
+        // Forms with their own signing rules (ATP: limits, corrective action,
+        // incubation) get the same checks here as on their own Sign button.
+        var extra = {};
+        if(rec.form_code === 'GMP-ATP-001' && typeof window.glAtpPrepareSign === 'function'){
+          var prep = window.glAtpPrepareSign(rec);
+          if(prep.error){ alert('This record cannot be signed yet.\n\n' + prep.error); return; }
+          extra = prep.patch || {};
+        }
         if(!confirm('Sign this record as PCQI? Your name and timestamp will be locked into the record.')) return;
         var user = window.currentUser || {};
-        await dbUpdate('compliance_records', id, {
+        await dbUpdate('compliance_records', id, Object.assign({}, extra, {
           status: 'signed',
           signed_by: user.id || null,
           signed_at: nowISO(),
           signature_name: pcqiName(),
           signature_meaning: 'PCQI sign-off — record reviewed and approved'
-        });
+        }));
         if(typeof window.glAudit === 'function') window.glAudit('compliance_record_signed', id, {});
         refreshMaster();
       });
@@ -2494,6 +2539,7 @@
     bar.insertBefore(tabBtn('history', '📚 History'), spacer);
     bar.insertBefore(tabBtn('weekly', '✓ Weekly Review'), spacer);
     bar.insertBefore(tabBtn('trace', '🔍 Trace Lot'), spacer);
+    bar.insertBefore(tabBtn('atp', '🔬 ATP Swabs'), spacer);
     // Also add a ⚙️ Limits button on the right side
     var limitsBtn = document.createElement('button');
     limitsBtn.className = 'cbtn gl-comp-limits';
@@ -2524,6 +2570,7 @@
     if(key === 'history') renderHistory(body);
     if(key === 'weekly')  renderWeeklyReview(body);
     if(key === 'trace')   renderLotTracer(body);
+    if(key === 'atp' && window.glRenderAtpTab) window.glRenderAtpTab(body);
   }
 
   async function renderHistory(host){

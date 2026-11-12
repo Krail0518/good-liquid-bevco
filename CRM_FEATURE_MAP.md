@@ -62,6 +62,13 @@
 | Page ID | Sidebar ID | Title | Role | Header Buttons |
 |---------|-----------|-------|------|----------------|
 | `cpg-compliance` | `nav-compliance` | COMPLIANCE | Admin/Sales | (none) |
+
+**Compliance tabs:** Today's Tasks · Open Logs · Forms Library (compliance.js) · History · Weekly Review · Trace Lot · 🔬 ATP Swabs (injected by `ensureExtraTabs()` in compliance.js).
+The ATP Swabs tab and its customer report live in `src/modules/production/atp-swabs.js` (form `GMP-ATP-001`, stored in `compliance_records`).
+Hygiena EnSURE test types (facility instrument: EnSURE V.2): ATP (UltraSnap, SuperSnap, AquaSnap Total, AquaSnap Free), MicroSnap (Total, EB, Coliform, E. coli; incubation recorded), enzyme (ZymoSnap ALP, CrossCheck). Units per limit rule (RLU, CFU, mU/L). Equipment comes from the CIP equipment list (`cip_equipment`).
+A daily "ATP swabs — pre-op" task is generated on production days. Signing from Open Logs runs `glAtpPrepareSign()` (same rules as the form).
+The report is a downloaded PDF (jsPDF) that is **sent to a client**: `selectForClient()` must only ever include that client's runs. See the file header and `tests/atp-swab-report.test.cjs`.
+ATP RLU limits have NO defaults: they are rules by test type [+ equipment] [+ location], set in the tab's ⚙️ ATP limits and stored in `app_settings.atp_limits`. A test with no matching rule cannot be signed.
 | `cpg-cip` | `nav-cip` | CIP / SANITATION LOG | Admin/Sales | `+ Log Cycle` (primary) |
 | `cpg-holds` | `nav-holds` | HOLD TAGS | Admin/Sales | `+ New Hold Tag` (primary) |
 | `cpg-audit` | `nav-audit` | AUDIT LOG | **Admin only** (hidden) | Filter input |
