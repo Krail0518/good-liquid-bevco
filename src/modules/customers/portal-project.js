@@ -157,7 +157,11 @@
 
   window.glPortalMilestoneTracker = function(milestones){
     var all = milestones || [];
-    var form = latestRounds(all.filter(function(m){ return m.track === 'formulation'; }));
+    // Skipped steps are hidden from the client: approving the 1 L batch skips
+    // the unused part of the last sampling round, and "Skipped" there reads
+    // like something was left undone.
+    var form = latestRounds(all.filter(function(m){ return m.track === 'formulation'; }))
+      .filter(function(m){ return m.status !== 'skipped'; });
     var art  = latestRounds(all.filter(function(m){ return m.track === 'artwork'; }));
     if(!form.length && !art.length){
       return '<div style="font-size:12px;color:#6b87ad">Your milestone track will appear here once your project is set up.</div>';

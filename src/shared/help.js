@@ -1078,6 +1078,19 @@
       '<b>Printing</b>: click <b>🖨️ Print Statement</b> in the modal to open the browser print dialog. Use "Save as PDF" to email a statement to your client.'
     ]);
 
+  var SEC_TRACKER =
+    '<p style="margin:0 0 10px">One row per client project, plus every open lead. Each row is a line of 14 dots in four phases, so you can see at a glance where every client is.</p>' +
+    bullets([
+      '<b>Sales</b> (Lead in, Qualified, Quote sent, Won) follows the pipeline. Move the deal in the Pipeline to change these. Clients never see them.',
+      '<b>Onboarding</b>, then <b>Formulation</b>: Formulation, the 1 L batch (it repeats in rounds of batch sent, client feedback and revisions), 1 L batch approved, the 50 L batch, and the Process Authority letter.',
+      '<b>Production</b>: Scheduled, Production run, Quality check and shipped, Invoiced and paid.',
+      '<b>Colours</b>: green is done, teal is the current step, yellow is waiting on the client, red is blocked, hollow is upcoming. <b>On step</b> counts days on the current step; over 14 days it turns red and the row shows under <b>Stalled</b>.',
+      '<b>Click any dot</b> to change that step and see its history. Hover a dot for its name and date.',
+      '<b>Steps that move by themselves</b>: finishing a step starts the next one. The onboarding form being submitted, a Process Authority letter being uploaded, a production run reaching Production or Ship, and an invoice being paid after shipping all finish their step. Finishing Formula revisions starts the next 1 L round; marking the 1 L batch approved starts the 50 L batch. You can always change a step by hand.',
+      '<b>+ Create project</b> appears on a won deal whose client has no project yet.',
+      'Clients see the same steps from Onboarding on in their portal, and only for their own projects. Setting a step to <b>Waiting on client</b> emails them.'
+    ]);
+
   var SEC_PIPELINE = watch('tutorial-pipeline.mp4') +
     moreVideos([
       ['explainer-deal-brief.mp4', '🧠 Never Drop a Lead — Brief, Board &amp; Digest'],
@@ -2499,6 +2512,7 @@
     section('help-clients',         '👥 CLIENTS',                    SEC_CLIENTS) +
     section('help-client-emails',   '📧 ADDITIONAL EMAILS (AP / OPS)', SEC_CLIENT_EMAILS) +
     section('help-pipeline',        '📊 PIPELINE (DEALS)',           SEC_PIPELINE) +
+    section('help-tracker',         '🧭 PROJECT TRACKER',            SEC_TRACKER) +
     section('help-invoices',        '🧾 INVOICES',                   SEC_INVOICES) +
     section('help-newinv',          '➕ NEW INVOICE BUILDER',         SEC_NEWINV) +
     section('help-send-invoice',    '📧 SEND INVOICE (COMPOSER)',    SEC_SEND_INVOICE) +
@@ -2557,7 +2571,7 @@
     ['help-dashboard','📊 Dashboard'],
     ['help-daily-digest','📨 Daily Digest'],
     ['help-clients','👥 Clients'],['help-client-emails','📧 Additional Emails'],
-    ['help-pipeline','📊 Pipeline'],
+    ['help-pipeline','📊 Pipeline'],['help-tracker','🧭 Project Tracker'],
     ['help-invoices','🧾 Invoices'],['help-newinv','➕ New Invoice'],
     ['help-send-invoice','📧 Send Invoice'],['help-customer-portal','🌐 Customer Portal'],
     ['help-email-templates','📝 Email Templates'],['help-email-schedule','📅 Scheduled Follow-ups'],
@@ -2593,7 +2607,7 @@
     ['help-statement','📄 Statement of Account']
   ];
   var PAGE_TO_SECTION = {
-    'cpg-dashboard':'help-dashboard','cpg-clients':'help-clients','cpg-pipeline':'help-pipeline',
+    'cpg-dashboard':'help-dashboard','cpg-clients':'help-clients','cpg-pipeline':'help-pipeline','cpg-tracker':'help-tracker',
     'cpg-invoices':'help-invoices','cpg-invoice-detail':'help-invoices','cpg-newinv':'help-newinv',
     'cpg-referrals':'help-referrals','cpg-referrers':'help-referrers','cpg-activity':'help-activity',
     'cpg-calendar':'help-calendar','cpg-production-cal':'help-production','cpg-tasks':'help-tasks',

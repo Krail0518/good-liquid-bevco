@@ -54,6 +54,13 @@ FUNC     public.gl_invoice_payments_immutable() | secdef=f | search_path=public,
 FUNC     public.gl_is_viewer() | secdef=t | search_path=public, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_is_warehouse() | secdef=t | search_path=public | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_ledger_net(p_invoice_number text) | secdef=f | search_path=public, extensions | acl==X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres
+FUNC     public.gl_ms_advance() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.gl_ms_from_document() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.gl_ms_from_invoice() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.gl_ms_from_onboarding() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.gl_ms_from_run() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.gl_ms_project_for(p_client uuid, p_product text) | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
+FUNC     public.gl_ms_set(p_project uuid, p_key text, p_status text, p_source text) | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres
 FUNC     public.gl_next_invoice_number() | secdef=t | search_path=public, pg_temp | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_next_quote_number() | secdef=t | search_path=public | acl=postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres
 FUNC     public.gl_notify_artwork_decision() | secdef=t | search_path=pg_catalog, pg_temp | acl=postgres=X/postgres,service_role=X/postgres

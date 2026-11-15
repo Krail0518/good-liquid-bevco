@@ -93,6 +93,7 @@
  *   /src/modules/pipeline/formulation.js
  *   /src/modules/pipeline/meeting-notes.js
  *   /src/modules/pipeline/multi-pipeline.js
+ *   /src/modules/pipeline/project-tracker.js
  *   /src/modules/pipeline/referrals.js
  *   /src/modules/pipeline/revenue-forecast.js
  *   /src/modules/pipeline/sales-decks.js
@@ -202,8 +203,8 @@ window.glWhenStaff = function glWhenStaff(fn){
 /* Bridged to window so fix.js can override/extend and index.html's filter
    (renderUsers area) reads the same merged table. fix.js mutates this in place. */
 const PERMISSIONS=window.PERMISSIONS={
-  admin:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity','users'],
-  sales:['dashboard','clients','pipeline','invoices','newinv','referrals','referrers','activity'],
+  admin:['dashboard','clients','pipeline','tracker','invoices','newinv','referrals','referrers','activity','users'],
+  sales:['dashboard','clients','pipeline','tracker','invoices','newinv','referrals','referrers','activity'],
   warehouse:['dashboard','production-runs','production-cal','inventory','cip','gmp','defects','yield','samples','tasks','announcements'],
   viewer:['dashboard','clients','announcements']
 };
