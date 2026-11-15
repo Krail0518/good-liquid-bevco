@@ -118,6 +118,15 @@ const p3 = T.build(canning).find((r) => r.id === 'p:' + P);
 check('canning-only: the all-skipped 1 L loop shows as not needed', p3.steps[6].v === 'skip', p3.steps[6].v);
 check('canning-only: current step is Production scheduled', p3.current.def.key === 'production_scheduled', p3.current.def.key);
 
+// Timeline: real history only. Canning-only client has no formulation bar of
+// its own beyond the PA letter, the live phase runs to today, and a lead is one
+// sales bar from when the deal was created.
+const spans = T.phaseSpans(p3);
+check('timeline: the live phase is production and runs to now', spans.length && spans[spans.length - 1].phase === 'production' && spans[spans.length - 1].live && Math.abs(spans[spans.length - 1].end - Date.now()) < 5000, JSON.stringify(spans.map((x) => x.phase + (x.live ? '*' : ''))));
+check('timeline: bars never run backwards', spans.every((x) => x.end >= x.start));
+const leadSpans = T.phaseSpans(rows.find((r) => r.id === 'd:d2'));
+check('timeline: a lead is one live sales bar', leadSpans.length === 1 && leadSpans[0].phase === 'sales' && leadSpans[0].live);
+
 // Render: everything typed by a lead or client is escaped.
 window.supa = {};
 // render() is internal; drive it through refresh() with a stub client.

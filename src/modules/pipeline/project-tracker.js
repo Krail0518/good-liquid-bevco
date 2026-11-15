@@ -140,7 +140,7 @@
 
     var results = await Promise.all([
       sb.from('projects')
-        .select('id, client_id, name, product_name, status, target_date, created_at, archived_at')
+        .select('id, client_id, name, product_name, status, target_date, started_on, created_at, archived_at')
         .is('archived_at', null).in('status', ['active','on_hold']),
       sb.from('project_milestones')
         .select('id, project_id, track, key, label, sort_order, round, status, owner, target_date, completed_at, updated_at'),
@@ -229,7 +229,7 @@
         id: 'p:' + p.id, type: 'project', projectId: p.id, clientId: p.client_id,
         name: client.company || client.name || 'Unknown client',
         sub: p.product_name || p.name || '',
-        projectStatus: p.status, targetDate: p.target_date,
+        projectStatus: p.status, targetDate: p.target_date, startedOn: p.started_on || p.created_at,
         steps: steps, artwork: art
       }));
     });
@@ -273,7 +273,7 @@
         name: deal.co || deal.client_name || deal.name || 'Unnamed lead',
         sub: won ? 'Won · no project yet' : ('Lead · ' + (deal.stage || 'Prospecting')),
         productName: deal.product_type || '',
-        won: won, oldLead: old,
+        won: won, oldLead: old, createdAt: deal.created_at,
         steps: steps
       }));
     });
@@ -619,13 +619,124 @@
     '</div></div>';
   }
 
+  // ── Timeline view ─────────────────────────────────────────────────────────
+  // Each client's ACTUAL history on a calendar: one bar per phase, from when
+  // it started to when it finished (or to today, striped, if it is the live
+  // phase). Dates come from the steps themselves: a phase ends at its last
+  // completed step, and the next phase starts there. A project target date,
+  // when set, is drawn as a marker. Nothing is projected or guessed forward.
+  var TL_LOOKBACK_DAYS = 150, TL_AHEAD_DAYS = 21;
+
+  function tsOf(d){ var t = d ? new Date(d).getTime() : NaN; return isFinite(t) ? t : null; }
+
+  function stepDates(s){
+    var out = [];
+    if(s.loop && s.loop.ms) s.loop.ms.forEach(function(m){ var t = tsOf(m.completed_at); if(t) out.push(t); });
+    else if(s.ms){ var t = tsOf(s.ms.completed_at); if(t) out.push(t); }
+    return out;
+  }
+
+  // [{ phase, start, end, live }] for one row.
+  function phaseSpans(r){
+    var now = Date.now();
+    if(r.type === 'lead'){
+      var st = tsOf(r.createdAt) || now;
+      return [{ phase:'sales', start:st, end:now, live:true }];
+    }
+    var spans = [], cursor = tsOf(r.startedOn);
+    ['onboarding','formulation','production'].forEach(function(ph){
+      var steps = r.steps.filter(function(s){ return s.def.phase === ph; });
+      var applies = steps.filter(function(s){ return s.v !== 'skip' && !s.missing; });
+      if(!applies.length) return;                       // whole phase not needed
+      var dates = [];
+      applies.forEach(function(s){ dates = dates.concat(stepDates(s)); });
+      var live = applies.some(function(s){ return s === r.current; });
+      var complete = applies.every(function(s){ return s.v === 'done'; });
+      if(!live && !complete && !dates.length) return;   // not reached yet
+      var start = cursor || (dates.length ? Math.min.apply(null, dates) : null) || tsOf(r.current && r.current.since) || now;
+      var end = live ? now : (dates.length ? Math.max.apply(null, dates) : start);
+      if(end < start) start = end;
+      spans.push({ phase:ph, start:start, end:end, live:live });
+      cursor = end;
+    });
+    return spans;
+  }
+
+  function timelineHtml(vis){
+    if(!vis.length) return '<div style="padding:28px 0;text-align:center;color:#8fa4c4;font-size:13px">Nothing matches this filter.</div>';
+    var now = Date.now();
+    var rows = vis.map(function(r){ return { r:r, spans:phaseSpans(r), target:tsOf(r.targetDate) }; });
+    var earliest = now;
+    rows.forEach(function(x){ x.spans.forEach(function(s){ if(s.start < earliest) earliest = s.start; }); });
+    var t0 = Math.max(earliest - 7 * DAY, now - TL_LOOKBACK_DAYS * DAY);
+    var latestTarget = now;
+    rows.forEach(function(x){ if(x.target && x.target > latestTarget) latestTarget = x.target; });
+    var t1 = Math.max(now + TL_AHEAD_DAYS * DAY, latestTarget + 7 * DAY);
+    var span = t1 - t0;
+    function pct(t){ return Math.max(0, Math.min(100, (t - t0) / span * 100)); }
+
+    // Month ticks
+    var ticks = '', d = new Date(t0); d.setDate(1); d.setHours(0, 0, 0, 0);
+    while(d.getTime() <= t1){
+      var x = pct(d.getTime());
+      if(d.getTime() >= t0) ticks += '<div style="position:absolute;left:' + x + '%;top:0;bottom:0;border-left:1px solid rgba(255,255,255,.06)"></div>' +
+        '<div style="position:absolute;left:calc(' + x + '% + 4px);top:0;font-size:10px;color:#6b87ad;white-space:nowrap">' + d.toLocaleDateString(undefined, { month:'short' }) + '</div>';
+      d.setMonth(d.getMonth() + 1);
+    }
+    var todayX = pct(now);
+
+    var head = '<div style="display:grid;grid-template-columns:200px minmax(0,1fr);gap:12px;margin:14px 0 4px">' +
+      '<div></div><div style="position:relative;height:16px">' + ticks +
+      '<div style="position:absolute;left:calc(' + todayX + '% + 4px);top:0;font-size:10px;font-weight:700;color:#00e5c0">Today</div></div></div>';
+
+    var body = rows.map(function(x){
+      var r = x.r;
+      var bars = x.spans.map(function(s){
+        var c = PHASE_COLOR[s.phase];
+        var left = pct(s.start), width = Math.max(0.8, pct(s.end) - left);
+        var waiting = s.live && r.waiting, blocked = s.live && r.current && r.current.v === 'block';
+        var fill = s.live
+          ? 'background:repeating-linear-gradient(135deg,' + c + 'cc 0 6px,' + c + '77 6px 12px);'
+          : 'background:' + c + ';';
+        var outline = blocked ? 'box-shadow:0 0 0 2px #ff8579;' : waiting ? 'box-shadow:0 0 0 2px #f5c842;' : r.stalled && s.live ? 'box-shadow:0 0 0 2px #ff857988;' : '';
+        var days = Math.max(1, Math.round((s.end - s.start) / DAY));
+        var tip = PHASE_LABEL[s.phase] + ': ' + fmtDate(s.start) + ' → ' + (s.live ? 'now' : fmtDate(s.end)) + ' (' + days + (days === 1 ? ' day' : ' days') + ')' +
+                  (s.live && r.current ? ' · now: ' + stepLabel(r.current) + (waiting ? ', waiting on client' : '') : '');
+        return '<div title="' + esc(tip) + '" style="position:absolute;top:6px;height:16px;border-radius:5px;left:' + left + '%;width:' + width + '%;' + fill + outline + '"></div>';
+      }).join('');
+      var target = x.target ? '<div title="Target ' + esc(fmtDate(x.target)) + '" style="position:absolute;top:2px;left:calc(' + pct(x.target) + '% - 6px);font-size:12px;color:#ff8579">◆</div>' : '';
+      var nowTxt = r.current ? stepLabel(r.current) : 'Complete';
+      return '<div style="display:grid;grid-template-columns:200px minmax(0,1fr);gap:12px;align-items:center;padding:6px 0;border-top:1px solid rgba(255,255,255,.05)">' +
+        '<button type="button" class="gl-trk-card" data-row="' + esc(r.id) + '" style="all:unset;cursor:pointer;min-width:0;display:block">' +
+          '<div style="font-size:13px;font-weight:700;color:#eef4ff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.name) + '</div>' +
+          '<div style="font-size:11px;color:' + (r.waiting ? '#f5c842' : '#8fa4c4') + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(nowTxt) + (r.daysOnStep != null ? ' · ' + r.daysOnStep + 'd' : '') + '</div>' +
+        '</button>' +
+        '<div style="position:relative;height:28px;border-radius:6px;background:rgba(255,255,255,.02)">' +
+          '<div style="position:absolute;left:' + todayX + '%;top:0;bottom:0;border-left:2px solid rgba(0,229,192,.35)"></div>' +
+          bars + target +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    var key = '<div style="display:flex;flex-wrap:wrap;gap:14px;font-size:11px;color:#8fa4c4;margin-top:10px">' +
+      ['sales','onboarding','formulation','production'].map(function(ph){
+        return '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:8px;border-radius:2px;background:' + PHASE_COLOR[ph] + '"></span>' + PHASE_LABEL[ph] + '</span>';
+      }).join('') +
+      '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:8px;border-radius:2px;background:repeating-linear-gradient(135deg,#00e5c0cc 0 3px,#00e5c077 3px 6px)"></span>Live phase (to today)</span>' +
+      '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:8px;border-radius:2px;box-shadow:0 0 0 2px #f5c842"></span>Waiting on client</span>' +
+      '<span style="color:#ff8579">◆</span><span style="margin-left:-8px">Target date</span>' +
+      '<span>Bars are actual history from step dates. Click a name to open it.</span></div>';
+
+    return '<div style="overflow-x:auto"><div style="min-width:760px">' + head + body + '</div></div>' + key;
+  }
+
   function viewToggle(){
     function b(v, label){
       var on = state.view === v;
       return '<button type="button" class="gl-trk-view" data-view="' + v + '" style="cursor:pointer;font:inherit;font-size:12px;font-weight:600;padding:5px 12px;border:0;' +
         'background:' + (on ? 'rgba(0,229,192,.18)' : 'transparent') + ';color:' + (on ? 'var(--teal)' : '#8fa4c4') + '">' + label + '</button>';
     }
-    return '<div style="display:inline-flex;border:1px solid rgba(255,255,255,.14);border-radius:8px;overflow:hidden">' + b('list', '☰ List') + b('board', '▦ Board') + '</div>';
+    return '<div style="display:inline-flex;border:1px solid rgba(255,255,255,.14);border-radius:8px;overflow:hidden">' + b('list', '☰ List') + b('board', '▦ Board') + b('timeline', '⎯ Timeline') + '</div>';
   }
 
   // Board card -> list view with that client's current step open.
@@ -640,7 +751,7 @@
   }
 
   var VIEW_KEY = 'gl-tracker-view';
-  function loadView(){ try { var v = window.localStorage && localStorage.getItem(VIEW_KEY); if(v === 'board' || v === 'list') state.view = v; } catch(e){} }
+  function loadView(){ try { var v = window.localStorage && localStorage.getItem(VIEW_KEY); if(v === 'board' || v === 'list' || v === 'timeline') state.view = v; } catch(e){} }
   function saveView(){ try { window.localStorage && localStorage.setItem(VIEW_KEY, state.view); } catch(e){} }
 
   function render(){
@@ -670,8 +781,9 @@
         '</div>' +
       '</div>' +
       (state.filter.indexOf('step:') === 0 ? '<div style="margin:10px 0 0;font-size:12px;color:#8fa4c4">Showing clients on <b style="color:#eef4ff">' + esc(SHORT[state.filter.slice(5)] || state.filter.slice(5)) + '</b> · <button type="button" class="gl-trk-filter" data-filter="all" style="all:unset;cursor:pointer;color:#6b9fff">show all</button></div>' : '') +
-      (state.view === 'board' ? '<div style="margin-top:14px">' + boardHtml(vis) + '</div>' : listHtml(vis)) +
-      legendHtml();
+      (state.view === 'board' ? '<div style="margin-top:14px">' + boardHtml(vis) + '</div>' + legendHtml()
+        : state.view === 'timeline' ? timelineHtml(vis)
+        : listHtml(vis) + legendHtml());
 
     var search = document.getElementById('trk-search');
     if(search && state._refocus){
@@ -858,7 +970,7 @@
       if(!t || !body.contains(t)) return;
       if(t.classList.contains('gl-trk-filter')){ state.filter = t.getAttribute('data-filter'); state.openEditor = null; render(); return; }
       if(t.classList.contains('gl-trk-seg')){ var sk = 'step:' + t.getAttribute('data-step'); state.filter = state.filter === sk ? 'all' : sk; state.openEditor = null; render(); return; }
-      if(t.classList.contains('gl-trk-view')){ state.view = t.getAttribute('data-view') === 'board' ? 'board' : 'list'; saveView(); state.openEditor = null; render(); return; }
+      if(t.classList.contains('gl-trk-view')){ var vw = t.getAttribute('data-view'); state.view = (vw === 'board' || vw === 'timeline') ? vw : 'list'; saveView(); state.openEditor = null; render(); return; }
       if(t.classList.contains('gl-trk-card')){ focusRow(t.getAttribute('data-row')); return; }
       if(t.classList.contains('gl-trk-more')){ state.view = 'list'; saveView(); state.filter = 'step:' + t.getAttribute('data-step'); render(); return; }
       if(t.classList.contains('gl-trk-dot')){ openEditor(t.getAttribute('data-row'), t.getAttribute('data-step')); return; }
@@ -898,7 +1010,7 @@
   window.glRefreshProjectTracker = refresh;
 
   // Exposed for tests only: pure functions, no DOM, no network.
-  window.__glTrackerInternals = { build: build, loopState: loopState, latestByKey: latestByKey, STEPS: STEPS };
+  window.__glTrackerInternals = { build: build, loopState: loopState, latestByKey: latestByKey, STEPS: STEPS, phaseSpans: phaseSpans };
 
   function watch(){
     var pg = document.getElementById('cpg-tracker');
