@@ -86,6 +86,7 @@ const fn = fs.readFileSync(new URL('../supabase/functions/wh-monthly-billing/ind
 check('real runs need admin; previews and dry runs need staff', /requireStaff\(req, \{ role: dryRun \|\| previewTo \? 'staff' : 'admin' \}\)/.test(fn));
 check('skips a month already marked billed', /wh_billing_statements'\)\.select\('invoice_ref,amount'\)/.test(fn));
 check('skips a client with a hand-made storage invoice for the month', /existingInvoice\(db, o\.client_id, ym\)/.test(fn));
+check('previews render even a month already billed (they write nothing)', /st.data && !previewTo/.test(fn) && /ex && !previewTo/.test(fn));
 check('refuses to bill a month that is not over', /is not over yet/.test(fn));
 check('checks every write returned a row (RLS-style silent failures)', /ins\.data\.length === 1/.test(fn) && /stmt\.data\.length/.test(fn));
 
