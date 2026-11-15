@@ -78,6 +78,7 @@
     rows: [],             // built rows
     msById: {},           // milestone id -> row
     filter: 'all',
+    view: 'list',         // 'list' | 'board' (remembered per device)
     search: '',
     showOldLeads: false,
     openEditor: null,     // { rowId, stepKey }
@@ -315,7 +316,9 @@
         case 'all':     return true;
         case 'waiting': return r.waiting;
         case 'stalled': return r.stalled;
-        default:        return r.phase === state.filter;
+        default:
+          if(state.filter.indexOf('step:') === 0) return (r.current ? r.current.def.key : 'done') === state.filter.slice(5);
+          return r.phase === state.filter;
       }
     });
   }
@@ -463,7 +466,7 @@
 
     var editor = (state.openEditor && state.openEditor.rowId === r.id) ? editorHtml(r, state.openEditor.stepKey) : '';
 
-    return '<div class="gl-trk-row" style="margin-bottom:10px;border-radius:12px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06);border-left:4px solid ' + c + ';padding:14px 16px">' +
+    return '<div class="gl-trk-row" data-row="' + esc(r.id) + '" style="margin-bottom:10px;border-radius:12px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06);border-left:4px solid ' + c + ';padding:14px 16px">' +
       '<div style="display:grid;grid-template-columns:minmax(150px,200px) minmax(0,1fr) 130px;gap:18px;align-items:center">' +
         '<div style="min-width:0">' + open + (tag ? '<div style="margin-top:4px;margin-left:-6px">' + tag + '</div>' : '') +
           '<div style="font-size:12px;color:#8fa4c4;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.sub) + '">' + esc(r.sub) + '</div>' + art + action +
@@ -514,6 +517,132 @@
       '<span>Click any step to change it.</span></div>';
   }
 
+  // ── Overview strip ────────────────────────────────────────────────────────
+  // One segment per step: how many clients are on it right now, in the phase
+  // colour, with waiting / stalled counts. Click a segment to filter to it.
+  var SHORT = {
+    lead:'Lead', qualified:'Qualified', quoted:'Quote', won:'Won', intake:'Onboard',
+    formulation:'Formulate', loop_1l:'1 L batch', batch_1l_approved:'1 L OK', batch_50l:'50 L batch',
+    pa_letter:'PA letter', production_scheduled:'Scheduled', production_run:'Running',
+    shipped:'Shipped', invoiced_paid:'Paid', done:'Complete'
+  };
+  function stepKeyOf(r){ return r.current ? r.current.def.key : 'done'; }
+  function phaseOf(r){ return r.current ? r.current.def.phase : 'done'; }
+  function boardColumns(){
+    return STEPS.map(function(s){ return { key:s.key, phase:s.phase, label:s.label }; })
+      .concat([{ key:'done', phase:'done', label:'Complete' }]);
+  }
+
+  function stripHtml(rows){
+    var cols = boardColumns();
+    var max = 1;
+    var stats = {};
+    cols.forEach(function(c){
+      var on = rows.filter(function(r){ return stepKeyOf(r) === c.key; });
+      stats[c.key] = { n:on.length, wait:on.filter(function(r){ return r.waiting; }).length,
+                       stall:on.filter(function(r){ return r.stalled; }).length };
+      if(on.length > max) max = on.length;
+    });
+    var phases = PHASES.concat([{ key:'done', label:'Complete' }]);
+    return '<div style="margin:6px 0 14px;padding:12px 14px 10px;border-radius:12px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06);overflow-x:auto">' +
+      '<div style="display:flex;gap:10px;min-width:820px">' +
+      phases.map(function(ph){
+        var pc = cols.filter(function(c){ return c.phase === ph.key; });
+        var color = PHASE_COLOR[ph.key];
+        return '<div style="flex:' + pc.length + ' 1 0;min-width:0">' +
+          '<div style="font-size:10px;letter-spacing:1.2px;font-weight:700;text-transform:uppercase;color:' + color + ';margin-bottom:6px;white-space:nowrap">' + esc(ph.label) + '</div>' +
+          '<div style="display:flex;gap:4px">' +
+          pc.map(function(c){
+            var st = stats[c.key];
+            var active = state.filter === 'step:' + c.key;
+            var h = st.n ? Math.max(8, Math.round(st.n / max * 34)) : 3;
+            var flags = (st.wait ? '<span title="' + st.wait + ' waiting on client" style="color:#f5c842">●' + st.wait + '</span>' : '') +
+                        (st.stall ? '<span title="' + st.stall + ' stalled" style="color:#ff8579;margin-left:4px">▲' + st.stall + '</span>' : '');
+            return '<button type="button" class="gl-trk-seg" data-step="' + esc(c.key) + '" title="' + esc(c.label) + ': ' + st.n + (st.n === 1 ? ' client' : ' clients') + '" ' +
+              'style="all:unset;box-sizing:border-box;flex:1 1 0;min-width:0;cursor:pointer;text-align:center;padding:4px 2px;border-radius:8px;' +
+              (active ? 'background:' + color + '22;outline:1px solid ' + color + ';' : '') + '">' +
+              '<div style="height:36px;display:flex;align-items:flex-end;justify-content:center">' +
+                '<div style="width:70%;height:' + h + 'px;border-radius:4px;background:' + (st.n ? color : '#1f2a3d') + ';opacity:' + (st.n ? 1 : .8) + '"></div></div>' +
+              '<div style="font-size:16px;font-weight:700;margin-top:4px;color:' + (st.n ? '#eef4ff' : '#3d4a63') + '">' + st.n + '</div>' +
+              '<div style="font-size:10px;color:' + (st.n ? '#a9b8d0' : '#4a5a78') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(SHORT[c.key] || c.label) + '</div>' +
+              '<div style="font-size:10px;height:13px">' + flags + '</div>' +
+            '</button>';
+          }).join('') +
+          '</div></div>';
+      }).join('') +
+      '</div></div>';
+  }
+
+  // ── Board view ────────────────────────────────────────────────────────────
+  // A column per step, each client as a card in the column of its current
+  // step. Busy sales columns show the first BOARD_CAP cards and a "more" link.
+  var BOARD_CAP = 12;
+
+  function cardHtml(r){
+    var c = PHASE_COLOR[phaseOf(r)];
+    var edge = r.current && r.current.v === 'block' ? COLOR.block : r.waiting ? COLOR.wait : c;
+    var status = !r.current ? '<span style="color:#8fd9b6">Complete</span>'
+      : r.current.v === 'wait' ? '<span style="color:#f5c842">Waiting on client</span>'
+      : r.current.v === 'block' ? '<span style="color:#ff8579">Blocked</span>'
+      : r.current.def.kind === 'sales' ? '<span style="color:#8fa4c4">' + esc(r.current.def.doing || 'In the pipeline') + '</span>'
+      : '<span style="color:#a9b8d0">' + (r.current.loop ? esc(stepLabel(r.current)) : 'In progress') + '</span>';
+    var days = r.daysOnStep == null ? '' : r.stalled
+      ? '<span style="color:#ff8579;font-weight:600">⚠ ' + r.daysOnStep + 'd</span>'
+      : '<span style="color:#6b87ad">' + r.daysOnStep + 'd</span>';
+    return '<button type="button" class="gl-trk-card" data-row="' + esc(r.id) + '" title="' + esc(r.name + (r.sub ? ' · ' + r.sub : '')) + '" ' +
+      'style="all:unset;box-sizing:border-box;display:block;width:100%;cursor:pointer;margin-bottom:8px;padding:9px 10px;border-radius:9px;' +
+      'background:#111c2e;border:1px solid ' + (r.stalled ? 'rgba(255,133,121,.45)' : 'rgba(255,255,255,.07)') + ';border-left:3px solid ' + edge + '">' +
+      '<div style="font-size:13px;font-weight:700;color:#eef4ff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.name) + '</div>' +
+      '<div style="font-size:11px;color:#8fa4c4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px">' + esc(r.sub) + '</div>' +
+      '<div style="display:flex;justify-content:space-between;gap:6px;font-size:11px;margin-top:6px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + status + '</span>' + days + '</div>' +
+    '</button>';
+  }
+
+  function boardHtml(vis){
+    var cols = boardColumns();
+    return '<div style="overflow-x:auto;padding-bottom:6px"><div style="display:flex;gap:10px;align-items:flex-start;min-width:max-content">' +
+      cols.map(function(c){
+        var rows = vis.filter(function(r){ return stepKeyOf(r) === c.key; });
+        var color = PHASE_COLOR[c.phase];
+        var shown = rows.slice(0, BOARD_CAP);
+        // Empty steps keep their place (so position still reads left to right) but
+        // shrink, so the busy columns fit on screen.
+        return '<div style="width:' + (rows.length ? 178 : 92) + 'px;flex:none">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 9px;margin-bottom:8px;border-radius:8px;background:' + color + '1a;border-top:3px solid ' + color + '">' +
+            '<span style="font-size:11px;font-weight:700;color:' + color + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(c.label) + '</span>' +
+            '<span style="font-size:11px;font-weight:700;color:#eef4ff;background:rgba(255,255,255,.08);border-radius:999px;padding:1px 7px">' + rows.length + '</span>' +
+          '</div>' +
+          (rows.length ? shown.map(cardHtml).join('') : '<div style="font-size:11px;color:#3d4a63;text-align:center;padding:10px 0;border:1px dashed rgba(255,255,255,.07);border-radius:9px">—</div>') +
+          (rows.length > shown.length ? '<button type="button" class="gl-trk-more" data-step="' + esc(c.key) + '" style="all:unset;cursor:pointer;font-size:11px;color:#6b9fff">+ ' + (rows.length - shown.length) + ' more in the list</button>' : '') +
+        '</div>';
+      }).join('') +
+    '</div></div>';
+  }
+
+  function viewToggle(){
+    function b(v, label){
+      var on = state.view === v;
+      return '<button type="button" class="gl-trk-view" data-view="' + v + '" style="cursor:pointer;font:inherit;font-size:12px;font-weight:600;padding:5px 12px;border:0;' +
+        'background:' + (on ? 'rgba(0,229,192,.18)' : 'transparent') + ';color:' + (on ? 'var(--teal)' : '#8fa4c4') + '">' + label + '</button>';
+    }
+    return '<div style="display:inline-flex;border:1px solid rgba(255,255,255,.14);border-radius:8px;overflow:hidden">' + b('list', '☰ List') + b('board', '▦ Board') + '</div>';
+  }
+
+  // Board card -> list view with that client's current step open.
+  function focusRow(rowId){
+    var r = findRow(rowId); if(!r) return;
+    state.view = 'list'; saveView();
+    state.filter = 'all'; state.search = '';
+    state.openEditor = null;
+    openEditor(rowId, r.current ? r.current.def.key : 'invoiced_paid');
+    var el = document.querySelector('.gl-trk-row[data-row="' + (window.CSS && CSS.escape ? CSS.escape(rowId) : rowId) + '"]');
+    if(el && el.scrollIntoView) el.scrollIntoView({ block:'center', behavior:'smooth' });
+  }
+
+  var VIEW_KEY = 'gl-tracker-view';
+  function loadView(){ try { var v = window.localStorage && localStorage.getItem(VIEW_KEY); if(v === 'board' || v === 'list') state.view = v; } catch(e){} }
+  function saveView(){ try { window.localStorage && localStorage.setItem(VIEW_KEY, state.view); } catch(e){} }
+
   function render(){
     var body = document.getElementById('trk-body');
     if(!body) return;
@@ -527,6 +656,7 @@
     var hiddenOld = state.rows.filter(function(r){ return r.oldLead; }).length;
 
     body.innerHTML =
+      stripHtml(all) +
       '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:4px">' +
         '<div style="display:flex;flex-wrap:wrap;gap:6px">' +
           pill('all', 'All', all.length, state.filter === 'all') +
@@ -534,12 +664,13 @@
           pill('waiting', 'Waiting on client', count(function(r){ return r.waiting; }), state.filter === 'waiting', '#f5c842') +
           pill('stalled', 'Stalled', count(function(r){ return r.stalled; }), state.filter === 'stalled', '#ff8579') +
         '</div>' +
-        '<div style="display:flex;gap:10px;align-items:center">' +
+        '<div style="display:flex;gap:10px;align-items:center">' + viewToggle() +
           (hiddenOld ? '<label style="font-size:12px;color:#8fa4c4;display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="trk-old"' + (state.showOldLeads ? ' checked' : '') + '> Show ' + hiddenOld + ' older leads</label>' : '') +
           '<input id="trk-search" type="search" placeholder="Search brand or product" value="' + esc(state.search) + '" style="font:inherit;font-size:13px;padding:6px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:#e6eefb;width:200px">' +
         '</div>' +
       '</div>' +
-      listHtml(vis) +
+      (state.filter.indexOf('step:') === 0 ? '<div style="margin:10px 0 0;font-size:12px;color:#8fa4c4">Showing clients on <b style="color:#eef4ff">' + esc(SHORT[state.filter.slice(5)] || state.filter.slice(5)) + '</b> · <button type="button" class="gl-trk-filter" data-filter="all" style="all:unset;cursor:pointer;color:#6b9fff">show all</button></div>' : '') +
+      (state.view === 'board' ? '<div style="margin-top:14px">' + boardHtml(vis) + '</div>' : listHtml(vis)) +
       legendHtml();
 
     var search = document.getElementById('trk-search');
@@ -720,11 +851,16 @@
     var body = document.getElementById('trk-body');
     if(!body || body._glTrkWired) return;
     body._glTrkWired = true;
+    loadView();
 
     body.addEventListener('click', function(e){
       var t = e.target.closest && e.target.closest('button');
       if(!t || !body.contains(t)) return;
       if(t.classList.contains('gl-trk-filter')){ state.filter = t.getAttribute('data-filter'); state.openEditor = null; render(); return; }
+      if(t.classList.contains('gl-trk-seg')){ var sk = 'step:' + t.getAttribute('data-step'); state.filter = state.filter === sk ? 'all' : sk; state.openEditor = null; render(); return; }
+      if(t.classList.contains('gl-trk-view')){ state.view = t.getAttribute('data-view') === 'board' ? 'board' : 'list'; saveView(); state.openEditor = null; render(); return; }
+      if(t.classList.contains('gl-trk-card')){ focusRow(t.getAttribute('data-row')); return; }
+      if(t.classList.contains('gl-trk-more')){ state.view = 'list'; saveView(); state.filter = 'step:' + t.getAttribute('data-step'); render(); return; }
       if(t.classList.contains('gl-trk-dot')){ openEditor(t.getAttribute('data-row'), t.getAttribute('data-step')); return; }
       if(t.classList.contains('gl-trk-close')){ state.openEditor = null; render(); return; }
       if(t.classList.contains('gl-trk-save')){ saveStatus(t.getAttribute('data-ms')); return; }
