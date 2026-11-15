@@ -641,13 +641,16 @@
     if(!body || _loading) return;
     _loading = true;
     wire();
-    if(!state.rows.length) body.innerHTML = '<div style="font-size:13px;color:#8fa4c4;padding:20px 0">Loading the tracker…</div>';
+    // Plain text, so textContent rather than another raw-HTML sink.
+    if(!state.rows.length){ body.style.color = '#8fa4c4'; body.textContent = 'Loading the tracker…'; }
     try {
       var d = await load();
       state.rows = build(d);
+      body.style.color = '';
       render();
     } catch(e){
-      body.innerHTML = '<div style="font-size:13px;color:#ff8579;padding:20px 0">' + esc(e.message || String(e)) + '</div>';
+      body.style.color = '#ff8579';
+      body.textContent = e.message || String(e);
     } finally {
       _loading = false;
     }

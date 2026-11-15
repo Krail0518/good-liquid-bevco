@@ -21,7 +21,7 @@ function check(name, cond, detail) {
 }
 
 const els = {};
-function el(id) { return els[id] || (els[id] = { id, innerHTML: '', textContent: '', addEventListener() {}, classList: { contains: () => false } }); }
+function el(id) { return els[id] || (els[id] = { id, innerHTML: '', textContent: '', style: {}, addEventListener() {}, classList: { contains: () => false } }); }
 const window = {};
 window.window = window;
 const document = {

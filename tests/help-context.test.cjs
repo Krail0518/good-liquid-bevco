@@ -39,6 +39,7 @@ const PAGES = [...new Set((html.match(/id="cpg-[a-z0-9-]+"/g) || []).map((m) => 
 // fails the test, which is the point: decide where its help is.
 const EXPECT = {
   'cpg-dashboard': 'help-dashboard', 'cpg-clients': 'help-clients', 'cpg-pipeline': 'help-pipeline',
+  'cpg-tracker': 'help-tracker',
   'cpg-invoices': 'help-invoices', 'cpg-newinv': 'help-newinv', 'cpg-referrals': 'help-referrals',
   'cpg-referrers': 'help-referrers', 'cpg-activity': 'help-activity', 'cpg-calendar': 'help-calendar',
   'cpg-production-cal': 'help-production', 'cpg-tasks': 'help-tasks', 'cpg-documents': 'help-documents',

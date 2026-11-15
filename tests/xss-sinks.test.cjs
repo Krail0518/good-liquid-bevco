@@ -222,7 +222,13 @@ for (const [label, re] of FORBIDDEN) {
 // 2026-11-12: 640 -> 642. ATP test plans editor (atp-swabs.js): the plan
 // header and each plan row. Values reach them only through esc() or are set
 // with .value / textContent after the markup is built.
-const SINK_BUDGET = 642;
+// 2026-11-15: 642 -> 643. Project Tracker (src/modules/pipeline/project-tracker.js):
+// one sink, the page render. Brand, product and contact names come from leads
+// and clients and every one goes through esc(); attribute values (row and
+// milestone ids, titles) too. Loading and error states use textContent.
+// tests/project-tracker.test.cjs renders a markup payload and asserts it is
+// escaped.
+const SINK_BUDGET = 643;
 let sinkCount = 0;
 const RAW = /\.(innerHTML|outerHTML)\s*(=|\+=)|insertAdjacentHTML\s*\(|document\.write(ln)?\s*\(/;
 for (const f of files) {
