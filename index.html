@@ -635,6 +635,7 @@
         <div class="cni act" data-gl-action="cNav" data-gl-arg1="dashboard" data-gl-el><span class="cni-ico">📊</span>Dashboard</div>
         <div class="cni" data-gl-action="cNav" data-gl-arg1="clients" data-gl-el><span class="cni-ico">👥</span>Clients</div>
         <div class="cni" data-gl-action="cNav" data-gl-arg1="pipeline" data-gl-el><span class="cni-ico">📋</span>Pipeline</div>
+        <div class="cni" id="nav-tracker" data-gl-action="cNav" data-gl-arg1="tracker" data-gl-el><span class="cni-ico">🧭</span>Project Tracker</div>
         <div class="cni-sec">Billing</div>
         <div class="cni" data-gl-action="cNav" data-gl-arg1="invoices" data-gl-el><span class="cni-ico">🧾</span>Invoices</div>
         <div class="cni" data-gl-action="cNav" data-gl-arg1="newinv" data-gl-el><span class="cni-ico">➕</span>New Invoice</div>
@@ -1096,6 +1097,15 @@
             <button data-gl-action="saveNewDeal" style="width:100%;padding:13px;background:var(--teal);color:var(--ink);border:none;border-radius:8px;font-weight:800;font-size:14px;cursor:pointer;margin-top:6px">Save Deal →</button>
           </div>
         </div>
+      </div>
+
+      <!-- PROJECT TRACKER — one progress line per client, Sales → Production.
+           Rendered by src/modules/pipeline/project-tracker.js -->
+      <div id="cpg-tracker" class="cpg">
+        <div class="cph">
+          <div><div class="cpt">PROJECT TRACKER</div><div class="cps" id="trk-sub">Where every client is, step by step</div></div>
+        </div>
+        <div id="trk-body"></div>
       </div>
 
       <!-- PIPELINE -->
@@ -1946,6 +1956,7 @@
 <script src="/src/shared/email-composer.js"></script>
 <script src="/src/shared/correspondence.js"></script>
 <script src="/src/modules/pipeline/deal-detail.js"></script>
+<script src="/src/modules/pipeline/project-tracker.js"></script>
 
 
 

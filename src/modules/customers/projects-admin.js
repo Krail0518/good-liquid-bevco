@@ -34,7 +34,7 @@
   // The revision loop (prompts/client-portal-v2.md): sample sent -> client
   // feedback -> formula revisions is a cycle. Another round adds all three
   // again with round + 1; earlier rounds and their history are untouched.
-  var ROUND_KEYS = ['sample_sent', 'client_feedback', 'formula_revisions'];
+  var ROUND_KEYS = ['batch_1l_sent', 'client_feedback', 'formula_revisions'];
   var OWNER_LABEL = { gl: 'Good Liquid', client: 'Client' };
 
   var _cache = {};   // clientId -> { projects, milestones, ents }
@@ -358,7 +358,7 @@
     if(templates.some(function(t){ return !t; })){
       say('This project is missing a sampling stage, so a new round cannot be added.', false); return;
     }
-    if(!confirm('Start sampling round ' + round + '?\n\nSample sent, client feedback and formula revisions are added again as round ' + round + '. Earlier rounds keep their history.')) return;
+    if(!confirm('Start 1 L batch round ' + round + '?\n\n1 L batch sent, client feedback and formula revisions are added again as round ' + round + '. Earlier rounds keep their history.\n\nFinishing Formula revisions already starts the next round by itself, so this is only for adding one by hand.')) return;
     var rows = templates.map(function(t){
       return { project_id: projectId, track: t.track, key: t.key, label: t.label,
                sort_order: t.sort_order, round: round, status: 'not_started', owner: t.owner };
