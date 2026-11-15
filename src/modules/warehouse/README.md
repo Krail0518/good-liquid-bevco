@@ -44,6 +44,24 @@ The **dashboard** shows stock at CONRI by client, SKU and lot; empties in
 storage with days held (red past 2 days); finished lots under 90 days to best
 by (yellow); and upcoming transfers and pickups.
 
+## Monthly invoices (automatic)
+
+At 9am Eastern on the 1st of every month, the `wh-monthly-billing` edge function
+(pg_cron, `20261115120000_wh_monthly_billing_cron.sql`) bills the month that just
+ended, using the same math as the Billing tab (`supabase/functions/_shared/wh-billing.mjs`,
+pinned by `tests/wh-billing.test.mjs`). For each client with something to pay it
+creates the invoice, emails it from the company Gmail with a View & Pay link,
+marks the month billed (`invoice_ref` = the invoice number) and audits it. Mike
+gets one Telegram summary. A client is skipped, and named in the summary, when
+the month is already marked billed, when a storage invoice for that month already
+exists, or when the client has no email. So if you bill a client by hand before
+the 1st, mark it billed and the job leaves it alone.
+
+Staff can POST `{ "dryRun": true, "period": "YYYY-MM" }` to see what it would
+send, or `{ "previewTo": "you@goodliquid.com" }` to receive the emails yourself;
+neither writes anything. An admin can POST `{ "period": "YYYY-MM" }` to run a
+month for real (catch-up). Months that are not over are refused.
+
 ## Good Liquid's own packaging
 
 Supplies Good Liquid buys for itself (carrier trays, lids, cartons) are stored
