@@ -171,10 +171,12 @@ Deno.serve(async (req) => {
     try {
       const st = await db.from('wh_billing_statements').select('invoice_ref,amount').eq('client_id', o.client_id).eq('period', ym + '-01').maybeSingle();
       if (st.error) throw new Error(st.error.message);
-      if (st.data) { r.outcome = 'skipped'; r.reason = `already marked billed (${st.data.invoice_ref || 'no ref'}, ${usd(st.data.amount)})`; continue; }
+      // A preview writes nothing, so it renders the email even for a month already
+      // billed: that is how staff look at a real invoice before the 1st.
+      if (st.data && !previewTo) { r.outcome = 'skipped'; r.reason = `already marked billed (${st.data.invoice_ref || 'no ref'}, ${usd(st.data.amount)})`; continue; }
 
       const ex = await existingInvoice(db, o.client_id, ym);
-      if (ex) {
+      if (ex && !previewTo) {
         r.outcome = 'skipped';
         r.reason = `invoice ${ex.invoice_number} already exists (${ex.status})` + (ex.emailed ? '' : ' and was NEVER EMAILED');
         continue;
