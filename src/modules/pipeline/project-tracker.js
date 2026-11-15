@@ -78,6 +78,7 @@
     rows: [],             // built rows
     msById: {},           // milestone id -> row
     filter: 'all',
+    view: 'list',         // 'list' | 'board' (remembered per device)
     search: '',
     showOldLeads: false,
     openEditor: null,     // { rowId, stepKey }
@@ -125,6 +126,7 @@
     var parts = LOOP_KEYS.map(function(k){ return latest[k]; }).filter(Boolean);
     var round = parts.reduce(function(r, m){ return Math.max(r, m.round); }, 1);
     if(approved) return { v:'done', round: round, sub: 'approved', since: latest.batch_1l_approved.completed_at, ms: parts };
+    if(parts.length && parts.every(function(m){ return m.status === 'skipped'; })) return { v:'skip', round: round, sub: '', since: null, ms: parts };
     var live = parts.filter(function(m){ return m.status === 'awaiting_client' || m.status === 'in_progress' || m.status === 'blocked'; })[0];
     if(live) return { v: visual(live.status), round: round, sub: live.label, since: live.updated_at, ms: parts };
     var anyDone = parts.some(function(m){ return m.status === 'completed'; });
@@ -138,7 +140,7 @@
 
     var results = await Promise.all([
       sb.from('projects')
-        .select('id, client_id, name, product_name, status, target_date, created_at, archived_at')
+        .select('id, client_id, name, product_name, status, target_date, started_on, created_at, archived_at')
         .is('archived_at', null).in('status', ['active','on_hold']),
       sb.from('project_milestones')
         .select('id, project_id, track, key, label, sort_order, round, status, owner, target_date, completed_at, updated_at'),
@@ -227,7 +229,7 @@
         id: 'p:' + p.id, type: 'project', projectId: p.id, clientId: p.client_id,
         name: client.company || client.name || 'Unknown client',
         sub: p.product_name || p.name || '',
-        projectStatus: p.status, targetDate: p.target_date,
+        projectStatus: p.status, targetDate: p.target_date, startedOn: p.started_on || p.created_at,
         steps: steps, artwork: art
       }));
     });
@@ -271,7 +273,7 @@
         name: deal.co || deal.client_name || deal.name || 'Unnamed lead',
         sub: won ? 'Won · no project yet' : ('Lead · ' + (deal.stage || 'Prospecting')),
         productName: deal.product_type || '',
-        won: won, oldLead: old,
+        won: won, oldLead: old, createdAt: deal.created_at,
         steps: steps
       }));
     });
@@ -314,7 +316,9 @@
         case 'all':     return true;
         case 'waiting': return r.waiting;
         case 'stalled': return r.stalled;
-        default:        return r.phase === state.filter;
+        default:
+          if(state.filter.indexOf('step:') === 0) return (r.current ? r.current.def.key : 'done') === state.filter.slice(5);
+          return r.phase === state.filter;
       }
     });
   }
@@ -327,85 +331,429 @@
       esc(label) + ' <span style="opacity:.75">' + n + '</span></button>';
   }
 
-  function dot(rowId, s){
-    var c = COLOR[s.v] || COLOR.todo;
-    var filled = s.v !== 'todo';
-    var ring = (s.v === 'cur' || s.v === 'wait' || s.v === 'block') ? 'box-shadow:0 0 0 3px ' + c + '33;' : '';
-    var style = 'width:15px;height:15px;border-radius:50%;flex:none;padding:0;cursor:pointer;' +
-      'border:2px solid ' + (s.missing ? '#2a3448' : c) + ';' +
-      'background:' + (filled ? c : 'transparent') + ';' + ring +
-      (s.missing ? 'border-style:dotted;' : '');
-    return '<button type="button" class="gl-trk-dot" data-row="' + esc(rowId) + '" data-step="' + esc(s.def.key) + '" ' +
-      'title="' + esc(s.title) + '" aria-label="' + esc(s.title) + '" style="' + style + '"></button>';
+  // ── Visual language ───────────────────────────────────────────────────────
+  // Each phase has its own colour, so where a client is reads at a glance:
+  // the card's left edge, the phase labels on the track and the stage panel
+  // all use it. Status colours (done green, waiting yellow, blocked red) sit
+  // on top, and only on the step that is live.
+  var PHASE_COLOR = { sales:'#6b9fff', onboarding:'#c4a4f8', formulation:'#00e5c0', production:'#ffb86b', done:'#5fcf9e' };
+  var PHASE_LABEL = { sales:'Sales', onboarding:'Onboarding', formulation:'Formulation', production:'Production', done:'Complete' };
+  var LINE_DONE = '#5fcf9e', LINE_TODO = '#233149';
+
+  function liveColor(r, s){
+    if(s.v === 'wait')  return COLOR.wait;
+    if(s.v === 'block') return COLOR.block;
+    return PHASE_COLOR[s.def.phase] || COLOR.cur;
   }
 
-  function lineHtml(r){
-    return '<div style="display:flex;align-items:center;flex-wrap:nowrap;overflow-x:auto;padding:2px 0">' +
-      PHASES.map(function(ph, pi){
-        var dots = r.steps.filter(function(s){ return s.def.phase === ph.key; }).map(function(s){ return dot(r.id, s); }).join('');
-        return '<div style="display:flex;align-items:center;gap:4px;padding:0 8px;' +
-          (pi ? 'border-left:1px dashed rgba(255,255,255,.14);' : 'padding-left:0;') + '">' + dots + '</div>';
+  function node(r, s){
+    var isCur = r.current === s;
+    var size, bg, border, inner = '', shadow = '';
+    if(s.v === 'skip' || s.missing){
+      size = 7; bg = '#2a3448'; border = '#2a3448';
+    } else if(s.v === 'done'){
+      size = 14; bg = LINE_DONE; border = LINE_DONE;
+      inner = '<span style="font-size:9px;line-height:1;color:#0b2a1e;font-weight:800">✓</span>';
+    } else if(isCur || s.v === 'cur' || s.v === 'wait' || s.v === 'block'){
+      var c = liveColor(r, s);
+      size = isCur ? 22 : 16; bg = c; border = c;
+      shadow = 'box-shadow:0 0 0 4px ' + c + '33;';
+      inner = isCur ? '<span style="width:7px;height:7px;border-radius:50%;background:#0b1424"></span>' : '';
+    } else {
+      size = 12; bg = '#0b1424'; border = '#3d4a63';
+    }
+    var style = 'width:' + size + 'px;height:' + size + 'px;border-radius:50%;flex:none;padding:0;cursor:pointer;' +
+      'display:inline-flex;align-items:center;justify-content:center;background:' + bg + ';border:2px solid ' + border + ';' + shadow;
+    return '<button type="button" class="gl-trk-dot" data-row="' + esc(r.id) + '" data-step="' + esc(s.def.key) + '" ' +
+      'title="' + esc(s.title) + '" aria-label="' + esc(s.title) + '" style="' + style + '">' + inner + '</button>';
+  }
+
+  function reached(s){ return s.v === 'done' || s.v === 'skip'; }
+
+  // The track: four labelled phase segments, widths in proportion to their
+  // step counts, nodes joined by a line that fills green as steps finish.
+  function trackHtml(r){
+    var cols = PHASES.map(function(ph){ return r.steps.filter(function(s){ return s.def.phase === ph.key; }).length + 'fr'; }).join(' ');
+    return '<div style="display:grid;grid-template-columns:' + cols + ';gap:14px;min-width:460px">' +
+      PHASES.map(function(ph){
+        var steps = r.steps.filter(function(s){ return s.def.phase === ph.key; });
+        var live = steps.some(function(s){ return s === r.current; });
+        var complete = steps.every(function(s){ return reached(s) || s.missing; });
+        var touched = live || steps.some(function(s){ return s.v === 'done'; });
+        var c = PHASE_COLOR[ph.key];
+        var labelColor = live ? c : complete && touched ? '#8fd9b6' : touched ? '#c8d4e8' : '#4a5a78';
+        var label = '<div style="font-size:10px;letter-spacing:1.2px;font-weight:700;text-transform:uppercase;color:' + labelColor + ';margin-bottom:7px;white-space:nowrap;display:flex;align-items:center;gap:5px">' +
+          (live ? '<span style="width:6px;height:6px;border-radius:50%;background:' + c + '"></span>' : '') +
+          esc(ph.label) + (complete && touched ? ' <span style="color:' + LINE_DONE + '">✓</span>' : '') + '</div>';
+        var bar = '<div style="display:flex;align-items:center;height:24px">';
+        steps.forEach(function(s, i){
+          if(i){
+            var prevDone = reached(steps[i - 1]);
+            var filled = prevDone && (reached(s) || s === r.current || s.v === 'cur' || s.v === 'wait' || s.v === 'block');
+            bar += '<span style="flex:1;min-width:6px;height:3px;border-radius:2px;background:' + (filled ? LINE_DONE : LINE_TODO) + '"></span>';
+          }
+          bar += node(r, s);
+        });
+        bar += '</div>';
+        // Phase box: tinted when it is the live phase, so the eye lands there.
+        var box = live ? 'background:' + c + '14;border:1px solid ' + c + '55;' : 'border:1px solid transparent;';
+        return '<div style="border-radius:10px;padding:7px 9px 4px;' + box + '">' + label + bar + '</div>';
       }).join('') +
     '</div>';
   }
 
-  function currentText(r){
-    if(!r.current) return '<span style="color:' + COLOR.done + '">All steps done</span>';
-    var s = r.current, c = COLOR[s.v] || '#8fa4c4';
+  function stepLabel(s){
     var label = (s.def.kind === 'sales' && s.def.doing) ? s.def.doing : s.def.label;
     if(s.loop) label = '1 L batch' + (s.loop.round > 1 ? ', round ' + s.loop.round : '') + (s.loop.sub && s.loop.sub !== 'approved' ? ' · ' + s.loop.sub : '');
-    var extra = s.v === 'wait' ? ' · waiting on client' : s.v === 'block' ? ' · blocked' : '';
-    var out = '<span style="color:' + c + '">' + esc(label) + extra + '</span>';
-    if(r.next) out += ' <span style="color:#6b87ad">· next: ' + esc(r.next.def.label) + '</span>';
-    return out;
+    return label;
   }
 
-  function daysBadge(r){
-    if(r.daysOnStep == null) return '<span style="color:#6b87ad">—</span>';
-    var txt = r.daysOnStep + (r.daysOnStep === 1 ? ' day' : ' days');
-    if(r.stalled) return '<span title="On this step for more than ' + STALL_DAYS + ' days" style="display:inline-block;padding:2px 8px;border-radius:999px;background:rgba(255,133,121,.15);color:#ff8579;font-size:12px">' + txt + '</span>';
-    return '<span style="font-size:12px;color:#c8d4e8">' + txt + '</span>';
+  function nowHtml(r){
+    if(!r.current){
+      return '<span style="display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;background:rgba(95,207,158,.14);color:#8fd9b6;font-size:13px;font-weight:600">✓ All steps complete</span>';
+    }
+    var s = r.current, c = liveColor(r, s);
+    var state = s.v === 'wait' ? 'Waiting on client' : s.v === 'block' ? 'Blocked' : s.def.kind === 'sales' ? 'In the pipeline' : 'In progress';
+    return '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">' +
+      '<span style="display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;background:' + c + '1f;border:1px solid ' + c + '66">' +
+        '<span style="font-size:10px;letter-spacing:1px;font-weight:700;text-transform:uppercase;color:' + c + '">Now</span>' +
+        '<span style="font-size:13px;font-weight:600;color:#eef4ff">' + esc(stepLabel(s)) + '</span>' +
+        '<span style="font-size:12px;color:' + c + '">· ' + state + '</span>' +
+      '</span>' +
+      (r.next ? '<span style="font-size:12px;color:#6b87ad">Next → <span style="color:#a9b8d0">' + esc(r.next.def.label) + '</span></span>' : '') +
+    '</div>';
+  }
+
+  // Right-hand panel: phase name, step X of Y (steps that apply), progress bar, days.
+  function stagePanel(r){
+    var phase = r.current ? r.current.def.phase : 'done';
+    var c = PHASE_COLOR[phase];
+    var applies = r.steps.filter(function(s){ return s.v !== 'skip' && !s.missing; });
+    var done = applies.filter(function(s){ return s.v === 'done'; }).length;
+    var idx = r.current ? applies.indexOf(r.current) + 1 : applies.length;
+    var pct = applies.length ? Math.round(done / applies.length * 100) : 0;
+    var days = '';
+    if(r.daysOnStep != null){
+      var txt = r.daysOnStep + (r.daysOnStep === 1 ? ' day' : ' days') + ' on step';
+      days = r.stalled
+        ? '<span title="On this step for more than ' + STALL_DAYS + ' days" style="display:inline-block;margin-top:6px;padding:2px 8px;border-radius:999px;background:rgba(255,133,121,.16);color:#ff8579;font-size:11px;font-weight:600">⚠ ' + txt + '</span>'
+        : '<div style="margin-top:6px;font-size:11px;color:#8fa4c4">' + txt + '</div>';
+    }
+    return '<div style="text-align:right">' +
+      '<div style="font-size:11px;letter-spacing:1.2px;font-weight:700;text-transform:uppercase;color:' + c + '">' + esc(PHASE_LABEL[phase]) + '</div>' +
+      '<div style="font-size:12px;color:#c8d4e8;margin-top:2px">Step ' + idx + ' of ' + applies.length + '</div>' +
+      '<div style="height:5px;border-radius:3px;background:#1a2538;margin-top:6px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + c + '"></div></div>' +
+      days +
+    '</div>';
   }
 
   function rowHtml(r){
+    var phase = r.current ? r.current.def.phase : 'done';
+    var c = PHASE_COLOR[phase];
     var tag = r.type === 'lead'
       ? '<span style="font-size:10px;letter-spacing:.06em;color:#6b87ad;border:1px solid rgba(255,255,255,.14);border-radius:4px;padding:1px 5px;margin-left:6px">' + (r.won ? 'WON' : 'LEAD') + '</span>'
       : (r.projectStatus === 'on_hold' ? '<span style="font-size:10px;color:#f5c842;border:1px solid rgba(245,200,66,.4);border-radius:4px;padding:1px 5px;margin-left:6px">ON HOLD</span>' : '');
-    var art = r.artwork ? '<div style="font-size:11px;color:#6b87ad;margin-top:3px">Packaging and artwork: ' + esc(MS_LABEL[r.artwork.status] || r.artwork.status) + '</div>' : '';
+    var art = r.artwork ? '<div style="font-size:11px;color:#6b87ad;margin-top:6px">🎨 Artwork: <span style="color:' + (r.artwork.status === 'completed' ? LINE_DONE : r.artwork.status === 'awaiting_client' ? COLOR.wait : '#a9b8d0') + '">' + esc(MS_LABEL[r.artwork.status] || r.artwork.status) + '</span></div>' : '';
     var action = '';
     if(r.type === 'lead' && r.won && r.clientId){
-      action = '<button type="button" class="gl-trk-create cbtn" data-row="' + esc(r.id) + '" style="margin-top:6px;font-size:11px;padding:3px 8px">+ Create project</button>';
+      action = '<button type="button" class="gl-trk-create cbtn" data-row="' + esc(r.id) + '" style="margin-top:8px;font-size:11px;padding:3px 8px">+ Create project</button>';
     } else if(r.type === 'lead' && r.won){
-      action = '<div style="font-size:11px;color:#f5c842;margin-top:4px">Convert this deal to a client first, then create the project.</div>';
+      action = '<div style="font-size:11px;color:#f5c842;margin-top:6px">Convert this deal to a client first, then create the project.</div>';
     }
     var open = r.type === 'project'
-      ? '<button type="button" class="gl-trk-open" data-kind="client" data-id="' + esc(r.clientId) + '" style="all:unset;cursor:pointer;font-size:14px;font-weight:600;color:#e6eefb">' + esc(r.name) + '</button>'
-      : '<button type="button" class="gl-trk-open" data-kind="deal" data-id="' + esc(r.dealId) + '" style="all:unset;cursor:pointer;font-size:14px;font-weight:600;color:#e6eefb">' + esc(r.name) + '</button>';
+      ? '<button type="button" class="gl-trk-open" data-kind="client" data-id="' + esc(r.clientId) + '" style="all:unset;cursor:pointer;font-size:15px;font-weight:700;color:#eef4ff">' + esc(r.name) + '</button>'
+      : '<button type="button" class="gl-trk-open" data-kind="deal" data-id="' + esc(r.dealId) + '" style="all:unset;cursor:pointer;font-size:15px;font-weight:700;color:#eef4ff">' + esc(r.name) + '</button>';
 
     var editor = (state.openEditor && state.openEditor.rowId === r.id) ? editorHtml(r, state.openEditor.stepKey) : '';
 
-    return '<div class="gl-trk-row" style="border-top:1px solid rgba(255,255,255,.07);padding:12px 0">' +
-      '<div style="display:grid;grid-template-columns:minmax(150px,220px) minmax(0,1fr) 90px;gap:14px;align-items:center">' +
-        '<div style="min-width:0">' + open + tag +
-          '<div style="font-size:12px;color:#8fa4c4;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.sub) + '</div>' + art + action +
+    return '<div class="gl-trk-row" data-row="' + esc(r.id) + '" style="margin-bottom:10px;border-radius:12px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06);border-left:4px solid ' + c + ';padding:14px 16px">' +
+      '<div style="display:grid;grid-template-columns:minmax(150px,200px) minmax(0,1fr) 130px;gap:18px;align-items:center">' +
+        '<div style="min-width:0">' + open + (tag ? '<div style="margin-top:4px;margin-left:-6px">' + tag + '</div>' : '') +
+          '<div style="font-size:12px;color:#8fa4c4;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.sub) + '">' + esc(r.sub) + '</div>' + art + action +
         '</div>' +
-        '<div style="min-width:0">' + lineHtml(r) +
-          '<div style="font-size:12px;margin-top:6px">' + currentText(r) + '</div></div>' +
-        '<div style="text-align:right">' + daysBadge(r) + '</div>' +
+        '<div style="min-width:0">' +
+          '<div style="overflow-x:auto;padding-bottom:2px">' + trackHtml(r) + '</div>' +
+          '<div style="margin-top:10px">' + nowHtml(r) + '</div>' +
+        '</div>' +
+        stagePanel(r) +
       '</div>' + editor +
     '</div>';
   }
 
-  function legendHtml(){
-    function sw(c, filled, label){
-      return '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;border:2px solid ' + c + ';background:' + (filled ? c : 'transparent') + '"></span>' + label + '</span>';
-    }
-    return '<div style="display:flex;flex-wrap:wrap;gap:16px;font-size:12px;color:#8fa4c4;margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,.07)">' +
-      sw(COLOR.done, true, 'Done') + sw(COLOR.cur, true, 'Current') + sw(COLOR.wait, true, 'Waiting on client') +
-      sw(COLOR.block, true, 'Blocked') + sw(COLOR.todo, false, 'Upcoming') +
-      '<span>Hover a dot for the step and date. Click it to change it.</span></div>';
+  function groupHeader(key, n){
+    var c = PHASE_COLOR[key];
+    return '<div style="display:flex;align-items:center;gap:10px;margin:18px 0 10px">' +
+      '<span style="width:10px;height:10px;border-radius:3px;background:' + c + '"></span>' +
+      '<span style="font-size:12px;letter-spacing:1.5px;font-weight:700;text-transform:uppercase;color:' + c + '">' + esc(PHASE_LABEL[key]) + '</span>' +
+      '<span style="font-size:12px;color:#6b87ad">' + n + '</span>' +
+      '<span style="flex:1;height:1px;background:rgba(255,255,255,.07)"></span>' +
+    '</div>';
   }
 
+  // Furthest along first: a production run this week matters more than a lead.
+  var GROUP_ORDER = ['production', 'formulation', 'onboarding', 'sales', 'done'];
+
+  function listHtml(vis){
+    if(!vis.length){
+      return '<div style="padding:28px 0;text-align:center;color:#8fa4c4;font-size:13px">Nothing matches this filter.</div>';
+    }
+    if(state.filter !== 'all' || state.search){ return vis.map(rowHtml).join(''); }
+    return GROUP_ORDER.map(function(g){
+      var rows = vis.filter(function(r){ return (r.current ? r.current.def.phase : 'done') === g; });
+      return rows.length ? groupHeader(g, rows.length) + rows.map(rowHtml).join('') : '';
+    }).join('');
+  }
+
+  function legendHtml(){
+    function sw(html, label){ return '<span style="display:inline-flex;align-items:center;gap:6px">' + html + label + '</span>'; }
+    function dotSw(bg, border, size){ return '<span style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;background:' + bg + ';border:2px solid ' + border + '"></span>'; }
+    return '<div style="display:flex;flex-wrap:wrap;gap:16px;font-size:12px;color:#8fa4c4;margin-top:16px;padding-top:12px;border-top:1px solid rgba(255,255,255,.07)">' +
+      sw(dotSw(LINE_DONE, LINE_DONE, 10), 'Done') +
+      sw(dotSw(PHASE_COLOR.formulation, PHASE_COLOR.formulation, 14), 'Current (phase colour)') +
+      sw(dotSw(COLOR.wait, COLOR.wait, 12), 'Waiting on client') +
+      sw(dotSw(COLOR.block, COLOR.block, 12), 'Blocked') +
+      sw(dotSw('#0b1424', '#3d4a63', 10), 'Upcoming') +
+      sw(dotSw('#2a3448', '#2a3448', 6), 'Not needed for this client') +
+      '<span>Click any step to change it.</span></div>';
+  }
+
+  // ── Overview strip ────────────────────────────────────────────────────────
+  // One segment per step: how many clients are on it right now, in the phase
+  // colour, with waiting / stalled counts. Click a segment to filter to it.
+  var SHORT = {
+    lead:'Lead', qualified:'Qualified', quoted:'Quote', won:'Won', intake:'Onboard',
+    formulation:'Formulate', loop_1l:'1 L batch', batch_1l_approved:'1 L OK', batch_50l:'50 L batch',
+    pa_letter:'PA letter', production_scheduled:'Scheduled', production_run:'Running',
+    shipped:'Shipped', invoiced_paid:'Paid', done:'Complete'
+  };
+  function stepKeyOf(r){ return r.current ? r.current.def.key : 'done'; }
+  function phaseOf(r){ return r.current ? r.current.def.phase : 'done'; }
+  function boardColumns(){
+    return STEPS.map(function(s){ return { key:s.key, phase:s.phase, label:s.label }; })
+      .concat([{ key:'done', phase:'done', label:'Complete' }]);
+  }
+
+  function stripHtml(rows){
+    var cols = boardColumns();
+    var max = 1;
+    var stats = {};
+    cols.forEach(function(c){
+      var on = rows.filter(function(r){ return stepKeyOf(r) === c.key; });
+      stats[c.key] = { n:on.length, wait:on.filter(function(r){ return r.waiting; }).length,
+                       stall:on.filter(function(r){ return r.stalled; }).length };
+      if(on.length > max) max = on.length;
+    });
+    var phases = PHASES.concat([{ key:'done', label:'Complete' }]);
+    return '<div style="margin:6px 0 14px;padding:12px 14px 10px;border-radius:12px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06);overflow-x:auto">' +
+      '<div style="display:flex;gap:10px;min-width:820px">' +
+      phases.map(function(ph){
+        var pc = cols.filter(function(c){ return c.phase === ph.key; });
+        var color = PHASE_COLOR[ph.key];
+        return '<div style="flex:' + pc.length + ' 1 0;min-width:0">' +
+          '<div style="font-size:10px;letter-spacing:1.2px;font-weight:700;text-transform:uppercase;color:' + color + ';margin-bottom:6px;white-space:nowrap">' + esc(ph.label) + '</div>' +
+          '<div style="display:flex;gap:4px">' +
+          pc.map(function(c){
+            var st = stats[c.key];
+            var active = state.filter === 'step:' + c.key;
+            var h = st.n ? Math.max(8, Math.round(st.n / max * 34)) : 3;
+            var flags = (st.wait ? '<span title="' + st.wait + ' waiting on client" style="color:#f5c842">●' + st.wait + '</span>' : '') +
+                        (st.stall ? '<span title="' + st.stall + ' stalled" style="color:#ff8579;margin-left:4px">▲' + st.stall + '</span>' : '');
+            return '<button type="button" class="gl-trk-seg" data-step="' + esc(c.key) + '" title="' + esc(c.label) + ': ' + st.n + (st.n === 1 ? ' client' : ' clients') + '" ' +
+              'style="all:unset;box-sizing:border-box;flex:1 1 0;min-width:0;cursor:pointer;text-align:center;padding:4px 2px;border-radius:8px;' +
+              (active ? 'background:' + color + '22;outline:1px solid ' + color + ';' : '') + '">' +
+              '<div style="height:36px;display:flex;align-items:flex-end;justify-content:center">' +
+                '<div style="width:70%;height:' + h + 'px;border-radius:4px;background:' + (st.n ? color : '#1f2a3d') + ';opacity:' + (st.n ? 1 : .8) + '"></div></div>' +
+              '<div style="font-size:16px;font-weight:700;margin-top:4px;color:' + (st.n ? '#eef4ff' : '#3d4a63') + '">' + st.n + '</div>' +
+              '<div style="font-size:10px;color:' + (st.n ? '#a9b8d0' : '#4a5a78') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(SHORT[c.key] || c.label) + '</div>' +
+              '<div style="font-size:10px;height:13px">' + flags + '</div>' +
+            '</button>';
+          }).join('') +
+          '</div></div>';
+      }).join('') +
+      '</div></div>';
+  }
+
+  // ── Board view ────────────────────────────────────────────────────────────
+  // A column per step, each client as a card in the column of its current
+  // step. Busy sales columns show the first BOARD_CAP cards and a "more" link.
+  var BOARD_CAP = 12;
+
+  function cardHtml(r){
+    var c = PHASE_COLOR[phaseOf(r)];
+    var edge = r.current && r.current.v === 'block' ? COLOR.block : r.waiting ? COLOR.wait : c;
+    var status = !r.current ? '<span style="color:#8fd9b6">Complete</span>'
+      : r.current.v === 'wait' ? '<span style="color:#f5c842">Waiting on client</span>'
+      : r.current.v === 'block' ? '<span style="color:#ff8579">Blocked</span>'
+      : r.current.def.kind === 'sales' ? '<span style="color:#8fa4c4">' + esc(r.current.def.doing || 'In the pipeline') + '</span>'
+      : '<span style="color:#a9b8d0">' + (r.current.loop ? esc(stepLabel(r.current)) : 'In progress') + '</span>';
+    var days = r.daysOnStep == null ? '' : r.stalled
+      ? '<span style="color:#ff8579;font-weight:600">⚠ ' + r.daysOnStep + 'd</span>'
+      : '<span style="color:#6b87ad">' + r.daysOnStep + 'd</span>';
+    return '<button type="button" class="gl-trk-card" data-row="' + esc(r.id) + '" title="' + esc(r.name + (r.sub ? ' · ' + r.sub : '')) + '" ' +
+      'style="all:unset;box-sizing:border-box;display:block;width:100%;cursor:pointer;margin-bottom:8px;padding:9px 10px;border-radius:9px;' +
+      'background:#111c2e;border:1px solid ' + (r.stalled ? 'rgba(255,133,121,.45)' : 'rgba(255,255,255,.07)') + ';border-left:3px solid ' + edge + '">' +
+      '<div style="font-size:13px;font-weight:700;color:#eef4ff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.name) + '</div>' +
+      '<div style="font-size:11px;color:#8fa4c4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px">' + esc(r.sub) + '</div>' +
+      '<div style="display:flex;justify-content:space-between;gap:6px;font-size:11px;margin-top:6px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + status + '</span>' + days + '</div>' +
+    '</button>';
+  }
+
+  function boardHtml(vis){
+    var cols = boardColumns();
+    return '<div style="overflow-x:auto;padding-bottom:6px"><div style="display:flex;gap:10px;align-items:flex-start;min-width:max-content">' +
+      cols.map(function(c){
+        var rows = vis.filter(function(r){ return stepKeyOf(r) === c.key; });
+        var color = PHASE_COLOR[c.phase];
+        var shown = rows.slice(0, BOARD_CAP);
+        // Empty steps keep their place (so position still reads left to right) but
+        // shrink, so the busy columns fit on screen.
+        return '<div style="width:' + (rows.length ? 178 : 92) + 'px;flex:none">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 9px;margin-bottom:8px;border-radius:8px;background:' + color + '1a;border-top:3px solid ' + color + '">' +
+            '<span style="font-size:11px;font-weight:700;color:' + color + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(c.label) + '</span>' +
+            '<span style="font-size:11px;font-weight:700;color:#eef4ff;background:rgba(255,255,255,.08);border-radius:999px;padding:1px 7px">' + rows.length + '</span>' +
+          '</div>' +
+          (rows.length ? shown.map(cardHtml).join('') : '<div style="font-size:11px;color:#3d4a63;text-align:center;padding:10px 0;border:1px dashed rgba(255,255,255,.07);border-radius:9px">—</div>') +
+          (rows.length > shown.length ? '<button type="button" class="gl-trk-more" data-step="' + esc(c.key) + '" style="all:unset;cursor:pointer;font-size:11px;color:#6b9fff">+ ' + (rows.length - shown.length) + ' more in the list</button>' : '') +
+        '</div>';
+      }).join('') +
+    '</div></div>';
+  }
+
+  // ── Timeline view ─────────────────────────────────────────────────────────
+  // Each client's ACTUAL history on a calendar: one bar per phase, from when
+  // it started to when it finished (or to today, striped, if it is the live
+  // phase). Dates come from the steps themselves: a phase ends at its last
+  // completed step, and the next phase starts there. A project target date,
+  // when set, is drawn as a marker. Nothing is projected or guessed forward.
+  var TL_LOOKBACK_DAYS = 150, TL_AHEAD_DAYS = 21;
+
+  function tsOf(d){ var t = d ? new Date(d).getTime() : NaN; return isFinite(t) ? t : null; }
+
+  function stepDates(s){
+    var out = [];
+    if(s.loop && s.loop.ms) s.loop.ms.forEach(function(m){ var t = tsOf(m.completed_at); if(t) out.push(t); });
+    else if(s.ms){ var t = tsOf(s.ms.completed_at); if(t) out.push(t); }
+    return out;
+  }
+
+  // [{ phase, start, end, live }] for one row.
+  function phaseSpans(r){
+    var now = Date.now();
+    if(r.type === 'lead'){
+      var st = tsOf(r.createdAt) || now;
+      return [{ phase:'sales', start:st, end:now, live:true }];
+    }
+    var spans = [], cursor = tsOf(r.startedOn);
+    ['onboarding','formulation','production'].forEach(function(ph){
+      var steps = r.steps.filter(function(s){ return s.def.phase === ph; });
+      var applies = steps.filter(function(s){ return s.v !== 'skip' && !s.missing; });
+      if(!applies.length) return;                       // whole phase not needed
+      var dates = [];
+      applies.forEach(function(s){ dates = dates.concat(stepDates(s)); });
+      var live = applies.some(function(s){ return s === r.current; });
+      var complete = applies.every(function(s){ return s.v === 'done'; });
+      if(!live && !complete && !dates.length) return;   // not reached yet
+      var start = cursor || (dates.length ? Math.min.apply(null, dates) : null) || tsOf(r.current && r.current.since) || now;
+      var end = live ? now : (dates.length ? Math.max.apply(null, dates) : start);
+      if(end < start) start = end;
+      spans.push({ phase:ph, start:start, end:end, live:live });
+      cursor = end;
+    });
+    return spans;
+  }
+
+  function timelineHtml(vis){
+    if(!vis.length) return '<div style="padding:28px 0;text-align:center;color:#8fa4c4;font-size:13px">Nothing matches this filter.</div>';
+    var now = Date.now();
+    var rows = vis.map(function(r){ return { r:r, spans:phaseSpans(r), target:tsOf(r.targetDate) }; });
+    var earliest = now;
+    rows.forEach(function(x){ x.spans.forEach(function(s){ if(s.start < earliest) earliest = s.start; }); });
+    var t0 = Math.max(earliest - 7 * DAY, now - TL_LOOKBACK_DAYS * DAY);
+    var latestTarget = now;
+    rows.forEach(function(x){ if(x.target && x.target > latestTarget) latestTarget = x.target; });
+    var t1 = Math.max(now + TL_AHEAD_DAYS * DAY, latestTarget + 7 * DAY);
+    var span = t1 - t0;
+    function pct(t){ return Math.max(0, Math.min(100, (t - t0) / span * 100)); }
+
+    // Month ticks
+    var ticks = '', d = new Date(t0); d.setDate(1); d.setHours(0, 0, 0, 0);
+    while(d.getTime() <= t1){
+      var x = pct(d.getTime());
+      if(d.getTime() >= t0) ticks += '<div style="position:absolute;left:' + x + '%;top:0;bottom:0;border-left:1px solid rgba(255,255,255,.06)"></div>' +
+        '<div style="position:absolute;left:calc(' + x + '% + 4px);top:0;font-size:10px;color:#6b87ad;white-space:nowrap">' + d.toLocaleDateString(undefined, { month:'short' }) + '</div>';
+      d.setMonth(d.getMonth() + 1);
+    }
+    var todayX = pct(now);
+
+    var head = '<div style="display:grid;grid-template-columns:200px minmax(0,1fr);gap:12px;margin:14px 0 4px">' +
+      '<div></div><div style="position:relative;height:16px">' + ticks +
+      '<div style="position:absolute;left:calc(' + todayX + '% + 4px);top:0;font-size:10px;font-weight:700;color:#00e5c0">Today</div></div></div>';
+
+    var body = rows.map(function(x){
+      var r = x.r;
+      var bars = x.spans.map(function(s){
+        var c = PHASE_COLOR[s.phase];
+        var left = pct(s.start), width = Math.max(0.8, pct(s.end) - left);
+        var waiting = s.live && r.waiting, blocked = s.live && r.current && r.current.v === 'block';
+        var fill = s.live
+          ? 'background:repeating-linear-gradient(135deg,' + c + 'cc 0 6px,' + c + '77 6px 12px);'
+          : 'background:' + c + ';';
+        var outline = blocked ? 'box-shadow:0 0 0 2px #ff8579;' : waiting ? 'box-shadow:0 0 0 2px #f5c842;' : r.stalled && s.live ? 'box-shadow:0 0 0 2px #ff857988;' : '';
+        var days = Math.max(1, Math.round((s.end - s.start) / DAY));
+        var tip = PHASE_LABEL[s.phase] + ': ' + fmtDate(s.start) + ' → ' + (s.live ? 'now' : fmtDate(s.end)) + ' (' + days + (days === 1 ? ' day' : ' days') + ')' +
+                  (s.live && r.current ? ' · now: ' + stepLabel(r.current) + (waiting ? ', waiting on client' : '') : '');
+        return '<div title="' + esc(tip) + '" style="position:absolute;top:6px;height:16px;border-radius:5px;left:' + left + '%;width:' + width + '%;' + fill + outline + '"></div>';
+      }).join('');
+      var target = x.target ? '<div title="Target ' + esc(fmtDate(x.target)) + '" style="position:absolute;top:2px;left:calc(' + pct(x.target) + '% - 6px);font-size:12px;color:#ff8579">◆</div>' : '';
+      var nowTxt = r.current ? stepLabel(r.current) : 'Complete';
+      return '<div style="display:grid;grid-template-columns:200px minmax(0,1fr);gap:12px;align-items:center;padding:6px 0;border-top:1px solid rgba(255,255,255,.05)">' +
+        '<button type="button" class="gl-trk-card" data-row="' + esc(r.id) + '" style="all:unset;cursor:pointer;min-width:0;display:block">' +
+          '<div style="font-size:13px;font-weight:700;color:#eef4ff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.name) + '</div>' +
+          '<div style="font-size:11px;color:' + (r.waiting ? '#f5c842' : '#8fa4c4') + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(nowTxt) + (r.daysOnStep != null ? ' · ' + r.daysOnStep + 'd' : '') + '</div>' +
+        '</button>' +
+        '<div style="position:relative;height:28px;border-radius:6px;background:rgba(255,255,255,.02)">' +
+          '<div style="position:absolute;left:' + todayX + '%;top:0;bottom:0;border-left:2px solid rgba(0,229,192,.35)"></div>' +
+          bars + target +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    var key = '<div style="display:flex;flex-wrap:wrap;gap:14px;font-size:11px;color:#8fa4c4;margin-top:10px">' +
+      ['sales','onboarding','formulation','production'].map(function(ph){
+        return '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:8px;border-radius:2px;background:' + PHASE_COLOR[ph] + '"></span>' + PHASE_LABEL[ph] + '</span>';
+      }).join('') +
+      '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:8px;border-radius:2px;background:repeating-linear-gradient(135deg,#00e5c0cc 0 3px,#00e5c077 3px 6px)"></span>Live phase (to today)</span>' +
+      '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:8px;border-radius:2px;box-shadow:0 0 0 2px #f5c842"></span>Waiting on client</span>' +
+      '<span style="color:#ff8579">◆</span><span style="margin-left:-8px">Target date</span>' +
+      '<span>Bars are actual history from step dates. Click a name to open it.</span></div>';
+
+    return '<div style="overflow-x:auto"><div style="min-width:760px">' + head + body + '</div></div>' + key;
+  }
+
+  function viewToggle(){
+    function b(v, label){
+      var on = state.view === v;
+      return '<button type="button" class="gl-trk-view" data-view="' + v + '" style="cursor:pointer;font:inherit;font-size:12px;font-weight:600;padding:5px 12px;border:0;' +
+        'background:' + (on ? 'rgba(0,229,192,.18)' : 'transparent') + ';color:' + (on ? 'var(--teal)' : '#8fa4c4') + '">' + label + '</button>';
+    }
+    return '<div style="display:inline-flex;border:1px solid rgba(255,255,255,.14);border-radius:8px;overflow:hidden">' + b('list', '☰ List') + b('board', '▦ Board') + b('timeline', '⎯ Timeline') + '</div>';
+  }
+
+  // Board card -> list view with that client's current step open.
+  function focusRow(rowId){
+    var r = findRow(rowId); if(!r) return;
+    state.view = 'list'; saveView();
+    state.filter = 'all'; state.search = '';
+    state.openEditor = null;
+    openEditor(rowId, r.current ? r.current.def.key : 'invoiced_paid');
+    var el = document.querySelector('.gl-trk-row[data-row="' + (window.CSS && CSS.escape ? CSS.escape(rowId) : rowId) + '"]');
+    if(el && el.scrollIntoView) el.scrollIntoView({ block:'center', behavior:'smooth' });
+  }
+
+  var VIEW_KEY = 'gl-tracker-view';
+  function loadView(){ try { var v = window.localStorage && localStorage.getItem(VIEW_KEY); if(v === 'board' || v === 'list' || v === 'timeline') state.view = v; } catch(e){} }
+  function saveView(){ try { window.localStorage && localStorage.setItem(VIEW_KEY, state.view); } catch(e){} }
+
   function render(){
     var body = document.getElementById('trk-body');
     if(!body) return;
@@ -419,24 +767,23 @@
     var hiddenOld = state.rows.filter(function(r){ return r.oldLead; }).length;
 
     body.innerHTML =
-      '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:12px">' +
+      stripHtml(all) +
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:4px">' +
         '<div style="display:flex;flex-wrap:wrap;gap:6px">' +
           pill('all', 'All', all.length, state.filter === 'all') +
-          PHASES.map(function(ph){ return pill(ph.key, ph.label, count(function(r){ return r.phase === ph.key; }), state.filter === ph.key); }).join('') +
+          PHASES.map(function(ph){ return pill(ph.key, ph.label, count(function(r){ return r.phase === ph.key; }), state.filter === ph.key, PHASE_COLOR[ph.key]); }).join('') +
           pill('waiting', 'Waiting on client', count(function(r){ return r.waiting; }), state.filter === 'waiting', '#f5c842') +
           pill('stalled', 'Stalled', count(function(r){ return r.stalled; }), state.filter === 'stalled', '#ff8579') +
         '</div>' +
-        '<div style="display:flex;gap:10px;align-items:center">' +
+        '<div style="display:flex;gap:10px;align-items:center">' + viewToggle() +
           (hiddenOld ? '<label style="font-size:12px;color:#8fa4c4;display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="trk-old"' + (state.showOldLeads ? ' checked' : '') + '> Show ' + hiddenOld + ' older leads</label>' : '') +
           '<input id="trk-search" type="search" placeholder="Search brand or product" value="' + esc(state.search) + '" style="font:inherit;font-size:13px;padding:6px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:#e6eefb;width:200px">' +
         '</div>' +
       '</div>' +
-      '<div style="display:grid;grid-template-columns:minmax(150px,220px) minmax(0,1fr) 90px;gap:14px;font-size:11px;color:#6b87ad;padding-bottom:6px">' +
-        '<div>Client</div><div>Sales · Onboarding · Formulation · Production</div><div style="text-align:right">On step</div>' +
-      '</div>' +
-      (vis.length ? vis.map(rowHtml).join('') :
-        '<div style="padding:28px 0;text-align:center;color:#8fa4c4;font-size:13px;border-top:1px solid rgba(255,255,255,.07)">Nothing matches this filter.</div>') +
-      legendHtml();
+      (state.filter.indexOf('step:') === 0 ? '<div style="margin:10px 0 0;font-size:12px;color:#8fa4c4">Showing clients on <b style="color:#eef4ff">' + esc(SHORT[state.filter.slice(5)] || state.filter.slice(5)) + '</b> · <button type="button" class="gl-trk-filter" data-filter="all" style="all:unset;cursor:pointer;color:#6b9fff">show all</button></div>' : '') +
+      (state.view === 'board' ? '<div style="margin-top:14px">' + boardHtml(vis) + '</div>' + legendHtml()
+        : state.view === 'timeline' ? timelineHtml(vis)
+        : listHtml(vis) + legendHtml());
 
     var search = document.getElementById('trk-search');
     if(search && state._refocus){
@@ -616,11 +963,16 @@
     var body = document.getElementById('trk-body');
     if(!body || body._glTrkWired) return;
     body._glTrkWired = true;
+    loadView();
 
     body.addEventListener('click', function(e){
       var t = e.target.closest && e.target.closest('button');
       if(!t || !body.contains(t)) return;
       if(t.classList.contains('gl-trk-filter')){ state.filter = t.getAttribute('data-filter'); state.openEditor = null; render(); return; }
+      if(t.classList.contains('gl-trk-seg')){ var sk = 'step:' + t.getAttribute('data-step'); state.filter = state.filter === sk ? 'all' : sk; state.openEditor = null; render(); return; }
+      if(t.classList.contains('gl-trk-view')){ var vw = t.getAttribute('data-view'); state.view = (vw === 'board' || vw === 'timeline') ? vw : 'list'; saveView(); state.openEditor = null; render(); return; }
+      if(t.classList.contains('gl-trk-card')){ focusRow(t.getAttribute('data-row')); return; }
+      if(t.classList.contains('gl-trk-more')){ state.view = 'list'; saveView(); state.filter = 'step:' + t.getAttribute('data-step'); render(); return; }
       if(t.classList.contains('gl-trk-dot')){ openEditor(t.getAttribute('data-row'), t.getAttribute('data-step')); return; }
       if(t.classList.contains('gl-trk-close')){ state.openEditor = null; render(); return; }
       if(t.classList.contains('gl-trk-save')){ saveStatus(t.getAttribute('data-ms')); return; }
@@ -658,7 +1010,7 @@
   window.glRefreshProjectTracker = refresh;
 
   // Exposed for tests only: pure functions, no DOM, no network.
-  window.__glTrackerInternals = { build: build, loopState: loopState, latestByKey: latestByKey, STEPS: STEPS };
+  window.__glTrackerInternals = { build: build, loopState: loopState, latestByKey: latestByKey, STEPS: STEPS, phaseSpans: phaseSpans };
 
   function watch(){
     var pg = document.getElementById('cpg-tracker');
