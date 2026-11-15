@@ -56,6 +56,11 @@ jobs:
       - name: Run email-text unit tests
         run: node tests/email-text.test.mjs
 
+      # Warehouse storage billing: the math the monthly auto-invoice job runs
+      # must match the Billing tab, in Florida days, with escaped emails.
+      - name: Run warehouse billing unit tests
+        run: node tests/wh-billing.test.mjs
+
       - name: Run OAuth error-mapping unit tests
         run: node tests/oauth-errors.test.mjs
 
