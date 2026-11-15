@@ -106,6 +106,18 @@ const p2 = T.build(approved).find((r) => r.id === 'p:' + P);
 check('after approval the 1 L dot is done', p2.steps[6].v === 'done', p2.steps[6].v);
 check('after approval the current step is the 50 L batch', p2.current.def.key === 'batch_50l', p2.current.def.key);
 
+// Canning-only client: every 1 L loop step skipped -> the loop is 'not needed', not upcoming.
+const canning = JSON.parse(JSON.stringify(fixture));
+canning.milestones = canning.milestones.filter((m) => m.round === 1 || m.track === 'artwork');
+canning.milestones.forEach((m) => {
+  if (['formulation','batch_1l_sent','client_feedback','formula_revisions','batch_1l_approved','batch_50l'].includes(m.key)) m.status = 'skipped';
+  if (m.key === 'pa_letter') m.status = 'completed';
+  if (m.key === 'production_scheduled') m.status = 'in_progress';
+});
+const p3 = T.build(canning).find((r) => r.id === 'p:' + P);
+check('canning-only: the all-skipped 1 L loop shows as not needed', p3.steps[6].v === 'skip', p3.steps[6].v);
+check('canning-only: current step is Production scheduled', p3.current.def.key === 'production_scheduled', p3.current.def.key);
+
 // Render: everything typed by a lead or client is escaped.
 window.supa = {};
 // render() is internal; drive it through refresh() with a stub client.

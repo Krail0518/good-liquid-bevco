@@ -125,6 +125,7 @@
     var parts = LOOP_KEYS.map(function(k){ return latest[k]; }).filter(Boolean);
     var round = parts.reduce(function(r, m){ return Math.max(r, m.round); }, 1);
     if(approved) return { v:'done', round: round, sub: 'approved', since: latest.batch_1l_approved.completed_at, ms: parts };
+    if(parts.length && parts.every(function(m){ return m.status === 'skipped'; })) return { v:'skip', round: round, sub: '', since: null, ms: parts };
     var live = parts.filter(function(m){ return m.status === 'awaiting_client' || m.status === 'in_progress' || m.status === 'blocked'; })[0];
     if(live) return { v: visual(live.status), round: round, sub: live.label, since: live.updated_at, ms: parts };
     var anyDone = parts.some(function(m){ return m.status === 'completed'; });
@@ -327,83 +328,190 @@
       esc(label) + ' <span style="opacity:.75">' + n + '</span></button>';
   }
 
-  function dot(rowId, s){
-    var c = COLOR[s.v] || COLOR.todo;
-    var filled = s.v !== 'todo';
-    var ring = (s.v === 'cur' || s.v === 'wait' || s.v === 'block') ? 'box-shadow:0 0 0 3px ' + c + '33;' : '';
-    var style = 'width:15px;height:15px;border-radius:50%;flex:none;padding:0;cursor:pointer;' +
-      'border:2px solid ' + (s.missing ? '#2a3448' : c) + ';' +
-      'background:' + (filled ? c : 'transparent') + ';' + ring +
-      (s.missing ? 'border-style:dotted;' : '');
-    return '<button type="button" class="gl-trk-dot" data-row="' + esc(rowId) + '" data-step="' + esc(s.def.key) + '" ' +
-      'title="' + esc(s.title) + '" aria-label="' + esc(s.title) + '" style="' + style + '"></button>';
+  // ── Visual language ───────────────────────────────────────────────────────
+  // Each phase has its own colour, so where a client is reads at a glance:
+  // the card's left edge, the phase labels on the track and the stage panel
+  // all use it. Status colours (done green, waiting yellow, blocked red) sit
+  // on top, and only on the step that is live.
+  var PHASE_COLOR = { sales:'#6b9fff', onboarding:'#c4a4f8', formulation:'#00e5c0', production:'#ffb86b', done:'#5fcf9e' };
+  var PHASE_LABEL = { sales:'Sales', onboarding:'Onboarding', formulation:'Formulation', production:'Production', done:'Complete' };
+  var LINE_DONE = '#5fcf9e', LINE_TODO = '#233149';
+
+  function liveColor(r, s){
+    if(s.v === 'wait')  return COLOR.wait;
+    if(s.v === 'block') return COLOR.block;
+    return PHASE_COLOR[s.def.phase] || COLOR.cur;
   }
 
-  function lineHtml(r){
-    return '<div style="display:flex;align-items:center;flex-wrap:nowrap;overflow-x:auto;padding:2px 0">' +
-      PHASES.map(function(ph, pi){
-        var dots = r.steps.filter(function(s){ return s.def.phase === ph.key; }).map(function(s){ return dot(r.id, s); }).join('');
-        return '<div style="display:flex;align-items:center;gap:4px;padding:0 8px;' +
-          (pi ? 'border-left:1px dashed rgba(255,255,255,.14);' : 'padding-left:0;') + '">' + dots + '</div>';
+  function node(r, s){
+    var isCur = r.current === s;
+    var size, bg, border, inner = '', shadow = '';
+    if(s.v === 'skip' || s.missing){
+      size = 7; bg = '#2a3448'; border = '#2a3448';
+    } else if(s.v === 'done'){
+      size = 14; bg = LINE_DONE; border = LINE_DONE;
+      inner = '<span style="font-size:9px;line-height:1;color:#0b2a1e;font-weight:800">✓</span>';
+    } else if(isCur || s.v === 'cur' || s.v === 'wait' || s.v === 'block'){
+      var c = liveColor(r, s);
+      size = isCur ? 22 : 16; bg = c; border = c;
+      shadow = 'box-shadow:0 0 0 4px ' + c + '33;';
+      inner = isCur ? '<span style="width:7px;height:7px;border-radius:50%;background:#0b1424"></span>' : '';
+    } else {
+      size = 12; bg = '#0b1424'; border = '#3d4a63';
+    }
+    var style = 'width:' + size + 'px;height:' + size + 'px;border-radius:50%;flex:none;padding:0;cursor:pointer;' +
+      'display:inline-flex;align-items:center;justify-content:center;background:' + bg + ';border:2px solid ' + border + ';' + shadow;
+    return '<button type="button" class="gl-trk-dot" data-row="' + esc(r.id) + '" data-step="' + esc(s.def.key) + '" ' +
+      'title="' + esc(s.title) + '" aria-label="' + esc(s.title) + '" style="' + style + '">' + inner + '</button>';
+  }
+
+  function reached(s){ return s.v === 'done' || s.v === 'skip'; }
+
+  // The track: four labelled phase segments, widths in proportion to their
+  // step counts, nodes joined by a line that fills green as steps finish.
+  function trackHtml(r){
+    var cols = PHASES.map(function(ph){ return r.steps.filter(function(s){ return s.def.phase === ph.key; }).length + 'fr'; }).join(' ');
+    return '<div style="display:grid;grid-template-columns:' + cols + ';gap:14px;min-width:460px">' +
+      PHASES.map(function(ph){
+        var steps = r.steps.filter(function(s){ return s.def.phase === ph.key; });
+        var live = steps.some(function(s){ return s === r.current; });
+        var complete = steps.every(function(s){ return reached(s) || s.missing; });
+        var touched = live || steps.some(function(s){ return s.v === 'done'; });
+        var c = PHASE_COLOR[ph.key];
+        var labelColor = live ? c : complete && touched ? '#8fd9b6' : touched ? '#c8d4e8' : '#4a5a78';
+        var label = '<div style="font-size:10px;letter-spacing:1.2px;font-weight:700;text-transform:uppercase;color:' + labelColor + ';margin-bottom:7px;white-space:nowrap;display:flex;align-items:center;gap:5px">' +
+          (live ? '<span style="width:6px;height:6px;border-radius:50%;background:' + c + '"></span>' : '') +
+          esc(ph.label) + (complete && touched ? ' <span style="color:' + LINE_DONE + '">✓</span>' : '') + '</div>';
+        var bar = '<div style="display:flex;align-items:center;height:24px">';
+        steps.forEach(function(s, i){
+          if(i){
+            var prevDone = reached(steps[i - 1]);
+            var filled = prevDone && (reached(s) || s === r.current || s.v === 'cur' || s.v === 'wait' || s.v === 'block');
+            bar += '<span style="flex:1;min-width:6px;height:3px;border-radius:2px;background:' + (filled ? LINE_DONE : LINE_TODO) + '"></span>';
+          }
+          bar += node(r, s);
+        });
+        bar += '</div>';
+        // Phase box: tinted when it is the live phase, so the eye lands there.
+        var box = live ? 'background:' + c + '14;border:1px solid ' + c + '55;' : 'border:1px solid transparent;';
+        return '<div style="border-radius:10px;padding:7px 9px 4px;' + box + '">' + label + bar + '</div>';
       }).join('') +
     '</div>';
   }
 
-  function currentText(r){
-    if(!r.current) return '<span style="color:' + COLOR.done + '">All steps done</span>';
-    var s = r.current, c = COLOR[s.v] || '#8fa4c4';
+  function stepLabel(s){
     var label = (s.def.kind === 'sales' && s.def.doing) ? s.def.doing : s.def.label;
     if(s.loop) label = '1 L batch' + (s.loop.round > 1 ? ', round ' + s.loop.round : '') + (s.loop.sub && s.loop.sub !== 'approved' ? ' · ' + s.loop.sub : '');
-    var extra = s.v === 'wait' ? ' · waiting on client' : s.v === 'block' ? ' · blocked' : '';
-    var out = '<span style="color:' + c + '">' + esc(label) + extra + '</span>';
-    if(r.next) out += ' <span style="color:#6b87ad">· next: ' + esc(r.next.def.label) + '</span>';
-    return out;
+    return label;
   }
 
-  function daysBadge(r){
-    if(r.daysOnStep == null) return '<span style="color:#6b87ad">—</span>';
-    var txt = r.daysOnStep + (r.daysOnStep === 1 ? ' day' : ' days');
-    if(r.stalled) return '<span title="On this step for more than ' + STALL_DAYS + ' days" style="display:inline-block;padding:2px 8px;border-radius:999px;background:rgba(255,133,121,.15);color:#ff8579;font-size:12px">' + txt + '</span>';
-    return '<span style="font-size:12px;color:#c8d4e8">' + txt + '</span>';
+  function nowHtml(r){
+    if(!r.current){
+      return '<span style="display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;background:rgba(95,207,158,.14);color:#8fd9b6;font-size:13px;font-weight:600">✓ All steps complete</span>';
+    }
+    var s = r.current, c = liveColor(r, s);
+    var state = s.v === 'wait' ? 'Waiting on client' : s.v === 'block' ? 'Blocked' : s.def.kind === 'sales' ? 'In the pipeline' : 'In progress';
+    return '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">' +
+      '<span style="display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;background:' + c + '1f;border:1px solid ' + c + '66">' +
+        '<span style="font-size:10px;letter-spacing:1px;font-weight:700;text-transform:uppercase;color:' + c + '">Now</span>' +
+        '<span style="font-size:13px;font-weight:600;color:#eef4ff">' + esc(stepLabel(s)) + '</span>' +
+        '<span style="font-size:12px;color:' + c + '">· ' + state + '</span>' +
+      '</span>' +
+      (r.next ? '<span style="font-size:12px;color:#6b87ad">Next → <span style="color:#a9b8d0">' + esc(r.next.def.label) + '</span></span>' : '') +
+    '</div>';
+  }
+
+  // Right-hand panel: phase name, step X of Y (steps that apply), progress bar, days.
+  function stagePanel(r){
+    var phase = r.current ? r.current.def.phase : 'done';
+    var c = PHASE_COLOR[phase];
+    var applies = r.steps.filter(function(s){ return s.v !== 'skip' && !s.missing; });
+    var done = applies.filter(function(s){ return s.v === 'done'; }).length;
+    var idx = r.current ? applies.indexOf(r.current) + 1 : applies.length;
+    var pct = applies.length ? Math.round(done / applies.length * 100) : 0;
+    var days = '';
+    if(r.daysOnStep != null){
+      var txt = r.daysOnStep + (r.daysOnStep === 1 ? ' day' : ' days') + ' on step';
+      days = r.stalled
+        ? '<span title="On this step for more than ' + STALL_DAYS + ' days" style="display:inline-block;margin-top:6px;padding:2px 8px;border-radius:999px;background:rgba(255,133,121,.16);color:#ff8579;font-size:11px;font-weight:600">⚠ ' + txt + '</span>'
+        : '<div style="margin-top:6px;font-size:11px;color:#8fa4c4">' + txt + '</div>';
+    }
+    return '<div style="text-align:right">' +
+      '<div style="font-size:11px;letter-spacing:1.2px;font-weight:700;text-transform:uppercase;color:' + c + '">' + esc(PHASE_LABEL[phase]) + '</div>' +
+      '<div style="font-size:12px;color:#c8d4e8;margin-top:2px">Step ' + idx + ' of ' + applies.length + '</div>' +
+      '<div style="height:5px;border-radius:3px;background:#1a2538;margin-top:6px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + c + '"></div></div>' +
+      days +
+    '</div>';
   }
 
   function rowHtml(r){
+    var phase = r.current ? r.current.def.phase : 'done';
+    var c = PHASE_COLOR[phase];
     var tag = r.type === 'lead'
       ? '<span style="font-size:10px;letter-spacing:.06em;color:#6b87ad;border:1px solid rgba(255,255,255,.14);border-radius:4px;padding:1px 5px;margin-left:6px">' + (r.won ? 'WON' : 'LEAD') + '</span>'
       : (r.projectStatus === 'on_hold' ? '<span style="font-size:10px;color:#f5c842;border:1px solid rgba(245,200,66,.4);border-radius:4px;padding:1px 5px;margin-left:6px">ON HOLD</span>' : '');
-    var art = r.artwork ? '<div style="font-size:11px;color:#6b87ad;margin-top:3px">Packaging and artwork: ' + esc(MS_LABEL[r.artwork.status] || r.artwork.status) + '</div>' : '';
+    var art = r.artwork ? '<div style="font-size:11px;color:#6b87ad;margin-top:6px">🎨 Artwork: <span style="color:' + (r.artwork.status === 'completed' ? LINE_DONE : r.artwork.status === 'awaiting_client' ? COLOR.wait : '#a9b8d0') + '">' + esc(MS_LABEL[r.artwork.status] || r.artwork.status) + '</span></div>' : '';
     var action = '';
     if(r.type === 'lead' && r.won && r.clientId){
-      action = '<button type="button" class="gl-trk-create cbtn" data-row="' + esc(r.id) + '" style="margin-top:6px;font-size:11px;padding:3px 8px">+ Create project</button>';
+      action = '<button type="button" class="gl-trk-create cbtn" data-row="' + esc(r.id) + '" style="margin-top:8px;font-size:11px;padding:3px 8px">+ Create project</button>';
     } else if(r.type === 'lead' && r.won){
-      action = '<div style="font-size:11px;color:#f5c842;margin-top:4px">Convert this deal to a client first, then create the project.</div>';
+      action = '<div style="font-size:11px;color:#f5c842;margin-top:6px">Convert this deal to a client first, then create the project.</div>';
     }
     var open = r.type === 'project'
-      ? '<button type="button" class="gl-trk-open" data-kind="client" data-id="' + esc(r.clientId) + '" style="all:unset;cursor:pointer;font-size:14px;font-weight:600;color:#e6eefb">' + esc(r.name) + '</button>'
-      : '<button type="button" class="gl-trk-open" data-kind="deal" data-id="' + esc(r.dealId) + '" style="all:unset;cursor:pointer;font-size:14px;font-weight:600;color:#e6eefb">' + esc(r.name) + '</button>';
+      ? '<button type="button" class="gl-trk-open" data-kind="client" data-id="' + esc(r.clientId) + '" style="all:unset;cursor:pointer;font-size:15px;font-weight:700;color:#eef4ff">' + esc(r.name) + '</button>'
+      : '<button type="button" class="gl-trk-open" data-kind="deal" data-id="' + esc(r.dealId) + '" style="all:unset;cursor:pointer;font-size:15px;font-weight:700;color:#eef4ff">' + esc(r.name) + '</button>';
 
     var editor = (state.openEditor && state.openEditor.rowId === r.id) ? editorHtml(r, state.openEditor.stepKey) : '';
 
-    return '<div class="gl-trk-row" style="border-top:1px solid rgba(255,255,255,.07);padding:12px 0">' +
-      '<div style="display:grid;grid-template-columns:minmax(150px,220px) minmax(0,1fr) 90px;gap:14px;align-items:center">' +
-        '<div style="min-width:0">' + open + tag +
-          '<div style="font-size:12px;color:#8fa4c4;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.sub) + '</div>' + art + action +
+    return '<div class="gl-trk-row" style="margin-bottom:10px;border-radius:12px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06);border-left:4px solid ' + c + ';padding:14px 16px">' +
+      '<div style="display:grid;grid-template-columns:minmax(150px,200px) minmax(0,1fr) 130px;gap:18px;align-items:center">' +
+        '<div style="min-width:0">' + open + (tag ? '<div style="margin-top:4px;margin-left:-6px">' + tag + '</div>' : '') +
+          '<div style="font-size:12px;color:#8fa4c4;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.sub) + '">' + esc(r.sub) + '</div>' + art + action +
         '</div>' +
-        '<div style="min-width:0">' + lineHtml(r) +
-          '<div style="font-size:12px;margin-top:6px">' + currentText(r) + '</div></div>' +
-        '<div style="text-align:right">' + daysBadge(r) + '</div>' +
+        '<div style="min-width:0">' +
+          '<div style="overflow-x:auto;padding-bottom:2px">' + trackHtml(r) + '</div>' +
+          '<div style="margin-top:10px">' + nowHtml(r) + '</div>' +
+        '</div>' +
+        stagePanel(r) +
       '</div>' + editor +
     '</div>';
   }
 
-  function legendHtml(){
-    function sw(c, filled, label){
-      return '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;border:2px solid ' + c + ';background:' + (filled ? c : 'transparent') + '"></span>' + label + '</span>';
+  function groupHeader(key, n){
+    var c = PHASE_COLOR[key];
+    return '<div style="display:flex;align-items:center;gap:10px;margin:18px 0 10px">' +
+      '<span style="width:10px;height:10px;border-radius:3px;background:' + c + '"></span>' +
+      '<span style="font-size:12px;letter-spacing:1.5px;font-weight:700;text-transform:uppercase;color:' + c + '">' + esc(PHASE_LABEL[key]) + '</span>' +
+      '<span style="font-size:12px;color:#6b87ad">' + n + '</span>' +
+      '<span style="flex:1;height:1px;background:rgba(255,255,255,.07)"></span>' +
+    '</div>';
+  }
+
+  // Furthest along first: a production run this week matters more than a lead.
+  var GROUP_ORDER = ['production', 'formulation', 'onboarding', 'sales', 'done'];
+
+  function listHtml(vis){
+    if(!vis.length){
+      return '<div style="padding:28px 0;text-align:center;color:#8fa4c4;font-size:13px">Nothing matches this filter.</div>';
     }
-    return '<div style="display:flex;flex-wrap:wrap;gap:16px;font-size:12px;color:#8fa4c4;margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,.07)">' +
-      sw(COLOR.done, true, 'Done') + sw(COLOR.cur, true, 'Current') + sw(COLOR.wait, true, 'Waiting on client') +
-      sw(COLOR.block, true, 'Blocked') + sw(COLOR.todo, false, 'Upcoming') +
-      '<span>Hover a dot for the step and date. Click it to change it.</span></div>';
+    if(state.filter !== 'all' || state.search){ return vis.map(rowHtml).join(''); }
+    return GROUP_ORDER.map(function(g){
+      var rows = vis.filter(function(r){ return (r.current ? r.current.def.phase : 'done') === g; });
+      return rows.length ? groupHeader(g, rows.length) + rows.map(rowHtml).join('') : '';
+    }).join('');
+  }
+
+  function legendHtml(){
+    function sw(html, label){ return '<span style="display:inline-flex;align-items:center;gap:6px">' + html + label + '</span>'; }
+    function dotSw(bg, border, size){ return '<span style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;background:' + bg + ';border:2px solid ' + border + '"></span>'; }
+    return '<div style="display:flex;flex-wrap:wrap;gap:16px;font-size:12px;color:#8fa4c4;margin-top:16px;padding-top:12px;border-top:1px solid rgba(255,255,255,.07)">' +
+      sw(dotSw(LINE_DONE, LINE_DONE, 10), 'Done') +
+      sw(dotSw(PHASE_COLOR.formulation, PHASE_COLOR.formulation, 14), 'Current (phase colour)') +
+      sw(dotSw(COLOR.wait, COLOR.wait, 12), 'Waiting on client') +
+      sw(dotSw(COLOR.block, COLOR.block, 12), 'Blocked') +
+      sw(dotSw('#0b1424', '#3d4a63', 10), 'Upcoming') +
+      sw(dotSw('#2a3448', '#2a3448', 6), 'Not needed for this client') +
+      '<span>Click any step to change it.</span></div>';
   }
 
   function render(){
@@ -419,10 +527,10 @@
     var hiddenOld = state.rows.filter(function(r){ return r.oldLead; }).length;
 
     body.innerHTML =
-      '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:12px">' +
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:4px">' +
         '<div style="display:flex;flex-wrap:wrap;gap:6px">' +
           pill('all', 'All', all.length, state.filter === 'all') +
-          PHASES.map(function(ph){ return pill(ph.key, ph.label, count(function(r){ return r.phase === ph.key; }), state.filter === ph.key); }).join('') +
+          PHASES.map(function(ph){ return pill(ph.key, ph.label, count(function(r){ return r.phase === ph.key; }), state.filter === ph.key, PHASE_COLOR[ph.key]); }).join('') +
           pill('waiting', 'Waiting on client', count(function(r){ return r.waiting; }), state.filter === 'waiting', '#f5c842') +
           pill('stalled', 'Stalled', count(function(r){ return r.stalled; }), state.filter === 'stalled', '#ff8579') +
         '</div>' +
@@ -431,11 +539,7 @@
           '<input id="trk-search" type="search" placeholder="Search brand or product" value="' + esc(state.search) + '" style="font:inherit;font-size:13px;padding:6px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:#e6eefb;width:200px">' +
         '</div>' +
       '</div>' +
-      '<div style="display:grid;grid-template-columns:minmax(150px,220px) minmax(0,1fr) 90px;gap:14px;font-size:11px;color:#6b87ad;padding-bottom:6px">' +
-        '<div>Client</div><div>Sales · Onboarding · Formulation · Production</div><div style="text-align:right">On step</div>' +
-      '</div>' +
-      (vis.length ? vis.map(rowHtml).join('') :
-        '<div style="padding:28px 0;text-align:center;color:#8fa4c4;font-size:13px;border-top:1px solid rgba(255,255,255,.07)">Nothing matches this filter.</div>') +
+      listHtml(vis) +
       legendHtml();
 
     var search = document.getElementById('trk-search');
