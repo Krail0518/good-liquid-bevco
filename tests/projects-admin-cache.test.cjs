@@ -38,7 +38,7 @@ await pg.waitForTimeout(1200);
 
 await pg.evaluate(()=>{
   const MS=[
-    {id:'m-sample',project_id:'p1',track:'formulation',key:'sample_sent',label:'Sample sent',sort_order:3,round:1,status:'in_progress',owner:'gl',target_date:'2026-10-01',completed_at:null,client_note:null},
+    {id:'m-sample',project_id:'p1',track:'formulation',key:'batch_1l_sent',label:'1 L batch sent',sort_order:3,round:1,status:'in_progress',owner:'gl',target_date:'2026-10-01',completed_at:null,client_note:null},
     {id:'m-feedback',project_id:'p1',track:'formulation',key:'client_feedback',label:'Client feedback',sort_order:4,round:1,status:'not_started',owner:'client',target_date:null,completed_at:null,client_note:null},
     {id:'m-revise',project_id:'p1',track:'formulation',key:'formula_revisions',label:'Formula revisions',sort_order:5,round:1,status:'not_started',owner:'gl',target_date:null,completed_at:null,client_note:null},
   ];
@@ -101,7 +101,7 @@ await pg.evaluate(()=>{ const o=document.getElementById('gl-proj-preview'); if(o
 
 await pg.evaluate(async()=>{ await window.glMilestoneNewRound('p1','c1'); });
 await pg.waitForTimeout(300);
-const round2=await pg.evaluate(()=>window.__db.inserts.find(r=>r.key==='sample_sent')||null);
+const round2=await pg.evaluate(()=>window.__db.inserts.find(r=>r.key==='batch_1l_sent')||null);
 rec('R6 Add new round without closing the panel copies the SAVED owner (Client)', round2 && round2.owner==='client' && round2.round===2, JSON.stringify(round2));
 
 // ── Refused and failed writes ────────────────────────────────────────────────
