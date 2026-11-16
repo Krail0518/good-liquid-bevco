@@ -22,8 +22,9 @@
    It only reads the rows it is handed. It writes nothing.
    ============================================================ */
 (function(){
+  // Self-contained on purpose: tests/xss-sinks.test.cjs lifts this function
+  // out and runs it on its own.
   function esc(s){
-    if(typeof window.glEsc === 'function') return window.glEsc(s);
     return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
       return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
     });

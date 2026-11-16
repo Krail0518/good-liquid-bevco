@@ -228,7 +228,14 @@ for (const [label, re] of FORBIDDEN) {
 // milestone ids, titles) too. Loading and error states use textContent.
 // tests/project-tracker.test.cjs renders a markup payload and asserts it is
 // escaped.
-const SINK_BUDGET = 643;
+// 2026-11-16: 643 -> 645. Print / PDF for compliance logs. The print popup's
+// document.write in src/modules/production/compliance-print.js (every record
+// value goes through its esc(); the CIP Download PDF is jsPDF, not HTML), and
+// the calibration register's row repaint in gmp.js, which lets the
+// Instrument filter redraw the list (rows built by rowHtml with esc() on each
+// value). tests/compliance-print.test.cjs puts markup in an equipment name
+// and a calibration reference and asserts it renders as text.
+const SINK_BUDGET = 645;
 let sinkCount = 0;
 const RAW = /\.(innerHTML|outerHTML)\s*(=|\+=)|insertAdjacentHTML\s*\(|document\.write(ln)?\s*\(/;
 for (const f of files) {
