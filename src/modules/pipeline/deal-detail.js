@@ -21,7 +21,23 @@ function editDealDetail(){
   const idx = currentDealIdx;
   const d = (deals[stage]||[])[idx];
   if(!d) return;
-  const sv = (id, val) => { const el = document.getElementById(id); if(el) el.value = val||''; };
+  // For a <select>, a saved value that is not one of its options (a website
+  // Specialty Services request, several services at once, an older wording)
+  // is added as its own option first. Setting .value to an unlisted value
+  // silently selects nothing, and saving then wrote the field back blank.
+  const sv = (id, val) => {
+    const el = document.getElementById(id); if(!el) return;
+    const v = val ? String(val) : '';   // same as before: 0 and null show empty
+    if(el.tagName === 'SELECT'){
+      Array.prototype.slice.call(el.querySelectorAll('option[data-gl-kept]')).forEach(o => o.remove());
+      if(v && !Array.prototype.some.call(el.options, o => o.value === v)){
+        const o = document.createElement('option');
+        o.value = v; o.textContent = v; o.setAttribute('data-gl-kept', '1');
+        el.insertBefore(o, el.options[1] || null);
+      }
+    }
+    el.value = v;
+  };
   document.getElementById('ddp-title').textContent = d.name || 'EDIT DEAL';
   sv('ddp-name',    d.name);
   sv('ddp-co',      d.co);

@@ -818,7 +818,10 @@
     var perLbl  = document.getElementById('qc-perlabel');     if(perLbl) perLbl.hidden = isBtl;
     var nPill   = document.getElementById('qc-nitro-pill');   if(nPill) nPill.hidden = isBtl;
     if(isBtl && nitro) nitro.checked = false;
-    var pX = document.getElementById('qc-pasteur-x');         if(pX) pX.textContent = isBtl ? '+20¢/bottle' : '+5¢/can';
+    // Flash pasteurization by can size, matching the quote builder (#509):
+    // 3¢ for 12 oz, 5¢ for 16 oz. 20¢ per bottle for bottling.
+    var pRate = isBtl ? 0.20 : (/^16/.test(fmt.value) ? 0.05 : 0.03);
+    var pX = document.getElementById('qc-pasteur-x');         if(pX) pX.textContent = isBtl ? '+20¢/bottle' : '+' + Math.round(pRate * 100) + '¢/can';
     if(readoutEl) readoutEl.textContent = cases.toLocaleString();
     if(cansEl) cansEl.textContent = '· ' + (cases * unitsPerCase).toLocaleString() + ' ' + unitWord + 's';
 
@@ -834,7 +837,7 @@
     var tierRate = rateForCases(table, tierQty);
     var base = isBtl ? tierRate * units : tierRate * cases * caseScale;
     var caseRate = tierRate * caseScale;   // $ per case as shown (canning)
-    var pCost = pasteur && pasteur.checked ? units * (isBtl ? 0.20 : 0.05) : 0;   // 20¢/bottle, or 5¢/can
+    var pCost = pasteur && pasteur.checked ? units * pRate : 0;   // 20¢/bottle, 3¢ (12 oz) or 5¢ (16 oz) per can
     var nCost = nitro && nitro.checked && !isBtl ? units * 0.03 : 0;            // 3¢/can
     var total = base + pCost + nCost;
 
