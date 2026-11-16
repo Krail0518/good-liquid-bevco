@@ -397,7 +397,97 @@ const TRACKER_DATA=(function(){
   };
 })();
 
+
+// ── Warehouse billing (Warehouse Storage → 💵 Billing) — demo data only ──
+// Built from warehouse-demo.json, the same invented clients and pallets the
+// long warehouse training uses. One client is shown already billed by the
+// automatic run on the 1st (detail.auto), the other is not billed yet.
+const WH_BILLING=(function(){
+  const d=JSON.parse(fs.readFileSync(path.join(__dirname,'warehouse-demo.json'),'utf8'));
+  const movements=d.wh_pallets.filter(p=>p.location==='conri').map((p,i)=>({seq:i+1,pallet_id:p.id,transfer_id:null,at:p.received_at_conri,from_location:null,to_location:'conri',from_status:null,to_status:'stored',transfer:null}));
+  return {clients:d.clients, wh_skus:d.wh_skus, wh_lots:d.wh_lots||[],
+    wh_pallets:d.wh_pallets.map((p,i)=>Object.assign({},p,{conri_pallet_id:p.location==='conri'?String(9488+i):null})),
+    wh_movements:movements,
+    wh_billing_rates:[{id:'r-def',client_id:null,storage_per_pallet_month:30,pull_per_pallet:15}],
+    wh_billing_statements:[{id:'st1',client_id:'c-demo',period:'2026-10-01',billed_at:'2026-11-01T14:00:00Z',invoice_ref:'GL-20261101',amount:90,detail:{auto:true}}]};
+})();
+// Installs a select-only stand-in for Supabase that returns the warehouse
+// rows with the embedded client/sku shapes the module expects.
+function installWhStub(D){
+  const byId=(a,id)=>a.find(x=>x.id===id);
+  const clientOf=id=>{const c=byId(D.clients,id);return c?{id:c.id,name:c.name}:null;};
+  const skuOut=x=>x&&Object.assign({},x,{client:clientOf(x.client_id)});
+  const palletOut=p=>Object.assign({},p,{sku:skuOut(byId(D.wh_skus,p.sku_id)),lot:p.lot_id?byId(D.wh_lots,p.lot_id):null});
+  function view(t){
+    if(t==='wh_skus')return D.wh_skus.map(skuOut);
+    if(t==='wh_pallets')return D.wh_pallets.map(palletOut);
+    if(t==='wh_movements')return D.wh_movements;
+    return D[t]||[];
+  }
+  function Q(t){this.t=t;this.f=[];}
+  ['select','order','limit','or','range','not','gte','lte','gt','lt','ilike','like','filter','match','contains'].forEach(m=>Q.prototype[m]=function(){return this;});
+  Q.prototype.eq=function(k,v){this.f.push(x=>String(x[k])===String(v));return this;};
+  Q.prototype.neq=function(k,v){this.f.push(x=>x[k]!==v);return this;};
+  Q.prototype.is=function(k,v){this.f.push(x=>(x[k]==null)===(v===null));return this;};
+  Q.prototype.in=function(k,a){this.f.push(x=>a.indexOf(x[k])>=0);return this;};
+  Q.prototype.maybeSingle=function(){const s=this;return Promise.resolve({data:view(s.t).filter(x=>s.f.every(f=>f(x)))[0]||null,error:null});};
+  Q.prototype.single=Q.prototype.maybeSingle;
+  Q.prototype.then=function(res,rej){const s=this;return Promise.resolve({data:view(s.t).filter(x=>s.f.every(f=>f(x))),error:null}).then(res,rej);};
+  const none=()=>({select:()=>Promise.resolve({data:[],error:null}),eq(){return this;},then:(res)=>Promise.resolve({data:[],error:null}).then(res)});
+  window.supa=Object.assign(window.supa||{}, {from:t=>({select:()=>new Q(t),insert:none,update:none,delete:none,upsert:none})});
+}
 const STORYBOARDS={
+  'wh-billing':{
+    title:'Warehouse Billing — Automatic Invoices on the 1st',
+    async setup(pg){
+      await pg.evaluate(async({D,stub})=>{
+        window.__chain({});
+        (new Function('D', stub + '; installWhStub(D);'))(D);
+        window.currentUser={id:'u1',email:'mike@krail.us',role:'admin',name:'Mike',initials:'MK'};
+        if(window.GL_HOOKS){ window.GL_HOOKS._navGuards=[]; }
+        document.getElementById('crm-panel').classList.add('show');
+        window.cNav('warehouse');
+        window.__hud();
+      }, {D:WH_BILLING, stub:installWhStub.toString()});
+      await sleep(1600); await pg.evaluate(()=>window.__hud());
+    },
+    steps:[
+      {say:"Warehouse storage now bills itself. Here is how the Billing tab and the automatic run on the first of the month work together."},
+      {say:"Open the Billing tab.", act:{type:'click',sel:'[data-wh="tab"][data-arg="billing"]'}},
+      {say:"Pick a month that is over. Here, October.", act:{type:'fill',sel:'#wb-month',text:'2026-10'}},
+      {say:"Each client's row shows the math: pallets stored times thirty dollars a month, plus pallets pulled times fifteen dollars.", act:{type:'move',sel:'#cpg-warehouse tr:has-text("Demo Canning Co")'}},
+      {say:"Details lists every pallet, with its CONRI number and its in and out dates.", act:{type:'click',sel:'#cpg-warehouse tr:has-text("Demo Canning Co") [data-wh="billDetail"]'}},
+      {say:"On the first of every month at nine a.m. Eastern, every client is invoiced for last month and emailed the invoice with a pay link. Their row turns to Billed, with the invoice number.", act:{type:'move',sel:'#cpg-warehouse tr:has-text("Demo Beverage Co")'}},
+      {say:"Billing a client yourself before the first? Mark it billed with the invoice number, and the automatic run leaves that client alone.", act:{type:'move',sel:'#cpg-warehouse tr:has-text("Demo Canning Co") [data-wh="billMark"]'}},
+      {say:"A client with no email on file is skipped, so keep emails current. After each run you get one summary of what was sent, skipped, or failed."},
+      {say:"Rates sets the default price, or a client's own price.", act:{type:'move',sel:'[data-wh="billRates"]'}}
+    ]
+  },
+  launch:{
+    title:'Formula to Shelf — The Launch Program',
+    url:'/launch.html',
+    mockRest:()=>[],
+    async setup(pg){ await sleep(400); },
+    steps:[
+      {say:"Formula to Shelf is our launch program for new drink brands. It lives on its own page of the website."},
+      {say:"There are two programs, priced per S K U. Core Launch covers formulation, a fifty liter pilot, the Process Authority letter and label review. Full Launch adds marketing, design and a reserved production slot.", act:{type:'move',sel:'#programs'}},
+      {say:"A founder picks a program and sends a request. It arrives in your pipeline as a new Prospecting deal, tagged Formula to Shelf.", act:{type:'move',sel:'#launch-form'}},
+      {say:"In the CRM, open the quote builder for that brand.", act:{type:'run',fn:async(pg)=>{
+        await pg.goto('http://127.0.0.1:8941/index.html',{waitUntil:'domcontentloaded',timeout:30000});
+        await pg.waitForTimeout(1400);
+        await pg.evaluate(h=>{ window.__host=h; }, { svg: HOST.HOST_SVG, css: HOST.HOST_CSS });
+        await pg.evaluate(installCommon);
+        await pg.evaluate(d=>{ window.__coreData=d; }, {clients:CORE_CLIENTS,invoices:CORE_INVOICES,deals:CORE_DEALS});
+        await coreSetup(pg,'pipeline');
+        await pg.evaluate(()=>{ if(typeof window.glOpenQuoteBuilder==='function') window.glOpenQuoteBuilder('c1'); });
+        await sleep(1200); await pg.evaluate(()=>window.__hud());
+      }}},
+      {say:"Scroll to Formula to Shelf packages.", act:{type:'move',sel:'#gl-qb-launch'}},
+      {say:"Tick Core Launch, and it is added to the quote as its own line.", act:{type:'click',sel:'input[data-launch="launch_core"]'}},
+      {say:"The launch rate turns on with it, pricing the first canning run two volume tiers lower. Untick it to quote standard rates.", act:{type:'move',sel:'#gl-qb-launch-discount'}},
+      {say:"When the client buys, tick the same package on their invoice, and each package becomes an editable line. Package prices live on the Prices screen, under Formula to Shelf."}
+    ]
+  },
   tracker:{
     title:'Project Tracker — Where Every Client Stands',
     async setup(pg){
@@ -553,12 +643,13 @@ const STORYBOARDS={
     },
     steps:[
       {say:"This is the Customer Portal — a private page each of your brands logs into to manage their own account. They see only their own data, and nothing else in your business."},
-      {say:"It opens on their dashboard, headed with your company name and their account.", act:{type:'move',sel:'text=GOOD LIQUID BEV CO'}},
-      {say:"Your Invoices lists everything they have been billed, with the status of each and a button to download the PDF or pay online.", act:{type:'move',sel:'text=YOUR INVOICES'}},
-      {say:"Production Runs show where each of their batches is in your process — from formulation all the way through to shipping.", act:{type:'move',sel:'text=PRODUCTION RUNS'}},
-      {say:"Their COAs and lot documents are right here to download — the exact paperwork their retailers ask for.", act:{type:'move',sel:'text=COAs & DOCUMENTS'}},
-      {say:"And My Label Artwork, where they upload each SKU's design for your approval — one can, or twenty.", act:{type:'move',sel:'#gl-cp-artwork'}},
-      {say:"So the portal is self-service for your customers, and it keeps every invoice, document, and design in one organized place."}
+      {say:"It opens on their Overview, headed with your company name and their account.", act:{type:'move',sel:'text=GOOD LIQUID BEV CO'}},
+      {say:"Production Runs show where each of their batches is in your process, from formulation all the way through to shipping.", act:{type:'move',sel:'[data-gl-portal-panel="overview"] >> text=PRODUCTION RUNS'}},
+      {say:"Each area has its own tab. Billing lists every invoice, with its status and buttons to download the PDF or pay online.", act:{type:'click',sel:'button[data-gl-action="glPortalTab"][data-gl-arg1="billing"]'}},
+      {say:"Documents holds their COAs and lot paperwork, the exact files their retailers ask for.", act:{type:'click',sel:'button[data-gl-action="glPortalTab"][data-gl-arg1="documents"]'}},
+      {say:"The Terms and Conditions tab keeps your full terms one click away, so a client can always reread exactly what they agreed to.", act:{type:'click',sel:'button[data-gl-action="glPortalTab"][data-gl-arg1="terms"]'}},
+      {say:"New clients agree to these same terms when they complete onboarding, and the agreement is saved with the date.", act:{type:'move',sel:'[data-gl-portal-panel="terms"] iframe'}},
+      {say:"So the portal is self-service for your customers, and it keeps every invoice, document, and agreement in one organized place."}
     ]
   },
   invoices:{
@@ -569,6 +660,7 @@ const STORYBOARDS={
       {say:"Invoices is where you bill your brands and see exactly what has been paid and what is still outstanding."},
       {say:"Every invoice is listed with its client, service, amount, date, and a color-coded status — Draft, Pending, Paid, Overdue, or Partial payment.", act:{type:'move',sel:'#inv-body'}},
       {say:"When a client pays part of what they owe, record it with the Part button. The invoice keeps a partial payment badge and shows the balance still owing, so it never looks either fully paid or untouched.", act:{type:'move',sel:'#inv-body tr:has-text("GL-1040")'}},
+      {say:"When a client pays online, they automatically get a payment confirmation email with the Stripe reference, and it is listed in that invoice's email activity.", act:{type:'move',sel:'#inv-body tr:has-text("GL-1039")'}},
       {say:"Use the pills at the top to filter. Let's show just the overdue invoices.", act:{type:'click',sel:'#inv-pills .cpill:has-text("Overdue")'}},
       {say:"To create a new one, click New invoice.", act:{type:'click',sel:'button:has-text("New invoice"):visible'}},
       {say:"First, pick the client the invoice is for.", act:{type:'select',sel:'#inv-client',label:'Perico Nutrition'}},
@@ -580,13 +672,26 @@ const STORYBOARDS={
   pipeline:{
     title:'Pipeline — Your Sales Board',
     seedCore:true,
-    async setup(pg){ await coreSetup(pg,'pipeline'); },
+    async setup(pg){
+      await coreSetup(pg,'pipeline');
+      // A submitted project questionnaire on deal d1, and the link rpc the
+      // Copy questionnaire link button calls.
+      await pg.evaluate(()=>{
+        window.__chain({product_intake:[{id:'pi1',deal_id:'d1',email:'ana@perico.co',source:'questionnaire',updated_at:'2026-10-25T14:00:00Z',submitted_at:'2026-10-25T14:00:00Z',
+          answers:{company:'Perico Nutrition',first_name:'Ana',last_name:'Perez',email:'ana@perico.co',product_description:'Sparkling yerba mate',product_category:'Energy drink',carbonation:'Fully carbonated',flavors:'3',target_volume:'500 to 999 cases',format:'12oz sleek can',timeline:'1 to 3 months',sales_channels:['Retail','Online']}}]});
+        window.currentUser={id:'u1',email:'mike@krail.us',role:'admin',name:'Mike',initials:'MK'};
+        const r=window.supa.rpc; window.supa.rpc=async(fn,a)=>fn==='gl_questionnaire_link'?{data:'a1b2c3'.repeat(8),error:null}:r(fn,a);
+      });
+    },
     steps:[
       {say:"The Pipeline is your sales board. Every opportunity moves left to right, from first contact all the way to a signed deal."},
       {say:"The columns are your stages — Prospecting, Proposal, Negotiation, and Closed Won or Lost. Each header shows how many deals are in it and their total value.", act:{type:'move',sel:'#kanban'}},
       {say:"Each card is one opportunity — the brand, the contact, and the estimated value.", act:{type:'move',sel:'.kcard:has-text("Quote Request")'}},
       {say:"You can log an outreach email right on the card, so you always know which brands are awaiting a reply.", act:{type:'move',sel:'button:has-text("Log email sent"):visible'}},
       {say:"Click a card to open the full deal — contact details, notes, and the email history with that brand.", act:{type:'click',sel:'.kcard:has-text("Quote Request")'}},
+      {say:"Under Product Intake you see the lead's project questionnaire answers, grouped by section.", act:{type:'move',sel:'#ddp-intake'}},
+      {say:"To get answers from a new lead, copy their private questionnaire link and paste it into your email. When they submit, you get an alert and the answers land right here.", act:{type:'click',sel:'#gl-intake-link'}},
+      {say:"When you convert the deal to a client, these answers move to the client record and fill in their onboarding form, so they never answer twice.", act:{type:'move',sel:'button:has-text("Convert to Client")'}},
       {say:"As a deal moves forward, you drag it to the next stage. The board is always a live picture of where your sales stand."}
     ]
   },
@@ -761,6 +866,7 @@ async function moveCursor(pg,sel){
 }
 async function doAct(pg,act){
   if(!act) return;
+  if(act.type==='run'){ await act.fn(pg); return; }
   if(act.type==='move'){ await moveCursor(pg,act.sel); return; }
   const pt=await moveCursor(pg,act.sel);
   if(act.type==='click'){ if(pt) await pg.evaluate(({x,y})=>window.__pulse(x,y),pt); await sleep(150); await pg.locator(act.sel).first().click({timeout:ATO}); }
