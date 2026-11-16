@@ -1342,8 +1342,9 @@
     ov.querySelector('#gl-qb-auto-tiers').addEventListener('click', function(){
       var t = state.productType;
       if(t==='canning'){
+        // Same as a quote opened from a deal: start at the 300 case minimum.
         state.tiers = [
-          canTier(501), canTier(1000), canTier(5000)
+          canTier(300), canTier(501), canTier(1000)
         ];
       } else if(t==='bottling'){
         state.tiers = btlStdTiers();
