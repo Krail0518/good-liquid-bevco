@@ -90,7 +90,10 @@ function installCommon(){
       // Sofia, the host (host.cjs, injected as window.__host before this runs).
       // Her open mouth shows only while __speak says she is talking.
       const st=document.createElement('style'); st.id='gm-style';
-      st.textContent=(window.__host?window.__host.css:'');
+      // The CRM's session-expiry watcher (src/services/auth.js) checks the REAL
+      // Supabase client every 60s, finds no login under the stub, and drops a red
+      // 'session expired' bar over any video longer than a minute. Hide it here.
+      st.textContent=(window.__host?window.__host.css:'')+'#gl-session-expired{display:none!important}';
       document.head.appendChild(st);
       const m=document.createElement('div'); m.id='gm-mascot';
       m.style.cssText='position:fixed;left:16px;bottom:84px;width:132px;height:162px;z-index:2147483646;pointer-events:none;filter:drop-shadow(0 6px 14px rgba(0,0,0,.5))';
