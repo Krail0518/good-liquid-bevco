@@ -549,8 +549,10 @@
       phases.map(function(ph){
         var pc = cols.filter(function(c){ return c.phase === ph.key; });
         var color = PHASE_COLOR[ph.key];
-        return '<div style="flex:' + pc.length + ' 1 0;min-width:0">' +
-          '<div style="font-size:10px;letter-spacing:1.2px;font-weight:700;text-transform:uppercase;color:' + color + ';margin-bottom:6px;white-space:nowrap">' + esc(ph.label) + '</div>' +
+        // A one-step phase (Onboarding) still needs room for its heading, or it
+        // runs into the next one on narrower screens.
+        return '<div style="flex:' + pc.length + ' 1 0;min-width:' + (pc.length === 1 ? 92 : 0) + 'px">' +
+          '<div style="font-size:10px;letter-spacing:1.2px;font-weight:700;text-transform:uppercase;color:' + color + ';margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(ph.label) + '</div>' +
           '<div style="display:flex;gap:4px">' +
           pc.map(function(c){
             var st = stats[c.key];
