@@ -100,7 +100,7 @@
     box(305,104,90,26,'rgba(0,229,192,.08)','rgba(0,229,192,.3)') + txt(350,121,'+ Hours',10,'#00e5c0','middle') +
     box(400,104,90,26,'rgba(0,229,192,.08)','rgba(0,229,192,.3)') + txt(445,121,'+ Custom',10,'#00e5c0','middle') +
     box(20,140,580,90) +
-    txt(30,156,'Canning · 12oz Std',10,'#00e5c0') + txt(180,156,'200 cases',10,'#fff') + txt(280,156,'$11.52/case',10,'#9aa7bd') + txt(540,156,'$2,304.00',11,'#fff','end') +
+    txt(30,156,'Canning · 12oz Std',10,'#00e5c0') + txt(180,156,'300 cases',10,'#fff') + txt(280,156,'$11.52/case',10,'#9aa7bd') + txt(540,156,'$3,456.00',11,'#fff','end') +
     '<line x1="30" y1="170" x2="590" y2="170" stroke="rgba(255,255,255,.05)"/>' +
     txt(30,188,'Bottling · 750ml',10,'#00e5c0') + txt(180,188,'500 btl',10,'#fff') + txt(280,188,'$1.85/btl',10,'#9aa7bd') + txt(540,188,'$925.00',11,'#fff','end') +
     '<line x1="30" y1="202" x2="590" y2="202" stroke="rgba(255,255,255,.05)"/>' +
@@ -556,6 +556,21 @@
       '<b>Edit existing invoices</b>: open any saved invoice → click ✏️ <b>Edit</b> on the header. The builder reopens with the client / date / lines / discount / addons / notes all pre-filled. Hitting Save updates the same Supabase row (no duplicate). Status is preserved — editing a paid invoice doesn\'t flip it back to pending.',
       '<b>PO Number (optional)</b> — a "PO Number" field appears at the top of the builder. Enter the customer\'s purchase order number if they require it on the invoice. Saved to the invoice record and visible on the invoice detail.'
     ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">💲 PRICING RULES (NEW)</h4>' +
+    bullets([
+      'The <b>canning minimum is 300 cases per flavor</b> (7,200 cans). Standard tiers in the quote builder are 300, 501 and 1,000 cases, whether you open a quote from a deal or click <b>⚡ Load Standard Tiers</b>. The website price calculator will not go below the minimum.',
+      'The quote builder does <b>not</b> stop you from quoting canning under 300 cases, so check the case count yourself.',
+      '<b>Flash pasteurization</b> is 3 cents per can for 12 oz and 5 cents per can for 16 oz. The quote picks the right rate from the can size. The website calculator still shows a flat 5 cents.',
+      'The <b>changeover fee</b> is $125 per product changeover.'
+    ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">🚀 FORMULA TO SHELF PACKAGES (NEW)</h4>' +
+    bullets([
+      'Our launch program for new brands, at <b>goodliquidbevco.com/launch.html</b>: <b>Core Launch</b> ($4,250 per SKU: formulation with 3 rounds, 50 L pilot, Process Authority letter, label review) and <b>Full Launch</b> ($7,500 per SKU: Core plus marketing analysis, design and 3D mockups, digital print samples, a formulator on the floor, consulting and a reserved slot). Extra sample rounds are $475. Upgrading from Core to Full within 90 days credits what was paid for Core.',
+      'In the <b>quote builder</b>, the <b>Formula to Shelf packages</b> panel adds each ticked package as its own line. Ticking Core or Full turns on the <b>Launch package rate</b>, which prices canning fill two volume tiers lower: the first run for Core, the first two for Full. Untick it to quote standard rates.',
+      'On a <b>new invoice</b>, tick the package the client bought in the same panel. Each becomes an editable line, and quantity and price stay in sync.',
+      'Package prices are edited on the Prices screen under <b>Formula to Shelf</b>.'
+    ]) +
+    moreVideos([['tutorial-launch.mp4', '🚀 Formula to Shelf — the launch program', 'The public launch page, then quoting and invoicing the Core and Full packages in the CRM.']]) +
     '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#f5c842">⚠️ CREDIT LIMIT WARNING (NEW)</h4>' +
     bullets([
       '<b>What it does</b>: if a client has a credit limit set, a yellow warning banner appears inside the builder when their outstanding balance (pending + overdue invoices) reaches 80% or more of the limit.',
@@ -619,7 +634,7 @@
     bullets([
       '<b>What it is</b>: a logged-in self-service portal for customers. URL: <code>https://goodliquidbevco.com/?portal=1</code>. Each customer gets their own login (Supabase Auth).',
       '<b>How a customer gets access</b>: open Clients → click <b>🔑 Invite Customer Login</b> on the client row (or via the global "🔑 Invite Customer Login" button on the Clients page). Pick the client, type their email, send. The customer gets an email with a link to set their own password and land on the portal.',
-      '<b>What the customer sees</b>:',
+      '<b>What the customer sees</b> (each area is its own tab across the top):',
       '&nbsp;&nbsp;<b>KPI tiles</b> — Open balance, Paid to date, Total invoices.',
       '&nbsp;&nbsp;<b>Quick-action tiles</b> (NEW) — 🧪 Request samples / 📦 Place an order / 💬 Request a quote / ❓ Ask a question. See the Customer Requests section for the inbox side.',
       '&nbsp;&nbsp;<b>Your Invoices</b> — every invoice on their account, with a 📥 PDF download button and a View/Pay button (opens the same Stripe Checkout flow as the public link).',
@@ -627,9 +642,12 @@
       '&nbsp;&nbsp;<b>Sample Shipments</b> — kind / qty / carrier / status + clickable tracking links to UPS/FedEx/USPS/DHL.',
       '&nbsp;&nbsp;<b>Formulas</b> — every formula on their account (drafts hidden) with name, version, batch size, target yield, allergens, status.',
       '&nbsp;&nbsp;<b>Allergen Declarations</b> — every signed declaration with View link.',
+      '&nbsp;&nbsp;<b>Terms and Conditions</b> — the last tab shows your full terms, with a link to open them in a new tab. It is for reading only.',
       '&nbsp;&nbsp;<b>Account Settings</b> — top-right link. Customer can update their own contact info, billing/shipping address, lift-gate flag, receiving hours, and change their password.',
       '<b>Security</b>: RLS scopes every read to <code>client_id = current_customer_client_id()</code>. A portal customer can never see another client\'s invoices, runs, formulas, samples, allergens, or requests — enforced by Postgres, not just the JS.',
-      '<b>Multi-device</b>: portal customers can log in from phone, laptop, anywhere. Account-settings changes sync across devices instantly.'
+      '<b>Multi-device</b>: portal customers can log in from phone, laptop, anywhere. Account-settings changes sync across devices instantly.',
+      '<b>Terms agreement</b>: every client must tick <b>I agree to the terms and conditions</b> before they can submit the onboarding form. The agreement is saved with their onboarding, with the date and the exact version of the terms they saw. Staff can open the same terms from the link at the bottom of any client record.',
+      '<b>Clients who onboarded before November 5, 2026</b> have no agreement on file. If you need one, ask them to confirm by email.'
     ]) +
     '<h4 style="margin:22px 0 8px;font-size:13px;letter-spacing:1.5px;color:#c4b5fd">🔗 PUBLIC INVOICE LINK (NO LOGIN)</h4>' +
     bullets([
@@ -762,8 +780,9 @@
     '<b>Card vs ACH</b>: the surcharge only applies to card payments (per Visa / MC rules — that\'s why ACH is shown separately). The customer sees the surcharge broken out on Stripe\'s checkout page, so it\'s never a surprise charge.',
     '<b>From the admin side</b>: open any unpaid invoice → click <b>💳 Charge via Stripe</b> on the detail header. A picker lets you choose card / ACH / both and per-invoice surcharge override.',
     '<b>Test mode vs live</b>: currently using <code>sk_test_…</code> keys. To go live, register Visa/MC, swap in <code>sk_live_…</code> in the <code>STRIPE_SECRET_KEY</code> Edge Function secret, and redeploy the function. Stripe\'s test card <code>4242 4242 4242 4242</code> works for any expiry/CVC in test mode.',
-    '<b>Marking the invoice paid</b>: <b>automatic via Stripe webhook</b>. When a customer completes Stripe checkout, the <code>stripe-webhook</code> Edge Function is called by Stripe, marks the invoice paid in Supabase, and sends a Telegram + email notification. You can also manually click <b>✓ Mark Paid</b> on the invoice detail header for offline payments (cash / check / wire).',
-    '<b>Receipts</b>: Stripe emails the customer a receipt automatically. They can also save the invoice as PDF from the customer portal.'
+    '<b>Marking the invoice paid</b>: <b>automatic via Stripe webhook</b>. When a customer completes Stripe checkout, the <code>stripe-webhook</code> Edge Function is called by Stripe, marks the invoice paid in Supabase, sends you a Telegram + email notification, and emails the client a payment confirmation (see Receipts). You can also manually click <b>✓ Mark Paid</b> on the invoice detail header for offline payments (cash / check / wire).',
+    '<b>Receipts</b>: when a client pays online, they automatically get <b>our own payment confirmation email</b> with the Stripe reference, the amount, any card fee, the method and the date. A bank (ACH) payment gets two: one right away saying it is processing, and one when it clears. Stripe also sends its own receipt, and the client can save the invoice as PDF from the portal.',
+    '<b>Where to see it</b>: the confirmation shows in the invoice\'s <b>📊 Activity</b> list and in the client\'s email history. Payments you record by hand (check, wire, cash) do not send it; use the receipt option when you record the payment.'
   ]);
 
   // ────────────────────────────────────────────────────────────
@@ -1106,6 +1125,23 @@
       '<b>(3) ⏰ Stale badge</b> — appears on cards in active stages (Prospecting / Proposal / Negotiation) that haven\'t been touched in >14 days. Visual cue to follow up.',
       '<b>(4) Closed Won column</b> — moving a card here also auto-bumps the related Activity Feed. Use the <b>→ Invoice</b> button in the deal detail to spin a billable invoice from a Closed Won deal.'
     ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">📋 PROJECT QUESTIONNAIRE (NEW)</h4>' +
+    bullets([
+      'Every lead can fill out the project questionnaire on a simple web page. Open the deal, find <b>📋 Product Intake</b>, and click <b>🔗 Copy questionnaire link</b>. Paste the link into your own email to the lead; nothing is sent for you.',
+      'Their company, name, email and phone are filled in already. When they submit, you get an alert and the answers appear under <b>Product Intake</b> on their deal, grouped by section.',
+      'The lead can reopen the same link to update their answers. The link does not expire, so share it only with that lead.',
+      'Required questions are marked with a red star. <b>Budget is optional.</b>',
+      'If a lead replies to the emailed questionnaire instead, click <b>＋ Fill intake</b> (or <b>✏️ Edit intake</b>) and type their answers in.',
+      'When you click <b>🚀 Convert to Client &amp; Onboard</b>, the answers move to the client record and prefill their onboarding form, so the client never answers twice.',
+      'The questionnaire email and the website quote-request email both attach whichever deck has <b>Auto-send</b> turned on under <b>🤖 AI Tools → Settings &amp; Integrations → 📑 Sales Decks</b>. Keep one deck on, or those emails go out without a deck.'
+    ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">🌐 WEBSITE LEADS: SPECIALTY SERVICES AND FORMULA TO SHELF (NEW)</h4>' +
+    bullets([
+      '<b>Specialty Services</b>: the website lists marketing analysis, design help and 3D mockups, regulatory review, and consulting by the hour, with prices. <b>Book this</b> opens the quote form with that service ticked, and the request arrives here as a new Prospecting deal with the service and price on the card and under Service.',
+      'Confirm the scope with the lead, then send the invoice before any work starts. Rush projects add 25%, and travel is billed as expenses plus consulting.',
+      'For these leads, add notes rather than saving the deal\'s Edit form, because its Service box only knows the original services and can clear the specialty service.',
+      '<b>Formula to Shelf</b>: a request from the launch page (goodliquidbevco.com/launch.html) arrives as a Prospecting deal with lead source <b>Formula to Shelf</b> and the program in its service. See the New Invoice section for quoting the packages.'
+    ]) +
     '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">📅 DAYS-IN-STAGE BADGE (NEW)</h4>' +
     wf(400, 100,
       box(0,0,400,100,'#142238','rgba(255,255,255,.05)') +
@@ -1276,8 +1312,8 @@
       txt(121,92,'TUE 27',9,'#9aa7bd') + txt(224,92,'WED 28',9,'#9aa7bd') + txt(327,92,'THU 29',9,'#9aa7bd') + txt(430,92,'FRI 30',9,'#9aa7bd') + txt(533,92,'SAT 31',9,'#9aa7bd') +
       box(24,100,90,50,'#1a6fff','rgba(107,159,255,.4)') + txt(30,116,'Lotus nutra',9,'#fff') + txt(30,130,'Canning L1',8,'#9aa7bd') + txt(30,144,'100 cases',8,'#9aa7bd') +
       box(127,100,90,50,'#1a6fff','rgba(107,159,255,.4)') + txt(133,116,'Lotus nutra',9,'#fff') + txt(133,130,'Canning L1',8,'#9aa7bd') + txt(133,144,'(cont.)',8,'#9aa7bd') +
-      box(230,100,90,50,'rgba(0,229,192,.5)','rgba(0,229,192,.4)') + txt(236,116,'Ceres 14',9,'#fff') + txt(236,130,'Bottling L1',8,'#9aa7bd') + txt(236,144,'200 cases',8,'#9aa7bd') +
-      box(333,100,90,50,'rgba(245,200,66,.4)','rgba(245,200,66,.4)') + txt(339,116,'PitStop',9,'#fff') + txt(339,130,'Canning L1',8,'#9aa7bd') + txt(339,144,'200 cases',8,'#9aa7bd') +
+      box(230,100,90,50,'rgba(0,229,192,.5)','rgba(0,229,192,.4)') + txt(236,116,'Ceres 14',9,'#fff') + txt(236,130,'Bottling L1',8,'#9aa7bd') + txt(236,144,'300 cases',8,'#9aa7bd') +
+      box(333,100,90,50,'rgba(245,200,66,.4)','rgba(245,200,66,.4)') + txt(339,116,'PitStop',9,'#fff') + txt(339,130,'Canning L1',8,'#9aa7bd') + txt(339,144,'300 cases',8,'#9aa7bd') +
       box(20,158,580,62,'#142238','rgba(255,255,255,.05)') +
       txt(30,174,'⚙ Production lines',10,'#9aa7bd') + txt(160,174,'+ Add Run',10,'#00e5c0') +
       txt(30,194,'Capacity: 500 cases/day (Canning L1)  ·  100 hrs/wk (Bottling L1)',9,'#9aa7bd') +
@@ -1348,13 +1384,23 @@
       '<b>Pallet owner, CONRI # and note</b> — ✏️ (or <b>+ Note</b>) on any pallet opens its box: <b>Owner</b> (the customer the pallet belongs to and who is billed for it; this changes just that pallet), Paul\'s CONRI #, and the note. Notes show on the transfer, the dashboard, pick lists, the packing list, the pallet label and the scheduling email.',
       '<b>CONRI pallet numbers</b> — when Paul receives our pallets he gives each one his own number (9608) on his <b>Receive Summary Ticket</b> and labels, and he pulls by that number. Open the completed inbound transfer and click <b>📎 CONRI receipt (pallet #s)</b>: upload the ticket (PDF or photo) and it fills in each pallet\'s CONRI # by item, and the transaction #. Anything it cannot match is shown in yellow; type those by hand, check, and Save. You can also type a CONRI # in the ✏️ box on any pallet. Pull-back and ship-out emails then say <b>pull CONRI #9608</b>, and the number prints on the packing list and pallet label.',
       '<b>✂ Split</b> — if Paul tagged what we recorded as one pallet as two (two CONRI numbers for one of ours), click ✂ Split on that pallet, say how many cases go onto the new record and its CONRI #. Each CONRI number then has its own pallet record.',
-      '<b>💵 Billing</b> (admin and sales) — what each client owes for storage: <b>$30 per pallet per month</b> it is at CONRI (any part of a month counts as the month) and <b>$15 per pallet pulled</b> out (pull back or ship out). Pick the month; it is worked out from the pallet moves, so there is nothing to type. Each line shows the math, for example <b>2 × $15.00 = $30.00</b> for two pulls. <b>Details</b> lists each pallet with its CONRI # and in and out dates. <b>🧾 Create invoice</b> opens a new invoice for that client with both lines filled in. After you send it, <b>✓ Mark billed</b> with the invoice # so the month is not billed twice; if a move is added later the row shows the difference. <b>✏️ Rates</b> changes the default or sets a client\'s own rate. <b>⬇ CSV</b> downloads the month. Good Liquid\'s own packaging is listed but never billed.',
+      '<b>💵 Billing</b> (admin and sales) — what each client owes for storage: <b>$30 per pallet per month</b> it is at CONRI (any part of a month counts as the month) and <b>$15 per pallet pulled</b> out (pull back or ship out). Pick the month; it is worked out from the pallet moves, so there is nothing to type. Each line shows the math, for example <b>2 × $15.00 = $30.00</b> for two pulls. <b>Details</b> lists each pallet with its CONRI # and in and out dates. <b>Billing runs itself on the 1st</b> (see Automatic monthly invoices below). To bill a client by hand instead, <b>🧾 Create invoice</b> opens a new invoice with both lines filled in; after you send it, <b>✓ Mark billed</b> with the invoice # so the month is not billed twice; if a move is added later the row shows the difference. <b>✏️ Rates</b> changes the default or sets a client\'s own rate. <b>⬇ CSV</b> downloads the month. Good Liquid\'s own packaging is listed but never billed.',
       '<b>🖨️ Print paperwork</b> — a PDF: the packing list with receiving and signature blocks, then one big label per pallet (pallet 1 of N, item, lot, cases, note, barcode of the pallet tag). Tape one label on each pallet.',
       '<b>3) Schedule</b> — <b>✏️ Edit</b> to enter the time agreed with Paul, <b>✉ Scheduling email to CONRI</b> writes the email for you, then <b>📅 Mark scheduled</b>. That button stays grey until the items are sent to CONRI and a time is set.',
       '<b>4) ✓ Complete (received)</b> — who received it, pallets and cases received, condition. If counts differ or something is damaged pick <b>Exceptions noted</b> and describe it. Attach the signed packing list now or later. Completing moves the pallets and writes the movement log; it cannot be undone.',
       '<b>🚚 Ship out (LTL)</b> — sending a client\'s product out from CONRI by truck. Click <b>🚚 Ship</b> on that item\'s line on the Dashboard (client and item filled in) or <b>🚚 Ship out (LTL)</b> at the top. Enter how many pallets, pickup date, carrier and ship to. It picks the pallets (earliest best by first), creates the pickup and opens the email to Paul. When the truck leaves: <b>Outbound orders → Mark shipped</b> with the BOL number. Finished goods ship from a QA-released lot; empty cans ship too.',
       '<b>Reconciliation</b> — upload CONRI\'s inventory CSV to compare it with what we show at CONRI. <b>BOL pallet sheets</b> — upload or type a client\'s BOL and print one PALLET X OF N sheet per pallet; nothing is saved.'
-    ]);
+    ]) +
+    '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#f5c842">🗓 AUTOMATIC MONTHLY INVOICES (NEW)</h4>' +
+    bullets([
+      'On the <b>1st of every month at 9am Eastern</b>, the system invoices every client for last month\'s storage and pallet pulls, using the same math as the Billing tab, and emails each invoice with a <b>View and Pay</b> link. The invoice note says it was invoiced automatically.',
+      'Each client billed this way is <b>marked billed automatically</b>, so the Billing tab shows <b>Billed</b> with the date and the invoice number.',
+      'A client is <b>skipped</b> when the month is already marked billed, when a storage invoice for that month already exists, or when the client has <b>no email on file</b>. Keep client emails current.',
+      '<b>Billing someone by hand before the 1st?</b> Click <b>✓ Mark billed</b> with the invoice number, and the automatic run leaves that client alone.',
+      'Mike gets one <b>Telegram summary</b> after each run listing what was sent, what was skipped and anything that failed. An invoice that was created but could not be emailed must be sent by hand from Invoices.',
+      'A month that is not over is never billed, and Good Liquid\'s own packaging is never billed.'
+    ]) +
+    moreVideos([['tutorial-wh-billing.mp4', '🗓 Warehouse billing — automatic invoices on the 1st', 'The Billing tab, the math on each row, what happens on the 1st, and when to mark a client billed yourself.']]);
   var SEC_ANNOUNCEMENTS =
     wf(620, 200,
       box(0,0,620,200,'#142238','rgba(255,255,255,.05)') +
@@ -1365,7 +1411,7 @@
       txt(30,74,'Please reschedule any runs booked for Friday. Eng team will be in 7am–noon.',10,'#9aa7bd') +
       txt(560,82,'May 29',9,'#9aa7bd','end') +
       box(20,106,580,46,'#1a2c48','rgba(255,255,255,.06)') +
-      txt(30,124,'🎉  New client signed — Ceres 14 (200 cases, Bottling)',11,'#cfd9e6') +
+      txt(30,124,'🎉  New client signed — Ceres 14 (300 cases, Bottling)',11,'#cfd9e6') +
       txt(30,140,'Kick-off call scheduled for June 2. Details in pipeline.',10,'#9aa7bd') +
       txt(560,148,'May 28',9,'#9aa7bd','end') +
       box(20,160,580,32,'#1a2c48','rgba(255,255,255,.06)') +
@@ -1804,7 +1850,7 @@
       '<b>(1) Your shareable link</b> — a unique URL like <code>goodliquidbevco.com/book?u=mike</code>. Anyone who opens it can see your availability and book a slot — no login required. Use "Copy Link" or "Send via Email" to share it.',
       '<b>(2) Availability settings</b> — set your meeting duration (15 / 30 / 60 min), buffer after each meeting, which days you\'re available, and your working hours. Changes save instantly. Visitors always see real-time availability.',
       '<b>(3) Upcoming bookings</b> — every confirmed booking appears here. The Cancel button cancels from your end; a confirmation email has already gone to the visitor. The booking also appears on your General Calendar.',
-      '<b>What the visitor sees</b>: a clean booking page with a month calendar (unavailable days are greyed out), clickable time slots, and a short form (name, email, company, notes). On submit they get an instant confirmation email and you get a notification email.',
+      '<b>What the visitor sees</b>: a clean booking page with a month calendar (unavailable days are greyed out), clickable time slots, and the full project questionnaire, which they must complete before the booking goes through. Their answers are saved as the deal\'s Product Intake. On submit they get an instant confirmation email and you get a notification email.',
       '<b>Where to find it</b>: Sidebar → <b>Calendars → Scheduling Link</b>.'
     ]) +
     '<h4 style="color:#00e5c0;margin:20px 0 8px;font-size:12px;letter-spacing:.5px;text-transform:uppercase">Email Invite Button</h4>' +
@@ -1893,7 +1939,7 @@
       '<b>What you see afterwards</b>: the invoice takes the <b>partial</b> status — a teal <b>partial payment</b> badge, the balance still owing printed under the amount, and a place in the <b>Partial</b> filter. Every figure that means "money owed" counts the balance rather than the invoice total: A/R aging, the cash-flow forecast, credit-limit warnings, the dashboard, and the customer\'s own portal, where they can still pay the rest.',
       '<b>Undo a mistake</b>: each payment in the history has an <b>Undo</b> button. It asks why, then reverses that <i>one</i> payment — not the whole invoice, which is what <b>↩ Unpaid</b> does. The ledger is append-only, so the original line stays and a matching reversal appears beside it in red; nothing is erased and the balance goes back up. Reversing a reversal, undoing the same payment twice, and undoing a <b>Stripe</b> payment are all refused — Stripe money has to be refunded in Stripe or the two records stop agreeing.',
       '<b>Payment methods</b>: Check, Wire transfer, ACH, Cash, Stripe, Other.',
-      '<b>Full payment</b>: when the payment brings the balance to $0 the invoice status automatically flips to <b>paid</b> and you\'re offered the option to send a receipt email to the client.',
+      '<b>Full payment</b>: when the payment brings the balance to $0 the invoice status automatically flips to <b>paid</b> and you\'re offered the option to send a receipt email to the client. (Online Stripe payments email the client a confirmation automatically.)',
       '<b>Payment history</b>: every prior payment appears in the table above the "Record New Payment" form — date, method, reference, and amount.',
       '<b>Receipt email</b>: call <code>window.glSendPaymentReceipt(invId)</code> from the console, or just confirm when prompted after a full payment. Routes through your Gmail (gmail-send; Mailgun fallback).'
     ]);
@@ -2049,6 +2095,8 @@
     videoCard('tutorial-auditor.mp4', '🔒 Auditor Portal — Read-Only Records Access', 'Exactly what an outside auditor sees through their read-only token link — every register and record visible, nothing changeable.') +
     videoGroup('💼 SALES, INVOICING & CLIENTS') +
     videoCard('tutorial-invoices.mp4', '🧾 Invoices — Bill Your Brands', 'The invoice list and status filters, then building a new invoice — pick a client and service and the price and preview build themselves from the rate card.') +
+    videoCard('tutorial-launch.mp4', '🚀 Formula to Shelf — the launch program', 'The public launch page, then quoting and invoicing the Core and Full packages, with the launch rate on the first runs.') +
+    videoCard('tutorial-wh-billing.mp4', '🗓 Warehouse billing — automatic invoices on the 1st', 'What each client owes for storage and pulls, what happens on the 1st, and when to mark a client billed yourself.') +
     videoCard('tutorial-tracker.mp4', '🧭 Project Tracker — Where Every Client Stands', 'The overview strip, reading a client card, changing a step, the steps that move by themselves, and the Board and Timeline views.') +
     videoCard('tutorial-pipeline.mp4', '📊 Pipeline — Your Sales Board', 'How deals move through Prospecting, Proposal, Negotiation and Closed — logging outreach on a card and opening the full deal.') +
     videoCard('tutorial-clients.mp4', '👥 Clients — Every Brand in One Place', 'The client list and what each row shows, then opening a brand’s complete, editable record in one click.') +
@@ -2419,7 +2467,7 @@
       '<b>(1) Documents card</b> — the home for anything a lead sends during the deal: a signed NDA, a Process Authority letter, their formula, their label artwork.',
       '<b>(2) Type chips</b> — tap a type (<span style="color:#6b9fff">🔒 NDA</span>, <span style="color:#f5c842">📜 Process Authority Letter</span>, <span style="color:#c4a4f8">⚗️ Formula</span>, <span style="color:#00e5c0">🎨 Label / Artwork</span>, or Other), give it a name, choose the file, and press <b>＋ Add Document</b>. It is filed by type so it is easy to scan.',
       '<b>(3) View / download / delete</b> — each row opens the file through a short-lived secure link; ⬇ downloads it; 🗑 removes it. Files live in the same secure <code>client-docs</code> storage as your other compliance documents, staff-only.',
-      '<b>🚀 The convert hand-off</b> — when you click <b>Convert to Client &amp; Onboard</b>, every document moves with the customer <b>automatically</b>: the <b>Process Authority letter</b> drops into the client\'s PA-letter compliance slot, <b>label artwork</b> becomes SKU entries in their artwork section, and everything else lands on the client\'s own Documents card. Nothing is copied or re-uploaded — the files simply follow the customer, so nothing is lost between the pipeline and the client record.',
+      '<b>🚀 The convert hand-off</b> — when you click <b>Convert to Client &amp; Onboard</b>, every document moves with the customer <b>automatically</b>: the <b>Process Authority letter</b> drops into the client\'s PA-letter compliance slot, <b>label artwork</b> becomes SKU entries in their artwork section, and everything else lands on the client\'s own Documents card. Nothing is copied or re-uploaded — the files simply follow the customer, so nothing is lost between the pipeline and the client record. The lead\'s <b>project questionnaire answers</b> move too, and prefill the client\'s onboarding form.',
       '<b>(4) Meeting Notes card</b> — after a call, paste your notes or your <b>Pocket AI NoteTaker</b> transcript here, and attach the recording or file if you have one. Give it a title and date.',
       '<b>Notes feed the brief</b> — the Deal Brief reads your meeting notes too, so what you discussed on a call shows up in the summary right alongside the emails. Adding or removing a note flags the brief to re-summarize next time it refreshes.',
       '<b>Plain-English terms</b> — <b>PA letter</b>: the Process Authority letter that clears a formula for production. <b>SKU</b>: one product/flavor variant. <b>Convert</b>: turning a pipeline lead into a full client record (the 🚀 button on the deal).'
