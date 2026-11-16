@@ -387,8 +387,30 @@
       var when = (ob.status === 'submitted' && ob.submitted_at) ? ob.submitted_at : ob.created_at;
       var whenTxt = when ? new Date(when).toLocaleDateString() : '';
       el.innerHTML = '<span style="color:' + m[0] + ';font-weight:700">' + esc(m[1]) + '</span>'
-        + (whenTxt ? ' <span style="color:var(--muted);font-size:11px">(' + esc(whenTxt) + ')</span>' : '');
+        + (whenTxt ? ' <span style="color:var(--muted);font-size:11px">(' + esc(whenTxt) + ')</span>' : '')
+        + await termsLine(clientId);
     } catch(e){ el.innerHTML = '<span style="color:var(--muted)">Status unavailable.</span>'; }
+  }
+
+  // Terms agreement (#518). onboard.js saves it inside onboarding.data on the
+  // client's SUBMITTED onboarding, which is not always their latest row (a new
+  // invite may have been sent since), so look across their submitted rows.
+  // Clients who onboarded before terms were required have none on file.
+  async function termsLine(clientId){
+    var line = function(color, txt){ return '<div style="margin-top:4px;font-size:11.5px;color:' + color + '">📜 ' + txt + '</div>'; };
+    try {
+      var r = await sb().from('onboarding')
+        .select('submitted_at, terms:data->terms_acceptance')
+        .eq('client_id', clientId).eq('status', 'submitted')
+        .order('submitted_at', { ascending: false }).limit(10);
+      if(r.error) return '';
+      var hit = (r.data || []).filter(function(o){ return o.terms && o.terms.accepted; })[0];
+      if(hit){
+        var d = hit.submitted_at ? new Date(hit.submitted_at).toLocaleDateString() : '';
+        return line('#5fcf9e', 'Terms agreed' + (d ? ' ' + esc(d) : '') + (hit.terms.version ? ' · version ' + esc(hit.terms.version) : ''));
+      }
+      return line('#f5c842', 'No terms agreement on file' + ((r.data || []).length ? ' (onboarded before terms were required). Ask them to confirm by email if you need one.' : ' yet.'));
+    } catch(e){ return ''; }
   }
 
   // Section HTML consumed by glClientInfoSections (client-detail.js).

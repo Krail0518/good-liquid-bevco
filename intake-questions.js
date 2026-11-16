@@ -105,7 +105,13 @@
     if(f.type === 'textarea'){
       inner = '<textarea id="'+fid(f.key)+'" rows="3" placeholder="'+esc(f.placeholder||'')+'" style="'+INP+';resize:vertical">'+esc(v)+'</textarea>';
     } else if(f.type === 'select'){
-      inner = '<select id="'+fid(f.key)+'" class="gi-input" style="'+INP+'"><option value="">Select…</option>' +
+      // A saved answer that is no longer one of the options (the options were
+      // reworded, or the 200 case minimum became 300) is kept as its own
+      // choice. Otherwise the form would show it blank and saving would erase
+      // what the client actually told us.
+      var kept = (v !== '' && f.options.indexOf(String(v)) < 0)
+        ? '<option value="'+esc(v)+'" selected>'+esc(v)+' (earlier answer)</option>' : '';
+      inner = '<select id="'+fid(f.key)+'" class="gi-input" style="'+INP+'"><option value="">Select…</option>' + kept +
         f.options.map(function(o){ return '<option'+(String(v)===o?' selected':'')+'>'+esc(o)+'</option>'; }).join('') + '</select>';
     } else if(f.type === 'multiselect'){
       var arr = Array.isArray(v) ? v : (v ? String(v).split(',').map(function(s){return s.trim();}) : []);

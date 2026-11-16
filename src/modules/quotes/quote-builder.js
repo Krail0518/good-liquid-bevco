@@ -39,6 +39,9 @@
   function btlTier(cases, rate){ return { cases:cases, perCase:BTLS_PER_CASE, bottles:cases*BTLS_PER_CASE, ratePerBtl:rate }; }
   // Bottling minimum order is 220 cases, whatever the pack size.
   var BTL_MIN_CASES = 220;
+  // Canning minimum is 300 cases of 24 per flavor (#524). Counted in cans so a
+  // quote in 12-can trays (600 trays) is judged the same as 300 cases of 24.
+  var CAN_MIN_CASES = 300, CAN_MIN_CANS = CAN_MIN_CASES * CANS_PER_CASE;
   // Standard bottling tiers sit on the first three price breaks (total
   // bottles), rounded up to whole cases at the default bottles/case and never
   // below the minimum order — at 12/case that is 220 / 330 / 660 cases.
@@ -1116,14 +1119,18 @@
         return buildTierRow(tier, i, isCanning, isBottling, isKeg);
       }).join('');
 
-      // Warn (don't block) when a bottling tier is under the minimum order.
-      var underMin = isBottling ? state.tiers.map(function(tier, i){
+      // Warn (don't block) when a tier is under the minimum order: 220 cases
+      // for bottling, 300 cases of 24 (7,200 cans) per flavor for canning.
+      var underMin = (isBottling || isCanning) ? state.tiers.map(function(tier, i){
         var c = Number(tier.cases) || 0;
-        return c < BTL_MIN_CASES ? 'tier ' + (i+1) + ' (' + fmtNum(c) + ' cases)' : null;
+        if(isBottling) return c < BTL_MIN_CASES ? 'tier ' + (i+1) + ' (' + fmtNum(c) + ' cases)' : null;
+        var cans = Number(tier.cans) || Math.round(c * cansPerCase(state.pkg));
+        return cans < CAN_MIN_CANS ? 'tier ' + (i+1) + ' (' + fmtNum(c) + ' cases, ' + fmtNum(cans) + ' cans)' : null;
       }).filter(Boolean) : [];
       var minWarn = underMin.length
-        ? '<div style="margin-top:8px;font-size:12px;color:#ff8579">⚠ Below the ' + BTL_MIN_CASES +
-          '-case minimum order: ' + underMin.join(', ') + '.</div>'
+        ? '<div style="margin-top:8px;font-size:12px;color:#ff8579">⚠ Below the ' +
+          (isBottling ? BTL_MIN_CASES + '-case minimum order' : CAN_MIN_CASES + '-case canning minimum (' + fmtNum(CAN_MIN_CANS) + ' cans per flavor)') +
+          ': ' + underMin.join(', ') + '.</div>'
         : '';
 
       tbody.innerHTML =
@@ -1335,8 +1342,9 @@
     ov.querySelector('#gl-qb-auto-tiers').addEventListener('click', function(){
       var t = state.productType;
       if(t==='canning'){
+        // Same as a quote opened from a deal: start at the 300 case minimum.
         state.tiers = [
-          canTier(501), canTier(1000), canTier(5000)
+          canTier(300), canTier(501), canTier(1000)
         ];
       } else if(t==='bottling'){
         state.tiers = btlStdTiers();

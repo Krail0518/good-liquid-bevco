@@ -195,7 +195,7 @@ export const QUESTIONNAIRE_ITEMS = [
   'Preservative: does your formula include a preservative, such as potassium sorbate? If so, which one?',
   'Process Authority Letter: do you already have one for this product?',
   'Flavors: how many flavors at launch?',
-  'First run size per flavor: 200 to 499 cases, 500 to 999, 1,000 to 2,499, or 2,500 or more.',
+  'First run size per flavor: 300 to 499 cases, 500 to 999, 1,000 to 2,499, or 2,500 or more.',
   'Can format: 12oz standard, 12oz sleek, or 16oz standard?',
   'Decoration: printed cans or shrink sleeves, and is your artwork finished?',
   'Case packing: 24 count trays, 12 count trays, 4 pack carriers, or variety packs?',
@@ -214,7 +214,7 @@ export function questionnaireEmail(deal, opts) {
   const subject = 'Good Liquid Bev Co: Project Questionnaire';
   const intro = o.nudge
     ? 'Checking back on the project questionnaire. Our capabilities and pricing deck is attached again. Once we have your answers, we can put together real costs and a timeline for you. Reply to this email with your answers to the questions below.'
-    : 'Following up on your project with Good Liquid. Our capabilities and pricing deck is attached. To get you real costs and a timeline, reply to this email with your answers to the questionnaire below. Our minimum is 200 cases (4,800 cans) per flavor, and every product we run must include a preservative.';
+    : 'Following up on your project with Good Liquid. Our capabilities and pricing deck is attached. To get you real costs and a timeline, reply to this email with your answers to the questionnaire below. Our minimum is 300 cases (7,200 cans) per flavor, and every product we run must include a preservative.';
   const list = QUESTIONNAIRE_ITEMS.map((q, i) => (i + 1) + '. ' + q);
   const text = 'Hi ' + name + ',\n\n' + intro + '\n\nPROJECT QUESTIONNAIRE\n\n' + list.join('\n') +
     '\n\nMike Krail\nGood Liquid Bev Co';

@@ -77,7 +77,7 @@ async function main() {
       document.getElementById('gl-qb-fmt').value = '12oz Standard';
       fire(document.getElementById('gl-qb-fmt'), 'change');
       await wait(100);
-      ov.querySelector('#gl-qb-auto-tiers').click();      // 501 / 1000 / 5000 cases
+      ov.querySelector('#gl-qb-auto-tiers').click();      // 300 / 501 / 1000 cases
       await wait(100);
       const fills = () => [...ov.querySelectorAll('[data-tier-field="fillPerCan"]')].map((i) => Number(i.value));
       out.fillBefore = fills();
@@ -147,12 +147,12 @@ async function main() {
     });
 
     check('quote builder shows the package boxes', r.qPanel);
-    check('deck fill before any package is 0.38 / 0.35 / 0.28', JSON.stringify(r.fillBefore) === JSON.stringify([0.38, 0.35, 0.28]), JSON.stringify(r.fillBefore));
+    check('deck fill before any package is 0.48 / 0.38 / 0.35', JSON.stringify(r.fillBefore) === JSON.stringify([0.48, 0.38, 0.35]), JSON.stringify(r.fillBefore));
     check('Core Launch offers the launch rate, on by default', r.discountShown && r.discountOn);
-    check('launch rate prices fill two tiers lower (0.31 / 0.28 / 0.28)', JSON.stringify(r.fillDiscount) === JSON.stringify([0.31, 0.28, 0.28]), JSON.stringify(r.fillDiscount));
+    check('launch rate prices fill two tiers lower (0.38 / 0.31 / 0.28)', JSON.stringify(r.fillDiscount) === JSON.stringify([0.38, 0.31, 0.28]), JSON.stringify(r.fillDiscount));
     check('Core Launch saved as a whole-job line, 2 SKUs at $4,250', r.qLine && r.qLine.qty === 2 && r.qLine.rate === 4250 && r.qLine.desc === 'Formula to Shelf: Core Launch', JSON.stringify(r.qLine));
-    check('unticking the launch rate restores deck fill', JSON.stringify(r.fillDiscountOff) === JSON.stringify([0.38, 0.35, 0.28]), JSON.stringify(r.fillDiscountOff));
-    check('a typed fill rate is kept; unticking Core restores the rest', JSON.stringify(r.fillAfterUntick) === JSON.stringify([0.45, 0.35, 0.28]), JSON.stringify(r.fillAfterUntick));
+    check('unticking the launch rate restores deck fill', JSON.stringify(r.fillDiscountOff) === JSON.stringify([0.48, 0.38, 0.35]), JSON.stringify(r.fillDiscountOff));
+    check('a typed fill rate is kept; unticking Core restores the rest', JSON.stringify(r.fillAfterUntick) === JSON.stringify([0.45, 0.38, 0.35]), JSON.stringify(r.fillAfterUntick));
     check('unticking Core removes its line from the quote', r.qLinesAfterUntick === 0);
     check('invoice builder shows the package boxes', r.iPanel);
     check('ticking Full Launch adds one line, 3 SKUs at $7,500', r.iRow && r.iRow.qty === 3 && r.iRow.price === 7500 && /Full Launch/.test(r.iRow.text), JSON.stringify(r.iRow));
