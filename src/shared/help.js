@@ -558,7 +558,7 @@
     ]) +
     '<h4 style="margin:20px 0 8px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">💲 PRICING RULES (NEW)</h4>' +
     bullets([
-      'The <b>canning minimum is 300 cases per flavor</b> (7,200 cans). A quote opened from a deal starts with tiers at 300, 501 and 1,000 cases; the <b>⚡ Load Standard Tiers</b> button loads 501, 1,000 and 5,000. The website price calculator will not go below the minimum.',
+      'The <b>canning minimum is 300 cases per flavor</b> (7,200 cans). Standard tiers in the quote builder are 300, 501 and 1,000 cases, whether you open a quote from a deal or click <b>⚡ Load Standard Tiers</b>. The website price calculator will not go below the minimum.',
       'The quote builder does <b>not</b> stop you from quoting canning under 300 cases, so check the case count yourself.',
       '<b>Flash pasteurization</b> is 3 cents per can for 12 oz and 5 cents per can for 16 oz. The quote picks the right rate from the can size. The website calculator still shows a flat 5 cents.',
       'The <b>changeover fee</b> is $125 per product changeover.'
