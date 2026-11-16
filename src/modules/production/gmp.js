@@ -296,7 +296,7 @@
       var head = '<tr style="text-align:left;color:#9aa7bd;font-size:11px"><th style="padding:6px 8px">Date</th><th style="padding:6px 8px">Line/Run</th><th style="padding:6px 8px">By</th>' +
         cols.map(function(f){ return '<th style="padding:6px 8px">'+esc(f.label)+'</th>'; }).join('') +
         '<th style="padding:6px 8px">Dev</th><th style="padding:6px 8px">Status</th></tr>';
-      var body = recs.map(function(rec){
+      function rowHtml(rec){
         var d = rec.data || {};
         var cells = cols.map(function(f){ var v = d[f.key]; return '<td style="padding:6px 8px;color:#dfe7f1">'+esc(v==null?'':String(v))+'</td>'; }).join('');
         return '<tr style="border-top:1px solid rgba(255,255,255,.06);font-size:12px">' +
@@ -305,16 +305,59 @@
           '<td style="padding:6px 8px;color:#9aa7bd">'+esc(d.operator||'')+'</td>' + cells +
           '<td style="padding:6px 8px">'+(rec.has_deviation?'<span style="color:#ff8579">⚠</span>':'')+'</td>' +
           '<td style="padding:6px 8px;color:'+(rec.status==='signed'?'#5fcf9e':'#9aa7bd')+'">'+esc(rec.status||'')+'</td></tr>';
-      }).join('');
+      }
+      // Calibration covers several instruments; an auditor usually asks for
+      // one ("show me the pH meter"). Filter by the instrument as recorded.
+      var instruments = [];
+      if(code === 'GMP-CAL-001'){
+        recs.forEach(function(rec){
+          var n = rec.data && rec.data.instrument ? String(rec.data.instrument).trim() : '';
+          if(n && instruments.indexOf(n) < 0) instruments.push(n);
+        });
+        instruments.sort(function(a, b){ return a.localeCompare(b); });
+      }
+      var filterHtml = instruments.length
+        ? '<label style="font-size:11px;color:#9aa7bd;margin-right:8px">Instrument <select id="gl-gmp-reg-inst" style="margin-left:4px;padding:7px 8px;background:#0a1628;border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#fff;font-size:12px">' +
+            '<option value="">All instruments</option>' +
+            instruments.map(function(n){ return '<option value="'+esc(n)+'">'+esc(n)+'</option>'; }).join('') +
+          '</select></label>'
+        : '';
+      var btnStyle = 'padding:8px 14px;background:rgba(0,229,192,.12);color:var(--teal);border:1px solid rgba(0,229,192,.3);border-radius:7px;cursor:pointer;font-size:12px;margin-right:8px';
       ov.innerHTML =
         '<div style="background:#142238;border:1px solid rgba(0,229,192,.2);border-radius:16px;padding:22px;width:100%;max-width:880px;color:#fff">' +
-          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">' +
             '<div style="font-family:var(--ff-disp);font-size:17px;letter-spacing:1.5px;color:var(--teal)">'+esc(tpl.title)+'</div>' +
-            '<div><button data-gl-action="glOpenDailyGMP"'+(tpl.in_daily===false?(' data-gl-arg1="'+esc(code)+'"'):'')+' style="padding:8px 14px;background:rgba(0,229,192,.12);color:var(--teal);border:1px solid rgba(0,229,192,.3);border-radius:7px;cursor:pointer;font-size:12px;margin-right:8px">➕ New entry</button>' +
+            '<div style="display:flex;align-items:center;flex-wrap:wrap">' + filterHtml +
+            '<button id="gl-gmp-reg-print" style="'+btnStyle+'"'+(recs.length?'':' disabled')+'>🖨️ Print / PDF</button>' +
+            '<button data-gl-action="glOpenDailyGMP"'+(tpl.in_daily===false?(' data-gl-arg1="'+esc(code)+'"'):'')+' style="'+btnStyle+'">➕ New entry</button>' +
             '<button data-gl-close="#gl-gmp-reg" style="background:none;border:none;color:#9aa7bd;font-size:20px;cursor:pointer">✕</button></div></div>' +
-          (recs.length ? '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'+head+body+'</table></div>'
+          (recs.length ? '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead>'+head+'</thead><tbody id="gl-gmp-reg-rows"></tbody></table></div>'
                        : '<div style="color:#9aa7bd;padding:20px 0">No records yet. Click ➕ New entry to log one.</div>') +
         '</div>';
+      var sel = ov.querySelector('#gl-gmp-reg-inst');
+      function shown(){
+        var want = sel ? sel.value : '';
+        return want ? recs.filter(function(rec){ return rec.data && String(rec.data.instrument || '').trim() === want; }) : recs;
+      }
+      function paintRows(){
+        var tb = ov.querySelector('#gl-gmp-reg-rows');
+        if(tb) tb.innerHTML = shown().map(rowHtml).join('');
+      }
+      paintRows();
+      if(sel) sel.addEventListener('change', paintRows);
+      var prn = ov.querySelector('#gl-gmp-reg-print');
+      if(prn) prn.addEventListener('click', function(){
+        if(typeof window.glPrintComplianceLog !== 'function'){ alert('The print view did not load. Refresh the page and try again.'); return; }
+        var want = sel ? sel.value : '';
+        window.glPrintComplianceLog({
+          rows: shown(),
+          formCode: code,
+          title: (tpl.title || code) + (want ? ' · ' + want : ''),
+          scope: want ? 'Instrument: ' + want : (instruments.length ? 'All instruments' : ''),
+          fields: tpl.fields || [],
+          note: recs.length >= 200 ? 'Only the newest 200 records are loaded on this screen. For older records use Compliance > FDA audit export.' : ''
+        });
+      });
     } catch(e){
       ov.querySelector('div').innerHTML = '<div style="color:#ff8579">Could not load: '+esc(e.message||e)+'</div>';
     }

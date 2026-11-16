@@ -73,6 +73,9 @@ Help: `help-atp` section in `src/shared/help.js`; video `tutorials/tutorial-atp.
 The report is a downloaded PDF (jsPDF) that is **sent to a client**: `selectForClient()` must only ever include that client's runs. See the file header and `tests/atp-swab-report.test.cjs`.
 ATP RLU limits have NO defaults: they are rules by test type [+ equipment] [+ location], set in the tab's ⚙️ ATP limits and stored in `app_settings.atp_limits`. A test with no matching rule cannot be signed.
 | `cpg-cip` | `nav-cip` | CIP / SANITATION LOG | Admin/Sales | `+ Log Cycle` (primary) |
+
+**CIP / Sanitation Log toolbar** (in `#cip-body`, cip-audit.js): tank search · `🖨️ Print / PDF` (`#gl-cip-print`, prints the cycles on screen). The cycle detail has its own `🖨️ Print / PDF` (`#gl-cipd-print`). Both call `window.glPrintComplianceLog()` in `src/modules/production/compliance-print.js` (stylesheet `gl-print-log.css`). The Daily GMP register viewer (`glOpenGMPRegister`, gmp.js) has the same `🖨️ Print / PDF` (`#gl-gmp-reg-print`); on Calibration (`GMP-CAL-001`) an Instrument filter (`#gl-gmp-reg-inst`) narrows both the list and the printout. Test: `tests/compliance-print.test.cjs`.
+
 | `cpg-holds` | `nav-holds` | HOLD TAGS | Admin/Sales | `+ New Hold Tag` (primary) |
 | `cpg-audit` | `nav-audit` | AUDIT LOG | **Admin only** (hidden) | Filter input |
 

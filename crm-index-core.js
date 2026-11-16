@@ -105,6 +105,7 @@
  *   /src/modules/production/audit-review.js
  *   /src/modules/production/cip-audit.js
  *   /src/modules/production/compliance-ext.js
+ *   /src/modules/production/compliance-print.js
  *   /src/modules/production/compliance.js
  *   /src/modules/production/gmp-schedule.js
  *   /src/modules/production/gmp.js

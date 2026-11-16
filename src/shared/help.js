@@ -1685,7 +1685,8 @@
       '<b>What Clean-In-Place (CIP) is</b>: the automated or manual process of cleaning and sanitising production equipment without disassembly. Required between every production run under 21 CFR Part 117 (FSMA Preventive Controls).',
       '<b>When to log it</b>: after every production run, before switching products, and at the start/end of each shift. The log should be completed by the operator who performed the CIP, not a supervisor.',
       '<b>(1) + Add Cycle</b> — fill in: line, sanitizer name + concentration, rinse water temperature, contact time (minutes), and your name. Hit Save. The record is timestamped server-side and is immutable (Part 11 compliant).',
-      '<b>(2) FDA-defensible record</b> — each entry is stored in Supabase with a server timestamp, user ID, and a hash. During an FDA inspection you can export the full log as a signed PDF from the Compliance → 📤 Export button.'
+      '<b>(2) FDA-defensible record</b> — each entry is stored in Supabase with a server timestamp, user ID, and a hash. During an FDA inspection you can export the full log as a signed PDF from the Compliance → 📤 Export button.',
+      '<b>🖨️ Print / PDF</b>: the button on the right of the search bar prints the cycles on screen, oldest first, each with its 9 steps, result and signature. Search a tank first to print only that tank. To print one cycle, click its row and use <b>🖨️ Print / PDF</b> in the detail. For a PDF, choose “Save as PDF” as the printer.'
     ]);
 
   var SEC_HOLD_TAGS =
@@ -2370,6 +2371,7 @@
       '<li style="margin-bottom:7px"><b>(Tag 3) Set the “Next due” date</b> so the following check is scheduled, not guessed. Tap the box and pick a date from the calendar.</li>' +
       '<li style="margin-bottom:7px"><b>(Tag 4) Click ✍️ Sign &amp; save.</b> Done — the record is saved and stamped with your name and the time. (Use <b>Save (draft)</b> instead if you’re not finished and want to come back.)</li>' +
       '<li>If you answered <b style="color:#ff8579">Fail</b> anywhere, jump to “When a check fails” below — the app has already flagged it for you.</li>' +
+      '<li style="margin-top:7px"><b>To print or save a PDF</b>, click <b>🖨️ Print / PDF</b> at the top of the register. On Calibration, pick an <b>Instrument</b> first (for example pH meter) to print just that one. For a PDF, choose “Save as PDF” as the printer.</li>' +
     '</ol>' +
     '<h4 style="margin:24px 0 6px;font-size:13px;letter-spacing:1.5px;color:#00e5c0">THE SIX JOBS — WHAT EACH IS AND WHY IT MATTERS</h4>' +
     lead('In everyday terms, here’s what each program protects against. This is the “why” — the reference table after it is the “what to type”.') +

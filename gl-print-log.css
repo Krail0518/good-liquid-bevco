@@ -1,0 +1,36 @@
+/* gl-print-log.css: compliance log printouts (src/modules/production/compliance-print.js).
+   Linked by absolute URL from a window.open('') popup, which inherits the
+   opener's CSP, so it cannot be an inline <style>. */
+body{font-family:Helvetica,Arial,sans-serif;color:#0a1628;margin:24px;font-size:11px;line-height:1.4}
+header{margin-bottom:14px;border-bottom:2px solid #0a8;padding-bottom:8px}
+.co{font-size:10px;color:#555;letter-spacing:.5px}
+h1{font-size:18px;margin:4px 0}
+.meta{font-size:10px;color:#555;margin-top:2px}
+.meta.warn{color:#b3261e}
+.bar{margin-bottom:14px}
+.bar button{padding:8px 14px;border-radius:4px;border:1px solid #bbb;background:#fff;cursor:pointer}
+.bar .pbtn{background:#0a8;color:#fff;border-color:#0a8;font-weight:700}
+.bar .hint{margin-left:10px;color:#666;font-size:11px}
+table.grid{width:100%;border-collapse:collapse;margin-top:6px}
+table.grid th{background:#eef3f2;text-align:left;font-size:9.5px;letter-spacing:.4px;text-transform:uppercase;padding:4px 6px;border:1px solid #ccd}
+table.grid td{padding:4px 6px;border:1px solid #dde;vertical-align:top}
+table.grid td.c{text-align:center}
+table.log td{font-size:10px}
+thead{display:table-header-group}
+tr{page-break-inside:avoid}
+tr.skipped td{color:#999}
+tr.devrow td{background:#fef0ef}
+.sub{font-size:9px;color:#777}
+.fail{color:#b3261e;font-weight:700}
+.pass{color:#087a5b}
+.rec{border:1px solid #ccd;border-radius:6px;padding:10px 12px;margin-bottom:12px;page-break-inside:avoid}
+.rec-head{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px}
+.rec-head .k{display:inline-block;width:82px;color:#777;font-size:9.5px;text-transform:uppercase;letter-spacing:.4px}
+.dev{background:#fef0ef;border-left:3px solid #b3261e;padding:6px 10px;margin-top:8px}
+.note{background:#f6f7f9;border-left:3px solid #99a;padding:6px 10px;margin-top:8px}
+.sig{margin-top:8px;padding-top:6px;border-top:1px solid #eee}
+.review{margin-top:22px;font-size:11px}
+body.wide{page:wide}
+@page{margin:12mm}
+@page wide{size:landscape;margin:10mm}
+@media print{.no-print{display:none}body{margin:0}}
