@@ -11,6 +11,9 @@
  *   - a searched tank prints only that tank's cycles
  *   - a cycle held only in this browser is left off and the printout says so
  *   - the cycle detail's Print button prints that one cycle
+ *   - the cycle detail's Download PDF button saves a real .pdf file of that
+ *     cycle (jsPDF, the same 2.5.1 the CRM loads), named for the equipment
+ *     and date, with every step, the result and the signature in it
  *   - free text on the CIP form shows as Notes, not as a red Deviation, when
  *     the cycle did not fail (the form saves it as corrective_action always)
  *
@@ -22,7 +25,7 @@
  *
  * Both: script in any typed value never runs in the printout (CLAUDE.md rule 5).
  *
- * Run:  NODE_PATH=… node tests/compliance-print.test.cjs
+ * Run:  NODE_PATH=… node tests/compliance-print.test.cjs   (needs playwright + jspdf@2.5.1)
  */
 'use strict';
 const http = require('http');
@@ -31,6 +34,8 @@ const path = require('path');
 const { chromium } = require('playwright');
 
 const ROOT = process.env.REPO_ROOT || path.resolve(__dirname, '..');
+let JSPDF;
+try { JSPDF = require.resolve('jspdf/dist/jspdf.umd.min.js'); } catch (e) { JSPDF = null; }
 const PORT = 8951;
 
 let failures = 0;
@@ -75,7 +80,12 @@ const CAL = [
 
 const PAGE = `<!doctype html><meta charset="utf-8"><body>
 <div id="cpg-cip" class="cpg"><div id="cip-sub"></div><div id="cip-body"></div></div>
+<script src="/jspdf.umd.min.js"><\/script>
 <script>
+// The CRM loads jsPDF from cdnjs on demand; here it is served locally, and
+// save() is captured instead of downloading.
+window.ensureJsPdf = function(){ return Promise.resolve(window.jspdf.jsPDF); };
+window.jspdf.jsPDF.API.save = function(name){ window.__savedName = name; window.__savedPdf = this.output(); return this; };
 window.glEsc = function(s){ return String(s == null ? '' : s).replace(/[<>&"']/g, function(c){
   return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]; }); };
 window.glBindPopupControls = function(w){ window.__bound = (window.__bound || 0) + 1; };
@@ -106,6 +116,7 @@ const FILES = ['/src/modules/production/compliance-print.js', '/src/modules/prod
 const server = http.createServer((req, res) => {
   const p = decodeURIComponent(req.url.split('?')[0]);
   if (p === '/' || p === '/index.html') { res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end(PAGE); }
+  if (p === '/jspdf.umd.min.js' && JSPDF) { res.writeHead(200, { 'Content-Type': 'text/javascript' }); return res.end(fs.readFileSync(JSPDF)); }
   if (FILES.indexOf(p) >= 0) {
     res.writeHead(200, { 'Content-Type': p.endsWith('.css') ? 'text/css' : 'text/javascript' });
     return res.end(fs.readFileSync(path.join(ROOT, p)));
@@ -132,9 +143,11 @@ async function popupOf(page, click) {
 
 (async () => {
   console.log('Compliance Print / PDF\n');
+  if (!JSPDF) { check('jspdf is resolvable from NODE_PATH', false, 'npm install jspdf@2.5.1 next to playwright'); process.exit(1); }
   await new Promise((r) => server.listen(PORT, r));
   const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM || undefined, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
-  const page = await browser.newPage();
+  // A US time zone, so a UTC-vs-local mistake in dates or file names shows.
+  const page = await browser.newPage({ timezoneId: 'America/New_York' });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String((e && e.message) || e)));
   await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'domcontentloaded' });
@@ -170,7 +183,31 @@ async function popupOf(page, click) {
   await page.evaluate(() => window.glOpenCipDetail('c2'));
   const one = await popupOf(page, () => page.click('#gl-cipd-print'));
   check('the cycle detail prints that one cycle', one.recs.length === 1 && /CIP Cycle Record/.test(one.text) && /Filling Line 1/.test(one.recs[0]), one.text.slice(0, 300));
-  await page.evaluate(() => { const d = document.getElementById('gl-cip-detail'); if (d) d.remove(); });
+
+  // ── CIP single cycle: Download PDF ──
+  async function downloadPdf(id) {
+    await page.evaluate((id) => { window.__savedName = null; window.__savedPdf = null; window.glOpenCipDetail(id); }, id);
+    await page.click('#gl-cipd-pdf');
+    await page.waitForFunction(() => !!window.__savedPdf, null, { timeout: 10000 });
+    const out = await page.evaluate(() => ({ name: window.__savedName, pdf: window.__savedPdf,
+      label: document.getElementById('gl-cipd-pdf').textContent, disabled: document.getElementById('gl-cipd-pdf').disabled }));
+    await page.evaluate(() => { const d = document.getElementById('gl-cip-detail'); if (d) d.remove(); });
+    return out;
+  }
+  const good = await downloadPdf('c2');
+  check('Download PDF saves a .pdf file named for the equipment and date', good.name === 'CIP_Filling-Line-1_2026-11-12_0715.pdf', good.name);
+  check('the file is a PDF', /^%PDF-1\./.test(good.pdf), good.pdf.slice(0, 20));
+  check('the PDF has the title, equipment, operator and all 9 steps',
+    /CIP Cycle Record/.test(good.pdf) && /Filling Line 1/.test(good.pdf) && /Op c2/.test(good.pdf) && /Pre-Rinse/.test(good.pdf) && /PRE-USE PAA \\\(at run time\\\)/.test(good.pdf));
+  check('the PDF has the readings and the signature', /150 ppm/.test(good.pdf) && /Pat PCQI on Nov 12, 2026, 7:15 AM/.test(good.pdf));
+  check('notes on a passing cycle are labelled Notes, not Deviation', /\(Notes\)/.test(good.pdf) && !/\(Deviation\)/.test(good.pdf));
+  check('the button is ready again after saving', good.label === '⬇️ Download PDF' && !good.disabled, good.label);
+
+  const bad = await downloadPdf('c1');
+  check('a failed cycle\'s PDF says FAIL, SKIPPED and gives the deviation',
+    /\(FAIL\)/.test(bad.pdf) && /SKIPPED/.test(bad.pdf) && /Step 4 temp 150/.test(bad.pdf) && /Repeated caustic/.test(bad.pdf));
+  check('an unsigned cycle\'s PDF has no signature name', !/Pat PCQI/.test(bad.pdf));
+  check('a name with markup is written as plain text in the file name', /^CIP_FB6-img-src-x/.test(bad.name), bad.name);
 
   // ── Calibration register ──
   await page.evaluate(() => window.glOpenGMPRegister('GMP-CAL-001'));

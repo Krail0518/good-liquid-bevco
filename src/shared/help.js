@@ -1686,7 +1686,7 @@
       '<b>When to log it</b>: after every production run, before switching products, and at the start/end of each shift. The log should be completed by the operator who performed the CIP, not a supervisor.',
       '<b>(1) + Add Cycle</b> — fill in: line, sanitizer name + concentration, rinse water temperature, contact time (minutes), and your name. Hit Save. The record is timestamped server-side and is immutable (Part 11 compliant).',
       '<b>(2) FDA-defensible record</b> — each entry is stored in Supabase with a server timestamp, user ID, and a hash. During an FDA inspection you can export the full log as a signed PDF from the Compliance → 📤 Export button.',
-      '<b>🖨️ Print / PDF</b>: the button on the right of the search bar prints the cycles on screen, oldest first, each with its 9 steps, result and signature. Search a tank first to print only that tank. To print one cycle, click its row and use <b>🖨️ Print / PDF</b> in the detail. For a PDF, choose “Save as PDF” as the printer.'
+      '<b>🖨️ Print / PDF</b>: the button on the right of the search bar prints the cycles on screen, oldest first, each with its 9 steps, result and signature. Search a tank first to print only that tank. To save one cycle as a PDF file, click its row and use <b>⬇️ Download PDF</b> in the detail (or <b>🖨️ Print</b> to send it to a printer). For the whole list as a PDF, choose “Save as PDF” as the printer.'
     ]);
 
   var SEC_HOLD_TAGS =

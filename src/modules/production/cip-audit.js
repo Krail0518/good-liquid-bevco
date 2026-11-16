@@ -488,7 +488,8 @@
         '</tr></thead><tbody>' + STEP_DEFS.map(stepRow).join('') + '</tbody></table>' +
         devNote +
         '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">' +
-          '<button id="gl-cipd-print" class="cbtn">🖨️ Print / PDF</button>' +
+          '<button id="gl-cipd-pdf" class="cbtn pri">⬇️ Download PDF</button>' +
+          '<button id="gl-cipd-print" class="cbtn">🖨️ Print</button>' +
           '<button id="gl-cipd-done" class="cbtn">Close</button>' +
         '</div>' +
       '</div>';
@@ -497,6 +498,15 @@
     ov.querySelector('#gl-cipd-close').onclick = function(){ ov.remove(); };
     ov.querySelector('#gl-cipd-done').onclick  = function(){ ov.remove(); };
     ov.querySelector('#gl-cipd-print').onclick = function(){ printOneCycle(row); };
+    ov.querySelector('#gl-cipd-pdf').onclick = async function(){
+      if(typeof window.glDownloadCipPdf !== 'function'){ alert('The PDF tool did not load. Refresh the page and try again.'); return; }
+      var btn = this; btn.disabled = true; btn.textContent = 'Creating PDF…';
+      try {
+        await window.glDownloadCipPdf(row._raw, {
+          warning: row._localOnly ? 'NOT SAVED TO THE DATABASE. This cycle exists in one browser only and is not part of the filed record.' : ''
+        });
+      } finally { btn.disabled = false; btn.textContent = '⬇️ Download PDF'; }
+    };
   };
 
   // glOpenAddCip is set to glOpenCipForm (the live 9-step FDA form) at the

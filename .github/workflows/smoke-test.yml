@@ -453,7 +453,8 @@ jobs:
         run: node tests/cip-history-search.test.cjs
 
       # Print / PDF for the CIP log and the calibration register: what prints,
-      # in what order, the pH meter filter, and no script from typed values.
+      # in what order, the pH meter filter, the CIP cycle's Download PDF file
+      # (jsPDF from /tmp/pw), and no script from typed values.
       - name: Run compliance print test
         env:
           NODE_PATH: /tmp/pw/node_modules
