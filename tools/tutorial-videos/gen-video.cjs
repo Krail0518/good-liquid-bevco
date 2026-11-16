@@ -90,7 +90,10 @@ function installCommon(){
       // Sofia, the host (host.cjs, injected as window.__host before this runs).
       // Her open mouth shows only while __speak says she is talking.
       const st=document.createElement('style'); st.id='gm-style';
-      st.textContent=(window.__host?window.__host.css:'');
+      // The CRM's session-expiry watcher (src/services/auth.js) checks the REAL
+      // Supabase client every 60s, finds no login under the stub, and drops a red
+      // 'session expired' bar over any video longer than a minute. Hide it here.
+      st.textContent=(window.__host?window.__host.css:'')+'#gl-session-expired{display:none!important}';
       document.head.appendChild(st);
       const m=document.createElement('div'); m.id='gm-mascot';
       m.style.cssText='position:fixed;left:16px;bottom:84px;width:132px;height:162px;z-index:2147483646;pointer-events:none;filter:drop-shadow(0 6px 14px rgba(0,0,0,.5))';
@@ -342,7 +345,86 @@ function atpStub(){
 }
 const ROW=n=>`#gl-atp-tests .gl-atp-row:nth-child(${n})`;
 
+// ── Project Tracker (Pipeline → 🧭 Project Tracker) — demo data only ──
+// Invented brands, never real clients: the MP4 is served publicly from
+// /tutorials. Dates are relative to the build day so "days on step" and the
+// Timeline always look current.
+const TRACKER_DATA=(function(){
+  const iso=d=>new Date(Date.now()-d*86400000).toISOString();
+  const KEYS=[['intake','Onboarding',1,'client'],['formulation','Formulation',2,'gl'],['batch_1l_sent','1 L batch sent',3,'gl'],
+    ['client_feedback','Your feedback',4,'client'],['formula_revisions','Formula revisions',5,'gl'],['batch_1l_approved','1 L batch approved',6,'client'],
+    ['batch_50l','50 L batch',7,'gl'],['pa_letter','Process Authority letter',8,'gl'],['production_scheduled','Production scheduled',9,'gl'],
+    ['production_run','Production run',10,'gl'],['shipped','Quality check and shipped',11,'gl'],['invoiced_paid','Invoiced and paid',12,'gl']];
+  let n=0; const ms=[];
+  // upto = sort_order of the current step; span = days since the project started
+  function proj(pid, upto, cur, age, span, skip){
+    KEYS.forEach(([key,label,o,owner])=>{
+      let status = o<upto ? 'completed' : o===upto ? cur : 'not_started';
+      if(skip && skip.indexOf(key)>-1) status='skipped';
+      ms.push({id:pid+'-'+(n++),project_id:pid,track:'formulation',key,label,sort_order:o,round:1,owner,status,
+        completed_at: status==='completed' ? iso(span*(1-o/Math.max(upto,2))) : null,
+        updated_at: o===upto ? iso(age) : iso(40)});
+    });
+    ms.push({id:pid+'-art',project_id:pid,track:'artwork',key:'packaging_artwork',label:'Packaging and artwork',sort_order:1,round:1,owner:'gl',status:'in_progress',updated_at:iso(5)});
+  }
+  const NOFORM=['formulation','batch_1l_sent','client_feedback','formula_revisions','batch_1l_approved','batch_50l'];
+  proj('p1',10,'in_progress',2,140);
+  proj('p2',9,'in_progress',4,60,NOFORM);
+  proj('p3',7,'in_progress',6,110);
+  proj('p4',4,'awaiting_client',19,70);
+  proj('p5',2,'in_progress',8,30);
+  proj('p6',13,'completed',3,150);
+  return {
+    clients:[{id:'c1',company:'Solstice Seltzer'},{id:'c2',company:'Harbor Kombucha'},{id:'c3',company:'Brightwater Tonic'},
+             {id:'c4',company:'Hollow Pine Kombucha'},{id:'c5',company:'Northfork Sparkling'},{id:'c6',company:'Coastline Cola'},
+             {id:'c7',company:'Ember Ridge Tea',email:'hello@emberridge.example'}],
+    projects:[
+      {id:'p1',client_id:'c1',name:'Yuzu lime',product_name:'Yuzu lime, 12 oz sleek',status:'active',started_on:iso(140)},
+      {id:'p2',client_id:'c2',name:'Run 1',product_name:'Canning only, client formula',status:'active',started_on:iso(60)},
+      {id:'p3',client_id:'c3',name:'Ginger',product_name:'Ginger tonic, 12 oz sleek',status:'active',started_on:iso(110)},
+      {id:'p4',client_id:'c4',name:'Original',product_name:'Original kombucha',status:'active',started_on:iso(70)},
+      {id:'p5',client_id:'c5',name:'Blood orange',product_name:'Blood orange sparkling',status:'active',started_on:iso(30)},
+      {id:'p6',client_id:'c6',name:'Cola',product_name:'Original cola, 3 SKUs',status:'active',started_on:iso(150)}],
+    project_milestones:ms,
+    deals:[
+      {id:'d1',co:'Ridgeline Cold Brew',stage:'Proposal',stage_entered_at:iso(3),created_at:iso(12),updated_at:iso(3)},
+      {id:'d2',co:'Ember Ridge Tea',email:'hello@emberridge.example',stage:'Closed Won',stage_entered_at:iso(1),created_at:iso(20),updated_at:iso(1)},
+      {id:'d3',co:'Lumen Energy',stage:'Prospecting',created_at:iso(5),updated_at:iso(5)}],
+    quotes:[{deal_id:'d1',status:'sent',sent_at:iso(3)}],
+    product_intake:[],
+    onboarding:[{client_id:'c7',status:'invited',created_at:iso(1)}],
+    audit_log:[]
+  };
+})();
+
 const STORYBOARDS={
+  tracker:{
+    title:'Project Tracker — Where Every Client Stands',
+    async setup(pg){
+      await pg.evaluate(async(data)=>{
+        window.__chain(JSON.parse(JSON.stringify(data)));
+        window.currentUser={id:'u1',email:'mike@krail.us',role:'admin',name:'Mike',initials:'MK'};
+        try{ localStorage.setItem('gl-tracker-view','list'); }catch(e){}
+        if(window.GL_HOOKS){ window.GL_HOOKS._navGuards=[]; }
+        document.getElementById('crm-panel').classList.add('show');
+        window.cNav('tracker');
+        window.__hud();
+      }, TRACKER_DATA);
+      await sleep(1400); await pg.evaluate(()=>window.__hud());
+    },
+    steps:[
+      {say:"The Project Tracker shows where every client stands, from first contact all the way to a paid production run."},
+      {say:"Across the top, the overview strip counts how many clients are on each step right now. A yellow dot means waiting on the client, and a red triangle means stalled.", act:{type:'move',sel:'.gl-trk-seg[data-step="loop_1l"]'}},
+      {say:"Below it, clients are grouped by the phase they are in, with the ones closest to production at the top.", act:{type:'move',sel:'.gl-trk-row:has-text("Solstice Seltzer")'}},
+      {say:"Each client is a card. The phase they are in is boxed in its color, finished steps are green checks, and the large dot is the step they are on now.", act:{type:'move',sel:'.gl-trk-row:has-text("Brightwater Tonic") .gl-trk-dot[data-step="batch_50l"]'}},
+      {say:"The Now label names that step in plain words. On the right you see the step number, a progress bar, and how many days it has been on that step.", act:{type:'move',sel:'.gl-trk-row:has-text("Brightwater Tonic") >> text=days on step'}},
+      {say:"Click any step to change it. Mark it in progress, waiting on the client, or done, and every change is kept in that step's history.", act:{type:'click',sel:'.gl-trk-row:has-text("Brightwater Tonic") .gl-trk-dot[data-step="batch_50l"]'}},
+      {say:"Many steps also move on their own. A submitted onboarding form, an uploaded Process Authority letter, a production run, or a paid invoice each finish their step automatically.", act:{type:'move',sel:'.gl-trk-save'}},
+      {say:"Switch to Board to see a column for every step, with each client as a card in the step they are on.", act:{type:'click',sel:'.gl-trk-view[data-view="board"]'}},
+      {say:"Timeline lays out each client's history on a calendar, with the phase they are in now striped up to today.", act:{type:'click',sel:'.gl-trk-view[data-view="timeline"]'}},
+      {say:"Your clients see these same steps in their portal, only for their own projects. So everyone always knows exactly where things stand."}
+    ]
+  },
   atp:{
     title:'ATP Swabs — Log a Job, Sign It, Send the PDF',
     async setup(pg){

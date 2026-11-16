@@ -1078,8 +1078,8 @@
       '<b>Printing</b>: click <b>🖨️ Print Statement</b> in the modal to open the browser print dialog. Use "Save as PDF" to email a statement to your client.'
     ]);
 
-  var SEC_TRACKER =
-    '<p style="margin:0 0 10px">One row per client project, plus every open lead. Each row is a line of 14 dots in four phases, so you can see at a glance where every client is.</p>' +
+  var SEC_TRACKER = watch('tutorial-tracker.mp4') +
+    '<p style="margin:0 0 10px">Where every client stands, from first contact to a paid production run. Each client project, and every open lead, is a card showing its four phases (Sales, Onboarding, Formulation, Production), the step it is on now, and how long it has been there.</p>' +
     bullets([
       '<b>Sales</b> (Lead in, Qualified, Quote sent, Won) follows the pipeline. Move the deal in the Pipeline to change these. Clients never see them.',
       '<b>Onboarding</b>, then <b>Formulation</b>: Formulation, the 1 L batch (it repeats in rounds of batch sent, client feedback and revisions), 1 L batch approved, the 50 L batch, and the Process Authority letter.',
@@ -2049,6 +2049,7 @@
     videoCard('tutorial-auditor.mp4', '🔒 Auditor Portal — Read-Only Records Access', 'Exactly what an outside auditor sees through their read-only token link — every register and record visible, nothing changeable.') +
     videoGroup('💼 SALES, INVOICING & CLIENTS') +
     videoCard('tutorial-invoices.mp4', '🧾 Invoices — Bill Your Brands', 'The invoice list and status filters, then building a new invoice — pick a client and service and the price and preview build themselves from the rate card.') +
+    videoCard('tutorial-tracker.mp4', '🧭 Project Tracker — Where Every Client Stands', 'The overview strip, reading a client card, changing a step, the steps that move by themselves, and the Board and Timeline views.') +
     videoCard('tutorial-pipeline.mp4', '📊 Pipeline — Your Sales Board', 'How deals move through Prospecting, Proposal, Negotiation and Closed — logging outreach on a card and opening the full deal.') +
     videoCard('tutorial-clients.mp4', '👥 Clients — Every Brand in One Place', 'The client list and what each row shows, then opening a brand’s complete, editable record in one click.') +
     videoCard('tutorial-portal.mp4', '🌐 Customer Portal — Your Clients’ Private Login', 'What a brand sees when they log into their own portal — invoices, production runs, COAs &amp; documents, and their label artwork.') +

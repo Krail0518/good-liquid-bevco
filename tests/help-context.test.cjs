@@ -92,6 +92,7 @@ const server = http.createServer((req, res) => {
   // page's own section, so its video has to be first there.
   const VIDEO_FOR = {
     'cpg-dashboard': 'tutorial-dashboard', 'cpg-clients': 'tutorial-clients', 'cpg-pipeline': 'tutorial-pipeline',
+    'cpg-tracker': 'tutorial-tracker',
     'cpg-invoices': 'tutorial-invoices', 'cpg-invoice-detail': 'tutorial-invoices', 'cpg-warehouse': 'tutorial-warehouse',
     'cpg-production-runs': 'tutorial-production-runs', 'cpg-formulas': 'tutorial-formula-vault', 'cpg-gmp': 'tutorial-daily',
     'cpg-gmpsched': 'tutorial-schedule', 'cpg-trace': 'tutorial-trace', 'cpg-training': 'tutorial-training',
