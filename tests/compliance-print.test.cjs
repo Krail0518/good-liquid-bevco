@@ -18,6 +18,8 @@
  *     the cycle did not fail (the form saves it as corrective_action always)
  *
  * Calibration register (src/modules/production/gmp.js)
+ *   - the screen shows the printout's columns, so records from either
+ *     calibration form fill in on screen (ID, method, result, range, P/F)
  *   - the Instrument filter narrows the list and the printout to the pH meter
  *   - records from BOTH calibration forms print their values (the Compliance
  *     form and the Daily GMP template store different keys)
@@ -217,6 +219,28 @@ async function popupOf(page, click) {
   await page.selectOption('#gl-gmp-reg-inst', 'pH meter');
   const onScreen = await page.evaluate(() => document.querySelectorAll('#gl-gmp-reg-rows tr').length);
   check('filtering to pH meter narrows the list on screen', onScreen === 2, String(onScreen));
+
+  // The screen uses the same columns as the printout, so a record from either
+  // calibration form fills in (the template's own columns left the Compliance
+  // form's records with a blank ID, method and result).
+  const screen = await page.evaluate(() => {
+    const ov = document.getElementById('gl-gmp-reg');
+    const heads = [...ov.querySelectorAll('thead th')].map((c) => c.innerText.toLowerCase());
+    const rows = [...ov.querySelectorAll('#gl-gmp-reg-rows tr')].map((r) => [...r.cells].map((c) => c.innerText));
+    return { heads, rows, imgs: ov.querySelectorAll('img').length };
+  });
+  const sc = (row, name) => (row || [])[screen.heads.indexOf(name)];
+  const fromForm = screen.rows.find((r) => /PH-01 \/ QC lab/.test(r.join('|')));
+  const fromTpl = screen.rows.find((r) => /As found/.test(r.join('|')));
+  check('the Calibration screen shows ID, method, result, range and pass/fail columns',
+    ['id / location', 'method', 'result', 'acceptable range', 'pass / fail', 'next due'].every((h) => screen.heads.indexOf(h) >= 0), JSON.stringify(screen.heads));
+  check('on screen, a Compliance-form record fills its ID, method, result and range',
+    !!fromForm && sc(fromForm, 'method') === '2-point 4.01/7.00' && sc(fromForm, 'result') === 'Slope 98.4%' && sc(fromForm, 'acceptable range') === '95 to 105%' && sc(fromForm, 'pass / fail') === 'PASS',
+    JSON.stringify(fromForm));
+  check('on screen, a Daily GMP record fills its ID, as-found / as-left and FAIL',
+    !!fromTpl && sc(fromTpl, 'id / location') === 'PH-01' && sc(fromTpl, 'result') === 'As found 7.12, As left 7.01' && sc(fromTpl, 'pass / fail') === 'FAIL',
+    JSON.stringify(fromTpl));
+  check('on screen, markup in a reference value is text, not an element', screen.imgs === 0 && /Hanna lot 2311A <img/.test(sc(fromForm, 'reference / lot') || ''), sc(fromForm, 'reference / lot'));
 
   const cal = await popupOf(page, () => page.click('#gl-gmp-reg-print'));
   check('the calibration printout is landscape', cal.wide);

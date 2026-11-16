@@ -140,6 +140,11 @@
     { label:'PCQI signature',    get:function(r, d){ return signatureText(r); } }
   ];
 
+  // The Calibration register screen (gmp.js) shows the same columns, so a
+  // record from either form fills in on screen as it does on paper. Each
+  // get() returns plain text; the caller escapes it.
+  window.glCalibrationColumns = CAL_COLUMNS.slice();
+
   // Any other register: its template fields, plus the shared header details.
   function fieldColumns(fields){
     var cols = [
