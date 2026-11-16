@@ -296,7 +296,35 @@
       var head = '<tr style="text-align:left;color:#9aa7bd;font-size:11px"><th style="padding:6px 8px">Date</th><th style="padding:6px 8px">Line/Run</th><th style="padding:6px 8px">By</th>' +
         cols.map(function(f){ return '<th style="padding:6px 8px">'+esc(f.label)+'</th>'; }).join('') +
         '<th style="padding:6px 8px">Dev</th><th style="padding:6px 8px">Status</th></tr>';
+      // Calibration is written by two forms with different keys: the
+      // Compliance form (location, method, result, range, pf) and this
+      // register's template (instrument_id, as_found, as_left, tolerance_ok).
+      // Template columns left the Compliance form's records half blank, so
+      // Calibration uses the printout's columns, which read either shape.
+      // Notes and the signature stay on the printout; Status covers it here.
+      var calCols = (code === 'GMP-CAL-001' && Array.isArray(window.glCalibrationColumns))
+        ? window.glCalibrationColumns.filter(function(c){ return c.label !== 'Notes' && c.label !== 'PCQI signature'; })
+        : null;
+      if(calCols){
+        head = '<tr style="text-align:left;color:#9aa7bd;font-size:11px">' +
+          calCols.map(function(c){ return '<th style="padding:6px 8px;white-space:nowrap">'+esc(c.label)+'</th>'; }).join('') +
+          '<th style="padding:6px 8px">Dev</th><th style="padding:6px 8px">Status</th></tr>';
+      }
+      function calRowHtml(rec){
+        var d = rec.data || {};
+        return '<tr style="border-top:1px solid rgba(255,255,255,.06);font-size:12px">' +
+          calCols.map(function(c){
+            var v = c.get(rec, d);
+            v = v == null ? '' : String(v);
+            var fail = c.label === 'Pass / Fail' && v === 'FAIL';
+            var pass = c.label === 'Pass / Fail' && v === 'PASS';
+            return '<td style="padding:6px 8px;color:'+(fail?'#ff8579;font-weight:700':pass?'#5fcf9e;font-weight:700':'#dfe7f1')+'">'+esc(v)+'</td>';
+          }).join('') +
+          '<td style="padding:6px 8px">'+(rec.has_deviation?'<span style="color:#ff8579">⚠</span>':'')+'</td>' +
+          '<td style="padding:6px 8px;color:'+(rec.status==='signed'?'#5fcf9e':'#9aa7bd')+'">'+esc(rec.status||'')+'</td></tr>';
+      }
       function rowHtml(rec){
+        if(calCols) return calRowHtml(rec);
         var d = rec.data || {};
         var cells = cols.map(function(f){ var v = d[f.key]; return '<td style="padding:6px 8px;color:#dfe7f1">'+esc(v==null?'':String(v))+'</td>'; }).join('');
         return '<tr style="border-top:1px solid rgba(255,255,255,.06);font-size:12px">' +
