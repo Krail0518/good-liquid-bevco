@@ -237,6 +237,7 @@
       '<datalist id="gl-cip-equip-list">' + opts + '</datalist>' +
       '<button type="button" class="cbtn pri" id="gl-cip-search-go">Search</button>' +
       (search.term ? '<button type="button" class="cbtn" id="gl-cip-search-clear">Show all cycles</button>' : '') +
+      '<button type="button" class="cbtn" id="gl-cip-print" style="margin-left:auto">🖨️ Print / PDF</button>' +
     '</div>';
   }
 
@@ -251,6 +252,37 @@
     }
     if(go)  go.addEventListener('click', function(){ runSearch(inp ? inp.value : ''); });
     if(clr) clr.addEventListener('click', function(){ runSearch(''); });
+    var prn = host.querySelector('#gl-cip-print');
+    if(prn) prn.addEventListener('click', printCurrentList);
+  }
+
+  // ── Print / PDF ──────────────────────────────────────────
+  // Prints what the page is showing: a searched tank's full history, or the
+  // newest cycles on the main list. A cycle held only in this browser was
+  // never filed, so it is left off the printout and the printout says so.
+  function printCurrentList(){
+    if(typeof window.glPrintComplianceLog !== 'function'){ alert('The print view did not load. Refresh the page and try again.'); return; }
+    var shown = search.term ? (search.rows || []) : (window.glCipLogs || []);
+    var saved = shown.filter(function(r){ return !r._localOnly && r._raw; });
+    var held  = shown.length - saved.length;
+    if(!saved.length){ alert(held ? 'The only cycles listed are not saved to the database yet, so there is nothing to print. Retry the save first.' : 'There are no CIP cycles to print.'); return; }
+    window.glPrintComplianceLog({
+      rows: saved.map(function(r){ return r._raw; }),
+      formCode: CIP_FORM,
+      title: 'CIP / Sanitation Log',
+      scope: search.term ? 'Equipment matching “' + search.term + '”' : 'Most recent cycles',
+      note: held ? held + ' cycle' + (held === 1 ? ' is' : 's are') + ' held in this browser only and not saved to the database, so ' + (held === 1 ? 'it is' : 'they are') + ' not included.' : ''
+    });
+  }
+  function printOneCycle(row){
+    if(typeof window.glPrintComplianceLog !== 'function'){ alert('The print view did not load. Refresh the page and try again.'); return; }
+    window.glPrintComplianceLog({
+      rows: [row._raw],
+      formCode: CIP_FORM,
+      title: 'CIP Cycle Record',
+      scope: row.line_area || '',
+      note: row._localOnly ? 'NOT SAVED TO THE DATABASE. This cycle exists in one browser only and is not part of the filed record.' : ''
+    });
   }
 
   // Re-attempt the inserts that were rejected. Each cached row carries the
@@ -455,7 +487,9 @@
           '<th style="padding:6px;text-align:center">DONE</th><th style="padding:6px">#</th><th style="padding:6px">STEP</th><th style="padding:6px;text-align:right">TIME/TEMP</th><th style="padding:6px">READING</th><th style="padding:6px;text-align:right">P/F</th>' +
         '</tr></thead><tbody>' + STEP_DEFS.map(stepRow).join('') + '</tbody></table>' +
         devNote +
-        '<div style="display:flex;justify-content:flex-end;margin-top:18px">' +
+        '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">' +
+          '<button id="gl-cipd-pdf" class="cbtn pri">⬇️ Download PDF</button>' +
+          '<button id="gl-cipd-print" class="cbtn">🖨️ Print</button>' +
           '<button id="gl-cipd-done" class="cbtn">Close</button>' +
         '</div>' +
       '</div>';
@@ -463,6 +497,16 @@
     ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
     ov.querySelector('#gl-cipd-close').onclick = function(){ ov.remove(); };
     ov.querySelector('#gl-cipd-done').onclick  = function(){ ov.remove(); };
+    ov.querySelector('#gl-cipd-print').onclick = function(){ printOneCycle(row); };
+    ov.querySelector('#gl-cipd-pdf').onclick = async function(){
+      if(typeof window.glDownloadCipPdf !== 'function'){ alert('The PDF tool did not load. Refresh the page and try again.'); return; }
+      var btn = this; btn.disabled = true; btn.textContent = 'Creating PDF…';
+      try {
+        await window.glDownloadCipPdf(row._raw, {
+          warning: row._localOnly ? 'NOT SAVED TO THE DATABASE. This cycle exists in one browser only and is not part of the filed record.' : ''
+        });
+      } finally { btn.disabled = false; btn.textContent = '⬇️ Download PDF'; }
+    };
   };
 
   // glOpenAddCip is set to glOpenCipForm (the live 9-step FDA form) at the

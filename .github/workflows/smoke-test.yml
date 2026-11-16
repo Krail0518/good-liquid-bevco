@@ -452,6 +452,15 @@ jobs:
           REPO_ROOT: ${{ github.workspace }}
         run: node tests/cip-history-search.test.cjs
 
+      # Print / PDF for the CIP log and the calibration register: what prints,
+      # in what order, the pH meter filter, the CIP cycle's Download PDF file
+      # (jsPDF from /tmp/pw), and no script from typed values.
+      - name: Run compliance print test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/compliance-print.test.cjs
+
       # ATP swab log + customer report: a client's report never contains
       # another client's runs, swabs or name; RLU is classified against the
       # configured limits; stored text cannot run script in the report.

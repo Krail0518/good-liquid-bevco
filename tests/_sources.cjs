@@ -80,6 +80,7 @@ const CORE_FILES = [
   'src/modules/invoicing/invoice-delete.js',
   'src/modules/customers/portal.js',
   'src/modules/production/production-runs.js',
+  'src/modules/production/compliance-print.js',
   'src/modules/production/cip-audit.js',
   'src/modules/production/compliance.js',
   'src/shared/help.js',
