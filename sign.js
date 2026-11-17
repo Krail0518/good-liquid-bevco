@@ -1,7 +1,11 @@
-/* sign.js — public agreement signing page (sign.html?t=TOKEN).
+/* sign.js — public agreement signing page (sign.html#t=TOKEN).
    No login: the token in the link is the credential, checked server-side by
    the agreement-sign edge function. Everything is rendered with textContent;
-   no agreement or signer text is ever parsed as HTML. */
+   no agreement or signer text is ever parsed as HTML.
+
+   One link can carry several documents (a signing packet, e.g. an invoice
+   acceptance plus the Contract Manufacturing Agreement). They are shown one
+   after another, and one consent + one typed name signs all of them. */
 (function(){
   'use strict';
   var SUPA_URL = 'https://ufjkeqmxwuyhbqyugcgg.supabase.co';
@@ -10,10 +14,17 @@
   // a redirect; ?t= is accepted too.
   var token = new URLSearchParams(location.hash.replace(/^#/, '')).get('t') ||
               new URLSearchParams(location.search).get('t') || '';
+  var docCount = 1;
 
   function $(id){ return document.getElementById(id); }
   function show(id){ ['loading','fatal','done','main'].forEach(function(x){ $(x).classList.toggle('hidden', x !== id); }); }
   function fatal(msg){ $('fatal-msg').textContent = msg; show('fatal'); }
+  function el(tag, cls, text){
+    var d = document.createElement(tag);
+    if(cls) d.className = cls;
+    if(text != null) d.textContent = text;
+    return d;
+  }
 
   async function call(body){
     var r = await fetch(SUPA_URL + '/functions/v1/agreement-sign', {
@@ -27,19 +38,31 @@
     return j;
   }
 
-  function renderDoc(text){
-    var host = $('doc-body');
-    while(host.firstChild) host.removeChild(host.firstChild);
+  function renderBody(host, text){
     String(text || '').replace(/\r\n/g, '\n').split(/\n{2,}/).forEach(function(b){
       var t = b.replace(/\s+$/, ''); if(!t) return;
-      var d = document.createElement('div');
-      if(/^# /.test(t)){ d.className = 't'; d.textContent = t.slice(2); }
-      else if(/^## /.test(t)){ d.className = 'h'; d.textContent = t.slice(3); }
-      else { d.className = 'p'; d.textContent = t; }
-      host.appendChild(d);
+      if(/^# /.test(t)) host.appendChild(el('div', 't', t.slice(2)));
+      else if(/^## /.test(t)) host.appendChild(el('div', 'h', t.slice(3)));
+      else host.appendChild(el('div', 'p', t));
     });
   }
 
+  function renderDocs(docs){
+    var list = $('doc-list');
+    while(list.firstChild) list.removeChild(list.firstChild);
+    docs.forEach(function(d, i){
+      if(docs.length > 1){
+        var lab = el('div', 'doc-label', 'Document ' + (i + 1) + ' of ' + docs.length);
+        lab.appendChild(el('b', null, d.title));
+        list.appendChild(lab);
+      }
+      var card = el('div', 'card doc');
+      renderBody(card, d.body);
+      list.appendChild(card);
+    });
+  }
+
+  function signLabel(){ return docCount > 1 ? ('Sign all ' + docCount + ' documents') : 'Sign agreement'; }
   function refreshButton(){
     $('sign-btn').disabled = !($('consent').checked && $('typed').value.trim().length >= 2);
   }
@@ -53,13 +76,25 @@
       $('done-msg').textContent = 'You have already signed "' + (v.title || 'this agreement') + '". A copy will be emailed to you once everyone has signed.';
       show('done'); return;
     }
-    $('doc-title').textContent = v.title;
-    $('doc-sub').textContent = 'Between ' + v.parties.good_liquid + ' and ' + v.parties.company +
-      '. Please read the full agreement below, then sign at the bottom. You are signing as ' + v.signer.name + ' (' + v.signer.email + ').';
+    var docs = Array.isArray(v.documents) && v.documents.length ? v.documents : [{ title: v.title, body: v.body }];
+    docCount = docs.length;
+    $('doc-title').textContent = docCount > 1 ? ('Please review and sign ' + docCount + ' documents') : v.title;
+    var sub = $('doc-sub');
+    sub.textContent = 'Between ' + v.parties.good_liquid + ' and ' + v.parties.company + '. ' +
+      (docCount > 1
+        ? 'Please read each document below. You sign them all at once at the bottom of the page.'
+        : 'Please read the full agreement below, then sign at the bottom.') +
+      ' You are signing as ' + v.signer.name + ' (' + v.signer.email + ').';
+    if(docCount > 1){
+      var ol = el('ol', 'doc-steps');
+      docs.forEach(function(d){ ol.appendChild(el('li', null, d.title)); });
+      sub.parentNode.appendChild(ol);
+    }
     $('consent-text').textContent = v.consent_text;
     $('typed').value = v.signer.name || '';
     $('sig-preview').textContent = $('typed').value;
-    renderDoc(v.body);
+    $('sign-btn').textContent = signLabel();
+    renderDocs(docs);
     show('main');
     refreshButton();
   }
@@ -72,11 +107,24 @@
     $('err').textContent = '';
     btn.disabled = true; btn.textContent = 'Signing…';
     var r = await call({ action:'sign', consent: $('consent').checked === true, typed_name: $('typed').value });
-    if(!r.ok){ $('err').textContent = r.error; btn.textContent = 'Sign agreement'; refreshButton(); return; }
+    if(!r.ok){ $('err').textContent = r.error; btn.textContent = signLabel(); refreshButton(); return; }
+    var docs = Array.isArray(r.documents) ? r.documents : [];
     $('done-title').textContent = "Thank you — you've signed";
-    $('done-msg').textContent = r.complete
-      ? 'Everyone has now signed. A copy of the signed agreement has been emailed to you.'
-      : 'Your signature is recorded. Good Liquid will countersign, and you will receive a copy of the fully signed agreement by email.';
+    if(docs.length > 1){
+      var msg = $('done-msg');
+      msg.textContent = 'Your signature is recorded on every document:';
+      var ul = el('ul', 'doc-steps');
+      docs.forEach(function(d){
+        ul.appendChild(el('li', null, d.title + (d.complete
+          ? ' — complete. A signed copy has been emailed to you.'
+          : ' — Good Liquid will countersign, then the fully signed copy is emailed to you.')));
+      });
+      msg.parentNode.appendChild(ul);
+    } else {
+      $('done-msg').textContent = r.complete
+        ? 'Everyone has now signed. A copy of the signed agreement has been emailed to you.'
+        : 'Your signature is recorded. Good Liquid will countersign, and you will receive a copy of the fully signed agreement by email.';
+    }
     show('done');
   });
 

@@ -278,6 +278,9 @@ function buildFixtures() {
       '## 1. Confidential information', 'Each party keeps the other party\'s information confidential.', '[[SIGNATURES]]'].join('\n\n') },
     { kind: 'manufacturing', title: 'Contract Manufacturing Agreement', body: [
       '# Contract Manufacturing Agreement', 'Between {{gl_legal_name}} and {{client_legal_name}} for {{term_years}} years from {{effective_date}}.', '[[SIGNATURES]]'].join('\n\n') },
+    { kind: 'invoice_acceptance', title: 'Invoice Acceptance and Product Responsibility', body: [
+      '# Invoice Acceptance', 'Invoice {{invoice_number}} dated {{invoice_date}} to {{client_legal_name}}.', '## Invoice Summary', '{{invoice_lines}}',
+      'Total: {{invoice_total}}\nPayment terms: {{payment_terms}}', '## Kill Step for This Run', '{{kill_step}}', '[[SIGNATURES]]'].join('\n\n') },
   ];
   F.gmp_documents = [
     { id: uuid(1501), doc_code: 'GMP-SOP-SUP', title: 'GMP SOP Supplement', category: 'sop', description: 'Supplementary GMP SOPs.', file_url: '/docs/GMP-SOP-Supplement.docx', file_type: 'docx', rev: 'A', active: true, sort_order: 1 },
@@ -1332,6 +1335,52 @@ const FEATURES = [
     const sign = calls.filter((c) => c.kind === 'invoke' && c.name === 'agreement-sign');
     check('send saves the PDF + agreement row, then calls agreement-sign with action "send"', calls.some((c) => c.kind === 'storage') && calls.some((c) => c.kind === 'insert' && c.name === 'agreements') && sign.length === 1 && sign[0].body && sign[0].body.action === 'send', JSON.stringify(calls.filter((c) => c.kind !== 'select').map((c) => c.kind + ':' + c.name)));
     const status = await p.evaluate(() => document.body.innerText.match(/Signing link emailed to [^\n.]+|sending failed[^\n]*|PDF failed[^\n]*/i));
+    check('UI confirms the signing link was emailed', !!status && /emailed to ann@/.test(status[0]), status ? status[0] : 'no status line');
+  }],
+
+  // Invoice acceptance + manufacturing agreement in one signing packet
+  // (migration 20261117180000). The fixture client has no signed
+  // manufacturing agreement, so both documents go out together.
+  ['Invoices: customer sign-off (acceptance + manufacturing agreement)', async (sess, check) => {
+    const p = sess.page;
+    await navTo(p, 'Invoices'); await settle(p, 600);
+    await p.evaluate(() => window.viewInvoice('GL-1042'));
+    await settle(p, 900);
+    const injected = await p.evaluate(() => ({
+      btn: !!document.querySelector('#inv-detail .gl-signoff-btn'),
+      status: (document.querySelector('#inv-detail .gl-signoff-status') || {}).textContent || '',
+    }));
+    check('invoice detail has a ✍️ Customer sign-off button', injected.btn);
+    check('invoice detail shows the sign-off status (not sent yet)', /not sent/i.test(injected.status), injected.status);
+    if (!injected.btn) return;
+    await p.click('#inv-detail .gl-signoff-btn'); await settle(p, 900);
+    const form = await p.evaluate(() => ({
+      open: !!document.getElementById('gl-signoff-modal'),
+      kill: (document.querySelector('[data-signoff-field="kill_step"]') || {}).value,
+      mfg: !!(document.querySelector('[data-signoff-field="include_mfg"]') || {}).checked,
+      email: (document.querySelector('[data-signoff-field="client_signer_email"]') || {}).value,
+    }));
+    check('sign-off modal opens prefilled from the client', form.open && /@/.test(form.email || ''), JSON.stringify(form));
+    check('kill step defaults to ACCEPTED when pasteurization is on the invoice', form.kill === 'accepted', form.kill);
+    check('manufacturing agreement is included when the client has not signed one', form.mfg);
+    check('"👁 Preview documents" renders both documents', !!await clickText(p, '#gl-signoff-modal', /Preview documents/));
+    await settle(p, 400);
+    const prev = await p.evaluate(() => document.getElementById('gl-signoff-modal').innerText);
+    check('preview shows the invoice lines, total and the kill-step wording', /Pasteurization/.test(prev) && /\$5,280\.00/.test(prev) && /ACCEPTED/.test(prev), prev.slice(0, 300));
+    const n0 = (await stubCalls(p)).length;
+    check('"✍️ Send for e-signature" button exists', !!await clickText(p, '#gl-signoff-modal', /Send for e-signature/));
+    await settle(p, 1500);
+    const calls = await callsSince(p, n0);
+    const ins = calls.filter((c) => c.kind === 'insert' && c.table === 'agreements').map((c) => (Array.isArray(c.payload) ? c.payload[0] : c.payload) || {});
+    const kinds = ins.map((r) => r.kind).sort().join(',');
+    check('two draft agreements are logged: invoice_acceptance + manufacturing', kinds === 'invoice_acceptance,manufacturing', kinds);
+    const acc = ins.find((r) => r.kind === 'invoice_acceptance') || {};
+    check('the acceptance is linked to the invoice and the client', /^[0-9a-f-]{36}$/.test(acc.invoice_id || '') && !!acc.client_id, JSON.stringify({ invoice_id: acc.invoice_id, client_id: acc.client_id }));
+    check('the acceptance text carries the invoice and the signature block', /GL-1042/.test(acc.body || '') && /By: _{5,}/.test(acc.body || '') && !/GOOD LIQUID\n/.test(acc.body || ''), (acc.body || '').slice(-200));
+    check('both draft PDFs are filed to storage', calls.filter((c) => c.kind === 'storage').length >= 2);
+    const sign = calls.filter((c) => c.kind === 'invoke' && c.name === 'agreement-sign');
+    check('one agreement-sign call with action "send_packet" and both ids', sign.length === 1 && sign[0].body && sign[0].body.action === 'send_packet' && (sign[0].body.agreement_ids || []).length === 2, JSON.stringify(sign.map((s) => s.body)));
+    const status = await p.evaluate(() => document.getElementById('gl-signoff-modal').innerText.match(/Signing link emailed to [^\n]+|sending failed[^\n]*|PDF failed[^\n]*|Fill in[^\n]*/i));
     check('UI confirms the signing link was emailed', !!status && /emailed to ann@/.test(status[0]), status ? status[0] : 'no status line');
   }],
 

@@ -180,7 +180,9 @@ console.log('inbound alert gaps\n');
   const as = read('supabase/functions/agreement-sign/index.ts');
   ok('agreement-sign: alerts when complete', /await notifyDeal\('agreement-sign', 'agreement_signed'/.test(as));
   ok('agreement-sign: alerts on decline', /await notifyDeal\('agreement-sign', 'agreement_declined'/.test(as));
-  ok('agreement-sign: keeps the decline email to the GL signer', /gl_signer_email[\s\S]{0,400}Declined: \$\{agreement\.title\}/.test(as));
+  // `titles`: a signing packet declines every document on the page at once,
+  // and the email names them all (20261117180000).
+  ok('agreement-sign: keeps the decline email to the GL signer', /gl_signer_email[\s\S]{0,400}Declined: \$\{(agreement\.title|titles)\}/.test(as));
   const dec = as.slice(as.indexOf("if (action === 'decline')"), as.indexOf('// sign\n') > 0 ? as.indexOf('// sign\n') : as.indexOf('// sign\r\n'));
   ok('agreement-sign: decline signer update is checked', /sUpd\.error \|\| !sUpd\.data\?\.length\)[\s\S]{0,200}return errorResponse/.test(dec));
   ok('agreement-sign: decline agreement update is checked', /aUpd\.error \|\| !aUpd\.data\?\.length\)[\s\S]{0,200}return errorResponse/.test(dec));
