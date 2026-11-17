@@ -1353,7 +1353,10 @@ const FEATURES = [
     check('invoice detail has a ✍️ Customer sign-off button', injected.btn);
     check('invoice detail shows the sign-off status (not sent yet)', /not sent/i.test(injected.status), injected.status);
     if (!injected.btn) return;
-    await p.click('#inv-detail .gl-signoff-btn'); await settle(p, 900);
+    // DOM click, like the other scenarios: the first-run Setup Wizard can be
+    // open over the page and would swallow a pointer click.
+    await p.evaluate(() => { const w = [...document.querySelectorAll('button')].find((b) => /Finish setup/.test(b.textContent || '')); if (w) w.click(); document.querySelector('#inv-detail .gl-signoff-btn').click(); });
+    await settle(p, 900);
     const form = await p.evaluate(() => ({
       open: !!document.getElementById('gl-signoff-modal'),
       kill: (document.querySelector('[data-signoff-field="kill_step"]') || {}).value,
@@ -1371,7 +1374,7 @@ const FEATURES = [
     check('"✍️ Send for e-signature" button exists', !!await clickText(p, '#gl-signoff-modal', /Send for e-signature/));
     await settle(p, 1500);
     const calls = await callsSince(p, n0);
-    const ins = calls.filter((c) => c.kind === 'insert' && c.table === 'agreements').map((c) => (Array.isArray(c.payload) ? c.payload[0] : c.payload) || {});
+    const ins = calls.filter((c) => c.kind === 'insert' && c.name === 'agreements').map((c) => (Array.isArray(c.payload) ? c.payload[0] : c.payload) || {});
     const kinds = ins.map((r) => r.kind).sort().join(',');
     check('two draft agreements are logged: invoice_acceptance + manufacturing', kinds === 'invoice_acceptance,manufacturing', kinds);
     const acc = ins.find((r) => r.kind === 'invoice_acceptance') || {};
