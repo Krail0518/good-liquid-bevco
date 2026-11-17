@@ -557,6 +557,35 @@
     window.glUpdateCan(uid);
   };
 
+  /* ── Bottles per case ──
+     Each bottling line is packed 12 or 6 bottles to a case (data-gl-bpc).
+     Price is by total bottles either way; the case size decides how many
+     cases the bottles fill, and so how many pallets they need (a pallet takes
+     792 bottles: 66 cases of 12 or 132 of 6). */
+  var BPC=12;
+  window.glBtlRowBpc=function(row){
+    var n=parseInt(row&&row.getAttribute('data-gl-bpc'),10);
+    return n===6||n===12?n:BPC;
+  };
+  // Cases a bottling line fills; a part case still takes a whole case.
+  window.glBtlRowCases=function(row){
+    var qe=row&&document.getElementById(row.id+'-qty');
+    var q=qe?Math.max(0,parseInt(qe.value,10)||0):0;
+    return Math.ceil(q/window.glBtlRowBpc(row));
+  };
+  function btlCasesText(row){
+    var qe=document.getElementById(row.id+'-qty');
+    var q=qe?Math.max(0,parseInt(qe.value,10)||0):0, bpc=window.glBtlRowBpc(row);
+    var cases=Math.ceil(q/bpc), rem=q%bpc;
+    return 'bottles · '+cases.toLocaleString()+' case'+(cases===1?'':'s')+' of '+bpc+(rem?' (last case '+rem+')':'');
+  }
+  window.glSetBtlCase=function(uid){
+    var row=document.getElementById(uid),se=document.getElementById(uid+'-bpc');
+    if(!row||!se)return;
+    row.setAttribute('data-gl-bpc',parseInt(se.value,10)===6?6:12);
+    window.glUpdateBtl(uid);
+  };
+
   /* ── Update bottling row ── */
   window.glUpdateBtl=function(uid){
     var qe=document.getElementById(uid+'-qty'),fe=document.getElementById(uid+'-format'),pe=document.getElementById(uid+'-punit');
@@ -571,6 +600,8 @@
     var te=document.getElementById(uid+'-total');
     if(te) te.textContent=window.glUsd(total);
     if(row) row.setAttribute('data-gl-total',total);
+    var ce=document.getElementById(uid+'-btlcases');
+    if(ce&&row) ce.textContent=btlCasesText(row);
     window.glCalcInvTotal();
   };
   window.glUpdateBtlPrice=function(uid){
@@ -627,18 +658,25 @@
   };
 
   /* ── Build bottling row ── */
-  window.glBuildBtlRow=function(uid,qty,fmt,fmts,pu,descPrefill){
+  // bpc: bottles per case, 12 or 6. Omitted → 12.
+  window.glBuildBtlRow=function(uid,qty,fmt,fmts,pu,descPrefill,bpc){
+    bpc=(bpc===6||bpc===12)?bpc:BPC;
     var total=pu*qty;
     var opts=fmts.map(function(f){return'<option value="'+f.value+'"'+(f.value===fmt?' selected':'')+'>'+f.label+'</option>';}).join('');
     var PSTY='width:84px;background:#1a2a3a;color:#fff;border:1px solid rgba(0,229,192,.25);border-radius:6px;padding:3px 6px;font-size:12px;font-weight:600;text-align:right';
     var DSTY='width:100%;background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:3px 6px;font-size:11px;margin-top:4px';
-    var row=document.createElement('div');row.id=uid;row.setAttribute('style',RS);row.setAttribute('data-gl-total',total);row.setAttribute('data-pu-override','0');
+    var row=document.createElement('div');row.id=uid;row.setAttribute('style',RS);row.setAttribute('data-gl-total',total);row.setAttribute('data-pu-override','0');row.setAttribute('data-gl-bpc',bpc);
+    var cases=Math.ceil(Math.max(0,qty)/bpc),rem=Math.max(0,qty)%bpc;
     row.innerHTML=
       '<div><div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:5px">Bottling</div>'+
       '<select id="'+uid+'-format" data-gl-action="glUpdateBtl" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" style="'+SS+'">'+opts+'</select>'+
+      // Bottling → format → case size: how many bottles go in a case.
+      '<select id="'+uid+'-bpc" data-gl-action="glSetBtlCase" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" title="Case size — how many bottles in a case" style="'+SS+';margin-top:4px">'+
+        '<option value="12"'+(bpc===12?' selected':'')+'>12 bottles per case</option>'+
+        '<option value="6"'+(bpc===6?' selected':'')+'>6 bottles per case</option></select>'+
       '<input id="'+uid+'-desc" type="text" placeholder="Description (optional)" value="'+(descPrefill||'').replace(/"/g,'&quot;').replace(/'/g, '&#39;')+'" style="'+DSTY+'"/></div>'+
       '<div style="text-align:center"><input id="'+uid+'-qty" type="number" min="1" value="'+qty+'" data-gl-action="glUpdateBtl" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" style="'+SI+'"/>'+
-      '<div style="font-size:10px;color:var(--muted);margin-top:3px">bottles</div></div>'+
+      '<div id="'+uid+'-btlcases" style="font-size:10px;color:var(--muted);margin-top:3px">bottles · '+cases.toLocaleString()+' case'+(cases===1?'':'s')+' of '+bpc+(rem?' (last case '+rem+')':'')+'</div></div>'+
       '<div style="text-align:right;padding-right:4px">'+
       '<input id="'+uid+'-punit" type="number" step="0.0001" min="0" value="'+pu.toFixed(4)+'" data-gl-action="glUpdateBtlPrice" data-gl-arg1="' + esc(uid) + '" data-gl-on="change" title="$/bottle — edit to override the default rate" style="'+PSTY+'"/>'+
       '<div style="font-size:10px;color:var(--muted);margin-top:3px">$/btl <a href="#" data-gl-action="glResetBtlPrice" data-gl-prevent="" data-gl-arg1="'+uid+'" style="color:var(--teal);text-decoration:none;margin-left:4px" title="Reset to default rate">&#x21BA;</a></div></div>'+
@@ -850,7 +888,8 @@
         var perBtl=qty>0?total/qty:0;
         var btlDesc='Bottling - '+fLbl2;
         if(userDesc) btlDesc += ' — ' + userDesc;
-        lines.push({desc:btlDesc,qty:qty,unitPrice:perBtl,total:total,unit:'btl'});
+        // bottlesPerCase lets a reopened invoice rebuild the row at its case size.
+        lines.push({desc:btlDesc,qty:qty,unitPrice:perBtl,total:total,unit:'btl',bottlesPerCase:window.glBtlRowBpc(row)});
       }else if(descEl){
         var qtyMEl=document.getElementById(uid+'-qty');
         var qtyM=qtyMEl?parseFloat(qtyMEl.value)||0:0;
@@ -1250,7 +1289,8 @@
             row.setAttribute('data-gl-total', (l.qty||0) * (l.unitPrice||0));
           } else if(type === 'bottling' && window.glBuildBtlRow){
             var btlFmt = findFormatByLabel(btlFmts, parsed.fmtLabel) || btlFmts[0].value;
-            row = window.glBuildBtlRow(uid, l.qty || 0, btlFmt, btlFmts, l.unitPrice || 0, parsed.userDesc);
+            // Invoices saved before bottlesPerCase existed open at 12 a case.
+            row = window.glBuildBtlRow(uid, l.qty || 0, btlFmt, btlFmts, l.unitPrice || 0, parsed.userDesc, l.bottlesPerCase || 12);
             row.setAttribute('data-pu-override','1');
             row.setAttribute('data-gl-total', (l.qty||0) * (l.unitPrice||0));
           } else {

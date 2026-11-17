@@ -224,6 +224,7 @@
     'glSendOnboardingLink',
     'glSetAddonDesc',
     'glSetAddonPrice',
+    'glSetBtlCase',
     'glSetCanTray',
     'glSetDefault',
     'glSetInvClient',

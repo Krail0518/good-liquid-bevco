@@ -28,6 +28,7 @@
     if(pkg && (pkg.caseSize === 12 || pkg.caseSize === 24)) return pkg.caseSize;
     return pkg && pkg.tray12On && !pkg.tray24On ? 12 : CANS_PER_CASE;
   }
+  var BTLS_PER_PALLET = 792; // the most 750ml bottles one pallet takes
   var BTLS_PER_CASE  = 12;   // default only — each bottling tier has its own editable Bottles / Case
   /* Bottles per case for a tier. Quotes saved before the field existed have
      no perCase, so derive it from what was actually quoted (bottles ÷ cases). */
@@ -35,6 +36,10 @@
     if(t && t.perCase > 0) return t.perCase;
     if(t && t.cases > 0 && t.bottles > 0) return Math.round(t.bottles / t.cases);
     return BTLS_PER_CASE;
+  }
+  function btlCasesPerPallet(bottlesPerPallet, perCase){
+    var bpp = bottlesPerPallet > 0 ? bottlesPerPallet : BTLS_PER_PALLET;
+    return Math.max(1, Math.floor(bpp / (perCase > 0 ? perCase : BTLS_PER_CASE)));
   }
   function btlTier(cases, rate){ return { cases:cases, perCase:BTLS_PER_CASE, bottles:cases*BTLS_PER_CASE, ratePerBtl:rate }; }
   // Bottling minimum order is 220 cases, whatever the pack size.
@@ -204,6 +209,10 @@
 
   // Bottling packaging defaults (per bottle / per case / per pallet). Same
   // DB-backed pattern as canning; a 6-pack case counts as one "case".
+  // A pallet holds at most BTLS_PER_PALLET bottles whatever the case size, so
+  // it is 66 cases of 12 or 132 cases of 6. It used to be a flat 50 "cases"
+  // per pallet, the same for both sizes, so 6-bottle cases needed twice the
+  // pallets they really do and 12-bottle cases undercounted.
   function defaultBottlingPkg(){
     return {
       pasteurOn:false,  pasteurPerBtl:px('bottling_pasteurization_per_btl',0.20),
@@ -212,7 +221,7 @@
       caseOn:true,      casePerCase:px('bottling_case_6pack_per_case',0),
       palletOn:true,    palletEach:px('pallet_each',12),
       palletWrapOn:true, palletWrapEach:px('pallet_wrap_each',8),
-      casesPerPallet:px('bottling_cases_per_pallet',50)
+      bottlesPerPallet:px('bottling_bottles_per_pallet',BTLS_PER_PALLET)
     };
   }
 
@@ -228,7 +237,10 @@
     if(pkg.caseOn) caseExtra += (pkg.casePerCase || 0);
     var pallets = 0, palletCost = 0;
     if(pkg.palletOn || pkg.palletWrapOn){
-      var cpp = pkg.casesPerPallet || 50;
+      // Whole cases per pallet at this tier's case size. Quotes saved before
+      // bottlesPerPallet existed carry a casesPerPallet that ignored the case
+      // size; it is not used.
+      var cpp = btlCasesPerPallet(pkg.bottlesPerPallet, btlPerCase(tier));
       pallets = cpp > 0 ? Math.ceil(cases / cpp) : 0;
       palletCost = pallets * ((pkg.palletOn ? (pkg.palletEach || 0) : 0) +
                               (pkg.palletWrapOn ? (pkg.palletWrapEach || 0) : 0));
@@ -843,8 +855,8 @@
             addonToggle('gl-qb-bpalletwrap','Pallet Shrink Wrap', B.palletWrapEach.toFixed(2),'per pallet') +
           '</div>' +
           '<div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:10px;align-items:center;font-size:12px;color:#9aa7bd">' +
-            '<label style="display:flex;align-items:center;gap:6px">Cases per pallet' +
-              '<input id="gl-qb-bcpp" type="number" min="1" step="1" value="'+(B.casesPerPallet||50)+'" style="width:70px;padding:4px 6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:4px;color:#fff"></label>' +
+            '<label style="display:flex;align-items:center;gap:6px">Bottles per pallet' +
+              '<input id="gl-qb-bcpp" type="number" min="1" step="1" value="'+(B.bottlesPerPallet||BTLS_PER_PALLET)+'" title="66 cases of 12 or 132 cases of 6 at 792" style="width:70px;padding:4px 6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:4px;color:#fff"></label>' +
           '</div>';
         var bottlingMap = [
           ['gl-qb-bfp',        'pasteurOn',   'pasteurPerBtl'],
@@ -860,7 +872,7 @@
           if(rt){ rt.addEventListener('input', function(){ B[m[2]] = parseFloat(rt.value)||0; renderTiers(); }); }
         });
         var bcpp = el.querySelector('#gl-qb-bcpp');
-        if(bcpp) bcpp.addEventListener('input', function(){ B.casesPerPallet = parseInt(bcpp.value,10)||50; renderTiers(); });
+        if(bcpp) bcpp.addEventListener('input', function(){ B.bottlesPerPallet = parseInt(bcpp.value,10)||BTLS_PER_PALLET; renderTiers(); });
       } else {
         el.innerHTML =
           '<div style="'+LBL+'">ADD-ON SERVICES</div>' +
@@ -1748,7 +1760,7 @@
     var x = bottlingExtras(t, bpkg), out = [];
     var bottles = t.bottles || 0, cases = t.cases || 0;
     var btl = qItem(out, 'Bottling - ' + (format || 'Bottles'), bottles, 'bottle', t.ratePerBtl);
-    if(btl){ btl.kind = 'bottling'; btl.format = format || ''; }
+    if(btl){ btl.kind = 'bottling'; btl.format = format || ''; btl.perCase = btlPerCase(t); }
     if(bpkg.pasteurOn) qItem(out, 'Batch flash pasteurization', bottles, 'bottle', bpkg.pasteurPerBtl);
     if(bpkg.otlOn)     qItem(out, 'Over-the-top labels',        bottles, 'bottle', bpkg.otlPerBtl);
     if(bpkg.labelsOn)  qItem(out, 'Labels, front and back',     bottles, 'bottle', bpkg.labelsPerBtl);

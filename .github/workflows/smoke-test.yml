@@ -398,6 +398,14 @@ jobs:
           REPO_ROOT: ${{ github.workspace }}
         run: node tests/invoice-case-size.test.cjs
 
+      # Bottling: each line is 12 or 6 bottles a case, and pallets are 792
+      # bottles (66 cases of 12, 132 of 6) on invoices and quotes.
+      - name: Run bottling case-size test
+        env:
+          NODE_PATH: /tmp/pw/node_modules
+          REPO_ROOT: ${{ github.workspace }}
+        run: node tests/bottling-case-size.test.cjs
+
       # Quote builder: the same 12-count tray rule, and "Create Invoice" from
       # a 12-count quote keeps 12-can cases.
       - name: Run quote case-size test

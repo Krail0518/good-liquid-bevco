@@ -60,6 +60,39 @@
   }
   var TRAY_CPC = { tray24: 24, tray12: 12 };
 
+  // Bottling lines (a -bpc case-size picker). A pallet takes at most
+  // bottles-per-pallet bottles (792): 66 cases of 12 or 132 cases of 6.
+  // Bottling pallets used to be left out entirely, so an invoice with only
+  // bottling on it billed 0 pallets.
+  var BTLS_PER_PALLET = 792;
+  function bottlingRows(){
+    var tbl = table();
+    if(!tbl) return [];
+    return Array.prototype.filter.call(tbl.children, function(row){
+      return !!(row.id && document.getElementById(row.id + '-bpc'));
+    });
+  }
+  function bpp(){
+    var el = document.getElementById('gl-inv-addons-bpp');
+    return Math.max(1, parseInt(el && el.value, 10) || BTLS_PER_PALLET);
+  }
+  function bottlingCounts(){
+    var out = { bottles: 0, cases: 0, palletFill: 0 };
+    bottlingRows().forEach(function(row){
+      var qe = document.getElementById(row.id + '-qty');
+      var b = qe ? Math.max(0, parseInt(qe.value, 10) || 0) : 0;
+      var per = typeof window.glBtlRowBpc === 'function' ? window.glBtlRowBpc(row) : 12;
+      var cases = Math.ceil(b / per);
+      out.bottles += b;
+      out.cases += cases;
+      // Whole cases only: a pallet of 12s is floor(792/12) = 66 cases.
+      out.palletFill += cases / Math.max(1, Math.floor(bpp() / per));
+    });
+    // Rounded before the ceiling so 66/66 is exactly one pallet, not two.
+    out.pallets = out.palletFill > 0 ? Math.ceil(Math.round(out.palletFill * 1e6) / 1e6) : 0;
+    return out;
+  }
+
   // The case tray a new canning line starts with: the last line's, so a run
   // on 12-count trays stays on them; 24 on an empty invoice.
   // On an invoice with no canning line yet, a ticked 12-count tray box decides.
@@ -97,7 +130,8 @@
     if(TRAY_CPC[key]) return counts.byCpc[TRAY_CPC[key]] || 0;
     if(unit === 'can')    return counts.cans;
     if(unit === 'case')   return cases;
-    if(unit === 'pallet') return cases > 0 ? Math.ceil(cases / cpp()) : 0;
+    // Canning pallets (cases ÷ cases per pallet) plus bottling pallets.
+    if(unit === 'pallet') return (cases > 0 ? Math.ceil(cases / cpp()) : 0) + (counts.btlPallets || 0);
     // GL-132: a flat charge does not follow the run. One per invoice, and
     // because these are ordinary manual rows the quantity stays editable —
     // type 2 when a run had two changeovers. Returning 1 rather than 0 also
@@ -129,7 +163,8 @@
   function sync(){
     var p = panel(), tbl = table();
     if(!p || !tbl) return;
-    var counts = canningCounts(), cases = counts.cases;
+    var counts = canningCounts(), cases = counts.cases, btl = bottlingCounts();
+    counts.btlPallets = btl.pallets;
     p.querySelectorAll('input[type="checkbox"][data-addon]').forEach(function(cb){
       var key = cb.getAttribute('data-addon'), unit = cb.getAttribute('data-unit');
       var rateEl = p.querySelector('input[data-addon-rate="' + key + '"]');
@@ -154,8 +189,12 @@
       window.glUpdateManual(row.id);
     });
     var hint = document.getElementById('gl-inv-addons-hint');
-    if(hint) hint.textContent = cases > 0
-      ? 'Quantities follow the canning lines: ' + cases.toLocaleString() + ' cases · ' + counts.cans.toLocaleString() + ' cans · ' + qtyFor('pallet', counts) + ' pallets.'
+    var parts = [];
+    if(cases > 0) parts.push('Canning: ' + cases.toLocaleString() + ' cases · ' + counts.cans.toLocaleString() + ' cans · ' + Math.ceil(cases / cpp()) + ' pallets.');
+    if(btl.bottles > 0) parts.push('Bottling: ' + btl.bottles.toLocaleString() + ' bottles · ' + btl.cases.toLocaleString() + ' cases · ' + btl.pallets + ' pallet' + (btl.pallets === 1 ? '' : 's') + '.');
+    if(parts.length > 1) parts.push('Pallets in total: ' + qtyFor('pallet', counts) + '.');
+    if(hint) hint.textContent = parts.length
+      ? 'Quantities follow the production lines. ' + parts.join(' ')
       // GL-132: flat charges do not need a canning line, so "add one first" is
       // not true of all of them any more.
       : 'Add a Canning line first — add-on quantities are worked out from its case count. Flat charges like the change over fee work without one.';
@@ -212,6 +251,15 @@
     c.setAttribute('style', 'width:64px;background:#1a2a3a;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:6px;padding:3px 6px;font-size:12px');
     c.addEventListener('input', sync);
     foot.appendChild(c);
+    foot.appendChild(el('span', 'margin-left:10px', 'Bottles per pallet'));
+    var bp = document.createElement('input');
+    bp.type = 'number'; bp.min = '1'; bp.id = 'gl-inv-addons-bpp';
+    bp.title = '750ml bottles one pallet takes: 66 cases of 12 or 132 cases of 6 at 792';
+    var bppSetting = window._glPricing && window._glPricing.bottling_bottles_per_pallet;
+    bp.value = bppSetting > 0 ? bppSetting : BTLS_PER_PALLET;
+    bp.setAttribute('style', c.getAttribute('style'));
+    bp.addEventListener('input', sync);
+    foot.appendChild(bp);
     wrap.appendChild(foot);
     var hint = el('div', 'font-size:11px;color:var(--muted);margin-top:6px');
     hint.id = 'gl-inv-addons-hint';
@@ -278,8 +326,10 @@
       return r;
     };
   }
-  // A canning row's case count drives every add-on quantity.
+  // A canning row's case count drives every add-on quantity, and a bottling
+  // row's bottles and case size drive the pallets.
   after('glUpdateCan', sync);
+  after('glUpdateBtl', sync);
   // Picking a line's case tray ticks that tray's charge, and drops the other
   // tray's charge once no line uses it. (glSetCanTray calls glUpdateCan, so
   // the quantities are already in step; sync again for the ticked boxes.)
@@ -367,7 +417,8 @@
         tbl.appendChild(row);
       } else if(l.kind === 'bottling' && window.glBuildBtlRow){
         var bhit = btlFmts.find(function(f){ return norm(f.label) === norm(l.format) || norm(f.value) === norm(l.format); });
-        var brow = window.glBuildBtlRow(uid, l.qty, bhit ? bhit.value : btlFmts[0].value, btlFmts, l.unitPrice, bhit ? '' : l.format);
+        // The quote's bottles per case; quotes saved before it was carried open at 12.
+        var brow = window.glBuildBtlRow(uid, l.qty, bhit ? bhit.value : btlFmts[0].value, btlFmts, l.unitPrice, bhit ? '' : l.format, l.perCase || 12);
         brow.setAttribute('data-pu-override', '1');
         tbl.appendChild(brow);
       } else if(usePanel && l.addon){
