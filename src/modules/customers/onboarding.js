@@ -220,6 +220,13 @@
         : '⚠ The client was created but the email failed to send. Copy this onboarding link to them manually:\n\n' + link;
       alert('✓ ' + company + ' is now a client.\n\n' + linkNote + '\n\nYou\'ll get a Telegram alert when they finish onboarding.');
       if(typeof window.glAudit === 'function') window.glAudit('lead_converted', clientId, { company: company, email: email });
+      // Practice (Mike, 2026-11-17): the Contract Manufacturing Agreement is
+      // signed at onboarding, before any production. Offer it now; admins
+      // only (agreements are admin-only).
+      if(window.currentUser && window.currentUser.role === 'admin' && typeof window.glOpenAgreements === 'function' &&
+         confirm('Send ' + company + ' the Contract Manufacturing Agreement to sign now?\n\nOur practice: it is signed at onboarding, before any production is scheduled.')){
+        window.glOpenAgreements({ clientId: clientId, kind: 'manufacturing' });
+      }
     } catch(e){
       if(typeof window.glEndBusy === 'function') window.glEndBusy();
       console.error('[onboarding] convert failed', e);

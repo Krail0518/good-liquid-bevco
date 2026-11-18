@@ -108,6 +108,12 @@ async function saveCalEvent(){
     dbRow.qty         = document.getElementById('cal-ev-qty').value || null;
     dbRow.due_date    = document.getElementById('cal-ev-due').value || null;
     dbRow.prod_status = 'scheduled';
+    // Paperwork gate (warn, not block) — same check as a production run:
+    // Manufacturing Agreement + invoice sign-off signed before scheduling.
+    if(dbRow.client_id && typeof window.glSignoffGate === 'function'){
+      const cl = (window.clients || []).find(x => x.id === dbRow.client_id);
+      if(!(await window.glSignoffGate(dbRow.client_id, cl ? cl.name : ''))) return;
+    }
   }
   if(!window.supa){ alert('Cloud sync unavailable — try reloading.'); return; }
   const ins = await window.supa.from('cal_events').insert([dbRow]).select('id').single();
