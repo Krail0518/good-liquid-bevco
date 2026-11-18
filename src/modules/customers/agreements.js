@@ -709,9 +709,20 @@
     var prior = document.getElementById('gl-signoff-modal'); if(prior) prior.remove();
 
     var f = ctx.fields;
-    var state = { templates:{}, mfgSigned:null, mfgOpen:[], killStep: hasPasteurization(inv) ? 'accepted' : '', savedIds:null, sending:false };
-    var statusEl = h('div', { style:'font-size:12px;min-height:16px;margin-top:10px' });
-    function setStatus(msg, color){ statusEl.style.color = color || '#9aa7bd'; statusEl.textContent = msg || ''; }
+    // accOpen     unsigned acceptances already out for THIS invoice
+    // oldPackets  their packet ids: a re-send replaces those packets whole
+    // mfgElsewhere unsigned manufacturing agreements in OTHER requests
+    //             (another invoice's packet, or sent from 📄 Agreements)
+    var state = { templates:{}, mfgSigned:null, mfgOpen:[], accOpen:[], oldPackets:{}, mfgElsewhere:[],
+      killStep: hasPasteurization(inv) ? 'accepted' : '', savedIds:null, sending:false, sent:false, resendArmed:false };
+    var statusEl = h('div', { style:'font-size:13px;font-weight:600;min-height:18px;margin-top:10px' });
+    // The status sits right under the buttons and is scrolled into view: on
+    // a narrow screen it used to land off-screen, the Send button looked
+    // dead, and every extra click sent the customer another request.
+    function setStatus(msg, color){
+      statusEl.style.color = color || '#9aa7bd'; statusEl.textContent = msg || '';
+      if(msg && statusEl.scrollIntoView) try { statusEl.scrollIntoView({ block:'nearest' }); } catch(_){}
+    }
     var onFile = h('div', {}, [h('div', { style:'font-size:12px;color:#6b87ad', text:'Loading…' })]);
     var mfgMount = h('div');
     var preview = h('div', { style:'display:none;margin-top:12px' });
@@ -756,10 +767,12 @@
       mfgMount.appendChild(h('label', { style:'display:flex;gap:8px;align-items:center;font-size:13px;cursor:pointer' }, [
         includeMfg, 'Include the Contract Manufacturing Agreement (this client has not signed one)'
       ]));
-      if(state.mfgOpen.length){
+      var waiting = state.mfgElsewhere.filter(function(a){ return a.status === 'sent'; });
+      if(waiting.length){
         mfgMount.appendChild(h('div', { style:'font-size:11.5px;color:#f5c842;margin-top:6px',
-          text:'An earlier unsigned copy (' + state.mfgOpen.map(function(a){ return a.status + ' ' + new Date(a.sent_at || a.created_at).toLocaleDateString(); }).join(', ') +
-            ') will be marked void when this goes out, so the customer has only one to sign.' }));
+          text:'The customer already has one to sign, in an earlier request (sent ' +
+            waiting.map(function(a){ return new Date(a.sent_at || a.created_at).toLocaleDateString(); }).join(', ') +
+            '), so it is not included again. Tick the box only to replace it: the earlier copy is voided, and that earlier request\'s link stops working.' }));
       }
       if(includeMfg.checked) mfgMount.appendChild(mfgFields);
     }
@@ -795,9 +808,9 @@
         h('div', { style:S.section }, [ h('span', { style:S.lbl, text:'MANUFACTURING AGREEMENT' }), mfgMount ]),
         preview,
         h('div', { style:'display:flex;gap:8px;flex-wrap:wrap' }, [btnPreview, btnSend]),
+        statusEl,
         h('div', { style:'font-size:11px;color:#6b87ad;margin-top:8px;line-height:1.5',
-          text:'The customer gets one email and signs everything on one page. Signed copies, each with a signature certificate, are filed to this client\'s Documents and their portal. Wording: 🤖 AI Tools → Agreement Templates (have your attorney review it).' }),
-        statusEl
+          text:'The customer gets one email and signs everything on one page. Signed copies, each with a signature certificate, are filed to this client\'s Documents and their portal. Wording: 🤖 AI Tools → Agreement Templates (have your attorney review it).' })
       ])
     ]);
     (document.getElementById('crm-panel') || document.body).appendChild(ov);
@@ -853,11 +866,26 @@
       setStatus('This is exactly what the customer will read and sign.', '#5fcf9e');
     }
 
+    var SEND_LABEL = '✍️ Send for e-signature';
     async function onSend(){
-      if(state.sending) return;
+      if(state.sending || state.sent) return;
       var b = buildDocs();
       if(b.error){ setStatus(b.error, '#f5c842'); return; }
-      state.sending = true; btnSend.disabled = true;
+      // A request is already out for this invoice: sending again must be
+      // deliberate, and replaces it (the old link stops working).
+      if(state.accOpen.length && !state.resendArmed){
+        state.resendArmed = true;
+        btnSend.textContent = '⚠ Click again to send a NEW request';
+        setStatus('A signing request for this invoice is already out (sent ' +
+          new Date(state.accOpen[0].sent_at || state.accOpen[0].created_at).toLocaleString() +
+          '). Sending a new one voids it, and the customer\'s earlier link stops working. To just remind them, use "Resend link" above instead.', '#f5c842');
+        setTimeout(function(){
+          if(state.resendArmed && !state.sending && !state.sent){ state.resendArmed = false; btnSend.textContent = SEND_LABEL; }
+        }, 8000);
+        return;
+      }
+      state.resendArmed = false;
+      state.sending = true; btnSend.disabled = true; btnSend.textContent = 'Sending…';
       try {
         // Reuse the drafts from a failed send of the same text, so a retry
         // does not pile up duplicate drafts.
@@ -891,24 +919,32 @@
         var r = await callSign({ action:'send_packet', agreement_ids: ids });
         if(!r.ok){ setStatus('Saved as drafts, but sending failed: ' + r.reason, '#ff8579'); return; }
         state.savedIds = null;
+        state.sent = true;
+        btnSend.textContent = '✓ Sent';
         audit('invoice_signoff_sent', inv.id, { to: r.data.sent_to, documents: b.docs.map(function(d){ return d.kind; }) });
-        // One manufacturing agreement to sign: retire older unsigned copies.
-        if(b.docs.some(function(d){ return d.kind === 'manufacturing'; })){
-          for(var j = 0; j < state.mfgOpen.length; j++){
-            var v = await updateAgreement(state.mfgOpen[j].id, { status:'void' });
-            if(v.ok) audit('agreement_void', state.mfgOpen[j].title, { id: state.mfgOpen[j].id, replaced_by_packet: r.data.packet_id });
-            else setStatus('Sent, but an older unsigned manufacturing agreement could not be voided: ' + v.reason, '#f5c842');
-          }
+        // Retire what this request replaces, so the customer has exactly one
+        // live request: every earlier request for THIS invoice (acceptance
+        // and its manufacturing agreement), and — only when this request
+        // carries a manufacturing agreement — other unsigned copies of it.
+        var retire = state.accOpen.concat(state.mfgOpen.filter(function(a){ return a.packet_id && state.oldPackets[a.packet_id]; }));
+        if(b.docs.some(function(d){ return d.kind === 'manufacturing'; })) retire = retire.concat(state.mfgElsewhere);
+        var voidFail = '';
+        for(var j = 0; j < retire.length; j++){
+          var v = await updateAgreement(retire[j].id, { status:'void' });
+          if(v.ok) audit('agreement_void', retire[j].title, { id: retire[j].id, replaced_by_packet: r.data.packet_id });
+          else voidFail = v.reason;
         }
-        if(!/could not be voided/.test(statusEl.textContent)){
-          setStatus('Signing link emailed to ' + r.data.sent_to + ' (' + b.docs.length + ' document' + (b.docs.length === 1 ? '' : 's') + ').', '#5fcf9e');
-        }
+        if(voidFail) setStatus('✓ Sent to ' + r.data.sent_to + ', but an earlier request could not be voided: ' + voidFail, '#f5c842');
+        else setStatus('✓ Signing link emailed to ' + r.data.sent_to + ' (' + b.docs.length + ' document' + (b.docs.length === 1 ? '' : 's') + '). Close this window; progress shows on the invoice.', '#5fcf9e');
         await refreshState();
         window.glRefreshInvoiceSignoffStatus && window.glRefreshInvoiceSignoffStatus(true);
       } catch(e){
         setStatus('Send failed: ' + (e.message || e), '#ff8579');
       } finally {
-        state.sending = false; btnSend.disabled = false;
+        state.sending = false;
+        // Once sent, the button stays locked for this window: a second click
+        // used to send the customer a whole new request.
+        if(!state.sent){ btnSend.disabled = false; btnSend.textContent = SEND_LABEL; }
       }
     }
 
@@ -968,10 +1004,16 @@
       var mfg = rows.filter(function(a){ return a.kind === 'manufacturing'; });
       state.mfgSigned = mfg.find(function(a){ return a.status === 'signed'; }) || null;
       state.mfgOpen = mfg.filter(function(a){ return a.status === 'draft' || a.status === 'sent'; });
-      // Default: include it whenever the client has not signed one.
-      includeMfg.checked = !state.mfgSigned;
+      state.accOpen = rows.filter(function(a){ return a.kind === 'invoice_acceptance' && a.invoice_id === inv.supaId && a.status === 'sent'; });
+      state.oldPackets = {};
+      state.accOpen.forEach(function(a){ if(a.packet_id) state.oldPackets[a.packet_id] = true; });
+      state.mfgElsewhere = state.mfgOpen.filter(function(a){ return !(a.packet_id && state.oldPackets[a.packet_id]); });
+      // Default: include it when the client has not signed one AND no copy
+      // is already waiting in another request. Voiding that copy would kill
+      // the other request's link (its first document), so it is opt-in.
+      if(!state.sent) includeMfg.checked = !state.mfgSigned && !state.mfgElsewhere.some(function(a){ return a.status === 'sent'; });
       renderMfg();
-      var mine = rows.filter(function(a){ return a.kind === 'invoice_acceptance' && a.invoice_id === inv.supaId && a.status !== 'draft'; });
+      var mine = rows.filter(function(a){ return a.kind === 'invoice_acceptance' && a.invoice_id === inv.supaId && a.status !== 'draft' && a.status !== 'void'; });
       var packets = {};
       mine.forEach(function(a){ if(a.packet_id) packets[a.packet_id] = true; });
       var shown = mine.concat(mfg.filter(function(a){ return a.packet_id && packets[a.packet_id]; }));

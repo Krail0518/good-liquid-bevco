@@ -1385,6 +1385,34 @@ const FEATURES = [
     check('one agreement-sign call with action "send_packet" and both ids', sign.length === 1 && sign[0].body && sign[0].body.action === 'send_packet' && (sign[0].body.agreement_ids || []).length === 2, JSON.stringify(sign.map((s) => s.body)));
     const status = await p.evaluate(() => document.getElementById('gl-signoff-modal').innerText.match(/Signing link emailed to [^\n]+|sending failed[^\n]*|PDF failed[^\n]*|Fill in[^\n]*/i));
     check('UI confirms the signing link was emailed', !!status && /emailed to ann@/.test(status[0]), status ? status[0] : 'no status line');
+
+    // Found live on 2026-11-17: the Send button reset after a successful
+    // send and its confirmation was off-screen, so it looked dead and five
+    // clicks emailed the customer five requests. Once sent it must stay
+    // locked; a second request for the same invoice must take a deliberate
+    // second click and void the first.
+    const locked = await p.evaluate(() => { const b = [...document.querySelectorAll('#gl-signoff-modal button')].find((x) => /Sent|Send for e-signature/.test(x.textContent)); return b ? { text: b.textContent, disabled: b.disabled } : null; });
+    check('after a send the button says ✓ Sent and stays locked', !!locked && /✓ Sent/.test(locked.text) && locked.disabled, JSON.stringify(locked));
+    const n1 = (await stubCalls(p)).length;
+    await p.evaluate(() => { const b = [...document.querySelectorAll('#gl-signoff-modal button')].find((x) => /✓ Sent/.test(x.textContent)); if (b) b.click(); });
+    await settle(p, 800);
+    check('clicking the locked button sends nothing', (await callsSince(p, n1)).filter((c) => c.kind === 'invoke' && c.name === 'agreement-sign').length === 0);
+
+    // The stub has no edge function, so mark the first request as sent the
+    // way agreement-sign would, then reopen the window.
+    await p.evaluate(async () => { await window.supa.from('agreements').update({ status: 'sent', sent_at: new Date().toISOString() }).eq('kind', 'invoice_acceptance').select('id'); });
+    await p.evaluate(() => { document.getElementById('gl-signoff-modal').remove(); window.glOpenInvoiceSignoff('GL-1042'); });
+    await settle(p, 1200);
+    const n2 = (await stubCalls(p)).length;
+    await clickText(p, '#gl-signoff-modal', /Send for e-signature/);
+    await settle(p, 700);
+    const warn = await p.evaluate(() => document.getElementById('gl-signoff-modal').innerText);
+    check('with a request already out, the first click only warns', (await callsSince(p, n2)).filter((c) => c.kind === 'invoke').length === 0 && /already out/.test(warn) && /Click again to send a NEW request/.test(warn), warn.slice(-400));
+    await clickText(p, '#gl-signoff-modal', /Click again to send a NEW request/);
+    await settle(p, 1500);
+    const c2 = await callsSince(p, n2);
+    check('the second click sends one new request', c2.filter((c) => c.kind === 'invoke' && c.name === 'agreement-sign' && c.body && c.body.action === 'send_packet').length === 1);
+    check('…and voids the earlier acceptance', c2.some((c) => c.kind === 'update' && c.name === 'agreements' && c.payload && c.payload.status === 'void'), JSON.stringify(c2.filter((c) => c.kind === 'update').map((c) => c.payload)));
   }],
 
   ['Sales decks (admin)', async (sess, check) => {
