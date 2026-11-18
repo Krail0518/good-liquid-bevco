@@ -305,6 +305,18 @@ async function generateInvoicePdfBlob(invId){
     pdf.text('063116902',         M+150, y+68);
     y += wireH + 12;
 
+    // Terms (short form; full text is the e-signed Invoice Acceptance).
+    // Defined in crm-index-core.js next to downloadInvoicePDF.
+    if(window.GL_INVOICE_TERMS_NOTE){
+      pdf.setFont('helvetica','normal'); pdf.setFontSize(7.5);
+      pdf.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
+      const termLines = pdf.splitTextToSize(window.GL_INVOICE_TERMS_NOTE, CW);
+      const termH = termLines.length * 9.5;
+      if(y + termH > PH - 40){ pdf.addPage(); y = M; }
+      pdf.text(termLines, M, y + 8);
+      y += termH + 8;
+    }
+
     // Footer
     pdf.setFont('helvetica','normal'); pdf.setFontSize(8);
     pdf.setTextColor(MUTED[0], MUTED[1], MUTED[2]);

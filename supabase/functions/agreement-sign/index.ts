@@ -32,6 +32,21 @@
 // Public actions are rate limited per IP; the function never accepts an
 // agreement id from a public caller.
 //
+// SIGNING PACKETS (migration 20261117180000): several agreements sent and
+// signed together, e.g. an invoice acceptance plus the Contract Manufacturing
+// Agreement for a customer who has not signed one yet.
+//   STAFF  { action:'send_packet', agreement_ids:[...] }  1-5 draft agreements
+//          for ONE client and ONE client signer email. They get a shared
+//          packet_id, and the client gets ONE email with ONE link.
+//   The token lives on one signer row; the others in the packet are found by
+//   packet_id + the same role, among signers who are up next. The sign page
+//   shows every document, the signer consents and types their name once, and
+//   each document records its own SHA-256. After that each agreement carries
+//   on alone: the manufacturing agreement goes to Good Liquid to countersign,
+//   the invoice acceptance (client signature only) is finalized at once.
+//   A single agreement is simply a packet of one, so 'view' / 'sign' /
+//   'decline' have one code path.
+//
 // Email goes out through the gmail-send function (the CRM's connected Google
 // account). SITE_URL optional (defaults to https://www.goodliquidbevco.com).
 
@@ -48,8 +63,18 @@ const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 const SITE_URL = (Deno.env.get('SITE_URL') || 'https://www.goodliquidbevco.com').replace(/\/+$/, '');
 const TOKEN_DAYS = 30;
 const CONSENT_TEXT =
-  'I agree to use electronic records and signatures, and I intend my typed name below to be my legal signature on this agreement, ' +
+  'I agree to use electronic records and signatures, and I intend my typed name below to be my legal signature on each document shown on this page, ' +
   'with the same effect as a handwritten signature (U.S. ESIGN Act, 15 U.S.C. 7001 et seq.; Florida Uniform Electronic Transaction Act, Fla. Stat. 668.50).';
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// deal_documents.doc_type for the signed copy.
+const DOC_TYPE: Record<string, string> = {
+  nda: 'NDA', manufacturing: 'Manufacturing Agreement', invoice_acceptance: 'Invoice Acceptance',
+};
+// An invoice acceptance is signed by the customer alone; Good Liquid issued
+// the invoice, so there is no countersignature.
+const clientOnly = (kind: string) => kind === 'invoice_acceptance';
+// Order documents appear in on the sign page: the master agreement first.
+const KIND_ORDER: Record<string, number> = { nda: 0, manufacturing: 1, invoice_acceptance: 2 };
 
 const db = () => createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
@@ -137,15 +162,23 @@ function emailShell(inner: string): string {
 }
 
 async function emailSignLink(signer: { name: string; email: string }, agreement: { title: string; party_name: string; client_id?: string | null },
-  token: string, glName: string): Promise<{ ok: boolean; reason?: string }> {
+  token: string, glName: string, titles?: string[]): Promise<{ ok: boolean; reason?: string }> {
   // Token in the fragment: never sent to a server, so it stays out of logs.
   const link = `${SITE_URL}/sign.html#t=${encodeURIComponent(token)}`;
-  const subject = `Please review and sign: ${agreement.title}`;
-  const text = `Hi ${signer.name},\n\n${glName} has sent you "${agreement.title}" to review and sign electronically.\n\n` +
-    `Open this private link to read and sign it:\n${link}\n\nThe link is personal to you and expires in ${TOKEN_DAYS} days.\n\nGood Liquid Bev Co`;
+  const docs = titles && titles.length > 1 ? titles : [agreement.title];
+  const many = docs.length > 1;
+  const subject = many ? `Please review and sign: ${docs.length} documents from ${glName}` : `Please review and sign: ${agreement.title}`;
+  const what = many
+    ? `${docs.length} documents to review and sign electronically:\n${docs.map((t) => '  - ' + t).join('\n')}\n\nThey are all on one page, and you sign them together with one signature.`
+    : `"${agreement.title}" to review and sign electronically.`;
+  const text = `Hi ${signer.name},\n\n${glName} has sent you ${what}\n\n` +
+    `Open this private link to read and sign:\n${link}\n\nThe link is personal to you and expires in ${TOKEN_DAYS} days.\n\nGood Liquid Bev Co`;
+  const whatHtml = many
+    ? `${docs.length} documents to review and sign electronically:</p><ul>${docs.map((t) => `<li><b>${esc(t)}</b></li>`).join('')}</ul><p>They are all on one page, and you sign them together with one signature.`
+    : `<b>${esc(agreement.title)}</b> to review and sign electronically.`;
   const html = emailShell(
     `<p>Hi ${esc(signer.name)},</p>
-<p>${esc(glName)} has sent you <b>${esc(agreement.title)}</b> to review and sign electronically.</p>
+<p>${esc(glName)} has sent you ${whatHtml}</p>
 <p style="margin:26px 0"><a href="${esc(link)}" style="background:#1a6fff;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:700">Review &amp; sign</a></p>
 <p style="font-size:13px;color:#5a6779">This link is personal to you and expires in ${TOKEN_DAYS} days. If the button does not work, copy this address into your browser:<br>${esc(link)}</p>`);
   return sendMail({ to: signer.email, subject, text, html }, { clientId: agreement.client_id, template: 'agreement_sign_link' });
@@ -173,8 +206,9 @@ function fmtDate(iso: string): string {
 
 // Fill "By: ____" / "Date: ____" in the signature block: the block is built by
 // the CRM with Good Liquid first and Company second.
-function stampSignatures(body: string, signers: SignerRow[]): string {
-  const order = ['gl', 'client'];
+// An invoice acceptance's block has the Company only (see agreements.js).
+function stampSignatures(body: string, signers: SignerRow[], kind = ''): string {
+  const order = clientOnly(kind) ? ['client'] : ['gl', 'client'];
   let i = 0, j = 0;
   let out = body.replace(/By: _{5,}/g, (m) => {
     const s = signers.find((x) => x.role === order[i++]);
@@ -232,7 +266,7 @@ async function buildSignedPdf(agreement: { id: string; title: string; body: stri
     y -= gapAfter;
   }
 
-  const body = stampSignatures(agreement.body.replace(/\r\n/g, '\n'), signers);
+  const body = stampSignatures(agreement.body.replace(/\r\n/g, '\n'), signers, agreement.kind);
   for (const block of body.split(/\n{2,}/)) {
     const t = block.replace(/\s+$/, '');
     if (!t) continue;
@@ -281,11 +315,73 @@ async function loadByToken(sb: ReturnType<typeof db>, token: string) {
     return { error: 'This signing link has expired. Ask Good Liquid to send a new one.' };
   }
   const { data: agreement } = await sb.from('agreements')
-    .select('id,kind,title,party_name,body,status,client_id,deal_id,fields').eq('id', signer.agreement_id).maybeSingle();
+    .select('id,kind,title,party_name,body,status,client_id,deal_id,fields,packet_id').eq('id', signer.agreement_id).maybeSingle();
   if (!agreement) return { error: 'This agreement no longer exists.' };
   if (agreement.status === 'void') return { error: 'This agreement was withdrawn by Good Liquid.' };
   if (agreement.status === 'declined') return { error: 'This agreement was declined and is closed.' };
   return { signer, agreement };
+}
+
+type AgreementRow = { id: string; kind: string; title: string; party_name: string; body: string; status: string;
+  client_id: string | null; deal_id: string | null; fields: Record<string, string>; packet_id: string | null };
+type Member = { agreement: AgreementRow; signer: SignerRow & { agreement_id: string } };
+
+// Every document this link holder still has to sign: the link's own
+// agreement and, for a packet, the other agreements in it whose signer of
+// the SAME role is up next ('sent' / 'viewed'). Void, declined and signed
+// agreements drop out. Never takes an id from the caller.
+async function packetMembers(sb: ReturnType<typeof db>, signer: SignerRow & { agreement_id: string }, agreement: AgreementRow): Promise<Member[]> {
+  const pending = (s: SignerRow) => s.status === 'sent' || s.status === 'viewed';
+  // loadByToken already refused void / declined agreements.
+  if (!agreement.packet_id) return pending(signer) ? [{ agreement, signer }] : [];
+  // 'draft' too: send_packet emails the link before it flips the packet to
+  // 'sent', and a failed status write must not lock the customer out.
+  const { data: ags } = await sb.from('agreements')
+    .select('id,kind,title,party_name,body,status,client_id,deal_id,fields,packet_id')
+    .eq('packet_id', agreement.packet_id).in('status', ['draft', 'sent']);
+  const ids = (ags || []).map((a: AgreementRow) => a.id);
+  if (!ids.length) return [];
+  const { data: sgs } = await sb.from('agreement_signers').select('*')
+    .in('agreement_id', ids).eq('role', signer.role).in('status', ['sent', 'viewed']);
+  const out: Member[] = [];
+  for (const a of (ags || []) as AgreementRow[]) {
+    const s = (sgs || []).find((x: SignerRow & { agreement_id: string }) => x.agreement_id === a.id);
+    // Same person only: a packet is one client signer, checked at send time,
+    // but never hand one signer's document to a different email.
+    if (s && String(s.email).toLowerCase() === String(signer.email).toLowerCase()) out.push({ agreement: a, signer: s });
+  }
+  out.sort((x, y) => (KIND_ORDER[x.agreement.kind] ?? 9) - (KIND_ORDER[y.agreement.kind] ?? 9));
+  return out;
+}
+
+// Start (or restart) the client step of a packet: one fresh token on the
+// first pending client signer, the others marked sent with no token, and one
+// email listing every document. Clears any older token in the packet so a
+// resend always kills the previous link.
+async function startPacketClient(sb: ReturnType<typeof db>, packetId: string): Promise<{ ok: boolean; reason?: string; sentTo?: string; count?: number }> {
+  const { data: ags } = await sb.from('agreements').select('id,kind,title,party_name,fields,client_id')
+    .eq('packet_id', packetId).in('status', ['draft', 'sent']);
+  const agList = ((ags || []) as AgreementRow[]).sort((x, y) => (KIND_ORDER[x.kind] ?? 9) - (KIND_ORDER[y.kind] ?? 9));
+  if (!agList.length) return { ok: false, reason: 'Nothing in this packet is waiting to be signed.' };
+  const { data: sgs } = await sb.from('agreement_signers').select('*')
+    .in('agreement_id', agList.map((a) => a.id)).eq('role', 'client').neq('status', 'signed');
+  const rows = agList.map((a) => ({ a, s: (sgs || []).find((x: SignerRow & { agreement_id: string }) => x.agreement_id === a.id) }))
+    .filter((r) => r.s) as { a: AgreementRow; s: SignerRow & { agreement_id: string } }[];
+  if (!rows.length) return { ok: false, reason: 'The customer has already signed everything in this packet.' };
+  const t = await newToken();
+  const now = new Date().toISOString();
+  const expires = new Date(Date.now() + TOKEN_DAYS * 864e5).toISOString();
+  for (let i = 0; i < rows.length; i++) {
+    const upd = await sb.from('agreement_signers').update({
+      status: 'sent', sent_at: now, token_expires_at: expires, token_hash: i === 0 ? t.hash : null,
+    }).eq('id', rows[i].s.id).select('id');
+    if (upd.error || !upd.data?.length) return { ok: false, reason: 'Could not prepare the signing link.' };
+  }
+  const lead = rows[0];
+  const glName = (lead.a.fields && lead.a.fields.gl_legal_name) || 'Good Liquid Bev Co';
+  const mail = await emailSignLink(lead.s, lead.a, t.token, glName, rows.map((r) => r.a.title));
+  if (!mail.ok) return { ok: false, reason: mail.reason };
+  return { ok: true, sentTo: lead.s.email, count: rows.length };
 }
 
 async function startNextSigner(sb: ReturnType<typeof db>, agreement: { id: string; title: string; party_name: string; fields: Record<string, string>; client_id?: string | null }) {
@@ -320,7 +416,7 @@ async function finalize(sb: ReturnType<typeof db>, agreementId: string): Promise
   if (up.error) { console.error('[agreement-sign] upload', up.error); return { ok: false, reason: 'PDF upload failed', signers: names }; }
   const doc = await sb.from('deal_documents').insert([{
     deal_id: agreement.deal_id, client_id: agreement.client_id,
-    doc_type: agreement.kind === 'nda' ? 'NDA' : 'Manufacturing Agreement',
+    doc_type: DOC_TYPE[agreement.kind] || 'Other',
     name: 'SIGNED ' + agreement.title, notes: 'Signed electronically in the CRM', file_path: path,
     file_type: 'pdf', uploaded_by: 'E-signature',
     // The fully signed copy is published to the client's portal (Mike,
@@ -369,6 +465,64 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const sb = db();
 
   // ── Staff actions ──
+  if (action === 'send_packet') {
+    const auth = await requireStaff(req, { role: 'admin' });
+    if (!auth.ok) return errorResponse(auth.error || 'Forbidden', auth.status);
+    const rl = await checkRateLimit('agreement-sign:staff:' + (auth.userId || 'svc'), 30, 300, { onOutage: 'allowance' });
+    if (!rl.allowed) return errorResponse(rl.outage ? rateLimitOutageMessage('agreement email') : rateLimitMessage('agreement email'), rl.outage ? 503 : 429);
+
+    const ids = Array.isArray(payload.agreement_ids) ? [...new Set((payload.agreement_ids as unknown[]).map(String))] : [];
+    if (ids.length < 1 || ids.length > 5 || ids.some((id) => !UUID_RE.test(id))) {
+      return errorResponse('agreement_ids must be 1 to 5 agreement ids', 400);
+    }
+    const { data: ags, error: agErr } = await sb.from('agreements')
+      .select('id,kind,title,party_name,status,fields,client_id,packet_id').in('id', ids);
+    if (agErr) return errorResponse('Could not read the agreements: ' + agErr.message, 500);
+    const list = (ags || []) as AgreementRow[];
+    if (list.length !== ids.length) return errorResponse('Agreement not found', 404);
+    if (list.some((a) => a.status !== 'draft')) return errorResponse('Only draft agreements can be sent as a packet.', 409);
+    if (list.some((a) => a.packet_id)) return errorResponse('One of these agreements was already sent in a packet.', 409);
+    // One customer, one signer: the whole point is a single link to a single
+    // person. A packet spanning two clients would show one client's documents
+    // to another (CLAUDE.md: the worst outcome this system can produce).
+    const clientIds = new Set(list.map((a) => a.client_id || ''));
+    if (clientIds.size !== 1 || clientIds.has('')) return errorResponse('Every document in a packet must belong to the same client.', 400);
+    const emails = new Set(list.map((a) => String((a.fields || {}).client_signer_email || '').trim().toLowerCase()));
+    const clientEmail = [...emails][0] || '';
+    if (emails.size !== 1 || !validEmail(clientEmail)) return errorResponse('Every document in a packet needs the same valid client signer email.', 400);
+
+    const packetId = crypto.randomUUID();
+    for (const a of list) {
+      const f = (a.fields || {}) as Record<string, string>;
+      const pUpd = await sb.from('agreements').update({ packet_id: packetId }).eq('id', a.id).eq('status', 'draft').select('id');
+      if (pUpd.error || !pUpd.data?.length) return errorResponse('Could not group the documents (' + (pUpd.error?.message || 'no row') + ').', 500);
+      const rows: Record<string, unknown>[] = [{
+        agreement_id: a.id, role: 'client', sign_order: 1,
+        name: String(f.client_signer_name || a.party_name).trim(), email: String(f.client_signer_email).trim(),
+        title: String(f.client_signer_title || '').trim() || null, status: 'waiting',
+      }];
+      const glEmail = String(f.gl_signer_email || '').trim();
+      if (!clientOnly(a.kind) && validEmail(glEmail) && glEmail.toLowerCase() !== clientEmail) {
+        rows.push({
+          agreement_id: a.id, role: 'gl', sign_order: 2,
+          name: String(f.gl_signer_name || 'Good Liquid Bev Co').trim(), email: glEmail,
+          title: String(f.gl_signer_title || '').trim() || null, status: 'waiting',
+        });
+      }
+      const del = await sb.from('agreement_signers').delete().eq('agreement_id', a.id).neq('status', 'signed').select('id');
+      if (del.error) return errorResponse('Could not reset signers: ' + del.error.message, 500);
+      const ins = await sb.from('agreement_signers').insert(rows).select('id');
+      if (ins.error || (ins.data || []).length !== rows.length) return errorResponse('Could not create signers: ' + (ins.error?.message || 'rows missing'), 500);
+    }
+    const started = await startPacketClient(sb, packetId);
+    if (!started.ok) return errorResponse(started.reason || 'Could not send', 502);
+    const sentAt = new Date().toISOString();
+    const sUpd = await sb.from('agreements').update({ status: 'sent', sent_to: started.sentTo, sent_at: sentAt })
+      .eq('packet_id', packetId).select('id');
+    if (sUpd.error || (sUpd.data || []).length !== list.length) return errorResponse('Email sent, but the status did not save.', 500);
+    return jsonResponse({ ok: true, sent_to: started.sentTo, packet_id: packetId, documents: started.count });
+  }
+
   if (action === 'send' || action === 'resend') {
     const auth = await requireStaff(req, { role: 'admin' });
     if (!auth.ok) return errorResponse(auth.error || 'Forbidden', auth.status);
@@ -377,7 +531,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     const agreementId = String(payload.agreement_id || '');
     if (!/^[0-9a-f-]{36}$/i.test(agreementId)) return errorResponse('agreement_id is required', 400);
-    const { data: agreement } = await sb.from('agreements').select('id,title,party_name,status,fields,client_id').eq('id', agreementId).maybeSingle();
+    const { data: agreement } = await sb.from('agreements').select('id,kind,title,party_name,status,fields,client_id,packet_id').eq('id', agreementId).maybeSingle();
     if (!agreement) return errorResponse('Agreement not found', 404);
     if (agreement.status === 'signed' || agreement.status === 'void' || agreement.status === 'declined') {
       return errorResponse('This agreement is ' + agreement.status + ' and cannot be sent.', 409);
@@ -393,7 +547,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         title: String(f.client_signer_title || '').trim() || null, status: 'waiting',
       }];
       const glEmail = String(f.gl_signer_email || '').trim();
-      if (validEmail(glEmail) && glEmail.toLowerCase() !== clientEmail.toLowerCase()) {
+      if (!clientOnly(agreement.kind) && validEmail(glEmail) && glEmail.toLowerCase() !== clientEmail.toLowerCase()) {
         rows.push({
           agreement_id: agreementId, role: 'gl', sign_order: 2,
           name: String(f.gl_signer_name || 'Good Liquid Bev Co').trim(), email: glEmail,
@@ -405,6 +559,18 @@ Deno.serve(async (req: Request): Promise<Response> => {
       if (del.error) return errorResponse('Could not reset signers: ' + del.error.message, 500);
       const ins = await sb.from('agreement_signers').upsert(rows, { onConflict: 'agreement_id,role', ignoreDuplicates: true }).select('id');
       if (ins.error) return errorResponse('Could not create signers: ' + ins.error.message, 500);
+    }
+
+    // A packet still waiting on the customer is resent as a packet: one new
+    // link covering every document they have not signed yet.
+    if (action === 'resend' && agreement.packet_id) {
+      const { data: mine } = await sb.from('agreement_signers').select('role,status').eq('agreement_id', agreementId).order('sign_order');
+      const next = (mine || []).find((r: { status: string }) => r.status !== 'signed');
+      if (next && next.role === 'client') {
+        const p = await startPacketClient(sb, agreement.packet_id);
+        if (!p.ok) return errorResponse(p.reason || 'Could not send', 502);
+        return jsonResponse({ ok: true, sent_to: p.sentTo, documents: p.count });
+      }
     }
 
     const started = await startNextSigner(sb, agreement);
@@ -423,22 +589,34 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const rl = await checkRateLimit('agreement-sign:public:' + ip, 30, 300, { onOutage: 'closed' });
     if (!rl.allowed) return errorResponse(rl.outage ? rateLimitOutageMessage('signing') : rateLimitMessage('signing'), rl.outage ? 503 : 429);
 
-    const loaded = await loadByToken(sb, String(payload.token || ''));
+    const token = String(payload.token || '');
+    const loaded = await loadByToken(sb, token);
     if ('error' in loaded) return errorResponse(loaded.error as string, 404);
-    const { signer, agreement } = loaded as { signer: SignerRow & { agreement_id: string }; agreement: Record<string, unknown> & { id: string; title: string; body: string; fields: Record<string, string>; party_name: string } };
+    const { signer, agreement } = loaded as { signer: SignerRow & { agreement_id: string }; agreement: AgreementRow };
 
-    if (signer.status === 'signed') return jsonResponse({ ok: true, already: 'signed', title: agreement.title });
+    // Everything this link still has to sign. Empty = all done. The link's
+    // own row may already be signed while another document in its packet
+    // failed to save; the token stays live until the whole set is signed, so
+    // the customer can simply press Sign again.
+    const members = await packetMembers(sb, signer, agreement);
+    if (!members.length) return jsonResponse({ ok: true, already: 'signed', title: agreement.title });
+    const ua = (req.headers.get('user-agent') || '').slice(0, 300);
+    const f = agreement.fields || {};
 
     if (action === 'view') {
-      if (!signer.viewed_at) {
-        await sb.from('agreement_signers').update({ status: 'viewed', viewed_at: new Date().toISOString() })
-          .eq('id', signer.id).select('id');
+      const now = new Date().toISOString();
+      for (const m of members) {
+        if (!m.signer.viewed_at) {
+          await sb.from('agreement_signers').update({ status: 'viewed', viewed_at: now }).eq('id', m.signer.id).select('id');
+        }
       }
-      const f = agreement.fields || {};
+      const first = members[0];
       return jsonResponse({
         ok: true,
-        title: agreement.title,
-        body: agreement.body,
+        // title/body: the first document, for a page that predates packets.
+        title: members.length > 1 ? `${members.length} documents to sign` : first.agreement.title,
+        body: first.agreement.body,
+        documents: members.map((m) => ({ kind: m.agreement.kind, title: m.agreement.title, body: m.agreement.body })),
         signer: { name: signer.name, email: signer.email, title: signer.title, role: signer.role },
         parties: { good_liquid: f.gl_legal_name || 'Good Liquid Bev Co', company: f.client_legal_name || agreement.party_name },
         consent_text: CONSENT_TEXT,
@@ -447,75 +625,91 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     if (action === 'decline') {
       const reason = String(payload.reason || '').trim().slice(0, 1000) || null;
-      // Three checked writes (CLAUDE.md rule 4: an error OR zero rows is a
-      // failure). Before, both updates were unchecked and the signer was told
-      // "declined" even when nothing saved. Ordered so a failure can be
-      // retried with the same link: the token is only cleared once the
-      // agreement itself is closed (after which loadByToken refuses the link
-      // anyway, so a failed clear is logged, not fatal).
-      const sUpd = await sb.from('agreement_signers').update({
-        status: 'declined', decline_reason: reason, signed_ip: ip,
-        signed_user_agent: (req.headers.get('user-agent') || '').slice(0, 300),
-      }).eq('id', signer.id).select('id');
-      if (sUpd.error || !sUpd.data?.length) {
-        console.error('[agreement-sign] decline: signer update failed', sUpd.error?.message || 'no row');
-        return errorResponse('Your decline could not be saved. Please try again.', 500);
+      // Checked writes (CLAUDE.md rule 4: an error OR zero rows is a failure),
+      // ordered so a failure can be retried with the same link: the token is
+      // only cleared once every agreement is closed.
+      for (const m of members) {
+        const sUpd = await sb.from('agreement_signers').update({
+          status: 'declined', decline_reason: reason, signed_ip: ip, signed_user_agent: ua,
+        }).eq('id', m.signer.id).select('id');
+        if (sUpd.error || !sUpd.data?.length) {
+          console.error('[agreement-sign] decline: signer update failed', sUpd.error?.message || 'no row');
+          return errorResponse('Your decline could not be saved. Please try again.', 500);
+        }
+        const aUpd = await sb.from('agreements').update({ status: 'declined' }).eq('id', m.agreement.id).select('id');
+        if (aUpd.error || !aUpd.data?.length) {
+          console.error('[agreement-sign] decline: agreement update failed', aUpd.error?.message || 'no row');
+          return errorResponse('Your decline could not be saved. Please try again.', 500);
+        }
       }
-      const aUpd = await sb.from('agreements').update({ status: 'declined' }).eq('id', agreement.id).select('id');
-      if (aUpd.error || !aUpd.data?.length) {
-        console.error('[agreement-sign] decline: agreement update failed', aUpd.error?.message || 'no row');
-        return errorResponse('Your decline could not be saved. Please try again.', 500);
-      }
-      const tClr = await sb.from('agreement_signers').update({ token_hash: null }).eq('id', signer.id).select('id');
+      const tClr = await sb.from('agreement_signers').update({ token_hash: null }).eq('token_hash', await sha256Hex(token)).select('id');
       if (tClr.error || !tClr.data?.length) {
-        console.error('[agreement-sign] decline: token clear failed (agreement is closed, link refused)', tClr.error?.message || 'no row');
+        console.error('[agreement-sign] decline: token clear failed (agreements are closed, link refused)', tClr.error?.message || 'no row');
       }
+      const titles = members.map((m) => m.agreement.title).join(' + ');
       // Telegram + email to Mike. Awaited; a failure is logged and never
       // turns a saved decline into an error. No signing link in the alert.
       const declinedAlert = await notifyDeal('agreement-sign', 'agreement_declined', {
-        title: String(agreement.title || ''), party: String(agreement.party_name || ''),
+        title: titles, party: String(agreement.party_name || ''),
         signer: signer.name || '', signer_email: signer.email || '', role: signer.role || '',
         reason: reason || '',
       });
       if (!declinedAlert.ok) console.error('[agreement-sign] agreement_declined alert failed:', declinedAlert.detail);
-      const glEmail = String((agreement.fields || {}).gl_signer_email || '').trim();
+      const glEmail = String(f.gl_signer_email || '').trim();
       if (validEmail(glEmail)) {
         await sendMail({
-          to: glEmail, subject: `Declined: ${agreement.title}`,
-          text: `${signer.name} (${signer.email}) declined to sign "${agreement.title}".${reason ? '\n\nReason: ' + reason : ''}`,
-          html: emailShell(`<p><b>${esc(signer.name)}</b> (${esc(signer.email)}) declined to sign <b>${esc(agreement.title)}</b>.</p>${reason ? `<p>Reason: ${esc(reason)}</p>` : ''}`),
+          to: glEmail, subject: `Declined: ${titles}`,
+          text: `${signer.name} (${signer.email}) declined to sign "${titles}".${reason ? '\n\nReason: ' + reason : ''}`,
+          html: emailShell(`<p><b>${esc(signer.name)}</b> (${esc(signer.email)}) declined to sign <b>${esc(titles)}</b>.</p>${reason ? `<p>Reason: ${esc(reason)}</p>` : ''}`),
         }, { clientId: agreement.client_id, template: 'agreement_declined' });
       }
       return jsonResponse({ ok: true, declined: true });
     }
 
     // sign
+    // One consent and one typed name, applied to every document on the
+    // page; each document records the hash of its own text.
     if (payload.consent !== true) return errorResponse('Please agree to sign electronically.', 400);
     const typed = String(payload.typed_name || '').replace(/\s+/g, ' ').trim().slice(0, 120);
     if (typed.length < 2) return errorResponse('Type your full name to sign.', 400);
     const now = new Date().toISOString();
-    const docHash = await sha256Hex(agreement.body);
-    const upd = await sb.from('agreement_signers').update({
-      status: 'signed', consented_at: now, signed_at: now, typed_signature: typed,
-      signed_ip: ip, signed_user_agent: (req.headers.get('user-agent') || '').slice(0, 300),
-      document_sha256: docHash, token_hash: null, token_expires_at: null,
-    }).eq('id', signer.id).eq('status', signer.status).select('id');
-    if (upd.error || !upd.data?.length) return errorResponse('Your signature could not be saved. Please try again.', 500);
-
-    const next = await startNextSigner(sb, agreement as never);
-    if (next.ok && next.done) {
-      const fin = await finalize(sb, agreement.id);
-      // Everyone has signed: tell Mike (Telegram + email). Awaited and
-      // logged; it never fails the signature, which is already saved. The
-      // alert names the agreement and the signers, never a signing link.
-      const signedAlert = await notifyDeal('agreement-sign', 'agreement_signed', {
-        title: String(agreement.title || ''), party: String(agreement.party_name || ''),
-        signers: fin.signers, filed: fin.ok ? 'yes' : 'no', filed_error: fin.ok ? '' : (fin.reason || ''),
-      });
-      if (!signedAlert.ok) console.error('[agreement-sign] agreement_signed alert failed:', signedAlert.detail);
+    for (const m of members) {
+      const docHash = await sha256Hex(m.agreement.body);
+      const upd = await sb.from('agreement_signers').update({
+        status: 'signed', consented_at: now, signed_at: now, typed_signature: typed,
+        signed_ip: ip, signed_user_agent: ua, document_sha256: docHash, token_expires_at: null,
+      }).eq('id', m.signer.id).eq('status', m.signer.status).select('id');
+      if (upd.error || !upd.data?.length) {
+        console.error('[agreement-sign] sign: signer update failed', m.agreement.id, upd.error?.message || 'no row');
+        return errorResponse('Your signature could not be saved. Please try again.', 500);
+      }
     }
-    else if (!next.ok) console.error('[agreement-sign] next signer email failed:', next.reason);
-    return jsonResponse({ ok: true, signed: true, complete: !!(next.ok && next.done) });
+    // Every signature saved: retire the link.
+    const tClr = await sb.from('agreement_signers').update({ token_hash: null }).eq('token_hash', await sha256Hex(token)).select('id');
+    if (tClr.error || !tClr.data?.length) console.error('[agreement-sign] sign: token clear failed', tClr.error?.message || 'no row');
+
+    let allComplete = true;
+    const results: { title: string; complete: boolean }[] = [];
+    for (const m of members) {
+      const next = await startNextSigner(sb, m.agreement as never);
+      const complete = !!(next.ok && next.done);
+      if (complete) {
+        const fin = await finalize(sb, m.agreement.id);
+        // Everyone has signed: tell Mike (Telegram + email). Awaited and
+        // logged; it never fails the signature, which is already saved. The
+        // alert names the agreement and the signers, never a signing link.
+        const signedAlert = await notifyDeal('agreement-sign', 'agreement_signed', {
+          title: String(m.agreement.title || ''), party: String(m.agreement.party_name || ''),
+          signers: fin.signers, filed: fin.ok ? 'yes' : 'no', filed_error: fin.ok ? '' : (fin.reason || ''),
+        });
+        if (!signedAlert.ok) console.error('[agreement-sign] agreement_signed alert failed:', signedAlert.detail);
+      } else {
+        allComplete = false;
+        if (!next.ok) console.error('[agreement-sign] next signer email failed:', next.reason);
+      }
+      results.push({ title: m.agreement.title, complete });
+    }
+    return jsonResponse({ ok: true, signed: true, complete: allComplete, documents: results });
   }
 
   return errorResponse('Unknown action', 400);

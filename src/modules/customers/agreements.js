@@ -44,7 +44,11 @@
 
   var KINDS = {
     nda:           { label: 'Mutual NDA',              docType: 'NDA',   icon: '🔒' },
-    manufacturing: { label: 'Manufacturing Agreement', docType: 'Manufacturing Agreement', icon: '🏭' }
+    manufacturing: { label: 'Manufacturing Agreement', docType: 'Manufacturing Agreement', icon: '🏭' },
+    // Not offered in the generator's kind buttons: it is built from an
+    // invoice by glOpenInvoiceSignoff() below. Listed here so the template
+    // editor and the "On file" list label it.
+    invoice_acceptance: { label: 'Invoice Acceptance', docType: 'Invoice Acceptance', icon: '🧾' }
   };
   var STATUS_STYLE = {
     draft:  { bg: 'rgba(255,255,255,.08)', fg: '#cfd9e6', label: 'Draft' },
@@ -192,7 +196,10 @@
   ];
 
   /* ── Template fill ──────────────────────────────────────────── */
-  function signatureBlock(f){
+  // The edge function stamps "By: ____" / "Date: ____" in block order:
+  // Good Liquid then Company, or Company alone for an invoice acceptance
+  // (stampSignatures in supabase/functions/agreement-sign). Keep in step.
+  function signatureBlock(f, kind){
     function party(heading, name, signer, title){
       return [
         heading.toUpperCase(),
@@ -204,17 +211,18 @@
         'Date: ____________________________'
       ].join('\n');
     }
-    return party('Good Liquid', f.gl_legal_name, f.gl_signer_name, f.gl_signer_title) +
-      '\n\n' + party('Company', f.client_legal_name, f.client_signer_name, f.client_signer_title);
+    var company = party(kind === 'invoice_acceptance' ? 'Customer' : 'Company', f.client_legal_name, f.client_signer_name, f.client_signer_title);
+    if(kind === 'invoice_acceptance') return company;
+    return party('Good Liquid', f.gl_legal_name, f.gl_signer_name, f.gl_signer_title) + '\n\n' + company;
   }
-  function fillTemplate(body, f){
+  function fillTemplate(body, f, kind){
     var missing = [];
     var out = String(body || '').replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, function(_, k){
       var v = f[k];
       if(v == null || String(v).trim() === ''){ missing.push(k); return '[' + k.toUpperCase() + ']'; }
       return String(v).trim();
     });
-    out = out.replace('[[SIGNATURES]]', signatureBlock(f));
+    out = out.replace('[[SIGNATURES]]', signatureBlock(f, kind));
     return { text: out, missing: missing };
   }
 
@@ -481,7 +489,7 @@
         setStatus('Fill in the highlighted fields first: ' + missingReq.map(function(d){ return d.label.toLowerCase(); }).join(', ') + '.', '#f5c842');
         return;
       }
-      var res = fillTemplate(tpl.body, state.fields);
+      var res = fillTemplate(tpl.body, state.fields, state.kind);
       state.generated = res.text; state.savedId = null; state.savedDocId = null;
       textArea.value = res.text;
       missingEl.textContent = res.missing.length
@@ -644,6 +652,402 @@
     refreshList();
   };
 
+  /* ════════════════════════════════════════════════════════════
+     Invoice sign-off (invoice acceptance + manufacturing agreement)
+     ════════════════════════════════════════════════════════════
+     Opened from the invoice detail panel (button injected below). Builds an
+     "Invoice Acceptance and Product Responsibility" document from the
+     invoice — line items, total, terms and the kill-step choice — and, when
+     the client has no signed Contract Manufacturing Agreement, one of those
+     too. Both are logged in public.agreements (the invoice one carries
+     invoice_id) and sent with agreement-sign {action:'send_packet'}: one
+     email, one page, one signature. Signed PDFs with certificate pages land
+     in the client's Documents (and their portal) automatically. */
+
+  var KILL_STEP = {
+    accepted: 'Good Liquid offered flash pasteurization for this run, and Customer ACCEPTED it. It is included on this invoice.',
+    declined: 'Good Liquid offered flash pasteurization for this run, and Customer DECLINED it. Customer understands that without a kill step the product may be more likely to re-ferment, swell, leak or burst, and Customer accepts sole responsibility for the microbial and pressure stability of the product.',
+    na:       'Not applicable: no kill step applies to the services on this invoice.'
+  };
+  function usd(n, maxFrac){
+    return '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits: maxFrac || 2 });
+  }
+  function findInvoice(num){
+    return (window.invoices || []).find(function(i){ return i && i.id === num; }) || null;
+  }
+  // Same junk-row rule as the invoice detail view (crm-index-core viewInvoice).
+  function invoiceLines(inv){
+    var raw = Array.isArray(inv.lines) && inv.lines.length ? inv.lines : [{ desc: inv.svc, qty: 1, unitPrice: inv.amount, total: inv.amount }];
+    return raw.filter(function(l){
+      return !((Number(l.total) || 0) === 0 && (!l.desc || String(l.desc).trim() === '' || String(l.desc).trim() === '0'));
+    });
+  }
+  function invoiceLinesText(inv){
+    var out = invoiceLines(inv).map(function(l){
+      var qty = l.qty != null ? Number(l.qty).toLocaleString('en-US') + (l.unit ? ' ' + l.unit : '') : '';
+      var unit = l.unitPrice != null ? ' x ' + usd(l.unitPrice, 4) : '';
+      return '- ' + String(l.desc || 'Service').replace(/\s+/g, ' ').trim() +
+        (qty ? ': ' + qty + unit : '') + ' = ' + usd(l.total);
+    });
+    if(inv.discount && inv.discountAmt) out.push('- Discount (' + inv.discount + '%) = -' + usd(inv.discountAmt));
+    return out.join('\n');
+  }
+  function hasPasteurization(inv){
+    return invoiceLines(inv).some(function(l){ return /pasteuri/i.test(String(l.desc || '')); });
+  }
+
+  window.glOpenInvoiceSignoff = async function glOpenInvoiceSignoff(invNumber){
+    if(!isAdmin()){ alert('Admin only.'); return; }
+    if(typeof invNumber !== 'string' || !invNumber) invNumber = window.currentInvId;
+    var inv = findInvoice(invNumber);
+    if(!inv){ alert('Open the invoice first.'); return; }
+    if(!inv.supaId || !/^[0-9a-f-]{36}$/i.test(inv.supaId)){ alert('Save this invoice first, then send it for signature.'); return; }
+    if(!inv.client || !/^[0-9a-f-]{36}$/i.test(inv.client)){ alert('This invoice is not linked to a client. Edit it, pick the client, save, then try again.'); return; }
+    var ctx = buildContext({ clientId: inv.client });
+    if(!ctx.clientId){ alert('The client on this invoice was not found. Reload and try again.'); return; }
+    var client = ctx.client || {};
+    var prior = document.getElementById('gl-signoff-modal'); if(prior) prior.remove();
+
+    var f = ctx.fields;
+    var state = { templates:{}, mfgSigned:null, mfgOpen:[], killStep: hasPasteurization(inv) ? 'accepted' : '', savedIds:null, sending:false };
+    var statusEl = h('div', { style:'font-size:12px;min-height:16px;margin-top:10px' });
+    function setStatus(msg, color){ statusEl.style.color = color || '#9aa7bd'; statusEl.textContent = msg || ''; }
+    var onFile = h('div', {}, [h('div', { style:'font-size:12px;color:#6b87ad', text:'Loading…' })]);
+    var mfgMount = h('div');
+    var preview = h('div', { style:'display:none;margin-top:12px' });
+
+    function field(key, label, req, wide){
+      var inp = h('input', { type:'text', value: f[key] || '', style: req && !String(f[key] || '').trim() ? S.inpMiss : S.inp, 'data-signoff-field': key });
+      inp.addEventListener('input', function(){
+        f[key] = inp.value; state.savedIds = null;
+        inp.setAttribute('style', req && !inp.value.trim() ? S.inpMiss : S.inp);
+      });
+      return h('div', { style: wide ? 'grid-column:1 / -1' : '' }, [
+        h('label', { style:S.lbl, text: label + (req ? ' *' : '') }), inp
+      ]);
+    }
+
+    var killSel = h('select', { style:S.inp, 'data-signoff-field':'kill_step' }, [
+      h('option', { value:'', text:'— Choose —' }),
+      h('option', { value:'accepted', text:'Offered and ACCEPTED (pasteurization is on this invoice)' }),
+      h('option', { value:'declined', text:'Offered and DECLINED by the customer' }),
+      h('option', { value:'na', text:'Not applicable to these services' })
+    ]);
+    killSel.value = state.killStep;
+    killSel.addEventListener('change', function(){ state.killStep = killSel.value; state.savedIds = null; });
+
+    var includeMfg = h('input', { type:'checkbox', 'data-signoff-field':'include_mfg' });
+    includeMfg.addEventListener('change', function(){ state.savedIds = null; renderMfg(); });
+    var mfgFields = h('div', { style:'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px' }, [
+      field('effective_date', 'EFFECTIVE DATE', true),
+      field('term_years', 'INITIAL TERM (YEARS)', true),
+      field('gl_signer_name', 'GOOD LIQUID SIGNER', true),
+      field('gl_signer_title', 'GOOD LIQUID SIGNER TITLE', true),
+      field('gl_signer_email', 'GOOD LIQUID SIGNER EMAIL (you countersign after the customer)', false, true)
+    ]);
+
+    function renderMfg(){
+      clear(mfgMount);
+      if(state.mfgSigned){
+        mfgMount.appendChild(h('div', { style:'font-size:12.5px;color:#5fcf9e',
+          text:'✓ Contract Manufacturing Agreement already signed on ' + new Date(state.mfgSigned.signed_at || state.mfgSigned.created_at).toLocaleDateString() + '. Only the invoice acceptance will be sent.' }));
+        return;
+      }
+      mfgMount.appendChild(h('label', { style:'display:flex;gap:8px;align-items:center;font-size:13px;cursor:pointer' }, [
+        includeMfg, 'Include the Contract Manufacturing Agreement (this client has not signed one)'
+      ]));
+      if(state.mfgOpen.length){
+        mfgMount.appendChild(h('div', { style:'font-size:11.5px;color:#f5c842;margin-top:6px',
+          text:'An earlier unsigned copy (' + state.mfgOpen.map(function(a){ return a.status + ' ' + new Date(a.sent_at || a.created_at).toLocaleDateString(); }).join(', ') +
+            ') will be marked void when this goes out, so the customer has only one to sign.' }));
+      }
+      if(includeMfg.checked) mfgMount.appendChild(mfgFields);
+    }
+
+    var btnPreview = h('button', { type:'button', style:S.btn, onclick:onPreview }, ['👁 Preview documents']);
+    var btnSend = h('button', { type:'button', style:S.btnGo, onclick:onSend }, ['✍️ Send for e-signature']);
+
+    var ov = h('div', { id:'gl-signoff-modal', style:S.overlay }, [
+      h('div', { style:S.card }, [
+        h('div', { style:'display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px' }, [
+          h('div', {}, [
+            h('div', { style:S.title, text:'✍️ CUSTOMER SIGN-OFF' }),
+            h('div', { style:'font-size:12px;color:#9aa7bd;margin-top:3px', text:'Invoice ' + inv.id + ' · ' + (client.name || inv.clientName || '') + ' · ' + usd(inv.amount) })
+          ]),
+          h('button', { type:'button', title:'Close', style:'background:none;border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#fff;font-size:15px;cursor:pointer;padding:4px 10px', onclick:function(){ ov.remove(); } }, ['✕'])
+        ]),
+        h('div', { style:S.section }, [ h('span', { style:S.lbl, text:'ON FILE FOR THIS INVOICE' }), onFile ]),
+        h('div', { style:S.section }, [
+          h('span', { style:S.lbl, text:'WHO SIGNS' }),
+          h('div', { style:'display:grid;grid-template-columns:1fr 1fr;gap:10px' }, [
+            field('client_legal_name', 'CLIENT LEGAL NAME', true),
+            field('client_signer_email', 'CLIENT SIGNER EMAIL', true),
+            field('client_signer_name', 'CLIENT SIGNER NAME', true),
+            field('client_signer_title', 'CLIENT SIGNER TITLE', false),
+            field('client_address', 'CLIENT ADDRESS', true, true)
+          ])
+        ]),
+        h('div', { style:S.section }, [
+          h('span', { style:S.lbl, text:'KILL STEP FOR THIS RUN *' }),
+          killSel,
+          h('div', { style:'font-size:10.5px;color:#6b87ad;margin-top:4px', text:'Printed on the acceptance and signed by the customer: a record of whether they took the pasteurization you offered.' })
+        ]),
+        h('div', { style:S.section }, [ h('span', { style:S.lbl, text:'MANUFACTURING AGREEMENT' }), mfgMount ]),
+        preview,
+        h('div', { style:'display:flex;gap:8px;flex-wrap:wrap' }, [btnPreview, btnSend]),
+        h('div', { style:'font-size:11px;color:#6b87ad;margin-top:8px;line-height:1.5',
+          text:'The customer gets one email and signs everything on one page. Signed copies, each with a signature certificate, are filed to this client\'s Documents and their portal. Wording: 🤖 AI Tools → Agreement Templates (have your attorney review it).' }),
+        statusEl
+      ])
+    ]);
+    (document.getElementById('crm-panel') || document.body).appendChild(ov);
+
+    // Build the documents' text from the current inputs. Returns
+    // { docs:[{kind,title,text}] } or { error }.
+    function buildDocs(){
+      var need = [['client_legal_name','client legal name'],['client_address','client address'],['client_signer_name','client signer name'],['client_signer_email','client signer email']];
+      if(includeMfg.checked && !state.mfgSigned) need = need.concat([['effective_date','effective date'],['term_years','initial term'],['gl_signer_name','Good Liquid signer'],['gl_signer_title','Good Liquid signer title']]);
+      var miss = need.filter(function(p){ return !String(f[p[0]] || '').trim(); }).map(function(p){ return p[1]; });
+      if(miss.length) return { error:'Fill in: ' + miss.join(', ') + '.' };
+      if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(f.client_signer_email).trim())) return { error:'The client signer email is not valid.' };
+      if(!state.killStep) return { error:'Choose the kill step for this run.' };
+      var tpl = state.templates.invoice_acceptance;
+      if(!tpl) return { error:'The Invoice Acceptance template is missing (🤖 AI Tools → Agreement Templates).' };
+      var terms = inv.paymentTerms || client.paymentTerms || 'Due on receipt';
+      var invFields = Object.assign({}, f, {
+        invoice_number: inv.id,
+        invoice_date: inv.date || '',
+        invoice_lines: invoiceLinesText(inv),
+        invoice_total: usd(inv.amount),
+        payment_terms: terms,
+        kill_step: KILL_STEP[state.killStep]
+      });
+      var docs = [];
+      if(includeMfg.checked && !state.mfgSigned){
+        var mt = state.templates.manufacturing;
+        if(!mt) return { error:'The Manufacturing Agreement template is missing.' };
+        var m = fillTemplate(mt.body, f, 'manufacturing');
+        if(m.missing.length) return { error:'The manufacturing template uses fields with no value: ' + m.missing.join(', ') + '.' };
+        docs.push({ kind:'manufacturing', title: mt.title + ' — ' + f.client_legal_name, text: m.text, fields: Object.assign({}, f) });
+      }
+      var r = fillTemplate(tpl.body, invFields, 'invoice_acceptance');
+      if(r.missing.length) return { error:'The invoice acceptance template uses fields with no value: ' + r.missing.join(', ') + '.' };
+      docs.push({ kind:'invoice_acceptance', title: 'Invoice ' + inv.id + ' Acceptance — ' + f.client_legal_name, text: r.text,
+        // gl_signer_email is dropped: the invoice acceptance has no
+        // countersignature (the edge function skips it anyway).
+        fields: Object.assign({}, invFields, { gl_signer_email: '' }) });
+      return { docs: docs };
+    }
+
+    function onPreview(){
+      var b = buildDocs();
+      if(b.error){ setStatus(b.error, '#f5c842'); return; }
+      clear(preview);
+      b.docs.forEach(function(d){
+        var box = h('div', { style:'background:#fff;color:#111;border-radius:8px;padding:22px 26px;max-height:380px;overflow-y:auto;font-family:Georgia,serif;margin-bottom:10px' });
+        renderPreview(box, d.text);
+        preview.appendChild(h('div', { style:S.lbl, text: (KINDS[d.kind] ? KINDS[d.kind].icon + ' ' : '') + d.title }));
+        preview.appendChild(box);
+      });
+      preview.style.display = 'block';
+      setStatus('This is exactly what the customer will read and sign.', '#5fcf9e');
+    }
+
+    async function onSend(){
+      if(state.sending) return;
+      var b = buildDocs();
+      if(b.error){ setStatus(b.error, '#f5c842'); return; }
+      state.sending = true; btnSend.disabled = true;
+      try {
+        // Reuse the drafts from a failed send of the same text, so a retry
+        // does not pile up duplicate drafts.
+        var ids = state.savedIds;
+        if(!ids){
+          ids = [];
+          var u = window.currentUser || {};
+          for(var i = 0; i < b.docs.length; i++){
+            var d = b.docs[i];
+            setStatus('Saving ' + KINDS[d.kind].label + '…');
+            var blob;
+            try { blob = await buildPdf(d.text, d.title, ''); }
+            catch(e){ setStatus('PDF failed: ' + (e.message || e), '#ff8579'); return; }
+            var filed = await fileToDocuments(ctx, blob, d.title, KINDS[d.kind].docType, 'Generated in the CRM (draft, unsigned)');
+            if(!filed.ok){ setStatus(filed.reason, '#ff8579'); return; }
+            var ins = await window.glCheckedInsert(function(s){
+              return s.from('agreements').insert([{
+                kind: d.kind, title: d.title, client_id: ctx.clientId, deal_id: null,
+                invoice_id: d.kind === 'invoice_acceptance' ? inv.supaId : null,
+                party_name: f.client_legal_name || ctx.partyLabel,
+                body: d.text, fields: d.fields, status: 'draft',
+                document_id: filed.id, created_by: u.id || null, created_by_name: u.name || u.email || null
+              }]).select('id').single();
+            });
+            if(!ins.ok){ setStatus('The draft PDF is in Documents, but the agreement log did not save: ' + ins.reason, '#ff8579'); return; }
+            ids.push(ins.row.id);
+          }
+          state.savedIds = ids;
+        }
+        setStatus('Emailing the signing link…');
+        var r = await callSign({ action:'send_packet', agreement_ids: ids });
+        if(!r.ok){ setStatus('Saved as drafts, but sending failed: ' + r.reason, '#ff8579'); return; }
+        state.savedIds = null;
+        audit('invoice_signoff_sent', inv.id, { to: r.data.sent_to, documents: b.docs.map(function(d){ return d.kind; }) });
+        // One manufacturing agreement to sign: retire older unsigned copies.
+        if(b.docs.some(function(d){ return d.kind === 'manufacturing'; })){
+          for(var j = 0; j < state.mfgOpen.length; j++){
+            var v = await updateAgreement(state.mfgOpen[j].id, { status:'void' });
+            if(v.ok) audit('agreement_void', state.mfgOpen[j].title, { id: state.mfgOpen[j].id, replaced_by_packet: r.data.packet_id });
+            else setStatus('Sent, but an older unsigned manufacturing agreement could not be voided: ' + v.reason, '#f5c842');
+          }
+        }
+        if(!/could not be voided/.test(statusEl.textContent)){
+          setStatus('Signing link emailed to ' + r.data.sent_to + ' (' + b.docs.length + ' document' + (b.docs.length === 1 ? '' : 's') + ').', '#5fcf9e');
+        }
+        await refreshState();
+        window.glRefreshInvoiceSignoffStatus && window.glRefreshInvoiceSignoffStatus(true);
+      } catch(e){
+        setStatus('Send failed: ' + (e.message || e), '#ff8579');
+      } finally {
+        state.sending = false; btnSend.disabled = false;
+      }
+    }
+
+    function signoffRow(a){
+      var st = STATUS_STYLE[a.status] || STATUS_STYLE.draft;
+      var rowMsg = h('div', { style:'font-size:11px;margin-top:4px' });
+      var signersEl = h('div', { style:'font-size:11px;color:#9aa7bd;margin-top:3px' });
+      var actions = h('div', { style:'display:flex;gap:6px;flex-wrap:wrap' });
+      function small(label, fn, style){ return h('button', { type:'button', style:(style || S.btn) + ';padding:5px 10px;font-size:11px', onclick:fn }, [label]); }
+      if(a.signed_document_id) actions.appendChild(small('View signed', async function(){
+        var p = await docPath(a.signed_document_id);
+        if(p && typeof window.glOpenClientDoc === 'function') window.glOpenClientDoc(p); else rowMsg.textContent = 'File not found.';
+      }, S.btnGo));
+      if(a.status === 'sent') actions.appendChild(small('Resend link', async function(){
+        rowMsg.style.color = '#9aa7bd'; rowMsg.textContent = 'Sending…';
+        var r = await callSign({ action:'resend', agreement_id: a.id });
+        rowMsg.style.color = r.ok ? '#5fcf9e' : '#ff8579';
+        rowMsg.textContent = r.ok ? ('New link emailed to ' + r.data.sent_to + '.') : r.reason;
+      }));
+      if(a.status !== 'draft'){
+        loadSigners(a.id).then(function(rows){
+          rows.forEach(function(sg){
+            var label = sg.status === 'signed'   ? ('✓ signed ' + new Date(sg.signed_at).toLocaleString())
+                      : sg.status === 'viewed'   ? ('opened ' + new Date(sg.viewed_at).toLocaleString() + ', not signed yet')
+                      : sg.status === 'sent'     ? ('link sent ' + new Date(sg.sent_at).toLocaleString())
+                      : sg.status === 'declined' ? ('✗ declined' + (sg.decline_reason ? ': ' + sg.decline_reason : ''))
+                      : 'waits for the previous signer';
+            signersEl.appendChild(h('div', { text: (sg.role === 'gl' ? 'Good Liquid' : 'Client') + ' · ' + sg.name + ' (' + sg.email + ') — ' + label }));
+          });
+        });
+      }
+      return h('div', { style:'display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);flex-wrap:wrap' }, [
+        h('div', { style:'min-width:0;flex:1' }, [
+          h('div', { style:'font-size:13px;font-weight:600', text:(KINDS[a.kind] ? KINDS[a.kind].icon + ' ' : '') + a.title }),
+          h('div', { style:'font-size:11px;color:#9aa7bd;margin-top:2px' }, [
+            h('span', { style:'padding:1px 8px;border-radius:20px;font-size:10px;font-weight:700;margin-right:6px;background:' + st.bg + ';color:' + st.fg, text: st.label }),
+            a.signed_at ? ('signed ' + new Date(a.signed_at).toLocaleDateString()) : a.sent_at ? ('sent ' + new Date(a.sent_at).toLocaleDateString()) : ''
+          ]),
+          signersEl, rowMsg
+        ]),
+        actions
+      ]);
+    }
+
+    async function refreshState(){
+      var s = sb();
+      var res = await Promise.all([
+        s.from('agreement_templates').select('kind,title,body').in('kind', ['invoice_acceptance', 'manufacturing']),
+        s.from('agreements').select('id,kind,title,status,sent_at,signed_at,created_at,signed_document_id,invoice_id,packet_id')
+          .eq('client_id', ctx.clientId).in('kind', ['invoice_acceptance', 'manufacturing']).order('created_at', { ascending:false })
+      ]);
+      if(res[0].error){ setStatus('Could not load templates: ' + res[0].error.message, '#ff8579'); }
+      (res[0].data || []).forEach(function(t){ state.templates[t.kind] = t; });
+      clear(onFile);
+      if(res[1].error){ onFile.appendChild(h('div', { style:'font-size:12px;color:#ff8579', text:'Could not load agreements: ' + res[1].error.message })); return; }
+      var rows = res[1].data || [];
+      var mfg = rows.filter(function(a){ return a.kind === 'manufacturing'; });
+      state.mfgSigned = mfg.find(function(a){ return a.status === 'signed'; }) || null;
+      state.mfgOpen = mfg.filter(function(a){ return a.status === 'draft' || a.status === 'sent'; });
+      // Default: include it whenever the client has not signed one.
+      includeMfg.checked = !state.mfgSigned;
+      renderMfg();
+      var mine = rows.filter(function(a){ return a.kind === 'invoice_acceptance' && a.invoice_id === inv.supaId && a.status !== 'draft'; });
+      var packets = {};
+      mine.forEach(function(a){ if(a.packet_id) packets[a.packet_id] = true; });
+      var shown = mine.concat(mfg.filter(function(a){ return a.packet_id && packets[a.packet_id]; }));
+      if(!shown.length){ onFile.appendChild(h('div', { style:'font-size:12px;color:#6b87ad', text:'Not sent for signature yet.' })); return; }
+      shown.forEach(function(a){ onFile.appendChild(signoffRow(a)); });
+    }
+
+    await refreshState();
+  };
+
+  /* ── Invoice detail: "✍️ Customer sign-off" button + status line ──
+     Admin only (agreements are admin-only RLS). Injected the house way
+     (CRM_FEATURE_MAP §4): a class guard stops duplicates, and the per-
+     invoice flag is set only after the work is done (GL-127). */
+  var signoffCache = {};   // invoice supaId → latest acceptance row (or null)
+  async function signoffFor(inv, force){
+    if(!force && Object.prototype.hasOwnProperty.call(signoffCache, inv.supaId)) return signoffCache[inv.supaId];
+    var r = await sb().from('agreements').select('id,status,sent_at,sent_to,signed_at')
+      .eq('invoice_id', inv.supaId).eq('kind', 'invoice_acceptance').neq('status', 'draft')
+      .order('created_at', { ascending:false }).limit(1);
+    if(r.error) return undefined;
+    signoffCache[inv.supaId] = (r.data && r.data[0]) || null;
+    return signoffCache[inv.supaId];
+  }
+  function signoffText(a){
+    if(a === undefined) return { text:'Customer sign-off: could not be checked.', color:'#ff8579' };
+    if(!a) return { text:'Customer sign-off: not sent. Use ✍️ Customer sign-off to have them accept this invoice.', color:'#f5c842' };
+    if(a.status === 'signed') return { text:'✓ Customer sign-off: accepted and signed ' + new Date(a.signed_at).toLocaleString() + '. Signed copy is in Documents.', color:'#5fcf9e' };
+    if(a.status === 'declined') return { text:'✗ Customer sign-off: the customer declined to sign.', color:'#ff8579' };
+    if(a.status === 'void') return { text:'Customer sign-off: the last request was voided. Not signed.', color:'#f5c842' };
+    return { text:'Customer sign-off: sent ' + new Date(a.sent_at).toLocaleDateString() + (a.sent_to ? ' to ' + a.sent_to : '') + ', not signed yet.', color:'#f5c842' };
+  }
+  var signoffBusy = false;
+  async function injectSignoff(force){
+    if(!isAdmin() || !sb() || signoffBusy) return;
+    var detail = document.getElementById('inv-detail');
+    if(!detail || !detail.classList.contains('show')) return;
+    var inv = findInvoice(window.currentInvId);
+    if(!inv || !inv.supaId) return;
+    var back = detail.querySelector('[data-gl-action="closeDetail"]');
+    var row = back && back.parentNode;
+    if(row && !row.querySelector('.gl-signoff-btn')){
+      row.appendChild(h('button', { type:'button', class:'cbtn gl-signoff-btn',
+        style:'background:rgba(95,207,158,.12);border-color:rgba(95,207,158,.35);color:#5fcf9e',
+        title:'Have the customer e-sign their acceptance of this invoice (and the manufacturing agreement if they have not signed one)',
+        onclick:function(){ window.glOpenInvoiceSignoff(window.currentInvId); } }, ['✍️ Customer sign-off']));
+    }
+    var content = document.getElementById('inv-detail-content');
+    if(!content || !content.firstElementChild) return;
+    var line = content.querySelector('.gl-signoff-status');
+    if(line && !force && line.getAttribute('data-inv') === inv.supaId) return;
+    signoffBusy = true;
+    try {
+      var a = await signoffFor(inv, force);
+      if(findInvoice(window.currentInvId) !== inv) return;   // user moved on
+      var t = signoffText(a);
+      line = content.querySelector('.gl-signoff-status');
+      if(!line){
+        line = h('div', { class:'gl-signoff-status', style:'max-width:640px;margin:0 auto 10px;font-size:12px;padding:9px 12px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)' });
+        content.insertBefore(line, content.firstChild);
+      }
+      line.setAttribute('data-inv', inv.supaId);
+      line.style.color = t.color;
+      line.textContent = t.text;
+    } finally { signoffBusy = false; }
+  }
+  window.glRefreshInvoiceSignoffStatus = function(force){ return injectSignoff(!!force); };
+  function startSignoffObserver(){
+    var detail = document.getElementById('inv-detail');
+    if(!detail){ setTimeout(startSignoffObserver, 800); return; }
+    new MutationObserver(function(){ setTimeout(function(){ injectSignoff(false); }, 120); })
+      .observe(detail, { attributes:true, attributeFilter:['class'], childList:true, subtree:true });
+  }
+  if(document.readyState !== 'loading') startSignoffObserver();
+  else document.addEventListener('DOMContentLoaded', startSignoffObserver);
+
   /* ── Entry points ───────────────────────────────────────────── */
   // Pipeline deal panel: data-gl-arg1 = deal id.
   window.glAgreementsFromDeal = function glAgreementsFromDeal(dealId){
@@ -671,7 +1075,7 @@
           h('div', {}, [
             h('div', { style:S.title, text:'📄 AGREEMENT TEMPLATES' }),
             h('div', { style:'font-size:12px;color:#9aa7bd;margin-top:3px;line-height:1.6',
-              text:'"# " = title line, "## " = section heading, blank line = new paragraph. Placeholders: {{effective_date}} {{gl_legal_name}} {{gl_address}} {{client_legal_name}} {{client_address}} {{client_signer_name}} {{client_signer_title}} {{term_years}}. [[SIGNATURES]] inserts the signature block. Changes apply to agreements generated from now on.' })
+              text:'"# " = title line, "## " = section heading, blank line = new paragraph. Placeholders: {{effective_date}} {{gl_legal_name}} {{gl_address}} {{client_legal_name}} {{client_address}} {{client_signer_name}} {{client_signer_title}} {{term_years}}. Invoice Acceptance also has {{invoice_number}} {{invoice_date}} {{invoice_lines}} {{invoice_total}} {{payment_terms}} {{kill_step}}. [[SIGNATURES]] inserts the signature block. Changes apply to agreements generated from now on.' })
           ]),
           h('button', { type:'button', style:'background:none;border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#fff;font-size:15px;cursor:pointer;padding:4px 10px', onclick:function(){ ov.remove(); } }, ['✕'])
         ]),

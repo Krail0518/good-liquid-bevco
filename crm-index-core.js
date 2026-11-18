@@ -4163,6 +4163,13 @@ async function aiSummarizeClient(clientId) {
 }
 
 // ─── PDF INVOICE DOWNLOAD ───
+/* The short form of the Invoice Acceptance and Product Responsibility terms,
+   printed on every invoice PDF (this print view and the emailed PDF in
+   src/shared/password-change.js). The full text is the 'invoice_acceptance'
+   agreement template, which the customer e-signs (✍️ Customer sign-off on
+   the invoice, src/modules/customers/agreements.js). */
+window.GL_INVOICE_TERMS_NOTE = 'TERMS: This invoice is subject to Good Liquid\'s Invoice Acceptance and Product Responsibility terms, which the customer signs electronically. In short: the customer is responsible for its formula and the shelf stability of the product, including re-fermentation, swelling or bursting; production defects must be reported in writing within 5 business days of pickup; title and risk pass to the customer at pickup; and Good Liquid\'s liability is limited to the manufacturing charges for the affected units.';
+
 async function downloadInvoicePDF(invId) {
   const inv = invoices.find(i=>i.id===invId);
   if(!inv) return;
@@ -4250,6 +4257,7 @@ async function downloadInvoicePDF(invId) {
       <tr><td style="padding:3px 0;color:#555;border:0">Routing (ABA)</td><td style="padding:3px 0;color:#1a1a1a;font-family:monospace;border:0">063116902</td></tr>
     </table>
   </div>
+  <div style="margin-top:14px;font-size:10px;line-height:1.5;color:#555;border-top:1px solid #e5e5e5;padding-top:10px">${esc(window.GL_INVOICE_TERMS_NOTE)}</div>
   <div class="footer">Payment to Good Liquid Bev Co · Mike@GoodLiquid.com · (803) 493-5065 · goodliquidbevco.com</div>
 </body></html>`;
 
