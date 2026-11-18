@@ -4168,7 +4168,7 @@ async function aiSummarizeClient(clientId) {
    src/shared/password-change.js). The full text is the 'invoice_acceptance'
    agreement template, which the customer e-signs (✍️ Customer sign-off on
    the invoice, src/modules/customers/agreements.js). */
-window.GL_INVOICE_TERMS_NOTE = 'TERMS: This invoice is subject to Good Liquid\'s Invoice Acceptance and Product Responsibility terms, which the customer signs electronically. In short: the customer is responsible for its formula and the shelf stability of the product, including re-fermentation, swelling or bursting; production defects must be reported in writing within 5 business days of pickup; title and risk pass to the customer at pickup; and Good Liquid\'s liability is limited to the manufacturing charges for the affected units.';
+window.GL_INVOICE_TERMS_NOTE = 'TERMS: This invoice is subject to Good Liquid\'s Invoice Acceptance and Product Responsibility terms, which the customer signs electronically. In short: the customer is responsible for its formula and the shelf stability of the product, including re-fermentation, swelling or bursting; visible defects must be reported in writing within 5 business days of pickup, and hidden defects within 5 business days of discovery and no later than 90 days after pickup; title and risk pass to the customer at pickup; Good Liquid makes no implied warranty of merchantability or fitness; and Good Liquid\'s liability is limited to re-running, crediting or refunding the manufacturing charges for the affected units. Florida law governs.';
 
 async function downloadInvoicePDF(invId) {
   const inv = invoices.find(i=>i.id===invId);
