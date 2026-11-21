@@ -331,6 +331,7 @@
     'setCalView',
     'setDealOutreach',
     'setInvFilter',
+    'glClearInvFilters',
     'setRefFilter',
     'setTaskFilter',
     'showPanel',

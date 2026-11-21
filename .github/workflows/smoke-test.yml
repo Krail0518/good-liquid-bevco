@@ -53,6 +53,9 @@ jobs:
       # Pure-logic unit tests for the mail pipeline (header encoding, body
       # extraction, quoted-thread trimming, entity decoding). No browser needed,
       # so run them first — they fail fastest and pinpoint most precisely.
+      - name: Run invoice list visibility tests
+        run: node tests/invoice-list-visibility.test.cjs
+
       - name: Run email-text unit tests
         run: node tests/email-text.test.mjs
 
