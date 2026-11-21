@@ -343,6 +343,15 @@
           if(!confirm(msg)) return;
         }
       }
+      // Paperwork gate (warn, not block): when a run is first scheduled for a
+      // client — new run, client changed, or a start date set for the first
+      // time — check the Manufacturing Agreement and the invoice sign-off are
+      // signed. Ordinary edits of an already-scheduled run don't ask again.
+      var firstScheduled = data.client_id && startVal && (
+        !isEdit || run.client_id !== data.client_id || !(run.scheduled_start_date || run.scheduled_date));
+      if(firstScheduled && typeof window.glSignoffGate === 'function'){
+        if(!(await window.glSignoffGate(data.client_id, data.client_name))) return;
+      }
       // Compliance gate — block transition to Ship if there's an open Hold Tag for this run
       if(data.stage === 'Ship' && run && run.id && typeof window.glCheckRunHoldStatus === 'function'){
         var blocker = await window.glCheckRunHoldStatus(run.id);

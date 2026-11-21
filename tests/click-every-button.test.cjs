@@ -1415,6 +1415,59 @@ const FEATURES = [
     check('…and voids the earlier acceptance', c2.some((c) => c.kind === 'update' && c.name === 'agreements' && c.payload && c.payload.status === 'void'), JSON.stringify(c2.filter((c) => c.kind === 'update').map((c) => c.payload)));
   }],
 
+  // Practice (2026-11-17): the customer signs the Manufacturing Agreement and
+  // the deposit-invoice sign-off BEFORE production is scheduled. Scheduling a
+  // run warns when either is missing (a nudge, not a block).
+  ['Production run: paperwork check before scheduling', async (sess, check) => {
+    const p = sess.page;
+    // Answer gl_client_signoff_readiness in-page and record every confirm().
+    await p.evaluate(() => {
+      window.__ready = { manufacturing: { status: 'sent', sent_at: new Date().toISOString() }, invoice_signoff: null };
+      const orig = window.supa.rpc.bind(window.supa);
+      window.supa.rpc = (name, args) => name === 'gl_client_signoff_readiness'
+        ? Promise.resolve({ data: window.__ready, error: null }) : orig(name, args);
+      window.__confirms = []; window.__confirmAnswer = false;
+      window.confirm = (m) => { window.__confirms.push(String(m)); return window.__confirmAnswer; };
+    });
+    const fill = async (name) => {
+      await p.evaluate(() => { document.querySelectorAll('#gl-prun-modal').forEach((m) => m.remove()); window.glOpenAddProductionRun(); });
+      await settle(p, 500);
+      return p.evaluate(({ name, cid }) => {
+        const m = document.getElementById('gl-prun-modal'); if (!m) return false;
+        const set = (sel, v) => { const el = m.querySelector(sel); if (el) { el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); } };
+        set('#gl-prun-name', name); set('#gl-prun-client', cid);
+        set('#gl-prun-start', new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10));
+        return true;
+      }, { name, cid: IDS.c1 });
+    };
+    const saveAndCount = async () => {
+      const n0 = (await stubCalls(p)).length;
+      await p.evaluate(() => document.querySelector('#gl-prun-modal #gl-prun-save').click());
+      await settle(p, 900);
+      return (await callsSince(p, n0)).filter((c) => c.kind === 'insert' && c.name === 'production_runs').length;
+    };
+
+    check('Add Production Run form opens', await fill('Paperwork check run'));
+    const stopped = await saveAndCount();
+    const msg = await p.evaluate(() => window.__confirms.join('\n---\n'));
+    check('missing paperwork warns, naming both gaps', /not complete/.test(msg) && /Manufacturing Agreement: sent/.test(msg) && /Invoice sign-off: none sent/.test(msg) && /Schedule anyway\?/.test(msg), msg.slice(0, 400));
+    check('Cancel stops the save (no run created)', stopped === 0, 'inserts: ' + stopped);
+
+    await p.evaluate(() => { window.__confirmAnswer = true; window.__confirms = []; });
+    const saved = await saveAndCount();
+    check('"Schedule anyway" saves the run', saved === 1, 'inserts: ' + saved);
+
+    await p.evaluate(() => {
+      const t = new Date().toISOString();
+      window.__ready = { manufacturing: { status: 'signed', signed_at: t }, invoice_signoff: { status: 'signed', signed_at: t, invoice_number: 'GL-1042' } };
+      window.__confirms = []; window.__confirmAnswer = false;
+    });
+    await fill('Paperwork complete run');
+    const clean = await saveAndCount();
+    const asked = await p.evaluate(() => window.__confirms.filter((m) => /not complete/.test(m)).length);
+    check('with everything signed it does not ask, and saves', asked === 0 && clean === 1, 'asked ' + asked + ', inserts ' + clean);
+  }],
+
   ['Sales decks (admin)', async (sess, check) => {
     const p = sess.page;
     const GL = IDS.sd1, LOTUS = IDS.sd2;

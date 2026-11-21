@@ -375,7 +375,8 @@
     }
     var prior = document.getElementById('gl-agr-modal'); if(prior) prior.remove();
 
-    var state = { kind:'nda', templates:{}, fields: ctx.fields, generated:'', savedId:null, savedDocId:null };
+    // opts.kind preselects the agreement (onboarding opens 'manufacturing').
+    var state = { kind: (opts.kind === 'manufacturing' ? 'manufacturing' : 'nda'), templates:{}, fields: ctx.fields, generated:'', savedId:null, savedDocId:null };
     var statusEl = h('div', { style:'font-size:12px;min-height:16px;margin-top:8px' });
     function setStatus(msg, color){ statusEl.style.color = color || '#9aa7bd'; statusEl.textContent = msg || ''; }
 
@@ -1089,6 +1090,53 @@
   }
   if(document.readyState !== 'loading') startSignoffObserver();
   else document.addEventListener('DOMContentLoaded', startSignoffObserver);
+
+  /* ── Paperwork check before a production run is scheduled ──────
+     Practice (Mike, 2026-11-17): the customer signs the Contract
+     Manufacturing Agreement at onboarding, and signs off on the deposit
+     invoice BEFORE production is scheduled. Both scheduling paths
+     (production-runs.js save, calendar.js production event) call
+     glSignoffGate(); it warns and lets staff schedule anyway — a nudge, not
+     a block, like the line-conflict warning beside it.
+
+     Reads gl_client_signoff_readiness() (migration 20261118140000), a
+     staff-only function, because sales users schedule runs but cannot read
+     the admin-only agreements tables. Any failure to check (no function, no
+     connection, not staff) returns "unknown" and shows nothing: this must
+     never stop production being scheduled. */
+  window.glSignoffReadiness = async function glSignoffReadiness(clientId){
+    if(!sb() || !/^[0-9a-f-]{36}$/i.test(String(clientId || ''))) return null;
+    try {
+      var r = await sb().rpc('gl_client_signoff_readiness', { p_client_id: clientId });
+      if(r.error || !r.data || typeof r.data !== 'object') return null;
+      return r.data;
+    } catch(_){ return null; }
+  };
+  function fmtDay(iso){ try { return new Date(iso).toLocaleDateString(); } catch(_){ return ''; } }
+  // Returns the list of missing items (empty = all signed), or null = unknown.
+  window.glSignoffGaps = function glSignoffGaps(r){
+    if(!r) return null;
+    var gaps = [];
+    var m = r.manufacturing, a = r.invoice_signoff;
+    if(!m) gaps.push('Contract Manufacturing Agreement: never sent. Send it from 📄 Agreements.');
+    else if(m.status !== 'signed') gaps.push('Contract Manufacturing Agreement: ' + (m.status === 'sent' ? 'sent ' + fmtDay(m.sent_at) + ', not signed yet.' : m.status + '.'));
+    if(!a) gaps.push('Invoice sign-off: none sent. Send ✍️ Customer sign-off on the deposit invoice.');
+    else if(a.status !== 'signed') gaps.push('Invoice sign-off' + (a.invoice_number ? ' (' + a.invoice_number + ')' : '') + ': ' + (a.status === 'sent' ? 'sent ' + fmtDay(a.sent_at) + ', not signed yet.' : a.status + '.'));
+    return gaps;
+  };
+  // Resolves true to go ahead with scheduling, false if staff chose to stop.
+  window.glSignoffGate = async function glSignoffGate(clientId, clientName){
+    var r = await window.glSignoffReadiness(clientId);
+    var gaps = window.glSignoffGaps(r);
+    if(!gaps || !gaps.length) return true;
+    var a = r && r.invoice_signoff;
+    var last = a && a.status === 'signed' ? '\n\nLast signed invoice sign-off: ' + (a.invoice_number || '') + ' on ' + fmtDay(a.signed_at) + '.' : '';
+    var ok = confirm('Paperwork for ' + (clientName || 'this client') + ' is not complete:\n\n' +
+      gaps.map(function(g){ return '• ' + g; }).join('\n') + last +
+      '\n\nOur practice: the customer signs before production is scheduled.\n\nSchedule anyway?');
+    audit(ok ? 'run_scheduled_without_signoff' : 'run_schedule_stopped_for_signoff', clientName || clientId, { gaps: gaps });
+    return ok;
+  };
 
   /* ── Entry points ───────────────────────────────────────────── */
   // Pipeline deal panel: data-gl-arg1 = deal id.
